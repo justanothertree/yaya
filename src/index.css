@@ -10681,6 +10681,21 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The same badge with nothing to point at — see tellNow.
+ *
+ * ⚠️ A TELL HAS A COST AND NO EXTENT, so it gets the reach ruler's label and none of its marks:
+ * there is no distance to draw a dashed line at, and a line that meant nothing would be worse
+ * than no line. Top left rather than beside a mark, because it belongs to the whole stroke
+ * rather than to a column of the page.
+ */
+.paint-reach-say b {
+  top: 10px;
+  left: 10px;
+  transform: none;
+  margin-left: 0;
+}
+
+/**
  * The map guide — see MapGuide.tsx.
  *
  * ⚠️ QUIETER THAN THE REACH RULER, because it covers the whole page rather than marking

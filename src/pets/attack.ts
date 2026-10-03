@@ -578,7 +578,9 @@ export function attacksOf(parts: Part[], hits?: Record<string, string>): Attack[
   /* ⚠️ 'spell' is excluded for exactly the reason 'hit' is: it is an attack rather than
      anatomy, so counting it would mean drawing a cast further out quietly shrank every swing's
      reach and made the cast itself score against a creature it had just inflated. */
-  const ink = inkOf(parts.filter((p) => p.kind !== 'hit' && p.kind !== 'spell')) ?? inkOf(parts)
+  const ink =
+    inkOf(parts.filter((p) => p.kind !== 'hit' && p.kind !== 'spell' && p.kind !== 'tell')) ??
+    inkOf(parts)
   /* ⚠️ THE FALLBACK IS SHAPEABLE TOO. A creature with nothing named still has one move, and
      it is the only move it has — leaving this path unshaped would mean the wizard did nothing at
      all for the simplest creature anybody can make, which is the first one everybody makes. */
@@ -640,8 +642,15 @@ export function attacksOf(parts: Part[], hits?: Record<string, string>): Attack[
  * @param allowed how many named parts this creature has earned the right to use, or -1 for
  * everything. Everywhere that only draws a creature passes nothing — see inPlay.
  */
-export const movesOf = (art: Drawing, allowed = -1): Attack[] =>
-  moveTable(attacksOf(inPlay(rigOf(art), allowed), art.hits))
+export const movesOf = (art: Drawing, allowed = -1): Attack[] => {
+  /* ⚠️ ONE WALK, AND THE SAME ONE. rigOf goes through every stroke, and this is called on every
+     keystroke in the wizard — but the bigger reason to share it is that the tell has to be read
+     out of exactly the parts the moves were, or a tell drawn on a layer the preview has not
+     reached yet would slow down moves that cannot see it. */
+  const parts = inPlay(rigOf(art), allowed)
+  const tell = tellFrom(parts)
+  return moveTable(attacksOf(parts, art.hits)).map((a) => wound(a, tell))
+}
 
 /**
  * A committed version of a move, for a creature that only has the one.
@@ -890,4 +899,100 @@ export function hurtBox(at: At, a: Attack, gone: number): Box | null {
 export function inBox(at: At, wide: number, b: Box): boolean {
   const half = wide / 2
   return at.x + half > b.x0 && at.x - half < b.x1 && at.y > b.y0 && at.y - PET_TALL < b.y1
+}
+
+/**
+ * The pose a creature winds up in, and how long that wind-up lasts.
+ *
+ * ⚠️ THE FIRST STAGE OF AN ATTACK THAT ANYBODY CAN DRAW. An Attack has had three stages since it
+ * existed — `live` names a window inside `span`, so there is a wind-up before it and a recovery
+ * after — and only the middle one ever had a picture. The park's telegraph note says what that
+ * cost in the room it matters most: "the boss telegraphs for 320ms and nothing on screen tells
+ * you what the telegraph is FOR, so the only readable thing was the red rectangle." Reading what
+ * a creature is about to do is the whole of a fight, and it was being read off a rectangle the
+ * engine drew identically for every creature anybody had ever made.
+ *
+ * ⚠️ ONE PER CREATURE, NOT ONE PER MOVE, and that is a choice rather than a limitation. "The
+ * pose it strikes from" is a thing about an animal, learnable in one sighting and then true of
+ * everything it throws — which is what makes it worth learning. One tell per move would be six
+ * poses to draw before any of them read as anything, and the first creature anybody makes would
+ * have none of them.
+ *
+ * ⚠️ AND HOW BIG YOU DRAW IT IS HOW LONG IT TAKES, which is the same bargain every other drawn
+ * thing here makes: a sweeping wind-up is slower and easier to read and easier to punish, a
+ * small one is quick and barely there. Nobody sets a number; you draw a big pose or a small one.
+ */
+export type Tell = {
+  /** which layer to show while winding up */
+  layer: number
+  /** extra seconds of wind-up it buys, before any move's own timing */
+  slow: number
+}
+
+/** how much longer the broadest tell anybody can draw makes a wind-up, in seconds */
+const TELL_SLOW = 0.26
+
+export const tellOf = (art: Drawing): Tell | null => tellFrom(rigOf(art))
+
+export function tellFrom(parts: Part[]): Tell | null {
+  const part = parts.find((p) => p.kind === 'tell')
+  if (!part) return null
+  const body = inkOf(
+    parts.filter((p) => p.kind !== 'hit' && p.kind !== 'spell' && p.kind !== 'tell'),
+  )
+  const h = body ? body.y1 - body.y0 : 0
+  /* ⚠️ MEASURED AGAINST THE BODY, never against the page — the same rule drawnAttacks states
+     for reach, and for the same reason: a creature drawn large would otherwise read as having
+     drawn a small tell, and the page running out would decide the timing. */
+  /**
+   * ⚠️ A LENGTH AGAINST A LENGTH, NEVER AN AREA AGAINST AN AREA, and it took two goes in the
+   * wizard to see why. A tell is drawn AROUND the creature, so its box is routinely bigger than
+   * the body's and an area ratio is squared on top of that — measured live, a stroke across a
+   * third of the page was already 2× the body by area and past the top of any sane band, so the
+   * readout sat at its cap of "4.2× as long" for everything except a dot. First try ranged it
+   * 0.25–1.6 like a hit's heft and it still saturated; the problem was the unit, not the band.
+   * The longest side over the body's height is the same kind of measurement drawnAttacks uses
+   * for reach, and it moves the way somebody drawing expects it to.
+   *
+   * ⚠️ AND 0.6 AT THE BOTTOM, because a pose smaller than two thirds of the creature is not a
+   * wind-up, it is a detail — those should cost nothing rather than a little.
+   */
+  const span = Math.max(part.box.x1 - part.box.x0, part.box.y1 - part.box.y0) / (h || 1)
+  const far = Math.max(0.6, Math.min(3, span))
+  return { layer: part.layer, slow: TELL_SLOW * ((far - 0.6) / 2.4) }
+}
+
+/**
+ * How long a creature is committed to this move, with its wind-up included.
+ *
+ * ⚠️ THE WIND-UP GROWS AND THE DANGEROUS WINDOW DOES NOT, which is the only honest way to spend
+ * a tell. Stretching `span` alone would make a telegraphed move hurt for longer as well as take
+ * longer, so drawing a big wind-up would be a straight upgrade; keeping the live window the same
+ * number of SECONDS and pushing it later means a tell buys readability and costs commitment,
+ * which is the trade that makes it a decision.
+ */
+export const wound = (a: Attack, tell: Tell | null): Attack => {
+  if (!tell || tell.slow <= 0) return a
+  const span = a.span + tell.slow
+  const from = (a.live[0] * a.span + tell.slow) / span
+  const to = (a.live[1] * a.span + tell.slow) / span
+  return { ...a, span, live: [from, Math.min(0.99, to)] }
+}
+
+/**
+ * Which layer a creature is showing this far into a swing — its wind-up pose, then the blow.
+ *
+ * ⚠️ ASKED, NOT REPEATED, because six places draw a creature mid-swing and they must agree about
+ * what it looks like. Every one of them used to read `a.layer` directly, which was right while
+ * there was only one answer; a second stage makes "which picture is out right now" a question,
+ * and a question answered in six places is answered differently in at least one of them.
+ *
+ * ⚠️ AND NO TELL MEANS EXACTLY WHAT IT MEANT BEFORE. A creature drawn before today has no tell
+ * layer, so this returns `a.layer` for the whole swing — the behaviour every existing creature
+ * already has, by construction rather than by a branch somebody has to remember.
+ */
+export const posedAt = (a: Attack, gone: number, tell: Tell | null): number | undefined => {
+  if (gone < 0 || gone >= a.span) return undefined
+  if (tell && gone < a.live[0] * a.span) return tell.layer
+  return a.layer
 }

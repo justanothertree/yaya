@@ -9,12 +9,15 @@ import {
   movesOf,
   pairOf,
   petWide,
+  posedAt,
+  tellOf,
+  wound,
   POUNCE,
   slotFor,
   type Aim,
   type Attack,
 } from './attack'
-import { PART_WORDS, rigOf } from './rig'
+import { PART_WORDS, partOf, rigOf, WORDS } from './rig'
 import type { Drawing, Stroke } from '../draw/strokes'
 import { PET_TALL } from './play'
 
@@ -324,5 +327,124 @@ describe('the hit shapes somebody can pick', () => {
       expect(glyph.length).toBeGreaterThan(0)
       expect(label.length).toBeGreaterThan(2)
     }
+  })
+})
+
+/**
+ * The stage before the blow, which is the first one anybody can draw.
+ *
+ * ⚠️ AN ATTACK HAS ALWAYS HAD THREE STAGES AND ONLY THE MIDDLE ONE HAD A PICTURE. `live` names a
+ * window inside `span`, so there is a wind-up before it and a recovery after — and what a
+ * creature LOOKED like during the first of those was the same thing it looked like during the
+ * second. The park's telegraph note says what that cost where it matters most: the only readable
+ * part of a boss winding up was a rectangle the engine drew, identically for every creature
+ * anybody has ever made.
+ *
+ * ⚠️ THE TESTS THAT MATTER HERE ARE THE TWO THAT ARE NOT ABOUT THE NEW THING. A drawing with no
+ * tell has to behave EXACTLY as it did — every creature that exists is one of those — and a tell
+ * must not quietly make a creature measure bigger, which is the bug the spell layer shipped with
+ * and that `hiddenLayers` has a note about in those words.
+ */
+describe('a drawn wind-up', () => {
+  /** the same creature, with and without a pose to wind up in */
+  const plain = creature(['body', 'arm', 'hit'])
+  const withTell = creature(['body', 'arm', 'hit', 'windup'])
+
+  it('is read off a layer called tell, windup or brace, and nothing else is', () => {
+    for (const word of ['tell', 'windup', 'wind up', 'brace', 'readying'])
+      expect(partOf(word), `"${word}" does not read as a tell`).toBe('tell')
+    /* ⚠️ THE SUBSTRING TRAP, WHICH HAS CAUGHT rig.ts TWICE. Matching is `includes` and the first
+       entry in WORDS wins, so this is the real question rather than whether two words overlap:
+       does every word still resolve to the kind that owns it, now that a kind went in FIRST? */
+    for (const [kind, words] of WORDS)
+      for (const w of words ?? []) expect(partOf(w), `"${w}" should still be a ${kind}`).toBe(kind)
+  })
+
+  /** ⚠️ and somebody will type this, which is the whole reason tell goes before hit in WORDS */
+  it('and "hit windup" is a wind-up rather than a hit', () => {
+    expect(partOf('hit windup')).toBe('tell')
+    expect(partOf('hit')).toBe('hit')
+  })
+
+  it('leaves a creature that has not drawn one exactly as it was', () => {
+    expect(tellOf(plain)).toBeNull()
+    for (const a of movesOf(plain)) {
+      /* posedAt with no tell is the old `a.layer` for the whole swing, by construction */
+      expect(posedAt(a, 0, null)).toBe(a.layer)
+      expect(posedAt(a, a.span * 0.99, null)).toBe(a.layer)
+      expect(posedAt(a, a.span, null)).toBeUndefined()
+    }
+  })
+
+  /** ⚠️ the bug the spell layer shipped with: "it also seems to be influencing the size" */
+  it('and does not make the creature measure any bigger', () => {
+    expect(petWide(withTell)).toBeCloseTo(petWide(plain), 10)
+  })
+
+  it('shows the wind-up pose first and the blow second', () => {
+    const tell = tellOf(withTell)
+    expect(tell, 'a drawing with a windup layer has a tell').not.toBeNull()
+    const a = movesOf(withTell).find((m) => m.from === 'hit')!
+    const turn = a.live[0] * a.span
+    expect(posedAt(a, turn * 0.5, tell), 'winding up').toBe(tell!.layer)
+    expect(posedAt(a, turn * 1.01, tell), 'the blow is out').toBe(a.layer)
+    expect(posedAt(a, a.span + 0.001, tell), 'over').toBeUndefined()
+  })
+
+  /**
+   * ⚠️ THE TRADE, AND IT IS THE WHOLE MECHANIC. A tell must buy readability and cost commitment.
+   * Stretching the span alone would make a telegraphed move hurt for LONGER as well as take
+   * longer, which would make drawing a big wind-up a straight upgrade and the decision no
+   * decision at all.
+   */
+  it('and buys its wind-up with commitment, not with a longer dangerous window', () => {
+    const a = movesOf(plain).find((m) => m.from === 'hit')!
+    for (const slow of [0.05, 0.12, 0.26]) {
+      const w = wound(a, { layer: 9, slow })
+      const was = (a.live[1] - a.live[0]) * a.span
+      const now = (w.live[1] - w.live[0]) * w.span
+      expect(now, `live window at slow ${slow}`).toBeCloseTo(was, 6)
+      expect(w.span, `span at slow ${slow}`).toBeCloseTo(a.span + slow, 10)
+      expect(w.live[0] * w.span, `wind-up at slow ${slow}`).toBeCloseTo(
+        a.live[0] * a.span + slow,
+        6,
+      )
+    }
+  })
+
+  /** ⚠️ and a bigger pose is a slower one, which is how the mechanic gets drawn in */
+  it('and a bigger pose is a slower wind-up', () => {
+    const small = creature(['body', 'arm', 'hit'])
+    small.layers = [...(small.layers ?? []), 'windup']
+    small.strokes = [...small.strokes, stroke({ l: 3, p: [0.48, 0.48, 0.52, 0.52] })]
+    const big = creature(['body', 'arm', 'hit'])
+    big.layers = [...(big.layers ?? []), 'windup']
+    big.strokes = [...big.strokes, stroke({ l: 3, p: [0.1, 0.1, 0.9, 0.9] })]
+    const a = tellOf(small)!
+    const b = tellOf(big)!
+    expect(b.slow, 'a sweeping wind-up against a tight one').toBeGreaterThan(a.slow)
+  })
+})
+
+/**
+ * ⚠️ AND A SECOND EXCLUSION, WHICH THE SIZE TEST ABOVE DOES NOT REACH. There are two places a
+ * creature's body gets measured and they answer different callers: `notBodyLayers` feeds
+ * bodyRatio and so petWide, and `drawnAttacks` takes its own body box for the reach and heft of
+ * what you drew. Reverting either one leaves the other passing, which I found by reintroducing
+ * the bug in the wrong file and watching the test stay green — so this asks the second one in
+ * the only terms it can be wrong in: a wind-up drawn far out must not change the swing's reach.
+ */
+describe('a wind-up that is drawn a long way out', () => {
+  const near = creature(['body', 'arm', 'hit'])
+  const far = creature(['body', 'arm', 'hit'])
+  far.layers = [...(far.layers ?? []), 'windup']
+  far.strokes = [...far.strokes, stroke({ l: 3, p: [0.9, 0.45, 0.99, 0.55] })]
+
+  it('does not change what the swing beside it reaches or hits for', () => {
+    const a = movesOf(near).find((m) => m.from === 'hit')!
+    const b = movesOf(far).find((m) => m.from === 'hit')!
+    expect(b.reach, 'reach').toBeCloseTo(a.reach, 10)
+    expect(b.bite, 'bite').toBe(a.bite)
+    expect(b.rise, 'rise').toBeCloseTo(a.rise, 10)
   })
 })

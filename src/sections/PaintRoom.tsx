@@ -127,7 +127,7 @@ const spellSays = (
 }
 
 import { CAST } from '../park/cast'
-import { movesOf, type Attack } from '../pets/attack'
+import { movesOf, tellOf, type Attack } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 import { MapMaker } from '../park/MapMaker'
@@ -1907,13 +1907,15 @@ export function PaintRoom() {
     if (!petStep) return null
     if (kindOf(petPreview, layer) !== 'hit') return null
     /* the body, never a move it can throw — the same exclusion drawnAttacks makes, and it is
-       BOTH kinds: a spell layer is no more part of the creature than a slash is, so leaving it
-       in moved this ruler the moment somebody drew one */
+       ALL THREE kinds: a spell layer is no more part of the creature than a slash is, so leaving
+       it in moved this ruler the moment somebody drew one, and a tell is a stage of a move for
+       exactly the same reason. This note said "BOTH" until there were three of them, which is
+       the argument for asking one list rather than repeating a condition. */
     const body = inkBox({
       ...petPreview,
       strokes: petPreview.strokes.filter((k) => {
         const kind = kindOf(petPreview, k.l ?? 0)
-        return kind !== 'hit' && kind !== 'spell'
+        return kind !== 'hit' && kind !== 'spell' && kind !== 'tell'
       }),
     })
     if (!body) return null
@@ -1946,6 +1948,31 @@ export function PaintRoom() {
     const drawn = movesOf(petPreview).find((m) => m.from === 'hit')
     return drawn ? { reach: drawn.reach, bite: drawn.bite } : null
   }, [hitGuide, petPreview])
+
+  /**
+   * And what the wind-up you have drawn so far costs, while you are drawing it.
+   *
+   * ⚠️ THE SAME ANSWER hitNow GIVES, FOR THE OTHER STAGE. A tell's whole mechanic is that a
+   * bigger pose is a slower one, and nothing about that is visible while you draw — which is
+   * the complaint the hit readout exists because of, in the same words: "a balanced stat
+   * mechanic that showed you live as you draw it".
+   *
+   * ⚠️ IN MULTIPLES OF WHAT IT WOULD HAVE BEEN, not in seconds, for the reason spellSays gives
+   * about its own numbers: "twice as long" is a thing somebody can check by drawing and 0.18 is
+   * not. movesOf has already applied the tell, so what it would have been is this less the
+   * slow it bought.
+   */
+  const tellNow = useMemo(() => {
+    if (!petStep) return null
+    if (kindOf(petPreview, layer) !== 'tell') return null
+    const t = tellOf(petPreview)
+    if (!t) return null
+    const a = movesOf(petPreview)[0]
+    if (!a) return null
+    const now = a.live[0] * a.span
+    const was = now - t.slow
+    return was > 0.001 ? now / was : null
+  }, [petStep, layer, petPreview])
 
   const petMoves = useMemo(() => {
     const table = movesOf(petPreview)
@@ -4003,6 +4030,18 @@ export function PaintRoom() {
                     A <code>hit</code> is a swing <em>you throw</em>. Out to the side reaches
                     further, above the head launches, bigger hurts more.
                   </span>
+                ) : /* ⚠️ THE SECOND HALF OF A PAIR, AND IT HAS TO SAY SO. A tell is useless on
+                       its own — it is the stage before a hit — so the one sentence it gets names
+                       the hit, says when it is seen, and states the trade in the same breath.
+                       The same shape the hit's own line uses, for the same reason: this is the
+                       only place the mechanic is said, and nothing about it is visible while you
+                       draw. */
+                partOf(petStep.part) === 'tell' ? (
+                  <span className="muted">
+                    A <code>tell</code> is the pose it winds up in, just before every{' '}
+                    <code>hit</code>. Draw it big and it winds up slower — easier to read coming,
+                    easier to punish.
+                  </span>
                 ) : (
                   <span className="muted">
                     You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
@@ -4694,6 +4733,15 @@ export function PaintRoom() {
                   ? 'full reach — the edge of the page'
                   : 'full reach'}
             </b>
+          </span>
+        )}
+        {/* ⚠️ ON THE BOARD, WHERE THE HIT'S OWN READOUT IS, because it answers the same question
+            about the stroke you are making right now. No ruler beside it: a tell has no reach to
+            measure, only a cost, so a mark on the page would be drawing a line that means
+            nothing. */}
+        {tellNow !== null && (
+          <span className="paint-reach paint-reach-say" aria-hidden>
+            <b>winds up {tellNow.toFixed(1)}× as long</b>
           </span>
         )}
         {petCrop && (

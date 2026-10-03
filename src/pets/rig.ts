@@ -46,6 +46,7 @@ export type PartKind =
   | 'float'
   | 'horn'
   | 'hit'
+  | 'tell'
   | 'spell'
 
 /**
@@ -74,6 +75,23 @@ export const WORDS: Array<[PartKind, string[]]> = [
    * First in the list because it is the one kind that must never be mistaken for something else,
    * and none of its words contains or is contained by anything below.
    */
+  /**
+   * ⚠️ THE STAGE BEFORE THE BLOW, AND THE FIRST ONE ANYBODY CAN DRAW. Every attack in this game
+   * already has three stages — a wind-up, the moment it is dangerous, and a recovery — and only
+   * the middle one had a picture. The park's own telegraph note says what that cost: "the boss
+   * telegraphs for 320ms and nothing on screen tells you what the telegraph is FOR, so the only
+   * readable thing was the red rectangle." A fight you learn by reading what a creature is about
+   * to do was being read off a rectangle the engine drew, identically for every creature anybody
+   * has ever made.
+   *
+   * ⚠️ FIRST IN THE LIST, BEFORE `hit`, AND THAT IS LOAD-BEARING RATHER THAN TIDY. Matching is a
+   * substring and the first match wins, so a layer called "hit windup" — which is exactly what
+   * somebody will type — would read as a hit and the wind-up would never be seen. None of these
+   * words contains or is contained by anything below: `windup` does not contain `wing`, and
+   * nothing anatomical contains `tell`. That trap has caught this file twice, so it is checked
+   * rather than assumed, and there is a test that sweeps every pair.
+   */
+  ['tell', ['tell', 'windup', 'wind up', 'brace', 'readying']],
   ['hit', ['hit', 'attack', 'strike', 'slash', 'swipe', 'blast', 'swing']],
   /**
    * ⚠️ THE SECOND LAYER THAT IS NOT ANATOMY, and it is to the big casts what `hit` is to the
@@ -189,6 +207,10 @@ export const PART_WORDS: string[] = [
   'halo',
   'horn',
   'hit',
+  /* ⚠️ DIRECTLY AFTER 'hit', because it is the stage before one and is useless without one —
+     the three at the end are the layers that are not anatomy. A word that does something and is
+     not on this list is a feature nobody finds: the wizard's buttons are this array. */
+  'tell',
   /* ⚠️ LAST, BESIDE 'hit', because the two are the pair that are not anatomy: one says where a
      swing reaches and this says where the big casts land. A word that does something and is not
      on this list is a feature nobody finds — the wizard's buttons are this array. */
@@ -239,6 +261,7 @@ export const PART_DOES: Record<PartKind, string> = {
   float: 'drifts',
   horn: 'juts out, and hits hardest of anything',
   hit: 'is hidden until you attack with it',
+  tell: 'is the pose it winds up in, just before every hit',
   spell: 'is where your big moves land',
 }
 
@@ -297,9 +320,12 @@ export const PART_DEPTH: Record<PartKind, number> = {
   flame: 13,
   pulse: 14,
   hit: 15,
+  /* ⚠️ in front of the creature like the hit it precedes, because it is the same move one stage
+     earlier and has to read the same way round */
+  tell: 16,
   /* ⚠️ with `hit`, at the back of the ordering, because neither is anatomy and neither is drawn
      as part of the standing creature — see the note on the kind itself */
-  spell: 16,
+  spell: 17,
 }
 
 /**
@@ -500,7 +526,10 @@ export function notBodyLayers(d: Drawing): number[] {
        the creature measure bigger, render smaller inside its own box and carry a hitbox nobody
        drew. Reported the day the spell layer shipped: "it also seems to be influencing the size
        and hit box of the minion". */
-    if (k === 'hit' || k === 'spell') out.push(i)
+    /* ⚠️ AND A TELL, for the reason a hit is: it is a stage of a MOVE rather than a piece of the
+       creature, so it is invisible until the wind-up it belongs to is running. A tell left
+       visible would be a creature permanently braced to swing. */
+    if (k === 'hit' || k === 'spell' || k === 'tell') out.push(i)
   })
   return out
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { footRoom, petCanvas } from './rig'
-import { movesOf, petWide, type Attack } from './attack'
+import { movesOf, petWide, posedAt, tellOf, type Attack } from './attack'
 import { bakeWalk, blitBaked } from './bake'
 import { minionOf } from '../park/minion'
 import { FLOCK, ringOf, stepSwarm, type Mob } from '../park/swarm'
@@ -132,6 +132,9 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
   )
 
   const moves = useMemo(() => movesOf(art), [art])
+  /* ⚠️ beside the moves and memoised with them, for the reason MoveShow's is: a rig walk per
+     frame, in a loop that already has a flock in it. See posedAt. */
+  const tell = useMemo(() => tellOf(art), [art])
   const shape = useMemo(() => shapeOf(art), [art])
   const casts = useMemo(() => {
     const list: CastKind[] = ['bloom', 'mark', 'wave', 'bolt']
@@ -388,7 +391,7 @@ export function TryField({ art, onDone }: { art: Drawing; onDone: () => void }) 
               facing={you.facing}
               stance={you.moving ? 'run' : 'idle'}
               energy={you.moving ? 1.2 : 0.4}
-              show={swing?.a.layer}
+              show={swing ? posedAt(swing.a, swing.t, tell) : undefined}
               label="your minion, at the size it is in the game"
             />
           )}

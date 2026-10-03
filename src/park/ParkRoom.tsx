@@ -86,7 +86,7 @@ import {
   type StrikeInput,
   type Striker,
 } from './strike'
-import { movesOf, slotFor, petWide, type Attack } from '../pets/attack'
+import { movesOf, slotFor, petWide, posedAt, tellOf, type Attack } from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
@@ -1081,6 +1081,9 @@ export function ParkRoom({
     () => (myArt ? movesOf(myArt, myBudget) : []),
     [myArt, myBudget],
   )
+  /* ⚠️ the pose your creature winds up in, memoised beside the moves it belongs to — tellOf
+     walks every stroke and this room renders every frame. See posedAt. */
+  const myTell = useMemo(() => (myArt ? tellOf(myArt) : null), [myArt])
   const boss = useRef<Boss | null>(null)
   const [bossShown, setBossShown] = useState<Boss | null>(null)
   const [bossPick, setBossPick] = useState(0)
@@ -1123,6 +1126,7 @@ export function ParkRoom({
      * constant would have a hitbox that disagreed with the one hitting you.
      */
     temper: Temper
+    tell: ReturnType<typeof tellOf>
   } | null>(null)
   const myWide = useMemo(() => (myArt ? petWide(myArt) : 0.2), [myArt])
   /**
@@ -1234,7 +1238,14 @@ export function ParkRoom({
   const bossKit = useMemo(
     () =>
       bossArt
-        ? { moves: bossMoves(bossArt), wide: bossWide(bossArt), temper: temperOf(bossArt) }
+        ? {
+            moves: bossMoves(bossArt),
+            wide: bossWide(bossArt),
+            temper: temperOf(bossArt),
+            /* ⚠️ with the moves, because it is part of how they LOOK and the two must not be read
+               from different drawings — see posedAt */
+            tell: tellOf(bossArt),
+          }
         : null,
     [bossArt],
   )
@@ -2913,6 +2924,9 @@ export function ParkRoom({
             moves: bossMoves(tb.art),
             wide: bossWide(tb.art),
             temper: temperOf(tb.art),
+            /* ⚠️ derived here like everything else about a remote boss, so both ends wind up in
+               the same pose from the same picture with nothing about it on the wire */
+            tell: tellOf(tb.art),
           }
         const kit = echoKit.current
         tb.shown = farFrom(tb.shown, tb.at)
@@ -4353,7 +4367,14 @@ export function ParkRoom({
                  * pose should say the same thing the physics does.
                  */
                 aim: shownYou.dive ? { x: 0, y: 1 } : shownYou.aim,
-                show: shownYou.swing > 0 ? myMoves[shownYou.move]?.layer : undefined,
+                /* ⚠️ `swing` counts DOWN, so how far in you are is the span less what is left —
+                   posedAt wants the elapsed time, the same way strikeSwipe does two screens up */
+                show: (() => {
+                  const mv = myMoves[shownYou.move]
+                  return shownYou.swing > 0 && mv
+                    ? posedAt(mv, mv.span - shownYou.swing, myTell)
+                    : undefined
+                })(),
               },
             ]
               /* ⚠️ lower on the screen is nearer the camera, which in a top-down world is the
@@ -4589,7 +4610,15 @@ export function ParkRoom({
               facing={bossShown.facing}
               size={petSize(bossShown.art) * bossShown.scale}
               lunge={lungeOf(bossShown, bossKit?.moves ?? [])}
-              show={bossShown.swing > 0 ? (bossKit?.moves ?? [])[bossShown.move]?.layer : undefined}
+              /* ⚠️ THE ONE THAT MATTERS MOST. A boss's wind-up is the thing you are supposed to
+                 read, and until now the only readable part of it was the engine's own rectangle
+                 — see the telegraph note in strike.ts and the one on the `tell` kind. */
+              show={(() => {
+                const bm = (bossKit?.moves ?? [])[bossShown.move]
+                return bossShown.swing > 0 && bm
+                  ? posedAt(bm, bm.span - bossShown.swing, bossKit?.tell ?? null)
+                  : undefined
+              })()}
               turning={bossShown.turn > 0}
               aim={bossShown.aim}
               hp={bossShown.lifeMax > 0 ? bossShown.life / bossShown.lifeMax : 0}
@@ -4635,7 +4664,15 @@ export function ParkRoom({
               aim={theirBoss.aim}
               size={petSize(theirBoss.art) * (echoKit.current?.temper.scale ?? 2.6)}
               lunge={echoLunge(theirMove, theirBoss.swingFor)}
-              show={theirMove?.layer}
+              show={
+                theirMove
+                  ? posedAt(
+                      theirMove,
+                      theirMove.span - theirBoss.swingFor,
+                      echoKit.current?.tell ?? null,
+                    )
+                  : undefined
+              }
               hp={theirBoss.hp}
               hit={false}
               /* it is walking if where it says it is has got ahead of where it is drawn */

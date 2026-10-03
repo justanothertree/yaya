@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { bodyRatio, petCanvas } from './rig'
 import { lungeOf, phaseOf } from './fight'
-import { HIT_SHAPES, hurtHalf, type Attack, type HitShape } from './attack'
+import { HIT_SHAPES, hurtHalf, posedAt, tellOf, type Attack, type HitShape } from './attack'
 import { PARK_DEEP } from '../park/strike'
 
 /**
@@ -108,6 +108,11 @@ export function MoveShow({
   /** which move is being watched, so a park-scale field can show the same one from above */
   onPick?: (a: Attack) => void
 }) {
+  /* ⚠️ MEMOISED, because tellOf walks every stroke and this component re-renders on every frame
+     of the animation below. A rig walk per frame is exactly the cost this file already goes to
+     trouble to avoid elsewhere. See posedAt for what it is for. */
+  const tell = useMemo(() => tellOf(art), [art])
+
   /**
    * Which earlier button already throws this exact move.
    *
@@ -252,7 +257,7 @@ export function MoveShow({
             size={size}
             facing={1}
             energy={gone < a.span ? 2 : 0.6}
-            show={gone < a.span ? a.layer : undefined}
+            show={posedAt(a, gone, tell)}
             label={`your minion throwing its ${a.name}`}
           />
         </span>

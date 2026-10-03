@@ -3,7 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { ScrapFriend } from './ScrapFriend'
 import { footRoom, petCanvas, rigOf } from './rig'
-import { movesOf, pairOf, petWide, type Attack } from './attack'
+import { movesOf, pairOf, petWide, posedAt, tellFrom, type Attack } from './attack'
 import {
   fightEffort,
   fightStance,
@@ -154,6 +154,8 @@ export function PetFight({
       moves: side.map((p) => movesOf(p.art)) as Attack[][],
       traits: rigs.map((r) => traitsOf(r)) as Traits[],
       wides: side.map((p) => petWide(p.art)),
+      /* ⚠️ from the rig that is already walked here rather than a second walk — see tellFrom */
+      tells: rigs.map((r) => tellFrom(r)),
     }
   }, [side])
 
@@ -491,7 +493,12 @@ export function PetFight({
                   stance={fightStance(f)}
                   /* ⚠️ only while the swing is actually out, so a drawn attack appears for the
                      frames it exists and is gone the rest of the time — see PetPaint.show */
-                  show={f.swing > 0 ? (kit.moves[i] ?? [])[f.move]?.layer : undefined}
+                  show={(() => {
+                    const mv = (kit.moves[i] ?? [])[f.move]
+                    return f.swing > 0 && mv
+                      ? posedAt(mv, mv.span - f.swing, kit.tells[i] ?? null)
+                      : undefined
+                  })()}
                   label={`${p.name}, on ${Math.round(f.hurt)} per cent`}
                 />
               </span>

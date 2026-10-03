@@ -174,7 +174,12 @@ export function paintPet(
 
        ⚠️ EXCEPT WHEN SOMETHING IS MEASURING. A bitmap has to be big enough for the frame
        the slash IS out, so `onPart` sees every layer. */
-    if (!onPart && (part.kind === 'hit' || part.kind === 'spell') && part.layer !== show) continue
+    if (
+      !onPart &&
+      (part.kind === 'hit' || part.kind === 'spell' || part.kind === 'tell') &&
+      part.layer !== show
+    )
+      continue
     ctx.save()
     /* ⚠️ the parent's movement first, so the child is posed in a frame that has already moved —
        an ear turns with the head AND twitches, instead of having to choose. See PART_PARENT. */
