@@ -230,6 +230,27 @@ export type Drawing = {
    * so keying by kind could not express a change at all.
    */
   acts?: Record<string, string>
+  /**
+   * What each FRAME is a pose of, keyed by frame index — a state's picture.
+   *
+   * ⚠️ A STATE IS A WHOLE-BODY POSE, WHICH IS WHAT A FRAME ALREADY IS. The stages of a move
+   * (tell, after) are layers because they are usually an ADDITION, with the body still showing
+   * underneath; what a creature looks like while it is hurt or beaten is the whole picture, and
+   * encoding that as a layer would mean redrawing the creature inside one and hiding the real
+   * body whenever it was on. Frames are whole-picture by construction, and a stroke with no
+   * frame already means "shows on all of them" — which is exactly the parts that do not change
+   * between poses.
+   *
+   * ⚠️ NAMED FRAMES ARE NOT THE ANIMATION. A drawing with frames and no names plays them on a
+   * loop and always has; naming one takes it OUT of the loop and hands it to a state. So one
+   * creature can be rig-driven, or hand-animated, or hand-animated with a death pose — and the
+   * bottom rung of that ladder is every drawing that already exists.
+   *
+   * ⚠️ BY INDEX AND SPARSE, exactly like `acts`, and plain strings for the reason that one
+   * gives: this file must not know what "down" means. The park understands states; the drawing
+   * only carries the word.
+   */
+  poses?: Record<string, string>
   strokes: Stroke[]
 }
 
@@ -335,6 +356,7 @@ export function readDrawing(v: unknown): Drawing | null {
     fps: typeof o.fps === 'number' && o.fps >= 1 && o.fps <= 24 ? Math.round(o.fps) : undefined,
     hits: smallMap(o.hits, 16),
     acts: smallMap(o.acts, MAX_LAYERS),
+    poses: smallMap(o.poses, MAX_FRAMES),
     strokes,
   }
 }
@@ -1403,6 +1425,8 @@ export type PackedDrawing = {
   h?: Record<string, string>
   /** what each LAYER acts like, by layer index — see Drawing.acts */
   ac?: Record<string, string>
+  /** what each FRAME is a pose of, by frame index — see Drawing.poses. Named key, no bump. */
+  po?: Record<string, string>
   /**
    * [tool, colour, alpha%, width‰, segments, echoes, ...points‰] — colour 0 none, 1 rainbow.
    * v5 inserts [layer, frame] after echoes, frame -1 meaning every frame.
@@ -1677,6 +1701,7 @@ export function packDrawing(d: Drawing): PackedDrawing {
     ...(d.hits && Object.keys(d.hits).length ? { h: d.hits } : {}),
     /* ⚠️ not gated on `layered` either, and for the same reason — see above */
     ...(d.acts && Object.keys(d.acts).length ? { ac: d.acts } : {}),
+    ...(d.poses && Object.keys(d.poses).length ? { po: d.poses } : {}),
     /* ⚠️ The words go on the END of the row, after the points. A reader that does not know
        about text does `row.slice(fixed)` and then keeps only the numbers — so an older build
        drops the string and still draws the baseline, rather than choking on it. */
@@ -1733,6 +1758,7 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     /* readDrawing is what decides whether any of this is allowed — see smallMap */
     hits: v.h,
     acts: v.ac,
+    poses: v.po,
     strokes,
   })
 }
@@ -2135,4 +2161,42 @@ export function floodFill(
      before committing the stroke that will do it. */
   if (!measure) ctx.putImageData(img, 0, 0, loX, loY, hiX - loX + 1, hiY - loY + 1)
   return { x0: loX / W, y0: loY / H, x1: hiX / W, y1: hiY / H }
+}
+
+/**
+ * Which frame holds the pose named this, or -1 for a drawing that has not drawn one.
+ *
+ * ⚠️ CASE AND SPACE FORGIVEN, for the reason partOf matches on a substring: nobody types
+ * `down`, they type "Down" or "down pose". A state has to be findable by the word people
+ * actually write or the feature belongs to whoever read the instructions.
+ */
+export const poseFrame = (d: Drawing, name: string): number => {
+  if (!d.poses) return -1
+  const want = name.toLowerCase()
+  for (const [at, said] of Object.entries(d.poses))
+    if (said.toLowerCase().includes(want)) {
+      const i = Number(at)
+      if (Number.isInteger(i) && i >= 0) return i
+    }
+  return -1
+}
+
+/**
+ * The frames that are the ANIMATION — every frame nobody has given to a state.
+ *
+ * ⚠️ THIS IS WHAT KEEPS EVERY EXISTING DRAWING EXACTLY AS IT WAS. A drawing with frames and no
+ * names returns all of them, in order, which is the loop that has always played. Naming one
+ * removes it from this list and nothing else changes: the walk carries on, one frame shorter,
+ * and the named frame is only ever shown when its state asks for it.
+ *
+ * ⚠️ AND AN EMPTY RESULT IS NOT AN EMPTY ANIMATION. A creature whose every frame is a pose has
+ * no loop to play, so the caller falls back to the rig — which is the right answer rather than a
+ * creature that renders as nothing. paintPet owns that decision; this only reports.
+ */
+export const loopFrames = (d: Drawing): number[] => {
+  const n = frameCount(d)
+  if (n <= 1) return []
+  const out: number[] = []
+  for (let i = 0; i < n; i++) if (!d.poses?.[String(i)]) out.push(i)
+  return out
 }

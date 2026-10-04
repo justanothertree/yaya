@@ -1,4 +1,5 @@
 import { paintPet } from './paint'
+import { poseFrame } from '../draw/strokes'
 import { footRoom, petBox, petCanvas, rigOf } from './rig'
 import type { Drawing } from '../draw/strokes'
 import type { Stance } from './rig'
@@ -117,4 +118,31 @@ export function blitBaked(
     return
   }
   ctx.drawImage(b.sheet, f * b.w, 0, b.w, b.h, x - b.w / 2, top, b.w, b.h)
+}
+
+/**
+ * One stamp of a creature holding a named pose, or null if it has not drawn one.
+ *
+ * ⚠️ A SEPARATE STAMP RATHER THAN A FRAME ON THE WALK SHEET, because a pose is not part of a
+ * cycle and putting it on the strip would mean `frameAt` could land on it — a minion would die
+ * for a sixth of a second in the middle of running. It is also the honest shape for what this
+ * is: a walk is many pictures played in order, a pose is one picture shown when something is
+ * true.
+ *
+ * ⚠️ AND NULL WHEN NOBODY DREW ONE, which is what lets the caller fall back rather than branch.
+ * Baking the rig's idle here instead would be a death pose that looks exactly like standing
+ * about, which is worse than no pose at all because it reads as a bug.
+ */
+export function bakePose(art: Drawing, tall: number, pose: string): Baked | null {
+  if (typeof document === 'undefined' || !(tall > 0)) return null
+  if (poseFrame(art, pose) < 0) return null
+  const box = petBox(art, petCanvas(art, tall))
+  if (!(box.w > 0) || !(box.h > 0)) return null
+  const sheet = document.createElement('canvas')
+  sheet.width = box.w
+  sheet.height = box.h
+  const ctx = sheet.getContext('2d')
+  if (!ctx) return null
+  paintPet(ctx, art, rigOf(art), box.w, box.h, { t: 0, energy: 0, pose })
+  return { sheet, w: box.w, h: box.h, frames: 1, foot: footRoom(art) }
 }

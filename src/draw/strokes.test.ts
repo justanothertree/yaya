@@ -3,9 +3,11 @@ import {
   frameCount,
   isFreehand,
   layerCount,
+  loopFrames,
   MAX_LAYERS,
   NONE,
   packDrawing,
+  poseFrame,
   RAINBOW,
   readDrawing,
   readStroke,
@@ -393,5 +395,68 @@ describe('what a layer acts like', () => {
       }),
     )!
     expect(back.acts).toEqual({ 1: 'wing' })
+  })
+})
+
+/**
+ * Frames you have given a name to, which is where a creature's STATES live.
+ *
+ * ⚠️ THE TESTS THAT MATTER HERE ARE THE ONES ABOUT DRAWINGS THAT HAVE NEVER HEARD OF THIS. A
+ * frame became two things the day it could be named — a moment of an animation, or the pose a
+ * creature holds while it is beaten — and every drawing anybody has ever saved is made entirely
+ * of the first kind. The loop they play must not gain, lose or reorder a single frame.
+ */
+describe('a frame can be given to a state', () => {
+  const walk = drawing({
+    strokes: [stroke({ f: 0 }), stroke({ f: 1 }), stroke({ f: 2 }), stroke({ f: 3 })],
+  })
+
+  it('leaves an animation nobody has named exactly as it was', () => {
+    expect(frameCount(walk)).toBe(4)
+    expect(loopFrames(walk), 'every frame still plays, in order').toEqual([0, 1, 2, 3])
+    expect(poseFrame(walk, 'down'), 'and no frame claims to be a pose').toBe(-1)
+  })
+
+  it('and takes a named frame out of the loop and nothing else', () => {
+    const withDown = { ...walk, poses: { '3': 'down' } }
+    expect(loopFrames(withDown), 'the walk is one frame shorter').toEqual([0, 1, 2])
+    expect(poseFrame(withDown, 'down'), 'and the pose is where it was put').toBe(3)
+    expect(frameCount(withDown), 'the drawing still has four frames').toBe(4)
+  })
+
+  /** ⚠️ nobody types `down` — see poseFrame, and partOf for the rule it follows */
+  it('and finds the pose by the word people actually write', () => {
+    for (const said of ['down', 'Down', 'down pose', 'knocked down'])
+      expect(poseFrame({ ...walk, poses: { '2': said } }, 'down'), said).toBe(2)
+  })
+
+  it('and survives a trip through the file format', () => {
+    const d = { ...walk, poses: { '1': 'hurt', '3': 'down' } }
+    const back = readDrawing(JSON.parse(JSON.stringify(packDrawing(d))))!
+    expect(back.poses, 'packed and read back').toEqual({ '1': 'hurt', '3': 'down' })
+    expect(loopFrames(back)).toEqual([0, 2])
+  })
+
+  /**
+   * ⚠️ AND AN OLDER FILE IS UNTOUCHED BY ALL OF IT, which is the claim the whole encoding rests
+   * on: `poses` is a named key, so a drawing saved before today has none and reads as the
+   * animation it always was.
+   */
+  it('and a drawing saved before any of this has no poses at all', () => {
+    const back = readDrawing(JSON.parse(JSON.stringify(packDrawing(walk))))!
+    expect(back.poses).toBeUndefined()
+    expect(loopFrames(back)).toEqual([0, 1, 2, 3])
+  })
+
+  /** ⚠️ a creature whose every frame is a pose has no loop — the caller falls back to the rig */
+  it('and a drawing that is all poses has no animation left', () => {
+    const allPosed = { ...walk, poses: { '0': 'a', '1': 'b', '2': 'c', '3': 'd' } }
+    expect(loopFrames(allPosed)).toEqual([])
+  })
+
+  /** ⚠️ and junk in the map is dropped at the door, like every other map here — see smallMap */
+  it('and junk does not get in', () => {
+    const back = readDrawing({ ...walk, poses: { '0': 123, bad: null, '1': 'hurt' } })!
+    expect(back.poses).toEqual({ '1': 'hurt' })
   })
 })

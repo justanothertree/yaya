@@ -102,7 +102,7 @@ import { shapeOf, type CastShape } from './castShape'
 import { SwipePatch } from './SwipePatch'
 import { biteOf, biteSpan, biting, minionOf, type Minion } from './minion'
 import { FLOCK, ringOf, stepSwarm, type Mob } from './swarm'
-import { bakeWalk, blitBaked, type Baked } from '../pets/bake'
+import { bakePose, bakeWalk, blitBaked, type Baked } from '../pets/bake'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -431,6 +431,15 @@ const FIELD_ASPECT = 16 / 10
  * about what you are walking into.
  */
 const waveSize = (no: number) => 10 + (no - 1) * 6
+
+/**
+ * How long a felled minion lies there before it is swept up, in seconds.
+ *
+ * ⚠️ LONG ENOUGH TO SEE AND SHORT ENOUGH NOT TO CROWD THE FLOOR. A wave of forty leaves forty
+ * bodies, and they are drawn and stepped like everything else — so this is a beat that says
+ * "that one died" rather than a graveyard the next wave has to walk through.
+ */
+const MOB_LINGER = 1.1
 
 const SWARM_WIDE = PARK.across * FIELD_ASPECT
 const toHeights = (s: Spot) => ({ x: s.x * SWARM_WIDE, y: s.y * PARK.down })
@@ -1278,7 +1287,9 @@ export function ParkRoom({
    */
   /** `cut` and `zapped` are which swing and which cast last hit this one — see the `cut` note */
   const mobs = useRef<
-    Array<Mob & { hp: number; cut: number; zapped: number; bit: number; fed: boolean }>
+    Array<
+      Mob & { hp: number; cut: number; zapped: number; bit: number; fed: boolean; gone: number }
+    >
   >([])
   /**
    * ⚠️ THE WAVE'S OWN NUMBER AND SIZE LIVE HERE, not read off `waveNo` inside the loop. The loop
@@ -1288,6 +1299,7 @@ export function ParkRoom({
   const mobKit = useRef<{
     kind: Minion
     baked: Baked | null
+    down: Baked | null
     wide: number
     no: number
     were: number
@@ -1304,6 +1316,10 @@ export function ParkRoom({
    */
   const [wavesWon, setWavesWon] = useState(0)
   const [mobsLeft, setMobsLeft] = useState(0)
+  /* ⚠️ MIRRORED IN A REF, because the loop compares the new count against the old one every
+     frame and state read inside the loop is the value it closed over rather than the one on
+     screen — the same trap dodgeShown and safeShown avoid beside their own setters. */
+  const mobsLeftRef = useRef(0)
   /**
    * The wave you just cleared, until you call the next one.
    *
@@ -1342,6 +1358,9 @@ export function ParkRoom({
     mobs.current = []
     mobKit.current = null
     setMobsLeft(0)
+    /* ⚠️ the mirror too, or the loop's "has the count changed" compares against a stale number
+       and the first wave after this one never updates the button — see mobsLeftRef */
+    mobsLeftRef.current = 0
     setWaveDone(null)
   }, [])
   const swarmCv = useRef<HTMLCanvasElement>(null)
@@ -2425,14 +2444,47 @@ export function ParkRoom({
          */
         crowd = crowd.map((m, i) => {
           const was = steppedFrom[i]
-          return m.bit >= 0 && was ? { ...m, x: was.x, y: was.y, vx: 0, vy: 0 } : m
+          /* ⚠️ AND A FELLED ONE, for a plainer reason: a body that keeps flocking is a body
+             sliding across the grass toward you, which reads as a bug rather than as a death. */
+          return (m.bit >= 0 || m.gone >= 0) && was ? { ...m, x: was.x, y: was.y, vx: 0, vy: 0 } : m
         })
 
-        const standing = crowd.filter((m) => m.hp > 0)
-        if (standing.length !== mobs.current.length) setMobsLeft(standing.length)
-        /* ⚠️ the frame the last one falls, and only that frame — `crowd.length` is the count
-           before the filter, so an empty wave cannot keep announcing itself */
-        if (!standing.length && crowd.length) {
+        /**
+         * ⚠️ THEY USED TO VANISH MID-STRIDE, which is the gap `down` exists to fill. A minion at
+         * zero health was simply filtered out of the array on the frame it got there, so the
+         * only thing that told you a swing had killed anything was a number on a button. A beat
+         * on the floor is what makes a kill a thing that happened.
+         *
+         * ⚠️ DEAD IS A STATE, NOT A DELETION, and it has to be one for the pose to have anywhere
+         * to live. A felled minion keeps its place in the list while `gone` counts up: it does
+         * not move, does not bite, and cannot be hit again — the tests above its own bite read
+         * `hp <= 0` first for exactly this reason.
+         */
+        const felled = crowd.map((m) => (m.hp <= 0 && m.gone < 0 ? { ...m, gone: 0 } : m))
+        const lying = felled.map((m) => (m.gone >= 0 ? { ...m, gone: m.gone + dt } : m))
+        const standing = lying.filter((m) => m.hp > 0 || m.gone < MOB_LINGER)
+        /* ⚠️ TAKEN BEFORE IT IS OVERWRITTEN, because "the last one just fell" is a question about
+           the PREVIOUS frame and the only record of it is this mirror — see the clear below. */
+        const wereAlive = mobsLeftRef.current
+        const alive = standing.filter((m) => m.hp > 0).length
+        if (alive !== wereAlive) {
+          mobsLeftRef.current = alive
+          setMobsLeft(alive)
+        }
+        /**
+         * ⚠️ THE LAST ONE TO FALL, NOT THE LAST ONE TO BE SWEPT UP. This read "the list is empty
+         * now and was not before", which was the same question while a dead minion vanished on
+         * the frame it died — and stopped being it the moment they started lying there. Waiting
+         * for the bodies to clear would hold the result line back a second and a half and make
+         * clearing a wave feel like it took longer than it did.
+         *
+         * ⚠️ AND IT ASKS THE PREVIOUS FRAME, WHICH THE FIRST VERSION OF THIS DID NOT. It read
+         * `crowd.some(alive)` — but `crowd` is the array the damage was just applied INTO, so on
+         * the frame the last one dies it already holds nobody alive, and the whole condition was
+         * false exactly when it needed to be true. Measured: the wave cleared, the result line
+         * never appeared, and the run never advanced past wave one.
+         */
+        if (!alive && wereAlive > 0) {
           setWaveDone({ no: kit.no, were: kit.were })
           /* ⚠️ SET, NOT INCREMENTED. The wave knows its own number, so this says where you have
              got to rather than adding one to whatever the counter happened to hold — which is
@@ -3345,7 +3397,20 @@ export function ParkRoom({
                 g.stroke()
                 g.restore()
               }
-              blitBaked(g, baked, p.x * w, p.y * h, clockRef.current + m.x * 0.6, m.vx < 0 ? -1 : 1)
+              /**
+               * ⚠️ THE POSE IF THERE IS ONE, THE WALK IF NOT, and a fade either way. A creature
+               * whose owner drew a `down` frame lies in it; one whose owner did not keeps its
+               * last stride and simply goes, which is still better than winking out mid-step
+               * because something now takes a moment about it.
+               */
+              const dead = m.gone >= 0
+              const stamp = dead ? (mobKit.current?.down ?? baked) : baked
+              if (dead) {
+                g.save()
+                g.globalAlpha = Math.max(0, 1 - m.gone / MOB_LINGER)
+              }
+              blitBaked(g, stamp, p.x * w, p.y * h, clockRef.current + m.x * 0.6, m.vx < 0 ? -1 : 1)
+              if (dead) g.restore()
             }
         }
       }
@@ -3697,6 +3762,9 @@ export function ParkRoom({
                 /* ⚠️ baked BEFORE the wave, never per spawn: a detailed creature takes 110ms and
                    that would land exactly as the wave arrived — see bake.ts */
                 baked: bakeWalk(art, Math.max(2, 54 * kind.scale)),
+                /* ⚠️ null when nobody drew a down pose, which is what lets the draw loop fall
+                   back rather than branch — see bakePose */
+                down: bakePose(art, Math.max(2, 54 * kind.scale), 'down'),
                 wide: petWide(art) * kind.scale,
                 no,
                 were: n,
@@ -3715,8 +3783,11 @@ export function ParkRoom({
                 /* ⚠️ -1 is "not biting", so a wave does not arrive mid-swing — see biteOf */
                 bit: -1,
                 fed: false,
+                /* ⚠️ and -1 is "alive", so nothing spawns already lying down — see MOB_LINGER */
+                gone: -1,
               }))
               setMobsLeft(n)
+              mobsLeftRef.current = n
             }}
           >
             {/* ⚠️ IT NAMES WHAT IT WILL CALL, because the escalation was only ever visible AFTER

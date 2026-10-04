@@ -1,4 +1,4 @@
-import { frameCount, paintDrawing, paintStroke, type Drawing } from '../draw/strokes'
+import { loopFrames, paintDrawing, paintStroke, poseFrame, type Drawing } from '../draw/strokes'
 import {
   bodyPose,
   PART_PARENT,
@@ -43,6 +43,17 @@ export type PetPaint = {
    * every existing caller gets for free.
    */
   show?: number
+  /**
+   * Which STATE this creature is in, so a pose drawn for it can be shown — see Drawing.poses.
+   *
+   * ⚠️ A WORD, NOT A FRAME NUMBER, because the caller knows the creature is beaten and does not
+   * know or want to know which frame somebody drew that on. The lookup is the drawing's job; the
+   * room's job is to say what is happening.
+   *
+   * ⚠️ UNDEFINED, OR A STATE NOBODY DREW, MEANS THE RIG — which is the common case and the one
+   * every existing caller gets for free.
+   */
+  pose?: string
 }
 
 export function paintPet(
@@ -51,7 +62,7 @@ export function paintPet(
   parts: Part[],
   w: number,
   h: number,
-  { t, energy = 1, facing = 1, mood, show }: PetPaint,
+  { t, energy = 1, facing = 1, mood, show, pose }: PetPaint,
   /**
    * Called with each part once its own transform is on the context, INSTEAD of painting it.
    *
@@ -107,12 +118,39 @@ export function paintPet(
    * is the same rule the download panel follows: frames if it has them, otherwise the other
    * thing. Both of the ways Josh described end up supported and neither needed a setting.
    */
-  const frames = frameCount(art)
-  if (frames > 1) {
-    const fps = Math.max(1, Math.min(24, art.fps ?? 8))
-    const f = energy > 0 ? Math.floor(rt * fps) % frames : 0
+  /**
+   * ⚠️ A NAMED POSE BEATS BOTH, because it is the most specific thing anybody has said. The
+   * order here is the whole of how states sit on top of what already existed: a pose somebody
+   * drew for this exact state, else the animation they drew, else the rig. Each rung only
+   * applies when the one above it has nothing to say, so every creature made before any of this
+   * takes exactly the path it always took.
+   */
+  const posed = pose ? poseFrame(art, pose) : -1
+  if (posed >= 0) {
     crop()
-    paintDrawing(ctx, art, w, h, { frame: f })
+    paintDrawing(ctx, art, w, h, { frame: posed })
+    ctx.restore()
+    return
+  }
+
+  /**
+   * ⚠️ A DRAWN ANIMATION BEATS THE RIG, because somebody who drew twelve frames of their pet
+   * walking has said exactly what it should do and does not need a guess laid over the top. This
+   * is the same rule the download panel follows: frames if it has them, otherwise the other
+   * thing. Both of the ways Josh described end up supported and neither needed a setting.
+   *
+   * ⚠️ AND IT IS THE UNNAMED FRAMES THAT LOOP. A frame given to a state is a pose rather than a
+   * moment of a walk, so playing it in sequence would put a death pose in the middle of the
+   * stride. A drawing with no named frames returns all of them here and plays exactly as it
+   * always has; one whose every frame is a pose has no loop at all and falls through to the rig,
+   * which is the right answer rather than a creature that renders as nothing.
+   */
+  const loop = loopFrames(art)
+  if (loop.length > 1) {
+    const fps = Math.max(1, Math.min(24, art.fps ?? 8))
+    const f = energy > 0 ? Math.floor(rt * fps) % loop.length : 0
+    crop()
+    paintDrawing(ctx, art, w, h, { frame: loop[f] ?? loop[0] })
     ctx.restore()
     return
   }
