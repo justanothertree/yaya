@@ -1,8 +1,8 @@
 # Minion states — a proposal
 
-**Status: proposal, nothing applied.** Written 3 Oct 2026, after the three drawn move stages
+**Status: decided 3 Oct 2026, step 1 of 3 applied.** Written after the three drawn move stages
 (`tell` / `hit` / `after`) landed. The question this answers is the one left open there: states of
-the _creature_, as opposed to stages of a _move_.
+the _creature_, as opposed to stages of a _move_. Evan's answers are in §8.
 
 ---
 
@@ -176,12 +176,25 @@ Each one is shippable alone and each is reversible.
 
 ---
 
-## 8 · What I need from you
+## 8 · Decided
 
-1. **Frames or layers?** I recommend named frames (§3). It is the bigger change to the format and
-   the better fit; layers would be quicker and would crowd the part list.
-2. **Is the four-state set right**, or is there one you want that I have left out — `enraged` in
-   particular, since it is the one with real gameplay behind it?
-3. **Order.** I would do the minion's bite first because it changes how the game plays rather than
-   how it looks, and it needs no drawing from anybody. Say if you would rather see the pictures
-   first.
+1. **Frames, not layers.** ✅ Agreed — states will be named frames (`fn`), per §3.
+2. **The set is right as a DRAWING vocabulary, wrong as a swarm feature list.** Evan's words:
+   _"not exactly for the vampire survivor gameplay, unless you mean for drawing then whatever you
+   think makes sense."_ He is right, and the thing I had muddled is worth writing down: **`wary`
+   is a boss-and-exploration state, not a swarm one.** A wave spawns already coming for you —
+   that is what a wave IS — so noticing has nothing to do in it. It stays in the vocabulary
+   because the boss already has `wary()` and the park already has sneaking, but it comes off the
+   critical path. For the swarm the set that matters is **the bite becoming a move, then `down`,
+   then `hurt`**. `enraged` stays out: still a mechanic rather than a picture.
+3. **Order confirmed**, bite first.
+
+### Where it got to
+
+- ✅ **Step 1 — the bite is a move.** Applied in `0f90832`. Wind-up, bite, recover; paced from
+  `pace` via `biteOf`; a committed minion holds still and a mark closes on the ground under it.
+  Measured: standing still against wave one takes 2 hits per 4.5s, walking away takes 1.
+- ◻️ **Step 2 — `fn` frame names + `down`**, the smallest version of the encoding, on the state
+  whose absence is most obvious: minions currently vanish mid-stride.
+- ◻️ **Step 3 — `hurt`**, once the encoding has survived contact.
+- ◻️ _(not on the path)_ `wary`, for the boss, whenever it is worth the drawing.
