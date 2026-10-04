@@ -367,7 +367,18 @@ export function temperOf(art: Drawing): Temper {
     .sort((a, b) => b[1] - a[1])
     .map(([k]) => k)
 
-  return { scale, life, pace, range, beat, nerve, charge, casts }
+  /**
+   * ⚠️ A CAST SOMEBODY CHOSE GOES FIRST, AND THE DERIVED ORDER KEEPS THE REST. Everything above
+   * reads a creature's casts off the drawing, which is right as a default and wrong as the only
+   * option: "i never understood how to use the spell layer" came with what was wanted instead —
+   * picking the attack and drawing it. So a spell layer that names its cast puts that cast on 1,
+   * where it is the one the preview plays and the first thing thrown in a fight.
+   *
+   * ⚠️ MOVED, NOT ADDED, so a creature still has exactly three and the other two are still the
+   * ones the picture earned. Choosing is a say in the order rather than an extra slot, which is
+   * what keeps "the drawing decides" true for everybody who has not chosen.
+   */
+  return { scale, life, pace, range, beat, nerve, charge, casts: chosenFirst(art, casts) }
 }
 
 /**
@@ -455,4 +466,25 @@ export const swapRanged = (t: Temper): string => {
   return paceN >= 0.52
     ? 'Draw something slower and heavier if you want the mark instead.'
     : 'Draw something quicker — more to move with, less to weigh it down — if you want the bolt instead.'
+}
+
+/**
+ * The cast a spell layer says it is for, or null when nobody has chosen one.
+ *
+ * ⚠️ THE FIRST ONE THAT NAMES A REAL CAST WINS. A drawing can hold several spell layers and
+ * nothing stops somebody naming two; taking the first keeps the answer a single value rather
+ * than a rule nobody can predict, and the wizard only ever offers the choice on the layer you
+ * are standing on.
+ */
+export const chosenCast = (art: Drawing): CastKind | null => {
+  for (const said of Object.values(art.spells ?? {}))
+    if (said && said in CAST) return said as CastKind
+  return null
+}
+
+/** that cast moved to the front of a derived order — see the note in temperOf */
+export const chosenFirst = (art: Drawing, casts: CastKind[]): CastKind[] => {
+  const want = chosenCast(art)
+  if (!want) return casts
+  return [want, ...casts.filter((k) => k !== want)]
 }

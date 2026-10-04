@@ -132,6 +132,7 @@ const spellSays = (
 }
 
 import { CAST } from '../park/cast'
+import { ALL_CASTS } from '../park/loadout'
 import { movesOf, stagesOf, type Attack } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
@@ -387,6 +388,11 @@ export function PaintRoom() {
   const [poses, setPoses] = useState<Record<string, string>>(
     () => paintSession.restore()?.poses ?? {},
   )
+  /* ⚠️ WHICH CAST EACH SPELL LAYER IS FOR — see Drawing.spells. Absent means the drawing decides,
+     which is what it did for every creature made before the choice existed. */
+  const [spells, setSpells] = useState<Record<string, string>>(
+    () => paintSession.restore()?.spells ?? {},
+  )
   /* ⚠️ which of the nine the park-scale field is showing: a swing picked above, or null for the
      cast its own picker chose. One field, two pickers, no third row of buttons. */
   const [shownSwing, setShownSwing] = useState<Attack | null>(null)
@@ -597,8 +603,9 @@ export function PaintRoom() {
       hits: Object.keys(hits).length ? hits : undefined,
       acts: Object.keys(acts).length ? acts : undefined,
       poses: Object.keys(poses).length ? poses : undefined,
+      spells: Object.keys(spells).length ? spells : undefined,
     })
-  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits, acts, poses])
+  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits, acts, poses, spells])
 
   /**
    * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
@@ -784,6 +791,7 @@ export function PaintRoom() {
     hits: Object.keys(hits).length ? hits : undefined,
     acts: Object.keys(acts).length ? acts : undefined,
     poses: Object.keys(poses).length ? poses : undefined,
+    spells: Object.keys(spells).length ? spells : undefined,
     strokes,
   }
 
@@ -1695,7 +1703,7 @@ export function PaintRoom() {
   const petPreview = useMemo(
     () => ({ ...drawingRef.current }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [strokes, layerNames, bg, fps, hits, acts, poses],
+    [strokes, layerNames, bg, fps, hits, acts, poses, spells],
   )
 
   /**
@@ -4106,6 +4114,44 @@ export function PaintRoom() {
             {petStep.phase === 'draw' && (
               <>
                 <strong>Draw the {petStep.part}.</strong>
+                {/**
+                 * ⚠️ PICK THE ATTACK, THEN DRAW IT. The spell layer was the one thing in here
+                 * nobody could use — "i never understood how to use the spell layer" — and the
+                 * reason is that its name promises you are making a spell while its behaviour
+                 * is to silently retune whichever casts the drawing had already earned. Choosing
+                 * which cast you are drawing for turns an invisible modifier into a thing you
+                 * decided to make, and puts it on 1 so the preview below plays exactly it.
+                 *
+                 * ⚠️ AND "the drawing decides" IS STILL THE DEFAULT, because it is what every
+                 * creature made before today does and because whyCasts is a good answer when
+                 * nobody has an opinion. This is a say in the order, not a replacement for it.
+                 */}
+                {partOf(petStep.part) === 'spell' && (
+                  <label className="paint-pet-acts">
+                    <span className="muted">This spell is a</span>
+                    <select
+                      className="viz-select"
+                      value={spells[petStep.layer] ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        mark('choosing a spell')
+                        setSpells((s) => {
+                          const next = { ...s }
+                          if (!v) delete next[petStep.layer]
+                          else next[petStep.layer] = v
+                          return next
+                        })
+                      }}
+                    >
+                      <option value="">whatever the drawing earns</option>
+                      {ALL_CASTS.map((k) => (
+                        <option key={k} value={k}>
+                          {CAST[k].short}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {/* ⚠️ A HIT IS NOT A BODY PART AND THE GENERIC SENTENCE SAID IT WAS. "Draw it
                     where it belongs on the body" is meaningless for an attack, and the word itself
                     is ambiguous — asked directly whether `hit` meant hitting them or being hit. */}
@@ -4580,6 +4626,7 @@ export function PaintRoom() {
                           setHits(a.art.hits ?? {})
                           setActs(a.art.acts ?? {})
                           setPoses(a.art.poses ?? {})
+                          setSpells(a.art.spells ?? {})
                           /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
                              whatever shape this window happens to be was the same stretch as
                              resizing — see freeAr. */

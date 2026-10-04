@@ -251,6 +251,20 @@ export type Drawing = {
    * only carries the word.
    */
   poses?: Record<string, string>
+  /**
+   * Which CAST each spell layer is drawn for, keyed by layer index.
+   *
+   * ⚠️ BECAUSE "SPELL" PROMISED A THING IT DID NOT DO. The layer silently tunes the reach and
+   * spread of whatever casts a creature already had, while its name says "draw your spell" —
+   * reported as "i never understood how to use the spell layer", along with what was expected
+   * instead: drawing the thing that flies. Choosing the cast is the first half of that. The
+   * drawing stops being an invisible modifier to four presets and becomes a spell you picked.
+   *
+   * ⚠️ PLAIN STRINGS AND BY INDEX, exactly like acts and poses, and for the reason acts gives:
+   * this file must not know what "bolt" means. The park owns the casts; the drawing only carries
+   * the word.
+   */
+  spells?: Record<string, string>
   strokes: Stroke[]
 }
 
@@ -357,6 +371,7 @@ export function readDrawing(v: unknown): Drawing | null {
     hits: smallMap(o.hits, 16),
     acts: smallMap(o.acts, MAX_LAYERS),
     poses: smallMap(o.poses, MAX_FRAMES),
+    spells: smallMap(o.spells, MAX_LAYERS),
     strokes,
   }
 }
@@ -1702,6 +1717,7 @@ export function packDrawing(d: Drawing): PackedDrawing {
     /* ⚠️ not gated on `layered` either, and for the same reason — see above */
     ...(d.acts && Object.keys(d.acts).length ? { ac: d.acts } : {}),
     ...(d.poses && Object.keys(d.poses).length ? { po: d.poses } : {}),
+    ...(d.spells && Object.keys(d.spells).length ? { sp: d.spells } : {}),
     /* ⚠️ The words go on the END of the row, after the points. A reader that does not know
        about text does `row.slice(fixed)` and then keeps only the numbers — so an older build
        drops the string and still draws the baseline, rather than choking on it. */
@@ -1759,6 +1775,7 @@ function unpack(v: Record<string, unknown>): Drawing | null {
     hits: v.h,
     acts: v.ac,
     poses: v.po,
+    spells: v.sp,
     strokes,
   })
 }

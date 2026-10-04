@@ -67,6 +67,8 @@ export type PaintSession = {
   /* ⚠️ which frame is a pose of what — travels with the picture for the reason the name does:
      a drawing that loses its poses on the way into the room is a different drawing */
   poses?: Record<string, string>
+  /* ⚠️ and which cast each spell layer is for, for the same reason — see Drawing.spells */
+  spells?: Record<string, string>
 }
 
 let held: PaintSession | null = null
