@@ -118,3 +118,68 @@ export function minionOf(art: Drawing): Minion {
     bite: into(where(swing, [4, 16]), BAND.bite),
   }
 }
+
+/**
+ * How a minion's bite is paced, in seconds.
+ *
+ * ⚠️ BECAUSE A MINION HAD NO ATTACK AT ALL. Touching you WAS the damage: the park found anything
+ * whose footprint met yours and applied a blow on that frame, with no wind-up, no commitment and
+ * nothing to read. That is why the grace window had to exist — `safe` is a patch over contact
+ * being unreadable, and the note on it says so. A bite with three stages makes the same contact
+ * into something you can see coming, step out of, or swing first against, which is the whole
+ * difference between standing in a crowd and fighting one.
+ *
+ * ⚠️ THE SAME SHAPE AN Attack HAS, deliberately: a wind-up, a window where it is dangerous, and
+ * a recovery where it is not. Everything else in this game that hurts you is built that way, and
+ * a swarm that worked differently would be a second set of rules to learn for the enemy there
+ * are most of.
+ *
+ * ⚠️ AND DERIVED FROM THE ROLE RATHER THAN PICKED, like every other number here. A quick minion
+ * snaps at you and recovers fast; a big slow one telegraphs and then stands there having missed.
+ * `pace` already carries exactly that reading of the drawing, so this asks it rather than adding
+ * a dial — which also means the creature you drew decides how its wave feels to fight.
+ */
+export type Bite = {
+  /** seconds of wind-up before it lands, during which it is committed and holds still */
+  wind: number
+  /** seconds the bite is dangerous */
+  live: number
+  /** seconds it stands there harmless afterwards */
+  rest: number
+}
+
+/**
+ * ⚠️ THE WIND-UP IS LONGER THAN A PLAYER'S REACTION AT ITS SHORTEST. 0.18s is about the floor of
+ * what anybody can act on, so the quickest thing anybody can draw is still readable rather than
+ * merely fast — a crowd whose tells cannot be seen is the unreadable contact this replaces.
+ */
+const BITE = {
+  wind: [0.5, 0.18],
+  live: 0.1,
+  rest: [0.72, 0.26],
+} as const
+
+export function biteOf(k: Minion): Bite {
+  /* ⚠️ the bands run DOWNWARD, because quicker means shorter at both ends — see BITE */
+  const quick = where(k.pace, BAND.pace)
+  return {
+    wind: into(quick, BITE.wind),
+    live: BITE.live,
+    rest: into(quick, BITE.rest),
+  }
+}
+
+/** how long one whole bite takes, start to finish */
+export const biteSpan = (b: Bite): number => b.wind + b.live + b.rest
+
+/**
+ * Whether a bite that has been running this long is dangerous right now.
+ *
+ * ⚠️ ASKED RATHER THAN COMPARED AT THE CALL SITE, for the reason posedAt is: the park needs this
+ * to decide damage and the renderer needs it to decide what to draw, and two places comparing
+ * their own pair of numbers is how those two come to disagree about when a bite lands.
+ */
+export const biting = (b: Bite, t: number): boolean => t >= b.wind && t < b.wind + b.live
+
+/** and whether it is still winding up, which is the part you are meant to see and answer */
+export const winding = (b: Bite, t: number): boolean => t >= 0 && t < b.wind

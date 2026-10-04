@@ -100,7 +100,7 @@ import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch 
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
 import { shapeOf, type CastShape } from './castShape'
 import { SwipePatch } from './SwipePatch'
-import { minionOf, type Minion } from './minion'
+import { biteOf, biteSpan, biting, minionOf, type Minion } from './minion'
 import { FLOCK, ringOf, stepSwarm, type Mob } from './swarm'
 import { bakeWalk, blitBaked, type Baked } from '../pets/bake'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
@@ -1277,7 +1277,9 @@ export function ParkRoom({
    * arrived on their own would take that away from everyone who wanted the other thing.
    */
   /** `cut` and `zapped` are which swing and which cast last hit this one — see the `cut` note */
-  const mobs = useRef<Array<Mob & { hp: number; cut: number; zapped: number }>>([])
+  const mobs = useRef<
+    Array<Mob & { hp: number; cut: number; zapped: number; bit: number; fed: boolean }>
+  >([])
   /**
    * ⚠️ THE WAVE'S OWN NUMBER AND SIZE LIVE HERE, not read off `waveNo` inside the loop. The loop
    * closes over what it was built with, and a count it reads from state is a count that is right
@@ -2300,6 +2302,9 @@ export function ParkRoom({
            */
           reach: pressedTo(myWide, kit.wide, 0, 1),
         }
+        /* ⚠️ kept so a minion committed to a bite can be put back where it was — see below.
+           stepSwarm maps one to one, so the index is the same creature on both sides. */
+        const steppedFrom = mobs.current
         let crowd = stepSwarm(mobs.current, toHeights(you.current), dt, tune)
 
         /**
@@ -2347,41 +2352,81 @@ export function ParkRoom({
         }
 
         /**
-         * ⚠️ THEY HURT YOU THROUGH THE SAME GUARD A BOSS DOES — stun above zero means you cannot
-         * be hit, so being caught by one does not feed you into the next. Without that, standing
-         * in a crowd would be forty hits in one frame rather than a fight.
+         * A minion's bite, which is a MOVE now rather than a fact about being near one.
+         *
+         * ⚠️ TOUCHING YOU USED TO BE THE DAMAGE. Anything whose footprint met yours landed a
+         * blow on that frame — no wind-up, no commitment, nothing to read — and that is the hole
+         * the grace window was dug to cover. With three stages the same contact becomes something
+         * you can see coming, step out of, or swing first against; `safe` goes back to being a
+         * safety net rather than the only thing between you and an unanswerable crowd.
+         *
+         * ⚠️ TOUCHING IS WHAT STARTS IT, NOT WHAT LANDS IT. The reach test is unchanged — see
+         * the footprint note below — but now it only opens the wind-up, and the blow is checked
+         * again when the bite actually lands. Walking away during the wind-up means it misses,
+         * which is the entire point of giving it one.
          */
-        if (canBeHurt(you.current) && myMoves.length) {
-          /* ⚠️ A TOUCH IS A CIRCLE, AND inPatch IS THE PARK'S OWN TEST FOR STANDING IN ONE — it
-             expands the region by the TARGET's footprint, which is the difference between "our
-             middles are close" and "we are touching" that the fissure's note is about. */
-          const touch = crowd.find((m) => {
-            if (m.hp <= 0) return false
-            const at = toWorld(m)
-            /**
-             * ⚠️ THE MINION'S OWN FOOTPRINT ALONG THE LINE BETWEEN US, not a circle a fraction
-             * of its height wide. inPatch already expands the region by MY footprint in the
-             * direction of the patch; handing it a radius measured the same way makes the whole
-             * test "do our two ellipses meet", which is the only statement of touching that is
-             * the same from every angle. A circle picked as a fraction of PARK_TALL is a third
-             * opinion about how big a creature is, and the park has paid for two already.
-             */
-            const { sx, sy } = toScreen(you.current.x - at.x, you.current.y - at.y)
-            const len = Math.hypot(sx, sy) || 1
-            return inPatch(you.current, myWide, {
-              at,
-              r: footSpan(kit.wide, 1, sx / len, sy / len),
-              ready: 1,
-              live: true,
-            })
+        const bite = biteOf(kit.kind)
+        /* ⚠️ A TOUCH IS A CIRCLE, AND inPatch IS THE PARK'S OWN TEST FOR STANDING IN ONE — it
+           expands the region by the TARGET's footprint, which is the difference between "our
+           middles are close" and "we are touching" that the fissure's note is about. */
+        const onYou = (m: { x: number; y: number }) => {
+          const at = toWorld(m)
+          /**
+           * ⚠️ THE MINION'S OWN FOOTPRINT ALONG THE LINE BETWEEN US, not a circle a fraction
+           * of its height wide. inPatch already expands the region by MY footprint in the
+           * direction of the patch; handing it a radius measured the same way makes the whole
+           * test "do our two ellipses meet", which is the only statement of touching that is
+           * the same from every angle. A circle picked as a fraction of PARK_TALL is a third
+           * opinion about how big a creature is, and the park has paid for two already.
+           */
+          const { sx, sy } = toScreen(you.current.x - at.x, you.current.y - at.y)
+          const len = Math.hypot(sx, sy) || 1
+          return inPatch(you.current, myWide, {
+            at,
+            r: footSpan(kit.wide, 1, sx / len, sy / len),
+            ready: 1,
+            live: true,
           })
-          if (touch)
-            you.current = mauled(you.current, toWorld(touch), {
-              ...myMoves[0],
-              bite: kit.kind.bite,
-              lift: 0.1,
-            })
         }
+
+        /* ⚠️ ONE BLOW A FRAME, WHICH IS THE SAME RULE `canBeHurt` ALREADY ENFORCES. Forty
+           minions can all be mid-bite; the first one whose window is open and whose jaws still
+           reach you is the one that lands, and the grace it buys covers the rest. */
+        let landed = false
+        crowd = crowd.map((m) => {
+          if (m.hp <= 0) return m
+          const near = onYou(m)
+          /* idle: contact opens a wind-up, and nothing else does */
+          if (m.bit < 0) return near ? { ...m, bit: 0 } : m
+          const bit = m.bit + dt
+          if (bit >= biteSpan(bite)) return { ...m, bit: -1, fed: false }
+          /* ⚠️ CHECKED AGAIN WHEN IT LANDS, NOT WHEN IT STARTED — a bite aimed at where you were
+             is a bite you walked out of, and that is the whole reward for reading the wind-up. */
+          if (!m.fed && biting(bite, bit) && near && canBeHurt(you.current) && myMoves.length) {
+            if (!landed) {
+              landed = true
+              you.current = mauled(you.current, toWorld(m), {
+                ...myMoves[0],
+                bite: kit.kind.bite,
+                lift: 0.1,
+              })
+            }
+            return { ...m, bit, fed: true }
+          }
+          return { ...m, bit }
+        })
+
+        /**
+         * ⚠️ A COMMITTED MINION HOLDS STILL, which is what makes the wind-up readable at all.
+         * A thing that walks into you while winding up has told you nothing you did not already
+         * know; a thing that stops is the tell. Taken from the positions BEFORE the flock stepped
+         * rather than by teaching swarm.ts about biting — that module is a crowd, not a creature,
+         * and its own note says it holds one unit and no behaviour.
+         */
+        crowd = crowd.map((m, i) => {
+          const was = steppedFrom[i]
+          return m.bit >= 0 && was ? { ...m, x: was.x, y: was.y, vx: 0, vy: 0 } : m
+        })
 
         const standing = crowd.filter((m) => m.hp > 0)
         if (standing.length !== mobs.current.length) setMobsLeft(standing.length)
@@ -3270,10 +3315,36 @@ export function ParkRoom({
         if (g) {
           g.clearRect(0, 0, w, h)
           const baked = mobKit.current?.baked
+          const kind = mobKit.current?.kind
+          const bite = kind ? biteOf(kind) : null
           if (baked)
             for (const m of mobs.current) {
               const p = onScreen(toWorld(m), cam.current)
               if (p.x < -0.1 || p.x > 1.1 || p.y < -0.1 || p.y > 1.1) continue
+              /**
+               * ⚠️ A WIND-UP YOU CANNOT SEE IS A WIND-UP THAT MIGHT AS WELL NOT EXIST, which is
+               * the same sentence the dodge's note makes about its own invulnerability. Holding
+               * still is the honest half of the tell and it is not enough on its own — in a
+               * crowd of forty, one creature standing still is not a signal anybody can pick
+               * out. A mark closing on the ground under it is the park's existing language for
+               * "this is about to land", the one the boss's telegraph already speaks.
+               *
+               * ⚠️ IT CLOSES RATHER THAN GROWS, so the moment it meets the creature is the
+               * moment the bite does — the ring IS the clock, rather than a decoration timed to
+               * look like one. Same reading as strikeTell's `ready`.
+               */
+              if (bite && m.bit >= 0 && m.bit < bite.wind) {
+                const ready = Math.max(0, Math.min(1, m.bit / Math.max(1e-6, bite.wind)))
+                const rx = footSpan(mobKit.current!.wide, 1, 1, 0) * h * (2.6 - 1.6 * ready)
+                const ry = footSpan(mobKit.current!.wide, 1, 0, 1) * h * (2.6 - 1.6 * ready)
+                g.save()
+                g.strokeStyle = `rgba(255,120,90,${0.25 + 0.5 * ready})`
+                g.lineWidth = Math.max(1, h * 0.003)
+                g.beginPath()
+                g.ellipse(p.x * w, p.y * h, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2)
+                g.stroke()
+                g.restore()
+              }
               blitBaked(g, baked, p.x * w, p.y * h, clockRef.current + m.x * 0.6, m.vx < 0 ? -1 : 1)
             }
         }
@@ -3641,6 +3712,9 @@ export function ParkRoom({
                 hp: kind.life,
                 cut: -1,
                 zapped: -1,
+                /* ⚠️ -1 is "not biting", so a wave does not arrive mid-swing — see biteOf */
+                bit: -1,
+                fed: false,
               }))
               setMobsLeft(n)
             }}

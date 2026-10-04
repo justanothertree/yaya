@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BAND, minionOf } from './minion'
+import { BAND, biteOf, biteSpan, biting, minionOf } from './minion'
 import { A_SWING } from '../pets/attack'
 import { temperOf, BAND as BOSS } from './temper'
 import type { Drawing, Stroke } from '../draw/strokes'
@@ -150,5 +150,66 @@ describe('and it is the role, not the creature', () => {
       expect(minionOf(d).scale).toBeLessThan(BOSS.scale[0])
       expect(minionOf(d).life).toBeLessThan(BOSS.life[0])
     }
+  })
+})
+
+/**
+ * A minion's bite, which is a move rather than a fact about being near one.
+ *
+ * ⚠️ THE THING BEING TESTED IS THAT IT HAS STAGES AT ALL. Touching you used to BE the damage:
+ * anything whose footprint met yours landed a blow on that frame, which is why the park needed a
+ * grace window to stop a crowd locking you out. The invariant worth pinning is the one that makes
+ * contact answerable — that there is a window before the blow in which nothing has landed yet,
+ * and that it is long enough for a person to do something about.
+ */
+describe('a minion bites in three stages', () => {
+  /** about the floor of what anybody can react to, which the wind-up must clear */
+  const REACTABLE = 0.18
+
+  it('winds up before it lands, for long enough to answer', () => {
+    for (const d of [lanky, squat]) {
+      const b = biteOf(minionOf(d))
+      expect(b.wind, 'wind-up you could act on').toBeGreaterThanOrEqual(REACTABLE)
+      expect(biting(b, 0), 'dangerous the instant it starts').toBe(false)
+      expect(biting(b, b.wind * 0.99), 'dangerous during the wind-up').toBe(false)
+      expect(biting(b, b.wind), 'dangerous when the wind-up ends').toBe(true)
+    }
+  })
+
+  /** ⚠️ and the whole band, not two drawings — see the note on the life band above */
+  it('and the quickest thing anybody can draw still telegraphs', () => {
+    /* biteOf reads `pace`, so the ends of that band are the ends of every minion there can be */
+    for (const pace of BAND.pace) {
+      const b = biteOf({ scale: 1, life: 10, pace, bite: 5 })
+      expect(b.wind, `pace ${pace}`).toBeGreaterThanOrEqual(REACTABLE)
+    }
+  })
+
+  it('and is harmless again afterwards, with a gap before the next one', () => {
+    const b = biteOf(minionOf(lanky))
+    expect(biting(b, b.wind + b.live), 'the window has closed').toBe(false)
+    expect(biting(b, biteSpan(b) - 0.001), 'still closed at the end').toBe(false)
+    expect(b.rest, 'a recovery you can walk away in').toBeGreaterThan(b.live)
+  })
+
+  /**
+   * ⚠️ AND THE DANGEROUS WINDOW IS A SLIVER OF THE WHOLE, which is what makes walking out of one
+   * the reward for reading it. If the bite were live for most of its span, the wind-up would be
+   * decoration — you would be hit for being nearby a moment later, which is what it replaced.
+   */
+  it('and is dangerous for a small part of the time it takes', () => {
+    for (const d of [lanky, squat]) {
+      const b = biteOf(minionOf(d))
+      expect(b.live / biteSpan(b), 'share of the bite that can hurt you').toBeLessThan(0.15)
+    }
+  })
+
+  /** ⚠️ a quicker minion snaps and recovers fast, which is how the drawing decides the feel */
+  it('and a quicker minion snaps faster than a slow one', () => {
+    const slow = biteOf({ scale: 1, life: 10, pace: BAND.pace[0], bite: 5 })
+    const fast = biteOf({ scale: 1, life: 10, pace: BAND.pace[1], bite: 5 })
+    expect(fast.wind, 'wind-up').toBeLessThan(slow.wind)
+    expect(fast.rest, 'recovery').toBeLessThan(slow.rest)
+    expect(biteSpan(fast)).toBeLessThan(biteSpan(slow))
   })
 })
