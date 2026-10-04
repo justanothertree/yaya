@@ -3799,6 +3799,29 @@ export function ParkRoom({
               : `⚔ Call wave ${wavesWon + 1} · ${waveSize(wavesWon + 1)} of them`}
           </button>
         )}
+        {/**
+         * ⚠️ A CONTROL THAT IS SIMPLY ABSENT TEACHES NOBODY WHY. Waves are map-only for a real
+         * reason — the shared field has a relay and forty derived creatures have no second screen
+         * to agree with — but on the shared park that showed as the button not being there, which
+         * is indistinguishable from the feature not existing. Somebody who has heard there are
+         * waves walks in, finds a boss button and no wave button, and concludes it is broken.
+         *
+         * ⚠️ AND IT SAYS WHERE TO GO, because "you need a map" with no way to make one is half a
+         * sentence. The same deep link the minions room uses, so this is one press rather than a
+         * route to remember.
+         */}
+        {walking && !walkingMap && bossable.length > 0 && (
+          <span className="muted park-needs-map">
+            Waves need a map you drew.
+            {/* ⚠️ A BUTTON, NOT A LINK IN THE SENTENCE, because it lands in a row of buttons and
+                a thumb has to be able to hit it — measured at 53×16, under the 24px bar the
+                audit holds this site to. The link-in-a-sentence exclusion is about prose, and
+                this is a toolbar. */}
+            <a className="btn btn-ghost" href="#paint?make=map">
+              🗺 Draw one
+            </a>
+          </span>
+        )}
         {walking && bossable.length > 0 && !theirBoss && (
           <button
             className="btn"

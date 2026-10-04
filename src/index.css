@@ -8610,6 +8610,21 @@ a.cz-msg-author:focus-visible {
   align-items: center;
   pointer-events: none;
 }
+/**
+ * Why there is no wave button here — see ParkRoom.
+ *
+ * ⚠️ IT SITS IN THE TOOLBAR WHERE THE BUTTON WOULD BE, because that is where somebody is looking
+ * when they wonder. Small and quiet: it is an explanation for the one visit where it is needed,
+ * not a standing notice about the shared park.
+ */
+.park-needs-map {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
 .park-tag {
   position: absolute;
   top: 100%;
