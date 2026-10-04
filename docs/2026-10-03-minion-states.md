@@ -1,6 +1,6 @@
 # Minion states — a proposal
 
-**Status: decided 3 Oct 2026, step 1 of 3 applied.** Written after the three drawn move stages
+**Status: decided 3 Oct 2026, steps 1 and 2 of 3 applied.** Written after the three drawn move stages
 (`tell` / `hit` / `after`) landed. The question this answers is the one left open there: states of
 the _creature_, as opposed to stages of a _move_. Evan's answers are in §8.
 
@@ -194,7 +194,14 @@ Each one is shippable alone and each is reversible.
 - ✅ **Step 1 — the bite is a move.** Applied in `0f90832`. Wind-up, bite, recover; paced from
   `pace` via `biteOf`; a committed minion holds still and a mark closes on the ground under it.
   Measured: standing still against wave one takes 2 hits per 4.5s, walking away takes 1.
-- ◻️ **Step 2 — `fn` frame names + `down`**, the smallest version of the encoding, on the state
-  whose absence is most obvious: minions currently vanish mid-stride.
+- ✅ **Step 2 — named frames + `down`.** Applied in `480afe4` and `3ac0bbf`. The key is `poses`
+  rather than the `fn` array proposed in §3 — sparse and keyed by index, exactly like `acts`,
+  which is the better shape for something most frames will never have. `loopFrames` is what keeps
+  every existing drawing identical: the UNNAMED frames are the animation. A felled minion lies in
+  its pose and fades over 1.1s instead of vanishing mid-stride, and the frames row has a picker
+  so a frame can actually be named without hand-editing storage.
+  - The vocabulary offered in the maker is `POSE_WORDS`, which holds only `down` — a word offered
+    before the room reads it is a drawing somebody made for nothing. It grows as each state is
+    wired, and never before.
 - ◻️ **Step 3 — `hurt`**, once the encoding has survived contact.
 - ◻️ _(not on the path)_ `wary`, for the boss, whenever it is worth the drawing.

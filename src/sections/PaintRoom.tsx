@@ -54,6 +54,7 @@ import { PetView } from '../pets/PetView'
 import {
   PART_DOES,
   PART_WORDS,
+  POSE_WORDS,
   inFrontOfOrder,
   inkBox,
   kindOf,
@@ -378,6 +379,11 @@ export function PaintRoom() {
   /* ⚠️ WHAT A LAYER IS, when that is not what it is called — see Drawing.acts. Absent means the
      name decides, which is what keeps every creature made before today exactly as it was. */
   const [acts, setActs] = useState<Record<string, string>>(() => paintSession.restore()?.acts ?? {})
+  /* ⚠️ WHICH FRAME IS A POSE OF WHAT — see Drawing.poses. Absent means the frame is part of the
+     animation, which is what every frame anybody has ever drawn already is. */
+  const [poses, setPoses] = useState<Record<string, string>>(
+    () => paintSession.restore()?.poses ?? {},
+  )
   /* ⚠️ which of the nine the park-scale field is showing: a swing picked above, or null for the
      cast its own picker chose. One field, two pickers, no third row of buttons. */
   const [shownSwing, setShownSwing] = useState<Attack | null>(null)
@@ -587,8 +593,9 @@ export function PaintRoom() {
       fps,
       hits: Object.keys(hits).length ? hits : undefined,
       acts: Object.keys(acts).length ? acts : undefined,
+      poses: Object.keys(poses).length ? poses : undefined,
     })
-  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits, acts])
+  }, [strokes, bg, hidden, layerNames, shapeAr, docName, fps, hits, acts, poses])
 
   /**
    * ⚠️ PINNED ON THE FIRST STROKE, not on every render. Before there is anything on the page
@@ -773,6 +780,7 @@ export function PaintRoom() {
     fps,
     hits: Object.keys(hits).length ? hits : undefined,
     acts: Object.keys(acts).length ? acts : undefined,
+    poses: Object.keys(poses).length ? poses : undefined,
     strokes,
   }
 
@@ -1684,7 +1692,7 @@ export function PaintRoom() {
   const petPreview = useMemo(
     () => ({ ...drawingRef.current }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [strokes, layerNames, bg, fps, hits, acts],
+    [strokes, layerNames, bg, fps, hits, acts, poses],
   )
 
   /**
@@ -3525,6 +3533,45 @@ export function PaintRoom() {
               >
                 {playing ? '⏸' : '▶️'}
               </button>
+              {/**
+               * ⚠️ THE ONE PLACE A FRAME BECOMES A STATE. Without this the encoding is real and
+               * unusable: `poses` could only be set by editing saved data, which is a feature
+               * for whoever wrote it and nobody else.
+               *
+               * ⚠️ A LIST RATHER THAN A TEXT BOX, because the words are a vocabulary the room
+               * owns and not a label somebody invents — typing "dead" when the park looks for
+               * "down" is a pose that silently never shows. The same reason the part buttons are
+               * buttons. See POSE_WORDS, which holds only the states that actually do something.
+               *
+               * ⚠️ AND IT SAYS WHAT THE DEFAULT COSTS YOU, which is nothing: a frame nobody has
+               * claimed plays in the animation, exactly as every frame always has.
+               */}
+              {frame !== null && (
+                <label className="paint-onion" title="What this frame is a pose of">
+                  <span className="muted">frame {frame + 1} is</span>
+                  <select
+                    className="viz-select"
+                    value={poses[String(frame)] ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      mark('naming a frame')
+                      setPoses((p) => {
+                        const next = { ...p }
+                        if (!v) delete next[String(frame)]
+                        else next[String(frame)] = v
+                        return next
+                      })
+                    }}
+                  >
+                    <option value="">part of the animation</option>
+                    {POSE_WORDS.map((w) => (
+                      <option key={w} value={w}>
+                        the {w} pose
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="paint-onion" title="Frames a second">
                 <span className="muted">{fps}fps</span>
                 <input
@@ -4462,6 +4509,7 @@ export function PaintRoom() {
                            to a swipe is the "names not saving" bug in a second place. */
                           setHits(a.art.hits ?? {})
                           setActs(a.art.acts ?? {})
+                          setPoses(a.art.poses ?? {})
                           /* ⚠️ AND ITS SHAPE. A drawing's ratio is its proportions; opening it onto
                              whatever shape this window happens to be was the same stretch as
                              resizing — see freeAr. */

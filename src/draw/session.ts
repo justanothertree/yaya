@@ -64,6 +64,9 @@ export type PaintSession = {
   hits?: Record<string, string>
   /** ⚠️ and what each layer ACTS like, for the same reason — see Drawing.acts */
   acts?: Record<string, string>
+  /* ⚠️ which frame is a pose of what — travels with the picture for the reason the name does:
+     a drawing that loses its poses on the way into the room is a different drawing */
+  poses?: Record<string, string>
 }
 
 let held: PaintSession | null = null

@@ -1205,3 +1205,14 @@ export function bodyPose(t: number, energy = 1): { dy: number; rot: number } {
   const e = Math.max(0, Math.min(1, energy))
   return { dy: Math.sin(t * 1.6) * -0.01 * e, rot: Math.sin(t * 0.55) * 0.02 * e }
 }
+
+/**
+ * The states a creature can have a drawn pose for — see Drawing.poses.
+ *
+ * ⚠️ ONLY THE ONES THAT DO SOMETHING. The proposal names four states and three of them are a
+ * picture on a flag the simulation already sets, but a word offered in the maker before the room
+ * reads it is a drawing somebody made for nothing — and this codebase's rule about that is
+ * already written down beside whyCasts: a line that can disagree with the thing it describes is
+ * worse than no line. This list grows as each state is wired, and never before.
+ */
+export const POSE_WORDS: string[] = ['down']

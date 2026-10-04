@@ -12253,8 +12253,15 @@ a.cz-msg-author:focus-visible {
   gap: 0.3rem;
   font-size: 0.78rem;
 }
+/**
+ * ⚠️ TALL ENOUGH TO PUT A THUMB ON. A range input is about 16px high by default, which is well
+ * under the 24×24 WCAG 2.5.8 bar the audit holds everything else to — and these two live in the
+ * frames row, which is a row you use while drawing on a phone. The track stays as thin as it
+ * looks; the padding is what the finger gets.
+ */
 .paint-onion input[type='range'] {
   width: 4.5rem;
+  min-height: 24px;
 }
 
 /* the art mode's drawing picker — see AudioVisualizer */
