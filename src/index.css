@@ -8617,6 +8617,33 @@ a.cz-msg-author:focus-visible {
  * when they wonder. Small and quiet: it is an explanation for the one visit where it is needed,
  * not a standing notice about the shared park.
  */
+/**
+ * The fight group in the minion wizard — see FIGHT_WORDS.
+ *
+ * ⚠️ A GAP ABOVE IT, because it is a second heading in a column that otherwise reads as one
+ * list, and the whole fix is that these four are not more body parts.
+ */
+.paint-pet-fight {
+  margin-top: 0.5rem;
+}
+/**
+ * What the creature has and has not, as a row of ticks.
+ *
+ * ⚠️ THE UNFILLED ONES ARE THE POINT, so they are legible rather than ghosted — a ring nobody
+ * can read is a checklist with nothing to learn from. The filled ones take the accent; the rest
+ * simply sit there being a thing you have not done yet.
+ */
+.paint-pet-has {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.7rem;
+  font-size: 0.76rem;
+}
+.paint-pet-has .is-on {
+  color: var(--accent, #7c6af7);
+  font-weight: 600;
+}
+
 .park-needs-map {
   display: inline-flex;
   align-items: center;

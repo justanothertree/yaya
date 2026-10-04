@@ -218,18 +218,23 @@ export const PART_WORDS: string[] = [
   'flame',
   'halo',
   'horn',
-  'hit',
-  /* ⚠️ DIRECTLY AFTER 'hit', because it is the stage before one and is useless without one —
-     the three at the end are the layers that are not anatomy. A word that does something and is
-     not on this list is a feature nobody finds: the wizard's buttons are this array. */
-  'tell',
-  /* ⚠️ beside 'tell' because the two are the stages either side of a hit */
-  'after',
-  /* ⚠️ LAST, BESIDE 'hit', because the two are the pair that are not anatomy: one says where a
-     swing reaches and this says where the big casts land. A word that does something and is not
-     on this list is a feature nobody finds — the wizard's buttons are this array. */
-  'spell',
 ]
+
+/**
+ * The words that are a FIGHT rather than a body — the ability system, as a list.
+ *
+ * ⚠️ THEY WERE THE LAST FOUR OF EIGHTEEN BUTTONS UNDER A HEADING SAYING "ADD A PART THAT MOVES",
+ * and that is the whole reason the ability system was not understandable. Reported in those
+ * words: "i am trying to test the new ability system but i cant understand it." Looked at
+ * cold, `hit`, `tell`, `after` and `spell` sat between `horn` and nothing, in a row with `ear`
+ * and `eye`, explained only AFTER you pressed one — so you had to already suspect a thing was
+ * interesting in order to find out that it was. Four words in a row of eighteen is not a system
+ * anybody can see; the same four under their own heading is.
+ *
+ * ⚠️ AND THE ORDER IS THE ORDER A MOVE HAPPENS IN. tell, hit, after is a wind-up, a blow and a
+ * recovery, which is a sentence; the old list had hit first because it was built first.
+ */
+export const FIGHT_WORDS: string[] = ['tell', 'hit', 'after', 'spell']
 
 /**
  * What a layer IS — its override if it has one, otherwise what it is called.

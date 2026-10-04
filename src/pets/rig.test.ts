@@ -13,6 +13,7 @@ import {
   PART_DOES,
   PART_PARENT,
   PART_WORDS,
+  FIGHT_WORDS,
   petRatio,
   rigOf,
   WORDS,
@@ -123,7 +124,10 @@ describe('reading a part out of a layer name', () => {
   })
 
   it('and every kind it can return has a sentence describing it', () => {
-    const kinds = new Set<PartKind>(['body', ...PART_WORDS.map((w) => partOf(w))])
+    const kinds = new Set<PartKind>([
+      'body',
+      ...[...PART_WORDS, ...FIGHT_WORDS].map((w) => partOf(w)),
+    ])
     for (const k of kinds) {
       expect(PART_DOES[k], `${k} has nothing to say for itself`).toBeTruthy()
     }

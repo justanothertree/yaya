@@ -24,6 +24,7 @@ import {
   SYMMETRIES,
   ECHOES,
   frameCount,
+  poseFrame,
   layerCount,
   packDrawing,
   reshapeStrokes,
@@ -54,6 +55,8 @@ import { PetView } from '../pets/PetView'
 import {
   PART_DOES,
   PART_WORDS,
+  FIGHT_WORDS,
+  rigOf,
   POSE_WORDS,
   inFrontOfOrder,
   inkBox,
@@ -2023,6 +2026,29 @@ export function PaintRoom() {
    * throw. "Half again as far" is a thing somebody can check by drawing; "1.4" is not.
    */
   const petSpell = useMemo(() => castShapeOf(petPreview), [petPreview])
+
+  /**
+   * Which of the fight layers this creature actually has, and which it has not.
+   *
+   * ⚠️ THE GAPS ARE THE INSTRUCTIONS. A row of buttons says what you could press; this says
+   * where you have got to, and "○ after" is the only thing in the room that tells somebody a
+   * follow-through is a thing they have not drawn yet. It reads the same kinds the rig reads, so
+   * it cannot disagree with what the creature will actually do.
+   *
+   * ⚠️ AND `down` IS IN IT THOUGH IT IS NOT A LAYER, because from where somebody is standing it
+   * is the same question — "what can this creature do that I have not drawn". That it lives on a
+   * frame rather than a layer is an implementation detail they should not have to hold.
+   */
+  const petFight = useMemo(() => {
+    const kinds = new Set(rigOf(petPreview).map((p) => p.kind))
+    return [
+      { word: 'tell', has: kinds.has('tell') },
+      { word: 'hit', has: kinds.has('hit') },
+      { word: 'after', has: kinds.has('after') },
+      { word: 'spell', has: kinds.has('spell') },
+      { word: 'down pose', has: poseFrame(petPreview, 'down') >= 0 },
+    ]
+  }, [petPreview])
 
   const petBoss = useMemo(() => {
     const t = temperOf(petPreview)
@@ -4141,6 +4167,50 @@ export function PaintRoom() {
                     >
                       {w}
                     </button>
+                  ))}
+                </span>
+                {/**
+                 * ⚠️ ITS OWN HEADING, BECAUSE FOUR BUTTONS IN A ROW OF EIGHTEEN WERE NOT A
+                 * SYSTEM ANYBODY COULD SEE. `hit`, `tell`, `after` and `spell` used to sit at
+                 * the end of the parts row under "Add a part that moves" — which is not what
+                 * they do — and each explained itself only once you had pressed it, so finding
+                 * out what they were for required already suspecting they were interesting.
+                 * Reported exactly that way: "i am trying to test the new ability system but i
+                 * cant understand it."
+                 *
+                 * ⚠️ AND IT SAYS WHAT THE SET IS BEFORE YOU PRESS ANYTHING. One sentence naming
+                 * the three stages in the order they happen is the difference between four words
+                 * and a thing with a shape.
+                 */}
+                <strong className="paint-pet-fight">Or give it a fight.</strong>
+                <span className="muted">
+                  A move has three stages and you can draw each one: the <code>tell</code> it winds
+                  up in, the <code>hit</code> itself, the <code>after</code> it lands in.{' '}
+                  <code>spell</code> aims the big ones.
+                </span>
+                <span className="paint-pet-parts">
+                  {FIGHT_WORDS.map((w) => (
+                    <button
+                      key={w}
+                      className="btn"
+                      disabled={layers >= MAX_LAYERS}
+                      onClick={() => petAddPart(w)}
+                      title={`A layer called ${w} — it ${PART_DOES[partOf(w)]}`}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </span>
+                {/**
+                 * ⚠️ WHAT IT HAS AND WHAT IT HAS NOT, which is how somebody learns a system
+                 * exists at all. A list of buttons tells you what you could press; this tells
+                 * you where you are in it, and the gaps are the instructions.
+                 */}
+                <span className="muted paint-pet-has">
+                  {petFight.map((f) => (
+                    <span key={f.word} className={f.has ? 'is-on' : ''}>
+                      {f.has ? '✓' : '○'} {f.word}
+                    </span>
                   ))}
                 </span>
                 <button className="btn" disabled={!strokes.length} onClick={finishPet}>
