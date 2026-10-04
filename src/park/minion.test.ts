@@ -73,16 +73,22 @@ describe('a minion is the drawing it came from', () => {
       creature([['body', [0, 0.49, 1, 0.5]]], 20),
       creature([['body', [0.49, 0, 0.5, 1]]], 0.05),
     ]
+    /* ⚠️ ASKED OF THE BAND, NOT TYPED OUT BESIDE IT. These were the literals 0.7, 1.15, 8, 26, 1
+       and 1.75 — a copy of BAND that went stale the first time BAND moved, and it did: tightening
+       the life band to two swings turned this red while the thing it is actually about, "no
+       drawing escapes", was never in question. The claim here is containment, so the bounds have
+       to come from the thing doing the containing. CLAUDE.md has a rule about this now and this
+       test is what it was written from. */
     for (const d of daft) {
       const m = minionOf(d)
-      expect(m.scale).toBeGreaterThanOrEqual(0.7)
-      expect(m.scale).toBeLessThanOrEqual(1.15)
-      expect(m.life).toBeGreaterThanOrEqual(8)
-      expect(m.life).toBeLessThanOrEqual(26)
-      expect(m.pace).toBeGreaterThanOrEqual(1)
-      expect(m.pace).toBeLessThanOrEqual(1.75)
-      expect(m.bite).toBeGreaterThanOrEqual(3)
-      expect(m.bite).toBeLessThanOrEqual(9)
+      expect(m.scale).toBeGreaterThanOrEqual(BAND.scale[0])
+      expect(m.scale).toBeLessThanOrEqual(BAND.scale[1])
+      expect(m.life).toBeGreaterThanOrEqual(BAND.life[0])
+      expect(m.life).toBeLessThanOrEqual(BAND.life[1])
+      expect(m.pace).toBeGreaterThanOrEqual(BAND.pace[0])
+      expect(m.pace).toBeLessThanOrEqual(BAND.pace[1])
+      expect(m.bite).toBeGreaterThanOrEqual(BAND.bite[0])
+      expect(m.bite).toBeLessThanOrEqual(BAND.bite[1])
       for (const v of Object.values(m)) expect(Number.isFinite(v)).toBe(true)
     }
   })
@@ -109,7 +115,7 @@ describe('and it is the role, not the creature', () => {
    * boss carries 220 to 470 against swings that land for five to fifteen; a minion has to be
    * something you clear on the way past.
    */
-  it('and falls to two or three swings rather than to a campaign', () => {
+  it('and falls to two swings rather than to a campaign', () => {
     for (const d of [lanky, squat]) {
       const m = minionOf(d)
       /**
@@ -120,7 +126,7 @@ describe('and it is the role, not the creature', () => {
        * clear while this stayed green. A bound taken from the code is the code agreeing with
        * itself; A_SWING is the table's own answer and 3 is the claim.
        */
-      expect(m.life / A_SWING, 'swings to fell one').toBeLessThanOrEqual(3)
+      expect(m.life / A_SWING, 'swings to fell one').toBeLessThanOrEqual(2)
       expect(m.life / A_SWING, 'it should not fall to a graze').toBeGreaterThan(1)
       expect(m.life).toBeLessThan(temperOf(d).life / 8)
     }
@@ -133,9 +139,9 @@ describe('and it is the role, not the creature', () => {
    * test was green about a case it never visited. `into` is monotone, so the band's ends are the
    * extremes of every drawing there will ever be: checking those two numbers checks everybody.
    */
-  it('and the toughest thing anybody can draw still dies in three', () => {
+  it('and the toughest thing anybody can draw still dies in two', () => {
     const [weakest, toughest] = BAND.life
-    expect(toughest / A_SWING, 'swings for the toughest minion').toBeLessThanOrEqual(3)
+    expect(toughest / A_SWING, 'swings for the toughest minion').toBeLessThanOrEqual(2)
     expect(weakest / A_SWING, 'swings for the frailest').toBeGreaterThan(1)
   })
 

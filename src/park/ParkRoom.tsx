@@ -441,6 +441,9 @@ const waveSize = (no: number) => 10 + (no - 1) * 6
  */
 const MOB_LINGER = 1.1
 
+/** how much of its step a minion keeps while it is winding up a bite — see the lean-in note */
+const BITE_CREEP = 0.35
+
 const SWARM_WIDE = PARK.across * FIELD_ASPECT
 const toHeights = (s: Spot) => ({ x: s.x * SWARM_WIDE, y: s.y * PARK.down })
 const toWorld = (p: { x: number; y: number }): Spot => ({
@@ -2444,9 +2447,25 @@ export function ParkRoom({
          */
         crowd = crowd.map((m, i) => {
           const was = steppedFrom[i]
-          /* ⚠️ AND A FELLED ONE, for a plainer reason: a body that keeps flocking is a body
-             sliding across the grass toward you, which reads as a bug rather than as a death. */
-          return (m.bit >= 0 || m.gone >= 0) && was ? { ...m, x: was.x, y: was.y, vx: 0, vy: 0 } : m
+          if (!was) return m
+          /* ⚠️ A FELLED ONE STOPS DEAD, for a plainer reason: a body that keeps flocking is a
+             body sliding across the grass toward you, which reads as a bug rather than a death. */
+          if (m.gone >= 0) return { ...m, x: was.x, y: was.y, vx: 0, vy: 0 }
+          if (m.bit < 0) return m
+          /**
+           * ⚠️ IT LEANS IN RATHER THAN STOPPING DEAD, AND THAT IS A CORRECTION. Freezing a
+           * minion for the whole wind-up made the tell perfectly readable and the bite free to
+           * avoid: anything that stops moving can be walked away from by walking, and reported
+           * as exactly that — "the minions right now feel a little easy to dodge". Keeping a
+           * third of the step means backing off slowly is no longer an answer while stepping
+           * properly out still is, which is the difference between a tell you read and a tell
+           * you ignore.
+           */
+          return {
+            ...m,
+            x: was.x + (m.x - was.x) * BITE_CREEP,
+            y: was.y + (m.y - was.y) * BITE_CREEP,
+          }
         })
 
         /**

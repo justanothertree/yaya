@@ -71,8 +71,36 @@ export const BAND = {
    * a swing rather than falling over to a graze — a crowd that dies to being looked at has no
    * weight to it either.
    */
-  life: [1.1 * A_SWING, 3 * A_SWING],
-  pace: [1.0, 1.75],
+  /* ⚠️ TWO SWINGS AT THE TOP, NOT THREE, AND THAT IS A SECOND CORRECTION. Three was already a
+     tighter band than the [8, 26] it replaced, and against a wave of ten it still means roughly
+     twenty-four clean swings to clear one — reported as "hard to hit quickly". A crowd you work
+     through is the genre; a crowd you grind through is not. */
+  life: [1.1 * A_SWING, 2 * A_SWING],
+  /**
+   * ⚠️ ABOVE PARITY AT THE BOTTOM, BECAUSE 1.0 MEANT "CANNOT CATCH YOU".  is
+   * TUNE.speed times this, and TUNE.speed is the player's own top speed — so a minion at 1.0
+   * matched a running player exactly and could never close the gap. Measured: walking away in a
+   * straight line took 0 hits in 4.5 seconds, which is not a crowd, it is scenery. Reported as
+   * "the minions right now feel a little easy to dodge".
+   *
+   * ⚠️ AND ONLY JUST ABOVE IT. Making them all clearly faster would mean never being able to
+   * disengage, which is the opposite failure; a sixth again means running buys you distance
+   * slowly rather than instantly, and the thing that actually kills you is still being
+   * surrounded rather than being outrun.
+   */
+  /**
+   * ⚠️ ABOVE PARITY AT THE BOTTOM, BECAUSE 1.0 MEANT "CANNOT CATCH YOU". The flock's speed is
+   * TUNE.speed times this, and TUNE.speed is the PLAYER's own top speed — so a minion at 1.0
+   * matched a running player exactly and could never close the gap. Measured: walking away in a
+   * straight line took 0 hits in 4.5 seconds, which is not a crowd, it is scenery. Reported as
+   * "the minions right now feel a little easy to dodge".
+   *
+   * ⚠️ AND ONLY JUST ABOVE IT. Making them all clearly faster would mean never being able to
+   * disengage, which is the opposite failure and a worse one. A sixth again means running buys
+   * you distance slowly rather than instantly, so the thing that kills you is still being
+   * surrounded rather than being outrun.
+   */
+  pace: [1.16, 1.9],
   bite: [3, 9],
 } as const
 
