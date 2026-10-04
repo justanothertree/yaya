@@ -1957,6 +1957,22 @@ export function ParkRoom({
      * ways — so nothing was relying on the window sweeping up after them.
      */
     const drop = () => {
+      /**
+       * ⚠️ ONLY WHEN THE DOCUMENT REALLY LOST FOCUS, which is the narrowest this can be made
+       * without being able to ask the browser which keys are down. Dropping every key is the
+       * right answer to "the window went away and the keyups will never arrive" and a disaster
+       * in response to anything else: a key that is already physically down never sends a second
+       * keydown, so one spurious drop kills a direction until the person lets go and presses it
+       * again. That symptom has now been reported twice — "some movement directions can get
+       * stuck until i press it again" — and the pointerup cause this note used to describe was
+       * only one way of getting here.
+       *
+       * ⚠️ IT IS A GUARD RATHER THAN A FIX, AND SAYING SO IS THE POINT. Driving the park with
+       * synthetic keys and a synthetic left-click, movement did not stall either way, so the
+       * trigger is still unknown — what is known is that this function is the only thing that
+       * empties `held`, and that it has no business running while the page still has focus.
+       */
+      if (typeof document !== 'undefined' && document.hasFocus()) return
       held.current = { ...STILL }
       hitting.current = { quick: false, heavy: false, up: false, down: false }
       rolling.current = false
