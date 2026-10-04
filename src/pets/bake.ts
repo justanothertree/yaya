@@ -1,6 +1,6 @@
 import { paintPet } from './paint'
-import { poseFrame } from '../draw/strokes'
-import { footRoom, petBox, petCanvas, rigOf } from './rig'
+import { paintDrawing, poseFrame } from '../draw/strokes'
+import { castLayers, footRoom, inkBox, petBox, petCanvas, rigOf } from './rig'
 import type { Drawing } from '../draw/strokes'
 import type { Stance } from './rig'
 
@@ -145,4 +145,50 @@ export function bakePose(art: Drawing, tall: number, pose: string): Baked | null
   if (!ctx) return null
   paintPet(ctx, art, rigOf(art), box.w, box.h, { t: 0, energy: 0, pose })
   return { sheet, w: box.w, h: box.h, frames: 1, foot: footRoom(art) }
+}
+
+/**
+ * The spell layer on its own, cropped to its own ink, as an image a cast can be painted with.
+ *
+ * ⚠️ BECAUSE THE SPELL LAYER WAS AN INVISIBLE MODIFIER AND THE NAME SAID OTHERWISE. "i never
+ * understood how to use the spell layer" came with what was expected instead — drawing the thing
+ * that flies — and this is that: the ink you drew becomes the bolt, the fissure, the swell.
+ * Nothing about where a cast goes or what it does changes; only what it looks like, which is the
+ * one part that was never yours.
+ *
+ * ⚠️ CROPPED TO THE SPELL'S OWN BOX, not to the page. A cast patch is a circle somewhere in the
+ * world and the drawing has to fill it; painting the whole page into that circle would put your
+ * ink in whatever corner of it you happened to draw, at whatever size the rest of the creature
+ * left over. castLayers already knows which layers these are, and pictureBox already makes the
+ * matching decision for the creature's own picture.
+ *
+ * ⚠️ AND A DATA URL RATHER THAN A CANVAS, because the thing that consumes it is a CSS
+ * background on a `.park-patch` span. A cast is already DOM — four circles positioned and scaled
+ * by the same numbers the hit test uses — so this needed no renderer, only a picture.
+ */
+export function bakeSpell(art: Drawing, px = 128): string | null {
+  if (typeof document === 'undefined' || !(px > 0)) return null
+  const mine = castLayers(art)
+  if (!mine.length) return null
+  const keep = new Set(mine)
+  /* the box of the spell ALONE — skip is "layers to leave out", so skip everything else */
+  const others = (art.layers ?? []).map((_n, i) => i).filter((i) => !keep.has(i))
+  const box = inkBox(art, others, false)
+  if (!box) return null
+  const bw = box.x1 - box.x0
+  const bh = box.y1 - box.y0
+  if (!(bw > 0) || !(bh > 0)) return null
+  const cv = document.createElement('canvas')
+  cv.width = px
+  cv.height = px
+  const ctx = cv.getContext('2d')
+  if (!ctx) return null
+  /* ⚠️ paintDrawing puts a page point p at p*px, so this maps the spell's box onto the whole
+     canvas: scale by the box, then slide its corner to the origin. */
+  ctx.save()
+  ctx.scale(1 / bw, 1 / bh)
+  ctx.translate(-box.x0 * px, -box.y0 * px)
+  paintDrawing(ctx, art, px, px, { hidden: others })
+  ctx.restore()
+  return cv.toDataURL()
 }

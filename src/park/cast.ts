@@ -100,13 +100,13 @@ export const CAST: Record<
    * single key is the answer to a boss's whole repertoire.
    */
   bolt: {
-    time: 1.2,
+    time: 0.95,
     lift: 0.45,
     short: 'bolt',
     /* ⚠️ it does not root you, which is the whole difference. A bolt is thrown; the other two
        are the ground being done something to, and you cannot do that on the move. */
     holds: false,
-    wait: 0.55,
+    wait: 0.42,
     says: 'it throws something at you — step out of the line, or meet it',
   },
 }
@@ -153,7 +153,19 @@ export const castFromSlot = (n: number): CastKind | null => SLOTS[Math.round(n) 
 const MARK_RANGE = 2.6
 /** where the bolt leaves from, how long it is telegraphed, and how fast it travels */
 const BOLT_FROM = 1.0
-const BOLT_WARN = 0.42
+/**
+ * ⚠️ 0.26 RATHER THAN 0.42, WHICH IS A THIRD OFF THE WAIT BEFORE IT LEAVES YOUR HAND. Reported
+ * as "my bolts fired a bit slow", and the gap was most of it: pressing and then watching nothing
+ * happen for four tenths of a second is input lag on the one cast that is supposed to be the
+ * quick one. Together with a shorter `time` and `wait` it takes press-to-press from 1.75s to
+ * 1.37s, and press-to-leaving-hand from 0.42s to 0.26s.
+ *
+ * ⚠️ AND IT IS STILL A TELEGRAPH, WHICH IS WHY IT IS NOT SHORTER. The same number has to make a
+ * BOSS's bolt readable, and 0.26s is still above the floor that biteOf is built around — about
+ * 0.18s, roughly where a person can act at all. Below that it would stop being a thing you can
+ * answer and start being a thing that happens to you, which is a different cast.
+ */
+const BOLT_WARN = 0.26
 const BOLT_SPEED = 7
 /**
  * How long apart the bolts in a burst leave the hand.

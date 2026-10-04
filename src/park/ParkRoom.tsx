@@ -102,7 +102,7 @@ import { shapeOf, type CastShape } from './castShape'
 import { SwipePatch } from './SwipePatch'
 import { biteOf, biteSpan, biting, minionOf, type Minion } from './minion'
 import { FLOCK, ringOf, stepSwarm, type Mob } from './swarm'
-import { bakePose, bakeWalk, blitBaked, type Baked } from '../pets/bake'
+import { bakePose, bakeSpell, bakeWalk, blitBaked, type Baked } from '../pets/bake'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
 import {
@@ -1104,6 +1104,9 @@ export function ParkRoom({
   /* ⚠️ the pose your creature winds up in, memoised beside the moves it belongs to — stagesOf
      walks every stroke and this room renders every frame. See posedAt. */
   const myStages = useMemo(() => (myArt ? stagesOf(myArt) : NO_STAGES), [myArt])
+  /* ⚠️ THE SPELL YOU DREW, BAKED ONCE — see bakeSpell. null when nobody drew one, which is what
+     lets a patch keep the colour it has always had rather than branch on every frame. */
+  const mySpell = useMemo(() => (myArt ? bakeSpell(myArt) : null), [myArt])
   const boss = useRef<Boss | null>(null)
   const [bossShown, setBossShown] = useState<Boss | null>(null)
   const [bossPick, setBossPick] = useState(0)
@@ -4700,7 +4703,9 @@ export function ParkRoom({
               return (
                 <span
                   key={'mine' + i}
-                  className={'park-patch is-mine' + (p.live ? ' is-live' : '')}
+                  className={
+                    'park-patch is-mine' + (p.live ? ' is-live' : '') + (mySpell ? ' is-drawn' : '')
+                  }
                   aria-hidden
                   style={{
                     left: `${at.x * 100}%`,
@@ -4709,6 +4714,9 @@ export function ParkRoom({
                     height: `${p.r * 2 * 100}%`,
                     transform: `translate(-50%, -50%) scale(${(0.5 + p.ready * 0.5).toFixed(3)})`,
                     opacity: p.live ? 0.9 : 0.2 + p.ready * 0.5,
+                    /* ⚠️ THE INK YOU DREW, WHERE THE CAST ALREADY IS. The circle, its size and
+                       its timing are untouched — only the picture in it is yours. See bakeSpell. */
+                    ...(mySpell ? { backgroundImage: `url(${mySpell})` } : null),
                   }}
                 />
               )

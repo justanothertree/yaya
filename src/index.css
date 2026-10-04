@@ -9260,6 +9260,25 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ YOURS IS THE ACCENT, the boss's is red — the same rule the health bars follow, so whose
    ground is about to go is answered by colour rather than by working out who is standing where */
+/**
+ * A cast somebody drew the picture for — see bakeSpell.
+ *
+ * ⚠️ THE INK REPLACES THE GRADIENT RATHER THAN SITTING ON IT. The orange circle is the engine
+ * saying "a cast is here" because nothing else was; once your own drawing is in that circle it
+ * is doing that job, and leaving both leaves a drawing inside a bubble that is not yours.
+ *
+ * ⚠️ `contain`, SO THE SHAPE YOU DREW KEEPS ITS SHAPE. The patch is a circle and a drawing is
+ * whatever it is; cover would crop a long bolt down to a disc, which is the one thing somebody
+ * drawing a long bolt is trying to say.
+ */
+.park-patch.is-drawn {
+  background: none;
+  box-shadow: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
 .park-patch.is-mine {
   background: radial-gradient(
     circle at center,
