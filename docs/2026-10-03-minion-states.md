@@ -194,7 +194,7 @@ Each one is shippable alone and each is reversible.
 - ✅ **Step 1 — the bite is a move.** Applied in `0f90832`. Wind-up, bite, recover; paced from
   `pace` via `biteOf`; a committed minion holds still and a mark closes on the ground under it.
   Measured: standing still against wave one takes 2 hits per 4.5s, walking away takes 1.
-- ✅ **Step 2 — named frames + `down`.** Applied in `480afe4` and `3ac0bbf`. The key is `poses`
+- ✅ **Step 2 — named frames + `down`.** Applied in `480afe4` and `286a097`. The key is `poses`
   rather than the `fn` array proposed in §3 — sparse and keyed by index, exactly like `acts`,
   which is the better shape for something most frames will never have. `loopFrames` is what keeps
   every existing drawing identical: the UNNAMED frames are the animation. A felled minion lies in
