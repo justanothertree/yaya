@@ -86,7 +86,15 @@ import {
   type StrikeInput,
   type Striker,
 } from './strike'
-import { movesOf, slotFor, petWide, posedAt, tellOf, type Attack } from '../pets/attack'
+import {
+  movesOf,
+  slotFor,
+  petWide,
+  posedAt,
+  stagesOf,
+  NO_STAGES,
+  type Attack,
+} from '../pets/attack'
 import { footRoom, petBox } from '../pets/rig'
 import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch } from './cast'
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
@@ -1081,9 +1089,9 @@ export function ParkRoom({
     () => (myArt ? movesOf(myArt, myBudget) : []),
     [myArt, myBudget],
   )
-  /* ⚠️ the pose your creature winds up in, memoised beside the moves it belongs to — tellOf
+  /* ⚠️ the pose your creature winds up in, memoised beside the moves it belongs to — stagesOf
      walks every stroke and this room renders every frame. See posedAt. */
-  const myTell = useMemo(() => (myArt ? tellOf(myArt) : null), [myArt])
+  const myStages = useMemo(() => (myArt ? stagesOf(myArt) : NO_STAGES), [myArt])
   const boss = useRef<Boss | null>(null)
   const [bossShown, setBossShown] = useState<Boss | null>(null)
   const [bossPick, setBossPick] = useState(0)
@@ -1126,7 +1134,7 @@ export function ParkRoom({
      * constant would have a hitbox that disagreed with the one hitting you.
      */
     temper: Temper
-    tell: ReturnType<typeof tellOf>
+    stages: ReturnType<typeof stagesOf>
   } | null>(null)
   const myWide = useMemo(() => (myArt ? petWide(myArt) : 0.2), [myArt])
   /**
@@ -1244,7 +1252,7 @@ export function ParkRoom({
             temper: temperOf(bossArt),
             /* ⚠️ with the moves, because it is part of how they LOOK and the two must not be read
                from different drawings — see posedAt */
-            tell: tellOf(bossArt),
+            stages: stagesOf(bossArt),
           }
         : null,
     [bossArt],
@@ -2926,7 +2934,7 @@ export function ParkRoom({
             temper: temperOf(tb.art),
             /* ⚠️ derived here like everything else about a remote boss, so both ends wind up in
                the same pose from the same picture with nothing about it on the wire */
-            tell: tellOf(tb.art),
+            stages: stagesOf(tb.art),
           }
         const kit = echoKit.current
         tb.shown = farFrom(tb.shown, tb.at)
@@ -4372,7 +4380,7 @@ export function ParkRoom({
                 show: (() => {
                   const mv = myMoves[shownYou.move]
                   return shownYou.swing > 0 && mv
-                    ? posedAt(mv, mv.span - shownYou.swing, myTell)
+                    ? posedAt(mv, mv.span - shownYou.swing, myStages)
                     : undefined
                 })(),
               },
@@ -4616,7 +4624,7 @@ export function ParkRoom({
               show={(() => {
                 const bm = (bossKit?.moves ?? [])[bossShown.move]
                 return bossShown.swing > 0 && bm
-                  ? posedAt(bm, bm.span - bossShown.swing, bossKit?.tell ?? null)
+                  ? posedAt(bm, bm.span - bossShown.swing, bossKit?.stages ?? NO_STAGES)
                   : undefined
               })()}
               turning={bossShown.turn > 0}
@@ -4669,7 +4677,7 @@ export function ParkRoom({
                   ? posedAt(
                       theirMove,
                       theirMove.span - theirBoss.swingFor,
-                      echoKit.current?.tell ?? null,
+                      echoKit.current?.stages ?? NO_STAGES,
                     )
                   : undefined
               }

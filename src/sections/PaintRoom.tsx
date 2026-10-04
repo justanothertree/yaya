@@ -60,6 +60,7 @@ import {
   notBodyLayers,
   partOf,
   type PartKind,
+  isMovePart,
 } from '../pets/rig'
 import { MoveShow } from '../pets/MoveShow'
 import { saysOf, temperOf } from '../park/temper'
@@ -127,7 +128,7 @@ const spellSays = (
 }
 
 import { CAST } from '../park/cast'
-import { movesOf, tellOf, type Attack } from '../pets/attack'
+import { movesOf, stagesOf, type Attack } from '../pets/attack'
 import { AlsoTogether } from '../ui/AlsoTogether'
 import { useVoiceSession } from '../voice/useVoiceSession'
 import { MapMaker } from '../park/MapMaker'
@@ -1915,7 +1916,7 @@ export function PaintRoom() {
       ...petPreview,
       strokes: petPreview.strokes.filter((k) => {
         const kind = kindOf(petPreview, k.l ?? 0)
-        return kind !== 'hit' && kind !== 'spell' && kind !== 'tell'
+        return !isMovePart(kind)
       }),
     })
     if (!body) return null
@@ -1964,14 +1965,28 @@ export function PaintRoom() {
    */
   const tellNow = useMemo(() => {
     if (!petStep) return null
-    if (kindOf(petPreview, layer) !== 'tell') return null
-    const t = tellOf(petPreview)
-    if (!t) return null
+    const kind = kindOf(petPreview, layer)
+    if (kind !== 'tell' && kind !== 'after') return null
+    const s = stagesOf(petPreview)
     const a = movesOf(petPreview)[0]
     if (!a) return null
-    const now = a.live[0] * a.span
-    const was = now - t.slow
-    return was > 0.001 ? now / was : null
+    /* ⚠️ A READOUT THAT CANNOT BE COMPUTED SAYS NOTHING, rather than saying NaN. This printed
+       "knocks back NaN×" on every stroke for a while, which is worse than an empty corner: a
+       number nobody can act on next to a stroke somebody just made reads as the drawing being
+       wrong rather than the badge. Everything below goes through this. */
+    const times = (now: number, was: number) =>
+      was > 0.001 && Number.isFinite(now) && Number.isFinite(was) ? now / was : null
+    if (kind === 'tell') {
+      const t = times(a.live[0] * a.span, a.live[0] * a.span - s.slow)
+      return t === null ? null : `winds up ${t.toFixed(1)}× as long`
+    }
+    /* ⚠️ THE RECOVERY SAYS BOTH HALVES OF ITS TRADE, because unlike the wind-up it has a buy as
+       well as a cost — and a readout that showed only what it cost would make the stage look
+       like a straight penalty while you drew it. */
+    const open = a.span - a.live[1] * a.span
+    const t = times(open, open - s.hang)
+    if (t === null || !Number.isFinite(s.push)) return null
+    return `open ${t.toFixed(1)}× as long · knocks back ${s.push.toFixed(1)}×`
   }, [petStep, layer, petPreview])
 
   const petMoves = useMemo(() => {
@@ -4042,6 +4057,15 @@ export function PaintRoom() {
                     <code>hit</code>. Draw it big and it winds up slower — easier to read coming,
                     easier to punish.
                   </span>
+                ) : /* ⚠️ THE OTHER SIDE OF THE HIT, SAID IN THE SAME SHAPE. Three stages is three
+                       sentences somebody has to hold at once, so each one names when it is seen
+                       and what drawing it big costs — and they have to read as a set or the
+                       middle one stops being obviously the middle. */
+                partOf(petStep.part) === 'after' ? (
+                  <span className="muted">
+                    An <code>after</code> is the pose it lands in, once the <code>hit</code> is
+                    done. Draw it big and it knocks them further back, and leaves you open longer.
+                  </span>
                 ) : (
                   <span className="muted">
                     You are on a new layer called <code>{petStep.part}</code>, so this part{' '}
@@ -4741,7 +4765,7 @@ export function PaintRoom() {
             nothing. */}
         {tellNow !== null && (
           <span className="paint-reach paint-reach-say" aria-hidden>
-            <b>winds up {tellNow.toFixed(1)}× as long</b>
+            <b>{tellNow}</b>
           </span>
         )}
         {petCrop && (

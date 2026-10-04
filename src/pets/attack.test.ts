@@ -10,7 +10,8 @@ import {
   pairOf,
   petWide,
   posedAt,
-  tellOf,
+  stagesOf,
+  NO_STAGES,
   wound,
   POUNCE,
   slotFor,
@@ -367,12 +368,14 @@ describe('a drawn wind-up', () => {
   })
 
   it('leaves a creature that has not drawn one exactly as it was', () => {
-    expect(tellOf(plain)).toBeNull()
+    expect(stagesOf(plain)).toEqual(NO_STAGES)
     for (const a of movesOf(plain)) {
-      /* posedAt with no tell is the old `a.layer` for the whole swing, by construction */
-      expect(posedAt(a, 0, null)).toBe(a.layer)
-      expect(posedAt(a, a.span * 0.99, null)).toBe(a.layer)
-      expect(posedAt(a, a.span, null)).toBeUndefined()
+      /* ⚠️ nothing drawn is the old `a.layer` for the WHOLE swing — every stage falls through,
+         which is what makes this change invisible to every creature that already exists */
+      expect(posedAt(a, 0, NO_STAGES)).toBe(a.layer)
+      expect(posedAt(a, a.span * 0.5, NO_STAGES)).toBe(a.layer)
+      expect(posedAt(a, a.span * 0.99, NO_STAGES)).toBe(a.layer)
+      expect(posedAt(a, a.span, NO_STAGES)).toBeUndefined()
     }
   })
 
@@ -382,13 +385,13 @@ describe('a drawn wind-up', () => {
   })
 
   it('shows the wind-up pose first and the blow second', () => {
-    const tell = tellOf(withTell)
-    expect(tell, 'a drawing with a windup layer has a tell').not.toBeNull()
+    const s = stagesOf(withTell)
+    expect(s.wind, 'a drawing with a windup layer has a wind-up pose').not.toBeNull()
     const a = movesOf(withTell).find((m) => m.from === 'hit')!
     const turn = a.live[0] * a.span
-    expect(posedAt(a, turn * 0.5, tell), 'winding up').toBe(tell!.layer)
-    expect(posedAt(a, turn * 1.01, tell), 'the blow is out').toBe(a.layer)
-    expect(posedAt(a, a.span + 0.001, tell), 'over').toBeUndefined()
+    expect(posedAt(a, turn * 0.5, s), 'winding up').toBe(s.wind)
+    expect(posedAt(a, turn * 1.01, s), 'the blow is out').toBe(a.layer)
+    expect(posedAt(a, a.span + 0.001, s), 'over').toBeUndefined()
   })
 
   /**
@@ -400,7 +403,7 @@ describe('a drawn wind-up', () => {
   it('and buys its wind-up with commitment, not with a longer dangerous window', () => {
     const a = movesOf(plain).find((m) => m.from === 'hit')!
     for (const slow of [0.05, 0.12, 0.26]) {
-      const w = wound(a, { layer: 9, slow })
+      const w = wound(a, { ...NO_STAGES, wind: 9, slow })
       const was = (a.live[1] - a.live[0]) * a.span
       const now = (w.live[1] - w.live[0]) * w.span
       expect(now, `live window at slow ${slow}`).toBeCloseTo(was, 6)
@@ -420,8 +423,8 @@ describe('a drawn wind-up', () => {
     const big = creature(['body', 'arm', 'hit'])
     big.layers = [...(big.layers ?? []), 'windup']
     big.strokes = [...big.strokes, stroke({ l: 3, p: [0.1, 0.1, 0.9, 0.9] })]
-    const a = tellOf(small)!
-    const b = tellOf(big)!
+    const a = stagesOf(small)
+    const b = stagesOf(big)
     expect(b.slow, 'a sweeping wind-up against a tight one').toBeGreaterThan(a.slow)
   })
 })
@@ -446,5 +449,92 @@ describe('a wind-up that is drawn a long way out', () => {
     expect(b.reach, 'reach').toBeCloseTo(a.reach, 10)
     expect(b.bite, 'bite').toBe(a.bite)
     expect(b.rise, 'rise').toBeCloseTo(a.rise, 10)
+  })
+})
+
+/**
+ * The stage after the blow, which is the one a fighting game is actually about.
+ *
+ * ⚠️ A WIND-UP TELLS YOU WHAT IS COMING; A FOLLOW-THROUGH TELLS YOU IT IS OVER. Recovery is the
+ * window where a miss costs something and reading one correctly is rewarded — and until now the
+ * creature snapped from the blow straight back to standing, so the one stage you are supposed to
+ * punish was the stage with no picture and no way to see how long it lasted.
+ *
+ * ⚠️ AND IT BUYS SPACE RATHER THAN DAMAGE, which is the only part of this that is a design
+ * choice rather than a measurement. Damage is already what the hit layer's own size decides, so
+ * paying for more of it here would be two dials on one number.
+ */
+describe('a drawn follow-through', () => {
+  const bare = creature(['body', 'arm', 'hit'])
+  const withAfter = creature(['body', 'arm', 'hit'])
+  withAfter.layers = [...(withAfter.layers ?? []), 'follow']
+  withAfter.strokes = [...withAfter.strokes, stroke({ l: 3, p: [0.12, 0.12, 0.88, 0.88] })]
+
+  it('is read off a layer called after, follow or recover', () => {
+    for (const word of ['after', 'follow', 'recover', 'landed'])
+      expect(partOf(word), `"${word}" does not read as a follow-through`).toBe('after')
+    /* ⚠️ and "hit after" is the follow-through, the same ordering trap the wind-up has */
+    expect(partOf('hit after')).toBe('after')
+    expect(partOf('slash follow')).toBe('after')
+  })
+
+  it('shows the blow, then the pose it lands in', () => {
+    const s = stagesOf(withAfter)
+    expect(s.after, 'a drawing with a follow layer has one').not.toBeNull()
+    const a = movesOf(withAfter).find((m) => m.from === 'hit')!
+    const ends = a.live[1] * a.span
+    expect(posedAt(a, ends * 0.99, s), 'still the blow').toBe(a.layer)
+    expect(posedAt(a, ends + (a.span - ends) * 0.5, s), 'recovering').toBe(s.after)
+    expect(posedAt(a, a.span, s), 'over').toBeUndefined()
+  })
+
+  /**
+   * ⚠️ THE TRADE, MEASURED AT ALL THREE JOINS. The recovery grows, the dangerous window keeps
+   * its length in SECONDS, and the wind-up does not move — a follow-through that quietly delayed
+   * the blow would be a tell somebody did not ask for.
+   */
+  it('lengthens the recovery and leaves the other two stages alone', () => {
+    const a = movesOf(bare).find((m) => m.from === 'hit')!
+    for (const hang of [0.05, 0.15, 0.3]) {
+      const w = wound(a, { ...NO_STAGES, after: 9, hang })
+      const windWas = a.live[0] * a.span
+      const liveWas = (a.live[1] - a.live[0]) * a.span
+      const restWas = a.span - a.live[1] * a.span
+      expect(w.live[0] * w.span, `wind-up at hang ${hang}`).toBeCloseTo(windWas, 6)
+      expect((w.live[1] - w.live[0]) * w.span, `live window at hang ${hang}`).toBeCloseTo(
+        liveWas,
+        6,
+      )
+      expect(w.span - w.live[1] * w.span, `recovery at hang ${hang}`).toBeCloseTo(restWas + hang, 6)
+    }
+  })
+
+  /** ⚠️ and what it bought: a bigger follow-through sends somebody further */
+  it('and sends them further for it', () => {
+    const a = movesOf(bare).find((m) => m.from === 'hit')!
+    const s = stagesOf(withAfter)
+    expect(s.push, 'a full follow-through').toBeGreaterThan(1)
+    expect(wound(a, s).shove).toBeCloseTo(a.shove * s.push, 10)
+    /* ⚠️ and nothing drawn buys nothing, which is what keeps every existing creature the same */
+    expect(stagesOf(bare).push).toBe(1)
+    expect(wound(a, NO_STAGES)).toEqual(a)
+  })
+
+  /** ⚠️ and the two stages are independent: one without the other has to work on its own */
+  it('and works without a wind-up beside it', () => {
+    const s = stagesOf(withAfter)
+    expect(s.wind, 'no windup layer was drawn').toBeNull()
+    expect(s.slow, 'so nothing is slower').toBe(0)
+    const a = movesOf(withAfter).find((m) => m.from === 'hit')!
+    expect(posedAt(a, 0, s), 'the wind-up falls back to the blow').toBe(a.layer)
+  })
+
+  /** ⚠️ and it is not part of the creature, the same as the other two — see notBodyLayers */
+  it('and does not make the creature measure any bigger', () => {
+    expect(petWide(withAfter)).toBeCloseTo(petWide(bare), 10)
+    const a = movesOf(bare).find((m) => m.from === 'hit')!
+    const b = movesOf(withAfter).find((m) => m.from === 'hit')!
+    expect(b.reach, 'reach').toBeCloseTo(a.reach, 10)
+    expect(b.bite, 'bite').toBe(a.bite)
   })
 })

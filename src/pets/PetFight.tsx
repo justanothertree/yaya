@@ -3,7 +3,7 @@ import type { Drawing } from '../draw/strokes'
 import { PetView } from './PetView'
 import { ScrapFriend } from './ScrapFriend'
 import { footRoom, petCanvas, rigOf } from './rig'
-import { movesOf, pairOf, petWide, posedAt, tellFrom, type Attack } from './attack'
+import { movesOf, pairOf, petWide, posedAt, stagesFrom, NO_STAGES, type Attack } from './attack'
 import {
   fightEffort,
   fightStance,
@@ -154,8 +154,8 @@ export function PetFight({
       moves: side.map((p) => movesOf(p.art)) as Attack[][],
       traits: rigs.map((r) => traitsOf(r)) as Traits[],
       wides: side.map((p) => petWide(p.art)),
-      /* ⚠️ from the rig that is already walked here rather than a second walk — see tellFrom */
-      tells: rigs.map((r) => tellFrom(r)),
+      /* ⚠️ from the rig that is already walked here rather than a second walk — see stagesFrom */
+      stages: rigs.map((r) => stagesFrom(r)),
     }
   }, [side])
 
@@ -496,7 +496,7 @@ export function PetFight({
                   show={(() => {
                     const mv = (kit.moves[i] ?? [])[f.move]
                     return f.swing > 0 && mv
-                      ? posedAt(mv, mv.span - f.swing, kit.tells[i] ?? null)
+                      ? posedAt(mv, mv.span - f.swing, kit.stages[i] ?? NO_STAGES)
                       : undefined
                   })()}
                   label={`${p.name}, on ${Math.round(f.hurt)} per cent`}

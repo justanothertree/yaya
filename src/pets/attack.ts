@@ -1,6 +1,6 @@
 import { PET_TALL } from './play'
 import { inPlay } from './budget'
-import { bodyRatio, rigOf, type Box, type Part, type PartKind } from './rig'
+import { bodyRatio, isMovePart, rigOf, type Box, type Part, type PartKind } from './rig'
 import type { Drawing } from '../draw/strokes'
 
 /**
@@ -578,9 +578,7 @@ export function attacksOf(parts: Part[], hits?: Record<string, string>): Attack[
   /* ⚠️ 'spell' is excluded for exactly the reason 'hit' is: it is an attack rather than
      anatomy, so counting it would mean drawing a cast further out quietly shrank every swing's
      reach and made the cast itself score against a creature it had just inflated. */
-  const ink =
-    inkOf(parts.filter((p) => p.kind !== 'hit' && p.kind !== 'spell' && p.kind !== 'tell')) ??
-    inkOf(parts)
+  const ink = inkOf(parts.filter((p) => !isMovePart(p.kind))) ?? inkOf(parts)
   /* ⚠️ THE FALLBACK IS SHAPEABLE TOO. A creature with nothing named still has one move, and
      it is the only move it has — leaving this path unshaped would mean the wizard did nothing at
      all for the simplest creature anybody can make, which is the first one everybody makes. */
@@ -648,7 +646,7 @@ export const movesOf = (art: Drawing, allowed = -1): Attack[] => {
      out of exactly the parts the moves were, or a tell drawn on a layer the preview has not
      reached yet would slow down moves that cannot see it. */
   const parts = inPlay(rigOf(art), allowed)
-  const tell = tellFrom(parts)
+  const tell = stagesFrom(parts)
   return moveTable(attacksOf(parts, art.hits)).map((a) => wound(a, tell))
 }
 
@@ -922,24 +920,45 @@ export function inBox(at: At, wide: number, b: Box): boolean {
  * thing here makes: a sweeping wind-up is slower and easier to read and easier to punish, a
  * small one is quick and barely there. Nobody sets a number; you draw a big pose or a small one.
  */
-export type Tell = {
-  /** which layer to show while winding up */
-  layer: number
-  /** extra seconds of wind-up it buys, before any move's own timing */
+export type Stages = {
+  /** the layer to show while winding up, or null if nobody drew one */
+  wind: number | null
+  /** the layer to show while recovering, or null */
+  after: number | null
+  /** extra seconds of wind-up the drawn pose buys */
   slow: number
+  /** extra seconds of recovery the drawn follow-through costs */
+  hang: number
+  /** what that follow-through buys: a multiplier on how far the blow sends somebody */
+  push: number
 }
 
 /** how much longer the broadest tell anybody can draw makes a wind-up, in seconds */
 const TELL_SLOW = 0.26
+/** and how much longer the broadest follow-through leaves you open for */
+const AFTER_HANG = 0.3
+/**
+ * How much harder a full follow-through sends somebody.
+ *
+ * ⚠️ KNOCKBACK RATHER THAN DAMAGE, AND THAT IS THE WHOLE REASON THE STAGE IS WORTH DRAWING.
+ * Damage is already what the HIT layer's own size decides, so paying for more of it here would
+ * be two dials on one number and a creature could buy the same thing twice. Space is the other
+ * currency this game has — a crowd presses in, and a blow that sends them back is the answer to
+ * being surrounded — so committing to a longer recovery for more of it is a real decision
+ * rather than a bigger number.
+ */
+const AFTER_PUSH = 0.9
 
-export const tellOf = (art: Drawing): Tell | null => tellFrom(rigOf(art))
+/** nothing drawn: every stage is the hit's own layer and nothing is slower — see posedAt */
+export const NO_STAGES: Stages = { wind: null, after: null, slow: 0, hang: 0, push: 1 }
 
-export function tellFrom(parts: Part[]): Tell | null {
-  const part = parts.find((p) => p.kind === 'tell')
-  if (!part) return null
-  const body = inkOf(
-    parts.filter((p) => p.kind !== 'hit' && p.kind !== 'spell' && p.kind !== 'tell'),
-  )
+export const stagesOf = (art: Drawing): Stages => stagesFrom(rigOf(art))
+
+export function stagesFrom(parts: Part[]): Stages {
+  const wind = parts.find((p) => p.kind === 'tell')
+  const after = parts.find((p) => p.kind === 'after')
+  if (!wind && !after) return NO_STAGES
+  const body = inkOf(parts.filter((p) => !isMovePart(p.kind)))
   const h = body ? body.y1 - body.y0 : 0
   /* ⚠️ MEASURED AGAINST THE BODY, never against the page — the same rule drawnAttacks states
      for reach, and for the same reason: a creature drawn large would otherwise read as having
@@ -957,9 +976,28 @@ export function tellFrom(parts: Part[]): Tell | null {
    * ⚠️ AND 0.6 AT THE BOTTOM, because a pose smaller than two thirds of the creature is not a
    * wind-up, it is a detail — those should cost nothing rather than a little.
    */
-  const span = Math.max(part.box.x1 - part.box.x0, part.box.y1 - part.box.y0) / (h || 1)
-  const far = Math.max(0.6, Math.min(3, span))
-  return { layer: part.layer, slow: TELL_SLOW * ((far - 0.6) / 2.4) }
+  /* ⚠️ ONE SUM FOR BOTH POSES, because they are the same question asked twice and two copies of
+     it would drift the first time either band moved */
+  /* ⚠️ A DEGENERATE BOX IS A REAL INPUT, NOT A HYPOTHETICAL. These numbers are read on every
+     keystroke in the wizard, where a layer can be a stroke old and a creature can be a single
+     dot — and a width of Infinity minus Infinity is NaN, which does not throw, does not get
+     clamped by Math.min, and ends up on screen as "knocks back NaN×". Anything that is not a
+     real number means nothing was drawn worth measuring, which is what 0 already means here. */
+  const tall = Number.isFinite(h) && h > 0 ? h : 1
+  const sizeOf = (p: Part | undefined) => {
+    if (!p) return 0
+    const span = Math.max(p.box.x1 - p.box.x0, p.box.y1 - p.box.y0) / tall
+    if (!Number.isFinite(span)) return 0
+    return (Math.max(0.6, Math.min(3, span)) - 0.6) / 2.4
+  }
+  const big = sizeOf(after)
+  return {
+    wind: wind ? wind.layer : null,
+    after: after ? after.layer : null,
+    slow: TELL_SLOW * sizeOf(wind),
+    hang: AFTER_HANG * big,
+    push: 1 + AFTER_PUSH * big,
+  }
 }
 
 /**
@@ -971,28 +1009,43 @@ export function tellFrom(parts: Part[]): Tell | null {
  * number of SECONDS and pushing it later means a tell buys readability and costs commitment,
  * which is the trade that makes it a decision.
  */
-export const wound = (a: Attack, tell: Tell | null): Attack => {
-  if (!tell || tell.slow <= 0) return a
-  const span = a.span + tell.slow
-  const from = (a.live[0] * a.span + tell.slow) / span
-  const to = (a.live[1] * a.span + tell.slow) / span
-  return { ...a, span, live: [from, Math.min(0.99, to)] }
+export const wound = (a: Attack, s: Stages): Attack => {
+  if (s.slow <= 0 && s.hang <= 0) return a
+  /**
+   * ⚠️ THE DANGEROUS WINDOW KEEPS ITS LENGTH IN SECONDS AND BOTH ENDS MOVE AROUND IT. The
+   * wind-up is pushed later by `slow` and the recovery is made longer by `hang`, which means
+   * every fraction in `live` is recomputed rather than nudged — a move's stages are three
+   * durations in seconds, and `live` is only how this type happens to store two of the joins.
+   */
+  const span = a.span + s.slow + s.hang
+  const wind = a.live[0] * a.span + s.slow
+  const live = (a.live[1] - a.live[0]) * a.span
+  return {
+    ...a,
+    span,
+    live: [wind / span, Math.min(0.99, (wind + live) / span)],
+    /* ⚠️ what the longer recovery bought — see AFTER_PUSH */
+    shove: a.shove * s.push,
+  }
 }
 
 /**
- * Which layer a creature is showing this far into a swing — its wind-up pose, then the blow.
+ * Which layer a creature is showing this far into a swing: winding up, striking, or recovering.
  *
  * ⚠️ ASKED, NOT REPEATED, because six places draw a creature mid-swing and they must agree about
  * what it looks like. Every one of them used to read `a.layer` directly, which was right while
- * there was only one answer; a second stage makes "which picture is out right now" a question,
- * and a question answered in six places is answered differently in at least one of them.
+ * there was only one answer; stages make "which picture is out right now" a question, and a
+ * question answered in six places is answered differently in at least one of them.
  *
- * ⚠️ AND NO TELL MEANS EXACTLY WHAT IT MEANT BEFORE. A creature drawn before today has no tell
- * layer, so this returns `a.layer` for the whole swing — the behaviour every existing creature
- * already has, by construction rather than by a branch somebody has to remember.
+ * ⚠️ AND NOTHING DRAWN MEANS EXACTLY WHAT IT MEANT BEFORE. A creature made before any of this
+ * has neither pose, so every branch falls through to `a.layer` for the whole swing — the
+ * behaviour every existing creature already has, by construction rather than by a branch
+ * somebody has to remember. Each stage falls back on its own, too: drawing only a follow-through
+ * is a perfectly reasonable thing to do and must not need a wind-up to work.
  */
-export const posedAt = (a: Attack, gone: number, tell: Tell | null): number | undefined => {
+export const posedAt = (a: Attack, gone: number, s: Stages): number | undefined => {
   if (gone < 0 || gone >= a.span) return undefined
-  if (tell && gone < a.live[0] * a.span) return tell.layer
+  if (gone < a.live[0] * a.span) return s.wind ?? a.layer
+  if (gone > a.live[1] * a.span) return s.after ?? a.layer
   return a.layer
 }

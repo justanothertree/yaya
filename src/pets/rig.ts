@@ -47,6 +47,7 @@ export type PartKind =
   | 'horn'
   | 'hit'
   | 'tell'
+  | 'after'
   | 'spell'
 
 /**
@@ -92,6 +93,17 @@ export const WORDS: Array<[PartKind, string[]]> = [
    * rather than assumed, and there is a test that sweeps every pair.
    */
   ['tell', ['tell', 'windup', 'wind up', 'brace', 'readying']],
+  /**
+   * ⚠️ THE THIRD STAGE, AND THE ONE THAT MAKES PUNISHING LEGIBLE. A wind-up tells you what is
+   * coming; a follow-through tells you it is over and you have a moment. Without it a creature
+   * snapped from the blow straight back to standing, so the recovery — the part of an attack a
+   * fighting game is actually ABOUT — was the one stage with no picture at all and no way to
+   * read how long it lasts.
+   *
+   * ⚠️ BESIDE `tell` AND BEFORE `hit`, for the same substring reason: "hit after" and "slash
+   * follow" are what somebody types, and `hit` and `slash` would both claim them first.
+   */
+  ['after', ['after', 'follow', 'recover', 'landed']],
   ['hit', ['hit', 'attack', 'strike', 'slash', 'swipe', 'blast', 'swing']],
   /**
    * ⚠️ THE SECOND LAYER THAT IS NOT ANATOMY, and it is to the big casts what `hit` is to the
@@ -211,6 +223,8 @@ export const PART_WORDS: string[] = [
      the three at the end are the layers that are not anatomy. A word that does something and is
      not on this list is a feature nobody finds: the wizard's buttons are this array. */
   'tell',
+  /* ⚠️ beside 'tell' because the two are the stages either side of a hit */
+  'after',
   /* ⚠️ LAST, BESIDE 'hit', because the two are the pair that are not anatomy: one says where a
      swing reaches and this says where the big casts land. A word that does something and is not
      on this list is a feature nobody finds — the wizard's buttons are this array. */
@@ -262,6 +276,7 @@ export const PART_DOES: Record<PartKind, string> = {
   horn: 'juts out, and hits hardest of anything',
   hit: 'is hidden until you attack with it',
   tell: 'is the pose it winds up in, just before every hit',
+  after: 'is the pose it lands in, while it is wide open',
   spell: 'is where your big moves land',
 }
 
@@ -323,9 +338,11 @@ export const PART_DEPTH: Record<PartKind, number> = {
   /* ⚠️ in front of the creature like the hit it precedes, because it is the same move one stage
      earlier and has to read the same way round */
   tell: 16,
+  /* ⚠️ with the other two stages of the same move, at the back of the ordering */
+  after: 17,
   /* ⚠️ with `hit`, at the back of the ordering, because neither is anatomy and neither is drawn
      as part of the standing creature — see the note on the kind itself */
-  spell: 17,
+  spell: 18,
 }
 
 /**
@@ -517,6 +534,25 @@ export const boxOf = (strokes: Stroke[], ratio = 1): Box | null => {
  * creature, what shape is its canvas — are asked on every frame and must not walk every stroke
  * to find out. `rigOf` answers the same question the expensive way when it is already working.
  */
+/**
+ * The kinds that are part of a MOVE rather than part of the creature.
+ *
+ * ⚠️ ONE LIST, BECAUSE THE CONDITION HAD REACHED FOUR COPIES AND FOUR TERMS. It started as
+ * `kind === 'hit'`, gained `spell` the day casts could be drawn, then `tell`, then `after` — and
+ * every one of those additions had to be made in four places that nothing connects: the body
+ * box that decides a creature's width, the body box drawnAttacks measures reach against, the
+ * paint loop that hides these until their stage is running, and the wizard's reach ruler. The
+ * `after` layer was added to three of them and the fourth left it permanently visible, which is
+ * exactly the failure the duplication guarantees eventually.
+ *
+ * ⚠️ AND IT IS WHAT THESE FOUR AGREE ON, not a tidy-up. Each caller does something different
+ * with the answer; what they must never do is disagree about which layers are a move.
+ */
+const MOVE_KINDS = new Set<PartKind>(['hit', 'spell', 'tell', 'after'])
+
+/** is this layer a stage of a move rather than a piece of the creature? — see MOVE_KINDS */
+export const isMovePart = (k: PartKind): boolean => MOVE_KINDS.has(k)
+
 export function notBodyLayers(d: Drawing): number[] {
   const out: number[] = []
   d.layers?.forEach((_n, i) => {
@@ -529,7 +565,7 @@ export function notBodyLayers(d: Drawing): number[] {
     /* ⚠️ AND A TELL, for the reason a hit is: it is a stage of a MOVE rather than a piece of the
        creature, so it is invisible until the wind-up it belongs to is running. A tell left
        visible would be a creature permanently braced to swing. */
-    if (k === 'hit' || k === 'spell' || k === 'tell') out.push(i)
+    if (isMovePart(k)) out.push(i)
   })
   return out
 }
