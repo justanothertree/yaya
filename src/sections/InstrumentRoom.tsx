@@ -125,6 +125,7 @@ import {
   toggleMute,
   undoLast,
   seekTo,
+  hushScheduled,
 } from '../audio/looper'
 
 /**
@@ -826,6 +827,19 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * a bassline you are writing now.
    */
   const keep = (kind: 'song' | 'loop', layerId?: string) => {
+    /**
+     * ⚠️ BEFORE THE PROMPT, NOT AFTER IT. window.prompt blocks this thread while the audio clock
+     * runs on, so the loop's scheduler stops extending its look-ahead and every note still
+     * waiting for its note-off drones for as long as the box is open. Reported as "when saving a
+     * song the currently played notes hang". Letting go first costs the tail of whatever was
+     * sounding; not letting go costs a note that never ends. See hushScheduled.
+     *
+     * ⚠️ AND THE LIVE KEYS TOO, for the older reason the blur handler gives: a dialog takes
+     * focus, so a key you were holding when you pressed Keep never delivers its keyup.
+     */
+    hushScheduled()
+    stopLive()
+    setHeld([])
     const name =
       window.prompt(kind === 'loop' ? 'Name this loop' : 'Name this song', '')?.trim() ?? ''
     if (!name) return

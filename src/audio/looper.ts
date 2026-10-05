@@ -382,6 +382,24 @@ function releaseAllLayers() {
   for (const id of [...sounding.keys()]) releaseLayer(id)
 }
 
+/**
+ * Let go of every note the loop is sounding, for a caller about to stop the clock answering.
+ *
+ * ⚠️ A SIXTH WAY TO STRAND A NOTE-OFF, AND IT BELONGS ON THE LIST ABOVE. Note-offs are scheduled
+ * on the audio clock, but only for the notes inside the current look-ahead window — anything
+ * whose off falls past `to` is left for the next tick. `tick` is a setInterval, so a blocking
+ * modal stops it dead while the audio clock runs on, and every note waiting for its off in the
+ * next window simply drones. Reported as "when saving a song the currently played notes hang",
+ * which is exactly what Keep does: window.prompt, on the main thread, with the loop playing.
+ *
+ * ⚠️ RELEASE RATHER THAN PAUSE, because the loop is not stopping. The next tick after the dialog
+ * closes schedules the window it has landed in and the arrangement carries on; what this costs is
+ * the tail of whatever was sounding, which is a clipped note against a note that never ends.
+ */
+export function hushScheduled() {
+  releaseAllLayers()
+}
+
 /** A click that is heard but never seen or sent. */
 function click(at: number, accent: boolean, countIn = false) {
   const c = sharedCtx()
