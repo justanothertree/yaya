@@ -50,7 +50,6 @@ import {
   applyLookPreset,
   looksFromConfig,
   setLook,
-  songFromConfig,
   songsFromConfig,
 } from '../profile/songBlockConfig'
 import { readPresets } from '../audio/vizPresets'
@@ -1057,7 +1056,20 @@ function isBlockEmpty(block: ProfileBlock): boolean {
   if (blockKeepEmpty(block.config)) return false
   if (block.block_type === 'bio' || block.block_type === 'free') return !txt
   if (block.block_type === 'status') return !txt
-  if (block.block_type === 'song') return !songFromConfig(block.config)
+  /**
+   * ⚠️ songsFromConfig, NOT songFromConfig, AND THE DIFFERENCE EMPTIED A WHOLE PAGE. The
+   * singular reads `config.song` alone; the plural reads that AND the `songs` array a playlist
+   * is stored in. So every song block built as a playlist — which is what the picker makes now —
+   * answered "yes, empty" here.
+   *
+   * ⚠️ AND IT DOES NOT STOP AT ONE BLOCK. ProfileBlocksView filters to the blocks that will
+   * actually draw and then returns NULL when none are left, so on a page whose only visible
+   * block was a playlist the entire blocks area vanished — no grid, no tabs, no empty slot, just
+   * a profile with nothing on it. Found on the live site: a published page returning one public
+   * song block from the server and rendering none of it, reported as "not sure the profile is
+   * showing up right".
+   */
+  if (block.block_type === 'song') return !songsFromConfig(block.config).length
   if (block.block_type === 'art')
     return !(Array.isArray(block.config.art) && block.config.art.length)
   if (block.block_type === 'pet')
