@@ -1897,6 +1897,7 @@ export function ProfileBlocksEditor({
   onSaved,
   page,
   onPage,
+  onDone,
 }: {
   initial: ProfileBlock[]
   username: string
@@ -1909,6 +1910,15 @@ export function ProfileBlocksEditor({
   /** the page shape, so the canvas composes at the width the page really uses */
   page?: unknown
   onPage?: (next: { width: string; gap: string }) => void
+  /**
+   * Finish arranging, from the bottom of the editor.
+   *
+   * ⚠️ BECAUSE "DONE" LIVES IN THE PAGE HEAD AND THE EDITOR IS LONG. Arranging happens at the
+   * bottom and the only way out was at the top, so finishing meant scrolling back up past
+   * everything you had just been working on. The head button stays; this is a second door at
+   * the end of the corridor rather than a replacement.
+   */
+  onDone?: () => void
 }) {
   const [blocks, setBlocksRaw] = useState<ProfileBlock[]>(initial)
   const [err, setErr] = useState<string | null>(null)
@@ -3519,6 +3529,12 @@ export function ProfileBlocksEditor({
           document.body,
         )}
 
+      {/**
+       * ⚠️ STUCK TO THE BOTTOM OF THE WINDOW, because this bar is the only thing that answers
+       * "has it saved" and "am I finished", and both questions get asked while you are looking
+       * at a block halfway down a long page. It used to sit at the end of the editor and scroll
+       * away with everything else.
+       */}
       <div className="profile-editor-status" aria-live="polite">
         <span className={err ? 'profile-editor-err' : 'muted'}>
           {err
@@ -3561,6 +3577,13 @@ export function ProfileBlocksEditor({
             }}
           >
             Take the {BLOCK_LABEL[blocked]} block out and save the rest
+          </button>
+        )}
+        {/* ⚠️ LAST IN THE BAR, so the save status is read before the way out is pressed — and
+            pushed to the end, because this is the one control in here you only want once. */}
+        {onDone && (
+          <button className="btn profile-editor-done" onClick={onDone}>
+            ✓ Done editing
           </button>
         )}
       </div>

@@ -7002,14 +7002,40 @@ table.reconcile tfoot .reconcile-total td {
 }
 
 /* Where the Save button used to be. Quiet by default — it is a status, not a call to act. */
+/**
+ * The editor's footer, stuck to the bottom of the window while you arrange.
+ *
+ * ⚠️ IT HELD THE ONLY ANSWER TO "HAS IT SAVED" AND SCROLLED AWAY WITH THE PAGE. Both questions
+ * this bar answers — has it saved, am I finished — get asked while you are looking at a block
+ * halfway down a long editor, and the way out was a button in the page HEAD. Reported as having
+ * to scroll down, across, and then back up to press one thing.
+ *
+ * ⚠️ sticky RATHER THAN fixed, so it belongs to the editor rather than to the window: it cannot
+ * cover another room's content, it disappears with the editor, and it needs no z-index fight
+ * with the nav. A sticky element only sticks inside its own parent, which is exactly the span
+ * over which this is the relevant bar.
+ */
 .profile-editor-status {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
   margin-top: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.6rem;
+  /* ⚠️ opaque enough to read over a block, because the grid scrolls underneath it */
+  background: color-mix(in srgb, var(--bg, #15151a) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
   font-size: 0.82rem;
   min-height: 1.6rem;
+}
+/* ⚠️ pushed right, so the save status is read before the way out is pressed — see the note there */
+.profile-editor-done {
+  margin-left: auto;
 }
 .profile-editor-err {
   color: #f46b6b;

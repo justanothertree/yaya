@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient, getSupabaseClientOrNull } from '../finance/client'
 import { tierSees, avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
@@ -155,6 +155,26 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    */
   const [pageStyle, setPageStyle] = useState<unknown>(undefined)
   const [editing, setEditing] = useState(editFromHash)
+  /**
+   * Stop arranging, and remember that you did.
+   *
+   * ⚠️ ONE FUNCTION, BECAUSE THERE ARE TWO DOORS NOW. The head button and the editor's own
+   * footer both end editing, and both have to clear the pretend-audience preview and record the
+   * preference — a second copy is a second place to forget rememberEditPref, which is what makes
+   * the page open the way you left it.
+   */
+  const stopEditing = useCallback(() => {
+    setSeenAs(null)
+    setEditing(false)
+    rememberEditPref(false)
+  }, [])
+  const toggleEditing = useCallback(() => {
+    setSeenAs(null)
+    setEditing((v) => {
+      rememberEditPref(!v)
+      return !v
+    })
+  }, [])
   /**
    * Open your own page in the editor, once the server has confirmed it IS your own page.
    *
@@ -788,13 +808,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
             </select>
             <button
               className="btn"
-              onClick={() => {
-                setSeenAs(null)
-                setEditing((v) => {
-                  rememberEditPref(!v)
-                  return !v
-                })
-              }}
+              onClick={toggleEditing}
               title={
                 editing ? 'Stop arranging and look at the page' : 'Back to arranging your page'
               }
@@ -936,6 +950,9 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
              what is actually stored. It no longer closes the editor: you are done when you say
              you are done, not when the last keystroke lands. */
           onSaved={(saved) => setBlocks(saved)}
+          /* ⚠️ THE SAME ACTION THE HEAD BUTTON TAKES, through one function, because two copies
+             of "stop editing" is two places to forget rememberEditPref — see stopEditing. */
+          onDone={stopEditing}
         />
       ) : (
         /* ⚠️ `guest` is anyone signed OUT, not just the demo. A friend's published page has

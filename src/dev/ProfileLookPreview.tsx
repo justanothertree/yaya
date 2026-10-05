@@ -246,6 +246,10 @@ export function ProfileLookPreview() {
           trophies={SAMPLE_TROPHIES}
           snakeBest={{ score: 812, game_mode: 'classic' }}
           onSaved={setBlocks}
+          /* ⚠️ the workbench takes the same door the real page does, so the footer it shows is
+             the footer somebody actually gets — a preview missing a control is a preview that
+             cannot be used to check that control */
+          onDone={() => setEditing(false)}
         />
       ) : (
         <ProfileBlocksView
