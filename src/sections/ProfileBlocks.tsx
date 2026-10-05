@@ -1305,6 +1305,8 @@ function ArtPicker({
   /* the config as it would be SENT, not just the pictures in it — see configSize */
   const used = configSize({ ...value, art: chosen })
   const names = chosen.map((a) => readDrawing(a)?.name ?? '?')
+  /* which drawing would not go in, named at the moment it was pressed — see the click below */
+  const [tooBig, setTooBig] = useState<string | null>(null)
 
   if (!items.length && !chosen.length)
     return (
@@ -1331,14 +1333,40 @@ function ArtPicker({
               key={a.id}
               className={'fx-style-btn' + (on ? ' is-on' : '')}
               aria-pressed={on}
-              onClick={() =>
-                onChange({
-                  ...value,
-                  art: on
-                    ? chosen.filter((c) => readDrawing(c)?.name !== a.name)
-                    : [...chosen, packDrawing(a.art)],
-                })
-              }
+              onClick={() => {
+                if (on) {
+                  setTooBig(null)
+                  onChange({ ...value, art: chosen.filter((c) => readDrawing(c)?.name !== a.name) })
+                  return
+                }
+                /**
+                 * ⚠️ THINNED TO FIT RATHER THAN TURNED AWAY AT SAVE TIME. This packed the
+                 * drawing raw and checked nothing, so a picture that did not fit was accepted
+                 * here and refused later by the save with "the 🖼 Art block holds too much —
+                 * take something out of it": a message that arrives long after the press that
+                 * caused it, names no drawing, and leaves you guessing which of them to remove.
+                 * Said plainly, twice: "i really hate" that line.
+                 *
+                 * ⚠️ AND THE ANSWER WAS ALREADY WRITTEN NEXT DOOR. VisualPicker has done this
+                 * since it stopped refusing drawings, and its note says simplifyDrawing was
+                 * written for exactly this case — the art block was the one place that never
+                 * called it. Only the copy IN THE BLOCK is thinned; the gallery keeps every
+                 * point, and a block is about 180 pixels across.
+                 */
+                const packed = fitDrawing(
+                  a.art,
+                  packDrawing,
+                  (p) => configSize({ ...value, art: [...chosen, p] }) <= CONFIG_LIMIT,
+                )
+                /* ⚠️ and it can still be refused, for the drawing that genuinely will not go —
+                   said HERE, naming it, at the moment you pressed it */
+                if (configSize({ ...value, art: [...chosen, packed] }) > CONFIG_LIMIT) {
+                  setTooBig(a.name)
+                  return
+                }
+                setTooBig(null)
+                onChange({ ...value, art: [...chosen, packed] })
+              }}
             >
               <span aria-hidden>🖼</span>
               <span className="fx-style-label">{a.name}</span>
@@ -1346,6 +1374,15 @@ function ArtPicker({
           )
         })}
       </div>
+      {/* ⚠️ NAMED, AND HERE RATHER THAN AT THE SAVE. The point of this line is that it arrives
+          on the press that caused it and says which drawing — the message it replaces arrived
+          after Done editing and said only that the block held too much. */}
+      {tooBig && (
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          <strong>{tooBig}</strong> will not fit alongside the others, even thinned down. Take one
+          out first, or put it on a block of its own.
+        </span>
+      )}
       <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
         <input
           type="checkbox"
