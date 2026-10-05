@@ -3480,6 +3480,28 @@ export function ProfileBlocksEditor({
                 ? 'Saved \u2713'
                 : 'Changes save themselves.'}
         </span>
+        {/**
+         * ⚠️ WHAT A STRANGER ACTUALLY SEES, WHICH NOTHING ANYWHERE SAID. Publishing a page and
+         * a block's tier are two switches and the note beside "Anyone" already explains the word
+         * — but neither of them answers the question somebody actually has, which is "is my page
+         * showing". Reported as "i dont think my profile is properly display": the page was
+         * published, five blocks were saved, and exactly one of them was public, so a signed-out
+         * visitor saw a page with one thing on it and the editor looked completely normal.
+         *
+         * ⚠️ A COUNT RATHER THAN A WARNING, because most of the time this is a decision somebody
+         * made on purpose and being told off for it is how a notice becomes wallpaper. It only
+         * appears once the page is published, where it is the one fact the two switches cannot
+         * tell you between them.
+         */}
+        {pagePublic && blocks.length > 0 && (
+          <span className="muted" style={{ fontSize: '0.75rem' }}>
+            Published — a visitor who is not signed in sees{' '}
+            <strong>
+              {blocks.filter((b) => b.visibility === 'public').length} of {blocks.length}
+            </strong>{' '}
+            {blocks.length === 1 ? 'block' : 'blocks'}. The rest are members only.
+          </span>
+        )}
         {blocked && (
           <button
             className="btn"
