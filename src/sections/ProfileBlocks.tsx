@@ -2061,6 +2061,20 @@ export function ProfileBlocksEditor({
   /** on a phone the panel is a tray, and a tray can be pushed out of the way */
   const [trayOpen, setTrayOpen] = useState(true)
   /**
+   * Whether the dressing — type, edge, shape, colour — is unfolded.
+   *
+   * ⚠️ CLOSED, BECAUSE IT IS MOST OF THE PANEL AND YOU SET IT ONCE. Measured on a banner block:
+   * the tray is 352x702 fixed and its contents were 1152 tall, so it overflowed by 450 and you
+   * scrolled INSIDE the panel to reach anything near the bottom — including "Who can see this",
+   * which is the setting that decides whether a page shows at all. Four look rows were 650 of
+   * that 1152. Reported as the block editing menu being an experience of scrolling for no
+   * reason.
+   *
+   * ⚠️ AND IT IS REMEMBERED ACROSS BLOCKS, because somebody dressing a page is dressing several
+   * in a row and re-opening it on every block is the same complaint one level down.
+   */
+  const [dressOpen, setDressOpen] = useState(false)
+  /**
    * ⚠️ ARRANGING IS A DIFFERENT JOB FROM FILLING IN, and the editor showing the real page is
    * what makes them fight.
    *
@@ -3048,7 +3062,15 @@ export function ProfileBlocksEditor({
          * filter or containment, now or later.
          */
         createPortal(
-          <div className={'profile-inspector is-' + anchor + (trayOpen ? ' is-open' : ' is-shut')}>
+          <div
+            className={
+              'profile-inspector is-' +
+              anchor +
+              (trayOpen ? ' is-open' : ' is-shut') +
+              /* ⚠️ the dressing is folded away unless asked for — see dressOpen */
+              (dressOpen ? ' is-dressed' : '')
+            }
+          >
             <div className="profile-inspector-head">
               {/* ⚠️ a tray you have to hit a small chevron to close is a tray that stays open and
                   covers the thing you are editing, so the pull is a proper target */}
@@ -3061,6 +3083,20 @@ export function ProfileBlocksEditor({
                 {trayOpen ? '▾' : '▴'}
               </button>
               <strong>{BLOCK_LABEL[selected.block_type]}</strong>
+              {/**
+               * ⚠️ THE DRESSING FOLDS, BECAUSE IT WAS MOST OF THE PANEL. Type, edge, shape and
+               * colour are four rows you set once and then scroll past every time afterwards —
+               * 650px of a tray that can only show 702, which is why the thing at the bottom of
+               * it was unreachable without scrolling inside a fixed panel.
+               */}
+              <button
+                className={'btn btn-ghost profile-inspector-dress' + (dressOpen ? ' is-on' : '')}
+                aria-pressed={dressOpen}
+                onClick={() => setDressOpen((v) => !v)}
+                title={dressOpen ? 'Fold the look away' : 'Type, edge, shape and colour'}
+              >
+                🎨 Look
+              </button>
               <span className="profile-inspector-side">
                 {(['left', 'right'] as const).map((side) => (
                   <button
@@ -3155,7 +3191,7 @@ export function ProfileBlocksEditor({
                   </div>
                 )}
 
-                <div className="profile-editrow-settings">
+                <div className="profile-editrow-settings profile-editrow-dress">
                   <label className="profile-editrow-look">
                     <span className="muted">Type</span>
                     <span className="profile-width-row">
@@ -3313,7 +3349,7 @@ export function ProfileBlocksEditor({
                   </div>
                 )}
 
-                <div className="profile-editrow-settings">
+                <div className="profile-editrow-settings profile-editrow-dress">
                   <label className="profile-editrow-look">
                     <span className="muted">Edge</span>
                     <span className="profile-width-row">
@@ -3335,7 +3371,7 @@ export function ProfileBlocksEditor({
                   </label>
                 </div>
 
-                <div className="profile-editrow-settings">
+                <div className="profile-editrow-settings profile-editrow-dress">
                   <label className="profile-editrow-look">
                     <span className="muted">Shape</span>
                     <span className="profile-width-row">
@@ -3397,7 +3433,7 @@ export function ProfileBlocksEditor({
                         ),
                       )
                     return (
-                      <div className="profile-editrow-settings">
+                      <div className="profile-editrow-settings profile-editrow-dress">
                         <label className="profile-editrow-look">
                           <span className="muted">Colour</span>
                           <span className="profile-tint-row">

@@ -14909,3 +14909,27 @@ a.cz-msg-author:focus-visible {
   width: 100%;
   height: 100%;
 }
+
+/**
+ * The dressing rows in a block's settings tray — see dressOpen.
+ *
+ * ⚠️ FOLDED AWAY BY DEFAULT, because they were most of the panel and you set them once.
+ * Measured on a banner: the tray is fixed at 352×702 and held 1152px of content, so it
+ * overflowed by 450 and everything near the bottom — including "Who can see this", which
+ * decides whether a page shows at all — was behind a scroll INSIDE a fixed panel.
+ *
+ * ⚠️ display RATHER THAN max-height, because a half-height row of buttons invites a click on
+ * something it has cut in half. Either these are here or they are not.
+ */
+.profile-inspector:not(.is-dressed) .profile-editrow-dress {
+  display: none;
+}
+.profile-inspector-dress {
+  margin-left: auto;
+}
+
+/* ⚠️ the one line that says your own page is yours to arrange — see the note in Profile.tsx */
+.profile-head-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+}

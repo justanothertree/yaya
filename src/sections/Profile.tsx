@@ -818,6 +818,24 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           </span>
         )}
         {/**
+         * ⚠️ THAT THE PAGE IS EDITABLE AT ALL, AND THAT SAVING IS NOT A THING YOU DO. Looking at
+         * your own profile not in edit mode, nothing says the arrangement is yours to change —
+         * the only sign is a button whose label reads like a navigation item. And the first
+         * question anybody has once they are in there is where the save button went, because
+         * there isn't one. Asked for in those words: make it clear you have to enable that
+         * switch to edit, and then save.
+         *
+         * ⚠️ ONLY WHEN IT IS YOURS AND YOU ARE NOT ALREADY IN THERE. While editing, the footer
+         * says "Changes save themselves" at the bottom of the editor, which is the same sentence
+         * in the place it is needed — so saying it twice would be a notice rather than an answer.
+         */}
+        {p.is_me && !editing && (
+          <p className="muted profile-head-hint">
+            This is the page as others see it. <strong>🎨 Edit page</strong> to arrange it — changes
+            save themselves as you go.
+          </p>
+        )}
+        {/**
          * ⚠️ THE FEEDBACK LOOP FOR FOUR VISIBILITY TIERS, which until now had none. Every block
          * carries an audience and there was no way to find out what any of them looked like from
          * the other side — so "I think that one is private" was a belief, on a page that can now
