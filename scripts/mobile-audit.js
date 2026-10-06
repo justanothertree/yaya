@@ -55,6 +55,47 @@ const scrollsX = (el) => {
 }
 
 /**
+ * A PANEL THAT SCROLLS SIDEWAYS INSIDE ITSELF — which every rule above is built to miss.
+ *
+ * ⚠️ THIS IS THE BUG THAT WAS REPORTED AND THE REASON IT COULD NOT BE FOUND. The block settings
+ * panel was `width: min(20rem, 32vw)` with `overflow-y: auto`, and a block's options were
+ * reported as "3 page scroll to the right". Every probe written to find it answered zero:
+ *
+ *   - `sideways` is `documentElement.scrollWidth - W`, the DOCUMENT's own overflow. A panel that
+ *     is `position: fixed` and portalled to the body never widens the document however far its
+ *     contents run, so the backstop that catches everything else cannot see this at all.
+ *   - `offEdge` and `clipped` both ask `scrollsX`, which answers "does an ancestor manage
+ *     horizontal overflow" and treats yes as proof that going past the edge is the design.
+ *     Inside a panel like this that is true of EVERY descendant, so the panel quietly exempts
+ *     its entire contents from the two rules that would have named them.
+ *
+ * ⚠️ AND NOBODY ASKED FOR THAT SCROLLBAR, which is what makes this a check rather than a matter
+ * of taste. Per the overflow spec, when one axis is not `visible` the other computes to `auto` —
+ * so `overflow-y: auto` on its own silently makes an element scrollable SIDEWAYS as well. That
+ * is never what anyone means by it, and there is nothing in the source to notice.
+ *
+ * So: the element is its own horizontal scroll container, it really is scrolling, and no rule
+ * anywhere sets `overflow-x` on it. Something deliberately sideways — the piano keyboard, a chip
+ * carousel — declares `overflow-x` or `overflow` and is silent here. That exclusion is the whole
+ * value of the rule: without it this flags the instrument's keyboard on every run, which is how
+ * a checker stops being a checker.
+ *
+ * ⚠️ `whoSets` IS THE EXPENSIVE PART, so it is only asked about the few elements that have
+ * already passed both cheap tests. Walking every rule in the stylesheet once per element on the
+ * page is not a check anybody waits around for.
+ */
+const scrollsXUnasked = (el, cs) => {
+  if (cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') return false
+  if (el.scrollWidth <= el.clientWidth + 2) return false
+  /* something narrower than this is a chip or an icon, where a stray pixel is not a finding */
+  if (el.clientWidth < 40) return false
+  if (el.style.getPropertyValue('overflow-x') || el.style.getPropertyValue('overflow')) return false
+  /* a shorthand `overflow:` expands in the CSSOM, so this sees `overflow: auto` as well as
+     `overflow-x: auto` — and does NOT see a lone `overflow-y`, which is exactly the distinction */
+  return !whoSets(el, 'overflow-x').rules.length
+}
+
+/**
  * ⚠️ WCAG exempts a target whose size is set by the text around it — a link in a sentence
  * cannot be made 24px tall without changing the line it sits in.
  */
@@ -75,6 +116,7 @@ export function mobileAudit() {
     snug: [],
     offEdge: [],
     clipped: [],
+    insideOut: [],
     wordless: [],
   }
   const once = new Set()
@@ -128,6 +170,14 @@ export function mobileAudit() {
     ) {
       once.add('c' + id(el))
       out.clipped.push({ el: id(el), text: (el.textContent || '').trim().slice(0, 30) })
+    }
+    if (!once.has('i' + id(el)) && scrollsXUnasked(el, cs)) {
+      once.add('i' + id(el))
+      out.insideOut.push({
+        el: id(el),
+        wide: el.clientWidth,
+        by: el.scrollWidth - el.clientWidth,
+      })
     }
   }
   return out
