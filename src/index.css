@@ -11466,120 +11466,142 @@ a.cz-msg-author:focus-visible {
   border-radius: 12px;
 }
 /**
- * ⚠️ IT FLOATS NOW, rather than sitting under the page.
+ * ⚠️ IT IS A DIALOG NOW, rather than a panel fixed to an edge of the screen.
  *
- * Underneath was chosen so that opening it could not push the grid around while you were
- * arranging it — which is a real hazard and still is. But the cost was worse: the panel and the
- * block it describes were never on screen together, so every change meant scrolling down to the
- * controls, changing something you could no longer see, and scrolling back up to find out what
- * happened. On a phone that is the entire interaction.
+ * It has been three shapes, and each one fixed the last one's real problem and brought its own.
  *
- * Fixed to the viewport solves both. It cannot move the grid, because it is out of the flow, and
- * it cannot leave the block behind, because it never scrolls away. Left on a wide screen so it
- * sits beside the canvas rather than over it; along the bottom on a phone, where the reachable
- * edge is the bottom one and there is no room beside anything.
+ * Under the page first — which meant the panel and the block it described were never on screen
+ * together, so every change was scroll down, change something you can no longer see, scroll back
+ * up to find out what happened.
+ *
+ * Then fixed to an edge, which solved that and introduced this: `width: min(20rem, 32vw)` is
+ * about 294px of content box, and these settings are rows of five and seven buttons. Worse,
+ * `overflow-y: auto` on it makes `overflow-x` compute to `auto` as well — one axis non-visible
+ * forces the other — so a row too wide to wrap grew a HORIZONTAL SCROLLBAR instead of being laid
+ * out. Reported as a block's options being "3 page scroll to the right", on top of the scrolling
+ * down that the Look fold was added to fix. The left/right anchor and the slide-away pull were
+ * both answers to the same underlying thing: a panel beside the page is always in front of some
+ * of it, and no edge is the right edge for long.
+ *
+ * Over the page, with the block drawn inside it, has neither cost. There is room for the controls
+ * to lay out in columns, nothing you need is covered, and the thing the settings are about is the
+ * first thing in the dialog — which is what was actually asked for: see how it will look as it is
+ * on the page.
+ *
+ * ⚠️ IT WEARS .pal-sheet, so the width, the cap, the scrolling, the padding, the border and the
+ * shadow are the ones every other dialog on this site has, and all that is left here is what is
+ * genuinely different about this one. That sheet's own comment records exactly this lesson from
+ * the appearance dialog: it was 30rem and scrolled, and opening a pad pushed the preview out of
+ * sight.
  */
 .profile-inspector {
+  /* wider than the 52rem house sheet, because this one holds a page preview AND the controls */
+  width: min(64rem, 100%);
+  gap: 0.6rem;
+}
+
+/**
+ * The block, and everything about it, side by side.
+ *
+ * ⚠️ THE PREVIEW IS FIRST IN THE DOM AND SECOND IN THE GRID, deliberately. In source order it
+ * comes first, so on a phone — one column — you see the block before the controls that change it.
+ * On a wide screen `grid-template-areas` moves it to the right, where a preview belongs, without
+ * the DOM order changing and dragging the phone layout along with it.
+ */
+.profile-blockedit {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: 'live' 'controls';
+  gap: 0.75rem;
+  /**
+   * ⚠️ A GRID ITEM DEFAULTS TO `min-width: auto` — "never narrower than my contents" — and the
+   * contents here are rows of buttons. Left at auto, a track refuses to shrink, the row inside it
+   * never gets the chance to wrap, and the sheet scrolls sideways: which is the exact bug this
+   * whole dialog exists to stop happening again, one level down. Every track and every column in
+   * here says `minmax(0, …)` or `min-width: 0` for that reason, and none of them is decoration.
+   */
+  min-width: 0;
+}
+@media (min-width: 52rem) {
+  .profile-blockedit {
+    /* the preview is the bigger half: it is a page, and the controls are a list */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas: 'controls live';
+    align-items: start;
+  }
+  /**
+   * ⚠️ STICKY, so the block stays in sight while the controls scroll past it. The sheet is the
+   * scroll container — `.pal-sheet` is `overflow-y: auto` — so `top` is measured against the
+   * sheet and not the window, which is the whole reason this works without a magic number.
+   */
+  .profile-blockedit-live {
+    position: sticky;
+    top: 0;
+  }
+}
+.profile-blockedit-live {
+  grid-area: live;
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  min-width: 0;
+}
+.profile-blockedit-controls {
+  grid-area: controls;
   display: grid;
   gap: 0.6rem;
-  padding: 0.75rem;
+  align-content: start;
+  min-width: 0;
+}
+.profile-blockedit-tag {
+  font-size: 0.74rem;
+}
+/**
+ * ⚠️ A STAGE WEARING THE PAGE'S OWN BACKGROUND, because a block is designed against the page and
+ * has to be judged against it. On the sheet's panel colour a wash block reads as a different
+ * colour than it will actually be — which makes the preview worse than no preview, because it
+ * would be confidently wrong rather than simply absent.
+ */
+.profile-blockedit-stage {
+  padding: 0.6rem;
   border: 1px solid var(--border);
   border-radius: 12px;
-  /**
-   * ⚠️ AN OPAQUE COLOUR, and this was a real bug rather than a preference. It said
-   * `var(--surface, …)`, and --surface is a GRADIENT of near-transparent whites — so the fallback
-   * never applied and the computed background was rgba(0,0,0,0). The panel was invisible, with
-   * the page showing straight through the settings, which is exactly what "overlapping other
-   * content looks terrible" describes. --bg is a colour, so the fallback chain works and there is
-   * something solid behind the text; the surface gradient goes on top for the same sheen every
-   * other panel has.
-   */
   background-color: var(--bg, #0b0b0f);
   background-image: var(--surface);
-  position: fixed;
-  z-index: 40;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: min(20rem, 32vw);
-  max-height: min(78vh, 44rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  min-width: 0;
 }
-/* which edge it is anchored to, on a screen wide enough to have edges */
-.profile-inspector.is-right {
-  left: auto;
-  right: 1rem;
+/**
+ * ⚠️ CAPPED ON A PHONE, so a tall block cannot push every control below the fold — the same trap
+ * `.pal`'s own comment records for the shade pad. It scrolls rather than clipping: a preview you
+ * have to scroll is still honest, and one that silently ends early is not.
+ */
+@media (max-width: 52rem) {
+  .profile-blockedit-stage {
+    max-height: 38vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
 }
 
-.profile-inspector-head {
-  position: sticky;
-  top: -0.75rem;
-  z-index: 1;
-  margin: -0.75rem -0.75rem 0;
-  padding: 0.75rem;
-  background-color: var(--bg, #0b0b0f);
-}
-.profile-inspector-side {
-  display: flex;
-  gap: 0.15rem;
-  margin-left: auto;
-}
-.profile-inspector-side .btn,
-.profile-inspector-pull {
-  padding: 0.05rem 0.35rem;
-  font-size: 0.75rem;
-}
-/* the pull is only meaningful where the panel is a tray */
-.profile-inspector-pull {
-  display: none;
-}
-
-@media (max-width: 900px) {
-  /**
-   * ⚠️ A TRAY, not a floating card. On a phone the panel is as wide as the page, so "floating"
-   * only means "covering" — and the useful question is not where it sits but whether it is in the
-   * way right now. Sliding it down to its header leaves the title and the pull, which is enough
-   * to know what you have open and to bring it back.
-   */
-  .profile-inspector {
-    left: 0;
-    right: 0;
-    top: auto;
-    bottom: 0;
-    transform: none;
-    width: auto;
-    max-height: 52vh;
-    border-radius: 14px 14px 0 0;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-    transition: max-height 0.18s ease;
-  }
-  /**
-   * ⚠️ COLLAPSED BY HEIGHT, not slid by transform. A transform would have been the obvious way
-   * and it did not take on this element — and rather than keep hunting for what was eating it, a
-   * height is the more robust mechanism anyway: it survives a reduced-motion setting stripping
-   * transforms, it cannot be captured by an ancestor, and the space genuinely goes away instead
-   * of the panel being moved off over content that is still underneath it.
-   *
-   * The header is sticky and stays, so what is left is a labelled bar you press to bring it back.
-   */
-  .profile-inspector.is-shut {
-    /* nothing but the header is rendered while shut — see ProfileBlocks. The height follows. */
-    padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
-  }
-  .profile-inspector-pull {
-    display: inline-flex;
-  }
-  .profile-inspector-side {
-    display: none;
-  }
-}
 .profile-inspector-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  /**
+   * ⚠️ STUCK TO THE TOP OF THE SHEET, because Done is in it. "Scroll down, then back up just to
+   * press Done" was half of the original complaint, and a wider dialog only fixes the other half:
+   * there is still more here than fits on a short window. The negative margin is the usual trick
+   * for making a sticky header span a padded scroll container's full width.
+   */
+  position: sticky;
+  top: calc(var(--card-pad, 1.1rem) * -1);
+  z-index: 1;
+  margin: calc(var(--card-pad, 1.1rem) * -1) calc(var(--card-pad, 1.1rem) * -1) 0;
+  padding: var(--card-pad, 1.1rem);
+  background-color: var(--panel);
 }
 .profile-width-row {
   display: flex;
@@ -11791,24 +11813,6 @@ a.cz-msg-author:focus-visible {
 .profile-canvas-tools .btn[aria-pressed='true'] {
   border-color: var(--accent, #7c6af7);
   color: var(--accent, #7c6af7);
-}
-/**
- * ⚠️ FINGER-SIZED WHERE THERE ARE FINGERS.
- *
- * Measured at 375px: the tray pull was 24×19 and the twelve colour swatches were 28×28. The
- * pull's own note says it exists so that closing the tray is "a proper target" rather than a
- * small chevron — it was the smallest control on the panel, and it is the one you reach for when
- * the panel is covering the thing you are editing.
- *
- * 34px matches what the block toolbar already uses on touch, so this is the existing answer
- * applied where it had been missed rather than a new number.
- */
-@media (hover: none) and (pointer: coarse) {
-  .profile-inspector-pull {
-    min-width: 34px;
-    min-height: 34px;
-    font-size: 0.95rem;
-  }
 }
 
 @media (hover: none) and (pointer: coarse) {
