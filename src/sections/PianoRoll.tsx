@@ -675,6 +675,10 @@ export function PianoRoll({
 
   /** Click an empty cell to put a note there. An occupied one is left alone. */
   const onGridDown = (e: React.PointerEvent) => {
+    /* ⚠️ the same preventDefault onNoteDown has always had, and its absence here is why a drag
+       on the GRID — which is how a selection box is made — could still start the browser's own
+       text selection and, on the next press, its own drag. See the note on .inst-roll-host. */
+    e.preventDefault()
     /* ⚠️ button 2 is the right one; buttons is checked too, because a drag that STARTS on a note
        and continues onto the grid arrives here with no fresh button press of its own */
     if (e.button === 2 || (e.buttons & 2) !== 0) {
@@ -946,7 +950,18 @@ export function PianoRoll({
   }, [layer.id])
 
   return (
-    <div className="roll" ref={rollRef}>
+    <div
+      className="roll"
+      ref={rollRef}
+      /**
+       * ⚠️ NO NATIVE DRAGS IN HERE, EVER. The CSS stops text being SELECTED, which removes the
+       * usual way one starts; this refuses the drag itself, so anything else draggable that ever
+       * lands in the roll — an image, a link, a future control — cannot cancel a gesture either.
+       * A native dragstart makes the browser fire POINTERCANCEL, which is what actually breaks
+       * the select tool: the band never starts and any band in progress is torn down.
+       */
+      onDragStart={(e) => e.preventDefault()}
+    >
       <div className="roll-bar">
         <strong>Notes</strong>
         <span className="muted">

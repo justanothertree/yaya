@@ -7148,6 +7148,31 @@ a.cz-msg-author:focus-visible {
    A grid of elements rather than a canvas: a take is tens of notes, so the usual reason to
    reach for a bitmap does not apply, and elements bring hit-testing, focus and this
    stylesheet's own theming for free. See PianoRoll.tsx. */
+/**
+ * ⚠️ NOTHING IN THE ROLL IS TEXT YOU DRAG, AND LEAVING IT SELECTABLE BROKE THE SELECT TOOL.
+ *
+ * Reported as: selecting an area over and over, and then it stops letting you draw a box and the
+ * cursor becomes a crossed circle. That cursor is the browser's own "no drop" — a NATIVE drag had
+ * started instead of the roll's.
+ *
+ * The chain, measured: `.roll-keys` holds the pitch names and was `user-select: auto`, so a drag
+ * that begins on or passes over the key column selects that text (captured: "\nC5\nC4\n"). The
+ * NEXT drag that starts on the now-selected text makes the browser begin a native drag of it —
+ * `dragstart` fired on `.roll-key` — and the browser then fires POINTERCANCEL on the gesture the
+ * roll was relying on. The band never starts, and `onPointerCancel` tears down anything that had.
+ * Rapid repeats make it likely because they keep leaving a selection lying around for the next
+ * drag to catch.
+ *
+ * So the whole editor opts out. A piano roll has no prose in it — the key names and the bar
+ * numbers are labels on a control surface, not something anybody copies — and a drag here always
+ * means a gesture.
+ */
+.inst-roll-host,
+.inst-roll-host * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .inst-roll-host {
   display: block;
   width: 100%;
