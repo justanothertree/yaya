@@ -2054,19 +2054,23 @@ export function ProfileBlocksEditor({
    * nobody reads, and a migration that deletes a key is more code than the key costs.
    */
   /**
-   * Whether the dressing — type, edge, shape, colour — is unfolded.
+   * ⚠️ THE DRESSING NO LONGER FOLDS, and the button that folded it is gone.
    *
-   * ⚠️ CLOSED, BECAUSE IT IS MOST OF THE PANEL AND YOU SET IT ONCE. Measured on a banner block:
-   * the tray is 352x702 fixed and its contents were 1152 tall, so it overflowed by 450 and you
-   * scrolled INSIDE the panel to reach anything near the bottom — including "Who can see this",
-   * which is the setting that decides whether a page shows at all. Four look rows were 650 of
-   * that 1152. Reported as the block editing menu being an experience of scrolling for no
-   * reason.
+   * It was a real fix for a real problem: the panel was 352x702 fixed holding 1152 of content, so
+   * "Who can see this" — the setting that decides whether a block is visible at all — could not
+   * be reached without scrolling inside a fixed panel, and four look rows were 650 of that 1152.
+   * Hiding them was the cheapest way to get the bottom of the panel back.
    *
-   * ⚠️ AND IT IS REMEMBERED ACROSS BLOCKS, because somebody dressing a page is dressing several
-   * in a row and re-opening it on every block is the same complaint one level down.
+   * Both halves of that are now false. The panel is 528 wide against the old 294, so those rows
+   * are a fraction of the height they were; and the order below puts width and audience directly
+   * under the block's own fields, so the setting you must not have to hunt for is one of the
+   * first you see. What is left is one short scroll to reach the dressing — against a button you
+   * had to press every single time you wanted to change a shape.
+   *
+   * ⚠️ AND THE NAME WAS THE TELL. The whole panel is how a block looks, so a button called
+   * "Look" that reveals a quarter of it cannot be read off the screen: you had to already know
+   * what was behind it. A control nobody can name is a control nobody can predict.
    */
-  const [dressOpen, setDressOpen] = useState(false)
   /**
    * ⚠️ ARRANGING IS A DIFFERENT JOB FROM FILLING IN, and the editor showing the real page is
    * what makes them fight.
@@ -3072,11 +3076,7 @@ export function ProfileBlocksEditor({
          */
         createPortal(
           <div
-            className={
-              'profile-inspector' +
-              /* ⚠️ the dressing is folded away unless asked for — see dressOpen */
-              (dressOpen ? ' is-dressed' : '')
-            }
+            className={'profile-inspector'}
             role="dialog"
             /**
              * ⚠️ NOT `aria-modal`, AND NO SCRIM, because the page behind this is still live and
@@ -3089,20 +3089,6 @@ export function ProfileBlocksEditor({
           >
             <div className="profile-inspector-head">
               <strong>{BLOCK_LABEL[selected.block_type]}</strong>
-              {/**
-               * ⚠️ THE DRESSING FOLDS, BECAUSE IT WAS MOST OF THE PANEL. Type, edge, shape and
-               * colour are four rows you set once and then scroll past every time afterwards —
-               * 650px of a tray that can only show 702, which is why the thing at the bottom of
-               * it was unreachable without scrolling inside a fixed panel.
-               */}
-              <button
-                className={'btn btn-ghost profile-inspector-dress' + (dressOpen ? ' is-on' : '')}
-                aria-pressed={dressOpen}
-                onClick={() => setDressOpen((v) => !v)}
-                title={dressOpen ? 'Fold the look away' : 'Type, edge, shape and colour'}
-              >
-                🎨 Look
-              </button>
               <button
                 className="btn btn-ghost"
                 onClick={() => setOpenIdx(null)}
@@ -3137,6 +3123,78 @@ export function ProfileBlocksEditor({
                     setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
                   }
                 />
+
+                {/**
+                 * ⚠️ WIDTH AND AUDIENCE FIRST, directly under the block's own fields, because one of
+                 * them is a privacy control and it used to be last.
+                 *
+                 * "Who can see this" sat at the bottom, below four rows of type, edge, shape and colour —
+                 * so the setting that decides whether a block is visible at all was the furthest thing
+                 * from the top of the panel. That is what the Look fold was really for: hiding the
+                 * dressing was the cheapest way to drag this back into view. Ordering it properly is the
+                 * honest fix, and it is what makes the fold unnecessary rather than merely unfashionable.
+                 */}
+                <div className="profile-editrow-settings">
+                  {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
+                which of the three you are on without being read, and cannot go back a step. */}
+                  <label className="profile-editrow-size">
+                    <span className="muted">Width of the page</span>
+                    <span className="profile-width-row">
+                      {(['small', 'medium', 'large'] as const).map((sz) => (
+                        <button
+                          key={sz}
+                          className={'btn' + (selected.size === sz ? ' is-on' : '')}
+                          aria-pressed={selected.size === sz}
+                          onClick={() =>
+                            setBlocks((all) =>
+                              all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
+                            )
+                          }
+                        >
+                          {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  <label>
+                    <span className="muted">Who can see this</span>
+                    <select
+                      className="btn"
+                      value={selected.visibility}
+                      onChange={(e) =>
+                        setBlocks((all) =>
+                          all.map((x, idx) =>
+                            idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
+                          ),
+                        )
+                      }
+                    >
+                      {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                        <option key={t} value={t}>
+                          {TIER_LABEL[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {/**
+                   * ⚠️ "ANYONE" CHANGED MEANING AND THE WORD DID NOT.
+                   *
+                   * While a profile could only be loaded by a member, the public tier was a
+                   * ceiling something else enforced: "Anyone" honestly meant "any member", and
+                   * everybody who ever picked it picked it under that meaning. Publishing a page
+                   * makes the same word mean the open internet, for blocks chosen months ago
+                   * against the old one. So the word is left alone — it is the right word — and
+                   * what it currently reaches is said underneath it, where it can be true in both
+                   * states instead of being a guess baked into a label.
+                   */}
+                  {selected.visibility === 'public' && (
+                    <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                      {pagePublic
+                        ? '● Your page is published, so “Anyone” means anyone at all — signed in or not.'
+                        : '“Anyone” means any member, until you publish your page in Account.'}
+                    </p>
+                  )}
+                </div>
 
                 {/**
                  * ⚠️ EVERY BLOCK TYPE, unlike the colour below it.
@@ -3191,7 +3249,7 @@ export function ProfileBlocksEditor({
                   </div>
                 )}
 
-                <div className="profile-editrow-settings profile-editrow-dress">
+                <div className="profile-editrow-settings">
                   <label className="profile-editrow-look">
                     <span className="muted">Type</span>
                     <span className="profile-width-row">
@@ -3349,7 +3407,7 @@ export function ProfileBlocksEditor({
                   </div>
                 )}
 
-                <div className="profile-editrow-settings profile-editrow-dress">
+                <div className="profile-editrow-settings">
                   <label className="profile-editrow-look">
                     <span className="muted">Edge</span>
                     <span className="profile-width-row">
@@ -3371,7 +3429,7 @@ export function ProfileBlocksEditor({
                   </label>
                 </div>
 
-                <div className="profile-editrow-settings profile-editrow-dress">
+                <div className="profile-editrow-settings">
                   <label className="profile-editrow-look">
                     <span className="muted">Shape</span>
                     <span className="profile-width-row">
@@ -3433,7 +3491,7 @@ export function ProfileBlocksEditor({
                         ),
                       )
                     return (
-                      <div className="profile-editrow-settings profile-editrow-dress">
+                      <div className="profile-editrow-settings">
                         <label className="profile-editrow-look">
                           <span className="muted">Colour</span>
                           <span className="profile-tint-row">
@@ -3495,66 +3553,9 @@ export function ProfileBlocksEditor({
                     )
                   })()}
 
+                {/* ⚠️ on its own at the end: it is the one control here that cannot be undone by
+                    pressing it again, so it does not belong in a row with the everyday settings. */}
                 <div className="profile-editrow-settings">
-                  {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
-                which of the three you are on without being read, and cannot go back a step. */}
-                  <label className="profile-editrow-size">
-                    <span className="muted">Width of the page</span>
-                    <span className="profile-width-row">
-                      {(['small', 'medium', 'large'] as const).map((sz) => (
-                        <button
-                          key={sz}
-                          className={'btn' + (selected.size === sz ? ' is-on' : '')}
-                          aria-pressed={selected.size === sz}
-                          onClick={() =>
-                            setBlocks((all) =>
-                              all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
-                            )
-                          }
-                        >
-                          {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
-                        </button>
-                      ))}
-                    </span>
-                  </label>
-                  <label>
-                    <span className="muted">Who can see this</span>
-                    <select
-                      className="btn"
-                      value={selected.visibility}
-                      onChange={(e) =>
-                        setBlocks((all) =>
-                          all.map((x, idx) =>
-                            idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
-                          ),
-                        )
-                      }
-                    >
-                      {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                        <option key={t} value={t}>
-                          {TIER_LABEL[t]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {/**
-                   * ⚠️ "ANYONE" CHANGED MEANING AND THE WORD DID NOT.
-                   *
-                   * While a profile could only be loaded by a member, the public tier was a
-                   * ceiling something else enforced: "Anyone" honestly meant "any member", and
-                   * everybody who ever picked it picked it under that meaning. Publishing a page
-                   * makes the same word mean the open internet, for blocks chosen months ago
-                   * against the old one. So the word is left alone — it is the right word — and
-                   * what it currently reaches is said underneath it, where it can be true in both
-                   * states instead of being a guess baked into a label.
-                   */}
-                  {selected.visibility === 'public' && (
-                    <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                      {pagePublic
-                        ? '● Your page is published, so “Anyone” means anyone at all — signed in or not.'
-                        : '“Anyone” means any member, until you publish your page in Account.'}
-                    </p>
-                  )}
                   <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
                     Remove this block
                   </button>

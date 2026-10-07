@@ -14943,26 +14943,28 @@ a.cz-msg-author:focus-visible {
   height: 100%;
 }
 
-/**
- * The dressing rows in a block's settings tray — see dressOpen.
- *
- * ⚠️ FOLDED AWAY BY DEFAULT, because they were most of the panel and you set them once.
- * Measured on a banner: the tray is fixed at 352×702 and held 1152px of content, so it
- * overflowed by 450 and everything near the bottom — including "Who can see this", which
- * decides whether a page shows at all — was behind a scroll INSIDE a fixed panel.
- *
- * ⚠️ display RATHER THAN max-height, because a half-height row of buttons invites a click on
- * something it has cut in half. Either these are here or they are not.
- */
-.profile-inspector:not(.is-dressed) .profile-editrow-dress {
-  display: none;
-}
-.profile-inspector-dress {
-  margin-left: auto;
-}
-
 /* ⚠️ the one line that says your own page is yours to arrange — see the note in Profile.tsx */
 .profile-head-hint {
   margin: 0.4rem 0 0;
   font-size: 0.78rem;
+}
+
+/**
+ * A TICKBOX ROW IS AS TALL AS ITS WHOLE LABEL, and both of this panel's were 19px.
+ *
+ * ⚠️ THE TARGET IS THE LABEL, NOT THE BOX. A checkbox wrapped in a `<label>` is toggled by
+ * tapping anywhere in the label — measured: the row is 240px wide and tapping it really does
+ * toggle — so resizing the 13×13 box would be fixing the wrong element. What fails WCAG 2.5.8
+ * here is the row's HEIGHT: 240×19 misses the 24px floor on the short side, and it is a row you
+ * tap on a phone, inside a panel that is a bottom sheet there.
+ *
+ * ⚠️ 24 AND NOT THE 40 THIS FILE USES ELSEWHERE. 40px is right for a toolbar button standing on
+ * its own; these two sit in a column of settings where a 40px row would put a visible gap either
+ * side of a single line of text. 24 is the standard's floor and the honest minimum for a row
+ * whose size is set by the sentence in it — the same reasoning that exempts a link in a
+ * paragraph from the rule altogether.
+ */
+.profile-blockedit-controls label.inst-pick,
+.profile-song-auto {
+  min-height: 24px;
 }

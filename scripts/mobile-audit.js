@@ -101,6 +101,27 @@ const scrollsXUnasked = (el, cs) => {
  */
 const inProse = (el) => !!el.closest('p, li') && getComputedStyle(el).display.startsWith('inline')
 
+/**
+ * What you actually have to hit.
+ *
+ * ⚠️ A CHECKBOX WRAPPED IN A `<label>` IS NOT THE TARGET — THE LABEL IS. Clicking anywhere in
+ * the label toggles the box, which is the browser's own behaviour and not a nicety. Measured on
+ * the block settings panel: a 13×13 box inside a 240×19 label, and tapping the label really does
+ * toggle it. Reported as "INPUT 13x13", which names the wrong element and suggests the wrong fix
+ * — nobody should be making the tick bigger. The row was the thing that was too short.
+ *
+ * ⚠️ IT STILL REPORTS, and that is the point of measuring rather than excusing. 240×19 misses
+ * the 24px floor on its short side, so the finding survives with the right element and the right
+ * number on it. A rule that had simply skipped wrapped checkboxes would have hidden a real one.
+ */
+const hitBox = (el) => {
+  if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+    const lab = el.closest('label')
+    if (lab) return lab
+  }
+  return el
+}
+
 export function mobileAudit() {
   const W = innerWidth
   const targets = [
@@ -133,17 +154,19 @@ export function mobileAudit() {
   }
 
   for (const el of targets) {
-    const r = el.getBoundingClientRect()
+    /* the thing a finger has to land on, which for a wrapped tickbox is its label — see hitBox */
+    const hit = hitBox(el)
+    const r = hit.getBoundingClientRect()
     const name = (
-      (el.textContent || '').trim() ||
-      el.getAttribute('aria-label') ||
-      el.getAttribute('title') ||
+      (hit.textContent || '').trim() ||
+      hit.getAttribute('aria-label') ||
+      hit.getAttribute('title') ||
       '(none)'
     ).slice(0, 22)
     const size = Math.round(r.width) + 'x' + Math.round(r.height)
-    if ((r.width < SPACING || r.height < SPACING) && !inProse(el))
-      keep(out.tooSmall, el, { name, size })
-    else if (r.width < COMFY || r.height < COMFY) keep(out.snug, el, { name, size })
+    if ((r.width < SPACING || r.height < SPACING) && !inProse(hit))
+      keep(out.tooSmall, hit, { name, size })
+    else if (r.width < COMFY || r.height < COMFY) keep(out.snug, hit, { name, size })
     /* a control carrying no word, explained only by a tooltip nobody on a phone can open */
     const label = (el.textContent || '').trim()
     const meaning = el.getAttribute('title') || ''
