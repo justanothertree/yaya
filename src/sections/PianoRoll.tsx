@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { gridStep, pitchRange, toEvents, toNotes, type Note } from '../audio/noteEdit'
+import { gridStep, pitchRange, rollSize, toEvents, toNotes, type Note } from '../audio/noteEdit'
 import {
   loopState,
   seekTo,
@@ -37,10 +37,6 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const isBlack = (m: number) => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12)
 const nameOf = (m: number) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`
 
-/** How wide a grid step is when the take fits comfortably. The ceiling, never the answer. */
-const CELL_W = 32
-/** Below this a note is too small to grab, so the roll scrolls rather than shrinking further. */
-const CELL_MIN = 11
 const ROW_H = 18
 /** Two notes never share a pitch and a start, so this identifies one exactly. */
 const isSame = (n: Note, sel: { midi: number; t: number } | null) =>
@@ -260,8 +256,6 @@ export function PianoRoll({
     for (let m = hi; m >= lo; m--) r.push(m)
     return r
   }, [lo, hi])
-  const cols = Math.max(1, Math.round(layer.len / step))
-
   /**
    * ⚠️ PLAY A NOTE OFF THE TOP AND THE VIEW COMES TO IT.
    *
@@ -298,7 +292,7 @@ export function PianoRoll({
    * bars at 1/16 is 128 steps, which at a fixed 32px is a four-thousand-pixel grid — so the
    * editor was mostly off-screen and reading a phrase meant scrolling back and forth over it.
    *
-   * Only ever DOWN, to CELL_MIN: past that a note is too small to grab and scrolling is the
+   * Only ever DOWN, to ROLL_CELL_MIN: past that a note is too small to grab and scrolling is the
    * honest answer, and stretching a short take across a wide screen would make two bars look
    * like a symphony. Measured rather than guessed at with breakpoints, because the panel's width
    * depends on the window, the key column and whether this is a canvas pane.
@@ -313,12 +307,9 @@ export function PianoRoll({
     setAvail(el.clientWidth)
     return () => ro.disconnect()
   }, [])
-  const cellW = avail > 0 ? Math.max(CELL_MIN, Math.min(CELL_W, Math.floor(avail / cols))) : CELL_W
-  /* how the take divides into bars, for the ruler's numbers. A take is whatever length it was
-     recorded at, so this is its own bars rather than the loop's. */
-  const beat = 60 / bpm
-  const bars = Math.max(1, Math.round(layer.len / (beat * 4)))
-  const barW = (cols * cellW) / bars
+  /* how wide the take is drawn, and how that width divides — see rollSize, which is pure so
+     "a snap is not a zoom" can be asserted without a browser */
+  const { cols, cellW, bars, barW } = rollSize({ len: layer.len, bpm, quantize, avail })
 
   /**
    * What is on screen: the committed notes, or the preview of the drag in progress.

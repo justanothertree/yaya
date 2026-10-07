@@ -1071,6 +1071,125 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       }
     >
       <AudioHealthStrip />
+      {/**
+       * ⚠️ THE KEYBOARD IS THE FIRST THING IN THE ROOM, because it is what the room is.
+       *
+       * It used to be last, under the visuals, the toolbar, the instrument and scale pickers,
+       * the library, the takes, the transport, the beats, the layer list and the knobs — so the
+       * page opened on its settings and you scrolled past all of them to reach the instrument.
+       * Everything above it is something you do TO a sound; this is the sound.
+       *
+       * The scope sits directly underneath, so what you play and the shape of it are one glance
+       * apart rather than at opposite ends of the page.
+       */}
+      {/**
+       * ⚠️ Pointer events, not mouse events, and the capture is released immediately.
+       *
+       * Releasing capture is what lets a press SLIDE from one key to the next — a glissando —
+       * because without it the first key keeps receiving every subsequent event and the others
+       * never see a pointerenter. touch-action is none in the CSS for the same reason: on a
+       * phone the browser would otherwise decide a drag across the keys is a scroll.
+       */}
+      {/**
+       * ⚠️ ON THE KEYBOARD, WHICH IS WHERE IT WAS ASKED FOR AND WHERE I FIRST PUT IT WRONG.
+       *
+       * It went beside the note editor's key column: a vertical slider next to a grid of rows,
+       * which is the pitch axis of the EDITOR. What was wanted was this — a way to run up and
+       * down the actual keyboard you play, without pressing − and + and counting. The two look
+       * alike described in a sentence and are not the same control at all.
+       *
+       * Horizontal, because these keys are, and it sits under them so the thing it moves is
+       * directly above your hand. A drum kit repeats every octave, so it is pointless there.
+       */}
+      {inst !== 'drums' && (
+        <input
+          type="range"
+          className="inst-keyslide no-print"
+          min={1}
+          max={6}
+          step={1}
+          value={octave}
+          onChange={(e) => setOctave(Number(e.target.value))}
+          aria-label="Slide up and down the keyboard"
+          title={`Octave ${octave} — slide to reach higher or lower keys`}
+        />
+      )}
+      <div
+        className="inst-keys"
+        data-kit={inst === 'drums' ? '1' : undefined}
+        role="group"
+        aria-label={inst === 'drums' ? 'Drum kit' : 'Keyboard'}
+      >
+        {keys.map((midi) => (
+          <button
+            key={midi}
+            className={
+              'inst-key' +
+              // ⚠️ Black keys only on Chromatic. Under a scale the keys are degrees, not
+              // semitones, so a "black" one would be a shorter key in an arbitrary place —
+              // piano furniture on something that is no longer a piano.
+              (scale === 'chromatic' && isBlack(midi) ? ' is-black' : '') +
+              (scale !== 'chromatic' && midi % 12 === root ? ' is-root' : '') +
+              (held.includes(midi) ? ' is-held' : '') +
+              (theirNotes.has(midi) ? ' is-theirs' : '')
+            }
+            style={
+              theirNotes.has(midi)
+                ? ({ ['--party-hue' as string]: theirNotes.get(midi) } as React.CSSProperties)
+                : undefined
+            }
+            aria-label={inst === 'drums' ? drumName(midi) : noteName(midi)}
+            onPointerDown={(e) => {
+              /**
+               * ⚠️ SOUND FIRST, then let go of the pointer — and the release is wrapped because
+               * it can throw.
+               *
+               * Releasing the implicit capture is what makes a glissando work: without it the
+               * first key you touch keeps every subsequent move event and dragging across the
+               * keyboard plays one note. But releasePointerCapture throws NotFoundError for a
+               * pointer that was never captured, and it used to be the FIRST statement here — so
+               * any case where the browser had not captured (and there are several: a
+               * pointercancel that already released it, a synthetic event, some pen and
+               * assistive input paths) threw before the note was played. The most important
+               * interaction in the room was one exception away from silence, for the sake of a
+               * convenience.
+               */
+              setOwned(e.pointerId, midi)
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              } catch {
+                /* it was never captured; the glissando just works differently for this pointer */
+              }
+            }}
+            onPointerUp={(e) => setOwned(e.pointerId, null)}
+            onPointerEnter={(e) => {
+              if (e.buttons > 0) setOwned(e.pointerId, midi)
+            }}
+          >
+            {/* ⚠️ Drums say WHICH DRUM, not which note. A twelve-piece kit laid out as
+                C4/C#4/D4 is twelve unlabelled buttons — the note name is true and useless,
+                because nobody is playing a kick in the key of C. */}
+            <span className="inst-key-name">
+              {inst === 'drums' ? drumName(midi) : noteName(midi)}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <p className="muted inst-note">
+        Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
+        octaves of white keys, <kbd>S</kbd> and the number row are the black ones
+        {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
+        slide.{' '}
+        {jamming.on
+          ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
+          : 'Nothing is recorded or sent anywhere.'}
+      </p>
+      <p className="muted inst-note">
+        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
+        yourself play.
+      </p>
+
       {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
           account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
           second window — three steps and a discovery problem, for the most obvious pairing on
@@ -2052,120 +2171,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       </div>
 
       {/**
-       * ⚠️ Pointer events, not mouse events, and the capture is released immediately.
+       * The note editor — AT THE END OF THE ROOM, not inside the layer list.
        *
-       * Releasing capture is what lets a press SLIDE from one key to the next — a glissando —
-       * because without it the first key keeps receiving every subsequent event and the others
-       * never see a pointerenter. touch-action is none in the CSS for the same reason: on a
-       * phone the browser would otherwise decide a drag across the keys is a scroll.
-       */}
-      {/**
-       * ⚠️ ON THE KEYBOARD, WHICH IS WHERE IT WAS ASKED FOR AND WHERE I FIRST PUT IT WRONG.
-       *
-       * It went beside the note editor's key column: a vertical slider next to a grid of rows,
-       * which is the pitch axis of the EDITOR. What was wanted was this — a way to run up and
-       * down the actual keyboard you play, without pressing − and + and counting. The two look
-       * alike described in a sentence and are not the same control at all.
-       *
-       * Horizontal, because these keys are, and it sits under them so the thing it moves is
-       * directly above your hand. A drum kit repeats every octave, so it is pointless there.
-       */}
-      {inst !== 'drums' && (
-        <input
-          type="range"
-          className="inst-keyslide no-print"
-          min={1}
-          max={6}
-          step={1}
-          value={octave}
-          onChange={(e) => setOctave(Number(e.target.value))}
-          aria-label="Slide up and down the keyboard"
-          title={`Octave ${octave} — slide to reach higher or lower keys`}
-        />
-      )}
-      <div
-        className="inst-keys"
-        data-kit={inst === 'drums' ? '1' : undefined}
-        role="group"
-        aria-label={inst === 'drums' ? 'Drum kit' : 'Keyboard'}
-      >
-        {keys.map((midi) => (
-          <button
-            key={midi}
-            className={
-              'inst-key' +
-              // ⚠️ Black keys only on Chromatic. Under a scale the keys are degrees, not
-              // semitones, so a "black" one would be a shorter key in an arbitrary place —
-              // piano furniture on something that is no longer a piano.
-              (scale === 'chromatic' && isBlack(midi) ? ' is-black' : '') +
-              (scale !== 'chromatic' && midi % 12 === root ? ' is-root' : '') +
-              (held.includes(midi) ? ' is-held' : '') +
-              (theirNotes.has(midi) ? ' is-theirs' : '')
-            }
-            style={
-              theirNotes.has(midi)
-                ? ({ ['--party-hue' as string]: theirNotes.get(midi) } as React.CSSProperties)
-                : undefined
-            }
-            aria-label={inst === 'drums' ? drumName(midi) : noteName(midi)}
-            onPointerDown={(e) => {
-              /**
-               * ⚠️ SOUND FIRST, then let go of the pointer — and the release is wrapped because
-               * it can throw.
-               *
-               * Releasing the implicit capture is what makes a glissando work: without it the
-               * first key you touch keeps every subsequent move event and dragging across the
-               * keyboard plays one note. But releasePointerCapture throws NotFoundError for a
-               * pointer that was never captured, and it used to be the FIRST statement here — so
-               * any case where the browser had not captured (and there are several: a
-               * pointercancel that already released it, a synthetic event, some pen and
-               * assistive input paths) threw before the note was played. The most important
-               * interaction in the room was one exception away from silence, for the sake of a
-               * convenience.
-               */
-              setOwned(e.pointerId, midi)
-              try {
-                e.currentTarget.releasePointerCapture(e.pointerId)
-              } catch {
-                /* it was never captured; the glissando just works differently for this pointer */
-              }
-            }}
-            onPointerUp={(e) => setOwned(e.pointerId, null)}
-            onPointerEnter={(e) => {
-              if (e.buttons > 0) setOwned(e.pointerId, midi)
-            }}
-          >
-            {/* ⚠️ Drums say WHICH DRUM, not which note. A twelve-piece kit laid out as
-                C4/C#4/D4 is twelve unlabelled buttons — the note name is true and useless,
-                because nobody is playing a kick in the key of C. */}
-            <span className="inst-key-name">
-              {inst === 'drums' ? drumName(midi) : noteName(midi)}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <p className="muted inst-note">
-        Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
-        octaves of white keys, <kbd>S</kbd> and the number row are the black ones
-        {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
-        slide.{' '}
-        {jamming.on
-          ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
-          : 'Nothing is recorded or sent anywhere.'}
-      </p>
-      <p className="muted inst-note">
-        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
-        yourself play.
-      </p>
-
-      {/**
-       * The note editor — BELOW THE KEYBOARD, not inside the layer list.
-       *
-       * ⚠️ BECAUSE A PIANO ROLL IS FIVE HUNDRED PIXELS AND IT WAS OPENING ABOVE YOUR HANDS.
-       * As an <li> among the layers, every layer you opened pushed the knobs, the keys and
-       * everything else down the page by the height of a grid — you pressed one thing and the
-       * room moved. Reported as "opening or closing a layer shifts the entire page down".
+       * ⚠️ IT SAID "BELOW THE KEYBOARD" AND THE KEYBOARD HAS MOVED TO THE TOP. Still true, and
+       * now trivially so: everything is below the keyboard. The reason stands on its own and is
+       * the half worth keeping — a piano roll is five hundred pixels, and as an <li> among the
+       * layers, every layer you opened pushed the knobs, the keys and everything else down the
+       * page by the height of a grid. You pressed one thing and the room moved. Reported as
+       * "opening or closing a layer shifts the entire page down".
        *
        * ⚠️ AND TWO SCROLL TRICKS FAILED BEFORE THIS. Pinning the pressed row and scrolling by
        * however far it moved fixes nothing, because the row does NOT move — it is everything

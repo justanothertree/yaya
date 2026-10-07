@@ -125,3 +125,52 @@ export function pitchRange(notes: Note[]): [number, number] {
   }
   return [Math.max(0, lo), Math.min(127, hi)]
 }
+
+/**
+ * ⚠️ A SNAP IS NOT A ZOOM, and the roll used to treat it as one.
+ *
+ * The width was `cols * cellW` where `cols` comes from the snap and `cellW` was capped at a
+ * constant, so a coarser grid produced fewer columns and a NARROWER roll. Measured at a 1024px
+ * panel, a four-bar take: 1/16 and 1/8 both filled it, and 1/4 drew the same music at 512px.
+ * Changing how finely notes land redrew the take at half the size, which is the whole of
+ * "changing the snap time makes the piano roll resize to the scale of the notes".
+ *
+ * The take's width is a question about the TAKE — how many bars it is, and how much room there
+ * is — and the snap only decides how that width is divided. So the width is computed first and
+ * the cell falls out of it, which is the opposite order and the reason this cannot come back.
+ *
+ * ⚠️ THE CAP IS PER BAR, not per cell, and that is the same mistake one level down. Capping the
+ * CELL was what made the width depend on the column count; capping the BAR keeps what the cap was
+ * for — two bars should not be stretched across a cinema screen — while saying nothing about how
+ * many cells a bar is cut into.
+ *
+ * ⚠️ AND THE FLOOR STILL WINS. Below CELL_MIN a note is too small to grab, so a fine snap on a
+ * long take grows past the panel and scrolls, exactly as before. That is the one case where the
+ * width legitimately depends on the snap, and it only ever gets WIDER — never narrower, which is
+ * the direction that read as the editor shrinking.
+ */
+export const ROLL_CELL_MIN = 11
+/** a bar is at most this wide: eight cells of 32px, which is the 1/8 default drawn at full size */
+export const ROLL_BAR_MAX = 256
+
+export function rollSize(o: { len: number; bpm: number; quantize: number; avail: number }) {
+  const step = gridStep(o.bpm, o.quantize)
+  const cols = Math.max(1, Math.round(o.len / step))
+  const beat = 60 / o.bpm
+  const bars = Math.max(1, Math.round(o.len / (beat * 4)))
+  const roomy = bars * ROLL_BAR_MAX
+  /* how wide this take wants to be, before anything knows what the snap is */
+  const want = o.avail > 0 ? Math.min(o.avail, roomy) : roomy
+  /**
+   * ⚠️ NOT ROUNDED TO WHOLE PIXELS, and a test caught why. `floor` throws away up to cols-1
+   * pixels, so a finer snap — which is more columns — lost MORE of them: measured at a 700px
+   * panel, 8 columns gave 696 and 16 gave 688. Small, and the same bug as the one above: the
+   * width still moved when the snap moved. At 128 columns it is up to 127px of a 1024 panel.
+   *
+   * A fractional cell makes the width exactly the width that was asked for, for every snap, and
+   * CSS has been happy with subpixel offsets for years.
+   */
+  const cellW = Math.max(ROLL_CELL_MIN, want / cols)
+  const width = cols * cellW
+  return { step, cols, bars, cellW, width, barW: width / bars }
+}
