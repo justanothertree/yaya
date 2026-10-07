@@ -2535,7 +2535,23 @@ export function ProfileBlocksEditor({
    */
 
   return (
-    <div className="card profile-editor" data-username={username}>
+    <div
+      /**
+       * ⚠️ THE EDITOR MAKES ROOM FOR THE PANEL rather than being covered by it. Asked for in
+       * those words: to the side of the profile, not over it.
+       *
+       * The usual objection to this — written on the old panel, and right about the old shape —
+       * is that opening settings must not move the layout you are arranging. It does not move it
+       * here: `.profile-blocks-grid` is a FIXED six tracks (see its own note), so narrowing the
+       * container keeps every block at the same fraction of the page and the composition is
+       * identical, only smaller. Nothing repacks, nothing changes neighbours.
+       *
+       * Below the breakpoint the panel is a bottom sheet instead and this does nothing, because
+       * there is no "beside" on a phone.
+       */
+      className={'card profile-editor' + (selected && !arranging ? ' is-asided' : '')}
+      data-username={username}
+    >
       <div className="profile-editor-head">
         <h3>Your page</h3>
         <p className="muted">
@@ -3056,393 +3072,188 @@ export function ProfileBlocksEditor({
          */
         createPortal(
           <div
-            className="pal-scrim"
+            className={
+              'profile-inspector' +
+              /* ⚠️ the dressing is folded away unless asked for — see dressOpen */
+              (dressOpen ? ' is-dressed' : '')
+            }
             role="dialog"
-            aria-modal="true"
+            /**
+             * ⚠️ NOT `aria-modal`, AND NO SCRIM, because the page behind this is still live and
+             * still the point. Picking a different block while the settings are open is how
+             * somebody dresses a page — and a modal took that away: it covered the canvas, so the
+             * only route from one block to the next was close, find, open. The panel is beside
+             * the page, the page keeps working, and switching blocks is one press again.
+             */
             aria-label={'Settings for this ' + BLOCK_LABEL[selected.block_type] + ' block'}
-            onPointerDown={(e) => {
-              if (e.target === e.currentTarget) setOpenIdx(null)
-            }}
           >
-            <div
-              className={
-                'pal-sheet profile-inspector' +
-                /* ⚠️ the dressing is folded away unless asked for — see dressOpen */
-                (dressOpen ? ' is-dressed' : '')
-              }
-            >
-              <div className="profile-inspector-head">
-                <strong>{BLOCK_LABEL[selected.block_type]}</strong>
-                {/**
-                 * ⚠️ THE DRESSING FOLDS, BECAUSE IT WAS MOST OF THE PANEL. Type, edge, shape and
-                 * colour are four rows you set once and then scroll past every time afterwards —
-                 * 650px of a tray that can only show 702, which is why the thing at the bottom of
-                 * it was unreachable without scrolling inside a fixed panel.
-                 */}
-                <button
-                  className={'btn btn-ghost profile-inspector-dress' + (dressOpen ? ' is-on' : '')}
-                  aria-pressed={dressOpen}
-                  onClick={() => setDressOpen((v) => !v)}
-                  title={dressOpen ? 'Fold the look away' : 'Type, edge, shape and colour'}
-                >
-                  🎨 Look
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => setOpenIdx(null)}
-                  aria-label="Close this block"
-                >
-                  Done
-                </button>
-              </div>
+            <div className="profile-inspector-head">
+              <strong>{BLOCK_LABEL[selected.block_type]}</strong>
               {/**
-               * ⚠️ THE BODY IS NOT RENDERED WHILE THE TRAY IS SHUT, rather than hidden by CSS.
-               *
-               * Collapsing it with a transform and then with a max-height both failed here —
-               * something in the cascade was defeating rules that were more specific and later,
-               * and hunting it would have cost more than it was worth. Not rendering cannot be
-               * overridden by any stylesheet, does not depend on a transform surviving a
-               * reduced-motion setting, and has the honest side effect of taking the settings out
-               * of the tab order while they are out of the way.
+               * ⚠️ THE DRESSING FOLDS, BECAUSE IT WAS MOST OF THE PANEL. Type, edge, shape and
+               * colour are four rows you set once and then scroll past every time afterwards —
+               * 650px of a tray that can only show 702, which is why the thing at the bottom of
+               * it was unreachable without scrolling inside a fixed panel.
                */}
-              <div className="profile-blockedit">
+              <button
+                className={'btn btn-ghost profile-inspector-dress' + (dressOpen ? ' is-on' : '')}
+                aria-pressed={dressOpen}
+                onClick={() => setDressOpen((v) => !v)}
+                title={dressOpen ? 'Fold the look away' : 'Type, edge, shape and colour'}
+              >
+                🎨 Look
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setOpenIdx(null)}
+                aria-label="Close this block"
+              >
+                Done
+              </button>
+            </div>
+            {/**
+             * ⚠️ THE BODY IS NOT RENDERED WHILE THE TRAY IS SHUT, rather than hidden by CSS.
+             *
+             * Collapsing it with a transform and then with a max-height both failed here —
+             * something in the cascade was defeating rules that were more specific and later,
+             * and hunting it would have cost more than it was worth. Not rendering cannot be
+             * overridden by any stylesheet, does not depend on a transform surviving a
+             * reduced-motion setting, and has the honest side effect of taking the settings out
+             * of the tab order while they are out of the way.
+             */}
+            <div className="profile-blockedit">
+              {/**
+               * ⚠️ NO COPY OF THE BLOCK IN HERE. A preview of it was tried and taken out: the
+               * real one is a few inches to the left, on the actual page, at the actual width,
+               * and a second rendering of it is a second thing to keep in step for no gain.
+               * What made the settings hard to use was never not being able to see the block —
+               * it was the panel being too narrow for its own controls.
+               */}
+              <div className="profile-blockedit-controls">
+                <BlockFields
+                  block={selected}
+                  username={username}
+                  onChange={(next) =>
+                    setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
+                  }
+                />
+
                 {/**
-                 * ⚠️ THE BLOCK ITSELF, rendered the way the PAGE renders it — `.profile-blocks-grid`
-                 * → `.profile-slot is-{size}` → BlockView, which is byte-for-byte what
-                 * ProfileBlocksView builds. Not the editor's `.profile-canvas-cell`, which carries
-                 * a tag, a grip and a toolbar; the question this answers is "how will it look",
-                 * and the answer must not have editing furniture in it.
+                 * ⚠️ EVERY BLOCK TYPE, unlike the colour below it.
                  *
-                 * ⚠️ IN A SIX-TRACK GRID WITH ONE BLOCK IN IT, so the width setting is a thing you
-                 * SEE. A third-width block really is a third of this stage with two thirds of empty
-                 * page beside it — which is the honest picture and the one the three width buttons
-                 * were previously describing in words.
-                 *
-                 * ⚠️ `inert`, NOT `aria-hidden`. A guestbook has a form in it and a song block has
-                 * a play button; aria-hidden hides them from a screen reader and leaves them in the
-                 * tab order, so Tab would walk into a copy of the page nobody can see. inert does
-                 * both, and makes the preview unclickable — which it has to be, because the real
-                 * one is still mounted on the canvas behind the scrim.
+                 * CAN_TINT leaves out the three whose card is entirely filled by their own
+                 * artwork — a banner, a drawing, a visualiser — because a tint has nowhere to go
+                 * on them. Shape is the opposite case: those three ARE the rectangle, so squaring
+                 * one off is the most visible thing on the page, and gating it behind the colour
+                 * rule would have hidden it exactly where it does the most.
                  */}
-                <div className="profile-blockedit-live">
-                  <span className="profile-blockedit-tag muted">
-                    {isBlockEmpty(selected)
-                      ? blockKeepEmpty(selected.config)
-                        ? 'Blank on purpose — your page keeps it'
-                        : 'Nothing in it yet, so your page leaves it out'
-                      : 'On your page'}
-                  </span>
-                  <div className="profile-blockedit-stage" inert>
-                    <div className="profile-blocks-grid" {...pageStyleAttrs(page)}>
-                      <div
-                        className={
-                          'profile-slot is-' +
-                          selected.size +
-                          (blockAlone(selected) ? ' is-alone' : '')
-                        }
-                        {...blockLookAttrs(selected.config, username)}
-                      >
-                        {isBlockEmpty(selected) ? (
-                          <div className="profile-block profile-canvas-empty">
-                            <strong>{BLOCK_LABEL[selected.block_type]}</strong>
-                          </div>
-                        ) : (
-                          <BlockView
-                            block={selected}
-                            activity={activity}
-                            trophies={trophies}
-                            achievements={achievements}
-                            snakeBest={snakeBest}
-                            username={username}
-                            isMe
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                {/**
+                 * ⚠️ WHICH SECTION IT IS IN, as a name you type rather than a list you manage.
+                 *
+                 * Typing the same word on two blocks is what makes a section — there is no "new
+                 * tab" button, nothing to create before it can be used and nothing left over when
+                 * the last block leaves. The datalist offers the names already in use so the
+                 * second block is a pick rather than a spelling test, which is the only part of
+                 * free text that actually goes wrong here.
+                 */}
+                <div className="profile-editrow-settings">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Section</span>
+                    <input
+                      list="profile-tab-names"
+                      value={blockTab(selected)}
+                      placeholder="Page"
+                      maxLength={24}
+                      onChange={(e) => setOpenCfg({ tab: e.target.value.trim() || null })}
+                    />
+                    <datalist id="profile-tab-names">
+                      {tabsOf(blocks).map((t) => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                  </label>
                 </div>
 
-                <div className="profile-blockedit-controls">
-                  <BlockFields
-                    block={selected}
-                    username={username}
-                    onChange={(next) =>
-                      setBlocks((all) => all.map((x, idx) => (idx === openIdx ? next : x)))
-                    }
-                  />
-
-                  {/**
-                   * ⚠️ EVERY BLOCK TYPE, unlike the colour below it.
-                   *
-                   * CAN_TINT leaves out the three whose card is entirely filled by their own
-                   * artwork — a banner, a drawing, a visualiser — because a tint has nowhere to go
-                   * on them. Shape is the opposite case: those three ARE the rectangle, so squaring
-                   * one off is the most visible thing on the page, and gating it behind the colour
-                   * rule would have hidden it exactly where it does the most.
-                   */}
-                  {/**
-                   * ⚠️ WHICH SECTION IT IS IN, as a name you type rather than a list you manage.
-                   *
-                   * Typing the same word on two blocks is what makes a section — there is no "new
-                   * tab" button, nothing to create before it can be used and nothing left over when
-                   * the last block leaves. The datalist offers the names already in use so the
-                   * second block is a pick rather than a spelling test, which is the only part of
-                   * free text that actually goes wrong here.
-                   */}
-                  <div className="profile-editrow-settings">
-                    <label className="profile-editrow-look">
-                      <span className="muted">Section</span>
-                      <input
-                        list="profile-tab-names"
-                        value={blockTab(selected)}
-                        placeholder="Page"
-                        maxLength={24}
-                        onChange={(e) => setOpenCfg({ tab: e.target.value.trim() || null })}
-                      />
-                      <datalist id="profile-tab-names">
-                        {tabsOf(blocks).map((t) => (
-                          <option key={t} value={t} />
-                        ))}
-                      </datalist>
-                    </label>
-                  </div>
-
-                  {/* ⚠️ WHAT THIS BLOCK IS CALLED, for the four types that print a heading.
+                {/* ⚠️ WHAT THIS BLOCK IS CALLED, for the four types that print a heading.
                     Placeholder shows the default, so leaving it empty is a visible choice rather
                     than a blank that might mean anything. */}
-                  {HAS_HEADING.has(selected.block_type) && (
-                    <div className="profile-editrow-settings">
-                      <label className="profile-editrow-look">
-                        <span className="muted">Heading</span>
-                        <input
-                          value={blockHeading(selected.config) ?? ''}
-                          placeholder={BLOCK_LABEL[selected.block_type]}
-                          maxLength={60}
-                          onChange={(e) => setOpenCfg({ heading: e.target.value || null })}
-                        />
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="profile-editrow-settings profile-editrow-dress">
+                {HAS_HEADING.has(selected.block_type) && (
+                  <div className="profile-editrow-settings">
                     <label className="profile-editrow-look">
-                      <span className="muted">Type</span>
-                      <span className="profile-width-row">
-                        {BLOCK_FONTS.map((f) => (
-                          <button
-                            key={f.id}
-                            className={
-                              'btn' + (blockFont(selected.config) === f.id ? ' is-on' : '')
-                            }
-                            aria-pressed={blockFont(selected.config) === f.id}
-                            /* ⚠️ the button is SET IN the face it sets — seven words in a row say
-                             nothing about what a slab is */
-                            style={f.stack ? { fontFamily: f.stack } : undefined}
-                            onClick={() => setOpenCfg({ font: f.id === 'page' ? null : f.id })}
-                          >
-                            {f.label}
-                          </button>
-                        ))}
-                      </span>
+                      <span className="muted">Heading</span>
+                      <input
+                        value={blockHeading(selected.config) ?? ''}
+                        placeholder={BLOCK_LABEL[selected.block_type]}
+                        maxLength={60}
+                        onChange={(e) => setOpenCfg({ heading: e.target.value || null })}
+                      />
                     </label>
-                    {/* ⚠️ One press to make the page agree with itself — see setEveryCfg. Offered
+                  </div>
+                )}
+
+                <div className="profile-editrow-settings profile-editrow-dress">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Type</span>
+                    <span className="profile-width-row">
+                      {BLOCK_FONTS.map((f) => (
+                        <button
+                          key={f.id}
+                          className={'btn' + (blockFont(selected.config) === f.id ? ' is-on' : '')}
+                          aria-pressed={blockFont(selected.config) === f.id}
+                          /* ⚠️ the button is SET IN the face it sets — seven words in a row say
+                             nothing about what a slab is */
+                          style={f.stack ? { fontFamily: f.stack } : undefined}
+                          onClick={() => setOpenCfg({ font: f.id === 'page' ? null : f.id })}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  {/* ⚠️ One press to make the page agree with itself — see setEveryCfg. Offered
                       for the three that are about the page rather than about this block; a
                       heading or a section applied to everything would be nonsense. */}
-                    <span className="profile-apply-all">
-                      <button
-                        className="btn btn-ghost"
-                        title="Give every block on the page this type, shape and edge"
-                        onClick={() =>
-                          setEveryCfg({
-                            font:
-                              blockFont(selected.config) === 'page'
-                                ? null
-                                : blockFont(selected.config),
-                            shape:
-                              blockShape(selected.config) === 'round'
-                                ? null
-                                : blockShape(selected.config),
-                            edge:
-                              blockEdge(selected.config) === 'plain'
-                                ? null
-                                : blockEdge(selected.config),
-                          })
-                        }
-                      >
-                        Use this look everywhere
-                      </button>
-                    </span>
-                  </div>
+                  <span className="profile-apply-all">
+                    <button
+                      className="btn btn-ghost"
+                      title="Give every block on the page this type, shape and edge"
+                      onClick={() =>
+                        setEveryCfg({
+                          font:
+                            blockFont(selected.config) === 'page'
+                              ? null
+                              : blockFont(selected.config),
+                          shape:
+                            blockShape(selected.config) === 'round'
+                              ? null
+                              : blockShape(selected.config),
+                          edge:
+                            blockEdge(selected.config) === 'plain'
+                              ? null
+                              : blockEdge(selected.config),
+                        })
+                      }
+                    >
+                      Use this look everywhere
+                    </button>
+                  </span>
+                </div>
 
-                  {/* ⚠️ ONLY WHERE THE WORDS ARE SOMEBODY'S OWN. A size and an alignment on a
+                {/* ⚠️ ONLY WHERE THE WORDS ARE SOMEBODY'S OWN. A size and an alignment on a
                     trophy shelf or a visualiser would be two controls acting on nothing — these
                     style a run of text that was typed, which is the bio and the status. */}
-                  {HAS_OWN_WORDS.has(selected.block_type) && (
-                    <div className="profile-editrow-settings">
-                      <label className="profile-editrow-look">
-                        <span className="muted">Words</span>
-                        <span className="profile-width-row">
-                          {TEXT_SIZES.map((t) => (
-                            <button
-                              key={t.id}
-                              className={
-                                'btn' + (textSize(selected.config) === t.id ? ' is-on' : '')
-                              }
-                              aria-pressed={textSize(selected.config) === t.id}
-                              onClick={() =>
-                                setOpenCfg({ textSize: t.id === 'normal' ? null : t.id })
-                              }
-                            >
-                              {t.label}
-                            </button>
-                          ))}
-                        </span>
-                      </label>
-                      <label className="profile-editrow-look">
-                        <span className="muted">Sits</span>
-                        <span className="profile-width-row">
-                          {TEXT_ALIGNS.map((a) => (
-                            <button
-                              key={a.id}
-                              className={
-                                'btn' + (textAlign(selected.config) === a.id ? ' is-on' : '')
-                              }
-                              aria-pressed={textAlign(selected.config) === a.id}
-                              onClick={() => setOpenCfg({ align: a.id === 'left' ? null : a.id })}
-                            >
-                              {a.label}
-                            </button>
-                          ))}
-                        </span>
-                      </label>
-                      {/**
-                       * ⚠️ THE ONE THAT MAKES BLANK SPACE POSSIBLE. With it on, a block with
-                       * nothing typed in it is still a card — so a tint, a shape and a width become
-                       * a band, a panel or a gap, and layouts nobody designed a block for can be
-                       * built out of the blocks that already exist.
-                       *
-                       * Explicit rather than inferred from "it has a colour, so it is probably
-                       * meant": an unfinished sentence and a deliberate panel look identical and
-                       * mean opposite things, and a guess that is wrong either publishes a mistake
-                       * or deletes an intention.
-                       */}
-                      <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
-                        <input
-                          type="checkbox"
-                          checked={blockKeepEmpty(selected.config)}
-                          onChange={(e) => setOpenCfg({ keep: e.target.checked || null })}
-                        />
-                        <span className="muted">Keep it on the page with no words in it</span>
-                      </label>
-                    </div>
-                  )}
-
-                  {/**
-                   * ⚠️ NOT ON A BANNER, which has had its own picker for these since it was built —
-                   * two pattern controls on one block, disagreeing about which pattern it wears, is
-                   * worse than the feature is good.
-                   *
-                   * ⚠️ THE EIGHT THE BANNER ALREADY HAD, now reachable from every other block. They cost a
-                   * style id to store rather than an image, which is the only reason a pattern can
-                   * live inside a block's 16000-character config where a drawing cannot.
-                   */}
-                  {selected.block_type !== 'banner' && (
-                    <div className="profile-editrow-settings">
-                      <label className="profile-editrow-look">
-                        <span className="muted">Pattern</span>
-                        <span className="profile-width-row">
-                          <button
-                            className={'btn' + (blockBackdrop(selected.config) ? '' : ' is-on')}
-                            aria-pressed={!blockBackdrop(selected.config)}
-                            onClick={() => setOpenCfg({ backdrop: null }, 'the pattern')}
-                          >
-                            None
-                          </button>
-                          {(Object.keys(BANNER_STYLES) as BannerStyle[]).map((id) => (
-                            <button
-                              key={id}
-                              className={
-                                'btn profile-backdrop-btn' +
-                                (blockBackdrop(selected.config) === id ? ' is-on' : '')
-                              }
-                              aria-pressed={blockBackdrop(selected.config) === id}
-                              title={BANNER_STYLES[id].label}
-                              onClick={() => setOpenCfg({ backdrop: id }, 'the pattern')}
-                              /* ⚠️ the chip wears the pattern in the hue this block would use, so the
-                             choice is made by looking rather than by reading eight words */
-                              style={{
-                                backgroundImage: BANNER_STYLES[id].css(
-                                  typeof selected.config?.tint === 'number'
-                                    ? (selected.config.tint as number)
-                                    : hueFor(username),
-                                ),
-                              }}
-                            >
-                              <span className="sr-only">{BANNER_STYLES[id].label}</span>
-                            </button>
-                          ))}
-                        </span>
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="profile-editrow-settings profile-editrow-dress">
+                {HAS_OWN_WORDS.has(selected.block_type) && (
+                  <div className="profile-editrow-settings">
                     <label className="profile-editrow-look">
-                      <span className="muted">Edge</span>
+                      <span className="muted">Words</span>
                       <span className="profile-width-row">
-                        {BLOCK_EDGES.map((ed) => (
-                          <button
-                            key={ed.id}
-                            className={
-                              'btn profile-edge-btn is-' +
-                              ed.id +
-                              (blockEdge(selected.config) === ed.id ? ' is-on' : '')
-                            }
-                            aria-pressed={blockEdge(selected.config) === ed.id}
-                            onClick={() => setOpenCfg({ edge: ed.id === 'plain' ? null : ed.id })}
-                          >
-                            {ed.label}
-                          </button>
-                        ))}
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="profile-editrow-settings profile-editrow-dress">
-                    <label className="profile-editrow-look">
-                      <span className="muted">Shape</span>
-                      <span className="profile-width-row">
-                        {BLOCK_SHAPES.map((sh) => (
-                          <button
-                            key={sh.id}
-                            className={
-                              'btn profile-shape-btn is-' +
-                              sh.id +
-                              (blockShape(selected.config) === sh.id ? ' is-on' : '')
-                            }
-                            aria-pressed={blockShape(selected.config) === sh.id}
-                            onClick={() => setOpenCfg({ shape: sh.id === 'round' ? null : sh.id })}
-                          >
-                            {sh.label}
-                          </button>
-                        ))}
-                      </span>
-                    </label>
-                    {/* ⚠️ Beside the shape, because it is the same question — what outline does this
-                      have — and because a tilt is the one setting whose effect you cannot judge
-                      from the control, only from the page behind it. */}
-                    <label className="profile-editrow-look">
-                      <span className="muted">Tilt</span>
-                      <span className="profile-width-row">
-                        {BLOCK_TILTS.map((t) => (
+                        {TEXT_SIZES.map((t) => (
                           <button
                             key={t.id}
-                            className={
-                              'btn' + (blockTilt(selected.config) === t.id ? ' is-on' : '')
-                            }
-                            aria-pressed={blockTilt(selected.config) === t.id}
+                            className={'btn' + (textSize(selected.config) === t.id ? ' is-on' : '')}
+                            aria-pressed={textSize(selected.config) === t.id}
                             onClick={() =>
-                              setOpenCfg({ tilt: t.id === 0 ? null : t.id }, 'the tilt')
+                              setOpenCfg({ textSize: t.id === 'normal' ? null : t.id })
                             }
                           >
                             {t.label}
@@ -3450,156 +3261,303 @@ export function ProfileBlocksEditor({
                         ))}
                       </span>
                     </label>
-                  </div>
-
-                  {/**
-                   * ⚠️ COLOUR, AND WHAT THE COLOUR DOES — two rows, not one.
-                   *
-                   * A page was the same grey card eight times over. The swatch decides WHICH colour
-                   * and the finish decides HOW MUCH of it, and they have to be separate: one row of
-                   * "blue wash / blue outline / blue solid / green wash / ..." is thirty-six buttons
-                   * saying the same two things badly.
-                   *
-                   * ⚠️ The finish row is not rendered at all while the block wears no colour.
-                   * Greyed-out it would be three controls that look available and do nothing, which
-                   * is the exact thing this page is being rid of.
-                   */}
-                  {CAN_TINT.has(selected.block_type) &&
-                    (() => {
-                      const look = blockLook(selected.config, username)
-                      const setCfg = (patch: Record<string, unknown>) =>
-                        setBlocks((all) =>
-                          all.map((x, idx) =>
-                            idx === openIdx ? { ...x, config: { ...x.config, ...patch } } : x,
-                          ),
-                        )
-                      return (
-                        <div className="profile-editrow-settings profile-editrow-dress">
-                          <label className="profile-editrow-look">
-                            <span className="muted">Colour</span>
-                            <span className="profile-tint-row">
-                              <button
-                                className={
-                                  'btn profile-tint-none' + (look.hue == null ? ' is-on' : '')
-                                }
-                                aria-pressed={look.hue == null}
-                                title="No colour — a plain card"
-                                onClick={() => setCfg({ tint: null })}
-                              >
-                                None
-                              </button>
-                              <button
-                                className={
-                                  'btn profile-tint-mine' +
-                                  (selected.config?.tint === 'mine' ? ' is-on' : '')
-                                }
-                                aria-pressed={selected.config?.tint === 'mine'}
-                                title="Your own colour — follows you if it ever changes"
-                                onClick={() => setCfg({ tint: 'mine' })}
-                              >
-                                Mine
-                              </button>
-                              {TINT_HUES.map((h) => (
-                                <button
-                                  key={h}
-                                  className={
-                                    'profile-tint-swatch' +
-                                    (selected.config?.tint === h ? ' is-on' : '')
-                                  }
-                                  aria-label={tintName(h)}
-                                  title={tintName(h)}
-                                  aria-pressed={selected.config?.tint === h}
-                                  style={{ ['--blk-h']: String(h) } as React.CSSProperties}
-                                  onClick={() => setCfg({ tint: h })}
-                                />
-                              ))}
-                            </span>
-                          </label>
-                          {look.hue != null && (
-                            <label className="profile-editrow-look">
-                              <span className="muted">How much of it</span>
-                              <span className="profile-width-row">
-                                {BLOCK_FINISHES.map((f) => (
-                                  <button
-                                    key={f.id}
-                                    className={'btn' + (look.finish === f.id ? ' is-on' : '')}
-                                    aria-pressed={look.finish === f.id}
-                                    onClick={() => setCfg({ finish: f.id })}
-                                  >
-                                    {f.label}
-                                  </button>
-                                ))}
-                              </span>
-                            </label>
-                          )}
-                        </div>
-                      )
-                    })()}
-
-                  <div className="profile-editrow-settings">
-                    {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
-                which of the three you are on without being read, and cannot go back a step. */}
-                    <label className="profile-editrow-size">
-                      <span className="muted">Width of the page</span>
+                    <label className="profile-editrow-look">
+                      <span className="muted">Sits</span>
                       <span className="profile-width-row">
-                        {(['small', 'medium', 'large'] as const).map((sz) => (
+                        {TEXT_ALIGNS.map((a) => (
                           <button
-                            key={sz}
-                            className={'btn' + (selected.size === sz ? ' is-on' : '')}
-                            aria-pressed={selected.size === sz}
-                            onClick={() =>
-                              setBlocks((all) =>
-                                all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
-                              )
+                            key={a.id}
+                            className={
+                              'btn' + (textAlign(selected.config) === a.id ? ' is-on' : '')
                             }
+                            aria-pressed={textAlign(selected.config) === a.id}
+                            onClick={() => setOpenCfg({ align: a.id === 'left' ? null : a.id })}
                           >
-                            {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
+                            {a.label}
                           </button>
                         ))}
                       </span>
                     </label>
-                    <label>
-                      <span className="muted">Who can see this</span>
-                      <select
-                        className="btn"
-                        value={selected.visibility}
-                        onChange={(e) =>
-                          setBlocks((all) =>
-                            all.map((x, idx) =>
-                              idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
-                            ),
-                          )
-                        }
-                      >
-                        {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                          <option key={t} value={t}>
-                            {TIER_LABEL[t]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                     {/**
-                     * ⚠️ "ANYONE" CHANGED MEANING AND THE WORD DID NOT.
+                     * ⚠️ THE ONE THAT MAKES BLANK SPACE POSSIBLE. With it on, a block with
+                     * nothing typed in it is still a card — so a tint, a shape and a width become
+                     * a band, a panel or a gap, and layouts nobody designed a block for can be
+                     * built out of the blocks that already exist.
                      *
-                     * While a profile could only be loaded by a member, the public tier was a
-                     * ceiling something else enforced: "Anyone" honestly meant "any member", and
-                     * everybody who ever picked it picked it under that meaning. Publishing a page
-                     * makes the same word mean the open internet, for blocks chosen months ago
-                     * against the old one. So the word is left alone — it is the right word — and
-                     * what it currently reaches is said underneath it, where it can be true in both
-                     * states instead of being a guess baked into a label.
+                     * Explicit rather than inferred from "it has a colour, so it is probably
+                     * meant": an unfinished sentence and a deliberate panel look identical and
+                     * mean opposite things, and a guess that is wrong either publishes a mistake
+                     * or deletes an intention.
                      */}
-                    {selected.visibility === 'public' && (
-                      <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
-                        {pagePublic
-                          ? '● Your page is published, so “Anyone” means anyone at all — signed in or not.'
-                          : '“Anyone” means any member, until you publish your page in Account.'}
-                      </p>
-                    )}
-                    <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
-                      Remove this block
-                    </button>
+                    <label className="inst-pick" style={{ display: 'flex', gap: '0.4rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={blockKeepEmpty(selected.config)}
+                        onChange={(e) => setOpenCfg({ keep: e.target.checked || null })}
+                      />
+                      <span className="muted">Keep it on the page with no words in it</span>
+                    </label>
                   </div>
+                )}
+
+                {/**
+                 * ⚠️ NOT ON A BANNER, which has had its own picker for these since it was built —
+                 * two pattern controls on one block, disagreeing about which pattern it wears, is
+                 * worse than the feature is good.
+                 *
+                 * ⚠️ THE EIGHT THE BANNER ALREADY HAD, now reachable from every other block. They cost a
+                 * style id to store rather than an image, which is the only reason a pattern can
+                 * live inside a block's 16000-character config where a drawing cannot.
+                 */}
+                {selected.block_type !== 'banner' && (
+                  <div className="profile-editrow-settings">
+                    <label className="profile-editrow-look">
+                      <span className="muted">Pattern</span>
+                      <span className="profile-width-row">
+                        <button
+                          className={'btn' + (blockBackdrop(selected.config) ? '' : ' is-on')}
+                          aria-pressed={!blockBackdrop(selected.config)}
+                          onClick={() => setOpenCfg({ backdrop: null }, 'the pattern')}
+                        >
+                          None
+                        </button>
+                        {(Object.keys(BANNER_STYLES) as BannerStyle[]).map((id) => (
+                          <button
+                            key={id}
+                            className={
+                              'btn profile-backdrop-btn' +
+                              (blockBackdrop(selected.config) === id ? ' is-on' : '')
+                            }
+                            aria-pressed={blockBackdrop(selected.config) === id}
+                            title={BANNER_STYLES[id].label}
+                            onClick={() => setOpenCfg({ backdrop: id }, 'the pattern')}
+                            /* ⚠️ the chip wears the pattern in the hue this block would use, so the
+                             choice is made by looking rather than by reading eight words */
+                            style={{
+                              backgroundImage: BANNER_STYLES[id].css(
+                                typeof selected.config?.tint === 'number'
+                                  ? (selected.config.tint as number)
+                                  : hueFor(username),
+                              ),
+                            }}
+                          >
+                            <span className="sr-only">{BANNER_STYLES[id].label}</span>
+                          </button>
+                        ))}
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <div className="profile-editrow-settings profile-editrow-dress">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Edge</span>
+                    <span className="profile-width-row">
+                      {BLOCK_EDGES.map((ed) => (
+                        <button
+                          key={ed.id}
+                          className={
+                            'btn profile-edge-btn is-' +
+                            ed.id +
+                            (blockEdge(selected.config) === ed.id ? ' is-on' : '')
+                          }
+                          aria-pressed={blockEdge(selected.config) === ed.id}
+                          onClick={() => setOpenCfg({ edge: ed.id === 'plain' ? null : ed.id })}
+                        >
+                          {ed.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="profile-editrow-settings profile-editrow-dress">
+                  <label className="profile-editrow-look">
+                    <span className="muted">Shape</span>
+                    <span className="profile-width-row">
+                      {BLOCK_SHAPES.map((sh) => (
+                        <button
+                          key={sh.id}
+                          className={
+                            'btn profile-shape-btn is-' +
+                            sh.id +
+                            (blockShape(selected.config) === sh.id ? ' is-on' : '')
+                          }
+                          aria-pressed={blockShape(selected.config) === sh.id}
+                          onClick={() => setOpenCfg({ shape: sh.id === 'round' ? null : sh.id })}
+                        >
+                          {sh.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  {/* ⚠️ Beside the shape, because it is the same question — what outline does this
+                      have — and because a tilt is the one setting whose effect you cannot judge
+                      from the control, only from the page behind it. */}
+                  <label className="profile-editrow-look">
+                    <span className="muted">Tilt</span>
+                    <span className="profile-width-row">
+                      {BLOCK_TILTS.map((t) => (
+                        <button
+                          key={t.id}
+                          className={'btn' + (blockTilt(selected.config) === t.id ? ' is-on' : '')}
+                          aria-pressed={blockTilt(selected.config) === t.id}
+                          onClick={() => setOpenCfg({ tilt: t.id === 0 ? null : t.id }, 'the tilt')}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                </div>
+
+                {/**
+                 * ⚠️ COLOUR, AND WHAT THE COLOUR DOES — two rows, not one.
+                 *
+                 * A page was the same grey card eight times over. The swatch decides WHICH colour
+                 * and the finish decides HOW MUCH of it, and they have to be separate: one row of
+                 * "blue wash / blue outline / blue solid / green wash / ..." is thirty-six buttons
+                 * saying the same two things badly.
+                 *
+                 * ⚠️ The finish row is not rendered at all while the block wears no colour.
+                 * Greyed-out it would be three controls that look available and do nothing, which
+                 * is the exact thing this page is being rid of.
+                 */}
+                {CAN_TINT.has(selected.block_type) &&
+                  (() => {
+                    const look = blockLook(selected.config, username)
+                    const setCfg = (patch: Record<string, unknown>) =>
+                      setBlocks((all) =>
+                        all.map((x, idx) =>
+                          idx === openIdx ? { ...x, config: { ...x.config, ...patch } } : x,
+                        ),
+                      )
+                    return (
+                      <div className="profile-editrow-settings profile-editrow-dress">
+                        <label className="profile-editrow-look">
+                          <span className="muted">Colour</span>
+                          <span className="profile-tint-row">
+                            <button
+                              className={
+                                'btn profile-tint-none' + (look.hue == null ? ' is-on' : '')
+                              }
+                              aria-pressed={look.hue == null}
+                              title="No colour — a plain card"
+                              onClick={() => setCfg({ tint: null })}
+                            >
+                              None
+                            </button>
+                            <button
+                              className={
+                                'btn profile-tint-mine' +
+                                (selected.config?.tint === 'mine' ? ' is-on' : '')
+                              }
+                              aria-pressed={selected.config?.tint === 'mine'}
+                              title="Your own colour — follows you if it ever changes"
+                              onClick={() => setCfg({ tint: 'mine' })}
+                            >
+                              Mine
+                            </button>
+                            {TINT_HUES.map((h) => (
+                              <button
+                                key={h}
+                                className={
+                                  'profile-tint-swatch' +
+                                  (selected.config?.tint === h ? ' is-on' : '')
+                                }
+                                aria-label={tintName(h)}
+                                title={tintName(h)}
+                                aria-pressed={selected.config?.tint === h}
+                                style={{ ['--blk-h']: String(h) } as React.CSSProperties}
+                                onClick={() => setCfg({ tint: h })}
+                              />
+                            ))}
+                          </span>
+                        </label>
+                        {look.hue != null && (
+                          <label className="profile-editrow-look">
+                            <span className="muted">How much of it</span>
+                            <span className="profile-width-row">
+                              {BLOCK_FINISHES.map((f) => (
+                                <button
+                                  key={f.id}
+                                  className={'btn' + (look.finish === f.id ? ' is-on' : '')}
+                                  aria-pressed={look.finish === f.id}
+                                  onClick={() => setCfg({ finish: f.id })}
+                                >
+                                  {f.label}
+                                </button>
+                              ))}
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                <div className="profile-editrow-settings">
+                  {/* ⚠️ three buttons rather than one that cycles. A cycling button cannot show
+                which of the three you are on without being read, and cannot go back a step. */}
+                  <label className="profile-editrow-size">
+                    <span className="muted">Width of the page</span>
+                    <span className="profile-width-row">
+                      {(['small', 'medium', 'large'] as const).map((sz) => (
+                        <button
+                          key={sz}
+                          className={'btn' + (selected.size === sz ? ' is-on' : '')}
+                          aria-pressed={selected.size === sz}
+                          onClick={() =>
+                            setBlocks((all) =>
+                              all.map((x, idx) => (idx === openIdx ? { ...x, size: sz } : x)),
+                            )
+                          }
+                        >
+                          {sz === 'small' ? 'a third' : sz === 'medium' ? 'a half' : 'full width'}
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  <label>
+                    <span className="muted">Who can see this</span>
+                    <select
+                      className="btn"
+                      value={selected.visibility}
+                      onChange={(e) =>
+                        setBlocks((all) =>
+                          all.map((x, idx) =>
+                            idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
+                          ),
+                        )
+                      }
+                    >
+                      {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
+                        <option key={t} value={t}>
+                          {TIER_LABEL[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {/**
+                   * ⚠️ "ANYONE" CHANGED MEANING AND THE WORD DID NOT.
+                   *
+                   * While a profile could only be loaded by a member, the public tier was a
+                   * ceiling something else enforced: "Anyone" honestly meant "any member", and
+                   * everybody who ever picked it picked it under that meaning. Publishing a page
+                   * makes the same word mean the open internet, for blocks chosen months ago
+                   * against the old one. So the word is left alone — it is the right word — and
+                   * what it currently reaches is said underneath it, where it can be true in both
+                   * states instead of being a guess baked into a label.
+                   */}
+                  {selected.visibility === 'public' && (
+                    <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>
+                      {pagePublic
+                        ? '● Your page is published, so “Anyone” means anyone at all — signed in or not.'
+                        : '“Anyone” means any member, until you publish your page in Account.'}
+                    </p>
+                  )}
+                  <button className="btn btn-ghost" onClick={() => removeAt(openIdx)}>
+                    Remove this block
+                  </button>
                 </div>
               </div>
             </div>

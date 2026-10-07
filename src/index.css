@@ -11466,121 +11466,128 @@ a.cz-msg-author:focus-visible {
   border-radius: 12px;
 }
 /**
- * ⚠️ IT IS A DIALOG NOW, rather than a panel fixed to an edge of the screen.
+ * ⚠️ BESIDE THE PAGE, TRANSLUCENT, AND THE PAGE MAKES ROOM FOR IT.
  *
- * It has been three shapes, and each one fixed the last one's real problem and brought its own.
+ * This panel has been four shapes and each one was a reaction to the last.
  *
- * Under the page first — which meant the panel and the block it described were never on screen
- * together, so every change was scroll down, change something you can no longer see, scroll back
- * up to find out what happened.
+ * Under the page first, so the block and its settings were never on screen together. Then fixed
+ * to an edge, which fixed that — but it was `width: min(20rem, 32vw)`, about 294px of content
+ * box, holding rows of five and seven buttons and a song row of two dropdowns. It scrolled both
+ * ways, and a block's options were reported as "3 page scroll to the right". Then a centred modal
+ * with a copy of the block drawn in it, which cured the scrolling and got two things wrong: a
+ * preview was never what was missing, and a scrim over the canvas took away picking the NEXT
+ * block, which is how somebody actually dresses a page.
  *
- * Then fixed to an edge, which solved that and introduced this: `width: min(20rem, 32vw)` is
- * about 294px of content box, and these settings are rows of five and seven buttons. Worse,
- * `overflow-y: auto` on it makes `overflow-x` compute to `auto` as well — one axis non-visible
- * forces the other — so a row too wide to wrap grew a HORIZONTAL SCROLLBAR instead of being laid
- * out. Reported as a block's options being "3 page scroll to the right", on top of the scrolling
- * down that the Look fold was added to fix. The left/right anchor and the slide-away pull were
- * both answers to the same underlying thing: a panel beside the page is always in front of some
- * of it, and no edge is the right edge for long.
+ * So: docked to the side, see-through, no scrim, and the editor is given a matching inset so the
+ * panel sits BESIDE the profile instead of on top of it. Asked for in those words.
  *
- * Over the page, with the block drawn inside it, has neither cost. There is room for the controls
- * to lay out in columns, nothing you need is covered, and the thing the settings are about is the
- * first thing in the dialog — which is what was actually asked for: see how it will look as it is
- * on the page.
- *
- * ⚠️ IT WEARS .pal-sheet, so the width, the cap, the scrolling, the padding, the border and the
- * shadow are the ones every other dialog on this site has, and all that is left here is what is
- * genuinely different about this one. That sheet's own comment records exactly this lesson from
- * the appearance dialog: it was 30rem and scrolled, and opening a pad pushed the preview out of
- * sight.
+ * ⚠️ WIDE ENOUGH TO NOT SCROLL SIDEWAYS IS A NUMBER, not a hope. The widest unbreakable thing in
+ * here is the song row's two `<select>`s, whose min-content width is set by their longest option
+ * ("From a saved look…", "Block's colours"). 26rem of content box clears that with room, and
+ * everything else in the panel wraps. `min()` against a vw keeps it honest on a small laptop,
+ * where a fixed rem value would eat the page it is meant to sit beside.
  */
 .profile-inspector {
-  /* wider than the 52rem house sheet, because this one holds a page preview AND the controls */
-  width: min(64rem, 100%);
+  position: fixed;
+  z-index: 40;
+  /**
+   * ⚠️ BELOW THE NAV, OR THE HEAD IS BEHIND IT AND DONE DOES NOTHING. `.nav` is fixed at
+   * z-index 100 against this panel's 40, so at `top: 0` the panel's first 59px — which is
+   * exactly the row holding the title, 🎨 Look and Done — sat underneath it. Measured:
+   * `elementFromPoint` at the centre of Done returned `btn nav-cog`, so pressing Done would
+   * have opened the site's settings menu instead. Visibly wrong and silently wrong at once.
+   *
+   * `--nav-h` is kept exact by a ResizeObserver on the nav, so this follows a bar that changes
+   * height (it wraps on narrow windows) rather than guessing at one number.
+   */
+  top: var(--nav-h, 54px);
+  right: 0;
+  bottom: 0;
+  width: min(30rem, 42vw);
+  display: flex;
+  flex-direction: column;
   gap: 0.6rem;
+  padding: var(--card-pad, 1.1rem);
+  border-left: 1px solid var(--border-strong);
+  /**
+   * ⚠️ TRANSLUCENT, BUT NOT SO MUCH THAT THE WORDS STOP BEING WORDS. The page behind this is a
+   * grid of blocks in arbitrary colours, and text on 50% of anything over that is unreadable on
+   * some pages and fine on others — which is worse than opaque, because it depends whose page it
+   * is. 88% of the panel colour plus a blur reads everywhere and still shows what is behind.
+   */
+  background-color: color-mix(in oklab, var(--panel) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: -18px 0 50px rgba(0, 0, 0, 0.4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/**
+ * ⚠️ WHERE color-mix OR backdrop-filter IS NOT UNDERSTOOD, be opaque rather than be a guess.
+ * A browser that drops the `background-color` line falls back to the panel colour above it, and
+ * one that drops the blur gets a flat translucent panel — readable either way. Safari and Firefox
+ * are not reachable from here, so this is written to degrade rather than to be verified.
+ */
+@supports not (backdrop-filter: blur(1px)) {
+  .profile-inspector {
+    background-color: var(--panel);
+  }
 }
 
 /**
- * The block, and everything about it, side by side.
+ * The page's own inset, so the panel is beside it rather than over it.
  *
- * ⚠️ THE PREVIEW IS FIRST IN THE DOM AND SECOND IN THE GRID, deliberately. In source order it
- * comes first, so on a phone — one column — you see the block before the controls that change it.
- * On a wide screen `grid-template-areas` moves it to the right, where a preview belongs, without
- * the DOM order changing and dragging the phone layout along with it.
+ * ⚠️ IT MATCHES THE PANEL'S WIDTH EXACTLY, through the same expression. Two numbers that have to
+ * agree and are written in two places are two numbers that will stop agreeing — the gap is either
+ * dead space or a covered column, and both look like a layout bug rather than a stale constant.
  */
+.profile-editor.is-asided {
+  padding-right: calc(min(30rem, 42vw) + 1rem);
+}
+
+/* one column of controls, and nothing in here may dictate a width — see min-width below */
 .profile-blockedit {
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-areas: 'live' 'controls';
   gap: 0.75rem;
-  /**
-   * ⚠️ A GRID ITEM DEFAULTS TO `min-width: auto` — "never narrower than my contents" — and the
-   * contents here are rows of buttons. Left at auto, a track refuses to shrink, the row inside it
-   * never gets the chance to wrap, and the sheet scrolls sideways: which is the exact bug this
-   * whole dialog exists to stop happening again, one level down. Every track and every column in
-   * here says `minmax(0, …)` or `min-width: 0` for that reason, and none of them is decoration.
-   */
-  min-width: 0;
-}
-@media (min-width: 52rem) {
-  .profile-blockedit {
-    /* the preview is the bigger half: it is a page, and the controls are a list */
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-    grid-template-areas: 'controls live';
-    align-items: start;
-  }
-  /**
-   * ⚠️ STICKY, so the block stays in sight while the controls scroll past it. The sheet is the
-   * scroll container — `.pal-sheet` is `overflow-y: auto` — so `top` is measured against the
-   * sheet and not the window, which is the whole reason this works without a magic number.
-   */
-  .profile-blockedit-live {
-    position: sticky;
-    top: 0;
-  }
-}
-.profile-blockedit-live {
-  grid-area: live;
-  display: grid;
-  gap: 0.3rem;
-  align-content: start;
   min-width: 0;
 }
 .profile-blockedit-controls {
-  grid-area: controls;
   display: grid;
   gap: 0.6rem;
   align-content: start;
+  /**
+   * ⚠️ A GRID ITEM DEFAULTS TO `min-width: auto` — "never narrower than my contents" — and the
+   * contents are rows of buttons and dropdowns. Left at auto, the track refuses to shrink, the
+   * rows inside never get the chance to wrap, and the panel scrolls sideways: which is the whole
+   * bug this shape exists to end. Every `min-width: 0` in here is load-bearing.
+   */
   min-width: 0;
 }
-.profile-blockedit-tag {
-  font-size: 0.74rem;
-}
+
 /**
- * ⚠️ A STAGE WEARING THE PAGE'S OWN BACKGROUND, because a block is designed against the page and
- * has to be judged against it. On the sheet's panel colour a wash block reads as a different
- * colour than it will actually be — which makes the preview worse than no preview, because it
- * would be confidently wrong rather than simply absent.
+ * ⚠️ A BOTTOM SHEET ON A PHONE, because there is no "beside" on one. Half the height, so the
+ * block being edited is still visible above it, and the page keeps its full width — the inset
+ * above is a desktop idea and would only add a margin here.
+ *
+ * The breakpoint is the one where taking 42vw away would leave the page narrower than the panel.
  */
-.profile-blockedit-stage {
-  padding: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background-color: var(--bg, #0b0b0f);
-  background-image: var(--surface);
-  min-width: 0;
-}
-/**
- * ⚠️ CAPPED ON A PHONE, so a tall block cannot push every control below the fold — the same trap
- * `.pal`'s own comment records for the shade pad. It scrolls rather than clipping: a preview you
- * have to scroll is still honest, and one that silently ends early is not.
- */
-@media (max-width: 52rem) {
-  .profile-blockedit-stage {
-    max-height: 38vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-    overscroll-behavior: contain;
+@media (max-width: 60rem) {
+  .profile-inspector {
+    top: auto;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: 56vh;
+    border-left: none;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 14px 14px 0 0;
+    padding-bottom: calc(var(--card-pad, 1.1rem) + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.4);
+  }
+  .profile-editor.is-asided {
+    padding-right: 0;
+    /* so the last block is not left permanently under the sheet */
+    padding-bottom: 58vh;
   }
 }
 
@@ -11591,16 +11598,17 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
   flex-wrap: wrap;
   /**
-   * ⚠️ STUCK TO THE TOP OF THE SHEET, because Done is in it. "Scroll down, then back up just to
-   * press Done" was half of the original complaint, and a wider dialog only fixes the other half:
-   * there is still more here than fits on a short window. The negative margin is the usual trick
-   * for making a sticky header span a padded scroll container's full width.
+   * ⚠️ STUCK TO THE TOP OF THE PANEL, because Done is in it. "Scroll down, then back up just to
+   * press Done" was half of the original complaint, and width alone does not fix that half: the
+   * Look section is four rows nobody can make short enough to always fit. The negative margin is
+   * the usual trick for a sticky header inside a padded scroll container.
    */
   position: sticky;
   top: calc(var(--card-pad, 1.1rem) * -1);
   z-index: 1;
   margin: calc(var(--card-pad, 1.1rem) * -1) calc(var(--card-pad, 1.1rem) * -1) 0;
   padding: var(--card-pad, 1.1rem);
+  /* opaque, or the controls scroll up THROUGH the title and the Done button */
   background-color: var(--panel);
 }
 .profile-width-row {
@@ -11996,6 +12004,27 @@ a.cz-msg-author:focus-visible {
   align-items: center;
   gap: 0.3rem;
   font-size: 0.8rem;
+  /**
+   * ⚠️ THIS ROW IS THE ONE THAT WAS REPORTED, and it took a screenshot of it to find.
+   *
+   * A picked track is a name, then TWO `<select>`s, then a remove button, in a flex row that
+   * could not wrap. A select will not shrink below the width of its longest option — "From a
+   * saved look…", "Block's colours" — so three of those plus a name is wider than any sane
+   * settings panel, and the row simply ran off the side. Worse, `.profile-song-picked` above sets
+   * `overflow-y: auto`, and per the overflow spec one axis being non-`visible` forces the other
+   * to `auto`: so the list grew its own HORIZONTAL scrollbar and the overflow was hidden inside a
+   * scroller nobody had asked for. That is why every sweep of the panel reported zero — the panel
+   * was fine; the list inside it was scrolling.
+   *
+   * Wrapping is the whole fix. The selects go to the next line on a narrow panel and sit beside
+   * the name on a wide one, and nothing is ever out of reach sideways.
+   */
+  flex-wrap: wrap;
+}
+/* ⚠️ and they have to be ALLOWED to be narrow, or wrapping just moves the overflow down a line */
+.profile-song-picked li .viz-select {
+  min-width: 0;
+  max-width: 100%;
 }
 .profile-song-track {
   display: flex;
