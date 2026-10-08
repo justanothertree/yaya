@@ -10,6 +10,7 @@ import {
   inviteToPark,
   myPark,
   myPublished,
+  publishMap,
   openPark,
   parkInvites,
   uninviteFromPark,
@@ -4171,8 +4172,42 @@ export function ParkRoom({
               👥 Friends&rsquo; parks
             </button>
 
-            {/* ⚠️ hosting is about a map you PUBLISHED, which is a different press in the map
-                maker — so this says so rather than offering a button that cannot work. */}
+            {/**
+             * ⚠️ SHARING IS THE PREREQUISITE AND IT WAS INVISIBLE. Opening a park needs the map
+             * to be published, and until it is, the Open button simply did not render — so a
+             * map of your own offered nothing at all, with no hint that one press in a
+             * different room was the missing step. Reported from the other end: a friend could
+             * not see the park, because there was no park, because there was no map.
+             *
+             * ⚠️ SO IT SHARES FROM HERE RATHER THAN SENDING YOU TO THE MAP MAKER. The map is
+             * already selected and the editor already holds its document — walking to another
+             * room to press one button is the journey this codebase keeps removing. The map
+             * maker keeps its own Share button; this is a second door to the same thing, which
+             * is the argument the snap picker and the metronome already make.
+             */}
+            {mapPick &&
+              !mineShared.includes(mapPick) &&
+              stamped.some((m) => m.name === mapPick) && (
+                <button
+                  className="btn"
+                  disabled={parksBusy}
+                  title={`Put "${mapPick}" on your account so friends can walk into it`}
+                  onClick={() => {
+                    const mine = stamped.find((m) => m.name === mapPick)
+                    if (!mine) return
+                    setParksBusy(true)
+                    void publishMap(mine.doc).then(async (r) => {
+                      setParksBusy(false)
+                      if (!r.ok) return setParkSaid(r.why)
+                      setMineShared((await myPublished()).map((x) => x.name))
+                      setParkSaid('Shared — now open it to let people in.')
+                    })
+                  }}
+                >
+                  ⇪ Share this map
+                </button>
+              )}
+
             {mapPick && mineShared.includes(mapPick) && (
               <button
                 className={'btn' + (hosting === mapPick ? ' is-on' : '')}
