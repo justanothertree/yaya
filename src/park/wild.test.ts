@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apart, restSpot, rouse, struck, wantsIt, wildAt, WILD, type Wild } from './wild'
+import { apart, restSpot, rouse, stepWilds, struck, wantsIt, wildAt, WILD, type Wild } from './wild'
 import { outBy, downBy } from './strike'
 import { TUNE, type Spot } from './walk'
 
@@ -188,5 +188,93 @@ describe('standing about', () => {
     /* ⚠️ notice < chase, or a creature wakes, hits its range and gives up on a loop */
     expect(WILD.notice).toBeLessThan(WILD.chase)
     expect(WILD.leash).toBeLessThan(WILD.notice)
+  })
+})
+
+/**
+ * Walking.
+ *
+ * ⚠️ THE TUNE IS BUILT FROM THE PLAYER'S OWN TOP SPEED, not from numbers typed in beside the
+ * test. TUNE.speed is world-per-second, so dividing by outBy(1) puts it in creatures a second —
+ * the unit everything in this module is written in — and every claim below is then about how
+ * this creature compares to the one you are walking as.
+ */
+const asFastAsYou = TUNE.speed / outBy(1)
+const tune = { speed: asFastAsYou, grip: 9, apart: 1.1, reach: 1.2 }
+
+describe('walking', () => {
+  const run = (mobs: Wild[], you: Spot, secs: number) => {
+    let m = mobs
+    for (let t = 0; t < secs; t += 1 / 60) m = stepWilds(m, you, t, 1 / 60, tune)
+    return m
+  }
+
+  it('closes on you when it is awake, and stops at arm’s length', () => {
+    const start = east(home, 8)
+    const m = run([{ ...wildAt(0, start, 20, 0, 1), awake: true, cross: WILD.patience }], home, 12)
+    const got = apart(m[0], home)
+    /* ⚠️ it arrives — and does not end up standing inside you, which is what `reach` is for */
+    expect(got).toBeLessThan(tune.reach * 2.2)
+    expect(got).toBeGreaterThan(0.2)
+  })
+
+  it('takes about as long to reach you as walking it yourself would', () => {
+    /**
+     * ⚠️ MEASURED AGAINST THE DISTANCE AND THE SPEED, which share no arithmetic with stepWilds:
+     * eight creatures at one creature-per-whatever should take roughly eight of those, and a
+     * creature that took three times that is not chasing, it is strolling.
+     */
+    const far = 8
+    const fair = far / asFastAsYou
+    let secs = 0
+    let m: Wild[] = [{ ...wildAt(0, east(home, far), 20, 0, 1), awake: true, cross: WILD.patience }]
+    while (apart(m[0], home) > tune.reach * 2 && secs < fair * 4) {
+      m = stepWilds(m, home, secs, 1 / 60, tune)
+      secs += 1 / 60
+    }
+    expect(secs).toBeLessThan(fair * 2.5)
+  })
+
+  it('stays home while it has not noticed you', () => {
+    const m = run([wildAt(0, home, 20, 2, 1)], east(home, 40), 30)
+    /* ⚠️ the leash is the promise restSpot makes; walking there must not break it */
+    expect(apart(m[0], home)).toBeLessThanOrEqual(WILD.leash * 1.35)
+  })
+
+  it('does not let them stand inside each other', () => {
+    /* four stamped on the same spot, which is what a quick hand does */
+    const mobs = [0, 1, 2, 3].map((i) => wildAt(0, home, 20, i, 1))
+    const m = run(mobs, east(home, 40), 6)
+    for (let i = 0; i < m.length; i++)
+      for (let k = i + 1; k < m.length; k++)
+        expect(apart(m[i], m[k])).toBeGreaterThan(tune.apart * 0.45)
+  })
+
+  it('carries its own pace, so a quick drawing is a quick creature', () => {
+    /* ⚠️ MEASURED BEFORE EITHER ARRIVES. The first version ran both for four seconds from nine
+       creatures out, by which time both were standing next to me and the only difference left
+       was which had overshot — so the FASTER one read as further away and the test failed while
+       the code was right. A race is only a race while they are still running. */
+    const far = 30
+    const secs = 2
+    const slow = run(
+      [{ ...wildAt(0, east(home, far), 20, 0, 0.6), awake: true, cross: 9 }],
+      home,
+      secs,
+    )
+    const fast = run(
+      [{ ...wildAt(0, east(home, far), 20, 0, 1.6), awake: true, cross: 9 }],
+      home,
+      secs,
+    )
+    expect(apart(slow[0], home)).toBeGreaterThan(tune.reach * 3)
+    expect(apart(fast[0], home)).toBeLessThan(apart(slow[0], home))
+  })
+
+  it('leaves the dead where they fell', () => {
+    const dead = { ...wildAt(0, home, 0, 0, 1), life: 0, awake: true }
+    const m = run([dead], east(home, 2), 3)
+    expect(m[0].x).toBe(dead.x)
+    expect(m[0].y).toBe(dead.y)
   })
 })

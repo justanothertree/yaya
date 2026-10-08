@@ -93,15 +93,14 @@ const DOES: Array<[string, string, PlaceKind, number, Life?]> = [
   ['solid', 'Solid — blocks you', 'wall', 0],
   ['stand', 'Stand on top', 'rocks', 0.5],
   /**
-   * ⚠️ NO MINION ROW YET, AND THE FORMAT IS READY FOR ONE. `Piece.life` already reads and
-   * writes 'minion' — it is packed, tested and back-compatible — but the room cannot stand one
-   * up: a crowd is baked ONCE into a single sprite shared by every mob in it (see mobKit), so
-   * two different stamped creatures would both be drawn as the first. Offering the choice and
-   * then quietly drawing somebody else's monster is worse than not offering it.
+   * ⚠️ A MINION STANDS ABOUT; A BOSS IS THE FIGHT. Both come from the same drawing — see
+   * minionOf, which takes a boss's art and gives back something smaller and quicker — so the
+   * choice here is how MUCH of a creature you get, never a different picture.
    *
-   * It belongs with the ambient creatures that stand about and can be picked a fight with,
-   * rather than bolted onto the wave, so it waits for that rather than for a bake-per-mob.
+   * One stands there until you come near it, keeps to where you put it, and goes home if you
+   * run. The other is standing when you arrive and is the reason you came.
    */
+  ['minion', '🐾 A minion — it lives here', 'flat', 0, 'minion'],
   ['boss', '💀 A boss — it fights you here', 'flat', 0, 'boss'],
 ]
 

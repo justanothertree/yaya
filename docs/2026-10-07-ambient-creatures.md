@@ -1,83 +1,77 @@
-# Ambient creatures — what is built, and the one decision left
+# Ambient creatures — stamp a creature on a map and it lives there
 
 Asked for as: _"mobs in park that you can agro and farm and they are like swarm minions but not
-as wave that hunts you but exists"_ — and, from the same list, _"if i stamp a minion or boss on
-the map editor it spawns there"_. Those turned out to be one feature: a creature standing in the
-world that is not a wave.
+as wave that hunts you but exists"_, and _"if i stamp a minion or boss on the map editor it
+spawns there"_. Those were one feature: a creature standing in the world that is not a wave.
 
-## Done
+✅ **DONE.** Format, editor and room, for both roles.
 
-**`feat(park): stamp a boss on a map and it is standing there when you walk in`**
-Format, editor and room. `Piece.life` is a seventh packed number written only when there is one,
-so every map already saved packs to exactly the six it always did. `placesOf` filters the living
-out of the terrain; `livesOf` hands the room drawings rather than palette indices. Verified in
-`#dev-park`: minimap dot at (0.693, 0.595) against a stamp at (0.70, 0.60).
+## The shape of it
 
-**`feat(park): creatures that live somewhere, notice you, and go home`**
-`src/park/wild.ts` — the pure core, 15 tests. Noticing, the shout that spreads from the creature
-that saw you (not from the player), the give-up countdown, the leash, and ranges ordered
-`leash < notice < chase` so a creature cannot wake for something it will not follow.
+| piece                                              | where                           |
+| -------------------------------------------------- | ------------------------------- |
+| `Piece.life` — a stamp is alive, and as what       | `src/park/mapDoc.ts`            |
+| noticing, the shout, giving up, the leash, walking | `src/park/wild.ts` (+ 21 tests) |
+| the two rows in the stamp picker                   | `src/park/MapMaker.tsx`         |
+| kits, stepping, combat, the blit                   | `src/park/ParkRoom.tsx`         |
 
-## Not done: the room cannot draw them yet
+A boss is standing where you put it when you walk in. A minion stands about near where you put
+it, notices you if you come close, shouts to the ones beside it, follows, gives up if you run,
+and goes home. Clear a corner, walk out, walk back, and it is populated again — which is the
+whole of "farm", and it costs nothing because these are a property of the map rather than of the
+session.
 
-The wave bakes **one** sprite shared by every mob in it (`mobKit`), so two different stamped
-creatures would both be drawn as the first. That is why the minion row is not offered in the map
-editor — `Piece.life` reads and writes `'minion'` already, so maps made later need no migration.
+## The decision that was open, and how it went
 
-The wiring is **additive**: a second array with its own per-frame block and its own blit pass,
-reusing `inSwipe` / `inPatch` / `toWorld`. The wave's ~200-line block stays untouched, because
-refactoring it to carry a list of kits is the one change that could break a fight that works.
+Three spaces were in play and they are not interchangeable: **world** (`0..1` across the park,
+two different scales), **screen-heights** (`toHeights()`, which is what `stepSwarm` and every
+`Flock` number use) and **pet-heights** (screen-heights ÷ `PARK_TALL`, which is what every
+threshold in `WILD` uses).
+
+Settled on **one unit end to end**: `wild.ts` does its own walking in pet-heights, positions stay
+in world, and the conversion happens once per step through `outBy`/`downBy` — the shape
+`stepFrom` already uses in strike.ts. `stepSwarm` is not used for wilds. What that gives up is
+shared separation between wilds and wave minions, which a few hand-placed creatures do not need;
+what it buys is that no number in the module is ever multiplied by an aspect ratio somebody had
+to remember.
+
+⚠️ **AND THE TRAP CAUGHT ME ANYWAY, AT THE FIRST CALL SITE.** This document's previous version
+warned that `across()` and `down()` take screen-heights while the park is written in pet-heights,
+and that a missing `PARK_TALL` between them had already produced a dodge that crossed most of the
+field and a boss's attacks landing past the edge of the world. The tune handed to `stepWilds` was
+then written as:
 
 ```ts
-const wildKits = useRef<Array<{ kind: Minion; baked: Baked | null; wide: number }>>([])
-const wilds = useRef<Wild[]>([])
+speed: TUNE.speed / outBy(1),              // right: world a second -> creatures a second
+apart: pressedTo(fattest, fattest) / outBy(1),      // WRONG
+reach: pressedTo(myWide, fattest, 0, 1) / outBy(1), // WRONG
 ```
 
-Built on arrival from `drawn.lives().filter((l) => l.as === 'minion')`, grouped by drawing —
-`livesOf` returns `doc.palette[p.art]`, so the same palette entry is the same object and grouping
-is by reference.
+`pressedTo` returns **screen-heights** — its own note says so — so those two needed `/ PARK_TALL`.
+Two of the three conversions were right, which is exactly how the third hides. The standoff came
+out so wide that the creatures stood outside the reach of every swing in the game: **ten swings
+into a huddle of five felled nothing** (creature ink 8710 → 8477, and that difference was them
+walking). With `/ PARK_TALL`, ten swings cleared all five (7220 → 0).
 
-## The decision to make first
+The lesson is not "be careful". It is that **a unit error here does not look like an error** — it
+looks like a creature that will not die, which reads as a broken hit test. The thing that found
+it was a readback of painted pixels, which shares no arithmetic with the spawn or the hit test.
 
-**Which space `wilds` live in.** There are three in play and they are not interchangeable:
+## How it was verified
 
-| space          | what it is                                                             | who wants it                                  |
-| -------------- | ---------------------------------------------------------------------- | --------------------------------------------- |
-| world          | `0..1` across the park, two different scales                           | `Piece.at`, `livesOf`, drawing via `onScreen` |
-| screen-heights | `toHeights()` — isotropic, `x * PARK.across * ASPECT`, `y * PARK.down` | `stepSwarm` and every number in `Flock`       |
-| pet-heights    | screen-heights ÷ `PARK_TALL`                                           | every threshold in `WILD`, and `apart`        |
+In `#dev-park`, against maps written into `park_maps_v1` and walked into, with `requestAnimationFrame`
+stood in by a `setTimeout` so the loop runs:
 
-`wild.ts` is written and tested in **world in, pet-heights out**: `apart` divides by `outBy(1)`
-and `downBy(1)`, which is the shape `outBy` exists to give. `stepSwarm` wants screen-heights.
+- **two different drawings, drawn differently** — red centre at (0.507, 0.452) and blue at
+  (0.481, 0.516) on the swarm canvas, matching which was stamped right of and below the other.
+  This is the thing that blocked the feature: the wave bakes one sprite for the whole crowd.
+- **they are awake and held at arm's length** — 546 ring pixels, and they converge on the player
+  without ending up inside them.
+- **they can be cleared** — 7220 → 0 across ten swings.
+- **and the corner refills** — walk out, walk back, 7253.
 
-So one of these, deliberately:
+## Left for later
 
-1. **Keep wilds in world, convert at the `stepSwarm` call.** `wild.ts` stays correct as tested.
-   Cost: a `toHeights`/`toWorld` sandwich per frame, and `Flock`'s `apart`/`reach`/`speed` are in
-   screen-heights while everything around them is not — a mixing point, which is where this
-   module's bugs have always been.
-2. **Keep wilds in screen-heights like `mobs`.** `stepSwarm` and the blit work unchanged. Cost:
-   `apart` and the `wild.ts` tests are wrong as written and must be redone in that space.
-3. **Do not use `stepSwarm` for wilds.** Ambient creatures are few and hand-placed, and their
-   locomotion is simple — amble to `restSpot`, or walk at you. Write it in `wild.ts` in
-   pet-heights with its own tests. The "second opinion" rule this repo keeps paying for is about
-   HIT TESTS and reach, not about walking, and combat would still go through `inSwipe`/`inPatch`.
-
-⚠️ **Do not decide this by writing a conversion at the call site and seeing if it looks right.**
-`across()` and `down()` take screen-heights while nearly everything here is written in
-pet-heights, and the missing `PARK_TALL` has gone astray three times already — a dodge that
-crossed most of the field, and a boss's mark and wave landing past the edge of the world. The
-measurement that settles it must share no arithmetic with the thing being measured: the field's
-own width, a pixel rectangle, or a readback of painted pixels.
-
-Leaning towards **3**. It is the only one with a single unit end to end, `WILD` is already written
-in that unit, and the thing it gives up — shared separation between wilds and wave minions — is
-not something a hand-placed creature needs.
-
-## Then
-
-- Combat: `Wild` gains `cut` and `zapped` stamps, same one-hit-per-swing rule the crowd uses.
-  `struck()` already wakes the neighbours, which is what stops picking a group off from range.
-- Death and respawn, which is what makes it farming rather than clearing.
-- Re-offer the minion row in `MapMaker`'s `DOES` table, and delete the note saying why it is not
-  there.
+- A boss on a map is yours alone: a drawn map refuses the relay by design, so none of this is
+  shared. That is the same for the Call button and is not a regression.
+- The wave's block still bakes one sprite. It did not need changing and was not touched.

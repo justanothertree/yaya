@@ -52,6 +52,8 @@ export type Wild = {
    * who has pulled a group expects.
    */
   cross: number
+  /** how fast it is, as a multiple of everybody else — from its own drawing, see minionOf */
+  pace: number
   /** its own phase, so a crowd at one spot does not drift as one body */
   seed: number
 }
@@ -92,7 +94,7 @@ export const apart = (a: Spot, b: Spot): number =>
   Math.hypot((a.x - b.x) / outBy(1), (a.y - b.y) / downBy(1))
 
 /** a fresh one, standing where it was put */
-export function wildAt(kit: number, home: Spot, life: number, seed = 0): Wild {
+export function wildAt(kit: number, home: Spot, life: number, seed = 0, pace = 1): Wild {
   return {
     kit,
     x: home.x,
@@ -103,6 +105,7 @@ export function wildAt(kit: number, home: Spot, life: number, seed = 0): Wild {
     life,
     awake: false,
     cross: 0,
+    pace,
     seed,
   }
 }
@@ -195,4 +198,124 @@ export function wantsIt(m: Wild, you: Spot, dt: number): Wild {
   if (!strayed && !lost) return m.cross === WILD.patience ? m : { ...m, cross: WILD.patience }
   const cross = m.cross - dt
   return cross > 0 ? { ...m, cross } : { ...m, awake: false, cross: 0 }
+}
+
+/**
+ * ⚠️ THE EXTRA FIELDS A FIGHT NEEDS, kept here rather than in the room so a wild thing is one
+ * type everywhere. `cut` and `zapped` are the same one-hit-per-swing stamps the crowd carries —
+ * a single `spent` flag on the swing fells ONE of a group, and no flag at all runs the hit test
+ * every frame a swipe is live. `gone` counts a body's fade, and is negative while it is alive.
+ */
+export type Felled = { cut: number; zapped: number; gone: number }
+
+/**
+ * How a wild thing moves. Everything in PET-HEIGHTS and seconds — see `apart`.
+ *
+ * ⚠️ NOT A `Flock`, AND NOT stepSwarm. That one is the wave's, and its numbers are in
+ * screen-heights because that is the space `toHeights` puts a crowd in; this module's thresholds
+ * are all in pet-heights, which is the unit the park is actually written in. Converting between
+ * the two every frame is a mixing point, and a missing PARK_TALL between those exact two spaces
+ * is the mistake this repo has made three times (see docs/2026-10-07-ambient-creatures.md).
+ *
+ * ⚠️ AND THE THING IT GIVES UP IS NOT NEEDED HERE. A wave is forty things converging on one
+ * point, which is why stepSwarm's separation has to be as careful as it is. These are placed by
+ * hand, a few at a time, around the spot somebody put them — so "do not stand inside each other"
+ * is the whole requirement, and it is three lines.
+ */
+export type WildTune = {
+  /** how fast one travels at full tilt, before its own pace, in pet-heights a second */
+  speed: number
+  /** how quickly it gets there */
+  grip: number
+  /** how close two of them get before they push apart */
+  apart: number
+  /** how close it tries to get to you before it stops closing */
+  reach: number
+}
+
+/** a direction in PET-HEIGHT space, which is the only space angles mean anything in here */
+const toward = (from: Spot, to: Spot): { x: number; y: number; far: number } => {
+  const dx = (to.x - from.x) / outBy(1)
+  const dy = (to.y - from.y) / downBy(1)
+  const far = Math.hypot(dx, dy)
+  return far > 1e-9 ? { x: dx / far, y: dy / far, far } : { x: 0, y: 0, far: 0 }
+}
+
+/**
+ * One step of everything that lives here.
+ *
+ * ⚠️ AWAKE ONES COME FOR YOU, SLEEPING ONES AMBLE ROUND HOME, and that is the only branch. The
+ * target is the difference between the two states; everything after it — the easing, the
+ * pushing apart, the clamping — is the same code, because a creature walks the same way whether
+ * it is cross or not.
+ *
+ * ⚠️ POSITION IS WORLD, VELOCITY IS PET-HEIGHTS, AND THE CONVERSION HAPPENS ONCE, here, through
+ * outBy/downBy — the same shape `stepFrom` uses in strike.ts. Keeping the velocity in the unit
+ * the tune is written in means no number in this file is ever multiplied by an aspect ratio
+ * somebody had to remember.
+ */
+export function stepWilds<T extends Wild>(
+  mobs: T[],
+  you: Spot,
+  t: number,
+  dt: number,
+  tune: WildTune,
+): T[] {
+  if (!(dt > 0) || !mobs.length) return mobs
+  const out: T[] = new Array(mobs.length)
+  for (let i = 0; i < mobs.length; i++) {
+    const m = mobs[i]
+    if (m.life <= 0) {
+      out[i] = m
+      continue
+    }
+    const want = m.awake ? you : restSpot(m, t)
+    const to = toward(m, want)
+    /**
+     * ⚠️ IT STOPS AT `reach` RATHER THAN AT YOUR MIDDLE, for the reason stepSwarm's own note
+     * gives at length: something seeking your exact centre ends up standing inside you. Fading
+     * the pull to nothing at reach makes you a body it walks up to rather than a point it
+     * tries to occupy.
+     */
+    /**
+     * ⚠️ IT GOES NEGATIVE INSIDE `reach`, AND CLAMPING IT AT ZERO WAS NOT ENOUGH — a test
+     * caught one standing 0.1 of a creature from the middle of me, which is inside. Fading the
+     * pull to nothing only removes the reason to come closer; it does not remove the momentum
+     * already carried, and nothing then pushes back out. Reversing it makes the player a body it
+     * walks up to rather than a point it ends up occupying, which is the same conclusion
+     * stepSwarm's own note reaches about the wave.
+     */
+    const pull = m.awake
+      ? Math.max(-1, Math.min(1, (to.far - tune.reach) / Math.max(1e-6, tune.reach)))
+      : 1
+    let ax = to.x * pull
+    let ay = to.y * pull
+    /* do not stand inside each other — the whole of what separation has to do for a few of them */
+    for (let k = 0; k < mobs.length; k++) {
+      if (k === i || mobs[k].life <= 0) continue
+      const off = toward(mobs[k], m)
+      if (off.far > 0 && off.far < tune.apart) {
+        const push = 1 - off.far / tune.apart
+        ax += off.x * push * 1.6
+        ay += off.y * push * 1.6
+      }
+    }
+    const mag = Math.hypot(ax, ay)
+    const speed = tune.speed * m.pace * (m.awake ? 1 : WILD.amble)
+    const wx = mag > 1e-9 ? (ax / mag) * speed : 0
+    const wy = mag > 1e-9 ? (ay / mag) * speed : 0
+    const ease = Math.min(1, tune.grip * dt)
+    const vx = m.vx + (wx - m.vx) * ease
+    const vy = m.vy + (wy - m.vy) * ease
+    out[i] = {
+      ...m,
+      vx,
+      vy,
+      /* ⚠️ the one conversion: pet-heights a second becomes world, on each axis by its own
+         measure, which is exactly what outBy and downBy are for */
+      x: Math.max(0.02, Math.min(0.98, m.x + outBy(vx * dt))),
+      y: Math.max(0.02, Math.min(0.98, m.y + downBy(vy * dt))),
+    }
+  }
+  return out
 }

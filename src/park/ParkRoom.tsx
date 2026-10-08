@@ -2,6 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { paintDrawing, type Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
 import { livesOf, placesOf, type Door } from './mapDoc'
+import {
+  rouse,
+  stepWilds,
+  struck as rousedBy,
+  wantsIt,
+  wildAt,
+  type Felled,
+  type Wild,
+} from './wild'
 import { readZone, zoneWalls } from './zone'
 import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
@@ -75,6 +84,7 @@ import {
   stepDown,
   stepStrike,
   footSpan,
+  outBy,
   pressedTo,
   octantOf,
   overHead,
@@ -1317,6 +1327,20 @@ export function ParkRoom({
     were: number
   } | null>(null)
   /**
+   * The creatures that LIVE on the map you are in — see wild.ts.
+   *
+   * ⚠️ A SECOND ARRAY RATHER THAN THE WAVE'S, and deliberately so. The crowd bakes ONE sprite
+   * shared by every mob in it, which is right for forty copies of one thing and cannot express
+   * a map with three different creatures stamped on it. Teaching that block to carry a list of
+   * kits would be refactoring two hundred lines of working fight to add a feature beside it; a
+   * second array costs a blit pass and leaves the wave exactly as it was.
+   *
+   * ⚠️ ONE BAKE PER DRAWING, NOT PER CREATURE. Ten of one thing is ten positions and one
+   * stamp — the same economy the map's palette makes, for the same reason.
+   */
+  const wildKits = useRef<Array<{ kind: Minion; baked: Baked | null; wide: number }>>([])
+  const wilds = useRef<Array<Wild & Felled>>([])
+  /**
    * How many waves you have CLEARED here, which is not how many have been called.
    *
    * ⚠️ IT COUNTED SPAWNS, AND THAT MADE EVERY OTHER QUESTION AWKWARD. Leaving the park reset it,
@@ -1823,6 +1847,38 @@ export function ParkRoom({
      * this boss is yours alone — exactly like one called with the button on the same map, and
      * cleared by the same teardown below.
      */
+    /**
+     * ⚠️ BUILT ON ARRIVAL AND THROWN AWAY ON LEAVING, like the boss beside it. These are a
+     * property of the map you are standing in, not of the session — walking out and back in is
+     * how you get the corner you cleared back, which is the whole of "farm".
+     */
+    wildKits.current = []
+    wilds.current = []
+    const byArt = new Map<unknown, number>()
+    for (const l of drawn?.lives() ?? []) {
+      if (l.as !== 'minion') continue
+      let k = byArt.get(l.art)
+      if (k === undefined) {
+        k = wildKits.current.length
+        const kind = minionOf(l.art)
+        wildKits.current.push({
+          kind,
+          /* ⚠️ baked here rather than on the first frame it is seen: a detailed creature takes
+             110ms, and paying that as somebody walks into the map is a stutter on arrival — the
+             same reasoning the wave's kit note gives */
+          baked: bakeWalk(l.art, Math.max(2, 54 * kind.scale)),
+          wide: petWide(l.art) * kind.scale,
+        })
+        byArt.set(l.art, k)
+      }
+      const kind = wildKits.current[k].kind
+      wilds.current.push({
+        ...wildAt(k, l.at, kind.life, wilds.current.length, kind.pace),
+        cut: -1,
+        zapped: -1,
+        gone: -1,
+      })
+    }
     const stamped0 = drawn?.lives().find((l) => l.as === 'boss')
     if (stamped0) {
       boss.current = makeBoss(stamped0.art.name, stamped0.art, {
@@ -2562,6 +2618,96 @@ export function ParkRoom({
           setWavesWon(kit.no)
         }
         mobs.current = standing
+      }
+
+      /**
+       * The creatures that live here, which is a different thing from a wave — see wild.ts.
+       *
+       * ⚠️ IN THE SAME LOOP AND ON THE SAME CLOCK as everything it touches, for the reason the
+       * crowd's note gives: a thing stepped on its own timer would be hit by a swing that had
+       * already ended on this one.
+       *
+       * ⚠️ AND THE SAME inSwipe AND inPatch, never a second opinion about what a swing reaches.
+       * That rule is about hit tests, and it is kept; the WALKING is this module's own, which is
+       * the decision in docs/2026-10-07-ambient-creatures.md — one unit end to end beats a
+       * conversion sandwich between pet-heights and the swarm's screen-heights.
+       */
+      if (wilds.current.length) {
+        const here = you.current
+        /* who has just looked up, and who it shouted to */
+        let live = rouse(wilds.current, here) as Array<Wild & Felled>
+        live = live.map((m) => wantsIt(m, here, dt) as Wild & Felled)
+
+        /**
+         * ⚠️ ONE TUNE FOR ALL OF THEM, WITH PACE CARRIED PER CREATURE. The only thing that
+         * differs between two drawings here is how quick each is, and that rides on the Wild
+         * itself — so the footprint numbers below are read from the widest kit, which is the
+         * conservative answer and keeps a small creature from standing inside a big one.
+         */
+        const fattest = wildKits.current.reduce((n, k) => Math.max(n, k.wide), myWide)
+        live = stepWilds(live, here, clockRef.current, dt, {
+          /* ⚠️ the player's own top speed, in creatures a second — so a pace is honestly a
+             multiple of yours rather than a number picked to feel right */
+          speed: TUNE.speed / outBy(1),
+          grip: 9,
+          /**
+           * ⚠️ pressedTo RETURNS SCREEN-HEIGHTS, SO IT DIVIDES BY PARK_TALL — NOT BY outBy(1).
+           * This was outBy(1) first, which is world-per-pet-height, and the standoff came out so
+           * wide that eight swings into a huddle felled nothing: the creatures stood outside the
+           * reach of every swing in the game, which is the SAME failure the first wave shipped
+           * with and the reason the note on pressedTo shouts about it. Two conversions out of
+           * three in this tune were right, which is exactly how this one hides.
+           *
+           * speed below is the other direction and is fine: TUNE.speed is world a second, so
+           * dividing by outBy(1) gives creatures a second.
+           */
+          apart: pressedTo(fattest, fattest) / PARK_TALL,
+          reach: pressedTo(myWide, fattest, 0, 1) / PARK_TALL,
+        })
+
+        /* your swing fells them, once each — the same stamp rule the crowd uses */
+        if (area && mv) {
+          const id = swingNo.current
+          for (let i = 0; i < live.length; i++) {
+            const m = live[i]
+            if (m.life <= 0 || m.cut === id) continue
+            if (!inSwipe(m, wildKits.current[m.kit]?.wide ?? 0.1, area)) continue
+            live[i] = { ...m, life: m.life - mv.bite, cut: id }
+            /* ⚠️ AND ITS FRIENDS LOOK UP. Hitting one thing in a group and having only that one
+               react is the exploit: stand outside notice range and pick them off forever. */
+            live = rousedBy(live, i) as Array<Wild & Felled>
+          }
+        }
+        /* and so does a cast, on its own spend-once flag */
+        const wildCast = myCast.current
+        if (wildCast && myMoves.length) {
+          const weight = myMoves.reduce((n, a) => n + a.bite, 0) / myMoves.length
+          const wound = weight * 1.1 * (1 + BOLT_UP.bite * wildCast.charge)
+          const id = castNo.current
+          for (const patch of patchesOf(
+            wildCast.kind,
+            you.current,
+            you.current.aim,
+            wildCast.t,
+            1,
+            wildCast.charge,
+            myShape.current,
+          )) {
+            if (!patch.live) continue
+            for (let i = 0; i < live.length; i++) {
+              const m = live[i]
+              if (m.life <= 0 || m.zapped === id) continue
+              if (!inPatch(m, wildKits.current[m.kit]?.wide ?? 0.1, patch)) continue
+              live[i] = { ...m, life: m.life - wound, zapped: id }
+              live = rousedBy(live, i) as Array<Wild & Felled>
+            }
+          }
+        }
+
+        /* a body lies there for a beat and then goes, exactly as a wave's does */
+        wilds.current = live
+          .map((m) => (m.life <= 0 ? { ...m, gone: m.gone < 0 ? 0 : m.gone + dt } : m))
+          .filter((m) => m.life > 0 || m.gone < MOB_LINGER)
       }
       if (area && mv) {
         nudges.current.forEach((n, i) => {
@@ -3482,6 +3628,44 @@ export function ParkRoom({
               blitBaked(g, stamp, p.x * w, p.y * h, clockRef.current + m.x * 0.6, m.vx < 0 ? -1 : 1)
               if (dead) g.restore()
             }
+
+          /**
+           * The ones that live here, onto the same canvas and after the wave.
+           *
+           * ⚠️ ITS OWN KIT PER CREATURE, which is the whole reason these are a second array:
+           * `m.kit` indexes the bakes made when the map was entered, so three different drawings
+           * stamped on one map are three different creatures on screen. The crowd above shares
+           * one stamp between all of them, which is right for forty copies of one thing and
+           * cannot express this.
+           *
+           * ⚠️ AND AWAKE ONES ARE MARKED. A creature that has noticed you looks exactly like one
+           * that has not until it is already on you, and "which of these did I wake" is the only
+           * question worth asking while you back out of a corner. The ring is the park's existing
+           * language for a creature that is your problem — the same one the bite's tell speaks.
+           */
+          for (const m of wilds.current) {
+            const k = wildKits.current[m.kit]
+            if (!k?.baked) continue
+            const q = onScreen(m, cam.current)
+            if (q.x < -0.1 || q.x > 1.1 || q.y < -0.1 || q.y > 1.1) continue
+            const down = m.life <= 0
+            if (down) {
+              g.save()
+              g.globalAlpha = Math.max(0, 1 - m.gone / MOB_LINGER)
+            } else if (m.awake) {
+              const rx = footSpan(k.wide, 1, 1, 0) * h * 1.5
+              const ry = footSpan(k.wide, 1, 0, 1) * h * 1.5
+              g.save()
+              g.strokeStyle = 'rgba(255,170,90,0.5)'
+              g.lineWidth = Math.max(1, h * 0.0025)
+              g.beginPath()
+              g.ellipse(q.x * w, q.y * h, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2)
+              g.stroke()
+              g.restore()
+            }
+            blitBaked(g, k.baked, q.x * w, q.y * h, clockRef.current + m.x * 0.6, m.vx < 0 ? -1 : 1)
+            if (down) g.restore()
+          }
         }
       }
 
