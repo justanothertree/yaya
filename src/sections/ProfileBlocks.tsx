@@ -2563,6 +2563,28 @@ export function ProfileBlocksEditor({
             ? 'Every block at once. Move them around.'
             : 'The page at the widths it really uses. Click a block to change it, drag the handle to move it.'}
         </p>
+        {/**
+         * ⚠️ WHEN THE WHOLE PAGE WOULD SHOW NOTHING, SAY SO HERE. ProfileBlocksView filters to
+         * the blocks that will actually draw and returns null when none are left — so a page
+         * with eight unfinished blocks on it is not a page of eight faint outlines, it is a
+         * profile with no blocks area at all. That happened on the live site and was reported
+         * as "not sure the profile is showing up right": the blocks were all present in the
+         * editor, and the thing that was wrong could not be seen from the editor.
+         *
+         * ⚠️ ONLY WHEN THERE ARE BLOCKS TO BE EMPTY. A page nobody has added anything to yet is
+         * not a fault and does not need a warning — the add row below is already the answer.
+         */}
+        {/* ⚠️ IT DOES NOT NAME THE "keep it on the page" TICK, and the first draft did. That
+            option lives behind HAS_OWN_WORDS — bio, status and free — so on a page of empty song
+            and art blocks the advice was to press something that is not there. Checked by taking
+            it: the Song block's panel has no such control. "Fill one in" is the one answer that
+            is true of every block type. */}
+        {blocks.length > 0 && blocks.every((b) => isBlockEmpty(b)) && (
+          <p className="profile-editor-nowt">
+            Nothing here will show yet — every block is empty, so your page has no blocks area at
+            all. Fill one in.
+          </p>
+        )}
         {/* ⚠️ Only worth offering once there is something to arrange. One block has no order. */}
         {/* ⚠️ NAMED, not just arrows. "Undo" is a promise you have to take on trust; "Undo
             colour" is one you can check before you press it, which is the difference between
@@ -2981,7 +3003,22 @@ export function ProfileBlocksEditor({
             ) : isBlockEmpty(b) ? (
               <div className="profile-block profile-canvas-empty">
                 <strong>{BLOCK_LABEL[b.block_type]}</strong>
-                <span className="muted">Nothing in this one yet — click to fill it in.</span>
+                {/**
+                 * ⚠️ IT SAYS WHAT THE PAGE WILL DO, not just that the block is unfinished. An
+                 * empty block is not shown faintly on your page — ProfileBlocksView filters it
+                 * out entirely, and if it was the only one the whole blocks area returns null.
+                 * That is not a hypothetical: a published page whose only public block was a
+                 * playlist rendered nothing at all, and the report was "not sure the profile is
+                 * showing up right" rather than anything about a block, because nothing on this
+                 * screen had ever mentioned the consequence.
+                 *
+                 * ⚠️ AND "BLANK ON PURPOSE" NEVER SEES THIS, because isBlockEmpty answers false
+                 * for one — a block kept deliberately IS on the page, and telling its owner
+                 * otherwise would be the editor arguing with a decision they already made.
+                 */}
+                <span className="muted">
+                  Nothing in it yet, so your page leaves it out. Click to fill it in.
+                </span>
               </div>
             ) : (
               <BlockView

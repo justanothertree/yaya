@@ -15122,3 +15122,12 @@ a.cz-msg-author:focus-visible {
   padding: 0.1rem 0.3rem;
   min-height: 24px;
 }
+
+/* ⚠️ a warning, not a hint: this is the state where the page shows nothing at all, and the
+   editor is the only place it can be seen. Loud enough to notice, quiet enough to live in a
+   heading — the same weight the save error uses. */
+.profile-editor-nowt {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--warn, #f0b429);
+}
