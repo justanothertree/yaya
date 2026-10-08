@@ -141,3 +141,26 @@ where n.nspname = 'public' and c.relname in ('park_maps', 'park_rooms', 'park_ro
 -- And the audience it makes useful:
 --   private room + invite    guest walks in     <- an invite is an explicit grant, so it works
 --                                                 whatever the audience says
+
+-- ── ADDED: the host's own room ─────────────────────────────────────────────────────────────
+--
+-- ✅ APPLIED as migration: my_park_room
+--
+-- A defect in the client half, found by reading it rather than by running it: THE HOST NEVER
+-- JOINED THEIR OWN PARK. A map of your own comes out of the local store, which carries no room —
+-- so joinPark refused the socket for the host while every guest joined `pmap-<id>`. The one
+-- person who could not meet anybody was the one who opened the door.
+--
+-- my_park_room() is how the client learns its own room. get_park_room takes a USERNAME, which is
+-- right for finding somebody else's and wrong for finding your own: the room would then depend on
+-- the client holding the correct handle for the account it is already signed in as, and a client
+-- that had it slightly wrong would host a park it could not then join. auth.uid() is the thing
+-- that is actually known.
+--
+-- It answers while CLOSED too, deliberately — the host needs to know the room exists and whether
+-- it is open, which is what the button has to say.
+--
+-- Checked, rolled back:
+--   host, open      1 row, the right map, open_since set
+--   another member  0 rows
+--   anon            execute refused

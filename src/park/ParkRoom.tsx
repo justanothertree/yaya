@@ -8,11 +8,13 @@ import {
   fetchParkMap,
   findPark,
   inviteToPark,
+  myPark,
   myPublished,
   openPark,
   parkInvites,
   uninviteFromPark,
   type Invitee,
+  type Opened,
   type OpenPark,
   type ParkAudience,
 } from './mapsCloud'
@@ -1005,8 +1007,21 @@ export function ParkRoom({
   const [parks, setParks] = useState<OpenPark[] | null>(null)
   const [parksBusy, setParksBusy] = useState(false)
   const [parkSaid, setParkSaid] = useState<string | null>(null)
-  /** which of my own maps is open to people right now, by name */
+  /**
+   * Which of my own maps is open to people right now, and the room it is open as.
+   *
+   * ⚠️ THE ROOM ID IS THE HALF THAT WAS MISSING, AND WITHOUT IT THE HOST NEVER JOINS THEIR OWN
+   * PARK. A map of mine comes out of the local store, which carries no room — so joinPark refused
+   * the socket for the host while every guest joined `pmap-<id>`, and the one person who could
+   * not meet anybody was the one who opened the door. The map is the same map; what was missing
+   * was the client knowing it had a room behind it.
+   *
+   * ⚠️ AND IT IS LOADED ON MOUNT, not only set by the button. A park stays open across a reload —
+   * it is a row, not a session — so a client that only learnt about it by opening it would show
+   * "open this park" over a park that was already open, and hide the guest list for it.
+   */
   const [hosting, setHosting] = useState<string | null>(null)
+  const [hostRoom, setHostRoom] = useState<string | null>(null)
   const [mineShared, setMineShared] = useState<string[]>([])
   /**
    * Who may come to mine, and how wide the door is.
@@ -1033,6 +1048,13 @@ export function ParkRoom({
     let gone = false
     void myPublished().then((rows) => {
       if (!gone) setMineShared(rows.map((r) => r.name))
+    })
+    /* ⚠️ what is ALREADY open, so the button and the guest list describe the world rather than
+       only what this page has done to it — see hostRoom */
+    void myPark().then((r) => {
+      if (gone || !r) return
+      setHostRoom(r.room_id)
+      if (r.open_since) setHosting(r.map_name)
     })
     return () => {
       gone = true
@@ -1113,8 +1135,14 @@ export function ParkRoom({
            gallery changes, and reading every map's creatures to walk one of them is work done
            for every map you are NOT in */
         lives: () => livesOf(m.doc),
-        /* a map of your own is yours alone — it has no room, so joinPark keeps refusing */
-        room: null as string | null,
+        /**
+         * ⚠️ A MAP OF YOUR OWN IS YOURS ALONE *UNLESS YOU ARE HOSTING IT*. Without this the host
+         * is the one person who cannot meet anybody in their own park: joinPark refuses a drawn
+         * world with no room, and the local copy had none even while the same map was open to
+         * friends. Hosting is what gives it one, and it is the SAME room id the guests fetched —
+         * so the relay room name matches theirs by construction, which is the whole guarantee.
+         */
+        room: (hosting === m.name ? hostRoom : null) as string | null,
       })),
       /* ⚠️ somebody else's, and the ONLY entries with a room on them — which is what lets
          joinPark open a socket for them while a map of your own still refuses */
@@ -1145,7 +1173,7 @@ export function ParkRoom({
         room: null as string | null,
       })),
     ],
-    [stamped, layerMaps, visiting],
+    [stamped, layerMaps, visiting, hosting, hostRoom],
   )
   const maps = walkable
   const walkingMap = mapPick ? (maps.find((m) => m.name === mapPick) ?? null) : null
@@ -4143,12 +4171,23 @@ export function ParkRoom({
                 disabled={parksBusy}
                 onClick={() => {
                   setParksBusy(true)
-                  const go = hosting === mapPick ? closePark() : openPark(mapPick, doorWidth)
+                  /* ⚠️ annotated, because closing answers without a room and opening answers with one —
+                     the two branches are one expression and the wider of the two is the truth */
+                  const go: Promise<Opened> =
+                    hosting === mapPick ? closePark() : openPark(mapPick, doorWidth)
                   void go.then((r) => {
                     setParksBusy(false)
                     if (!r.ok) return setParkSaid(r.why)
                     const nowOpen = hosting !== mapPick
                     setHosting(nowOpen ? mapPick : null)
+                    /**
+                     * ⚠️ THE ROOM IS KEPT WHEN IT CLOSES, not cleared. Closing sets `open_at` to
+                     * null on a row that stays — the guest list survives it and so does the room
+                     * — so throwing the id away here would mean reopening could not put the host
+                     * back into their own park until a reload. What makes a map shared is
+                     * `hosting`, which IS cleared; the id is only where it lives.
+                     */
+                    if (nowOpen && r.room) setHostRoom(r.room)
                     setParkSaid(
                       !nowOpen
                         ? 'Your park is closed.'

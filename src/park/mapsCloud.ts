@@ -72,17 +72,37 @@ export async function myPublished(): Promise<PublishedMap[]> {
 }
 
 /** Open my park on a published map, so people can come to it. */
-export async function openPark(mapName: string, audience: ParkAudience): Promise<Said> {
-  const { error } = await getSupabaseClient().rpc('open_park_room', {
+/** what opening answers with: the usual sentence, plus the room it opened as */
+export type Opened = Said & { room?: string }
+
+export async function openPark(mapName: string, audience: ParkAudience): Promise<Opened> {
+  const { data, error } = await getSupabaseClient().rpc('open_park_room', {
     p_name: mapName.trim(),
     p_audience: audience,
   })
-  return said(error)
+  /* ⚠️ the id comes back, because the host needs it to walk into their OWN park — see hostRoom */
+  const r = said(error)
+  return r.ok && typeof data === 'string' ? { ...r, room: data } : r
 }
 
 export async function closePark(): Promise<Said> {
   const { error } = await getSupabaseClient().rpc('close_park_room')
   return said(error)
+}
+
+/**
+ * My own park, if I have one open or closed.
+ *
+ * ⚠️ NOT get_park_room WITH MY OWN NAME. That would make finding my room depend on the client
+ * holding the right handle for the account it is already signed in as — and a client that had it
+ * slightly wrong would host a park it could not then join. auth.uid() is the thing that is
+ * actually known, so the RPC asks that instead.
+ */
+export async function myPark(): Promise<FoundPark | null> {
+  const { data, error } = await getSupabaseClient().rpc('my_park_room')
+  if (error || !Array.isArray(data) || !data.length) return null
+  const r = data[0] as Omit<FoundPark, 'is_owner'>
+  return { ...r, is_owner: true }
 }
 
 /** Somebody's park, by their name — the handle a person can actually be told. */
