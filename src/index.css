@@ -3288,6 +3288,24 @@ section[id] {
   display: grid;
   gap: 0.3rem;
 }
+/**
+ * ⚠️ A LAYER IS ONE OBJECT, AND IT DID NOT LOOK LIKE ONE.
+ *
+ * Reported as the layer list being "divorced left and right side", with the rows not obvious
+ * when you are trying to control a layer. Measured at 1280: each row is 611 wide and 85 tall,
+ * wraps onto three lines, and had NO surface at all — transparent, no border, no padding, no
+ * radius — separated from the next layer by 0.3rem of nothing. Inside it, a 332px void sits
+ * between the mute button on the left and the fader on the right.
+ *
+ * ⚠️ THE VOID IS NOT THE BUG, AND CLOSING IT WOULD COST SOMETHING REAL. It is `margin-left:
+ * auto` on the mixer half, which is what makes the faders line up down the list instead of each
+ * one starting wherever its layer's name happened to end — see .inst-layer-vol, where that is
+ * written down. Aligned faders are the point of a mixer. What made it read as two unrelated
+ * halves is that nothing said they were the same row: with a body under them, a name at one end
+ * and a fader at the other are plainly one strip, which is what every mixer looks like.
+ *
+ * So the row gets a surface and the alignment stays.
+ */
 .inst-layers li {
   display: flex;
   align-items: center;
@@ -3295,6 +3313,20 @@ section[id] {
   font-size: 0.85rem;
   /* ⚠️ wraps, so the bar strip below can claim a whole line of its own */
   flex-wrap: wrap;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--control-bg, rgba(255, 255, 255, 0.04));
+}
+/* the one whose notes are open below, tied to the roll it opened */
+.inst-layers li:has(.inst-layer-name.is-open) {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+@media (hover: hover) {
+  .inst-layers li:hover {
+    border-color: var(--border-strong);
+  }
 }
 .inst-layers li.is-muted {
   opacity: 0.5;
@@ -14992,4 +15024,25 @@ a.cz-msg-author:focus-visible {
 .profile-blockedit-controls label.inst-pick,
 .profile-song-auto {
   min-height: 24px;
+}
+
+/**
+ * ⚠️ THE CONTROLS ON A LAYER ROW, AT FINGER SIZE. Measured at 375 with the audit: the fx button
+ * ("dry") was 72×18 and the fader 54×16, both under the 24px WCAG 2.5.8 floor on their short
+ * side — and they are the two controls you reach for most once a part is recorded. The row is a
+ * visible strip now, which makes it worse rather than better to have the things inside it be the
+ * smallest targets on the page.
+ *
+ * 24 and not the 40 this file uses for toolbar buttons: there are six controls on this row and a
+ * 40px floor on each would wrap a layer onto four lines on a phone, which trades one complaint
+ * for another.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .inst-layers li .btn,
+  .inst-layer-inst {
+    min-height: 24px;
+  }
+  .inst-layer-vol input[type='range'] {
+    min-height: 24px;
+  }
 }
