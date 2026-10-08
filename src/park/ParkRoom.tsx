@@ -1022,6 +1022,14 @@ export function ParkRoom({
    */
   const [hosting, setHosting] = useState<string | null>(null)
   const [hostRoom, setHostRoom] = useState<string | null>(null)
+  /**
+   * Which map my room points at, open or shut.
+   *
+   * ⚠️ THERE IS ONE ROOM PER PERSON, so "invite somebody" always means "to whichever map my room
+   * currently hosts" — never to the one I happen to have selected. Without this the guest list
+   * appeared beside any shared map and quietly invited people to a different one.
+   */
+  const [hostMap, setHostMap] = useState<string | null>(null)
   const [mineShared, setMineShared] = useState<string[]>([])
   /**
    * Who may come to mine, and how wide the door is.
@@ -1054,6 +1062,7 @@ export function ParkRoom({
     void myPark().then((r) => {
       if (gone || !r) return
       setHostRoom(r.room_id)
+      setHostMap(r.map_name)
       if (r.open_since) setHosting(r.map_name)
     })
     return () => {
@@ -4188,6 +4197,7 @@ export function ParkRoom({
                      * `hosting`, which IS cleared; the id is only where it lives.
                      */
                     if (nowOpen && r.room) setHostRoom(r.room)
+                    if (nowOpen) setHostMap(mapPick)
                     setParkSaid(
                       !nowOpen
                         ? 'Your park is closed.'
@@ -4206,14 +4216,35 @@ export function ParkRoom({
               </button>
             )}
 
-            {/* ⚠️ only BEFORE it is open. Changing the door while people are standing in it would
-                be a setting that silently does not apply to any of them. */}
-            {mapPick && mineShared.includes(mapPick) && hosting !== mapPick && (
+            {/**
+             * ⚠️ THE DOOR AND THE GUEST LIST WERE MUTUALLY EXCLUSIVE, which made invite-only
+             * unreachable. The door showed only BEFORE opening and the invite box only AFTER, so
+             * opening with the default — friends — left no way to narrow it without closing
+             * first, and nothing on screen said so. Reported as simply not finding an invite
+             * option, which is what an unreachable control looks like from outside.
+             *
+             * ⚠️ AND CHANGING IT WHILE OPEN NOW APPLIES AT ONCE. The old note said it must not,
+             * because a change that does not reach the people already standing there is a lie —
+             * but open_park_room upserts the audience on conflict, so re-opening IS the change
+             * reaching them. Saying the setting cannot move was the easy answer to a question
+             * that already had a real one.
+             */}
+            {mapPick && mineShared.includes(mapPick) && (
               <label className="park-visit-door">
                 <span className="sr-only">Who may come</span>
                 <select
                   value={doorWidth}
-                  onChange={(e) => setDoorWidth(e.target.value as ParkAudience)}
+                  onChange={(e) => {
+                    const next = e.target.value as ParkAudience
+                    setDoorWidth(next)
+                    /* already open? then this IS the change, not a setting for next time */
+                    if (hosting !== mapPick) return
+                    setParksBusy(true)
+                    void openPark(mapPick, next).then((r) => {
+                      setParksBusy(false)
+                      setParkSaid(r.ok ? 'Your park’s door changed.' : r.why)
+                    })
+                  }}
                 >
                   <option value="friends">friends</option>
                   <option value="members">any member</option>
@@ -4222,8 +4253,15 @@ export function ParkRoom({
               </label>
             )}
 
-            {/* The guest list, which is the host's alone — see parkInvites. */}
-            {hosting === mapPick && (
+            {/* ⚠️ THE GUEST LIST NEEDS A ROOM, NOT AN OPEN ONE. An invite to a park that is shut
+                is perfectly good — they walk in when you open it — and gating this on "open"
+                was half of what made inviting unreachable. A room exists from the first time
+                you ever opened this park; before that there is nothing to invite anybody to,
+                and it says so rather than offering a box that would be refused. */}
+            {mapPick && mineShared.includes(mapPick) && hostMap !== mapPick && (
+              <span className="muted">Open it once, then you can invite people to it.</span>
+            )}
+            {mapPick && hostMap === mapPick && (
               <span className="park-guests">
                 <label className="park-guest-add">
                   <span className="muted">Invite</span>
