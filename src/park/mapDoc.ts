@@ -42,7 +42,26 @@ export type Piece = {
   kind: PlaceKind
   /** how high you stand on it, in pet-heights; 0 is the grass */
   top: number
+  /**
+   * That this stamp is ALIVE, and what it comes in as.
+   *
+   * ⚠️ A SEPARATE FIELD FROM `kind`, NOT TWO MORE KINDS. A kind says how a place is drawn and
+   * what you can stand on — it feeds placesOf and solid.ts — and a creature is neither of those
+   * things. Folding "minion" into that list would have every wall-and-pond reader quietly
+   * inherit a case it has no answer for, which is how a boss ends up being something you climb.
+   *
+   * ⚠️ ABSENT MEANS SCENERY, so every map ever saved is unchanged and the common case costs
+   * nothing to store — see `tight`, which only writes the seventh number when there is one.
+   */
+  life?: Life
 }
+
+/**
+ * ⚠️ WHAT A ROLE IS: how MUCH of a creature you get, from the same drawing — see minionOf,
+ * which takes the boss's art and gives back something smaller and quicker. So a stamp says
+ * which drawing and which role, and nothing here needs a second picture.
+ */
+export type Life = 'minion' | 'boss'
 
 /**
  * A way out, and where it goes.
@@ -185,6 +204,14 @@ export const MAX_PIECES = 2000
 const KINDS: PlaceKind[] = ['pond', 'grove', 'ring', 'rocks', 'wall', 'flat']
 
 /**
+ * ⚠️ APPEND ONLY, like KINDS, and INDEX 0 IS "NOT ALIVE". A packed piece carries this as its
+ * seventh number, which every map saved before creatures existed simply does not have — so the
+ * missing value has to mean scenery, and that is what 0 is for. Reordering this would turn
+ * somebody's minions into bosses.
+ */
+const LIVES: Array<Life | ''> = ['', 'minion', 'boss']
+
+/**
  * How many doors a map may have.
  *
  * ⚠️ SMALL ON PURPOSE. A door is a thing you look for and walk to, and a map with
@@ -212,20 +239,30 @@ const num = (v: unknown, lo: number, hi: number, fallback: number): number =>
  * ⚠️ AND THE OLD SHAPE STILL READS. Every map saved before this is objects, and `loose` below
  * takes either — a format that could not read its own past would be a format that eats work.
  */
-const tight = (p: Piece): number[] => [
-  p.art,
-  Math.round(p.at.x * 1e4),
-  Math.round(p.at.y * 1e4),
-  Math.round(p.wide * 1e5),
-  Math.max(0, KINDS.indexOf(p.kind)),
-  Math.round(p.top * 100),
-]
+const tight = (p: Piece): number[] => {
+  const six = [
+    p.art,
+    Math.round(p.at.x * 1e4),
+    Math.round(p.at.y * 1e4),
+    Math.round(p.wide * 1e5),
+    Math.max(0, KINDS.indexOf(p.kind)),
+    Math.round(p.top * 100),
+  ]
+  /* ⚠️ the seventh only when it is alive, so a map of scenery packs to exactly what it always
+     did and nobody's saved map grows a column of zeroes — see LIVES */
+  const life = p.life ? LIVES.indexOf(p.life) : 0
+  return life > 0 ? [...six, life] : six
+}
 
 export const packPieces = (pieces: Piece[]): number[][] => pieces.map(tight)
 
+/* ⚠️ omitted rather than set to undefined, so a scenery piece is === what it has always been
+   and the packed form of a re-read map is byte-identical to what was written */
+const livePart = (life: Life | '' | undefined): { life?: Life } => (life ? { life } : {})
+
 const loose = (raw: unknown): Piece | null => {
   if (Array.isArray(raw)) {
-    const [art, x, y, wide, kind, top] = raw
+    const [art, x, y, wide, kind, top, life] = raw
     if (typeof art !== 'number' || typeof wide !== 'number') return null
     const w = num(wide, 1, 1e5, 0) / 1e5
     if (!(w > 0)) return null
@@ -235,6 +272,8 @@ const loose = (raw: unknown): Piece | null => {
       wide: w,
       kind: KINDS[Math.round(num(kind, 0, KINDS.length - 1, KINDS.length - 1))] ?? 'flat',
       top: num(top, 0, 400, 0) / 100,
+      /* absent on every map saved before creatures, which reads as scenery — see LIVES */
+      ...livePart(LIVES[Math.round(num(life, 0, LIVES.length - 1, 0))]),
     }
   }
   if (!raw || typeof raw !== 'object') return null
@@ -248,6 +287,7 @@ const loose = (raw: unknown): Piece | null => {
     wide,
     kind: KINDS.includes(p.kind as PlaceKind) ? (p.kind as PlaceKind) : 'flat',
     top: num(p.top, 0, 4, 0),
+    ...livePart(LIVES.includes(p.life as Life) ? (p.life as Life) : ''),
   }
 }
 
@@ -353,24 +393,55 @@ export function worldOf(doc: MapDoc): { across: number; down: number } {
  * half to turn a diameter into a radius. Written out, because the last version of this had two
  * of those three missing and nearly cancelling.
  */
+/**
+ * ⚠️ SCENERY ONLY. A stamp with a `life` on it is a creature, and a creature is not a place:
+ * it must not be collided with, stood on, drawn as a mound, or named in the landmark list you
+ * can tell a friend to meet you at. Everything downstream of this function — solid.ts, the
+ * marks, the camera's idea of what is around you — is about ground, so the filter belongs here
+ * rather than as a case in each of them.
+ */
 export function placesOf(doc: MapDoc): Place[] {
-  return doc.pieces.map((p, i) => {
-    const size = ((p.wide * PARK.across) / 2) * ASPECT
-    const half = p.wide / 2
-    return {
-      /* ⚠️ unique, because a Mark is keyed by name and two rocks are two things. The index is
+  return doc.pieces
+    .filter((p) => !p.life)
+    .map((p, i) => {
+      const size = ((p.wide * PARK.across) / 2) * ASPECT
+      const half = p.wide / 2
+      return {
+        /* ⚠️ unique, because a Mark is keyed by name and two rocks are two things. The index is
          what makes fifty copies of one drawing fifty separate places you can stand on. */
-      name: `${doc.palette[p.art]?.name || 'place'} ${i + 1}`,
-      at: p.at,
-      size,
-      kind: p.kind,
-      top: p.top,
-      /* the box is in world units and always has been — see solid.ts, where a wall is its box */
-      box: { x0: p.at.x - half, y0: p.at.y - half, x1: p.at.x + half, y1: p.at.y + half },
-      /* ⚠️ AND THE PICTURE ITSELF, which is the whole point of stamping one. Without this the
+        name: `${doc.palette[p.art]?.name || 'place'} ${i + 1}`,
+        at: p.at,
+        size,
+        kind: p.kind,
+        top: p.top,
+        /* the box is in world units and always has been — see solid.ts, where a wall is its box */
+        box: { x0: p.at.x - half, y0: p.at.y - half, x1: p.at.x + half, y1: p.at.y + half },
+        /* ⚠️ AND THE PICTURE ITSELF, which is the whole point of stamping one. Without this the
          park draws its own mound for the kind and the drawing never appears anywhere but the
          editor — two views of one map that do not agree. */
-      art: doc.palette[p.art],
-    }
-  })
+        art: doc.palette[p.art],
+      }
+    })
+}
+
+/**
+ * The creatures somebody stamped, ready for the room to stand up.
+ *
+ * ⚠️ IT HANDS BACK THE DRAWING, NOT AN INDEX, because the caller is the park and the park has
+ * no business knowing a map has a palette. Everything it needs to make a minion or a boss —
+ * minionOf and makeBoss both take a Drawing — is in what comes back.
+ *
+ * ⚠️ AND IT DROPS A PIECE WHOSE ART IS MISSING rather than handing back a hole. A palette index
+ * is validated on read, but a map edited by hand in localStorage can still point past the end,
+ * and "the room crashed walking into a map" is a worse answer than "that one did not appear".
+ */
+export function livesOf(doc: MapDoc): Array<{ art: Drawing; at: Spot; wide: number; as: Life }> {
+  const out: Array<{ art: Drawing; at: Spot; wide: number; as: Life }> = []
+  for (const p of doc.pieces) {
+    if (!p.life) continue
+    const art = doc.palette[p.art]
+    if (!art) continue
+    out.push({ art, at: p.at, wide: p.wide, as: p.life })
+  }
+  return out
 }

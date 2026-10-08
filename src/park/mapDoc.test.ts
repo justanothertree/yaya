@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cropToInk, MAX_PIECES, packPieces, placesOf, readMapDoc, worldOf } from './mapDoc'
+import { cropToInk, livesOf, MAX_PIECES, packPieces, placesOf, readMapDoc, worldOf } from './mapDoc'
 import type { Piece } from './mapDoc'
 import type { Drawing } from '../draw/strokes'
 import { ASPECT, outBy, PARK_TALL } from './strike'
@@ -247,5 +247,68 @@ describe('how big a world a map needs', () => {
     expect(PARK.across).toBe(3)
     expect(PARK.down).toBe(3)
     expect(ASPECT).toBeCloseTo(1.6, 10)
+  })
+})
+
+/**
+ * A creature you stamped.
+ *
+ * ⚠️ THE CLAIM THAT MATTERS IS THE COMPATIBILITY ONE. Everything else here is new behaviour
+ * nobody has yet relied on; "a map saved before creatures existed still reads, and still packs
+ * to exactly what it did" is a claim about work that already exists on people's machines.
+ */
+describe('a stamp can be alive', () => {
+  it('leaves a map of scenery packed exactly as it was', () => {
+    // ⚠️ six numbers, not seven — the old shape, byte for byte
+    expect(packPieces([piece()])[0]).toHaveLength(6)
+    expect(packPieces([piece({ kind: 'wall', top: 0.5 })])[0]).toHaveLength(6)
+  })
+
+  it('reads a six-number piece as scenery', () => {
+    const old = readMapDoc(doc({ pieces: [[0, 5000, 5000, 10000, 5, 0]] }))
+    expect(old?.pieces[0].life).toBeUndefined()
+    expect(placesOf(old!)).toHaveLength(1)
+    expect(livesOf(old!)).toHaveLength(0)
+  })
+
+  it('carries a role through the packer and back', () => {
+    for (const as of ['minion', 'boss'] as const) {
+      const packed = packPieces([piece({ life: as })])
+      expect(packed[0]).toHaveLength(7)
+      const back = readMapDoc(doc({ pieces: packed }))
+      expect(back?.pieces[0].life).toBe(as)
+    }
+  })
+
+  it('keeps a creature out of the ground', () => {
+    /* ⚠️ the whole reason `life` is not a PlaceKind: a boss is not something you stand on,
+       collide with, or are told is a landmark nearby */
+    const d = readMapDoc(doc({ pieces: [piece(), piece({ life: 'boss' })] }))!
+    expect(d.pieces).toHaveLength(2)
+    expect(placesOf(d)).toHaveLength(1)
+    expect(livesOf(d)).toHaveLength(1)
+    expect(livesOf(d)[0].as).toBe('boss')
+  })
+
+  it('hands the room a drawing, at the spot it was stamped', () => {
+    const at = { x: 0.25, y: 0.75 }
+    const d = readMapDoc(doc({ pieces: [piece({ at, life: 'minion', wide: 0.08 })] }))!
+    const [one] = livesOf(d)
+    expect(one.at).toEqual(at)
+    expect(one.wide).toBeCloseTo(0.08, 4)
+    // the palette is the map's business, not the park's — see livesOf
+    expect(one.art.strokes.length).toBeGreaterThan(0)
+  })
+
+  it('drops a creature whose drawing is missing rather than handing back a hole', () => {
+    const d = readMapDoc(doc({ pieces: [piece({ art: 0, life: 'boss' })], palette: [] }))
+    // no palette means no art for it to be; the map still reads
+    expect(d === null || livesOf(d).length === 0).toBe(true)
+  })
+
+  it('refuses a role it does not know, rather than inventing one', () => {
+    const d = readMapDoc(doc({ pieces: [{ ...piece(), life: 'dragon' }] }))
+    expect(d?.pieces[0].life).toBeUndefined()
+    expect(livesOf(d!)).toHaveLength(0)
   })
 })

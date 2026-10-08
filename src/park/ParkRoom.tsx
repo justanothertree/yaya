@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { paintDrawing, type Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
-import { placesOf, type Door } from './mapDoc'
+import { livesOf, placesOf, type Door } from './mapDoc'
 import { readZone, zoneWalls } from './zone'
 import { parkMaps, subscribeMaps } from './maps'
 import { petCanvas, rigOf } from '../pets/rig'
@@ -1007,6 +1007,10 @@ export function ParkRoom({
         ground: m.doc.ground,
         spawn: m.doc.spawn,
         doors: m.doc.doors,
+        /* ⚠️ a function like `places`, for the same reason: this list is rebuilt whenever the
+           gallery changes, and reading every map's creatures to walk one of them is work done
+           for every map you are NOT in */
+        lives: () => livesOf(m.doc),
       })),
       /* a layer-named map has no ground, no spawn and no zones, and never will; that reader is
          on its way out */
@@ -1017,6 +1021,8 @@ export function ParkRoom({
         ground: null,
         spawn: null,
         doors: [],
+        /* a layer-named map cannot carry creatures and never will — that reader is on its way out */
+        lives: () => [],
       })),
     ],
     [stamped, layerMaps],
@@ -1801,6 +1807,32 @@ export function ParkRoom({
     )
     cam.current = camWant(you.current)
     setCamAt(cam.current)
+    /**
+     * ⚠️ A BOSS SOMEBODY STAMPED IS STANDING WHEN YOU ARRIVE, which is the whole of "if I stamp
+     * a boss on the map it spawns there". Asked for, and the one thing the room already had the
+     * shape for: there is exactly one boss, and a map saying where it is answers the question
+     * the Call button otherwise answers from where YOU are standing.
+     *
+     * ⚠️ THE FIRST ONE, AND A MAP WITH TWO IS NOT AN ERROR. The room holds one boss — one name,
+     * one health bar, one result line — so a second stamp has nowhere to go. Refusing to load
+     * the map would be punishing somebody for experimenting in their own editor; taking the
+     * first is the only answer that always works, and the editor can say so later if it ever
+     * matters.
+     *
+     * ⚠️ AND NO SOCKET IS INVOLVED. A drawn map refuses the relay by design (see joinPark), so
+     * this boss is yours alone — exactly like one called with the button on the same map, and
+     * cleared by the same teardown below.
+     */
+    const stamped0 = drawn?.lives().find((l) => l.as === 'boss')
+    if (stamped0) {
+      boss.current = makeBoss(stamped0.art.name, stamped0.art, {
+        x: Math.max(0.05, Math.min(0.95, stamped0.at.x)),
+        y: Math.max(0.05, Math.min(0.95, stamped0.at.y)),
+      })
+      bossDoneAt.current = 0
+      setResult(null)
+      setBossShown(boss.current)
+    }
     const bump = () => setRoster((n) => n + 1)
     const p = joinPark(room, { name: myName, art: myArt }, state.current, bump)
     if (!p) {

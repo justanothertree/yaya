@@ -3,7 +3,15 @@ import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from '../draw/strokes'
 import { MapGuide } from './MapGuide'
-import { cropToInk, MAX_PIECES, worldOf, type Door, type MapDoc, type Piece } from './mapDoc'
+import {
+  cropToInk,
+  MAX_PIECES,
+  worldOf,
+  type Door,
+  type Life,
+  type MapDoc,
+  type Piece,
+} from './mapDoc'
 import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import {
   MAP_LIMIT,
@@ -70,11 +78,35 @@ type Step =
  * TOP. So it asks that, and nothing else. Naming an area is a separate want and can wait for
  * somebody to have it.
  */
-const DOES: Array<[string, string, PlaceKind, number]> = [
+/**
+ * ⚠️ THE LAST TWO ARE ALIVE, and they are in this list rather than in a mode of their own
+ * because stamping one is the same gesture: pick a drawing, say what it is, put it down. A
+ * separate "creatures" mode would be a second place to choose a picture and a second brush to
+ * learn, for a difference the map format does not make either — see Piece.life, which is a
+ * field on an ordinary stamp.
+ *
+ * The kind beside them is what the piece would have been as scenery and is never read for a
+ * living one: placesOf filters them out before anything asks.
+ */
+const DOES: Array<[string, string, PlaceKind, number, Life?]> = [
   ['past', 'Walk over it', 'flat', 0],
   ['solid', 'Solid — blocks you', 'wall', 0],
   ['stand', 'Stand on top', 'rocks', 0.5],
+  /**
+   * ⚠️ NO MINION ROW YET, AND THE FORMAT IS READY FOR ONE. `Piece.life` already reads and
+   * writes 'minion' — it is packed, tested and back-compatible — but the room cannot stand one
+   * up: a crowd is baked ONCE into a single sprite shared by every mob in it (see mobKit), so
+   * two different stamped creatures would both be drawn as the first. Offering the choice and
+   * then quietly drawing somebody else's monster is worse than not offering it.
+   *
+   * It belongs with the ambient creatures that stand about and can be picked a fight with,
+   * rather than bolted onto the wave, so it waits for that rather than for a bake-per-mob.
+   */
+  ['boss', '💀 A boss — it fights you here', 'flat', 0, 'boss'],
 ]
+
+/** whether the thing you are about to stamp is alive, and as what */
+const lifeOf = (does: string): Life | undefined => DOES.find((d) => d[0] === does)?.[4]
 
 /**
  * ⚠️ ONLY ASKED WHEN IT MATTERS. Height means nothing for scenery you walk over and
@@ -782,8 +814,13 @@ export function MapMaker() {
      * a hedge wants them in a line and evenly sized; dragging a wood wants them not to look
      * planted. Off by default would make the first drag of a forest look like fence posts.
      */
-    const jig = scatter ? 1 + (Math.random() - 0.5) * 0.45 : 1
-    const off = scatter ? wide * 0.22 : 0
+    /* ⚠️ NEVER SCATTERED WHEN IT IS ALIVE. Scatter exists so a dragged wood does not look
+       planted; a boss is one thing you put in one place, and nudging it off the spot you
+       pressed — or rolling it 22% bigger — is the editor disagreeing with you about the one
+       stamp where exactness is the entire point. */
+    const alive = !!row[4]
+    const jig = scatter && !alive ? 1 + (Math.random() - 0.5) * 0.45 : 1
+    const off = scatter && !alive ? wide * 0.22 : 0
     sown.current = s
     setPieces((was) => [
       ...was,
@@ -796,6 +833,7 @@ export function MapMaker() {
         wide: wide * jig,
         kind: row[2],
         top: row[0] === 'stand' ? high : 0,
+        ...(row[4] ? { life: row[4] } : {}),
       },
     ])
     setSaid(null)
@@ -975,6 +1013,13 @@ export function MapMaker() {
       }
       if (erasing) return rub(s)
       /* far enough from the last one to be a separate thing rather than a smear */
+      /**
+       * ⚠️ ONE PER PRESS WHEN IT IS ALIVE. The brush lays about ten a second, which is what
+       * makes a forest and what would make forty bosses out of one careless drag — against a
+       * piece limit of 2000 and a fight nobody could win. A creature is a thing you place,
+       * not a texture you paint.
+       */
+      if (lifeOf(does)) return
       const last = sown.current
       const gap = wide * (scatter ? 0.72 : 0.92)
       if (!last || Math.hypot(s.x - last.x, s.y - last.y) >= gap) sow(s)
