@@ -119,6 +119,21 @@ export async function fetchParkMap(roomId: string): Promise<MapDoc | null> {
   return readMapDoc(data)
 }
 
+export type Invitee = { username: string; name: string }
+
+/**
+ * Who I have let in.
+ *
+ * ⚠️ THE OWNER'S ALONE, and the RPC is where that is decided rather than here — `r.owner =
+ * auth.uid()` is its whole access rule, so a guest asking gets an empty list rather than
+ * somebody else's guest list. Verified: host 1, guest 0, anon refused outright.
+ */
+export async function parkInvites(): Promise<Invitee[]> {
+  const { data, error } = await getSupabaseClient().rpc('list_park_room_invites')
+  if (error || !Array.isArray(data)) return []
+  return data as Invitee[]
+}
+
 export async function inviteToPark(username: string): Promise<Said> {
   const u = username.trim()
   if (!u) return { ok: false, why: 'Who should it be?' }

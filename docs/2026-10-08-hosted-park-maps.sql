@@ -120,3 +120,24 @@ where n.nspname = 'public' and c.relname in ('park_maps', 'park_rooms', 'park_ro
 -- joiner fetches THAT map before entering, and a client that cannot fetch it does not join. An
 -- unpublished local map keeps the lock exactly as it is today — walking your own sketch is still
 -- a thing you do alone, and that is still the honest answer for it.
+
+-- ── ADDED: the guest list ──────────────────────────────────────────────────────────────────
+--
+-- ✅ APPLIED as migration: list_park_room_invites
+--
+-- invite_to_park_room and uninvite_from_park_room shipped with the first migration and had no
+-- lister, which made them a permission you could grant and never see. The profile call's note
+-- says why that is worse than it looks: a list you can add to but not remove from is a permission
+-- that quietly outlives the reason for it.
+--
+-- list_park_room_invites() is the mirror of list_profile_room_invites() — `r.owner = auth.uid()`
+-- is its whole access rule, so a guest asking gets an empty list rather than somebody else's.
+--
+-- Checked, rolled back, same two accounts:
+--   host asks     1 row, "Josh"      <- the control: without it, the guest's 0 means nothing
+--   guest asks    0 rows
+--   anon          execute refused
+--
+-- And the audience it makes useful:
+--   private room + invite    guest walks in     <- an invite is an explicit grant, so it works
+--                                                 whatever the audience says

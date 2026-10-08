@@ -7,9 +7,14 @@ import {
   closePark,
   fetchParkMap,
   findPark,
+  inviteToPark,
   myPublished,
   openPark,
+  parkInvites,
+  uninviteFromPark,
+  type Invitee,
   type OpenPark,
+  type ParkAudience,
 } from './mapsCloud'
 import {
   rouse,
@@ -1003,6 +1008,24 @@ export function ParkRoom({
   /** which of my own maps is open to people right now, by name */
   const [hosting, setHosting] = useState<string | null>(null)
   const [mineShared, setMineShared] = useState<string[]>([])
+  /**
+   * Who may come to mine, and how wide the door is.
+   *
+   * ⚠️ THE GUEST LIST IS ALSO THE ONLY PLACE AN INVITE CAN BE UNDONE, which matters more than it
+   * looks — the profile call's own note puts it best: a list you can add to but not remove from
+   * is a permission that quietly outlives the reason for it.
+   *
+   * ⚠️ AND AN INVITE WORKS WHATEVER THE AUDIENCE SAYS, which is what makes "only who I invite"
+   * useful rather than a dead end: a private park is invite-only, not shut. park_room_member
+   * treats an invite as an explicit grant — verified, a guest holding one walks into a private
+   * room while the same guest without one sees nothing at all.
+   */
+  const [guests, setGuests] = useState<Invitee[]>([])
+  const [guest, setGuest] = useState('')
+  const [doorWidth, setDoorWidth] = useState<ParkAudience>('friends')
+  const loadGuests = useCallback(async () => {
+    setGuests(await parkInvites())
+  }, [])
 
   /* ⚠️ one call, on mount, so the Host button can say whether this map CAN be hosted rather than
      finding out by being pressed — see park_map_mine, which only ever returns your own */
@@ -4120,20 +4143,93 @@ export function ParkRoom({
                 disabled={parksBusy}
                 onClick={() => {
                   setParksBusy(true)
-                  const go = hosting === mapPick ? closePark() : openPark(mapPick, 'friends')
+                  const go = hosting === mapPick ? closePark() : openPark(mapPick, doorWidth)
                   void go.then((r) => {
                     setParksBusy(false)
                     if (!r.ok) return setParkSaid(r.why)
                     const nowOpen = hosting !== mapPick
                     setHosting(nowOpen ? mapPick : null)
                     setParkSaid(
-                      nowOpen ? 'Your park is open — friends can walk in.' : 'Your park is closed.',
+                      !nowOpen
+                        ? 'Your park is closed.'
+                        : doorWidth === 'private'
+                          ? 'Your park is open to the people you invite.'
+                          : doorWidth === 'members'
+                            ? 'Your park is open to any member.'
+                            : 'Your park is open — friends can walk in.',
                     )
+                    if (nowOpen) void loadGuests()
+                    else setGuests([])
                   })
                 }}
               >
-                {hosting === mapPick ? '🌍 Open to friends' : '⇪ Open this to friends'}
+                {hosting === mapPick ? '🌍 Open' : '⇪ Open this park'}
               </button>
+            )}
+
+            {/* ⚠️ only BEFORE it is open. Changing the door while people are standing in it would
+                be a setting that silently does not apply to any of them. */}
+            {mapPick && mineShared.includes(mapPick) && hosting !== mapPick && (
+              <label className="park-visit-door">
+                <span className="sr-only">Who may come</span>
+                <select
+                  value={doorWidth}
+                  onChange={(e) => setDoorWidth(e.target.value as ParkAudience)}
+                >
+                  <option value="friends">friends</option>
+                  <option value="members">any member</option>
+                  <option value="private">only who I invite</option>
+                </select>
+              </label>
+            )}
+
+            {/* The guest list, which is the host's alone — see parkInvites. */}
+            {hosting === mapPick && (
+              <span className="park-guests">
+                <label className="park-guest-add">
+                  <span className="muted">Invite</span>
+                  <input
+                    value={guest}
+                    placeholder="username"
+                    onChange={(e) => setGuest(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' || !guest.trim()) return
+                      const who = guest.trim()
+                      setParksBusy(true)
+                      void inviteToPark(who).then(async (r) => {
+                        setParksBusy(false)
+                        if (!r.ok) return setParkSaid(r.why)
+                        /* ⚠️ cleared only on success, so a mistyped name stays in the box to be
+                           corrected rather than vanishing along with the mistake */
+                        setGuest('')
+                        setParkSaid(null)
+                        await loadGuests()
+                      })
+                    }}
+                  />
+                </label>
+                {guests.map((g) => (
+                  <button
+                    key={g.username}
+                    className="btn"
+                    disabled={parksBusy}
+                    title={`Stop ${g.name} coming in`}
+                    onClick={() => {
+                      setParksBusy(true)
+                      void uninviteFromPark(g.username).then(async (r) => {
+                        setParksBusy(false)
+                        if (!r.ok) return setParkSaid(r.why)
+                        await loadGuests()
+                      })
+                    }}
+                  >
+                    {g.name} ✕
+                  </button>
+                ))}
+                {!guests.length && doorWidth === 'private' && (
+                  <span className="muted">Nobody yet — only you can get in.</span>
+                )}
+              </span>
             )}
 
             {parks && parks.length > 0 && (
