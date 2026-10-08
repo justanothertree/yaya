@@ -98,7 +98,13 @@ function write(items: ParkMap[]) {
  * outside — and the bill for that is paid here instead, where packDrawing is several times
  * smaller than the readable form. The pieces are already small; they are numbers.
  */
-const onDisk = (doc: MapDoc) => ({
+/**
+ * ⚠️ EXPORTED, SO THE CLOUD CANNOT WRITE A SECOND PACKER. The note on mapBytes below says why
+ * in its own words — the two used to be written out separately and would have drifted the moment
+ * either grew a key. A published map and a kept map are the same bytes by construction now, and
+ * readMapDoc takes either without being told which it is holding.
+ */
+export const packMapDoc = (doc: MapDoc) => ({
   v: 1,
   name: doc.name,
   palette: doc.palette.map(packDrawing),
@@ -113,7 +119,7 @@ const onDisk = (doc: MapDoc) => ({
   block: doc.block,
 })
 
-const packed = (m: ParkMap) => ({ id: m.id, at: m.at, doc: onDisk(m.doc) })
+const packed = (m: ParkMap) => ({ id: m.id, at: m.at, doc: packMapDoc(m.doc) })
 
 /**
  * How big this map would be once kept, so a caller can say why rather than failing quietly.
@@ -124,7 +130,7 @@ const packed = (m: ParkMap) => ({ id: m.id, at: m.at, doc: onDisk(m.doc) })
  * being stored.
  */
 export function mapBytes(doc: MapDoc): number {
-  return JSON.stringify(onDisk(doc)).length
+  return JSON.stringify(packMapDoc(doc)).length
 }
 
 export const MAP_LIMIT = { items: MAX_ITEMS, bytes: MAX_BYTES }

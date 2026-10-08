@@ -3,6 +3,7 @@ import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from '../draw/strokes'
 import { MapGuide } from './MapGuide'
+import { myPublished, publishMap, unpublishMap, type PublishedMap } from './mapsCloud'
 import {
   cropToInk,
   MAX_PIECES,
@@ -258,6 +259,29 @@ export function MapMaker() {
   const [erasing, setErasing] = useState(false)
   const [scatter, setScatter] = useState(true)
   const [said, setSaid] = useState<string | null>(null)
+  /**
+   * Which of my maps are on the account, so other people can walk into them.
+   *
+   * ⚠️ PUBLISHING IS A SEPARATE PRESS FROM KEEPING, and deliberately so. A map you made is yours
+   * and local; a published one is a copy other people can fetch and stand in. Rolling the two
+   * into one button would mean every doodle you saved became something somebody could walk into,
+   * which is the one thing worse than a map that is not shared.
+   *
+   * ⚠️ AND IT IS ASKED FOR ONCE, NOT WATCHED. Nothing else changes this list — only the two
+   * buttons below — so a subscription would be a socket for news that always comes from here.
+   */
+  const [shared, setShared] = useState<PublishedMap[] | null>(null)
+  const [sharing, setSharing] = useState(false)
+  useEffect(() => {
+    let gone = false
+    void myPublished().then((rows) => {
+      if (!gone) setShared(rows)
+    })
+    return () => {
+      gone = true
+    }
+  }, [])
+  const isShared = (n: string) => !!shared?.some((r) => r.name === n)
   const wide = outBy(fat)
 
   /** stamping things down, drawing the ground under them, or saying where you arrive */
@@ -1616,6 +1640,39 @@ export function MapMaker() {
               >
                 🗺 {m.name}
                 <span className="muted"> · {m.doc.pieces.length}</span>
+              </button>
+              {/**
+               * ⚠️ IT SAYS WHICH STATE IT IS IN, not which action it will take. "Shared" with the
+               * light on is a fact about the map; a button reading "Publish" on a map that is
+               * already published is a question about what happens if you press it, and the
+               * answer people assume is the wrong one.
+               */}
+              <button
+                className={'map-kept-share' + (isShared(m.name) ? ' is-on' : '')}
+                aria-pressed={isShared(m.name)}
+                disabled={sharing}
+                title={
+                  isShared(m.name)
+                    ? `Take "${m.name}" off your account — anybody in it now stays until they leave`
+                    : `Put "${m.name}" on your account so friends can walk into it`
+                }
+                onClick={() => {
+                  setSharing(true)
+                  const go = isShared(m.name) ? unpublishMap(m.name) : publishMap(m.doc)
+                  void go.then(async (r) => {
+                    if (!r.ok) setSaid(r.why)
+                    else
+                      setSaid(
+                        isShared(m.name)
+                          ? `"${m.name}" is private again.`
+                          : `"${m.name}" is on your account — friends can walk in.`,
+                      )
+                    setShared(await myPublished())
+                    setSharing(false)
+                  })
+                }}
+              >
+                {isShared(m.name) ? '🌍 Shared' : '⇪ Share'}
               </button>
               <button
                 className="map-kept-bin"

@@ -53,6 +53,21 @@ const BUILT_IN: Ground[] = MARKS.filter((m) => m.name in TOPS).map((m) => ({
 let drawn: Place[] | null = null
 /** whether ANY part of the world was supplied rather than built in — see setWorld */
 let custom = false
+/**
+ * The hosted room this world came out of, or null if it came from this machine.
+ *
+ * ⚠️ THIS IS WHAT MAKES THE LOCK LIFTABLE WITHOUT LOOSENING IT. joinPark refuses the socket for
+ * a drawn world because two people with different maps would stand on rocks the other cannot see
+ * — see the note at the top of this file. That danger is not "the world is drawn", it is "we are
+ * not provably on the SAME drawing", and the two were the same thing only while a map could not
+ * travel.
+ *
+ * A world with a room id behind it was fetched from that room by every machine in it, and the
+ * relay room is NAMED after the id — so being in one room is being on one map, structurally,
+ * rather than by anybody remembering to check. A world without one is still a sketch on one
+ * machine, and still has nobody else in it.
+ */
+let fromRoom: string | null = null
 let shownMarks: Mark[] = MARKS
 let shownPlanes: Ground[] = BUILT_IN
 let shownWalls: Wall[] = []
@@ -89,6 +104,16 @@ export const worldWalls = (): Wall[] => shownWalls
 export const worldIsDrawn = (): boolean => custom
 
 /**
+ * The hosted room this world came from, if it came from one.
+ *
+ * ⚠️ READ BY joinPark BESIDE worldIsDrawn, and the pair is the whole rule: refuse a drawn world
+ * UNLESS it came from a room. Returning the id rather than a boolean is deliberate — the caller
+ * needs it to name the relay room, and a caller that had to ask twice could ask the second
+ * question of a different answer.
+ */
+export const worldRoom = (): string | null => fromRoom
+
+/**
  * Walk a drawing instead of the built-in park, or pass null to go back.
  *
  * ⚠️ A DRAWN PLACE WITH NO HEIGHT IS STILL A LANDMARK. It goes in the marks — so it is on the
@@ -108,11 +133,16 @@ export const worldIsDrawn = (): boolean => custom
  * Whether a world is DRAWN and whether it happens to CONTAIN anything are two questions, and
  * only the caller knows the first one.
  */
-export function setWorld(world: { places: Place[] | null; blocks?: Wall[] } | null) {
+export function setWorld(
+  world: { places: Place[] | null; blocks?: Wall[]; room?: string | null } | null,
+) {
   const places = world?.places ?? null
   const blocks = world?.blocks ?? []
   drawn = places && places.length ? places : null
   custom = !!world
+  /* ⚠️ cleared with the world, never left behind: a stale room id is a claim that this map is
+     shared when it is the next one you opened — see fromRoom */
+  fromRoom = world?.room ?? null
   if (!custom) {
     shownMarks = MARKS
     shownPlanes = BUILT_IN

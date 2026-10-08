@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { paintDrawing, type Drawing } from '../draw/strokes'
 import { PetView } from '../pets/PetView'
-import { livesOf, placesOf, type Door } from './mapDoc'
+import { livesOf, placesOf, type Door, type MapDoc } from './mapDoc'
+import {
+  browseParks,
+  closePark,
+  fetchParkMap,
+  findPark,
+  myPublished,
+  openPark,
+  type OpenPark,
+} from './mapsCloud'
 import {
   rouse,
   stepWilds,
@@ -974,6 +983,66 @@ export function ParkRoom({
    * refuses the socket outright while the park is a drawing.
    */
   const [mapPick, setMapPick] = useState('')
+  /**
+   * Somebody else's park, fetched and ready to stand in.
+   *
+   * ⚠️ FETCHED BEFORE ENTERING, NEVER WHILE. The relay room is named after the hosted room, so
+   * being in one is being on one map — but only if the map is in hand first. Joining and then
+   * asking would put somebody on the field for however long the request takes, standing on the
+   * last world they had, which is the exact disagreement the old blanket refusal existed to stop.
+   *
+   * ⚠️ AND IT IS KEPT, so leaving and coming back does not re-ask. The list is small, it is
+   * yours, and a visit that cost a round trip every time would be a visit nobody makes twice.
+   */
+  const [visiting, setVisiting] = useState<
+    Array<{ roomId: string; host: string; mapName: string; doc: MapDoc }>
+  >([])
+  const [parks, setParks] = useState<OpenPark[] | null>(null)
+  const [parksBusy, setParksBusy] = useState(false)
+  const [parkSaid, setParkSaid] = useState<string | null>(null)
+  /** which of my own maps is open to people right now, by name */
+  const [hosting, setHosting] = useState<string | null>(null)
+  const [mineShared, setMineShared] = useState<string[]>([])
+
+  /* ⚠️ one call, on mount, so the Host button can say whether this map CAN be hosted rather than
+     finding out by being pressed — see park_map_mine, which only ever returns your own */
+  useEffect(() => {
+    let gone = false
+    void myPublished().then((rows) => {
+      if (!gone) setMineShared(rows.map((r) => r.name))
+    })
+    return () => {
+      gone = true
+    }
+  }, [])
+
+  const visitPark = useCallback(async (host: string) => {
+    setParksBusy(true)
+    setParkSaid(null)
+    const found = await findPark(host)
+    if (!found) {
+      setParksBusy(false)
+      /* ⚠️ ONE SENTENCE FOR EVERY REASON, because the server deliberately gives one answer for
+         "no such park", "not open" and "not for you" — see get_park_room, which must not leak
+         that a room exists to somebody who may not enter it. */
+      setParkSaid('No park of theirs is open to you.')
+      return
+    }
+    const doc = await fetchParkMap(found.room_id)
+    if (!doc) {
+      setParksBusy(false)
+      setParkSaid('That park could not be read.')
+      return
+    }
+    const name = host + '’s ' + found.map_name
+    setVisiting((was) => [
+      ...was.filter((v) => v.roomId !== found.room_id),
+      { roomId: found.room_id, host, mapName: found.map_name, doc },
+    ])
+    setMapPick(name)
+    setParksBusy(false)
+    setParkSaid(null)
+  }, [])
 
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
@@ -1021,6 +1090,23 @@ export function ParkRoom({
            gallery changes, and reading every map's creatures to walk one of them is work done
            for every map you are NOT in */
         lives: () => livesOf(m.doc),
+        /* a map of your own is yours alone — it has no room, so joinPark keeps refusing */
+        room: null as string | null,
+      })),
+      /* ⚠️ somebody else's, and the ONLY entries with a room on them — which is what lets
+         joinPark open a socket for them while a map of your own still refuses */
+      ...visiting.map((v) => ({
+        name: v.host + '’s ' + v.mapName,
+        places: () => placesOf(v.doc),
+        blocks: () => {
+          const cells = readZone(v.doc.block)
+          return cells ? zoneWalls(cells) : []
+        },
+        ground: v.doc.ground,
+        spawn: v.doc.spawn,
+        doors: v.doc.doors,
+        lives: () => livesOf(v.doc),
+        room: v.roomId as string | null,
       })),
       /* a layer-named map has no ground, no spawn and no zones, and never will; that reader is
          on its way out */
@@ -1033,9 +1119,10 @@ export function ParkRoom({
         doors: [],
         /* a layer-named map cannot carry creatures and never will — that reader is on its way out */
         lives: () => [],
+        room: null as string | null,
       })),
     ],
-    [stamped, layerMaps],
+    [stamped, layerMaps, visiting],
   )
   const maps = walkable
   const walkingMap = mapPick ? (maps.find((m) => m.name === mapPick) ?? null) : null
@@ -1788,7 +1875,9 @@ export function ParkRoom({
     const places = drawn ? drawn.places() : null
     /* ⚠️ null means the built-in park, and an OBJECT means "this is a drawn world" however
        little is in it — see setWorld, where that distinction is the whole signature */
-    setWorld(drawn ? { places, blocks: drawn.blocks() } : null)
+    /* ⚠️ the room travels with the world, because joinPark asks the world and not this file —
+       see worldRoom, which is what lets the lock lift for a map everybody fetched */
+    setWorld(drawn ? { places, blocks: drawn.blocks(), room: drawn.room ?? null } : null)
     /* you have just been put down somewhere, possibly on a door — see doorArmed */
     doorArmed.current = false
     /**
@@ -1890,7 +1979,14 @@ export function ParkRoom({
       setBossShown(boss.current)
     }
     const bump = () => setRoster((n) => n + 1)
-    const p = joinPark(room, { name: myName, art: myArt }, state.current, bump)
+    /**
+     * ⚠️ ONE RELAY ROOM PER HOSTED MAP, NAMED AFTER IT. This is the whole of the guarantee that
+     * replaced the old blanket refusal: a client that fetched a different map fetched it from a
+     * different hosted room, which is a different name here, which is not this conversation. Two
+     * people who meet are two people on one map, structurally rather than by anybody checking.
+     */
+    const wire = drawn?.room ? 'pmap-' + drawn.room : room
+    const p = joinPark(wire, { name: myName, art: myArt }, state.current, bump)
     if (!p) {
       /* ⚠️ ON YOUR OWN ON PURPOSE IS NOT A PROBLEM, and this line used to say it was.
          A drawn map refuses the socket by design — see joinPark — so reporting "the park is
@@ -3986,6 +4082,77 @@ export function ParkRoom({
               ))}
             </select>
           </label>
+        )}
+
+        {/**
+         * Other people's parks, and opening yours.
+         *
+         * ⚠️ NOT WHILE WALKING. Swapping the world under somebody standing in it is the one
+         * thing this room must never do — the join effect owns both the world and the socket so
+         * they cannot disagree for a frame, and a second control reaching in would be that frame.
+         * Leave first, which is one press and already there.
+         */}
+        {!walking && authed && (
+          <span className="park-visit">
+            <button
+              className="btn"
+              disabled={parksBusy}
+              onClick={() => {
+                if (parks) return setParks(null)
+                setParksBusy(true)
+                setParkSaid(null)
+                void browseParks().then((rows) => {
+                  setParks(rows)
+                  setParksBusy(false)
+                  if (!rows.length) setParkSaid('Nobody has a park open right now.')
+                })
+              }}
+            >
+              👥 Friends&rsquo; parks
+            </button>
+
+            {/* ⚠️ hosting is about a map you PUBLISHED, which is a different press in the map
+                maker — so this says so rather than offering a button that cannot work. */}
+            {mapPick && mineShared.includes(mapPick) && (
+              <button
+                className={'btn' + (hosting === mapPick ? ' is-on' : '')}
+                aria-pressed={hosting === mapPick}
+                disabled={parksBusy}
+                onClick={() => {
+                  setParksBusy(true)
+                  const go = hosting === mapPick ? closePark() : openPark(mapPick, 'friends')
+                  void go.then((r) => {
+                    setParksBusy(false)
+                    if (!r.ok) return setParkSaid(r.why)
+                    const nowOpen = hosting !== mapPick
+                    setHosting(nowOpen ? mapPick : null)
+                    setParkSaid(
+                      nowOpen ? 'Your park is open — friends can walk in.' : 'Your park is closed.',
+                    )
+                  })
+                }}
+              >
+                {hosting === mapPick ? '🌍 Open to friends' : '⇪ Open this to friends'}
+              </button>
+            )}
+
+            {parks && parks.length > 0 && (
+              <span className="park-visit-list">
+                {parks.map((r) => (
+                  <button
+                    key={r.host + r.map_name}
+                    className="btn"
+                    disabled={parksBusy}
+                    title={`Walk into ${r.host}'s ${r.map_name}`}
+                    onClick={() => void visitPark(r.host)}
+                  >
+                    🗺 {r.host} · {r.map_name}
+                  </button>
+                ))}
+              </span>
+            )}
+            {parkSaid && <span className="muted">{parkSaid}</span>}
+          </span>
         )}
         {/**
           ⚠️ A WAVE IS CALLED OUT, EXACTLY LIKE A BOSS, and for the same reason: a map you drew is

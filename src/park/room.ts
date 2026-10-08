@@ -6,7 +6,7 @@ import { traitsOf } from '../pets/play'
 import { groundAt } from './ground'
 import { rigOf } from '../pets/rig'
 import { castFromSlot, type CastKind } from './cast'
-import { worldIsDrawn } from './world'
+import { worldIsDrawn, worldRoom } from './world'
 
 /**
  * The shared park, over the relay.
@@ -411,17 +411,27 @@ export function joinPark(
   onChange: () => void,
 ): Park | null {
   /**
-   * ⚠️ A DRAWN PARK IS A PARK WITH NOBODY ELSE IN IT, AND THAT IS A LOCK RATHER THAN A
-   * HABIT. Nothing about a map somebody drew goes over the wire — the relay has no message
-   * for one and adding it would mean every client agreeing about how to read a drawing. Two
-   * people in one room with different maps would stand on rocks the other cannot see and get
-   * stopped by hedges that are not there.
+   * ⚠️ A DRAWN PARK IS STILL A PARK WITH NOBODY ELSE IN IT, UNLESS EVERYBODY FETCHED THE SAME
+   * ONE. This was an unconditional refusal, and the reason given was that nothing about a map
+   * goes over the wire, so two people in one room with different maps would stand on rocks the
+   * other cannot see and be stopped by hedges that are not there.
    *
-   * The caller already knows this and sets the world before it joins; this is the same rule
-   * written where it cannot be forgotten. A room that refuses the socket cannot leak a map by
-   * anybody's mistake, including a future one — and it costs a single question.
+   * That danger was never "the world is drawn". It is "we are not provably on the SAME
+   * drawing" — and those were one thing only while a map could not travel. A map can now be
+   * published and fetched by id (see mapsCloud and docs/2026-10-08-hosted-park-maps.sql), so
+   * the question has an answer other than no.
+   *
+   * ⚠️ AND THE ANSWER IS STRUCTURAL RATHER THAN REMEMBERED. The relay room is NAMED after the
+   * hosted room's id, so being in one relay room IS being on one map: a client that fetched a
+   * different map fetched it from a different room, which is a different relay room, which is
+   * not this conversation. There is no check anybody can forget, because there is no check —
+   * there is a name.
+   *
+   * ⚠️ A SKETCH ON ONE MACHINE STILL REFUSES, which is the half that must not move. A map you
+   * have not published has no room, nobody else can fetch it, and walking it is still something
+   * you do alone. That is the honest answer for it and always was.
    */
-  if (worldIsDrawn()) return null
+  if (worldIsDrawn() && !worldRoom()) return null
   const raw = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL
   if (!raw) return null
   /* ⚠️ a page served over https cannot open a ws:// socket — the same upgrade the game does */

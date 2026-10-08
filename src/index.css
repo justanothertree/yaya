@@ -15046,3 +15046,41 @@ a.cz-msg-author:focus-visible {
     min-height: 24px;
   }
 }
+
+/* ── other people's parks, and opening yours ───────────────────────────────── */
+.park-visit {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  /* ⚠️ a grid/flex item will not shrink below its contents without this, and the contents are a
+     list of other people's map names — see the block editor, which learnt it the hard way */
+  min-width: 0;
+}
+.park-visit-list {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.map-kept-share {
+  appearance: none;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--control-bg, rgba(255, 255, 255, 0.05));
+  color: var(--text);
+  cursor: pointer;
+  /* WCAG 2.5.8 — it sits in a row of small controls you tap on a phone */
+  min-height: 24px;
+}
+.map-kept-share.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.map-kept-share:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
