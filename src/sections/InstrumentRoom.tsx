@@ -1492,62 +1492,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         )}
       </div>
 
-      {/* The looper. Play a pass, it repeats; play another, it stacks. */}
-      {libOpen && (
-        <div className="inst-row inst-library">
-          {!saved.length ? (
-            <span className="muted">
-              Nothing kept yet. Record something, then <strong>Keep song</strong> — or ⬇ a single
-              layer to reuse later.
-            </span>
-          ) : (
-            <ul className="inst-lib-list">
-              {saved.map((it: LibraryItem) => (
-                <li key={it.id}>
-                  <span className="inst-lib-name">
-                    {it.kind === 'loop' ? '🔁' : '🎵'} {it.name}
-                  </span>
-                  <span className="muted inst-lib-meta">
-                    {it.song.layers.length} layer{it.song.layers.length === 1 ? '' : 's'} ·{' '}
-                    {songNotes(it.song)} notes · {it.song.bpm}bpm
-                  </span>
-                  {/* Two different verbs, and the distinction is the whole point of the library.
-                      Open REPLACES what you have; Add brings this part in alongside it. */}
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
-                      setEditing(null)
-                      // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
-                      jam.offerSong(it.song)
-                    }}
-                    title="Open this, replacing what you have now"
-                  >
-                    Open
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => addLayers(songToLayers(it.song))}
-                    title="Add these layers to what you are working on"
-                  >
-                    + Add
-                  </button>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      if (window.confirm(`Delete “${it.name}”?`)) removeFromLibrary(it.id)
-                    }}
-                    title="Delete this"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
       {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
           library is where it belongs — but the library row collapses, and a recording you can
           only reach by opening a panel is one nobody finds. It is not in the layer list either,
@@ -1748,6 +1692,71 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           </button>
         )}
       </div>
+
+      {/* ⚠️ BELOW THE BUTTON THAT OPENS IT, WHICH IT WAS NOT. This rendered a hundred and
+          fifty lines earlier, so 📁 Library and 🥁 Beats — two disclosure buttons side by side in
+          the same row — opened in opposite directions: measured at 1440x900 with a song loaded,
+          both buttons sat at y=1500, Beats opened its panel at 1636 and the library opened at
+          1275, two hundred and twenty-five pixels ABOVE the button and off the top of the
+          screen. Pressing it looked exactly like pressing a button that does nothing.
+
+          ⚠️ AND THE ROW IT LEFT WAS THE WRONG HOME ANYWAY. It sat between the scale picker and
+          the takes panel, which is playing-the-keyboard material — so the one panel you open
+          while arranging a song lived up among the controls you use before you start. */}
+      {libOpen && (
+        <div className="inst-row inst-library">
+          {!saved.length ? (
+            <span className="muted">
+              Nothing kept yet. Record something, then <strong>Keep song</strong> — or ⬇ a single
+              layer to reuse later.
+            </span>
+          ) : (
+            <ul className="inst-lib-list">
+              {saved.map((it: LibraryItem) => (
+                <li key={it.id}>
+                  <span className="inst-lib-name">
+                    {it.kind === 'loop' ? '🔁' : '🎵'} {it.name}
+                  </span>
+                  <span className="muted inst-lib-meta">
+                    {it.song.layers.length} layer{it.song.layers.length === 1 ? '' : 's'} ·{' '}
+                    {songNotes(it.song)} notes · {it.song.bpm}bpm
+                  </span>
+                  {/* Two different verbs, and the distinction is the whole point of the library.
+                      Open REPLACES what you have; Add brings this part in alongside it. */}
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
+                      setEditing(null)
+                      // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
+                      jam.offerSong(it.song)
+                    }}
+                    title="Open this, replacing what you have now"
+                  >
+                    Open
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => addLayers(songToLayers(it.song))}
+                    title="Add these layers to what you are working on"
+                  >
+                    + Add
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      if (window.confirm(`Delete “${it.name}”?`)) removeFromLibrary(it.id)
+                    }}
+                    title="Delete this"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* the playhead — a bar you can glance at rather than count against */}
       {loop.playing && (
