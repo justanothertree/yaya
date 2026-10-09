@@ -14966,7 +14966,22 @@ a.cz-msg-author:focus-visible {
 
    Scoped to the visualiser's own containers rather than `.btn`, because `.btn` is the site's
    button and a global minimum would quietly reflow every room at once. */
-@media (max-width: 700px) {
+/* ⚠️ A COARSE POINTER AT ANY WIDTH, for the reason the slider block below now gives at length:
+   this was gated on `max-width: 700px` alone, so a tablet — touched, and wider than a phone —
+   got none of it. Measured at 820 with the Look tab open: the tabs 24px tall, the buttons and the
+   floating icons 25.9, and twenty-eight palette swatches at 24.9, against the 36 and 44 this
+   block exists to give them.
+
+   ⚠️ ONE DECLARATION HERE IS NOT A MINIMUM, which is why this needed checking rather than
+   copying. `.viz-swatch` sets `height`, not `min-height`, so widening the gate could in
+   principle SHRINK a swatch — it does not: the base is `1.5rem`, which is 24.9px at this width
+   and 35px at the largest UI scale, so 36 is an increase at every setting the scale allows.
+
+   ⚠️ And measured before changing, because the pane cannot emulate a coarse pointer above 768:
+   injecting these declarations at 820 took the audit's undersized count from sixteen to four,
+   with no sideways scroll, nothing past an edge, the palette still inside the viewport and the
+   page no taller. */
+@media (max-width: 700px), (pointer: coarse) {
   .viz-wrap .btn,
   .viz-head .btn,
   .viz-wrap .viz-tab {
