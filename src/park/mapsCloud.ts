@@ -75,8 +75,20 @@ const SIGN_IN = 'Sign in to share a map.'
 const said = (error: { message?: string } | null): Said =>
   error ? { ok: false, why: error.message || 'That did not go through.' } : { ok: true }
 
-/** Put a map on the account, or replace the one of that name already there. */
-export async function publishMap(doc: MapDoc): Promise<Said> {
+/**
+ * Put a map on the account, or replace the one of that name already there.
+ *
+ * ⚠️ THIS IS WHERE A MAP LIVES NOW, not a published copy of one. It was opt-in because each row
+ * was a thing other people could fetch; it is the source of truth because the browser cannot be
+ * one — localStorage is five megabytes for the whole origin, shared with the gallery, the songs
+ * and the minions, and that is what decided a map could be 320KB. Nothing about the SIZE of a
+ * map should be decided by the smallest place it is kept.
+ *
+ * ⚠️ SHARING IS A DIFFERENT QUESTION AND STAYS SEPARATE. Being on your account is storage; being
+ * walkable by somebody else is open_park_room. Rolling them together is what made "share" a
+ * prerequisite nobody could see.
+ */
+export async function saveMapToAccount(doc: MapDoc): Promise<Said> {
   const name = doc.name.trim()
   if (!name) return { ok: false, why: 'Give the map a name first.' }
   const { error } = await getSupabaseClient().rpc('park_map_put', {
@@ -91,7 +103,21 @@ export async function unpublishMap(name: string): Promise<Said> {
   return said(error)
 }
 
-/** The ones I have published — never anybody else's, which is the RPC's own rule. */
+/**
+ * One of mine, in full, so a browser that has never seen it can hold it.
+ *
+ * ⚠️ VALIDATED ON THE WAY OUT through readMapDoc, like every other map this file hands back.
+ * It is my own row, but localStorage is editable by anything on this origin and so is a round
+ * trip through a database — "a trusted path wrote it" is not a thing that can be said about
+ * anything coming back over a wire.
+ */
+export async function fetchMyMap(name: string): Promise<MapDoc | null> {
+  const { data, error } = await getSupabaseClient().rpc('park_map_get', { p_name: name.trim() })
+  if (error || !data) return null
+  return readMapDoc(data)
+}
+
+/** The ones on my account — never anybody else's, which is the RPC's own rule. */
 export async function myPublished(): Promise<PublishedMap[]> {
   const { data, error } = await getSupabaseClient().rpc('park_map_mine')
   if (error || !Array.isArray(data)) return []

@@ -13,7 +13,7 @@ import {
   myPublished,
   parkFromHash,
   parkLink,
-  publishMap,
+  saveMapToAccount,
   openPark,
   parkInvites,
   uninviteFromPark,
@@ -4221,7 +4221,7 @@ export function ParkRoom({
                     const mine = stamped.find((m) => m.name === mapPick)
                     if (!mine) return
                     setParksBusy(true)
-                    void publishMap(mine.doc).then(async (r) => {
+                    void saveMapToAccount(mine.doc).then(async (r) => {
                       setParksBusy(false)
                       if (!r.ok) return setParkSaid(r.why)
                       setMineShared((await myPublished()).map((x) => x.name))

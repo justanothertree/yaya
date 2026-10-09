@@ -3,7 +3,14 @@ import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
 import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from '../draw/strokes'
 import { MapGuide } from './MapGuide'
-import { myPublished, publishMap, unpublishMap, type PublishedMap } from './mapsCloud'
+import {
+  fetchMyMap,
+  myPublished,
+  saveMapToAccount,
+  signedIn,
+  unpublishMap,
+  type PublishedMap,
+} from './mapsCloud'
 import {
   cropToInk,
   MAX_PIECES,
@@ -19,7 +26,6 @@ import {
   mapBytes,
   biggestPart,
   mapsFull,
-  mapsSaved,
   parkMaps,
   removeMap,
   saveMap,
@@ -271,18 +277,28 @@ export function MapMaker() {
    * ⚠️ AND IT IS ASKED FOR ONCE, NOT WATCHED. Nothing else changes this list — only the two
    * buttons below — so a subscription would be a socket for news that always comes from here.
    */
+  /**
+   * What is on the account, which is not the same list as what is in this browser.
+   *
+   * ⚠️ THE DIFFERENCE IS THE WHOLE POINT OF THE ACCOUNT. A map made on a phone, or made here
+   * before this browser ran out of room, exists and is not in localStorage — and before this it
+   * was invisible, which made the account look like it had lost it.
+   */
   const [shared, setShared] = useState<PublishedMap[] | null>(null)
-  const [sharing, setSharing] = useState(false)
+  /** undefined until asked — "signed out" and "haven't looked" are different answers */
+  const [signedInNow, setSignedInNow] = useState<boolean | undefined>(undefined)
+  const [pulling, setPulling] = useState<string | null>(null)
   useEffect(() => {
     let gone = false
-    void myPublished().then((rows) => {
-      if (!gone) setShared(rows)
+    void signedIn().then((yes) => {
+      if (gone) return
+      setSignedInNow(yes)
+      if (yes) void myPublished().then((rows) => !gone && setShared(rows))
     })
     return () => {
       gone = true
     }
   }, [])
-  const isShared = (n: string) => !!shared?.some((r) => r.name === n)
   const wide = outBy(fat)
 
   /** stamping things down, drawing the ground under them, or saying where you arrive */
@@ -1100,28 +1116,60 @@ export function MapMaker() {
     setSaid(null)
   }
 
+  /**
+   * Keeping a map.
+   *
+   * ⚠️ THE ACCOUNT FIRST, THE BROWSER SECOND, AND THE BROWSER IS NEVER THE REASON THIS FAILS.
+   * Reported as hitting "Too big to keep — 264KB of 200KB" on a first serious map. That ceiling
+   * was never about maps: localStorage is five megabytes for the whole origin, shared with the
+   * gallery, the songs and the minions, so what it really said was "the smallest place this is
+   * kept has decided how big it may be". Signed in, the account holds it — two megabytes a map
+   * — and the browser keeps a copy if it fits.
+   *
+   * ⚠️ SIGNED OUT IT IS THE OLD RULE EXACTLY, because then the browser IS the only copy and a
+   * refusal is the honest answer. Nothing silently loses a map either way.
+   */
   const keep = () => {
     if (!doc) return setSaid('Put something on it first.')
-    if (bytes > MAP_LIMIT.bytes) {
-      /* ⚠️ IT NAMES THE PART. "Use simpler drawings" was the whole of this, and on a map whose
-         weight is the painted ground it is advice that cannot work — see biggestPart. */
-      const worst = biggestPart(doc)
-      const over = `Too big to keep — ${Math.round(bytes / 1024)}KB of ${Math.round(MAP_LIMIT.bytes / 1024)}KB.`
-      return setSaid(
-        worst
-          ? `${over} Most of it is ${worst.what} (${Math.round(worst.bytes / 1024)}KB).`
-          : `${over} Take something out of it.`,
-      )
-    }
-    /* ⚠️ a map has no account copy — it is not a kind in library/cloud.ts — so a keep
-       that did not reach the disk is the only copy not landing, and must not pass quietly */
-    if (mapsFull()) return setSaid(`No room for another map — delete one to make space.`)
-    if (!saveMap(doc)) return setSaid('That could not be kept.')
-    setSaid(
-      mapsSaved()
-        ? `Kept "${doc.name}".`
-        : `"${doc.name}" is here for now, but this browser is out of room — delete a map, and note it has no copy anywhere else.`,
-    )
+    const local = saveMap(doc)
+    void (async () => {
+      /**
+       * ⚠️ ASKED AGAIN IF THE ANSWER HAS NOT ARRIVED. `signedInNow` starts undefined and is
+       * filled by a round trip on mount — so pressing Keep in the first moment after the page
+       * loads would read "not signed in" and quietly save to the browser only, which is the
+       * exact failure this whole change exists to remove. Undefined means "do not know", and
+       * the honest response to not knowing is to find out.
+       */
+      const yes = signedInNow ?? (await signedIn())
+      const cloud = yes ? await saveMapToAccount(doc) : null
+      if (cloud?.ok) {
+        /* ⚠️ it is safe at this point whatever the browser did, so the sentence says the thing
+           that is true rather than the thing that happened most recently */
+        setSaid(
+          local
+            ? `Kept "${doc.name}".`
+            : `Kept "${doc.name}" on your account. This browser is full, so it is not stored here.`,
+        )
+        return
+      }
+      if (local) {
+        setSaid(cloud ? `Kept "${doc.name}" here — ${cloud.why}` : `Kept "${doc.name}".`)
+        return
+      }
+      /* nowhere took it: say which wall was hit, and which part is heavy — see biggestPart */
+      if (bytes > MAP_LIMIT.bytes) {
+        const worst = biggestPart(doc)
+        const over = `Too big for this browser — ${Math.round(bytes / 1024)}KB of ${Math.round(MAP_LIMIT.bytes / 1024)}KB.`
+        const why = cloud ? ` ${cloud.why}` : ' Sign in and it will be kept on your account.'
+        return setSaid(
+          worst
+            ? `${over} Most of it is ${worst.what} (${Math.round(worst.bytes / 1024)}KB).${why}`
+            : `${over}${why}`,
+        )
+      }
+      if (mapsFull()) return setSaid('No room for another map in this browser — delete one.')
+      setSaid(cloud ? cloud.why : 'That could not be kept.')
+    })()
   }
 
   const drawing = mode === 'draw'
@@ -1649,52 +1697,69 @@ export function MapMaker() {
                 🗺 {m.name}
                 <span className="muted"> · {m.doc.pieces.length}</span>
               </button>
-              {/**
-               * ⚠️ IT SAYS WHICH STATE IT IS IN, not which action it will take. "Shared" with the
-               * light on is a fact about the map; a button reading "Publish" on a map that is
-               * already published is a question about what happens if you press it, and the
-               * answer people assume is the wrong one.
-               */}
-              <button
-                className={'map-kept-share' + (isShared(m.name) ? ' is-on' : '')}
-                aria-pressed={isShared(m.name)}
-                disabled={sharing}
-                title={
-                  isShared(m.name)
-                    ? `Take "${m.name}" off your account — anybody in it now stays until they leave`
-                    : `Put "${m.name}" on your account so friends can walk into it`
-                }
-                onClick={() => {
-                  setSharing(true)
-                  const go = isShared(m.name) ? unpublishMap(m.name) : publishMap(m.doc)
-                  void go.then(async (r) => {
-                    if (!r.ok) setSaid(r.why)
-                    else
-                      setSaid(
-                        isShared(m.name)
-                          ? `"${m.name}" is private again.`
-                          : `"${m.name}" is on your account — friends can walk in.`,
-                      )
-                    setShared(await myPublished())
-                    setSharing(false)
-                  })
-                }}
-              >
-                {isShared(m.name) ? '🌍 Shared' : '⇪ Share'}
-              </button>
+              {/* ⚠️ THE SHARE TOGGLE IS GONE, because every map is on the account the moment it is
+                  kept — see the note on keep. It used to mean "put a copy where others can reach
+                  it", which was storage and sharing rolled into one press; sharing is opening a
+                  park on it, which lives in the park. A button whose state nothing reads is a
+                  button that teaches the wrong model. */}
               <button
                 className="map-kept-bin"
                 aria-label={`Delete ${m.name}`}
                 title={`Delete ${m.name}`}
                 onClick={() => {
+                  /* ⚠️ BOTH COPIES, because there are two now. Deleting only the local one would
+                     leave it on the account to reappear the next time this browser syncs, which
+                     reads as a delete button that does not work. */
                   removeMap(m.id)
                   setSaid(`Deleted "${m.name}".`)
+                  if (signedInNow)
+                    void unpublishMap(m.name).then(async () => setShared(await myPublished()))
                 }}
               >
                 ✕
               </button>
             </span>
           ))}
+        </div>
+      )}
+      {/* ⚠️ ON YOUR ACCOUNT BUT NOT IN THIS BROWSER. Listing only what localStorage holds made
+          the other copies invisible, so an account that was holding a map perfectly well looked
+          like it had eaten it. Pressing one fetches it and opens it for editing. */}
+      {!!shared?.some((r) => !mine.some((m) => m.name === r.name)) && (
+        <div className="map-kept">
+          <span className="muted map-count">On your account, not in this browser</span>
+          {shared
+            .filter((r) => !mine.some((m) => m.name === r.name))
+            .map((r) => (
+              <button
+                key={r.id}
+                className="map-kept-open"
+                disabled={pulling === r.name}
+                title={`Fetch "${r.name}" and work on it`}
+                onClick={() => {
+                  setPulling(r.name)
+                  void fetchMyMap(r.name).then((d) => {
+                    setPulling(null)
+                    if (!d) return setSaid(`Could not fetch "${r.name}".`)
+                    setName(d.name)
+                    setPalette(d.palette)
+                    setPieces(d.pieces)
+                    setGround(d.ground?.strokes ?? [])
+                    setSpawn(d.spawn)
+                    cells.current = readZone(d.block) ?? blankZone()
+                    setBlockTick((n) => n + 1)
+                    setDoors(d.doors)
+                    /* a different map is a different history — see the note on the list above */
+                    setHist(emptyHistory<Step>())
+                    setErasing(false)
+                    setSaid(`Working on "${d.name}".`)
+                  })
+                }}
+              >
+                ⤓ {r.name}
+                <span className="muted"> · {Math.round(r.bytes / 1024)}KB</span>
+              </button>
+            ))}
         </div>
       )}
       <p className="muted map-note">

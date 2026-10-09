@@ -200,3 +200,33 @@ where n.nspname = 'public' and c.relname in ('park_maps', 'park_rooms', 'park_ro
 -- ⚠️ THE LOCAL BUDGET DID NOT GROW. localStorage is ~5MB for the whole origin and maps share it
 -- with the gallery, the songs and the minions, so what is bounded is items × bytes: twelve at
 -- 200KB was 2.4MB, seven at 320KB is 2.24MB. A unit test asserts that product can only shrink.
+
+-- ── ADDED: this table is where a map LIVES, not a published copy of one ────────────────────
+--
+-- ✅ APPLIED as migration: park_maps_are_storage_not_just_publishing
+--
+-- Asked for as wanting to avoid limits. The limit being hit was never a map limit: maps were the
+-- one store that never synced (library/cloud.ts: "the fifth store, maps, does not sync and so
+-- holds the ONLY copy"), so the ceiling was localStorage — five megabytes for the whole origin,
+-- shared with the gallery, the songs and the minions. The smallest place a map was kept had
+-- decided how big a map may be.
+--
+-- So the account holds maps and the browser is a cache:
+--
+--   per map     2 MB      (the first serious map was 264KB)
+--   per person  12 MB across at most 16 maps
+--   worst case  8 people x 12 MB = 96 MB, against 26 MB used of a 500 MB free tier
+--
+-- ⚠️ A COUNT *AND* A TOTAL, which is member_library's own shape (400 items / 20 MB). Count times
+-- a per-map cap is a worst case nobody reaches and a budget that reads far larger than it is.
+--
+-- ⚠️ BOTH COUNTED EXCLUDING THE NAME BEING WRITTEN, so saving over a map you already have is
+-- never refused for being one too many, nor for bytes it is about to replace. Verified: a 600KB
+-- map saves where 384KB used to be the ceiling, saving over it leaves one row not two, and it
+-- reads back byte-identical at 600,038.
+--
+-- ⚠️ AND THE BUDGET REFUSES IN WORDS. Six 2MB maps then a seventh:
+--   "that would be more than 12MB of maps — delete one to make room"
+--
+-- park_map_get returns one of mine in full, which is what lets a browser that has never seen a
+-- map hold it — the half that makes "cache" true rather than just "copy".
