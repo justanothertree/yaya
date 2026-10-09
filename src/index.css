@@ -2816,6 +2816,15 @@ section[id] {
   flex-direction: column;
   gap: 0.7rem;
   min-width: 0;
+  /**
+   * ⚠️ WHAT STANDS BETWEEN A LAYER ROW'S EDGE AND ITS BAR STRIP, named because TWO THINGS HAVE
+   * TO AGREE ABOUT IT. A layer row is a bordered, padded box and its bar cells begin inside
+   * both; the ruler that labels those cells is a sibling of the list, outside both. Written as
+   * literals in two places they drifted immediately — see .inst-ruler, which was 10.9px left of
+   * every column it marks while the comment above it claimed the two line up.
+   */
+  --layer-pad: 0.55rem;
+  --layer-line: 1px;
 }
 .inst-picks {
   grid-template-columns: repeat(auto-fit, minmax(min(5rem, 100%), 1fr));
@@ -3313,8 +3322,8 @@ section[id] {
   font-size: 0.85rem;
   /* ⚠️ wraps, so the bar strip below can claim a whole line of its own */
   flex-wrap: wrap;
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--border);
+  padding: 0.4rem var(--layer-pad);
+  border: var(--layer-line) solid var(--border);
   border-radius: 9px;
   background: var(--control-bg, rgba(255, 255, 255, 0.04));
 }
@@ -12724,6 +12733,19 @@ a.cz-msg-author:focus-visible {
   overflow-x: auto;
   overscroll-behavior-x: contain;
   margin: 0.2rem 0 0.1rem;
+  /**
+   * ⚠️ INDENTED ONTO THE COLUMNS IT LABELS, which it was not. Measured at 1440 with a two-layer
+   * song: every row's first bar cell sat at x=69.5 and the ruler's first mark at x=58.6, so mark
+   * N stood over the gap BEFORE cell N — on desktop that is most of a 12px cell, and the mark
+   * for bar 3 pointed at bar 2's edge. A control whose only job is to say which bar is which was
+   * off by nearly a bar.
+   *
+   * ⚠️ AND IT IS calc OF THE ROW'S OWN TWO VALUES rather than a third number that happens to
+   * match. The row's padding is in rem and its border in px, so the sum is not a constant — it
+   * is 10.88px at the default root and shrinks with the UI scale. Anything typed here would be
+   * right at one setting and wrong at the others, which is how the original 10.9px gap got in.
+   */
+  padding-left: calc(var(--layer-pad) + var(--layer-line));
 }
 .inst-ruler-cell {
   width: 12px;
