@@ -164,3 +164,19 @@ where n.nspname = 'public' and c.relname in ('park_maps', 'park_rooms', 'park_ro
 --   host, open      1 row, the right map, open_since set
 --   another member  0 rows
 --   anon            execute refused
+
+-- ── ADDED: my own handle, for building a link ──────────────────────────────────────────────
+--
+-- ✅ APPLIED as migration: my_park_room_carries_my_name
+--
+-- my_park_room() now returns `host` as well. The client needs its own username to build a link
+-- to its own park, and get_park_room takes a username because it is looking somebody ELSE up —
+-- making the client supply its own would reintroduce exactly the failure my_park_room exists to
+-- avoid: a client holding a slightly wrong handle for the account it is signed in as, building
+-- a link that leads nowhere. auth.uid() already knows.
+--
+-- ⚠️ DROP AND CREATE IN ONE TRANSACTION, because a return type cannot be changed in place. Both
+-- statements land together so there is no moment where the function is missing, and the change
+-- is ADDITIVE — the client already deployed reads four of the five columns and is unaffected.
+--
+-- Checked, rolled back: host "Cam", the right map, open true.

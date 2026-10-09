@@ -11,6 +11,8 @@ import {
   inviteToPark,
   myPark,
   myPublished,
+  parkFromHash,
+  parkLink,
   publishMap,
   openPark,
   parkInvites,
@@ -1007,6 +1009,8 @@ export function ParkRoom({
     Array<{ roomId: string; host: string; mapName: string; doc: MapDoc }>
   >([])
   const [parks, setParks] = useState<OpenPark[] | null>(null)
+  /** a link is followed once, not again on every render of this room */
+  const followed = useRef(false)
   const [parksBusy, setParksBusy] = useState(false)
   const [parkSaid, setParkSaid] = useState<string | null>(null)
   /**
@@ -1032,6 +1036,8 @@ export function ParkRoom({
    * appeared beside any shared map and quietly invited people to a different one.
    */
   const [hostMap, setHostMap] = useState<string | null>(null)
+  /** my own handle, taken from the room itself — so a link to my park never guesses at it */
+  const [hostName, setHostName] = useState<string | null>(null)
   const [mineShared, setMineShared] = useState<string[]>([])
   /**
    * Who may come to mine, and how wide the door is.
@@ -1064,6 +1070,7 @@ export function ParkRoom({
       if (gone || !r) return
       setHostRoom(r.room_id)
       setHostMap(r.map_name)
+      setHostName((r as { host?: string }).host ?? null)
       if (r.open_since) setHosting(r.map_name)
     })
     return () => {
@@ -1071,6 +1078,15 @@ export function ParkRoom({
     }
   }, [])
 
+  /**
+   * ⚠️ WALKED INTO FROM A LINK, which is what makes an invite one press instead of three.
+   * Snake has done this since challengeLink existed; a park invite that said "go and look in
+   * Friends' parks" was asking somebody to follow instructions rather than follow a link.
+   *
+   * ⚠️ ONCE, AND ONLY WHEN SIGNED IN. The fetch needs a session, and a signed-out visitor
+   * arriving on the link should see the room as it is rather than an error about a park — they
+   * can sign in and the link still works, because it is in the address bar.
+   */
   const visitPark = useCallback(async (host: string) => {
     setParksBusy(true)
     setParkSaid(null)
@@ -1098,6 +1114,15 @@ export function ParkRoom({
     setParksBusy(false)
     setParkSaid(null)
   }, [])
+
+  /* follow a #games?play=park&park=<host> link, once — see visitPark */
+  useEffect(() => {
+    if (followed.current || !authed) return
+    const host = parkFromHash()
+    if (!host) return
+    followed.current = true
+    void visitPark(host)
+  }, [authed, visitPark])
 
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
@@ -4317,7 +4342,15 @@ export function ParkRoom({
                   verb="invite"
                   emptyHint="No friends yet — add someone on the People page and you can invite them here."
                   hint="They can walk in from 👥 Friends’ parks whenever your park is open."
-                  body={`🗺 Come to my park${hostMap ? ' — ' + hostMap : ''}. Open Games → park → 👥 Friends’ parks.`}
+                  /* ⚠️ the link on its own line, exactly as challengeMessage does it: if this
+                     ever renders as raw text — an old client, a notification preview, a paste
+                     into a text message — it still reads as an invitation and is still tappable */
+                  body={
+                    hostName
+                      ? `🗺 Come to my park${hostMap ? ' — “' + hostMap + '”' : ''}:
+${parkLink(hostName)}`
+                      : `🗺 Come to my park${hostMap ? ' — “' + hostMap + '”' : ''}. Open Games → park → 👥 Friends’ parks.`
+                  }
                   onSend={async (who) => {
                     const r = await inviteToPark(who)
                     if (!r.ok) return r.why

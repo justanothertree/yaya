@@ -25,6 +25,33 @@ import { readMapDoc, type MapDoc } from './mapDoc'
     anonymous door. See open_park_room, which refuses rather than clamps. */
 export type ParkAudience = 'friends' | 'members' | 'private'
 
+/**
+ * A link straight into somebody's park.
+ *
+ * ⚠️ THE SAME SHAPE SNAKE'S CHALLENGE LINK HAS, deliberately: origin + pathname + a hash the
+ * games room already parses. challengeLink has been posting `#snake?room=` into real chat
+ * messages for months, and those messages cannot be rewritten — so a second link convention
+ * would be a second thing that has to keep working forever. This is the first one again.
+ *
+ * ⚠️ IT CARRIES THE HOST, NOT THE ROOM. A room id is a uuid that changes nothing if the host
+ * reopens on a different map, and it means nothing to a person reading the message. A username
+ * is the handle the whole feature is already keyed on — get_park_room takes one — and it
+ * survives the host closing and reopening.
+ */
+export const parkLink = (host: string): string =>
+  `${location.origin}${location.pathname}#games?play=park&park=${encodeURIComponent(host)}`
+
+/** Whose park this page was opened for, if any. Loose on purpose: it is only ever a username. */
+export function parkFromHash(): string | null {
+  const m = (window.location.hash || '').match(/[?&]park=([^&]+)/)
+  if (!m) return null
+  try {
+    return decodeURIComponent(m[1]).trim().slice(0, 40) || null
+  } catch {
+    return null
+  }
+}
+
 export type PublishedMap = { id: string; name: string; bytes: number; updated_at: string }
 export type OpenPark = { host: string; map_name: string; audience: string; open_since: string }
 export type FoundPark = {

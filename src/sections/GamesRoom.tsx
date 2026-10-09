@@ -72,6 +72,9 @@ function wantedFromHash(): GameId | null {
   // A room to join or a score to beat is a Snake link whatever the base says — and `#snake` is
   // the alias every challenge message ever posted was built from.
   if (base === 'snake' || q.has('room') || q.has('beat')) return 'snake'
+  /* ⚠️ a park to walk into is a park link whatever the base says — the same rule the line above
+     makes for a snake room, so an invite pasted anywhere lands in the right place */
+  if (q.has('park')) return 'park'
   /* ⚠️ `#minions` and `#pets` were tabs and are links people hold — see SECTION_ALIASES. They
      land on the room the tab became, which is this one, open at the creatures. */
   if (base === 'minions' || base === 'pets') return 'minions'
