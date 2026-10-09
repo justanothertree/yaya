@@ -137,6 +137,16 @@ const inProse = (el) => !!el.closest('p, li') && getComputedStyle(el).display.st
  * what a sighted person holding a phone can read, so a label clipped to a pixel for a screen
  * reader leaves the control just as unexplained as a tooltip does.
  *
+ * ⚠️ AND IT ONLY LOOKS AT CONTROLS THAT HAVE A title, WHICH LEAVES A GAP ON PURPOSE. A control
+ * explained NOWHERE — no word, no title, no aria-label — is strictly worse than one explained by
+ * a tooltip, and nothing here reports it. Swept for deliberately before leaving it that way:
+ * zero instances across all five rooms AND the park mid-walk, where every pad button turned out
+ * to carry a real aria-label ("Walk left", "Quick swing", "Roll", "Jump"). A first sweep seemed
+ * to find twenty-three, and all twenty-three were range sliders wrapped in a label — it had read
+ * textContent on the input instead of asking hitBox, which is the whole reason hitBox exists.
+ * So the gap is theoretical today, and a check for it would have to go through hitBox or it
+ * would report every slider on the site.
+ *
  * ⚠️ WHAT SURVIVES IS STILL A JUDGEMENT, AND THIS CHECK CANNOT MAKE IT. Nineteen hits became
  * five across three controls — a layer eye, and the floating collapse and fullscreen pair over
  * the canvas, which appears in two rooms. All three are wordless by every rule here and all
