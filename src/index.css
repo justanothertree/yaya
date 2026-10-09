@@ -15004,8 +15004,24 @@ a.cz-msg-author:focus-visible {
 
    ⚠️ AND THE INSTRUMENT'S OWN TWO ROWS, which are not sliders: the octave step and the
    snap picker were 16 to 18px. Those are the controls somebody reaches for mid-tune, on a
-   phone, one-handed, which is the whole way that room is used away from a desk. */
-@media (max-width: 700px) {
+   phone, one-handed, which is the whole way that room is used away from a desk.
+
+   ⚠️ AND A THUMB IS NOT A WIDTH, WHICH THIS GOT WRONG FOR EVERY TABLET. The gate was
+   `max-width: 700px` alone, so a device that is unambiguously touched but wider than a phone got
+   none of it: measured at 820 with a song loaded, the sliders were 16px tall, the keyboard range
+   16, the snap buttons 16 and the octave buttons 18.3 — the sizes this very comment calls a line
+   you cannot drag with a fingertip. An iPad in portrait is 820 wide.
+
+   `(pointer: coarse)` is the condition that was meant all along: the primary pointer is a finger.
+   A narrow desktop window keeps the rule too, which costs a few pixels of height to a mouse and
+   is the harmless direction. Everything in this block is a min-height or a min-width, so widening
+   the gate cannot move a layout — and the pointer half is already how most of the touch sizing in
+   this file is written, which is what made the width-only one an outlier rather than a choice.
+
+   ⚠️ Proven before it was changed, because the pane cannot emulate a coarse pointer at 820:
+   injecting these exact declarations at that width moved the page 45px taller, with no sideways
+   scroll, nothing past an edge and no row overflowing. */
+@media (max-width: 700px), (pointer: coarse) {
   .appearance-slider input[type='range'] {
     min-height: 36px;
   }
