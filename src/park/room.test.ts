@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { lookFits, packLook, PARK_LOOK_LIMIT, readBoss, readScene, readSomeone } from './room'
+import {
+  doorMeans,
+  lookFits,
+  packLook,
+  PARK_LOOK_LIMIT,
+  readBoss,
+  readScene,
+  readSomeone,
+} from './room'
 import type { Drawing, Stroke } from '../draw/strokes'
 
 /**
@@ -335,5 +343,57 @@ describe('a scene arriving from the host', () => {
   it('keeps a map id intact when it is a real one', () => {
     const id = '8f14e45f-ceea-467a-9575-9a0b53ba3f4e'
     expect(readScene({ map: id, at: 9 })?.map).toBe(id)
+  })
+})
+
+/**
+ * What a door means.
+ *
+ * ⚠️ THE CLAIM BEING PINNED IS "NOBODY LEAVES THE PARTY BY WALKING", not any particular
+ * branch. A door swaps your world, which is the right answer alone and a silent desertion in
+ * company — and silent is the whole problem: the guest stands in their own map, everybody else
+ * carries on in the room, and no screen anywhere says they have parted. There is no error to
+ * notice, so a test is the only thing that can notice.
+ *
+ * ⚠️ AND IT IS ASKED THROUGH THE ROOM IDS, WHICH SHARE NO ARITHMETIC WITH THE ANSWER. The
+ * question "whose room am I in" is two string identities; the answer is one of three words. A
+ * test that rebuilt the comparison would be a second copy of it — see CLAUDE.md on measuring
+ * through a path that shares nothing with the thing being measured.
+ */
+describe('walking into a door', () => {
+  const ROOM = '7f3a9c1e-0000-4000-8000-0123456789ab'
+  const THEIRS = 'b2c4d6e8-0000-4000-8000-ba9876543210'
+
+  it('changes my own world when there is nobody to disagree with', () => {
+    expect(doorMeans({ room: null, mine: null })).toBe('swap')
+  })
+
+  it('and still does when I host a park I am not standing in', () => {
+    /* the normal case for whoever set the park up: my room is open, I am walking a sketch */
+    expect(doorMeans({ room: null, mine: ROOM })).toBe('swap')
+  })
+
+  it('moves the room when the room is mine', () => {
+    expect(doorMeans({ room: ROOM, mine: ROOM })).toBe('host')
+  })
+
+  it("asks when the room is somebody else's", () => {
+    expect(doorMeans({ room: THEIRS, mine: null })).toBe('ask')
+  })
+
+  it('and asks even while my own park is open, because hosting something is not hosting this', () => {
+    expect(doorMeans({ room: THEIRS, mine: ROOM })).toBe('ask')
+  })
+
+  /**
+   * ⚠️ THE ONE THAT MATTERS, SWEPT RATHER THAN SAMPLED. Every other case above names its
+   * answer; this names the answer that must never appear, for every shape of being in a room
+   * at all. A new branch that reached for 'swap' with a room on it would be a new way to
+   * desert the party, and the three examples above would all still pass.
+   */
+  it('never changes my world alone while I am in a room with anybody', () => {
+    for (const mine of [null, ROOM, THEIRS])
+      expect(doorMeans({ room: THEIRS, mine })).not.toBe('swap')
+    expect(doorMeans({ room: ROOM, mine: ROOM })).not.toBe('swap')
   })
 })

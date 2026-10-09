@@ -117,6 +117,38 @@ can be consistent for everybody at once.
 ⚠️ **A door the host cannot resolve does nothing, visibly.** `mapDoc.ts` already decided a door is
 allowed to dangle and should say so when walked into; that stays, it is just the host answering.
 
+### Two things only building it revealed
+
+**The room id survives a map change, and the whole mechanism rests on it.** `open_park_room` ends
+with `on conflict (owner) do update … returning id`, so pointing a room at a different map returns
+the row that was already there. The relay room is named after that id — so everybody stays in the
+same conversation and the scene they are already following tells them where it went. Had it minted
+a new id, walking through a door would have scattered the party and left the host alone in the
+destination. This is a fact about a function somebody could change, which is why it is written
+down rather than relied on silently.
+
+**An ask must be checked against the doors of the map everyone is in, and the relay cannot do it.**
+The design said the host "resolves the name against its own maps", which is not enough: a name off
+the wire is a name a guest chose, so resolving it only against my maps would let one guest walk the
+whole room to **any map on my account** by naming it. The real rule is that the thing asked for has
+to be a door **in the map everybody is currently standing in**. The relay cannot judge that — it
+does not know what a map contains and must not start fetching them to find out — so the check lives
+in the host's client, which is the only place that holds the map. It is one line, and it is the
+security property of this feature.
+
+⚠️ **And not the map we are already in.** Re-opening on the same map is harmless in the database and
+not on screen: it republishes the scene, which bounces everybody through a leave and a rejoin.
+Asked for repeatedly that is a way to keep somebody's park unusable, so an ask for the current map
+is ignored.
+
+### What a door costs, honestly
+
+Everybody in the room leaves the relay and rejoins it, because `mapPick` is what the join effect
+depends on and a map change is a re-entry by design. The room id is the same, so it is a bounce
+rather than a scattering — but it is a visible bounce, and if it turns out to matter the fix is to
+let the world change without the socket doing so, which that effect's own note explains is the
+thing it exists to prevent. Not worth doing before anybody has felt it.
+
 ## What it replaces
 
 The browse-and-join UI collapses. Today a guest picks a host, fetches their map and walks it;
@@ -133,11 +165,43 @@ and calling a boss become scene changes instead of local ones.
    path. Testable with two tabs on the stub relay.
 2. **The relay's owner check.** The one server-side piece. Until it lands, step 1 is friends-only
    and says so.
-3. **Waves and boss in the scene.** Both are already host-run today; this makes everyone see them.
-4. **Doors.** Needs 1 and 3, and is the payoff: a shared world you can walk between.
+3. ~~**Waves and boss in the scene.**~~ ⚠️ **WRONG ON BOTH HALVES — see below.**
+4. **Doors.** ✅ BUILT. Needs 1 and 2 — not the old step 3, which was wrong. The payoff: a
+   shared world you can walk between.
+5. **Shared waves.** Needs a design that answers drift. Not started, and deliberately not
+   sketched here — see below.
 
 ⚠️ **Step 1 is worth shipping alone** and steps 2–4 are not blocked on each other. A design that
 only pays off when all of it is finished is a design that does not get finished.
+
+## ⚠️ Step 3 was wrong, and the code already said so
+
+Written as "waves and boss in the scene. Both are already host-run today; this makes everyone see
+them." Neither half survives contact with what is already here.
+
+**The boss is already shared, and putting it in the scene would be a second opinion about it.**
+`callBoss` sends the art, `bstep` sends position and health at the same rate as a walk, the relay
+enforces one boss at a time and replays it on the roster. That is a complete mechanism. A scene
+field saying "a boss is up" would be a second place the same fact lives, free to disagree with the
+first — which is the duplication this codebase keeps paying to remove.
+
+**A shared wave is not a small step, and the reason is written in ParkRoom already:**
+
+> A wave that spawns from a seed everyone has and steers by positions everyone already receives
+> would keep that bargain, **but derived motion drifts and nothing here corrects it yet.**
+
+The seed half is solved — `swarm.test.ts` proves the same seed is the same wave, exactly, and says
+why: "Fifty minions cannot each be a message." What is unsolved is that the crowd then STEPS, and
+two machines stepping the same crowd at different frame times diverge. A boss gets away with it
+because one machine runs it and echoes where it is; forty minions cannot be echoed at fifteen
+messages a second, which is the whole reason the seed exists.
+
+So a shared wave needs drift correction, and that is its own piece of work with its own design.
+Saying "the scene carries a wave number" would ship the appearance of it: everyone would be told a
+fight is happening and only the host would be in it.
+
+**What replaces it:** nothing, for now. Doors are step 3, and waves wait for a design that answers
+drift rather than one that hides it.
 
 ## What this does not do
 
@@ -147,3 +211,22 @@ only pays off when all of it is finished is a design that does not get finished.
   note in `room.ts`: "an echo, not a simulation").
 - It does not survive the host leaving. The room closes when they go, like Snake's does. A room
   that outlives its host needs a host election, which is a lot of machinery for eight people.
+
+## What is verified, and what is not
+
+**Verified in the Browser pane** (`#dev-park`, two local maps with a door each way): walking into
+a door alone still swaps the world, the swap is caused by the walk and not by time (2.5s idle
+changed nothing), and the return trip works — so the new three-way branch did not regress the one
+path that does not need an account. `doorMeans` is pinned by six tests in `room.test.ts`, and both
+the bug it replaces and the subtler "hosting something is hosting this" bug were reintroduced once
+each and watched go red.
+
+**Not verified, and only two signed-in accounts can do it**: a guest's ask reaching a host, the
+host moving the room, and everybody following. The host branch calls `open_park_room`, which needs
+a session, so the workbench cannot reach it at all — `#dev-park` grants nothing on purpose. The
+stub relay forwards unknown message types with `from` attached, so `door` rides over it for free,
+but the branch that would send one is unreachable without a room.
+
+⚠️ **And the relay must be redeployed.** The site deploys on push; `server/ws-server.js` does not.
+Until it is, a guest's ask is dropped by the `default` case and doors in somebody else's park do
+nothing — which is the same as today, not worse.

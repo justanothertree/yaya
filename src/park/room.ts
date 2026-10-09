@@ -6,6 +6,7 @@ import { traitsOf } from '../pets/play'
 import { groundAt } from './ground'
 import { rigOf } from '../pets/rig'
 import { castFromSlot, type CastKind } from './cast'
+import { MAP_NAME_MAX } from './mapDoc'
 import { worldIsDrawn, worldRoom } from './world'
 
 /**
@@ -57,6 +58,8 @@ type Out =
   | { type: 'boss'; name: string; art: unknown | null }
   /* the host saying what the room is doing — see Scene */
   | { type: 'scene'; map: string | null; at: number }
+  /* a guest asking the host to take the room through a door — see Asked */
+  | { type: 'door'; to: string }
   /* where it is and what is left of it, from the one machine running it */
   | {
       type: 'bstep'
@@ -91,6 +94,7 @@ type In =
     }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
   | { type: 'scene'; from?: string; map?: unknown; at?: unknown }
+  | { type: 'door'; from?: string; to?: unknown }
   | {
       type: 'bstep'
       from?: string
@@ -276,6 +280,56 @@ export type Scene = {
   at: number
 }
 
+/**
+ * A guest, standing on a door, asking for it.
+ *
+ * ⚠️ AN ASK, NOT A MOVE, AND THAT IS THE WHOLE POINT. A door swaps your world, which is fine
+ * alone and wrong in company: whoever walked through would silently leave the party, or
+ * everybody would have to follow something nothing told them about. In a hosted room the host
+ * owns which map the room is in — so a guest asks and the scene answers.
+ *
+ * ⚠️ `n` IS THIS CLIENT'S OWN COUNTER, NOT THE SENDER'S. It exists so one ask is one answer:
+ * the host reads this from an effect that re-runs on every roster change, and without a serial
+ * it could not tell a new ask from the same one seen again. Counting here rather than trusting
+ * a number off the wire means a guest cannot replay an old ask by reusing its number.
+ */
+export type Asked = { to: string; by: string; n: number }
+
+/**
+ * What walking into a door means, which depends entirely on whose room you are standing in.
+ *
+ * ⚠️ THREE ANSWERS, AND THE WRONG ONE IS INVISIBLE. A door used to mean 'swap' always, which is
+ * right alone and silently wrong in company: a guest who swapped would stand in a map of their
+ * own while everybody else carried on in the room, with nothing on either screen saying they had
+ * parted. Nobody gets an error; the party simply stops being one.
+ *
+ * ⚠️ IT IS A FUNCTION RATHER THAN A BRANCH IN THE COMPONENT so it can be asked without a
+ * browser — the same reason play.ts owns the jump arc. The wiring that acts on the answer needs
+ * a socket, a fetch and a frame loop; the decision needs none of those and is the part that was
+ * wrong.
+ */
+export type DoorMeans =
+  /* nobody to disagree with: change my own world */
+  | 'swap'
+  /* I own the room everybody is in: move the room, and they follow the scene */
+  | 'host'
+  /* somebody else owns it: ask, and move nothing until they answer */
+  | 'ask'
+
+export function doorMeans(o: {
+  /** the relay room I am walking in, or null when I am walking a map alone */
+  room: string | null
+  /** the relay room MY account owns, open or shut — null if I host nothing */
+  mine: string | null
+}): DoorMeans {
+  if (!o.room) return 'swap'
+  /* ⚠️ BOTH HALVES, AND EQUAL. Hosting something is not hosting THIS — the two differ whenever
+     I am a guest somewhere while my own park is open, which is the normal case for whoever set
+     the park up. Reading "do I host anything" as "do I host this" would make that person the
+     one guest who moves everybody else's room. */
+  return o.mine && o.mine === o.room ? 'host' : 'ask'
+}
+
 export type ParkState = {
   /** null until the relay says hello back */
   me: string | null
@@ -294,6 +348,15 @@ export type ParkState = {
    * plainly rather than pretending the client check is a check.
    */
   scene: Scene | null
+  /**
+   * The last door somebody asked for, for the host to answer — see Asked.
+   *
+   * ⚠️ EVERYBODY RECEIVES IT AND ONLY THE HOST ACTS ON IT. The relay forwards an ask to the
+   * room rather than to one socket, because it does not track which socket the owner is on —
+   * and it does not need to: a guest acting on another guest's ask would move its own world
+   * and nobody else's, which is the thing it already cannot do.
+   */
+  asked: Asked | null
 }
 
 /**
@@ -440,6 +503,8 @@ export type Park = {
   callBoss: (name: string, art: Drawing | null) => void
   /** the host, saying what the room is doing. Nobody else should call this — see Scene */
   setScene: (scene: Scene) => void
+  /** a guest, asking for the door they are standing on. The host answers it — see Asked */
+  askDoor: (to: string) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
   stepBoss: (
     at: Spot,
@@ -467,6 +532,8 @@ export function joinPark(
   state: ParkState,
   onChange: () => void,
 ): Park | null {
+  /* ⚠️ OURS, SO ONE ASK IS ONE ANSWER — see Asked, where the reason it is not the sender's is */
+  let asks = 0
   /**
    * ⚠️ A DRAWN PARK IS STILL A PARK WITH NOBODY ELSE IN IT, UNLESS EVERYBODY FETCHED THE SAME
    * ONE. This was an unconditional refusal, and the reason given was that nothing about a map
@@ -578,6 +645,24 @@ export function joinPark(
           if (!next) break
           if (state.scene && next.at <= state.scene.at) break
           state.scene = next
+          onChange()
+          break
+        }
+        /**
+         * Somebody walked into a door — see Asked.
+         *
+         * ⚠️ IT IS NOT CHECKED HERE, AND IT MUST BE CHECKED. A name off the wire is a name a
+         * guest chose; honouring it as given would let one guest move the room to any map on
+         * the host's account. The host answers this against the doors of the map everyone is
+         * ACTUALLY standing in, which is the check — see ParkRoom, where it is one line beside
+         * this message's only caller.
+         */
+        case 'door': {
+          const by = str(msg.from, 24)
+          const to = str(msg.to, MAP_NAME_MAX)
+          if (!by || !to) break
+          asks += 1
+          state.asked = { to, by, n: asks }
           onChange()
           break
         }
@@ -740,6 +825,9 @@ export function joinPark(
     },
     setScene: (scene) => {
       net.send({ type: 'scene', map: scene.map, at: scene.at })
+    },
+    askDoor: (to) => {
+      net.send({ type: 'door', to })
     },
     stepBoss: (at, facing, swing, hp, turning, aim, charge = 0) => {
       net.send({

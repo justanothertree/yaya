@@ -71,6 +71,7 @@ import {
   type Way,
 } from './walk'
 import {
+  doorMeans,
   joinPark,
   lookFits,
   SEND_HZ,
@@ -1018,6 +1019,17 @@ export function ParkRoom({
   const [parksBusy, setParksBusy] = useState(false)
   const [parkSaid, setParkSaid] = useState<string | null>(null)
   /**
+   * What the last door did, said on the field rather than in the panel.
+   *
+   * ⚠️ IT IS SEPARATE FROM parkSaid BECAUSE IT IS READ SOMEWHERE ELSE. parkSaid lives in the
+   * visit panel, which is only on screen while you are NOT walking — so a door's answer put
+   * there would be a sentence nobody could ever be looking at when it arrived.
+   *
+   * ⚠️ AND IT CLEARS ITSELF. A door that could not be opened has to say so, and a refusal
+   * still on screen two maps later is a refusal about nothing.
+   */
+  const [doorSaid, setDoorSaid] = useState<string | null>(null)
+  /**
    * Which of my own maps is open to people right now, and the room it is open as.
    *
    * ⚠️ THE ROOM ID IS THE HALF THAT WAS MISSING, AND WITHOUT IT THE HOST NEVER JOINS THEIR OWN
@@ -1690,8 +1702,106 @@ export function ParkRoom({
     boss: null,
     trouble: null,
     scene: null,
+    asked: null,
   })
   const park = useRef<Park | null>(null)
+  /**
+   * Walking through a door, which is three different things depending on whose room you are in.
+   *
+   * ⚠️ A DOOR IS A LOCAL SWAP ALONE AND AN ASK IN COMPANY, and before this it was always the
+   * first — which in a hosted room meant one of two wrong things. Either nothing happened,
+   * because the name on a door belongs to the HOST's collection and a guest's own maps have
+   * never heard of it; or, for the one name that happened to collide, the guest silently left
+   * the party and stood in a map of their own while everybody else carried on without them.
+   *
+   * ⚠️ THE HOST'S BRANCH MOVES THE ROOM, NOT THE HOST. open_park_room upserts on (owner) and
+   * returns the row's id, so pointing the room at another map KEEPS THE ROOM ID — which is the
+   * whole reason this works: everybody stays in the same relay room and the scene they are
+   * already following tells them where it went. A door that reopened on a new id would scatter
+   * the party and leave the host alone in the destination.
+   *
+   * ⚠️ IT GOES THROUGH openPark RATHER THAN SETTING STATE, because the room's map_id is what a
+   * late joiner fetches. Moving the room locally and telling the party would leave the next
+   * person through the door fetching the map everybody had already left.
+   */
+  const throughDoor = useCallback(
+    (to: string) => {
+      const means = doorMeans({ room: walkingRoom, mine: hostRoom })
+      /* alone: my own maps, my own world, nobody to disagree with */
+      if (means === 'swap') {
+        /* ⚠️ a door to a map that is gone does nothing, and has ALREADY said so: it is drawn
+           with "— gone" on it from the moment you can see it, which is a better place to learn
+           that than after walking across the map to it. See Door, where dangling is deliberate. */
+        if (mapsRef.current.some((m) => m.name === to)) setMapPick(to)
+        return
+      }
+      /* the host: the room's map IS the door, so point the room at it and everybody follows */
+      if (means === 'host') {
+        if (!mapsRef.current.some((m) => m.name === to)) return
+        /* ⚠️ ON THE ACCOUNT, NOT JUST ON THIS MACHINE. open_park_room resolves a name against
+           park_maps and refuses otherwise — so a door to a map you have drawn and not kept is
+           a door the room cannot go through, and saying which is the difference between a dead
+           door and a broken one. */
+        if (!mineShared.includes(to)) {
+          setDoorSaid('That map is not on your account yet, so the park cannot go there.')
+          return
+        }
+        void openPark(to, doorWidth).then((r) => {
+          if (!r.ok) {
+            setDoorSaid(r.why)
+            return
+          }
+          setDoorSaid(null)
+          /* ⚠️ ALL THREE, OR THE HOST LEAVES THEIR OWN PARK. walkable only puts a room on a map
+             of mine while hosting names it — so moving mapPick without hosting would hand
+             joinPark a drawn world with no room, which it refuses outright. */
+          setHosting(to)
+          setHostMap(to)
+          setMapPick(to)
+        })
+        return
+      }
+      /* a guest: ask, and do not move. The scene is what moves you — see Asked */
+      park.current?.askDoor(to)
+      setDoorSaid('Asked the host to open that door.')
+    },
+    [walkingRoom, hostRoom, mineShared, doorWidth],
+  )
+  /* ⚠️ A REF FOR THE SAME REASON mapsRef IS ONE: the frame loop is started once per join and
+     closes over what it can see then, so a callback rebuilt by a later render would never be
+     the one a door calls. */
+  const throughDoorRef = useRef(throughDoor)
+  throughDoorRef.current = throughDoor
+  /** the newest ask I have answered, so one ask is one answer — see Asked */
+  const askedDone = useRef(0)
+  /**
+   * The host, answering an ask.
+   *
+   * ⚠️ AGAINST THE DOORS OF THE MAP WE ARE IN, AND THIS IS THE CHECK THE RELAY CANNOT DO. The
+   * name arrives off the wire, so it is a name a guest chose: honoured as given, one guest could
+   * walk the whole room to any map on my account by naming it. A door that is actually in the
+   * map everybody is standing in is the only thing anybody can ask for.
+   *
+   * ⚠️ AND NOT THE MAP WE ARE ALREADY IN. open_park_room on the same map is harmless in the
+   * database and not on screen — it changes hostMap, which republishes the scene, which bounces
+   * everybody through a leave and a rejoin for no reason. Asked for repeatedly it would be a
+   * way to keep a park unusable.
+   */
+  useEffect(() => {
+    const a = state.current.asked
+    if (!a || a.n <= askedDone.current) return
+    askedDone.current = a.n
+    if (!walking || doorMeans({ room: walkingRoom, mine: hostRoom }) !== 'host') return
+    if (a.to === hostMap) return
+    if (!doorsRef.current.some((d: Door) => d.to === a.to)) return
+    throughDoorRef.current(a.to)
+  }, [roster, walking, hostRoom, walkingRoom, hostMap])
+  /* a door's answer is about the door, so it goes when the moment does */
+  useEffect(() => {
+    if (!doorSaid) return
+    const t = setTimeout(() => setDoorSaid(null), 5000)
+    return () => clearTimeout(t)
+  }, [doorSaid])
   const you = useRef<Striker>(restingStriker(restingWalker()))
   /**
    * Seconds left of being knocked out, 0 when you are on your feet.
@@ -2035,7 +2145,14 @@ export function ParkRoom({
    */
   useEffect(() => {
     if (!walking || !myArt) return
-    state.current = { me: null, here: new Map(), boss: null, trouble: null, scene: null }
+    state.current = {
+      me: null,
+      here: new Map(),
+      boss: null,
+      trouble: null,
+      scene: null,
+      asked: null,
+    }
     /**
      * ⚠️ THE PARK AND THE SOCKET ARE DECIDED IN ONE PLACE, ON PURPOSE. Which world you
      * are in and whether you are connected to anybody are the same decision — split across
@@ -2197,7 +2314,14 @@ export function ParkRoom({
         /* ⚠️ AND THE WAVE, for the same reason and on the same path — see dropWave. This is the
            path a wave is always called on, so leaving it out here is leaving it out entirely. */
         dropWave()
-        state.current = { me: null, here: new Map(), boss: null, trouble: null, scene: null }
+        state.current = {
+          me: null,
+          here: new Map(),
+          boss: null,
+          trouble: null,
+          scene: null,
+          asked: null,
+        }
         setWorld(null)
       }
     }
@@ -2206,7 +2330,14 @@ export function ParkRoom({
     return () => {
       p.leave()
       park.current = null
-      state.current = { me: null, here: new Map(), boss: null, trouble: null, scene: null }
+      state.current = {
+        me: null,
+        here: new Map(),
+        boss: null,
+        trouble: null,
+        scene: null,
+        asked: null,
+      }
       /* the relay drops your boss when your socket goes; this is the same thing on this side */
       boss.current = null
       setBossShown(null)
@@ -2593,11 +2724,9 @@ export function ParkRoom({
         if (!on) doorArmed.current = true
         else if (doorArmed.current) {
           doorArmed.current = false
-          /* ⚠️ a door to a map that is gone does nothing, and has ALREADY said so: it is
-             drawn with "— gone" on it from the moment you can see it, which is a better place
-             to learn that than after walking across the map to it. See Door, where dangling is
-             the deliberate design rather than an oversight. */
-          if (mapsRef.current.some((m) => m.name === on.to)) setMapPick(on.to)
+          /* ⚠️ WHAT A DOOR MEANS DEPENDS ON WHOSE ROOM YOU ARE IN, and it is not this loop's
+             question — see throughDoor, which is the one place that decides. */
+          throughDoorRef.current(on.to)
         }
       }
       if (crept !== sneakShown.current) {
@@ -4927,6 +5056,15 @@ ${parkLink(hostName)}`
                 : mobsLeft > 0
                   ? 'They keep what you took off them.'
                   : ''}
+            </p>
+          )}
+          {/* ⚠️ A DOOR IS THE ONE CONTROL WITH NO BUTTON, so it is the one that most needs to
+               say what it did. Walking into one in somebody's park sends an ask and moves
+               nothing until the host answers — silence there is indistinguishable from a door
+               that does not work. See throughDoor. */}
+          {walking && doorSaid && (
+            <p className="park-where" role="status">
+              {doorSaid}
             </p>
           )}
           {walking && whereIAm && (

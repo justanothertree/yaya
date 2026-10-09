@@ -82,7 +82,15 @@ export type Door = {
   at: Spot
   /** how wide, in world units — the same unit Piece.wide uses */
   wide: number
-  /** the NAME of the map it leads to */
+  /**
+   * the NAME of the map it leads to.
+   *
+   * ⚠️ A NAME IN THE COLLECTION OF WHOEVER DREW THIS MAP, which is why a hosted park resolves
+   * a door against the HOST's maps and not the walker's — your door to "the caves" means
+   * nothing in my account. One map's doors only ever make sense inside one person's set, so
+   * the host's set is the only one that can be consistent for everybody at once. See
+   * doorMeans in room.ts.
+   */
   to: string
 }
 
@@ -218,6 +226,15 @@ const LIVES: Array<Life | ''> = ['', 'minion', 'boss']
  * thirty of them is not a place, it is a menu. Eight is more than any hand-drawn map has used.
  */
 const MAX_DOORS = 8
+/**
+ * The longest a map's name — or a door's reference to one — may be.
+ *
+ * ⚠️ IT IS EXPORTED BECAUSE IT TRAVELS NOW. A door's target goes over the relay when a guest
+ * asks the host to open one, and a cap typed in again at the far end is a cap free to disagree
+ * with this one. CLAUDE.md: a bound written beside the table that owns the answer will agree
+ * with the bug. This is the table.
+ */
+export const MAP_NAME_MAX = 40
 
 const num = (v: unknown, lo: number, hi: number, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback
@@ -347,11 +364,11 @@ export function readMapDoc(v: unknown): MapDoc | null {
       doors.push({
         at: { x: num(at?.x, 0, 1, 0.5), y: num(at?.y, 0, 1, 0.5) },
         wide: num(d.wide, 0.004, 0.5, 0.05),
-        to: d.to.slice(0, 40).trim(),
+        to: d.to.slice(0, MAP_NAME_MAX).trim(),
       })
     }
 
-  const name = typeof o.name === 'string' ? o.name.slice(0, 40).trim() : ''
+  const name = typeof o.name === 'string' ? o.name.slice(0, MAP_NAME_MAX).trim() : ''
   return { v: 1, name: name || 'Map', palette, pieces, ground, spawn, block, doors }
 }
 

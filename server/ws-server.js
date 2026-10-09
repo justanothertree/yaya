@@ -2319,6 +2319,34 @@ wss.on('connection', (ws, req) => {
         })
         break
       }
+      /**
+       * A guest asking the host to take the room through a door — see Asked in src/park/room.ts.
+       *
+       * ⚠️ ANYBODY IN THE ROOM MAY ASK, AND THAT IS NOT THE SAME HOLE a scene would be. A scene
+       * SAYS where everybody is standing, so it is owner-only; an ask is a request, and the host
+       * answers it against the doors of the map everyone is actually in. The relay cannot make
+       * that judgement — it does not know what a map contains — so it does not pretend to.
+       *
+       * ⚠️ FORWARDED TO THE ROOM RATHER THAN TO THE OWNER, because the relay does not track
+       * which socket an owner is on and would have to guess. Guests receive an ask they ignore,
+       * which costs a few bytes; a lookup per ask to avoid that would cost a round trip.
+       *
+       * ⚠️ VOUCHED ONLY, like everything else in a park. A socket Supabase has not yet verified
+       * is one the room does not show to anybody, and it must not be able to move them either.
+       */
+      case 'door': {
+        if (!isPark(joinedRoomId)) break
+        const st = room.state.get(id) || {}
+        if (!st.vouched) break
+        /* ⚠️ 40 IS MAP_NAME_MAX in src/park/mapDoc.ts, which is the table that owns it —
+           readMapDoc trims every door target to that, so a longer ask could not match a door on
+           any map that exists. This file cannot import from src, so it names the source rather
+           than pretending the number is its own. */
+        const to = typeof msg.to === 'string' ? msg.to.slice(0, 40) : ''
+        if (!to) break
+        broadcastVouched(room, { type: 'door', from: id, to }, id)
+        break
+      }
       case 'ready': {
         const st = room.state.get(id) || {}
         st.ready = true
