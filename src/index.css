@@ -12749,6 +12749,56 @@ a.cz-msg-author:focus-visible {
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
+/**
+ * A thumb has to be able to hit a bar mark, and the mark has to stay over the bar it marks.
+ *
+ * ⚠️ .inst-bar-cell GREW ON A COARSE POINTER AND THE RULER DID NOT, so the row of marks ended up
+ * narrower than the row of cells it labels. Measured at 375 with a four-bar song: every bar cell
+ * is 30.39px and four of them span 128px, while every ruler cell stayed 12px and four of them
+ * span 54px — the ruler was less than half the width of the thing underneath it, pointing at
+ * nothing. The comment above this block promises the two share a cell width so the columns line
+ * up, and that promise was quietly broken by the touch rule on the other one.
+ *
+ * ⚠️ AND 12x14 IS A WCAG 2.5.8 FAILURE OUTRIGHT, which is the half that is not a matter of
+ * taste. 1.9rem is the same number .inst-bar-cell uses, so the two rows now agree by
+ * construction rather than by both happening to be 12px — and it is 30.4px at the default root
+ * and 25.8px at the smallest UI scale, so it clears 24 at either end.
+ *
+ * ⚠️ line-height GOES WITH IT. The digit is centred by a 14px line box; left alone in a 30px
+ * cell it would sit against the top edge.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .inst-ruler-cell {
+    min-width: 1.9rem;
+    min-height: 1.9rem;
+    line-height: 1.9rem;
+  }
+}
+
+/**
+ * The per-layer buttons, floored at the WCAG size on a thumb.
+ *
+ * ⚠️ THREE OF THEM WERE A FEW PIXELS UNDER AND NOTHING SAID SO. Measured at 375 inside a layer
+ * row: keep-as-a-loop 19.8x24, re-record 23.8x24, delete 23.3x24 — each one short on WIDTH only,
+ * by between a fifth of a pixel and four, which is exactly the kind of miss that no amount of
+ * looking finds and 2.5.8 settles in one number.
+ *
+ * ⚠️ 24 RATHER THAN THE 1.9rem THE CELLS USE, and the difference is deliberate. A bar cell is a
+ * grid square whose whole job is to be hit, so it takes the comfortable size; these sit in a row
+ * beside a layer name and an instrument picker, and a row at 375 has no spare width to give away.
+ * The floor is the standard, not a preference.
+ *
+ * ⚠️ AND IT IS A FLOOR ON THE WHOLE ROW rather than three named buttons, because min-width cannot
+ * shrink anything: every control in here already at or above 24 is untouched by construction, so
+ * the rule cannot drift out of step with which buttons happen to be small this month.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .inst-layers .btn {
+    min-width: 24px;
+    min-height: 24px;
+  }
+}
+
 @media (max-width: 780px) {
   /**
    * ⚠️ The instructions go, and only on a phone.

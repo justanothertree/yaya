@@ -1176,94 +1176,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         ))}
       </div>
 
-      <p className="muted inst-note">
-        Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
-        octaves of white keys, <kbd>S</kbd> and the number row are the black ones
-        {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
-        slide.{' '}
-        {jamming.on
-          ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
-          : 'Nothing is recorded or sent anywhere.'}
-      </p>
-      <p className="muted inst-note">
-        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
-        yourself play.
-      </p>
-
-      {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
-          account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
-          second window — three steps and a discovery problem, for the most obvious pairing on
-          the site. This is not the visualiser and does not try to be: it answers "what does this
-          patch actually do", which the decorative modes never could. */}
-      {/* ⚠️ THE PAIR, not one or the other. The scope answers "what is this patch doing";
-          the visual beside it is the reason people open the visualiser at all. Both want the same
-          sound and neither answers the other's question, so they sit side by side rather than
-          behind a toggle — and neither needs Canvas mode, which is what made watching your own
-          playing a three-step discovery problem in the first place. */}
-      <div className="inst-watch">
-        <InstrumentScope />
-      </div>
-      {/* ⚠️ HIDDEN MEANS HIDDEN, INCLUDING ITS OWN HEADING. Switching the visuals off still
-          left a full row reading "Visuals / ⧉ Pop out / Show" — three controls and a title
-          standing where the thing you just dismissed used to be. Turning something off should
-          give the space back, or the switch does not do what it says. Collapsed it is one small
-          button; the pop-out moves into the panel it belongs to, which is where it is useful. */}
-      <section className={'inst-theatre' + (visualsShown ? '' : ' is-shut')}>
-        <div className="inst-theatre-head">
-          {visualsShown && <span className="inst-theatre-title">Visuals</span>}
-          {(inCanvas || vizFloating) && (
-            <span className="muted inst-theatre-note">
-              {vizFloating
-                ? 'Floating over the page — drag it anywhere.'
-                : 'Open as its own window on the canvas.'}
-            </span>
-          )}
-          {/* ⚠️ THE SAME CHOICE THE VISUALISER PAGE OFFERS, offered where you actually want
-              it. Popping it out from here means it follows you off this page, which is the point
-              of the floating panel — and having to walk to the Visualiser tab to get that is the
-              same discovery problem the pop-out was built to end. */}
-          {!inCanvas && !vizFloating && visualsShown && (
-            <button
-              type="button"
-              className="btn btn-ghost inst-theatre-toggle"
-              onClick={() => vizFloat.open()}
-              title="Float it over the page, so it follows you off this one"
-            >
-              ⧉ Pop out
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn btn-ghost inst-theatre-toggle"
-            hidden={inCanvas || vizFloating}
-            aria-expanded={showViz}
-            onClick={() => {
-              setShowViz((v) => {
-                try {
-                  localStorage.setItem(SHOW_VIZ_KEY, v ? '0' : '1')
-                } catch {
-                  /* private window */
-                }
-                return !v
-              })
-            }}
-          >
-            {showViz ? 'Hide' : '▸ Visuals'}
-          </button>
-        </div>
-        {visualsShown && (
-          <div className="inst-theatre-stage">
-            <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
-              <EmbeddedVisualizer embedded />
-            </Suspense>
-          </div>
-        )}
-      </section>
-      {!call.inCall && (
-        <AlsoTogether id="instrument">
-          Everyone in a call hears what you play, on one shared metronome.
-        </AlsoTogether>
-      )}
       {/**
        * ⚠️ A MENU ON A PHONE, exactly like the paint room's brushes and for the same measurement:
        * two dozen instruments in a four-wide grid is six rows and about seven hundred pixels of
@@ -1369,134 +1281,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             ))}
         </div>
       )}
-
-      <div className="inst-row">
-        <span className="muted inst-oct">
-          Octave
-          <button
-            className="btn"
-            onClick={() => setOctave((o) => Math.max(1, o - 1))}
-            disabled={octave <= 1}
-            aria-label="Octave down"
-          >
-            −
-          </button>
-          <strong>{octave}</strong>
-          <button
-            className="btn"
-            onClick={() => setOctave((o) => Math.min(6, o + 1))}
-            disabled={octave >= 6}
-            aria-label="Octave up"
-          >
-            +
-          </button>
-        </span>
-
-        <label className="appearance-slider">
-          <span className="muted">Volume</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={vol}
-            onChange={(e) => {
-              const v = Number(e.target.value)
-              setVol(v)
-              setVolume('instrument', v)
-            }}
-          />
-          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
-        </label>
-        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
-            typing sometimes plays and sometimes does not */}
-        <span
-          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
-          title={
-            keysLive
-              ? 'Your computer keyboard plays notes'
-              : 'Typing is going into a control — click the page to play with the keys again'
-          }
-        >
-          <span aria-hidden>⌨</span>
-          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
-        </span>
-
-        {/**
-         * A stuck note is the one failure every synth has, and hunting for the key that caused
-         * it is miserable. One button, always there.
-         *
-         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
-         * transport running, so the loop immediately scheduled the next repetition and whatever
-         * you were panicking about came straight back — you had to hit it, then find Stop, and
-         * in between the thing was still playing. "Make it stop" has one meaning.
-         */}
-        <button
-          className="btn"
-          onClick={() => {
-            stopLoop()
-            allNotesOff()
-            setHeld([])
-          }}
-          title="Silence everything and stop the loop"
-        >
-          ⏹ Panic
-        </button>
-      </div>
-
-      {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
-          degrees, so there is no wrong note left to press. */}
-      <div className="inst-row">
-        <label className="inst-pick">
-          <span className="muted">Scale</span>
-          <select
-            value={scale}
-            onChange={(e) => {
-              stopLive()
-              setHeld([])
-              setScale(e.target.value)
-              e.target.blur()
-            }}
-          >
-            {SCALES.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* only when it does something — a key picker on Chromatic would be a control that
-            visibly changes nothing */}
-        {scale !== 'chromatic' && (
-          <label className="inst-pick">
-            <span className="muted">Key</span>
-            <select
-              value={root}
-              onChange={(e) => {
-                stopLive()
-                setHeld([])
-                setRoot(Number(e.target.value))
-                /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
-                   staying here would change the key again the moment you played a note */
-                e.target.blur()
-              }}
-            >
-              {NAMES.map((nm, i) => (
-                <option key={nm} value={i}>
-                  {nm}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-
-      {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
-          library is where it belongs — but the library row collapses, and a recording you can
-          only reach by opening a panel is one nobody finds. It is not in the layer list either,
-          on purpose: a take is not a Layer. See TakesPanel. */}
-      <TakesPanel />
 
       {capMsg && (
         <p className="muted inst-capture-note" role="status">
@@ -2178,6 +1962,248 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           <KnobRow key={k} k={k} label={label} hint={hint} />
         ))}
       </div>
+
+      {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
+          "a little fractured and almost more difficult to smoothly work on making a song", and
+          the measurement was the complaint: with a song loaded the keyboard sat at y=263 and
+          ▶ Play at y=1500, 1,237px apart in a 900px window, so the two halves of "play a part,
+          then listen back" could not be on screen together. Between them were two help
+          paragraphs, the scope, the visuals panel, the octave and scale rows and the takes
+          panel — none of which you touch while arranging.
+
+          So the order is now what you do, in the order you do it: PLAY (the keys and the
+          instrument they play), then THE SONG (transport, library, ruler, layers), then
+          everything below here — the playing detail, the sound shaping, the explanations and
+          the visuals. Nothing was deleted and no control changed; they are grouped.
+
+          ⚠️ MOVED IN THE MARKUP RATHER THAN WITH `order`, deliberately. The phone breakpoint
+          already reorders with two `order` properties, and the note there is right that one
+          property beats a second markup path — but that was TWO properties pulling two
+          elements up. Sequencing a dozen children by hand would be a second source of truth
+          for reading order, and the next child added would land in the middle of it at 0.
+
+          ⚠️ AND THE THEATRE MOVED WITH THEM, WHICH IS FREE. Above the breakpoint it is pinned
+          to `grid-column: 2` with `grid-row: 1 / span 200`, so where it sits among its
+          siblings has never decided where it draws — see .inst-wrap.has-visuals. Below the
+          breakpoint the wrap is a plain flex column, and there it was 593px of visuals
+          standing between the picker and ▶ Play. */}
+
+      <div className="inst-row">
+        <span className="muted inst-oct">
+          Octave
+          <button
+            className="btn"
+            onClick={() => setOctave((o) => Math.max(1, o - 1))}
+            disabled={octave <= 1}
+            aria-label="Octave down"
+          >
+            −
+          </button>
+          <strong>{octave}</strong>
+          <button
+            className="btn"
+            onClick={() => setOctave((o) => Math.min(6, o + 1))}
+            disabled={octave >= 6}
+            aria-label="Octave up"
+          >
+            +
+          </button>
+        </span>
+
+        <label className="appearance-slider">
+          <span className="muted">Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={vol}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              setVol(v)
+              setVolume('instrument', v)
+            }}
+          />
+          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
+        </label>
+        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
+            typing sometimes plays and sometimes does not */}
+        <span
+          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
+          title={
+            keysLive
+              ? 'Your computer keyboard plays notes'
+              : 'Typing is going into a control — click the page to play with the keys again'
+          }
+        >
+          <span aria-hidden>⌨</span>
+          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
+        </span>
+
+        {/**
+         * A stuck note is the one failure every synth has, and hunting for the key that caused
+         * it is miserable. One button, always there.
+         *
+         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
+         * transport running, so the loop immediately scheduled the next repetition and whatever
+         * you were panicking about came straight back — you had to hit it, then find Stop, and
+         * in between the thing was still playing. "Make it stop" has one meaning.
+         */}
+        <button
+          className="btn"
+          onClick={() => {
+            stopLoop()
+            allNotesOff()
+            setHeld([])
+          }}
+          title="Silence everything and stop the loop"
+        >
+          ⏹ Panic
+        </button>
+      </div>
+
+      {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
+          degrees, so there is no wrong note left to press. */}
+      <div className="inst-row">
+        <label className="inst-pick">
+          <span className="muted">Scale</span>
+          <select
+            value={scale}
+            onChange={(e) => {
+              stopLive()
+              setHeld([])
+              setScale(e.target.value)
+              e.target.blur()
+            }}
+          >
+            {SCALES.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* only when it does something — a key picker on Chromatic would be a control that
+            visibly changes nothing */}
+        {scale !== 'chromatic' && (
+          <label className="inst-pick">
+            <span className="muted">Key</span>
+            <select
+              value={root}
+              onChange={(e) => {
+                stopLive()
+                setHeld([])
+                setRoot(Number(e.target.value))
+                /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
+                   staying here would change the key again the moment you played a note */
+                e.target.blur()
+              }}
+            >
+              {NAMES.map((nm, i) => (
+                <option key={nm} value={i}>
+                  {nm}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+
+      {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
+          library is where it belongs — but the library row collapses, and a recording you can
+          only reach by opening a panel is one nobody finds. It is not in the layer list either,
+          on purpose: a take is not a Layer. See TakesPanel. */}
+      <TakesPanel />
+
+      <p className="muted inst-note">
+        Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
+        octaves of white keys, <kbd>S</kbd> and the number row are the black ones
+        {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
+        slide.{' '}
+        {jamming.on
+          ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
+          : 'Nothing is recorded or sent anywhere.'}
+      </p>
+      <p className="muted inst-note">
+        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
+        yourself play.
+      </p>
+
+      {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
+          account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
+          second window — three steps and a discovery problem, for the most obvious pairing on
+          the site. This is not the visualiser and does not try to be: it answers "what does this
+          patch actually do", which the decorative modes never could. */}
+      {/* ⚠️ THE PAIR, not one or the other. The scope answers "what is this patch doing";
+          the visual beside it is the reason people open the visualiser at all. Both want the same
+          sound and neither answers the other's question, so they sit side by side rather than
+          behind a toggle — and neither needs Canvas mode, which is what made watching your own
+          playing a three-step discovery problem in the first place. */}
+      <div className="inst-watch">
+        <InstrumentScope />
+      </div>
+      {/* ⚠️ HIDDEN MEANS HIDDEN, INCLUDING ITS OWN HEADING. Switching the visuals off still
+          left a full row reading "Visuals / ⧉ Pop out / Show" — three controls and a title
+          standing where the thing you just dismissed used to be. Turning something off should
+          give the space back, or the switch does not do what it says. Collapsed it is one small
+          button; the pop-out moves into the panel it belongs to, which is where it is useful. */}
+      <section className={'inst-theatre' + (visualsShown ? '' : ' is-shut')}>
+        <div className="inst-theatre-head">
+          {visualsShown && <span className="inst-theatre-title">Visuals</span>}
+          {(inCanvas || vizFloating) && (
+            <span className="muted inst-theatre-note">
+              {vizFloating
+                ? 'Floating over the page — drag it anywhere.'
+                : 'Open as its own window on the canvas.'}
+            </span>
+          )}
+          {/* ⚠️ THE SAME CHOICE THE VISUALISER PAGE OFFERS, offered where you actually want
+              it. Popping it out from here means it follows you off this page, which is the point
+              of the floating panel — and having to walk to the Visualiser tab to get that is the
+              same discovery problem the pop-out was built to end. */}
+          {!inCanvas && !vizFloating && visualsShown && (
+            <button
+              type="button"
+              className="btn btn-ghost inst-theatre-toggle"
+              onClick={() => vizFloat.open()}
+              title="Float it over the page, so it follows you off this one"
+            >
+              ⧉ Pop out
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-ghost inst-theatre-toggle"
+            hidden={inCanvas || vizFloating}
+            aria-expanded={showViz}
+            onClick={() => {
+              setShowViz((v) => {
+                try {
+                  localStorage.setItem(SHOW_VIZ_KEY, v ? '0' : '1')
+                } catch {
+                  /* private window */
+                }
+                return !v
+              })
+            }}
+          >
+            {showViz ? 'Hide' : '▸ Visuals'}
+          </button>
+        </div>
+        {visualsShown && (
+          <div className="inst-theatre-stage">
+            <Suspense fallback={<div className="muted inst-theatre-wait">Loading visuals…</div>}>
+              <EmbeddedVisualizer embedded />
+            </Suspense>
+          </div>
+        )}
+      </section>
+      {!call.inCall && (
+        <AlsoTogether id="instrument">
+          Everyone in a call hears what you play, on one shared metronome.
+        </AlsoTogether>
+      )}
 
       {/**
        * The note editor — AT THE END OF THE ROOM, not inside the layer list.
