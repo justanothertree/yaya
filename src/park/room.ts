@@ -55,6 +55,8 @@ type Out =
     }
   /* calling a boss out, or — with a null drawing — putting it away */
   | { type: 'boss'; name: string; art: unknown | null }
+  /* the host saying what the room is doing — see Scene */
+  | { type: 'scene'; map: string | null; at: number }
   /* where it is and what is left of it, from the one machine running it */
   | {
       type: 'bstep'
@@ -72,7 +74,7 @@ type Out =
 type In =
   | { type: 'welcome'; id: string }
   | { type: 'presence'; count: number }
-  | { type: 'park'; who?: unknown[]; boss?: unknown }
+  | { type: 'park'; who?: unknown[]; boss?: unknown; scene?: unknown }
   | { type: 'look'; from?: string; name?: string; art?: unknown }
   | {
       type: 'walk'
@@ -88,6 +90,7 @@ type In =
       c?: number
     }
   | { type: 'boss'; from?: string; name?: string; art?: unknown }
+  | { type: 'scene'; from?: string; map?: unknown; at?: unknown }
   | {
       type: 'bstep'
       from?: string
@@ -246,6 +249,33 @@ export type BossEcho = {
   turning: boolean
 }
 
+/**
+ * What the host says the room is doing.
+ *
+ * ⚠️ A HOST IS ARBITRATION, NOT PERMISSION. Everything else the relay carries — a look, a walk,
+ * a swing, a boss — is a fact about ONE PERSON'S OWN BODY, which is why the park has never
+ * needed a host: nobody's message can contradict anybody else's. "Which map are we standing in"
+ * is not that. It is one fact for the whole room, and a room where everybody asserts it
+ * separately is a room that disagrees.
+ *
+ * ⚠️ ONE MESSAGE, NOT FIVE, because the thing being described is a single state. Five messages
+ * is five chances for them to disagree, and the disagreement would be invisible until two people
+ * were standing in different places insisting they were together.
+ *
+ * ⚠️ THE MAP IS AN ID. The relay refuses anything over 12,000 characters and a map is up to two
+ * megabytes — everything here rests on the map being FETCHABLE rather than sendable, which is
+ * why maps moved to the account first.
+ *
+ * ⚠️ `at` IS A COUNTER THE HOST OWNS, NOT A CLOCK. Two machines' clocks disagree by seconds; a
+ * counter cannot. A client ignores any scene not newer than the last it accepted, which makes
+ * reordering and duplication harmless without anybody timestamping anything.
+ */
+export type Scene = {
+  /** which map, by id — compared to decide whether to fetch, never used to fetch */
+  map: string | null
+  at: number
+}
+
 export type ParkState = {
   /** null until the relay says hello back */
   me: string | null
@@ -254,6 +284,16 @@ export type ParkState = {
   boss: BossEcho | null
   /** what the relay last said, so a room can explain itself rather than just sitting there */
   trouble: string | null
+  /**
+   * The host's last word, or null in a room with no host.
+   *
+   * ⚠️ ONLY THE HOST'S COPY IS EVER BELIEVED, and that has to be enforced where it cannot be
+   * lied about — the relay, which already verifies a socket against Supabase before it will
+   * show that person to anybody. Until it drops a scene from a non-owner, this is advisory and
+   * a guest could desync the room; see docs/2026-10-09-park-lobby-design.md, which says so
+   * plainly rather than pretending the client check is a check.
+   */
+  scene: Scene | null
 }
 
 /**
@@ -342,6 +382,21 @@ export function readSomeone(v: unknown): Someone | null {
 }
 
 /** A boss from the wire, or null. The same door, the same suspicion, and see above. */
+/**
+ * A scene off the wire, or null.
+ *
+ * ⚠️ ONE READER FOR BOTH DOORS — the roster hands one over on arrival and the host sends one
+ * whenever it changes, and two readers would be two ideas of what a scene is, free to drift.
+ * `at` is required because a scene with no ordering cannot be compared to the next one.
+ */
+export function readScene(v: unknown): Scene | null {
+  if (!v || typeof v !== 'object') return null
+  const o = v as { map?: unknown; at?: unknown }
+  const at = typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : null
+  if (at === null) return null
+  return { map: typeof o.map === 'string' ? o.map.slice(0, 64) : null, at }
+}
+
 export function readBoss(v: unknown): BossEcho | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
@@ -383,6 +438,8 @@ export type Park = {
   ) => void
   /** stand one of your minions up for everybody, or pass null to put it away */
   callBoss: (name: string, art: Drawing | null) => void
+  /** the host, saying what the room is doing. Nobody else should call this — see Scene */
+  setScene: (scene: Scene) => void
   /** where your boss is and what is left of it, at the same rate as a walk */
   stepBoss: (
     at: Spot,
@@ -477,6 +534,12 @@ export function joinPark(
             }
           /* somebody already had a boss out when we walked in — see the relay's roster note */
           state.boss = readBoss(msg.boss)
+          /**
+           * ⚠️ AND THE SCENE, for the same reason: a guest who joins after the host said which
+           * map everyone is in learns it here and nowhere else, because the host has no reason
+           * to say it again. Leaving it out looks exactly like a client that ignores the host.
+           */
+          state.scene = readScene(msg.scene)
           state.trouble = null
           net.send({ type: 'look', name: me.name, art: packed })
           onChange()
@@ -496,6 +559,25 @@ export function joinPark(
           const one = readBoss(msg)
           if (!one) break
           state.boss = one
+          onChange()
+          break
+        }
+        /**
+         * The host's word on what the room is doing — see Scene.
+         *
+         * ⚠️ NEWER OR NOTHING. `at` is the host's own counter, so "not greater than the last I
+         * accepted" is the whole ordering rule: a reordered, duplicated or replayed scene is
+         * dropped without anybody comparing clocks. A scene with no usable `at` is not a scene.
+         *
+         * ⚠️ AND THE CLIENT DOES NOT DECIDE WHO MAY SEND ONE. That belongs in the relay, which
+         * is the only place it cannot be lied about — see the note on ParkState.scene. Reading
+         * it here without saying so would be a check that looks like one and is not.
+         */
+        case 'scene': {
+          const next = readScene(msg)
+          if (!next) break
+          if (state.scene && next.at <= state.scene.at) break
+          state.scene = next
           onChange()
           break
         }
@@ -655,6 +737,9 @@ export function joinPark(
     },
     callBoss: (name, art) => {
       net.send({ type: 'boss', name, art: art ? packLook(art) : null })
+    },
+    setScene: (scene) => {
+      net.send({ type: 'scene', map: scene.map, at: scene.at })
     },
     stepBoss: (at, facing, swing, hp, turning, aim, charge = 0) => {
       net.send({

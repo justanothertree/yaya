@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lookFits, packLook, PARK_LOOK_LIMIT, readBoss, readSomeone } from './room'
+import { lookFits, packLook, PARK_LOOK_LIMIT, readBoss, readScene, readSomeone } from './room'
 import type { Drawing, Stroke } from '../draw/strokes'
 
 /**
@@ -296,5 +296,44 @@ describe('the creature you send to everybody else', () => {
     const back = readSomeone(wire({ art: packed }))
     expect(back, 'the thinned copy did not survive its own door').not.toBeNull()
     expect(back!.art.strokes.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * The host's word on what the room is doing.
+ *
+ * ⚠️ THE SAME UNTRUSTED DOOR AS THE TWO ABOVE, and with more at stake: a scene decides which
+ * WORLD everybody is standing in. The relay socket is unauthenticated, so until the relay drops
+ * a scene from a non-owner this is also the shape a guest could send — see the note on
+ * ParkState.scene, which says so rather than pretending otherwise.
+ */
+describe('a scene arriving from the host', () => {
+  it('needs an order, or it is not a scene', () => {
+    /* ⚠️ `at` is how two scenes are compared. One without it cannot be, so it is refused
+       outright rather than accepted as "the newest so far". */
+    expect(readScene({ map: 'm1' })).toBeNull()
+    expect(readScene({ map: 'm1', at: 'soon' })).toBeNull()
+    expect(readScene({ map: 'm1', at: Number.NaN })).toBeNull()
+    expect(readScene({ map: 'm1', at: Number.POSITIVE_INFINITY })).toBeNull()
+    expect(readScene(null)).toBeNull()
+    expect(readScene('scene')).toBeNull()
+    expect(readScene({ map: 'm1', at: 3 })).toEqual({ map: 'm1', at: 3 })
+  })
+
+  it('treats a missing or junk map as "no map", never as a map', () => {
+    /* the shared park is a real answer — it is what null means — so this must not invent one */
+    expect(readScene({ at: 1 })?.map).toBeNull()
+    expect(readScene({ map: 42, at: 1 })?.map).toBeNull()
+    expect(readScene({ map: { id: 'x' }, at: 1 })?.map).toBeNull()
+  })
+
+  it('will not carry an unbounded id', () => {
+    const long = 'x'.repeat(5000)
+    expect(readScene({ map: long, at: 1 })?.map?.length).toBeLessThanOrEqual(64)
+  })
+
+  it('keeps a map id intact when it is a real one', () => {
+    const id = '8f14e45f-ceea-467a-9575-9a0b53ba3f4e'
+    expect(readScene({ map: id, at: 9 })?.map).toBe(id)
   })
 })

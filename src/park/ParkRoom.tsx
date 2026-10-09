@@ -1602,7 +1602,13 @@ export function ParkRoom({
   const bossShape = useRef<CastShape | null>(null)
   bossShape.current = shapeOf(bossArt)
 
-  const state = useRef<ParkState>({ me: null, here: new Map(), boss: null, trouble: null })
+  const state = useRef<ParkState>({
+    me: null,
+    here: new Map(),
+    boss: null,
+    trouble: null,
+    scene: null,
+  })
   const park = useRef<Park | null>(null)
   const you = useRef<Striker>(restingStriker(restingWalker()))
   /**
@@ -1947,7 +1953,7 @@ export function ParkRoom({
    */
   useEffect(() => {
     if (!walking || !myArt) return
-    state.current = { me: null, here: new Map(), boss: null, trouble: null }
+    state.current = { me: null, here: new Map(), boss: null, trouble: null, scene: null }
     /**
      * ⚠️ THE PARK AND THE SOCKET ARE DECIDED IN ONE PLACE, ON PURPOSE. Which world you
      * are in and whether you are connected to anybody are the same decision — split across
@@ -2095,7 +2101,7 @@ export function ParkRoom({
         /* ⚠️ AND THE WAVE, for the same reason and on the same path — see dropWave. This is the
            path a wave is always called on, so leaving it out here is leaving it out entirely. */
         dropWave()
-        state.current = { me: null, here: new Map(), boss: null, trouble: null }
+        state.current = { me: null, here: new Map(), boss: null, trouble: null, scene: null }
         setWorld(null)
       }
     }
@@ -2104,7 +2110,7 @@ export function ParkRoom({
     return () => {
       p.leave()
       park.current = null
-      state.current = { me: null, here: new Map(), boss: null, trouble: null }
+      state.current = { me: null, here: new Map(), boss: null, trouble: null, scene: null }
       /* the relay drops your boss when your socket goes; this is the same thing on this side */
       boss.current = null
       setBossShown(null)

@@ -47,6 +47,8 @@ const wss = new WebSocketServer({ port: PORT })
 const rooms = new Map()
 /** roomId -> { by, name, art } */
 const bosses = new Map()
+/** the host's last word per room, replayed to whoever joins next — see the roster */
+const scenes = new Map()
 let next = 1
 
 const send = (ws, o) => {
@@ -89,7 +91,16 @@ wss.on('connection', (ws) => {
       for (const [oid, o] of room) if (oid !== id && o.look) who.push({ from: oid, ...o.look })
       const b = bosses.get(roomId)
       const boss = b && b.by !== id ? { from: b.by, name: b.name, art: b.art } : null
-      send(ws, { type: 'park', who, boss })
+      /**
+       * ⚠️ THE SCENE RIDES ALONG TOO, for exactly the reason the boss does. A guest who joins
+       * after the host said which map everyone is in learns it from the roster and nowhere
+       * else — the host has no reason to say it again. Leaving it out looks like a client that
+       * ignores the host, which is the most expensive kind of wrong.
+       *
+       * ⚠️ AND THE REAL RELAY MUST DO THE SAME. This is a double; it can only prove the client
+       * is right about a server that behaves this way.
+       */
+      send(ws, { type: 'park', who, boss, scene: scenes.get(roomId) ?? null })
       for (const [oid, o] of room)
         if (oid !== id) send(o.ws, { type: 'presence', count: room.size })
       console.log(`[stub] ${id} joined ${roomId} (${room.size} here, roster ${who.length})`)
@@ -106,6 +117,20 @@ wss.on('connection', (ws) => {
         me.look = { name: msg.name, art: msg.art }
         me.name = msg.name
       }
+    }
+    /**
+     * ⚠️ NO OWNER CHECK HERE, AND THAT IS NOT WHAT THE REAL ONE SHOULD DO. The relay is the only
+     * place a host can be established, because it is the only place a socket is tied to a
+     * verified account — this double has no Supabase config and no accounts at all, so it
+     * forwards whoever speaks. See docs/2026-10-09-park-lobby-design.md: until the real relay
+     * drops a scene from a non-owner, the host's word is advisory.
+     */
+    if (msg.type === 'scene') {
+      const at = typeof msg.at === 'number' ? msg.at : null
+      const had = scenes.get(roomId)
+      if (at === null || (had && at <= had.at)) return
+      scenes.set(roomId, { map: msg.map ?? null, at })
+      console.log(`[stub] ${id} scene map=${msg.map ?? 'none'} at=${at}`)
     }
     if (msg.type === 'boss') {
       const had = bosses.get(roomId)
