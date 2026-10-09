@@ -266,8 +266,8 @@ export type BossEcho = {
  * is five chances for them to disagree, and the disagreement would be invisible until two people
  * were standing in different places insisting they were together.
  *
- * ⚠️ THE MAP IS AN ID. The relay refuses anything over 12,000 characters and a map is up to two
- * megabytes — everything here rests on the map being FETCHABLE rather than sendable, which is
+ * ⚠️ THE MAP IS AN ID. The relay refuses a message over 32KB and a map is up to two megabytes,
+ * sixty-four times that — everything here rests on the map being FETCHABLE rather than sendable, which is
  * why maps moved to the account first.
  *
  * ⚠️ `at` IS A COUNTER THE HOST OWNS, NOT A CLOCK. Two machines' clocks disagree by seconds; a
@@ -364,7 +364,7 @@ export type ParkState = {
  *
  * ⚠️ TIGHTER THAN A PROFILE BLOCK, and for a different reason. A block is stored once and read
  * by one page; a park look is sent to everybody in the park and again to everybody who arrives
- * after you. The relay refuses anything over 12,000 characters, so this thins first and checks
+ * after you. The relay refuses a creature over 12,000 characters, so this thins first and checks
  * afterwards rather than finding out from an error.
  */
 export const PARK_LOOK_LIMIT = 11500

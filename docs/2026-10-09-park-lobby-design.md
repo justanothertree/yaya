@@ -51,8 +51,9 @@ type Scene = {
 - On join, the relay replays the room's last `scene` to the newcomer, exactly as it already
   replays who is present.
 
-⚠️ **The map is an id, never the document.** The relay refuses anything over 12,000 characters and
-a map is up to 2MB. Everything this feature does rests on the map being _fetchable_, which is why
+⚠️ **The map is an id, never the document.** The relay refuses a message over 32KB and a map is up
+to 2MB — sixty-four times that. (Written here as "12,000 characters", which is `MAX_LOOK_BYTES` and
+caps a creature's drawing rather than a message. Right conclusion, wrong number.) Everything this feature does rests on the map being _fetchable_, which is why
 `park_maps` had to come first.
 
 ⚠️ **`at` is a counter, not a clock.** Two machines' clocks disagree by seconds; a counter the
