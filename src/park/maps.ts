@@ -24,7 +24,7 @@ const KEY = 'park_maps_v1'
  * the same generosity here would be twenty-four times the worst case on a store that has to
  * share five megabytes with the pictures, the songs and the minions.
  */
-const MAX_ITEMS = 12
+const MAX_ITEMS = 7
 
 /**
  * ⚠️ AND A CEILING PER MAP, reasoned from the worst case rather than the normal one. A single
@@ -33,7 +33,21 @@ const MAX_ITEMS = 12
  * rock, a tree and a pond is a few kilobytes, so this is not a limit anybody drawing a map will
  * meet; it is the one somebody pasting a creature in as scenery would.
  */
-const MAX_BYTES = 200 * 1024
+/**
+ * ⚠️ 320KB, UP FROM 200, BECAUSE THE FIRST REAL MAP HIT IT. The note above says this "is not a
+ * limit anybody drawing a map will meet" — it was met on a first serious attempt, at 264KB, and
+ * an assumption that use has disproved is worth replacing rather than arguing with.
+ *
+ * ⚠️ AND THE TOTAL BUDGET DID NOT GROW, WHICH IS THE PART THAT MATTERS. localStorage is about
+ * five megabytes for the whole origin and maps SHARE it with the gallery, the songs and the
+ * minions — so what is bounded is items × bytes, not either alone. Twelve at 200KB was 2.4MB;
+ * seven at 320KB is 2.24MB, slightly less. Bigger maps, fewer of them, same ceiling.
+ *
+ * ⚠️ FEWER IS SAFE TO LOWER because nothing here evicts: saveMap REFUSES a thirteenth rather
+ * than dropping the oldest (see the note on write), so somebody already holding nine keeps all
+ * nine and is simply asked to delete one before adding another.
+ */
+const MAX_BYTES = 320 * 1024
 
 export type ParkMap = { id: string; name: string; at: number; doc: MapDoc }
 
@@ -134,6 +148,53 @@ export function mapBytes(doc: MapDoc): number {
 }
 
 export const MAP_LIMIT = { items: MAX_ITEMS, bytes: MAX_BYTES }
+
+/**
+ * Where a map's bytes actually are.
+ *
+ * ⚠️ BECAUSE "USE SIMPLER DRAWINGS" MIGHT NOT BE TRUE. That was the whole of the refusal, and a
+ * map is four very different things in one document: the palette, the ground painted under it,
+ * the pieces, and the no-walk grid. The grid is a flat 3.8KB whatever is painted and the pieces
+ * are numbers, so the weight is always the palette or the ground — and telling somebody to
+ * simplify their stamps when the ground is nine tenths of the file is advice that cannot work.
+ *
+ * ⚠️ MEASURED THROUGH THE SAME PACKER THAT WRITES IT, for the reason mapBytes gives in its own
+ * note: a second sum of the same fields drifts the moment either grows a key.
+ */
+export function mapParts(doc: MapDoc): {
+  total: number
+  palette: number
+  ground: number
+  pieces: number
+  zone: number
+} {
+  const packed = packMapDoc(doc)
+  const size = (v: unknown) => JSON.stringify(v ?? null).length
+  return {
+    total: JSON.stringify(packed).length,
+    palette: size(packed.palette),
+    ground: size(packed.ground),
+    pieces: size(packed.pieces),
+    zone: size(packed.block),
+  }
+}
+
+/** The part to blame, in words somebody can act on. Null when nothing dominates. */
+export function biggestPart(doc: MapDoc): { what: string; bytes: number } | null {
+  const p = mapParts(doc)
+  const named: Array<[string, number]> = [
+    ['the drawings you stamped', p.palette],
+    ['the ground you painted', p.ground],
+    ['the things you placed', p.pieces],
+  ]
+  named.sort((a, b) => b[1] - a[1])
+  const [what, bytes] = named[0]
+  /* ⚠️ only worth naming when it actually dominates — "it is all of them a bit" is not advice */
+  /* ⚠️ 0.6, NOT 0.45, AND A TEST CHOSE IT. Two parts of roughly equal weight are 50% each,
+     so a 45% bar names one of them and blames the wrong half as often as the right one. A clear
+     majority is the only case where naming a part is advice rather than a guess. */
+  return bytes > p.total * 0.6 ? { what, bytes } : null
+}
 
 /**
  * Keep one. Returns null when it will not fit, so the room can say which of the two reasons.

@@ -17,6 +17,7 @@ import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import {
   MAP_LIMIT,
   mapBytes,
+  biggestPart,
   mapsFull,
   mapsSaved,
   parkMaps,
@@ -1101,10 +1102,17 @@ export function MapMaker() {
 
   const keep = () => {
     if (!doc) return setSaid('Put something on it first.')
-    if (bytes > MAP_LIMIT.bytes)
+    if (bytes > MAP_LIMIT.bytes) {
+      /* ⚠️ IT NAMES THE PART. "Use simpler drawings" was the whole of this, and on a map whose
+         weight is the painted ground it is advice that cannot work — see biggestPart. */
+      const worst = biggestPart(doc)
+      const over = `Too big to keep — ${Math.round(bytes / 1024)}KB of ${Math.round(MAP_LIMIT.bytes / 1024)}KB.`
       return setSaid(
-        `Too big to keep — ${Math.round(bytes / 1024)}KB of ${Math.round(MAP_LIMIT.bytes / 1024)}KB. Use simpler drawings.`,
+        worst
+          ? `${over} Most of it is ${worst.what} (${Math.round(worst.bytes / 1024)}KB).`
+          : `${over} Take something out of it.`,
       )
+    }
     /* ⚠️ a map has no account copy — it is not a kind in library/cloud.ts — so a keep
        that did not reach the disk is the only copy not landing, and must not pass quietly */
     if (mapsFull()) return setSaid(`No room for another map — delete one to make space.`)

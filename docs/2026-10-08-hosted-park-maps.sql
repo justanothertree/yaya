@@ -180,3 +180,23 @@ where n.nspname = 'public' and c.relname in ('park_maps', 'park_rooms', 'park_ro
 -- is ADDITIVE — the client already deployed reads four of the five columns and is unaffected.
 --
 -- Checked, rolled back: host "Cam", the right map, open true.
+
+-- ── ADDED: the body cap follows the client's ───────────────────────────────────────────────
+--
+-- ✅ APPLIED as migration: park_maps_body_cap_follows_the_client
+--
+-- The client's per-map ceiling went from 200KB to 320KB, because the first serious map anybody
+-- drew came to 264KB — the note on MAX_BYTES claimed "this is not a limit anybody drawing a map
+-- will meet", and use disproved it.
+--
+-- ⚠️ WHICH MADE 256KB HERE THE TIGHTER OF THE TWO, and that is the silent half-save this file
+-- already warns about one section up: a map that saved locally would be refused by the server,
+-- and the person told "Shared" about something the account will never hold. 384KB keeps the gap
+-- pointing the right way.
+--
+-- Cost: four published maps a person at 384KB is 1.5MB each; eight people is about 12MB against
+-- 26MB used of 500MB. Publishing is opt-in, so the usual case is far less.
+--
+-- ⚠️ THE LOCAL BUDGET DID NOT GROW. localStorage is ~5MB for the whole origin and maps share it
+-- with the gallery, the songs and the minions, so what is bounded is items × bytes: twelve at
+-- 200KB was 2.4MB, seven at 320KB is 2.24MB. A unit test asserts that product can only shrink.
