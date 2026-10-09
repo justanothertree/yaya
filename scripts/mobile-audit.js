@@ -22,6 +22,9 @@
 const SPACING = 24
 const COMFY = 44
 
+/** What counts as a control. Named once because groupSays has to ask the same question. */
+const CONTROLS = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button]'
+
 const shown = (el) => {
   const cs = getComputedStyle(el)
   if (cs.display === 'none' || cs.visibility === 'hidden') return false
@@ -114,6 +117,75 @@ const inProse = (el) => !!el.closest('p, li') && getComputedStyle(el).display.st
  * the 24px floor on its short side, so the finding survives with the right element and the right
  * number on it. A rule that had simply skipped wrapped checkboxes would have hidden a real one.
  */
+/**
+ * The word on the GROUP, when the control itself has none.
+ *
+ * ⚠️ WITHOUT THIS THE WORDLESS CHECK CRIED WOLF ABOUT NINETEEN CONTROLS AND SEVENTEEN OF THEM
+ * WERE FINE. Measured at 375: two in Paint, ten in the instrument, seven in the visualiser — and
+ * the kaleidoscope folds read "Mirror · Off 2 3 4 6 8" on screen and the quantise buttons read
+ * "Snap · Off 1/4 1/8 1/16". A phone user sees the label; it is only the individual buttons that
+ * are bare, and a row of numeric options under a word is how you write that control. Flagging
+ * them is the exact failure the header of this file is about.
+ *
+ * ⚠️ TWO PLACES, AND NOT ONE MORE. A word loose inside the row (Snap, which sits beside its own
+ * buttons) or a label element immediately before it (Mirror, which is the row's previous
+ * sibling). Walking further up would excuse everything: the snap buttons' grandparent is the
+ * whole transport row, whose text begins "▶ Play 1. How fast? Slow Steady Upbeat Fast" — a
+ * heading somewhere above a toolbar does not explain a button in it.
+ *
+ * ⚠️ AND sr-only TEXT DOES NOT COUNT, which is the point of asking `shown`. This check is about
+ * what a sighted person holding a phone can read, so a label clipped to a pixel for a screen
+ * reader leaves the control just as unexplained as a tooltip does.
+ *
+ * ⚠️ WHAT SURVIVES IS STILL A JUDGEMENT, AND THIS CHECK CANNOT MAKE IT. Nineteen hits became
+ * five across three controls — a layer eye, and the floating collapse and fullscreen pair over
+ * the canvas, which appears in two rooms. All three are wordless by every rule here and all
+ * three were left alone, because each is a near-universal icon whose effect is immediate and
+ * reversible, and no DOM rule can tell a convention from an obscurity. Unlike the 24px bar,
+ * which is WCAG and settles itself, this list is for a person to read and dismiss. A SHORT list
+ * is the goal; an empty one would mean the rules above had been widened until they said nothing.
+ */
+const looseWords = (node) => {
+  let got = ''
+  for (const n of node.childNodes) {
+    if (n.nodeType === 3) {
+      got += ' ' + n.textContent
+      continue
+    }
+    if (n.nodeType !== 1) continue
+    if (n.matches(CONTROLS) || n.querySelector(CONTROLS)) continue
+    if (!shown(n)) continue
+    got += ' ' + n.textContent
+  }
+  return got.trim()
+}
+
+const groupSays = (el) => {
+  const row = el.parentElement
+  if (!row) return ''
+  const own = looseWords(row)
+  if (/[a-z]{2}/i.test(own)) return own
+  /* ⚠️ ONE LABEL GOVERNING ONE GROUP, or it is a heading over a list. Measured: the mirror
+     folds sit in a parent with exactly two children — the word "Mirror" and the row of folds —
+     while a paint layer row sits in a parent of three, beside the heading "Layers" AND a
+     + layer button. Without the count, "Layers" excused six different actions in every layer
+     row, which is the same crying wolf as before with the sign flipped. */
+  const before = row.previousElementSibling
+  const par = row.parentElement
+  const alone = !!par && par.children.length === 2
+  if (
+    alone &&
+    before &&
+    shown(before) &&
+    !before.matches(CONTROLS) &&
+    !before.querySelector(CONTROLS)
+  ) {
+    const said = (before.textContent || '').trim()
+    if (/[a-z]{2}/i.test(said)) return said
+  }
+  return ''
+}
+
 const hitBox = (el) => {
   if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
     const lab = el.closest('label')
@@ -124,11 +196,7 @@ const hitBox = (el) => {
 
 export function mobileAudit() {
   const W = innerWidth
-  const targets = [
-    ...document.querySelectorAll(
-      'button, a[href], input:not([type=hidden]), select, textarea, [role=button]',
-    ),
-  ].filter(shown)
+  const targets = [...document.querySelectorAll(CONTROLS)].filter(shown)
   const out = {
     room: location.hash || '#home',
     width: W,
@@ -170,7 +238,12 @@ export function mobileAudit() {
     /* a control carrying no word, explained only by a tooltip nobody on a phone can open */
     const label = (el.textContent || '').trim()
     const meaning = el.getAttribute('title') || ''
-    if (!/[a-z]{2}/i.test(label) && meaning.length > 3 && !el.getAttribute('aria-label'))
+    if (
+      !/[a-z]{2}/i.test(label) &&
+      meaning.length > 3 &&
+      !el.getAttribute('aria-label') &&
+      !groupSays(el)
+    )
       keep(out.wordless, el, { name: label || '(nothing)', means: meaning.slice(0, 44) })
   }
 
