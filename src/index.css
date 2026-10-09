@@ -15093,25 +15093,6 @@ a.cz-msg-author:focus-visible {
   flex-wrap: wrap;
   min-width: 0;
 }
-.park-guest-add {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-width: 0;
-}
-.park-guest-add input {
-  font: inherit;
-  font-size: 0.82rem;
-  width: 8rem;
-  min-width: 0;
-  padding: 0.15rem 0.4rem;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  /* a row of small controls you tap on a phone — WCAG 2.5.8 */
-  min-height: 24px;
-}
 .park-visit-door select {
   font: inherit;
   font-size: 0.82rem;

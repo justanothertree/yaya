@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { paintDrawing, type Drawing } from '../draw/strokes'
+import { InviteFriends } from '../components/InviteFriends'
 import { PetView } from '../pets/PetView'
 import { livesOf, placesOf, type Door, type MapDoc } from './mapDoc'
 import {
@@ -1045,7 +1046,6 @@ export function ParkRoom({
    * room while the same guest without one sees nothing at all.
    */
   const [guests, setGuests] = useState<Invitee[]>([])
-  const [guest, setGuest] = useState('')
   const [doorWidth, setDoorWidth] = useState<ParkAudience>('friends')
   const loadGuests = useCallback(async () => {
     setGuests(await parkInvites())
@@ -4298,28 +4298,33 @@ export function ParkRoom({
             )}
             {mapPick && hostMap === mapPick && (
               <span className="park-guests">
-                <label className="park-guest-add">
-                  <span className="muted">Invite</span>
-                  <input
-                    value={guest}
-                    placeholder="username"
-                    onChange={(e) => setGuest(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter' || !guest.trim()) return
-                      const who = guest.trim()
-                      setParksBusy(true)
-                      void inviteToPark(who).then(async (r) => {
-                        setParksBusy(false)
-                        if (!r.ok) return setParkSaid(r.why)
-                        /* ⚠️ cleared only on success, so a mistyped name stays in the box to be
-                           corrected rather than vanishing along with the mistake */
-                        setGuest('')
-                        setParkSaid(null)
-                        await loadGuests()
-                      })
-                    }}
-                  />
-                </label>
+                {/**
+                 * ⚠️ PICK A FRIEND, NEVER TYPE A NAME. This was a username box, which asks
+                 * somebody to know and spell a handle in order to use a feature — and the site
+                 * already answered that question twice: Snake's "challenge a friend" and the
+                 * Circuit's "invite to this circuit" are both InviteFriends, which lists your
+                 * accepted friends and posts into the DM you already have with them. A third
+                 * shape for one gesture is a third thing to learn and keep in step.
+                 *
+                 * ⚠️ AND IT GRANTS AS WELL AS TELLS, through onSend. Telling somebody about a
+                 * park they may not enter is an invitation to a locked door; letting them in
+                 * without telling them is a door nobody knows is open. The grant runs first, so
+                 * a failure never sends a message promising access that was not given.
+                 */}
+                <InviteFriends
+                  label="👥 Invite a friend"
+                  title="Let a friend into this park"
+                  verb="invite"
+                  emptyHint="No friends yet — add someone on the People page and you can invite them here."
+                  hint="They can walk in from 👥 Friends’ parks whenever your park is open."
+                  body={`🗺 Come to my park${hostMap ? ' — ' + hostMap : ''}. Open Games → park → 👥 Friends’ parks.`}
+                  onSend={async (who) => {
+                    const r = await inviteToPark(who)
+                    if (!r.ok) return r.why
+                    await loadGuests()
+                    return null
+                  }}
+                />
                 {guests.map((g) => (
                   <button
                     key={g.username}

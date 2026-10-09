@@ -30,6 +30,7 @@ export function InviteFriends({
   verb,
   hint,
   emptyHint,
+  onSend,
 }: {
   /** the line that gets posted into the DM */
   body: string
@@ -40,6 +41,18 @@ export function InviteFriends({
   /** shown once at least one has gone out, describing what they will see */
   hint: string
   emptyHint: string
+  /**
+   * Something to do BEFORE the message goes, for an invite that also grants something.
+   *
+   * ⚠️ THE PARK NEEDS BOTH HALVES AND A DM IS ONLY ONE OF THEM. Telling somebody about a park
+   * they are not allowed into is an invitation to a locked door; granting them entry without
+   * telling them is a door nobody knows is open. Snake and the Circuit need only the telling,
+   * so this is optional and they pass nothing.
+   *
+   * ⚠️ AND IT RUNS FIRST, so a failed grant does not send a message promising access that was
+   * never given. Returning a sentence stops the send and shows it; returning null carries on.
+   */
+  onSend?: (username: string) => Promise<string | null>
 }) {
   const [open, setOpen] = useState(false)
   /** open downward when there isn't room above — see the click handler */
@@ -105,6 +118,15 @@ export function InviteFriends({
   async function sendTo(username: string) {
     setBusy(username)
     setErr(null)
+    /* ⚠️ the grant before the telling — see onSend */
+    if (onSend) {
+      const why = await onSend(username)
+      if (why) {
+        setBusy(null)
+        setErr(why)
+        return
+      }
+    }
     const sb = getSupabaseClient()
     const dm = await sb.rpc('open_dm', { p_username: username })
     if (dm.error || !dm.data) {
