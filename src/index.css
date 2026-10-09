@@ -14997,8 +14997,18 @@ a.cz-msg-author:focus-visible {
   .inst-oct .btn {
     min-width: 36px;
   }
-  /* the one slider that is not wrapped in .appearance-slider — it sits straight in the room */
-  .inst-keyslide {
+  /* ⚠️ THE TWO SLIDERS THAT ARE NOT WRAPPED IN .appearance-slider, and this said "the one"
+     until the second turned up. The keyboard range sits straight in the instrument; the map
+     maker's creature size sits straight in its own row as .map-size. Both were 16px tall at
+     375 — the map one measured 144x16 while being the control that sizes every stamp you put
+     down, so it is dragged more often than almost anything else in that room.
+
+     ⚠️ A COUNT IN A COMMENT GOES STALE AND A SELECTOR LIST DOES NOT, which is why the sweep
+     that found this asked the DOM rather than this file: twenty range inputs across five rooms
+     at 375, exactly one of them under 24px tall. That is the shape to re-run, not a number to
+     trust. */
+  .inst-keyslide,
+  .map-size input[type='range'] {
     min-height: 36px;
   }
   /* on its own line already, so height costs nothing around it — unlike the footer's
