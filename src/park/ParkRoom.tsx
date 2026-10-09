@@ -132,7 +132,7 @@ import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
 import { shapeOf, type CastShape } from './castShape'
 import { SwipePatch } from './SwipePatch'
 import { biteOf, biteSpan, biting, minionOf, type Minion } from './minion'
-import { FLOCK, ringOf, stepSwarm, type Mob } from './swarm'
+import { FLOCK, ringOf, stepSwarm, waveSize, type Mob } from './swarm'
 import { bakePose, bakeSpell, bakeWalk, blitBaked, type Baked } from '../pets/bake'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
 import { lungeOf } from '../pets/fight'
@@ -453,16 +453,6 @@ const FIELD_ASPECT = 16 / 10
  * effect whose dependency is rebuilt every render tears down and rebuilds whatever it owns, which
  * here is the animation frame itself.
  */
-/**
- * How many come in wave n, counting from one.
- *
- * ⚠️ ONE HOME, BECAUSE THE SECOND CALLER ARRIVED THE MOMENT A CLEARED WAVE SAID WHAT WAS NEXT.
- * The spawn had `10 + waveNo * 6` inline and the message needed the same rule one wave along —
- * two copies of an escalation curve, which is a thing that drifts and then lies on screen
- * about what you are walking into.
- */
-const waveSize = (no: number) => 10 + (no - 1) * 6
-
 /**
  * How long a felled minion lies there before it is swept up, in seconds.
  *

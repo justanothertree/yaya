@@ -8,14 +8,18 @@
  * leaving the conversion out cost a dodge that crossed the field and two boss attacks that could
  * never land. A module with no second unit in it has nowhere to put that mistake.
  *
- * ⚠️ AND DETERMINISTIC FROM A SEED, WHICH IS THE WHOLE MULTIPLAYER ANSWER IN EMBRYO. cast.ts
- * opens by saying nothing new goes over the wire: a boss already sends where it is and how long
- * its cast has been out, so everyone derives the same patches from the same four numbers. Fifty
- * minions cannot each be a message. But a wave that SPAWNS from a seed everyone has, and steers
- * by player positions everyone already receives, is derived rather than sent — the same bargain,
- * one size up. What that still needs before it can be trusted is a correction channel, because
- * floating point drifts and derived motion cannot be allowed to drift forever; that is a separate
- * decision and this file does not pretend to have made it.
+ * ⚠️ AND DETERMINISTIC FROM A SEED, WHICH IS A REPRODUCIBLE SPAWN AND NOT THE MULTIPLAYER
+ * ANSWER. This said it was "the whole multiplayer answer in embryo" — a wave derived on every
+ * machine from one seed, needing only "a correction channel" — and that was wrong, because it
+ * had counted one of the three things that differ between two machines. Frame cadence drifts,
+ * yes. But stepSwarm is asked to seek the CALLER'S OWN creature, so two people would not watch
+ * one crowd diverge slowly, they would watch two different crowds from the first frame; and
+ * health hangs off each mob, stamped by whichever client swung. A channel correcting all three
+ * would have to carry positions and health, which is an echo — and the park already has one of
+ * those, for the boss. "Fifty minions cannot each be a message" is true and answers a question
+ * nobody asked: forty of them are ONE message, measured at 139 characters for a wave of ten.
+ * See docs/2026-10-09-shared-waves-design.md. The seed stays because a reproducible ring is
+ * worth having, and that is all it is.
  */
 
 export type Mob = {
@@ -50,6 +54,44 @@ export type Flock = {
 }
 
 export const FLOCK: Flock = { speed: 1.6, grip: 7, apart: 0.55, shove: 1.3, reach: 0.9 }
+
+/** Somewhere a crowd wants to be next to. The caller's unit, like everything else here. */
+export type Want = { x: number; y: number }
+
+/**
+ * The most a wave is ever allowed to be.
+ *
+ * ⚠️ THERE WAS NO CAP, AND THAT IS A FRAME CLIFF RATHER THAN A BALANCE CHOICE. The curve below
+ * ran forever: wave 49 is three hundred of them, and the note on stepSwarm says of its own
+ * O(n²) loop that it "stops being fine somewhere around three hundred". Nobody has cleared
+ * twenty-five waves in a sitting, which is the only reason it has never been met.
+ *
+ * ⚠️ AND THE NUMBER IS MEASURED RATHER THAN FELT. Timed on V8, warmed, 300 frames per size:
+ * 150 mobs cost 0.61ms a frame (3.7% of a 60fps frame), 300 cost 2.49ms (15%), 400 cost 4.38ms
+ * (26%). Those are for THINKING ONLY — drawing is culled by onCamera but not free, the player's
+ * own physics and casts share the frame, and a phone is several times slower than the machine
+ * that produced them. 154 keeps the crowd's share small enough that a slower device has room,
+ * and it is wave 25 exactly.
+ *
+ * ⚠️ IT MAKES WAVE 25 AND EVERY WAVE AFTER IT THE SAME SIZE, which is a real consequence and
+ * not a hidden one. If a run should keep getting harder past there, the difficulty has to come
+ * from somewhere other than the count — tougher minions, or more than one kind — and that is a
+ * design decision this constant deliberately does not make.
+ */
+export const WAVE_MOST = 154
+
+/**
+ * How many come in wave n, counting from one.
+ *
+ * ⚠️ ONE HOME, BECAUSE THE SECOND CALLER ARRIVED THE MOMENT A CLEARED WAVE SAID WHAT WAS NEXT.
+ * The spawn had `10 + waveNo * 6` inline and the message needed the same rule one wave along —
+ * two copies of an escalation curve, which is a thing that drifts and then lies on screen about
+ * what you are walking into.
+ *
+ * ⚠️ AND IT LIVES HERE NOW RATHER THAN IN THE COMPONENT, so the cap can be asked a question. A
+ * ceiling nothing can call is a ceiling nothing can check.
+ */
+export const waveSize = (no: number): number => Math.min(WAVE_MOST, 10 + (no - 1) * 6)
 
 /**
  * A seeded number, so every machine makes the same wave.
@@ -115,21 +157,54 @@ export function ringOf(
  * away from a minion with somebody else's hit points. The step owns position and velocity and
  * carries the rest through untouched.
  */
+/**
+ * ⚠️ ONE TARGET OR EVERYBODY, AND EACH MOB PICKS THE NEAREST. A crowd in a room with four people
+ * in it has to chase somebody, and "whoever called the wave" is the wrong answer — it would make
+ * a wave a fight the host has while everyone else watches it happen to them.
+ *
+ * ⚠️ PER MOB, NOT PER CROWD. One target chosen for the whole crowd means forty creatures change
+ * their minds at once when somebody crosses the midpoint — a tide that flinches. Choosing per mob
+ * is what splits a crowd around two players standing apart, which is the thing co-op is for.
+ *
+ * ⚠️ AND NOBODY TO CHASE IS A REAL STATE, not an error. An empty list leaves the pull at zero and
+ * separation still running, so a crowd whose last player walked out spreads and settles instead of
+ * freezing or flying at a coordinate nothing is standing on.
+ */
+function nearestTo<T extends Mob>(m: T, many: readonly Want[]): Want | null {
+  let best: Want | null = null
+  let bestD = Infinity
+  for (const w of many) {
+    /* squared, because the comparison does not need the root and the root does not change it */
+    const d = (w.x - m.x) * (w.x - m.x) + (w.y - m.y) * (w.y - m.y)
+    if (d < bestD) {
+      bestD = d
+      best = w
+    }
+  }
+  return best
+}
+
 export function stepSwarm<T extends Mob>(
   mobs: T[],
-  seek: { x: number; y: number },
+  seek: Want | readonly Want[],
   dt: number,
   tune: Flock = FLOCK,
 ): T[] {
   if (!(dt > 0)) return mobs
+  const many = Array.isArray(seek) ? (seek as readonly Want[]) : null
+  const one = many ? null : (seek as Want)
   const out: T[] = new Array(mobs.length)
   for (let i = 0; i < mobs.length; i++) {
     const m = mobs[i]
-    const toX = seek.x - m.x
-    const toY = seek.y - m.y
+    /* ⚠️ the single-target path is the SAME ARITHMETIC IN THE SAME ORDER as before this grew a
+       second shape, which is what lets a test assert that one target and a list of one are the
+       same crowd down to the last bit — see swarm.test.ts */
+    const want = one ?? nearestTo(m, many as readonly Want[])
+    const toX = want ? want.x - m.x : 0
+    const toY = want ? want.y - m.y : 0
     const far = Math.hypot(toX, toY)
-    const ux = far > 1e-6 ? toX / far : 0
-    const uy = far > 1e-6 ? toY / far : 0
+    const ux = want && far > 1e-6 ? toX / far : 0
+    const uy = want && far > 1e-6 ? toY / far : 0
     /**
      * ⚠️ THE TARGET PUSHES BACK WHEN YOU ARE INSIDE IT, which is the whole of `reach` and took
      * two goes to get right. Merely stopping at reach is not enough: the ones at the front have
@@ -139,7 +214,7 @@ export function stepSwarm<T extends Mob>(
      * inside it makes the target a body like any of theirs, and the crowd arranges itself round
      * it without a special case anywhere.
      */
-    const pull = Math.max(-1, Math.min(1, (far - tune.reach) / tune.reach))
+    const pull = want ? Math.max(-1, Math.min(1, (far - tune.reach) / tune.reach)) : 0
     let ax = ux * pull
     let ay = uy * pull
     for (let j = 0; j < mobs.length; j++) {

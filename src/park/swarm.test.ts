@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FLOCK, onCamera, ringOf, seeded, stepSwarm, type Mob } from './swarm'
+import { FLOCK, onCamera, ringOf, seeded, stepSwarm, WAVE_MOST, waveSize, type Mob } from './swarm'
 import { frameAt } from '../pets/bake'
 
 /**
@@ -16,11 +16,16 @@ const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
 
 describe('a wave arrives the same way on every machine', () => {
   /**
-   * ⚠️ THIS IS THE MULTIPLAYER ANSWER, AND IT IS THE REASON FOR THE SEED. Fifty minions cannot
-   * each be a message — cast.ts opens by saying nothing new goes over the wire, and it holds that
-   * line for a boss's whole repertoire. A wave that spawns from a seed everyone already has is
-   * derived rather than sent. If this is ever not identical, two people are fighting different
-   * fights on the same field.
+   * ⚠️ THIS IS A REPRODUCIBLE SPAWN, AND IT IS NOT THE MULTIPLAYER ANSWER. It said it was, and
+   * said "fifty minions cannot each be a message" to explain why — which is true and answers a
+   * question nobody asked, because forty of them are ONE message of about five hundred
+   * characters. What a shared wave actually needs is an echo from one machine, like the boss
+   * already is; see docs/2026-10-09-shared-waves-design.md, which counts the three things that
+   * differ between two clients and shows that only one of them is drift.
+   *
+   * ⚠️ THE TEST IS STILL WORTH EVERY LINE OF IT. A wave that is the same from the same seed is
+   * what makes a fight reproducible — the difference between a bug somebody can hand over and
+   * one that happened once.
    */
   it('and the same seed is the same wave, exactly', () => {
     const at = { x: 0, y: 0 }
@@ -186,5 +191,140 @@ describe('which frame of a baked strip', () => {
   it('and a one-frame strip is always frame zero', () => {
     expect(frameAt(1, 0.4)).toBe(0)
     expect(frameAt(0, 0.4)).toBe(0)
+  })
+})
+
+/**
+ * Who a crowd is chasing, once there is more than one person to chase.
+ *
+ * ⚠️ THE OLD SHAPE WAS NOT DRIFT, IT WAS A DIFFERENT FIGHT. stepSwarm took ONE target and the
+ * park passed it the caller's own creature, so two people in one park would each have watched a
+ * crowd come for them personally and for nobody else. That is not something a correction channel
+ * fixes, because neither machine is wrong.
+ *
+ * ⚠️ AND IT IS MEASURED AGAINST THE GAP THE TEST ITSELF CHOSE, never against anything stepSwarm
+ * computes. "Both of them are being chased" is a question about the world: how many mobs end up
+ * nearer to each player, and how close, as a fraction of how far apart the players are standing.
+ * A check written out of FLOCK's own reach would be the module agreeing with itself.
+ */
+describe('a crowd with two people to choose between', () => {
+  const GAP = 10
+  const A = { x: -GAP / 2, y: 0 }
+  const B = { x: GAP / 2, y: 0 }
+  /* a ring about the midpoint, so the arrangement itself is symmetric and cannot prefer a side */
+  const ring = () => ringOf(40, 11, { x: 0, y: 0 }, GAP)
+
+  const run = (seek: Parameters<typeof stepSwarm>[1], seconds: number) => {
+    let crowd: Mob[] = ring()
+    for (let i = 0; i < Math.round(seconds * 60); i++) crowd = stepSwarm(crowd, seek, 1 / 60)
+    return crowd
+  }
+  const sideOf = (m: Mob) => (near(m, A) <= near(m, B) ? 'a' : 'b')
+  const tally = (crowd: Mob[]) => ({
+    a: crowd.filter((m) => sideOf(m) === 'a').length,
+    b: crowd.filter((m) => sideOf(m) === 'b').length,
+  })
+
+  it('splits between them rather than all going one way', () => {
+    const { a, b } = tally(run([A, B], 14))
+    /* symmetric arrangement, symmetric rule: neither side may be left out, and a third is a
+       generous floor for what "both of them are in this fight" means */
+    expect(a).toBeGreaterThan(40 / 3)
+    expect(b).toBeGreaterThan(40 / 3)
+    expect(a + b).toBe(40)
+  })
+
+  it('and actually reaches both of them', () => {
+    const crowd = run([A, B], 14)
+    /* within a tenth of the distance the two of them are standing apart — a number this test
+       owns, so it cannot be satisfied by the flock tuning happening to agree with it */
+    const close = (who: typeof A) => crowd.filter((m) => near(m, who) < GAP / 10).length
+    expect(close(A)).toBeGreaterThan(0)
+    expect(close(B)).toBeGreaterThan(0)
+  })
+
+  it('and goes all one way when there is only one of them, which is the old behaviour', () => {
+    const { a, b } = tally(run([A], 14))
+    expect(b).toBe(0)
+    expect(a).toBe(40)
+  })
+
+  /**
+   * ⚠️ THE REGRESSION GUARD, AND IT IS EXACT ON PURPOSE. Growing a second shape is how the first
+   * one quietly changes, and the single-target path is the one everything already depends on: one
+   * target and a list containing that one target must be the same crowd, number for number. It
+   * earned its place by catching a nearest-target that returned nothing at all, which left the
+   * crowd with no pull and still looked symmetric enough for the split check above to pass.
+   *
+   * ⚠️ IT DOES NOT CATCH FLOAT MINUTIAE, AND THE FIRST DRAFT OF THIS NOTE CLAIMED IT DID.
+   * Math.hypot(a, b) was swapped for Math.sqrt(a * a + b * b) — the obvious candidate for a
+   * last-bit difference — and six hundred frames came out bit-identical, so this test stayed
+   * green. The guard is about STRUCTURE: a path that stops being the same path. Anybody relying
+   * on it to notice a changed rounding should measure first, because it was measured here and
+   * did not.
+   */
+  it('and one target is the same crowd as a list of that one target, exactly', () => {
+    let solo: Mob[] = ring()
+    let listed: Mob[] = ring()
+    for (let i = 0; i < 600; i++) {
+      solo = stepSwarm(solo, A, 1 / 60)
+      listed = stepSwarm(listed, [A], 1 / 60)
+    }
+    expect(listed).toEqual(solo)
+  })
+
+  /**
+   * ⚠️ NOBODY TO CHASE IS A STATE, NOT AN ERROR, and the shape that breaks is NaN. A pull toward
+   * an absent target divided by its own zero distance would poison x and y forever, and a crowd
+   * of NaN draws nothing and reports no error at all.
+   */
+  it('and with nobody to chase it spreads instead of breaking', () => {
+    const start = ringOf(12, 3, { x: 0, y: 0 }, 0.3)
+    let crowd: Mob[] = start
+    for (let i = 0; i < 300; i++) crowd = stepSwarm(crowd, [], 1 / 60)
+    for (const m of crowd) {
+      expect(Number.isFinite(m.x)).toBe(true)
+      expect(Number.isFinite(m.y)).toBe(true)
+    }
+    /* separation is still running, so a tight clump loosens rather than holding or collapsing */
+    const spread = (c: Mob[]) => Math.max(...c.map((m) => near(m, { x: 0, y: 0 })))
+    expect(spread(crowd)).toBeGreaterThan(spread(start))
+  })
+})
+
+/**
+ * How big a wave is allowed to get.
+ *
+ * ⚠️ THE CEILING IS THE CLAIM, NOT THE CURVE. The curve had no ceiling at all: wave 49 asked for
+ * three hundred mobs, and stepSwarm's own note says O(n²) "stops being fine somewhere around
+ * three hundred". Nobody had cleared twenty-five waves in a sitting, which is the only reason it
+ * was never met.
+ */
+describe('how many a wave is', () => {
+  it('starts at ten and grows', () => {
+    expect(waveSize(1)).toBe(10)
+    expect(waveSize(2)).toBeGreaterThan(waveSize(1))
+  })
+
+  it('never grows smaller, at any wave number', () => {
+    for (let no = 1; no < 200; no++) expect(waveSize(no + 1)).toBeGreaterThanOrEqual(waveSize(no))
+  })
+
+  /**
+   * ⚠️ SWEPT PAST THE CAP RATHER THAN SAMPLED AT IT. The thing that must never happen is a wave
+   * the crowd's own step cannot carry, and a check at one wave number is a check that a later
+   * curve change can walk straight past.
+   */
+  it('and never asks for more than the step can carry, however deep the run goes', () => {
+    for (const no of [1, 25, 26, 49, 100, 1000, 1e6]) {
+      expect(waveSize(no)).toBeLessThanOrEqual(WAVE_MOST)
+    }
+  })
+
+  it('and the ceiling is reached rather than merely approached', () => {
+    /* it must actually bite, or it is a constant nothing enforces */
+    expect(waveSize(1e6)).toBe(WAVE_MOST)
+    expect(waveSize(25)).toBe(WAVE_MOST)
+    expect(waveSize(24)).toBeLessThan(WAVE_MOST)
   })
 })
