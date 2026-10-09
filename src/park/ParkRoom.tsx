@@ -1011,6 +1011,10 @@ export function ParkRoom({
   const [parks, setParks] = useState<OpenPark[] | null>(null)
   /** a link is followed once, not again on every render of this room */
   const followed = useRef(false)
+  /** my own scene counter — see Scene, where the reason it is not a clock is written down */
+  const sceneAt = useRef(0)
+  /** the newest scene I have acted on, so one change is one move */
+  const sceneDone = useRef(0)
   const [parksBusy, setParksBusy] = useState(false)
   const [parkSaid, setParkSaid] = useState<string | null>(null)
   /**
@@ -1124,6 +1128,18 @@ export function ParkRoom({
     void visitPark(host)
   }, [authed, visitPark])
 
+  /**
+   * The host, saying which map the room is in.
+   *
+   * ⚠️ ONLY WHEN I AM ACTUALLY THE HOST OF THE MAP I AM STANDING IN. `hostRoom` is the room my
+   * account owns and `walkingMap.room` is the room I am walking — they differ whenever I am a
+   * guest somewhere, and sending a scene then would be one guest telling everybody else where
+   * they are standing. The relay has to enforce that too (it is the only place it cannot be
+   * lied about); this is the client not even trying.
+   *
+   * ⚠️ AND IT GOES OUT ON EVERY CHANGE, not once on arrival. Somebody who joins later is told
+   * by the roster — see the relay's replay — so this only has to cover the people already here.
+   */
   const [walking, setWalking] = useState(false)
   /** bumped whenever the roster changes, so the render follows without owning the positions */
   const [roster, setRoster] = useState(0)
@@ -1212,6 +1228,72 @@ export function ParkRoom({
   )
   const maps = walkable
   const walkingMap = mapPick ? (maps.find((m) => m.name === mapPick) ?? null) : null
+  /**
+   * ⚠️ THE ROOM AS A STRING, BECAUSE `walkingMap` IS A FRESH OBJECT EVERY RENDER. `maps` is
+   * rebuilt whenever the gallery changes and `find` hands back a new object each time — the
+   * trap this file already documents one screen up, where it says a chosen map "is a fresh
+   * object every time, so keeping a picture in another tab would have reconnected the park
+   * underneath somebody standing in it". As an effect dependency it fires on every render,
+   * which for the host's scene would be a message to everybody in the room per frame of React.
+   */
+  const walkingRoom = walkingMap?.room ?? null
+
+  /**
+   * The host, saying which map the room is in.
+   *
+   * ⚠️ ONLY WHEN I AM THE HOST OF THE MAP I AM STANDING IN. `hostRoom` is the room my account
+   * owns; `walkingMap.room` is the room I am walking. They differ whenever I am a guest
+   * somewhere, and sending a scene then would be one guest telling everybody else where they
+   * are standing. The relay has to refuse that too — it is the only place it cannot be lied
+   * about — but the client should not even try.
+   *
+   * ⚠️ ON EVERY CHANGE, NOT ONCE ON ARRIVAL. Whoever joins later is told by the roster (see the
+   * relay's replay), so this only has to reach the people already here.
+   */
+  useEffect(() => {
+    const p = park.current
+    if (!p || !walking) return
+    if (!hostRoom || !hostMap || walkingRoom !== hostRoom) return
+    sceneAt.current += 1
+    p.setScene({ map: hostMap, at: sceneAt.current })
+  }, [walking, hostRoom, hostMap, walkingRoom, roster])
+
+  /**
+   * The guest, following it.
+   *
+   * ⚠️ FETCH, THEN MOVE — NEVER THE OTHER WAY ROUND. Swapping the world first leaves somebody
+   * standing on the previous map for the length of a request, which is the exact disagreement
+   * joinPark's old blanket refusal existed to prevent. If the fetch fails there is nothing safe
+   * to stand on, so the honest answer is to leave rather than to stay somewhere nobody else is.
+   *
+   * ⚠️ MOVING MEANS CHANGING `mapPick`, which re-runs the join effect — world and socket
+   * together, which is the invariant that effect's own note is about. It costs a leave and a
+   * rejoin of the same relay room, and that is the right price: a map change IS a re-entry, and
+   * the alternative is setting the world outside the one effect that owns it.
+   */
+  useEffect(() => {
+    const sc = state.current.scene
+    if (!sc || sc.at <= sceneDone.current) return
+    if (!walkingRoom) return
+    /* my own park: the scene is mine and I am already standing in what it says */
+    if (hostRoom && hostRoom === walkingRoom) return
+    const mine = visiting.find((v) => v.roomId === walkingRoom)
+    if (!mine || !sc.map || sc.map === mine.mapName) return
+    sceneDone.current = sc.at
+    const want = sc.map
+    void fetchParkMap(walkingRoom).then((doc) => {
+      if (!doc) {
+        setWalking(false)
+        setParkSaid('The host moved somewhere this browser could not fetch.')
+        return
+      }
+      setVisiting((was) =>
+        was.map((v) => (v.roomId === walkingRoom ? { ...v, mapName: want, doc } : v)),
+      )
+      setMapPick(mine.host + '’s ' + want)
+    })
+  }, [roster, walkingRoom, hostRoom, visiting])
+
   /**
    * ⚠️ THE NAME IS WHAT THE SOCKET DEPENDS ON, NOT THE DRAWING, and this is the same
    * trap myArt was already written around one note below. `maps` is rebuilt whenever `extras`
@@ -2077,7 +2159,21 @@ export function ParkRoom({
      * different hosted room, which is a different name here, which is not this conversation. Two
      * people who meet are two people on one map, structurally rather than by anybody checking.
      */
-    const wire = drawn?.room ? 'pmap-' + drawn.room : room
+    /**
+     * ⚠️ `park:` IS NOT DECORATION — IT IS THE DOOR. The relay decides what a room is from its
+     * NAME: `isPark` is `=== 'park'` or `startsWith('park:')`, and `carriesArt` is built on
+     * isPark. carriesArt is what makes the relay ask Supabase to vouch for a socket before
+     * anybody sees the drawing it is carrying.
+     *
+     * This read `pmap-<id>`, which matches neither — so a hosted map would have carried
+     * everybody's creature through the one path that does NOT have the picture door on it. The
+     * relay's own note says why that door exists: "there is no filter for a picture — so the
+     * door is on the thing being carried rather than on the game being played."
+     *
+     * A room name is a routing decision at the relay, so it has to be spelled the way the relay
+     * reads it.
+     */
+    const wire = drawn?.room ? 'park:' + drawn.room : room
     const p = joinPark(wire, { name: myName, art: myArt }, state.current, bump)
     if (!p) {
       /* ⚠️ ON YOUR OWN ON PURPOSE IS NOT A PROBLEM, and this line used to say it was.

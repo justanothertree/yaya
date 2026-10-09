@@ -54,6 +54,38 @@ const isPark = (roomId) => roomId === PARK_PREFIX || roomId.startsWith(PARK_PREF
  * for a picture — so the door is on the thing being carried rather than on the game being played.
  */
 const isBout = (roomId) => roomId.startsWith('fight:')
+
+/**
+ * Who owns a hosted park, if it is one.
+ *
+ * ⚠️ THE RELAY IS THE ONLY PLACE A HOST CAN BE ESTABLISHED, because it is the only place a
+ * socket is tied to an account Supabase has verified. A client saying "I am the host" is a
+ * client saying anything it likes; the room's owner is a row, and this is the only code that
+ * can read the row and the socket's identity at the same time.
+ *
+ * ⚠️ THE ROOM ID IS THE ROW ID, so an answer can be kept for ever — park_rooms.id never changes
+ * hands. A miss is cached as null too, or a room that is not a hosted map asks on every message.
+ */
+const parkHosts = new Map()
+async function hostOfParkRoom(roomId) {
+  if (!isPark(roomId)) return null
+  const id = roomId.slice(PARK_PREFIX.length + 1)
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null
+  if (parkHosts.has(id)) return parkHosts.get(id)
+  const sb = createSupabaseServiceClient()
+  if (!sb) return null
+  let owner = null
+  try {
+    const { data } = await sb.from('park_rooms').select('owner').eq('id', id).maybeSingle()
+    owner = data?.owner ?? null
+  } catch {
+    owner = null
+  }
+  /* bounded, because a room id is whatever anybody typed into a hello */
+  if (parkHosts.size > 500) parkHosts.clear()
+  parkHosts.set(id, owner)
+  return owner
+}
 const carriesArt = (roomId) => isPark(roomId) || isBout(roomId)
 /**
  * ⚠️ ONE INPUT PER FRAME AT SIXTY FRAMES A SECOND, and a fight runs for minutes. The window is
@@ -2246,8 +2278,45 @@ wss.on('connection', (ws, req) => {
                     ...(room.boss.at || {}),
                   }
                 : null
-            send(ws, { type: 'park', who, boss: outNow })
+            /* ⚠️ AND THE SCENE, for the same reason the boss rides along: somebody who arrives
+               after the host said which map everyone is in has no other way to learn it. */
+            send(ws, {
+              type: 'park',
+              who,
+              boss: outNow,
+              /* the sender is ours and stays here: peers learn what the room is doing, never
+                 which socket said so — the same rule the auth note states about account ids */
+              scene: room.scene ? { map: room.scene.map, at: room.scene.at } : null,
+            })
           })
+        break
+      }
+      /**
+       * The host saying what the room is doing — see Scene in src/park/room.ts.
+       *
+       * ⚠️ REFUSED FROM ANYBODY WHO IS NOT THE OWNER, and that check cannot live in the client.
+       * Every other park message is a fact about the sender's own body, which is why none of
+       * them need a sender check; a scene says where EVERYBODY is standing, so one guest could
+       * otherwise move the whole room.
+       *
+       * ⚠️ AND REFUSED SILENTLY. A client that is not the host has no business sending one, so
+       * an error back would only tell somebody probing that they had found the right message.
+       */
+      case 'scene': {
+        if (!isPark(joinedRoomId)) break
+        const st = room.state.get(id) || {}
+        if (!st.vouched || !st.userId) break
+        const at = typeof msg.at === 'number' && Number.isFinite(msg.at) ? msg.at : null
+        if (at === null) break
+        const map = typeof msg.map === 'string' ? msg.map.slice(0, 64) : null
+        void hostOfParkRoom(joinedRoomId).then((owner) => {
+          if (!owner || owner !== st.userId) return
+          /* ⚠️ the relay keeps the ordering too, or a late scene could un-say a newer one for
+             whoever joins next — the roster hands this out, so it has to be the newest */
+          if (room.scene && at <= room.scene.at) return
+          room.scene = { map, at, by: id }
+          broadcastVouched(room, { type: 'scene', from: id, map, at }, id)
+        })
         break
       }
       case 'ready': {
@@ -2488,6 +2557,12 @@ wss.on('connection', (ws, req) => {
        otherwise the park keeps a boss nobody is stepping and nobody else is allowed to replace.
        Peers drop their own copy on the `over` broadcast below, which they already handle. */
     if (room.boss && room.boss.by === id) room.boss = null
+    /* ⚠️ AND THE SCENE GOES WITH ITS HOST, for the same reason the boss does: a room cannot be
+       run by somebody who has left, and a scene nobody can change is a map everybody is stuck
+       in. Whoever is still here keeps walking what they have; whoever arrives next is told
+       nothing rather than something out of date. See the lobby design — a room that outlives
+       its host needs a host election, which is a lot of machinery for eight people. */
+    if (room.scene && room.scene.by === id) room.scene = null
     // Prune participant from active round, if present.
     // Policy: disconnecting participants are removed from the round and
     // no longer required (or counted) for finalization.

@@ -21,7 +21,7 @@ Three pieces already exist and this builds on them rather than replacing them:
 | exists                       | does                                                      |
 | ---------------------------- | --------------------------------------------------------- |
 | `park_rooms` (one per owner) | the room, its audience, its invites                       |
-| relay room named `pmap-<id>` | two people in one relay room are on one map, structurally |
+| relay room named `park:<id>` | two people in one relay room are on one map, structurally |
 | `park_maps` + `park_map_get` | the map is fetchable by anyone allowed in                 |
 
 What is missing is one thing: **nothing on the wire says what the host has decided.**
