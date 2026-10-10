@@ -36,7 +36,29 @@ export function PartyCursors() {
    */
   useEffect(() => shared.start(), [])
 
+  /**
+   * Whether there is anyone to draw.
+   *
+   * ⚠️ THE SAME CONDITION THE RENDER BELOW ALREADY USES, lifted above the loop that needs it.
+   * This component returns null when nobody is sharing and nobody is here — but hooks run before
+   * that return, so the rAF loop started anyway and ran on every page of the site for every
+   * visitor browsing alone, which is nearly all of them.
+   *
+   * ⚠️ AND IT IS A BOOLEAN RATHER THAN THE PEERS THEMSELVES, so the loop is started once when
+   * the first person arrives and stopped once the last one leaves, instead of being torn down
+   * and rebuilt every time somebody moves their mouse — `state.peers` is a new object on every
+   * update at 15Hz per peer.
+   */
+  const anyone = !!state.sharing && Object.keys(state.peers).length > 0
+
   useEffect(() => {
+    /**
+     * ⚠️ NO CURSORS MEANS NO LOOP AT ALL, not a loop that finds nothing to do. What the body
+     * below does every frame is a getElementById, a getBoundingClientRect — which is a layout
+     * read the browser may have to flush style for — and a scrollY, before iterating a map that
+     * is empty whenever you are the only one here. Sixty times a second, on every page, forever.
+     */
+    if (!anyone) return
     let raf = 0
     const tick = () => {
       raf = requestAnimationFrame(tick)
@@ -68,10 +90,13 @@ export function PartyCursors() {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [anyone])
 
   const list = Object.values(state.peers)
-  if (!state.sharing || !list.length) return null
+  /* ⚠️ the same answer as `anyone` above, and they must stay the same answer: the loop moves
+     these elements, so a render that shows them without the loop running would pin every cursor
+     wherever it first appeared. */
+  if (!anyone) return null
 
   /**
    * Somebody else's pointer, drawn the way THEY are wearing it.
