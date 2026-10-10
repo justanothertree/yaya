@@ -141,6 +141,15 @@ wss.on('connection', (ws) => {
        * branch — so this does the same, including the refusal message.
        */
       if (had && had.by !== id && msg.art != null) {
+        /* ⚠️ THE ERROR TOO, WHICH THIS CLAIMED TO SEND AND DID NOT. The note above says "including
+           the refusal message" and only the boss itself went back — so a client that keyed off
+           the code would have looked broken here and been fine against the real relay, which is
+           this file's whole failure mode pointed the wrong way. */
+        send(ws, {
+          type: 'error',
+          code: 'boss-taken',
+          message: 'Somebody else has a boss out already',
+        })
         send(ws, { type: 'boss', from: had.by, name: had.name, art: had.art })
         console.log(`[stub] ${id} boss refused — ${had.by} already has one out`)
         return

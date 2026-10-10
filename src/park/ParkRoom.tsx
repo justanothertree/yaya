@@ -3641,6 +3641,34 @@ export function ParkRoom({
         fightFrom.current = 0
         bossDoneAt.current = 0
       }
+      /**
+       * ⚠️ TWO BOSSES COULD BE OUT AT ONCE, AND THAT IS WHAT WAS SEEN. Reported from a real
+       * fight: "my remove boss button and spawn wave button was separate from his and were also
+       * not synced." The relay has always refused a second boss — `room.boss.by !== id` sends
+       * back an error AND the one that is already out, and its comment says why: "the loser of
+       * the race has already stood a boss up on their own screen … sending the real one here is
+       * what lets them back their own out and join this fight instead, with nothing to plumb."
+       *
+       * Nothing was ever plumbed. The client's `case 'error'` only copies the message into
+       * `trouble`, so the loser kept its own boss AND drew the winner's — two bosses, two
+       * buttons, each person's reflecting their own.
+       *
+       * ⚠️ AND IT YIELDS ON THE `boss` MESSAGE RATHER THAN THE ERROR CODE, which is the half
+       * that needs no new wire field. `state.boss` is only ever SOMEBODY ELSE'S — room.ts says
+       * so, and the relay never echoes a boss to its caller — so learning of one while holding
+       * my own means the server kept theirs and refused mine. That is the whole test.
+       *
+       * ⚠️ NO RETRACTION IS SENT, because there is nothing out there to retract: the relay never
+       * accepted mine, and its put-away branch only fires for `room.boss.by === id`. A null from
+       * here would be a message that means nothing. Nor is a fight recorded — losing a race is
+       * not beating anything.
+       */
+      if (tb && boss.current) {
+        boss.current = null
+        setBossShown(null)
+        bossDoneAt.current = 0
+        fightFrom.current = 0
+      }
       if (tb) {
         if (echoKit.current?.by !== tb.by)
           echoKit.current = {
