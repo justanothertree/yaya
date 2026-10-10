@@ -15115,6 +15115,37 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The same two pixels, in the two rooms nothing had ever swept.
+ *
+ * ⚠️ FOUND THE MOMENT auditRooms STOPPED CARRYING ITS OWN LIST OF ROOMS. Circuit and Ratings were
+ * never in it, so nothing had measured them: the Circuit board names come out 170x21 and the
+ * Ratings sort row — Avg, A-Z, RT%, Date — at 22 tall, with the chart toggle in the table head at
+ * 27x17. All short rather than narrow, all under the 24 of WCAG 2.5.8, and none of it visible to
+ * a sweep that walked five rooms out of ten.
+ *
+ * ⚠️ CONFIRMED ON A DIRECT VISIT BEFORE BEING FIXED, which matters more than it sounds: the same
+ * sweep reported five home-page piano keys at 23 wide, and opening that page on its own measured
+ * them at 36.72. That reading was the resize settling, not the page — this file’s own header says
+ * measurement lies more often than code does, and a sweep that navigates by hash is exactly where
+ * it lies. These two were checked twice and are real.
+ *
+ * ⚠️ 24 RATHER THAN 36, as in the investments block below and for a related reason: these are
+ * dense data views — a list of names and a table toolbar — where the extra fourteen pixels a row
+ * would change the rhythm of the thing rather than just the target. 24 clears the bar and moves
+ * each row by two or three pixels. 36 is there if the rooms turn out to want it.
+ */
+@media (max-width: 700px), (pointer: coarse) {
+  #circuit .cz-board-name {
+    min-height: 24px;
+  }
+  #ratings .btn,
+  #ratings th button {
+    min-height: 24px;
+    min-width: 24px;
+  }
+}
+
+/**
  * The range and measure pickers in the investments room, on a thumb.
  *
  * ⚠️ SEVEN BUTTONS AT 22px TALL, two under WCAG 2.5.8 and found only because this room is not in

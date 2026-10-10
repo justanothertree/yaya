@@ -289,14 +289,46 @@ export function mobileAudit() {
   return out
 }
 
+/**
+ * Which rooms there are, asked of the page rather than written down here.
+ *
+ * ⚠️ THE LIST USED TO BE FIVE NAMES IN THIS FILE AND THE SITE HAS TEN ROOMS. Circuit, Ratings,
+ * Investments, Sign in and Contact were never swept by anything, and nothing said so — a sweep
+ * that reports "all clean" while skipping half the site is worse than no sweep, because it is
+ * believed. Investments turned out to be holding seven controls two pixels under the bar, found
+ * only because something else sent me into that room by accident.
+ *
+ * ⚠️ SO IT READS THE NAV, which is the same rule the rest of this project follows about lists:
+ * CLAUDE.md says the one thing that does not belong anywhere is "a list that has to be maintained
+ * by hand to stay true", and names an inventory that drifted in four weeks as the reason. A list
+ * taken from the navigation cannot drift from the navigation. It also follows the VIEWER — sign
+ * in and the admin and usage rooms appear, and get swept too, without this file knowing they
+ * exist.
+ *
+ * ⚠️ `#content` IS A SKIP LINK, NOT A ROOM. It is the first anchor on the page and it points at
+ * the main element, so a naive sweep opens it first and audits whatever was already on screen.
+ */
+const navRooms = () => {
+  const out = []
+  for (const a of document.querySelectorAll('nav a[href^="#"]')) {
+    const h = (a.getAttribute('href') || '').trim()
+    if (!h || h === '#content' || h.startsWith('#content?') || out.includes(h)) continue
+    out.push(h)
+  }
+  return out.length ? out : ['#home']
+}
+
 /** Walk the rooms and report each. Hash navigation, so the page never reloads out from under it. */
-export async function auditRooms(
-  rooms = ['#home', '#paint', '#instrument', '#visualizer', '#games'],
-) {
+export async function auditRooms(rooms = navRooms()) {
   const all = []
   for (const r of rooms) {
     location.hash = r
-    await new Promise((go) => setTimeout(go, 1500))
+    /* ⚠️ LONG ENOUGH FOR THE LAYOUT TO STOP MOVING, and 1500 was not. Swept at 375 the home page
+       reported five piano keys at 23px wide; opening that page on its own and measuring it gave
+       36.72. Nothing was wrong with the page — the row had not finished laying out when the
+       reading was taken, and a false positive from this file costs exactly what the header says:
+       a checker that cries wolf is one nobody runs twice. */
+    await new Promise((go) => setTimeout(go, 2400))
     all.push(mobileAudit())
   }
   return all
