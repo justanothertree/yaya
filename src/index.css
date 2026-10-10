@@ -15114,9 +15114,39 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/**
+ * The range and measure pickers in the investments room, on a thumb.
+ *
+ * ⚠️ SEVEN BUTTONS AT 22px TALL, two under WCAG 2.5.8 and found only because this room is not in
+ * the audit sweep this project runs — auditRooms visits five hashes and investments is not one of
+ * them. Measured at 375 signed out: Week, Month, Year and All on one row, Worth, Net in and
+ * Promised on the next, every one of them 22 high and between 35 and 97 wide. Short, not narrow.
+ *
+ * ⚠️ 24 RATHER THAN THE 36 THIS SITE USUALLY REACHES FOR, and the reason is honesty about what
+ * could be checked. The rest of the room only exists behind an account, so the dense signed-in
+ * layout cannot be seen from here; 36 would be a sixty percent height increase applied blind to
+ * every ghost button in the room. 24 clears the bar, moves each row by two pixels, and cannot
+ * reflow anything. If the signed-in panel turns out to have room, this wants to be 36.
+ *
+ * ⚠️ SCOPED TO THE ROOM rather than to .btn-ghost, which is the site-wide ghost button — the same
+ * rule the visualiser block states: a global minimum would quietly reflow every room at once.
+ */
+@media (max-width: 700px), (pointer: coarse) {
+  #investments .btn-ghost {
+    min-height: 24px;
+  }
+}
+
 /* the ⓘ on each investments account — inline padding makes it 20px tall, and a phone needs
-   more than that to aim at. Min-height rather than padding, so the look it was given stands. */
-@media (max-width: 700px) {
+   more than that to aim at. Min-height rather than padding, so the look it was given stands.
+
+   ⚠️ AND A COARSE POINTER AT ANY WIDTH, which is the last of the three blocks that were gated on
+   `max-width: 700px` alone and so reached phones but not tablets. The other two were measured and
+   widened; this one could not be, because the investments room needs an account to open. It is
+   taken on the same argument instead, which holds without a measurement: both declarations are
+   minimums, so widening the gate can raise a target and cannot move a layout. A narrow desktop
+   window keeps the rule, which costs a mouse a few pixels and is the harmless direction. */
+@media (max-width: 700px), (pointer: coarse) {
   .inv-info {
     min-height: 36px;
     min-width: 36px;
