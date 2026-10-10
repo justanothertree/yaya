@@ -13,6 +13,28 @@
  * runs twice, so every exclusion below is one of those, and each is a rule rather than a
  * name-by-name skip list.
  *
+ * ⚠️ IT SEES A ROOM'S OPENING STATE AND NOTHING ELSE, WHICH IS THE EXPENSIVE THING TO FORGET.
+ * `auditRooms` opens each room and measures what is on screen — so every control that appears
+ * only after you do something is invisible to it, and the report says "clean" about them anyway.
+ *
+ * It has cost real work twice. Half the instrument — the bar ruler, the layer list, the
+ * arrangement cells, the library panel — does not exist until a song is loaded, and a sweep of a
+ * fresh room reporting `tooSmall: []` was taken as evidence that a known defect had been fixed.
+ * It had not: the ruler cells were 12x14 against a row of 30px cells they were supposed to line
+ * up with, and loading a song showed five failures where the sweep had shown none. The map maker
+ * has five modes and the sweep sees one. The games room keeps the park, the scrap and the
+ * playground behind buttons.
+ *
+ * ⚠️ SO AN EMPTY REPORT IS EVIDENCE ABOUT WHAT WAS ON SCREEN, AND NOTHING MORE. Put the room into
+ * the state you care about first — load a song, place a stamp, walk into the park — and call
+ * `mobileAudit()` directly, which measures the page as it stands. `auditRooms` is the sweep for
+ * the opening states; it is not an answer about the site.
+ *
+ * ⚠️ AND IT FOLLOWS THE VIEWER, so signing in is worth doing before a sweep. The navigation it
+ * reads offers ten rooms to a stranger and eighteen places exist — chat, people, admin and the
+ * rest appear once there is somebody to show them to, and get measured without this file knowing
+ * their names.
+ *
  * ⚠️ AND THE BAR IS AN OUTSIDE ONE. 24×24 CSS pixels is WCAG 2.5.8 (AA), not a preference —
  * which matters because "that button looks small" is an argument and "that button is 21px tall
  * on every room of the site" is not. 44 is the comfortable size most platforms name, and it is
