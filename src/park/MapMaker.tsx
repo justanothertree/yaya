@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ArtThumb } from '../draw/ArtThumb'
 import { gallery, subscribeGallery } from '../draw/gallery'
-import { paintDrawing, paintStroke, type Drawing, type Stroke, type Tool } from '../draw/strokes'
+import {
+  loopFrames,
+  paintDrawing,
+  paintStroke,
+  type Drawing,
+  type Stroke,
+  type Tool,
+} from '../draw/strokes'
 import { MapGuide } from './MapGuide'
 import {
   fetchMyMap,
@@ -19,6 +26,7 @@ import {
   type Life,
   type MapDoc,
   type Piece,
+  stampFrame,
 } from './mapDoc'
 import { MAP_GUIDE, type PlaceKind } from './mapOf'
 import {
@@ -167,6 +175,19 @@ const ZOOM = { min: 1, max: 6, step: 1.18 }
 
 /** how big a stamp is baked before being blitted — the same argument as SPRITE in ParkRoom */
 const SPRITE = 192
+
+/**
+ * How many baked animation frames the palette may hold at once, here.
+ *
+ * ⚠️ ITS OWN NUMBER, LIKE SPRITE ABOVE, because the bytes are its own: 192 square at four bytes
+ * a pixel is 147KB a frame, against 256 and 256KB in the park. The format allows twenty-four
+ * pictures of sixty frames, so baking everything would be 212MB of canvas held open in an
+ * editor. A hundred and twenty frames is about 18MB and bounded whatever the map does.
+ *
+ * ⚠️ AND RUNNING OUT IS A STILL PICTURE rather than a failure, the same as in the park — a
+ * picture that cannot be afforded is baked once and drawn as its first frame.
+ */
+const STAMP_FRAMES_MOST = 120
 
 /**
  * The tools that can draw on the ground.
@@ -415,7 +436,10 @@ export function MapMaker() {
     wy: number
   } | null>(null)
   /** each palette drawing rasterised once, then blitted wherever it was stamped */
-  const sprites = useRef(new Map<Drawing, HTMLCanvasElement>())
+  /** one STRIP per picture: a single canvas for a still drawing, one per frame for an animation */
+  const sprites = useRef(new Map<Drawing, HTMLCanvasElement[]>())
+  /** how much of STAMP_FRAMES_MOST the current palette has spent */
+  const framesBaked = useRef(0)
   /**
    * ⚠️ TWO SURFACES, THE SAME WAY THE PAINT ROOM DOES IT. Everything committed is painted
    * once onto `done`; the stroke being dragged is drawn on a copy of it each move. Repainting
@@ -573,7 +597,12 @@ export function MapMaker() {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, pw, ph)
     const { x, y, z } = view.current
-    if (sprites.current.size > 48) sprites.current.clear()
+    if (sprites.current.size > 48) {
+      sprites.current.clear()
+      framesBaked.current = 0
+    }
+    /* ⚠️ read once for the whole pass, so everything sharing a phase stays in step with itself */
+    const now = performance.now() / 1000
     for (const p of pieces) {
       const art = palette[p.art]
       if (!art) continue
@@ -585,15 +614,35 @@ export function MapMaker() {
       const cx = (p.at.x - x) * z * pw
       const cy = (p.at.y - y) * z * ph
       if (cx + mw / 2 < 0 || cx - mw / 2 > pw || cy + mh / 2 < 0 || cy - mh / 2 > ph) continue
-      let sp = sprites.current.get(art)
-      if (!sp) {
-        sp = document.createElement('canvas')
-        sp.width = SPRITE
-        sp.height = Math.max(1, Math.round(SPRITE / ar))
-        const sc = sp.getContext('2d')
-        if (sc) paintDrawing(sc, art, sp.width, sp.height)
-        sprites.current.set(art, sp)
+      let strip = sprites.current.get(art)
+      if (!strip) {
+        /**
+         * ⚠️ ONE CANVAS PER FRAME, AND THE SAME BARGAIN THE PARK MAKES. A palette holds at most
+         * twenty-four pictures however many pieces there are, so this is more BAKES and exactly
+         * the same number of drawImage calls — see Scenery, which pays for animation the same
+         * way and for the same reason.
+         *
+         * ⚠️ AND A BUDGET FOR THE SAME REASON, against this file's own sprite size — see
+         * STAMP_FRAMES_MOST, which does the arithmetic in 192s rather than borrowing the park's
+         * 256s. Running out draws the first frame, which is what a stamp looked like before any
+         * of this.
+         */
+        const loop = loopFrames(art)
+        const afford = loop.length > 1 && framesBaked.current + loop.length <= STAMP_FRAMES_MOST
+        const one = (frame?: number) => {
+          const c2 = document.createElement('canvas')
+          c2.width = SPRITE
+          c2.height = Math.max(1, Math.round(SPRITE / ar))
+          const sc = c2.getContext('2d')
+          if (sc)
+            paintDrawing(sc, art, c2.width, c2.height, frame === undefined ? undefined : { frame })
+          return c2
+        }
+        strip = afford ? loop.map((f) => one(f)) : [one()]
+        framesBaked.current += strip.length
+        sprites.current.set(art, strip)
       }
+      const sp = strip[stampFrame(strip.length, art.fps, p.at, now)] ?? strip[0]
       ctx.drawImage(sp, cx - mw / 2, cy - mh / 2, mw, mh)
       if (p.kind === 'wall') {
         ctx.save()
@@ -604,6 +653,50 @@ export function MapMaker() {
       }
     }
   }, [pieces, palette])
+
+  /**
+   * Whether anything on the sheet actually has frames to play.
+   *
+   * ⚠️ MEMOISED TO A BOOLEAN ON PURPOSE. The effect below owns an animation loop, and this
+   * project's own rule is that "an effect whose dependency is rebuilt every render tears down and
+   * rebuilds whatever it owns" — `pieces` is a new array on most renders, so depending on it
+   * directly would stop and restart the loop constantly. A boolean only changes when the answer
+   * does: the first framed stamp placed, and the last one removed.
+   */
+  const moving = useMemo(
+    () =>
+      pieces.some((pc) => {
+        const a = palette[pc.art]
+        return !!a && loopFrames(a).length > 1
+      }),
+    [pieces, palette],
+  )
+
+  /**
+   * The editor's stamps animate, so what you place is what you walked.
+   *
+   * ⚠️ IT NEEDS A CLOCK AND THE PARK DOES NOT, which is the one real difference between the two
+   * renderers. Scenery's draw effect carries the note "no dependency array on purpose: the camera
+   * moves every frame, and this IS the frame" — the park is already repainting. Here `stand` is
+   * called when the view moves and not otherwise, so a stamp would sit on frame 0 until you
+   * panned.
+   *
+   * ⚠️ AND NOTHING TICKS FOR A MAP WITH NO ANIMATION IN IT. Every map made until now is a still
+   * map, and none of them should start spending a frame budget because this feature exists.
+   */
+  useEffect(() => {
+    if (!moving) return
+    let on = true
+    let h = requestAnimationFrame(function tick() {
+      if (!on) return
+      stand()
+      h = requestAnimationFrame(tick)
+    })
+    return () => {
+      on = false
+      cancelAnimationFrame(h)
+    }
+  }, [moving, stand])
 
   /** what you can see: everything committed, plus the one being dragged right now */
   const show = useCallback(() => {

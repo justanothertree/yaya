@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { paintDrawing, type Drawing, loopFrames } from '../draw/strokes'
 import { InviteFriends } from '../components/InviteFriends'
 import { PetView } from '../pets/PetView'
-import { livesOf, placesOf, type Door, type MapDoc } from './mapDoc'
+import { livesOf, placesOf, type Door, type MapDoc, stampFrame } from './mapDoc'
 import {
   browseParks,
   closePark,
@@ -515,19 +515,6 @@ const bake = (art: Drawing, frame?: number): HTMLCanvasElement => {
 const STAMP_FRAMES_MOST = 120
 
 /**
- * Where in its loop a given stamp is, so a lake of identical water does not pulse as one tile.
- *
- * ⚠️ FROM ITS POSITION, WHICH IS THE ONLY SOURCE THAT AGREES ON EVERY MACHINE. A random phase,
- * or one taken from insertion order, would give two people in the same park two different-looking
- * maps — and the park's whole bargain is that being in one room means standing on one drawing.
- * The same stamp in the same place is the same phase for everybody, forever.
- */
-const phaseOf = (at: Spot): number => {
-  const n = Math.abs(Math.sin(at.x * 127.1 + at.y * 311.7) * 43758.5453)
-  return n - Math.floor(n)
-}
-
-/**
  * How wide the whole painted ground is baked, in pixels.
  *
  * ⚠️ IT IS THE WORLD, NOT A SCREEN, so a third of it is what you can see at once. Baking at
@@ -698,14 +685,9 @@ function Scenery({
       }
       /* ⚠️ THE SAME CLAMP THE CREATURES USE — see pets/paint.ts, which reads art.fps the same
          way. A drawing that did not say gets eight, and nothing gets to ask for 400. */
-      const sp =
-        strip.length > 1
-          ? (strip[
-              Math.floor(
-                now * Math.max(1, Math.min(24, m.art.fps ?? 8)) + phaseOf(m.at) * strip.length,
-              ) % strip.length
-            ] ?? strip[0])
-          : strip[0]
+      /* ⚠️ the frame is mapDoc's to decide, not this canvas's — see stampFrame, which the map
+         maker calls too so a piece animates the same while you place it as when you walk it */
+      const sp = strip[stampFrame(strip.length, m.art.fps, m.at, now)] ?? strip[0]
       /* ⚠️ something you can stand ON still says so. The CSS rim cannot come with it — it
          is a ring around a circle and a stamp is whatever shape it was drawn — so the cue is a
          shadow under it instead, which is the same thing a raised object does in the world. */

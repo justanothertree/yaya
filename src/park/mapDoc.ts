@@ -273,6 +273,34 @@ const tight = (p: Piece): number[] => {
 
 export const packPieces = (pieces: Piece[]): number[][] => pieces.map(tight)
 
+/**
+ * Which frame of an animated stamp is showing, and when.
+ *
+ * ⚠️ HERE BECAUSE TWO RENDERERS HAVE TO AGREE. The park bakes every stamp onto one canvas and so
+ * does the map maker, for the same reason and with the same code shape — so the frame each one
+ * lands on is a fact about the MAP rather than about either canvas. Written twice it would drift,
+ * and the drift would show up as a piece that animates differently while you place it than it
+ * does when you walk it, which is the most confusing possible version of this feature.
+ *
+ * ⚠️ THE PHASE COMES FROM THE PIECE'S POSITION, so a lake of identical water does not pulse as
+ * one tile — and position is the only source that agrees on every MACHINE as well. A random
+ * phase, or one taken from insertion order, would give two people in the same park two
+ * different-looking maps, and the park's whole bargain is that being in one room means standing
+ * on one drawing.
+ *
+ * ⚠️ AND THE CLAMP IS THE CREATURES' CLAMP — see pets/paint.ts, which reads `fps` the same way.
+ * A drawing that did not say gets eight and nothing gets to ask for four hundred.
+ */
+export function stampFrame(frames: number, fps: number | undefined, at: Spot, t: number): number {
+  if (!(frames > 1)) return 0
+  const rate = Math.max(1, Math.min(24, fps ?? 8))
+  const n = Math.abs(Math.sin(at.x * 127.1 + at.y * 311.7) * 43758.5453)
+  const phase = n - Math.floor(n)
+  const i = Math.floor(t * rate + phase * frames) % frames
+  /* a negative t would wrap the wrong way, and a clock is not this function's to trust */
+  return i < 0 ? i + frames : i
+}
+
 /* ⚠️ omitted rather than set to undefined, so a scenery piece is === what it has always been
    and the packed form of a re-read map is byte-identical to what was written */
 const livePart = (life: Life | '' | undefined): { life?: Life } => (life ? { life } : {})

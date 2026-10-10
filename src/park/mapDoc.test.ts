@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { cropToInk, livesOf, MAX_PIECES, packPieces, placesOf, readMapDoc, worldOf } from './mapDoc'
+import {
+  cropToInk,
+  livesOf,
+  MAX_PIECES,
+  packPieces,
+  placesOf,
+  readMapDoc,
+  worldOf,
+  stampFrame,
+} from './mapDoc'
 import type { Piece } from './mapDoc'
 import type { Drawing } from '../draw/strokes'
 import { ASPECT, outBy, PARK_TALL } from './strike'
@@ -310,5 +319,77 @@ describe('a stamp can be alive', () => {
     const d = readMapDoc(doc({ pieces: [{ ...piece(), life: 'dragon' }] }))
     expect(d?.pieces[0].life).toBeUndefined()
     expect(livesOf(d!)).toHaveLength(0)
+  })
+})
+
+/**
+ * Which frame an animated stamp shows.
+ *
+ * ⚠️ IT IS TESTED BECAUSE TWO CANVASES READ IT. The park's Scenery and the map maker's own
+ * stamp layer both bake a strip per picture and both ask this which one to blit — so a change
+ * here shows up as a piece that animates differently while you place it than when you walk it,
+ * which is the most confusing possible version of this feature and the reason the arithmetic is
+ * not written twice.
+ */
+describe('which frame a stamp is showing', () => {
+  const at = { x: 0.31, y: 0.62 }
+
+  it('is always frame 0 for a drawing that is not an animation', () => {
+    for (const t of [0, 0.3, 7.5, 1000]) {
+      expect(stampFrame(1, 8, at, t)).toBe(0)
+      expect(stampFrame(0, 8, at, t)).toBe(0)
+    }
+  })
+
+  it('and never leaves the strip, at any time or rate', () => {
+    for (const frames of [2, 3, 7, 24, 60]) {
+      for (const fps of [undefined, 1, 8, 24, 1000, 0, -5]) {
+        for (const t of [0, 0.016, 1.5, 93.7, 86400]) {
+          const i = stampFrame(frames, fps, at, t)
+          expect(Number.isInteger(i)).toBe(true)
+          expect(i).toBeGreaterThanOrEqual(0)
+          expect(i).toBeLessThan(frames)
+        }
+      }
+    }
+  })
+
+  /**
+   * ⚠️ THE RATE IS THE CREATURES' RATE, which is why this asks the clock rather than the code:
+   * at 8fps a second of time is eight frames, so a two-frame loop has come back to where it
+   * started and a three-frame loop has gone round twice and landed on the same rung. Asked that
+   * way the claim is about playback speed; asked as "does it equal this expression" it would
+   * only be a copy of the line above it.
+   */
+  it('and advances at fps frames a second', () => {
+    for (const frames of [2, 4, 8]) {
+      /* 8fps for exactly one second is 8 steps, which is a whole number of loops for each of
+         these — so the frame must be the one it started on, whatever the phase happens to be */
+      expect(stampFrame(frames, 8, at, 1)).toBe(stampFrame(frames, 8, at, 0))
+    }
+    /* and half that time at half the rate is the same place again */
+    expect(stampFrame(4, 4, at, 1)).toBe(stampFrame(4, 8, at, 0.5))
+  })
+
+  /**
+   * ⚠️ THE SAME STAMP IN THE SAME PLACE IS THE SAME EVERYWHERE, which is the property the park
+   * depends on: two people in one room are standing on one drawing, so a phase taken from
+   * anything but the position would give them two different-looking maps.
+   */
+  it('and depends on nothing but the frame count, the rate, the place and the clock', () => {
+    const a = { x: 0.2, y: 0.8 }
+    expect(stampFrame(5, 8, a, 3.3)).toBe(stampFrame(5, 8, { x: 0.2, y: 0.8 }, 3.3))
+  })
+
+  it('and two stamps in different places are not locked together', () => {
+    /* a lake of identical water should not pulse as one tile — so somewhere across a loop, two
+       positions must disagree. Asked across time rather than at one instant, because any two
+       phases agree on some frames. */
+    const a = { x: 0.2, y: 0.2 }
+    const b = { x: 0.77, y: 0.41 }
+    const ever = [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5].some(
+      (t) => stampFrame(6, 8, a, t) !== stampFrame(6, 8, b, t),
+    )
+    expect(ever).toBe(true)
   })
 })
