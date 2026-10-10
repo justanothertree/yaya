@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { paintDrawing, type Drawing } from '../draw/strokes'
+import { paintDrawing, type Drawing, loopFrames } from '../draw/strokes'
 import { InviteFriends } from '../components/InviteFriends'
 import { PetView } from '../pets/PetView'
 import { livesOf, placesOf, type Door, type MapDoc } from './mapDoc'
@@ -486,14 +486,45 @@ const SPRITE = 256
 const EMPTY_DOORS: Door[] = []
 
 /** A drawing, rasterised once, ready to be blitted wherever it was stamped. */
-const bake = (art: Drawing): HTMLCanvasElement => {
+const bake = (art: Drawing, frame?: number): HTMLCanvasElement => {
   const ar = art.ratio > 0.05 && art.ratio < 20 ? art.ratio : 1
   const c = document.createElement('canvas')
   c.width = SPRITE
   c.height = Math.max(1, Math.round(SPRITE / ar))
   const ctx = c.getContext('2d')
-  if (ctx) paintDrawing(ctx, art, c.width, c.height)
+  /* ⚠️ undefined is NOT frame 0 — paintDrawing shows everything for a flat drawing and frame 0
+     for an animation, which is exactly the two behaviours wanted, so it is passed through. */
+  if (ctx) paintDrawing(ctx, art, c.width, c.height, frame === undefined ? undefined : { frame })
   return c
+}
+
+/**
+ * How many baked animation frames the whole palette may hold at once.
+ *
+ * ⚠️ A BUDGET RATHER THAN A PER-PICTURE GUESS, because the worst case is the thing that decides
+ * this and it is not close. A sprite is SPRITE square at four bytes a pixel — 256KB — and the
+ * limits already in the format are 24 palette pictures and 60 frames each, so baking every frame
+ * of everything is 1,440 sprites and about 377MB of canvas held while somebody walks about. One
+ * number spent across the palette is bounded whatever the map does: 120 frames is roughly 31MB,
+ * about the size of the painted ground this file already allows itself.
+ *
+ * ⚠️ AND RUNNING OUT IS A STILL PICTURE, NOT A FAILURE. A picture that cannot be afforded is
+ * baked once and drawn as its first frame, which is what it looked like before any of this. The
+ * map still works; some of it just does not move.
+ */
+const STAMP_FRAMES_MOST = 120
+
+/**
+ * Where in its loop a given stamp is, so a lake of identical water does not pulse as one tile.
+ *
+ * ⚠️ FROM ITS POSITION, WHICH IS THE ONLY SOURCE THAT AGREES ON EVERY MACHINE. A random phase,
+ * or one taken from insertion order, would give two people in the same park two different-looking
+ * maps — and the park's whole bargain is that being in one room means standing on one drawing.
+ * The same stamp in the same place is the same phase for everybody, forever.
+ */
+const phaseOf = (at: Spot): number => {
+  const n = Math.abs(Math.sin(at.x * 127.1 + at.y * 311.7) * 43758.5453)
+  return n - Math.floor(n)
 }
 
 /**
@@ -573,7 +604,14 @@ function Scenery({
   raised: Map<string, number>
 }) {
   const cv = useRef<HTMLCanvasElement | null>(null)
-  const sprites = useRef(new Map<Drawing, HTMLCanvasElement>())
+  /**
+   * One STRIP per picture: a single canvas for a still drawing, one per looping frame for an
+   * animation. The blit count per frame is unchanged — this is the same drawImage, choosing
+   * between canvases that were baked once.
+   */
+  const sprites = useRef(new Map<Drawing, HTMLCanvasElement[]>())
+  /** how much of STAMP_FRAMES_MOST the current palette has spent */
+  const framesBaked = useRef(0)
   const sod = useRef<{ art: Drawing; wide: number; pic: HTMLCanvasElement } | null>(null)
 
   /* ⚠️ no dependency array on purpose: the camera moves every frame, and this IS the frame */
@@ -624,7 +662,13 @@ function Scenery({
     }
 
     /* a walked map can only hold 24 pictures, so this is a ceiling for switching maps, not a cache */
-    if (sprites.current.size > 64) sprites.current.clear()
+    if (sprites.current.size > 64) {
+      sprites.current.clear()
+      framesBaked.current = 0
+    }
+    /* ⚠️ ONE CLOCK FOR THE WHOLE FIELD, read once rather than per stamp, so everything that
+       shares a phase stays in step with itself across a frame. */
+    const now = performance.now() / 1000
     for (const m of marks) {
       if (!m.art) continue
       const p = onScreen(m.at, cam)
@@ -635,11 +679,33 @@ function Scenery({
       /* ⚠️ culled against its own box rather than a fixed margin, so a big stamp is kept
          while its edge is still on screen and a small one goes as soon as it leaves */
       if (px + mw / 2 < 0 || px - mw / 2 > w || py + mh / 2 < 0 || py - mh / 2 > h) continue
-      let sp = sprites.current.get(m.art)
-      if (!sp) {
-        sp = bake(m.art)
-        sprites.current.set(m.art, sp)
+      let strip = sprites.current.get(m.art)
+      if (!strip) {
+        /**
+         * ⚠️ THE UNNAMED FRAMES ARE THE ANIMATION, which is not this file's rule to invent —
+         * loopFrames owns it, and pets/paint.ts says why: "a frame given to a state is a pose
+         * rather than a moment of a walk, so playing it in sequence would put a death pose in
+         * the middle of the stride." A stamp plays exactly what a creature plays.
+         */
+        /* ⚠️ captured, because the narrowing from the guard at the top of this loop does not
+           survive into a closure — m.art is a property and map() takes a function */
+        const art = m.art
+        const loop = loopFrames(art)
+        const afford = loop.length > 1 && framesBaked.current + loop.length <= STAMP_FRAMES_MOST
+        strip = afford ? loop.map((f) => bake(art, f)) : [bake(art)]
+        framesBaked.current += strip.length
+        sprites.current.set(m.art, strip)
       }
+      /* ⚠️ THE SAME CLAMP THE CREATURES USE — see pets/paint.ts, which reads art.fps the same
+         way. A drawing that did not say gets eight, and nothing gets to ask for 400. */
+      const sp =
+        strip.length > 1
+          ? (strip[
+              Math.floor(
+                now * Math.max(1, Math.min(24, m.art.fps ?? 8)) + phaseOf(m.at) * strip.length,
+              ) % strip.length
+            ] ?? strip[0])
+          : strip[0]
       /* ⚠️ something you can stand ON still says so. The CSS rim cannot come with it — it
          is a ring around a circle and a stamp is whatever shape it was drawn — so the cue is a
          shadow under it instead, which is the same thing a raised object does in the world. */
