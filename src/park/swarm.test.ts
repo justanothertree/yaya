@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { FLOCK, onCamera, ringOf, seeded, stepSwarm, WAVE_MOST, waveSize, type Mob } from './swarm'
+import {
+  FLOCK,
+  onCamera,
+  ringOf,
+  seeded,
+  stepSwarm,
+  WAVE_MOST,
+  waveSize,
+  type Flock,
+  type Mob,
+} from './swarm'
 import { frameAt } from '../pets/bake'
 
 /**
@@ -326,5 +336,67 @@ describe('how many a wave is', () => {
     expect(waveSize(1e6)).toBe(WAVE_MOST)
     expect(waveSize(25)).toBe(WAVE_MOST)
     expect(waveSize(24)).toBeLessThan(WAVE_MOST)
+  })
+})
+
+/**
+ * Nothing stands inside you, however many of them there are.
+ *
+ * ⚠️ REPORTED FROM A REAL FIGHT as a minion "running on top of my guy", and it was a crowd-size
+ * bug rather than a tuning one. `reach` reverses the pull inside itself, which the note on it
+ * calls making the target a body like any of theirs — but the reversal is clamped to 1 while
+ * every NEIGHBOUR pushes with `shove`, and `fit` scales the whole sum, so the one force holding
+ * the crowd off the player was its weakest term and lost ground as more arrived.
+ *
+ * ⚠️ SWEPT ACROSS SIZES RATHER THAN CHECKED AT ONE, because that is the only way this shows. The
+ * ring held perfectly for one, two, four and eight of them — a check at a wave's worth would have
+ * passed — and then collapsed: sixteen pressed in to 0.70 of `reach`, twenty-four to 0.54, forty
+ * to 0.53. A wave is ten, then sixteen, then twenty-two, so it was right on the first wave and
+ * wrong from the second.
+ *
+ * ⚠️ AND IT IS ASKED IN UNITS OF `reach`, which is the distance the caller asked for, not a
+ * number this file invented. The park passes a footprint-derived contact distance; the question
+ * "did they keep the distance they were given" is the same question whatever that distance is.
+ */
+describe('a crowd and the body it is chasing', () => {
+  /* reach and apart as the park derives them — footprints, not FLOCK's unitless defaults */
+  const parkish: Flock = { ...FLOCK, apart: 0.22, reach: 0.18, speed: 1.1 }
+  const seek = { x: 0.5, y: 0.5 }
+
+  const settle = (n: number) => {
+    let crowd: Mob[] = ringOf(n, 9, seek, 1.3)
+    for (let i = 0; i < 900; i++) crowd = stepSwarm(crowd, seek, 1 / 60, parkish)
+    return crowd
+  }
+  const nearest = (crowd: Mob[]) => Math.min(...crowd.map((m) => near(m, seek)))
+
+  it('never ends a frame inside it, at any crowd size', () => {
+    for (const n of [1, 2, 4, 8, 16, 24, 40]) {
+      /* a hair of tolerance for the float, and none for the behaviour */
+      expect(nearest(settle(n)) / parkish.reach).toBeGreaterThan(0.999)
+    }
+  })
+
+  /**
+   * ⚠️ THE OTHER HALF, OR THE FIX WOULD BE A WALL. Holding them off is only correct if they are
+   * still AT the distance a swing is measured from — CLAUDE.md records a flock standoff that put
+   * a whole wave outside the reach of every move in the game, which is the same mistake with the
+   * sign flipped. Contact, not a cordon.
+   */
+  it('and still arrives at contact rather than standing off', () => {
+    for (const n of [1, 8, 24, 40]) {
+      expect(nearest(settle(n)) / parkish.reach).toBeLessThan(1.1)
+    }
+  })
+
+  it('and a crowd with nobody to chase is not held anywhere', () => {
+    const start = ringOf(10, 5, seek, 0.3)
+    let crowd: Mob[] = start
+    for (let i = 0; i < 300; i++) crowd = stepSwarm(crowd, [], 1 / 60, parkish)
+    /* no target means no ring to be outside of — separation alone, and no NaN from an absent one */
+    for (const m of crowd) expect(Number.isFinite(m.x) && Number.isFinite(m.y)).toBe(true)
+    expect(Math.max(...crowd.map((m) => near(m, seek)))).toBeGreaterThan(
+      Math.max(...start.map((m) => near(m, seek))),
+    )
   })
 })

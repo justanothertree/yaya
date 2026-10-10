@@ -243,7 +243,47 @@ export function stepSwarm<T extends Mob>(
     const k = Math.min(1, tune.grip * dt)
     const vx = m.vx + (ax * fit * tune.speed - m.vx) * k
     const vy = m.vy + (ay * fit * tune.speed - m.vy) * k
-    out[i] = { ...m, x: m.x + vx * dt, y: m.y + vy * dt, vx, vy }
+    let px = m.x + vx * dt
+    let py = m.y + vy * dt
+    /**
+     * ⚠️ NOTHING ENDS A FRAME INSIDE WHAT IT IS CHASING, and this is a CONSTRAINT because the
+     * force above cannot be one. `reach` reverses the pull inside itself, which the note on it
+     * describes as making the target a body like any of theirs — and that is true right up until
+     * there are enough of them. Measured over 900 frames, nearest minion in units of `reach`:
+     * one to four held the ring at 1.00, eight at 1.07, then sixteen pressed in to 0.70,
+     * twenty-four to 0.54 and forty to 0.53. Reported from a real fight as a minion "running on
+     * top of my guy", and a wave is ten, then sixteen, then twenty-two — so it held on the first
+     * wave and gave way from the second.
+     *
+     * The cause is arithmetic rather than tuning: the reversal is clamped to 1 while every
+     * neighbour pushes with `shove`, and `fit` then scales the whole sum — so the one force
+     * keeping a crowd off the player is the weakest term in it, and its share shrinks as more
+     * arrive. Raising it to a body's own weight was tried and is not enough either: sixteen
+     * improved to 0.82 and twenty-four to 0.56, because a force is always best-effort against
+     * a crowd that can simply out-vote it.
+     *
+     * ⚠️ SO IT IS A POSITION, NOT A FORCE, and that is the shape the park already uses for the
+     * same problem — see slideAround in world.ts, which pushes a walker out of a wall rather
+     * than asking it nicely. The velocity is left alone for the same reason it is there: a
+     * minion held at contact keeps pressing and sliding around you instead of stopping dead
+     * and having to re-accelerate every frame.
+     *
+     * ⚠️ AND A DIRECTION IS NEEDED EVEN AT DEAD CENTRE, nudged by index exactly as two stacked
+     * neighbours are above — otherwise anything that reached the exact middle would have no way
+     * out and would stay there.
+     */
+    if (want) {
+      const outX = px - want.x
+      const outY = py - want.y
+      const gap = Math.hypot(outX, outY)
+      if (gap < tune.reach) {
+        const ox = gap > 1e-6 ? outX / gap : Math.cos(i * 2.399)
+        const oy = gap > 1e-6 ? outY / gap : Math.sin(i * 2.399)
+        px = want.x + ox * tune.reach
+        py = want.y + oy * tune.reach
+      }
+    }
+    out[i] = { ...m, x: px, y: py, vx, vy }
   }
   return out
 }
