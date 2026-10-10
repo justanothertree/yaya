@@ -13891,13 +13891,8 @@ a.cz-msg-author:focus-visible {
     grid-column: 1;
     min-width: 0;
   }
-  /* taller in a column of its own, where it is not competing with the keys for vertical room */
-  .inst-theatre-stage .viz-wrap.is-bare .viz-stage {
-    height: clamp(18rem, 52vh, 32rem);
-  }
-  .inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
-    height: clamp(30rem, 74vh, 46rem);
-  }
+  /* ⚠️ THE TWO STAGE HEIGHTS THAT USED TO SIT HERE WERE DEAD and have moved below the
+     unconditioned rules they were trying to beat — see the note there. */
 }
 /* collapsed: a quiet one-line row, not a section heading introducing an absence */
 .inst-wrap:not(.has-visuals) .inst-theatre {
@@ -13946,6 +13941,54 @@ a.cz-msg-author:focus-visible {
    from a shorter starting point, because the keys are still the reason you are on this page. */
 .inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
   height: clamp(26rem, 62vh, 40rem);
+}
+/**
+ * The embedded panel, on a screen wide enough to give it a column of its own.
+ *
+ * ⚠️ THIS BLOCK USED TO LIVE BESIDE THE GRID RULES ABOVE AND DID NOTHING. Both of its stage
+ * heights were written inside `@media (min-width: 78rem)` ABOVE the two unconditioned rules for
+ * the same selectors — equal specificity, so the later plain rules won and the wide-screen ones
+ * never applied at any width. Exactly the trap this file documents twice: "same specificity, so
+ * whichever comes later in the file wins — and an override written earlier silently lost." Found
+ * with whoSets(), which lists every rule that sets a property and is the only quick way to catch
+ * this.
+ *
+ * ⚠️ AND THE HEIGHT THE PANEL ITSELF GETS IS A CONTAINER PROBLEM SOLVED WITH A VIEWPORT QUERY,
+ * which is the bug being fixed. `.viz-controls` is 304px above 75rem because the tallest tab
+ * needs 297px AT 1280 WIDE — measured in the visualiser ROOM, where the panel is as wide as the
+ * page. Embedded here it is a 537px column, so every row wraps and the same content needs far
+ * more: measured at this width, Modes 592, Look 485, Motion 394, Sound 355 — against 303 of
+ * usable height. All four tabs scrolled, Look hiding 182px and Modes 289. Reported as the visuals
+ * window needing a scroll on the Look and Motion settings.
+ *
+ * ⚠️ SIZED TO LOOK RATHER THAN TO MODES, which inverts the reasoning of the room's own rule, and
+ * deliberately. That rule rejected "one outlier scrolls" in favour of fitting the tallest tab —
+ * right there, impossible here: the controls live INSIDE the stage, so fitting Modes' 592 would
+ * leave the picture under 200px tall, and the whole panel would stop fitting the screen. 486
+ * clears Look, Motion and Sound outright and leaves Modes the one tab that scrolls.
+ *
+ * ⚠️ THE STAGE GROWS TO PAY FOR IT, capped against the viewport rather than guessed: the panel is
+ * sticky about 68px down, its head is 28, so 100dvh - 140px is what can be on screen at once.
+ * The picture ends up LARGER than before this change (274px against 252), not smaller — the room
+ * it needed was in the dead rule all along.
+ */
+@media (min-width: 78rem) {
+  .inst-theatre-stage .viz-wrap.is-bare .viz-stage {
+    height: clamp(18rem, 52vh, 32rem);
+  }
+  .inst-theatre-stage .viz-wrap:not(.is-bare) .viz-stage {
+    height: min(46rem, 100dvh - 140px);
+  }
+  /* ⚠️ AND IT YIELDS TO A SHORT SCREEN, or the fix deletes the picture it was paying for.
+     A flat 486 was tried: at 1440x740 the stage is 600 and the canvas came out 112px tall,
+     which is the exact failure the note on the rule above describes — "pinning both states to
+     one height does not shrink the picture, it deletes it". Subtracting 410 keeps roughly 270px
+     of canvas at every height measured (274 at 900, 270 at 740, 341 at 1080) and still clears
+     Look outright from 900 up. Below that the panel caps and scrolls, which is what the room’s
+     own rule already says is the honest answer rather than a panel taller than the screen. */
+  .inst-theatre-stage .viz-controls {
+    height: min(486px, 100dvh - 410px);
+  }
 }
 @media (max-width: 40rem) {
   .inst-theatre-stage .viz-wrap.is-bare .viz-stage {
