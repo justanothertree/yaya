@@ -238,7 +238,10 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
           {RANGES.map((r) => (
             <button
               key={r.key}
-              className="btn btn-ghost"
+              /* inv-pick: the two picker rows this chart owns, named so the touch-target rule in
+                 index.css can reach them without also raising every ghost button in the room —
+                 most of which only exist behind an account and cannot be measured from here */
+              className="btn btn-ghost inv-pick"
               onClick={() => {
                 setRange(r.key)
                 setHover(null)
@@ -417,7 +420,7 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
         {LINES.map((l) => (
           <button
             key={l.key}
-            className="btn btn-ghost"
+            className="btn btn-ghost inv-pick"
             onClick={() => setShow((s) => ({ ...s, [l.key]: !s[l.key] }))}
             aria-pressed={show[l.key]}
             title={`${l.hint} — tap to ${show[l.key] ? 'hide' : 'show'}`}

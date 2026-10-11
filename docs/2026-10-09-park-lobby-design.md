@@ -167,8 +167,8 @@ and calling a boss become scene changes instead of local ones.
 2. **The relay's owner check.** The one server-side piece. Until it lands, step 1 is friends-only
    and says so.
 3. ~~**Waves and boss in the scene.**~~ ⚠️ **WRONG ON BOTH HALVES — see below.**
-4. **Doors.** ✅ BUILT. Needs 1 and 2 — not the old step 3, which was wrong. The payoff: a
-   shared world you can walk between.
+4. **Doors.** ✅ BUILT AND VERIFIED on two accounts, 9 Oct 2026. Needed 1 and 2 — not the old
+   step 3, which was wrong. The payoff, and it landed: a shared world you can walk between.
 5. **Shared waves.** Needs a design that answers drift. Not started, and deliberately not
    sketched here — see below.
 
@@ -222,12 +222,19 @@ path that does not need an account. `doorMeans` is pinned by six tests in `room.
 the bug it replaces and the subtler "hosting something is hosting this" bug were reintroduced once
 each and watched go red.
 
-**Not verified, and only two signed-in accounts can do it**: a guest's ask reaching a host, the
-host moving the room, and everybody following. The host branch calls `open_park_room`, which needs
-a session, so the workbench cannot reach it at all — `#dev-park` grants nothing on purpose. The
-stub relay forwards unknown message types with `from` attached, so `door` rides over it for free,
-but the branch that would send one is unreachable without a room.
+**✅ VERIFIED ON TWO REAL ACCOUNTS, 9 Oct 2026**, by Evan on evancook.dev after the relay deploy:
+a guest walking into a door asks, the host moves the room, and both land in the new map. That is
+the half nothing here could reach — the host branch calls `open_park_room`, which needs a session,
+so `#dev-park` cannot get near it (it grants nothing on purpose) and the stub relay has a room to
+forward `door` over but no client able to send one.
 
-⚠️ **And the relay must be redeployed.** The site deploys on push; `server/ws-server.js` does not.
-Until it is, a guest's ask is dropped by the `default` case and doors in somebody else's park do
-nothing — which is the same as today, not worse.
+⚠️ **WHAT THAT DOES AND DOES NOT COVER.** The report is that it worked, which settles the path:
+ask → host → `scene` → everybody. It is not a reading of the guest's copy ("Asked the host to open
+that door"), of a dangling door's refusal, or of what two guests asking at once looks like. Those
+are still only pinned by `doorMeans`' tests and the solo walk, which is worth knowing before
+treating the three-way branch as proven in every corner.
+
+⚠️ **And the relay had to be redeployed**, which it now has been. The site deploys on push;
+`server/ws-server.js` does not — before that deploy a guest's ask was dropped by the `default` case
+and doors in somebody else's park did nothing, which was the same as before the feature rather
+than worse. Any future wire message has the same two-step shape: push, then deploy the relay.

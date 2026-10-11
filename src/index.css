@@ -15129,19 +15129,31 @@ a.cz-msg-author:focus-visible {
  * measurement lies more often than code does, and a sweep that navigates by hash is exactly where
  * it lies. These two were checked twice and are real.
  *
- * ⚠️ 24 RATHER THAN 36, as in the investments block below and for a related reason: these are
- * dense data views — a list of names and a table toolbar — where the extra fourteen pixels a row
- * would change the rhythm of the thing rather than just the target. 24 clears the bar and moves
- * each row by two or three pixels. 36 is there if the rooms turn out to want it.
+ * ⚠️ 36 RATHER THAN THE 24 THESE SHIPPED AT, because the fear behind the 24 turned out to be
+ * measurable and wrong. Both rooms are dense data views — a list of board names, a table toolbar —
+ * so the worry was that fourteen more pixels a row would change the rhythm of the thing rather
+ * than just the target, and 24 was taken as the version that provably moves nothing.
+ *
+ * ⚠️ MEASURED AT 375 WITH THE DECLARATIONS INJECTED, both rooms, before changing the file. The
+ * Circuit's names grew 24 → 36 and the GAP BETWEEN THE ROWS DID NOT MOVE — 67px either way,
+ * because each name sits in a cell already taller than 36 and simply centres in it. Ratings cost
+ * 20px of page height in total (1153 → 1173) and nothing else: the sort row stays on one line at
+ * the same four widths, the table measures 327 wide both ways, and the chart toggle in the table
+ * head widens 26.6 → 36 without adding a column. No sideways scroll and nothing past the right
+ * edge in either room.
+ *
+ * So 36 here is the same number the rest of the site uses, rather than the floor an outside bar
+ * happens to set. ⚠️ THE 24 NEXT DOOR IN THE INVESTMENTS BLOCK IS NOT THE SAME CASE and stays —
+ * what could not be measured there is the room behind the account, not the rhythm of a row.
  */
 @media (max-width: 700px), (pointer: coarse) {
   #circuit .cz-board-name {
-    min-height: 24px;
+    min-height: 36px;
   }
   #ratings .btn,
   #ratings th button {
-    min-height: 24px;
-    min-width: 24px;
+    min-height: 36px;
+    min-width: 36px;
   }
 }
 
@@ -15165,6 +15177,27 @@ a.cz-msg-author:focus-visible {
 @media (max-width: 700px), (pointer: coarse) {
   #investments .btn-ghost {
     min-height: 24px;
+  }
+}
+
+/**
+ * And the seven that WERE measured get the full 36.
+ *
+ * ⚠️ THE CLASS IS THE HONEST HALF OF THE RULE ABOVE. `#investments .btn-ghost` is ten buttons in
+ * the markup and seven of them on screen signed out — Week / Month / Year / All, then Worth /
+ * Net in / Promised — all of which belong to PortfolioChart. The other three are Cancel-and-Edit
+ * buttons in forms that only open behind an account, which is the whole reason that rule stopped
+ * at 24. Naming the pickers `inv-pick` lets the measured ones have the site's usual size while
+ * the unmeasured ones keep the floor; nothing has to be assumed about a layout nobody has seen.
+ *
+ * ⚠️ MEASURED AT 375 SIGNED OUT with the declaration injected: 24 → 36 on all seven, the range
+ * row did not move at all (its height is absorbed by the flex header it sits in), the four ranges
+ * stayed on one line at the same widths, the page grew 24px in total across the two rows, and
+ * nothing crossed the right edge or scrolled sideways.
+ */
+@media (max-width: 700px), (pointer: coarse) {
+  #investments .inv-pick {
+    min-height: 36px;
   }
 }
 
