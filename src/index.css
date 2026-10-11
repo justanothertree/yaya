@@ -12267,6 +12267,24 @@ a.cz-msg-author:focus-visible {
   overflow-y: auto;
 }
 
+/**
+ * ▲ ▼ ⤵ ✕ on a layer row — move, move, pour into the one below, delete.
+ *
+ * ⚠️ 24px WIDE EVEN WITH A MOUSE, which is the one place the "on a mouse the compactness is the
+ * point" note further down this file does not hold. Measured at 1440 these were 16, 16, 13 and
+ * 14 pixels WIDE, and at 900 they were 15, 15, 12 and 13 — the smallest controls on the site, in
+ * the only row where the neighbour of a destructive button is another destructive button.
+ *
+ * ⚠️ AND THEY FAIL WCAG 2.5.8 OUTRIGHT HERE, with no exception to appeal to. The spacing
+ * exception saves an isolated small target; these are four glyphs 2px apart, so the 24px circles
+ * centred on them OVERLAP — measured clearances of -3.9, -4.0, -5.5 and -5.0. At 24 wide they
+ * clear the criterion on size and the question of spacing does not arise.
+ *
+ * ⚠️ AND IT COSTS NOTHING MEASURABLE. Only the selected layer's pill carries these, so the whole
+ * change is one pill: 172px to 212px at 900, 183 to 220 at 1440, in a wrap row with 264px of
+ * slack beside it. No wrap, no sideways scroll, no page height either width, checked with four
+ * layers open as well as one.
+ */
 .paint-layer-move {
   appearance: none;
   border: 0;
@@ -12274,6 +12292,7 @@ a.cz-msg-author:focus-visible {
   color: var(--muted);
   cursor: pointer;
   padding: 0 2px;
+  min-width: 24px;
   font-size: 0.68rem;
   line-height: 1;
 }
@@ -14442,7 +14461,16 @@ a.cz-msg-author:focus-visible {
     animation: about-in 0.28s ease-out;
   }
 }
-@media (max-width: 40rem) {
+/* ⚠️ A COARSE POINTER AT ANY WIDTH, not just a narrow one. This and the two paint blocks below
+   all say "finger" or "thumb" in their own comments and all gated on `max-width: 40rem` alone,
+   so a tablet — coarse pointer, 820px — got the mouse sizes. Three other blocks in this file were
+   widened for exactly this reason; these were missed because they are written in rem rather than
+   the 700px the others used, so a search for the gate did not find them.
+   ⚠️ REASONED, NOT MEASURED, and that is the honest word for it: the Browser pane ties touch
+   emulation to a width under 768, so a coarse pointer at tablet width cannot be produced here.
+   What holds without a measurement is that a mouse layout cannot change — every declaration
+   inside is a minimum or a size that only a coarse pointer now reaches. */
+@media (max-width: 40rem), (pointer: coarse) {
   /* the chips are the control here, so they get a finger-sized target */
   .skill-chip {
     min-height: 36px;
@@ -14536,7 +14564,7 @@ a.cz-msg-author:focus-visible {
   padding: 0.2rem 0;
   font-size: 0.85rem;
 }
-@media (max-width: 40rem) {
+@media (max-width: 40rem), (pointer: coarse) {
   /* pressable with a thumb, like every other control in the editor */
   .plook {
     min-height: 40px;
@@ -14553,10 +14581,19 @@ a.cz-msg-author:focus-visible {
    fingertip contact patch is around 40px; a 13px target is not a small button, it is a button you
    press by accident or not at all.
 
-   ⚠️ Only below 40rem. On a mouse these sizes are fine and the compactness is the point — a
-   swatch row that fits fourteen colours on one line is easier to scan than one that wraps three
-   times. This is not a redesign, it is the same controls at a size a hand can use. */
-@media (max-width: 40rem) {
+   ⚠️ Only below 40rem OR ON A COARSE POINTER. On a mouse these sizes are fine and the
+   compactness is the point — a swatch row that fits fourteen colours on one line is easier to
+   scan than one that wraps three times. This is not a redesign, it is the same controls at a size
+   a hand can use.
+
+   ⚠️ THE GATE USED TO BE WIDTH ALONE, which did not match the sentence above it: "on a mouse" is
+   a statement about the POINTER, and a tablet is a 820px screen with a thumb on it. So this whole
+   block — the 36px swatches, the 40px layer pills, the 34px glyph buttons, the primary action row
+   — simply did not exist on an iPad, which got 13px-wide layer controls and a 22px palette. The
+   one declaration here that is a size rather than a minimum is the swatch, so a coarse tablet now
+   wraps the palette into more rows than a mouse does; that is the intended trade and it is the
+   only layout difference the widening can cause. */
+@media (max-width: 40rem), (pointer: coarse) {
   .paint-swatches {
     gap: 6px;
   }
@@ -15201,7 +15238,33 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-/* the ⓘ on each investments account — inline padding makes it 20px tall, and a phone needs
+/**
+ * The same ⓘ with a mouse, which is where it was actually 20px tall.
+ *
+ * ⚠️ FOUND ON THE ONE SURFACE THAT NEEDS AN ACCOUNT, through `#dev-investments` and
+ * `mobileAudit`'s new scope argument. The block below gives this button 36px on a phone or any
+ * coarse pointer and nothing at all otherwise — so on a laptop, at every width over 700, the
+ * seven ⓘ on a member's own card measured 34x20. That is the view Evan and his family are mostly
+ * looking at, and it had never been measured because the room does not open without a session.
+ *
+ * ⚠️ AND IT PASSED WCAG 2.5.8 ANYWAY, which is worth writing down rather than quietly claiming a
+ * failure. The success criterion has a SPACING exception: an undersized target is conformant if a
+ * 24px circle centred on it touches no other target's circle. Measured at 820, the nearest other
+ * control to one of these is 384px away — they are one per card, in their own row. So this is a
+ * comfort change and not a conformance one, and the 24 is the number the rest of this file uses
+ * rather than a bar being cleared.
+ *
+ * ⚠️ 24 AND NOT 36, because 36 is not free here the way it was in the three rooms above: with a
+ * mouse these sit in a baseline-aligned flex row 27px tall, so 24 is absorbed almost entirely —
+ * measured across seven cards, the whole bench grew 11px — while 36 would add nine per row to a
+ * layout nobody has seen signed in. The coarse rule below still gives a thumb the full 36.
+ */
+.inv-info {
+  min-height: 24px;
+  min-width: 24px;
+}
+
+/* and 36 for a thumb — inline padding makes it 20px tall, and a phone needs
    more than that to aim at. Min-height rather than padding, so the look it was given stands.
 
    ⚠️ AND A COARSE POINTER AT ANY WIDTH, which is the last of the three blocks that were gated on

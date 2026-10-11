@@ -2133,12 +2133,24 @@ export function PaintRoom() {
   const removeLayer = (i: number) => {
     if (layers <= 1) return
     const count = strokes.filter((st) => (st.l ?? 0) === i).length
-    /* ⚠️ ASKS FIRST WHEN THERE IS SOMETHING TO LOSE, because undo cannot bring it back — it
-       steps back one stroke at a time rather than being a snapshot history, so a layer with forty
-       strokes on it is forty presses away even in principle. An empty layer goes without a
-       question. The question is asked HERE and not at the other end: the peer is being told what
-       happened, and asking them to approve a decision somebody already made is how you get two
-       different pictures, which is the thing this travels to prevent. */
+    /**
+     * ⚠️ ASKS FIRST WHEN THERE IS SOMETHING TO LOSE. An empty layer goes without a question.
+     *
+     * ⚠️ AND UNDO *CAN* BRING IT BACK — this comment said the opposite until today, and it had
+     * been wrong since `9230dab` ("undo remembers the picture, not just the last stroke", 15 Sep
+     * 2026) made the history a snapshot forty steps deep. It used to step back one stroke at a
+     * time, which is where "forty strokes is forty presses away even in principle" came from; a
+     * `Step` now carries the whole stroke array, the layer names and the background, and `restore`
+     * assigns them, so a deleted layer comes back in ONE press.
+     *
+     * The question stays anyway, and for a better reason than the one it had: undo is a different
+     * room's worth of attention away. Losing a layer you did not mean to lose is only cheap if
+     * you NOTICE, and the glyph that does it is 24px wide next to three others.
+     *
+     * The question is asked HERE and not at the other end: the peer is being told what happened,
+     * and asking them to approve a decision somebody already made is how you get two different
+     * pictures, which is the thing this travels to prevent.
+     */
     if (count && !window.confirm(`Delete ${nameOf(i)} and the ${count} strokes on it?`)) return
     mark(`removing ${nameOf(i)}`)
     setSel([])

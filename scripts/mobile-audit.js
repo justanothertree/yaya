@@ -39,6 +39,18 @@
  * which matters because "that button looks small" is an argument and "that button is 21px tall
  * on every room of the site" is not. 44 is the comfortable size most platforms name, and it is
  * reported separately as `snug` so it never gets confused with a failure.
+ *
+ * ⚠️ BUT 2.5.8 HAS A SPACING EXCEPTION AND `tooSmall` DOES NOT MODEL IT. An undersized target
+ * still conforms if a 24px circle centred on it touches no other target's circle — so a LONE
+ * small control passes the criterion while appearing in this list. The investments ⓘ is the
+ * worked example: 34×20 with a mouse, and 384px from the nearest other control, so raising it
+ * was a comfort decision and calling it a failure would have been wrong.
+ *
+ * It is not modelled because the alternative is worse in the direction that matters. A dense row
+ * of small buttons — a toolbar, a sort row, a picker strip — fails on spacing as well as size,
+ * which is every real finding this script has produced; adding the exception would buy a few
+ * fewer lines of report in exchange for the chance of hiding a 20px control nobody can hit. So
+ * read `tooSmall` as "measure the spacing before claiming a violation", not as a verdict.
  */
 
 const SPACING = 24
@@ -226,11 +238,33 @@ const hitBox = (el) => {
   return el
 }
 
-export function mobileAudit() {
+/**
+ * Measure the page, or one part of it.
+ *
+ * ⚠️ `root` IS HOW THE SIGNED-IN SURFACES GET MEASURED AT ALL. Half the site needs a session and
+ * the workbenches at `#dev-profile`, `#dev-admin`, `#dev-usage` and `#dev-investments` are the
+ * only way to see them — but each one renders INSIDE the home page, so a whole-document sweep of
+ * `#dev-investments` reports home's skill chips and navigation mixed in with the member card, and
+ * the signal is lost in a room that was already measured and is already correct.
+ *
+ * Pass the bench and the report is about the bench:
+ *   mobileAudit(document.querySelector('.dev-bench'))
+ *
+ * ⚠️ AND A WORKBENCH NEEDS A FULL RELOAD, not a hash change. `DEV_PREVIEW` in App.tsx is read at
+ * module scope, so arriving at `#dev-investments` by changing the hash renders plain home —
+ * `location.hash = '#dev-investments'; location.reload()`. The app then normalises the hash back
+ * to `#home`, which is why `room` below reports the scope rather than trusting the URL.
+ */
+export function mobileAudit(root = document) {
   const W = innerWidth
-  const targets = [...document.querySelectorAll(CONTROLS)].filter(shown)
+  const targets = [...root.querySelectorAll(CONTROLS)].filter(shown)
   const out = {
-    room: location.hash || '#home',
+    room:
+      root === document
+        ? location.hash || '#home'
+        : (root.className && typeof root.className === 'string'
+            ? '.' + root.className.split(' ')[0]
+            : root.tagName) + ' (scoped)',
     width: W,
     sideways: document.documentElement.scrollWidth - W,
     tooSmall: [],
@@ -279,7 +313,13 @@ export function mobileAudit() {
       keep(out.wordless, el, { name: label || '(nothing)', means: meaning.slice(0, 44) })
   }
 
-  for (const el of document.querySelectorAll('body *')) {
+  /* the element itself counts when it is a scope — a bench whose own box runs off the edge is
+     exactly the kind of thing this is for */
+  const inside =
+    root === document
+      ? [...document.querySelectorAll('body *')]
+      : [root, ...root.querySelectorAll('*')]
+  for (const el of inside) {
     if (!shown(el)) continue
     const r = el.getBoundingClientRect()
     const cs = getComputedStyle(el)

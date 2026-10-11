@@ -1956,7 +1956,10 @@ export default function App() {
            * workbench, not a back door.
            */}
           {import.meta.env.DEV && DEV_PREVIEW === 'usage' && (
-            <section className="card">
+            /* dev-bench: a handle for `mobileAudit(document.querySelector('.dev-bench'))`. Every
+               workbench renders inside home, so a whole-page sweep buries the surface being
+               checked under a room that was measured long ago. No styles — it is a scope. */
+            <section className="card dev-bench">
               <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
                 dev preview — #dev-usage
               </p>
@@ -1968,7 +1971,7 @@ export default function App() {
             enforce `is_admin()` server-side, so this renders empty rather than privileged data
             unless the viewer really is an admin — it's a layout workbench, not an access grant. */}
           {import.meta.env.DEV && DEV_PREVIEW === 'admin' && (
-            <section className="card">
+            <section className="card dev-bench">
               <p className="muted" style={{ marginTop: 0, fontSize: '0.8rem' }}>
                 dev preview — #dev-admin
               </p>
@@ -1981,9 +1984,11 @@ export default function App() {
             customiser needs it to be YOUR page on top of that). Same workbench reasoning as
             #dev-admin — invented people, real components. */}
           {ProfileLookPreview && DEV_PREVIEW === 'profile' && (
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <ProfileLookPreview />
-            </Suspense>
+            <div className="dev-bench">
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <ProfileLookPreview />
+              </Suspense>
+            </div>
           )}
           {/* The family member's own card. Same workbench reasoning as #dev-profile, and the same
             privacy rule: every person in it is invented. */}
@@ -2002,9 +2007,11 @@ export default function App() {
             </Suspense>
           )}
           {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <InvestmentsMemberPreview />
-            </Suspense>
+            <div className="dev-bench">
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <InvestmentsMemberPreview />
+              </Suspense>
+            </div>
           )}
           {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
             except Circuit (still separate, see the next step) and invite (never canvas-capable).
