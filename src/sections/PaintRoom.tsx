@@ -4673,8 +4673,12 @@ export function PaintRoom() {
             </div>
           )}
         </span>
+        {/* ⚠️ paint-keep: the one button in this room that has to be FOUND rather than looked
+            for. Asked for in these words — "the keep button is the smallest button and i want
+            everyone to save anything they make" — and it was: 64x21 at 1440, the smallest
+            labelled control in a row of six. See the rule in index.css for the sizes. */}
         <button
-          className="btn"
+          className="btn paint-keep"
           disabled={!strokes.length}
           onClick={() => {
             const name = window.prompt('Name this picture', docName)?.trim() ?? ''

@@ -10590,6 +10590,39 @@ a.cz-msg-author:focus-visible {
 .paint-shape-row .btn {
   padding: 2px 10px;
 }
+/**
+ * ⬇ Keep, which is the only thing in this row somebody has to find on their own.
+ *
+ * ⚠️ IT WAS THE SMALLEST BUTTON IN THE ROOM. Measured at 1440 on a fresh arrival: 64x21, against
+ * Gallery at 82, Make a minion at 134 and Download at 94 — the row's own `padding: 2px 10px`
+ * above makes every one of them 21px tall, and the shortest label therefore made the narrowest
+ * button. So the control that decides whether a drawing still exists tomorrow was the hardest one
+ * in the row to hit, by nothing more than the length of its word.
+ *
+ * ⚠️ SIZE AND NOTHING ELSE, and that is a correction rather than a preference. The first version
+ * of this rule gave it the accent as a fill, on the reasoning that the room's one primary action
+ * should be the one filled button in a row of outlined ones. Read back from the browser, every
+ * button in the row was ALREADY `rgb(34, 197, 94)` — `.btn` itself is accent-filled here — so the
+ * colour distinguished nothing, and the matching `:disabled` override made Keep the only hollow
+ * control in the row, which read as the broken one rather than the important one. `.btn:disabled`
+ * already says unavailable with `opacity: 0.6`, the same way it does everywhere else.
+ *
+ * So what is left is the thing that was actually wrong: it is bigger than its neighbours, and its
+ * label is bigger. Keeping is what you do to the thing you just drew — everything else in this row
+ * either opens something (Gallery, Tools, fullscreen) or is a rarer job (Download, Make a minion).
+ * The room's session already survives a reload on its own, so what this button buys is not "do not
+ * lose it", it is the gallery and the account it syncs to.
+ *
+ * ⚠️ 34 HERE AND 46 ON A THUMB, both one notch above its neighbours rather than two. The coarse
+ * block further down gives every button in this row 40px, so a flat 40 here would make Keep
+ * exactly as prominent as Download — the point is that it is visibly the biggest, at both ends.
+ */
+.paint-shape-row .paint-keep {
+  padding: 4px 16px;
+  min-height: 34px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
 /* short, like the other sliders in this room — see the note on .paint-row's ranges */
 .paint-replay-speed input[type='range'] {
   width: 5rem;
@@ -14628,6 +14661,11 @@ a.cz-msg-author:focus-visible {
      padding, so the minimum has to be stated here. */
   .paint-shape-row .btn {
     min-height: 40px;
+  }
+  /* ⚠️ a notch above the row even here — see the .paint-keep note for why it is the one filled
+     control in this room, and the measurement that made it one */
+  .paint-shape-row .paint-keep {
+    min-height: 46px;
   }
   /* the dismiss on the "also drawing here" notice — 14×18 is a miss, not a button */
   .also-together-x {
