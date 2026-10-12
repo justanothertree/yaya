@@ -31,10 +31,24 @@ export type Goal = {
   /** null for a tick-box; a number for a quantity, which always has a unit */
   target: number | null
   unit: string | null
+  /** what you have told it, for a goal you move by hand */
   progress: number
   done: boolean
   note: string | null
   sort: number
+  /**
+   * What the record should count towards this goal — one activity, or one category, or neither.
+   *
+   * ⚠️ NEITHER IS THE NORMAL CASE and must stay cheap: every goal that existed before step 3 has
+   * both of these null and goes on being moved by hand. A source is an upgrade to a goal, not the
+   * shape of one.
+   *
+   * ⚠️ AND AT MOST ONE OF THEM, enforced by a check constraint rather than by a rule up here. A
+   * goal counting an activity AND a category would need a story about which wins, and a story
+   * nobody can see is a number nobody can explain.
+   */
+  activity: string | null
+  cat: 'locked' | 'free' | 'life' | null
 }
 
 /** Inclusive `from`, EXCLUSIVE `to`, both local ISO dates. Null for 'life', which has no window. */
@@ -155,6 +169,27 @@ export function inScope(g: Goal, scope: Scope, on: string): boolean {
   return !!w && !!g.anchor && g.anchor >= w.from && g.anchor < w.to
 }
 
+/** Whether the record answers for this goal, rather than you doing. */
+export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
+
+/**
+ * How much has actually been done — the one place that decides WHICH number counts.
+ *
+ * ⚠️ IT IS ONE FUNCTION BECAUSE IT WAS NEARLY THREE. `share`, `finished` and the room's own
+ * readout each need "how far along is this", and a derived goal takes that from the tally while a
+ * hand-moved one takes it from its own column. Three places asking that question is three chances
+ * for a bar, a tick and a number to disagree about the same goal on the same screen.
+ *
+ * ⚠️ A MISSING TALLY IS ZERO, NOT THE STORED PROGRESS. A derived goal's `progress` column is
+ * never written — the server does not touch it and the room offers no way to — so falling back to
+ * it would show a stale or empty number as though it were a reading. Zero while the tally loads
+ * is honest; the stored value would be a lie with a plausible shape.
+ */
+export function reached(g: Goal, tally?: Record<string, number>): number {
+  if (derived(g)) return tally?.[g.id] ?? 0
+  return g.progress
+}
+
 /**
  * How far along a goal is, 0 to 1 — or null when there is nothing to measure.
  *
@@ -162,16 +197,53 @@ export function inScope(g: Goal, scope: Scope, on: string): boolean {
  * 0% or 100% would invite a progress bar onto something that has no middle. Null is the honest
  * answer and the caller draws a box instead of a bar.
  */
-export function share(g: Goal): number | null {
+export function share(g: Goal, tally?: Record<string, number>): number | null {
   if (g.target == null || !(g.target > 0)) return null
-  return Math.max(0, Math.min(1, g.progress / g.target))
+  return Math.max(0, Math.min(1, reached(g, tally) / g.target))
 }
 
 /** Whether a goal counts as finished, by either of the two ways it can be. */
-export const finished = (g: Goal): boolean => {
+export const finished = (g: Goal, tally?: Record<string, number>): boolean => {
   if (g.done) return true
-  const s = share(g)
+  const s = share(g, tally)
   return s != null && s >= 1
+}
+
+/**
+ * What to ask the server for, for the goals on screen.
+ *
+ * ⚠️ THE WINDOWS ARE WORKED OUT HERE AND SENT, which is the whole reason this function exists.
+ * Postgres's `date_trunc('week', …)` starts a week on MONDAY and this site starts it on Sunday —
+ * so a tally that computed its own windows would disagree with the view above it for one day in
+ * seven, forever. The server is given ranges and does arithmetic it cannot have an opinion about.
+ */
+export function tallyAsks(
+  goals: Goal[],
+  on: string,
+): Array<{ id: string; from: string; to: string }> {
+  const out: Array<{ id: string; from: string; to: string }> = []
+  for (const g of goals) {
+    if (!derived(g)) continue
+    const w = goalWindow(g, on)
+    /* ⚠️ a lifetime goal has no window, so a source on one has nothing to add up over. It is
+       allowed to exist — it just counts by hand, like it did before. */
+    if (!w) continue
+    out.push({ id: g.id, from: dayStartISO(w.from), to: dayStartISO(w.to) })
+  }
+  return out
+}
+
+/**
+ * Local midnight on a date, as an instant the server can read.
+ *
+ * ⚠️ BUILT FROM LOCAL PARTS, NEVER PARSED. `new Date('2026-10-12')` is UTC midnight, which is the
+ * 11th at 8pm in New York — so a day sent that way starts four hours early and a late-evening
+ * session is counted against the wrong date. The same trap circuit/dates.ts opens with a warning
+ * about, and the reason record.ts builds its day bounds the same way.
+ */
+const dayStartISO = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0).toISOString()
 }
 
 /**

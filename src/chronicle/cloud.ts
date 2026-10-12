@@ -35,6 +35,8 @@ type Row = {
   done: boolean
   note: string | null
   sort: number | null
+  activity: string | null
+  cat: Goal['cat']
 }
 
 /**
@@ -61,6 +63,8 @@ const read = (r: Row): Goal => ({
   done: !!r.done,
   note: r.note ?? null,
   sort: num(r.sort),
+  activity: r.activity ?? null,
+  cat: r.cat ?? null,
 })
 
 /** Every goal of mine. Empty rather than throwing, so a dead network is a quiet room. */
@@ -80,6 +84,9 @@ export type NewGoal = {
   unit: string | null
   note?: string | null
   sort?: number
+  /** one of these at most — see Goal.activity, and the check constraint behind it */
+  activity?: string | null
+  cat?: Goal['cat']
 }
 
 /**
@@ -101,6 +108,8 @@ export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: stri
     p_unit: g.unit,
     p_note: g.note ?? null,
     p_sort: g.sort ?? 0,
+    p_activity: g.activity ?? null,
+    p_cat: g.cat ?? null,
   })
   if (error) return { why: error.message || 'that did not save' }
   /**
@@ -229,4 +238,28 @@ export async function addEntry(
 export async function dropEntry(id: string): Promise<boolean> {
   const { error } = await getSupabaseClient().rpc('chronicle_entry_drop', { p_id: id })
   return !error
+}
+
+/**
+ * How much the record says has been done, for the derived goals on screen.
+ *
+ * ⚠️ ONE CALL FOR ALL OF THEM, because a window's worth of goals is a handful and a round trip
+ * each would make the room's load time a function of how much somebody is aiming at. The server
+ * caps the batch at 200.
+ *
+ * ⚠️ AND THE ASKS CARRY WINDOWS, NOT SOURCES. What to count comes off the goal's own row inside
+ * the function — see its note. A caller that could name an activity could name somebody else's.
+ */
+export async function tally(
+  asks: Array<{ id: string; from: string; to: string }>,
+): Promise<Record<string, number>> {
+  if (!asks.length) return {}
+  const { data, error } = await getSupabaseClient().rpc('chronicle_tally', { p_asks: asks })
+  if (error || !data || typeof data !== 'object') return {}
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    /* ⚠️ numeric arrives as a string — see the note on num above */
+    out[k] = num(v as number | string | null)
+  }
+  return out
 }

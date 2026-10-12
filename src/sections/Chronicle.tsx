@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   finished,
+  derived,
   inScope,
   lastDay,
+  reached,
   repeats,
+  tallyAsks,
   share,
   today as todayISO,
   tomorrow as tomorrowISO,
@@ -11,7 +14,8 @@ import {
   type Goal,
   type Scope,
 } from '../chronicle/goal'
-import { dropGoal, myGoals, saveGoal, setProgress } from '../chronicle/cloud'
+import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '../chronicle/cloud'
+import { CATS, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 
 /**
@@ -88,13 +92,39 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const [every, setEvery] = useState(false)
   const [say, setSay] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /**
+   * What the record says, for the goals that have a source.
+   *
+   * ⚠️ FETCHED SEPARATELY RATHER THAN FOLDED INTO THE GOAL LIST, because the two answer different
+   * questions and change at different times: the list changes when you edit a goal, the tally
+   * changes every time the timer runs. Keeping them apart means stopping a timer refreshes the
+   * numbers without re-reading every goal.
+   */
+  const [got, setGot] = useState<Record<string, number>>({})
+  const [acts, setActs] = useState<Activity[]>([])
+  const [src, setSrc] = useState('')
 
   const load = useCallback(async () => {
     if (!authed) {
       setGoals([])
       return
     }
-    setGoals(await myGoals())
+    const [mine, a] = await Promise.all([myGoals(), myActivities()])
+    setGoals(mine)
+    setActs(a)
+    /**
+     * ⚠️ EVERY DERIVED GOAL, NOT JUST THE ONES ON SCREEN. Asking per view would mean the counts on
+     * the window strip were right for the window you were looking at and zero everywhere else —
+     * and the strip's whole job is to say where the work is before you go there.
+     */
+    const asks = [
+      ...new Map(
+        [todayISO(), tomorrowISO()]
+          .flatMap((d) => tallyAsks(mine, d))
+          .map((x) => [x.id + x.from, x]),
+      ).values(),
+    ]
+    setGot(asks.length ? await tally(asks) : {})
   }, [authed])
 
   useEffect(() => {
@@ -117,10 +147,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     const out: Record<string, number> = {}
     for (const x of VIEWS) {
       const when = x.when()
-      out[x.id] = (goals ?? []).filter((g) => inScope(g, x.scope, when) && !finished(g)).length
+      out[x.id] = (goals ?? []).filter((g) => inScope(g, x.scope, when) && !finished(g, got)).length
     }
     return out
-  }, [goals])
+  }, [goals, got])
 
   const add = async () => {
     const t = title.trim()
@@ -136,6 +166,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       anchor: v.scope === 'life' || every ? null : (win?.from ?? null),
       every: v.scope === 'life' ? null : every ? 1 : null,
       target: hasTarget ? n : null,
+      /* ⚠️ a source needs a target to count towards, which the table also insists on — a derived
+         tick-box would tick itself the moment you did a minute of anything */
+      activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
+      cat: hasTarget && src.startsWith('c:') ? (src.slice(2) as Activity['cat']) : null,
       /* ⚠️ a target always carries a unit, or the number means nothing in six months */
       unit: hasTarget ? unit.trim() || 'done' : null,
     })
@@ -149,6 +183,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setTarget('')
     setUnit('')
     setEvery(false)
+    setSrc('')
     setAdding(false)
     await load()
   }
@@ -248,8 +283,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         <>
           <ul className="chron-list">
             {mine.map((g) => {
-              const s = share(g)
-              const done = finished(g)
+              const s = share(g, got)
+              const done = finished(g, got)
+              const auto = derived(g)
+              const have = reached(g, got)
+              const from = g.activity
+                ? (acts.find((a) => a.id === g.activity)?.name ?? 'an activity')
+                : g.cat
+                  ? (CATS.find(([c]) => c === g.cat)?.[1] ?? g.cat)
+                  : null
               return (
                 <li key={g.id} className={'chron-goal' + (done ? ' is-done' : '')}>
                   <div className="chron-goal-top">
@@ -262,6 +304,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                       <span className="chron-name">{g.title}</span>
                     )}
                     {repeats(g) ? <span className="chron-chip">repeats</span> : null}
+                    {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
+                        moves on its own and does not say why reads as a bug rather than a feature */}
+                    {from ? <span className="chron-chip is-auto">from {from}</span> : null}
                     <button
                       className="btn btn-ghost chron-x"
                       onClick={() => void remove(g)}
@@ -277,14 +322,24 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         <i style={{ width: `${Math.round(s * 100)}%` }} />
                       </div>
                       <span className="chron-num">
-                        {g.progress} / {g.target} {g.unit}
+                        {/* ⚠️ rounded for reading, and the raw value is never shown: minutes come
+                            back as a fraction of a minute from the overlap sum, and "29.983 / 30"
+                            is a number that looks broken rather than nearly done */}
+                        {auto ? Math.round(have) : have} / {g.target} {g.unit}
                       </span>
-                      <button className="btn btn-ghost" onClick={() => void bump(g, -1)}>
-                        −
-                      </button>
-                      <button className="btn btn-ghost" onClick={() => void bump(g, 1)}>
-                        +
-                      </button>
+                      {/* ⚠️ NO PLUS AND MINUS ON A DERIVED GOAL. There is nothing to press — the
+                          record is the number — and buttons that looked like they moved it would
+                          either lie or fight the next tally. */}
+                      {!auto && (
+                        <>
+                          <button className="btn btn-ghost" onClick={() => void bump(g, -1)}>
+                            −
+                          </button>
+                          <button className="btn btn-ghost" onClick={() => void bump(g, 1)}>
+                            +
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </li>
@@ -323,6 +378,36 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                   onChange={(e) => setUnit(e.target.value)}
                 />
               </label>
+              {/**
+               * ⚠️ ONLY WHEN THERE IS A NUMBER TO COUNT, and only when the window can be added up.
+               * A source on a tick-box has nothing to count towards, and a source on a lifetime
+               * goal has no window to count over — both are refused one layer down, so offering
+               * them here would be offering a thing that cannot be saved.
+               */}
+              {target.trim() !== '' && v.scope !== 'life' && acts.length > 0 && (
+                <label className="chron-src">
+                  <span className="sr-only">Counted from what?</span>
+                  <select value={src} onChange={(e) => setSrc(e.target.value)}>
+                    <option value="">counted by hand</option>
+                    <optgroup label="from one activity">
+                      {acts
+                        .filter((a) => !a.archived)
+                        .map((a) => (
+                          <option key={a.id} value={'a:' + a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="from a whole category">
+                      {CATS.map(([c, label]) => (
+                        <option key={c} value={'c:' + c}>
+                          {label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </label>
+              )}
               {v.scope !== 'life' && (
                 <label className="chron-rep">
                   <input

@@ -1,6 +1,6 @@
 # Chronicle — a design, before any of it is built
 
-**Status: ✅ STEPS 1 AND 2 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
+**Status: ✅ STEPS 1, 2 AND 3 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
 `chronicle_goal_window_excludes_life`. The client half is in `src/chronicle/` and
 `src/sections/Chronicle.tsx`. Steps 2–5 in §4 are not started.
 
@@ -120,8 +120,7 @@ two: a goal that reads the time you actually spent is the thing a to-do list can
    goals you can add, tick and count up by hand. No timer, no entries. Shippable alone and it is the
    half that was missing from the HTML app.
 2. ~~**The record.**~~ ✅ APPLIED 12 Oct 2026 — see §6.
-3. **Derived progress.** Goals that read minutes out of the record instead of being told. Needs 1
-   and 2, and is the payoff for having both.
+3. ~~**Derived progress.**~~ ✅ APPLIED 12 Oct 2026 — see §6b.
 4. **Routines and planning.** The HTML app's routines, and `planned` as intention-vs-actual.
 5. **Only then**, the question of whether the Circuit wants to sit on this.
 
@@ -335,6 +334,49 @@ never stops; a `check (ended_at is null or ended_at > started_at)` and an index 
 `(owner, started_at)` are the whole of it.
 
 ---
+
+## 6b · Step 3 — ✅ APPLIED: goals that read the record
+
+**Migrations `chronicle_goal_sources`, `chronicle_tally`, `chronicle_goal_save_takes_a_source`.**
+
+A goal can now name **one activity, or one category, or neither** — neither being every goal that
+existed before today, moved by hand. So `30 min drawing, daily` counts itself.
+
+⚠️ **THE WINDOW IS WORKED OUT IN THE CLIENT AND SENT TO THE SERVER**, and this is the decision the
+whole step turns on. Postgres's `date_trunc('week', …)` starts a week on **Monday**; this site
+starts it on **Sunday**, because the Circuit's calendar does and `goal.ts` matches it. A tally that
+computed its own windows would put a second, disagreeing answer to "which days are this week" one
+layer below the first, and they would differ for one day in seven forever. `chronicle_tally` takes
+ranges and does only arithmetic it cannot have an opinion about.
+
+⚠️ **BUT WHAT TO COUNT IS READ FROM THE GOAL'S OWN ROW, NEVER FROM THE REQUEST.** A caller able to
+name an activity is a caller able to name somebody else's. Proven: passing a different activity id
+in the request changes the answer not at all.
+
+⚠️ **AND THE OVERLAP SUM NOW EXISTS TWICE** — `overlapMs` in `record.ts` and the `least/greatest`
+sum inside `chronicle_tally`. That is a real duplication, taken knowingly: the alternative is
+sending a year of entries to the client to add up one number for a yearly goal. What makes it safe
+is that the probe asserts the two agree where it matters — a span crossing midnight gives 150
+minutes to today and 60 to yesterday, summing to exactly the 210 that was logged.
+
+**Three constraints keep the shape honest**, all proven to refuse: at most one source, a source
+requires a target (a derived tick-box would tick itself the moment you did a minute of anything),
+and an activity that is not yours is dropped to null rather than stored. `on delete set null` on
+the activity reference, so tidying an activity list turns a goal back into a hand-moved one rather
+than deleting the intention.
+
+⚠️ **AND THE ONE MISTAKE WORTH RECORDING**: the columns were added in a migration with no way to
+set them. `chronicle_goal_save` still took nine arguments, so nothing could aim a goal at anything
+— found because the deny-all refused my probe's direct `update`, which was the table telling me
+the door was missing. Fixed by **dropping and recreating** the function rather than replacing it:
+`create or replace` with two more parameters makes an _overload_, leaving the nine-argument version
+alive beside it, and two functions of one name with different ideas of what a goal is is worse
+than a migration that has to be ordered.
+
+The client side refuses to lie while the tally is in flight: a derived goal's `progress` column is
+never written, so `reached()` returns **zero** rather than that column when the tally is missing.
+A stale number wearing the authority of a reading is the failure that would have survived review,
+because the fallback reads as defensive. It is perturbed in and turns a test red.
 
 ## 7 · What is deliberately not being ported
 

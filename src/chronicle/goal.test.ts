@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  derived,
   finished,
   goalWindow,
   inScope,
   lastDay,
+  reached,
   repeats,
   share,
   SCOPES,
+  tallyAsks,
   windowOf,
   type Goal,
   type Scope,
@@ -24,6 +27,8 @@ const goal = (over: Partial<Goal> = {}): Goal => ({
   done: false,
   note: null,
   sort: 0,
+  activity: null,
+  cat: null,
   ...over,
 })
 
@@ -229,5 +234,87 @@ describe('how far along a goal is', () => {
     expect(inScope(hundred, 'day', '2026-10-12')).toBe(false)
     expect(share(hundred)).toBeCloseTo(0.63, 10)
     expect(finished(hundred)).toBe(false)
+  })
+})
+
+describe('a goal that reads the record instead of waiting to be told', () => {
+  const mins = goal({
+    title: '30 min drawing',
+    scope: 'day',
+    anchor: null,
+    every: 1,
+    target: 30,
+    unit: 'min',
+    activity: 'act-draw',
+  })
+
+  it('knows whether it has a source at all', () => {
+    expect(derived(goal())).toBe(false)
+    expect(derived(mins)).toBe(true)
+    expect(derived(goal({ cat: 'life', target: 60, unit: 'min' }))).toBe(true)
+  })
+
+  /**
+   * ⚠️ THE WORST THING THIS COULD DO IS FALL BACK TO ITS OWN COLUMN. A derived goal's `progress`
+   * is never written — the server does not touch it and the room offers no way to — so using it
+   * when the tally has not arrived would put a stale or empty number on screen wearing the
+   * authority of a reading. Zero while it loads is honest; `progress` would be a lie with a
+   * plausible shape. This is also the one that would survive code review, because the fallback
+   * reads as defensive.
+   */
+  it('and shows nothing rather than its stale column when the tally is missing', () => {
+    const stale = { ...mins, progress: 999 }
+    expect(reached(stale, undefined)).toBe(0)
+    expect(reached(stale, {})).toBe(0)
+    expect(share(stale, {})).toBe(0)
+    expect(finished(stale, {})).toBe(false)
+    /* and the tally, when it comes, is the number */
+    expect(reached(stale, { [stale.id]: 20 })).toBe(20)
+    expect(share(stale, { [stale.id]: 15 })).toBe(0.5)
+    expect(finished(stale, { [stale.id]: 30 })).toBe(true)
+  })
+
+  it('and a hand-moved goal ignores the tally entirely', () => {
+    const hand = goal({ target: 100, unit: 'points', progress: 40 })
+    expect(reached(hand, { [hand.id]: 7 })).toBe(40)
+    expect(share(hand, { [hand.id]: 7 })).toBe(0.4)
+  })
+
+  /** ⚠️ ticking by hand still finishes a derived goal — the record is evidence, not a jailer */
+  it('and can still be ticked done by hand', () => {
+    expect(finished({ ...mins, done: true }, {})).toBe(true)
+  })
+
+  /**
+   * ⚠️ THE ASKS CARRY THE WINDOW THIS SIDE WORKED OUT, which is the whole reason the server is
+   * not allowed to compute one: date_trunc('week') in postgres starts on Monday and this site
+   * starts on Sunday. A week ask must therefore begin on the same Sunday `windowOf` names.
+   */
+  it('and asks for its own window, in local instants', () => {
+    const weekly = goal({
+      scope: 'week',
+      anchor: null,
+      every: 1,
+      target: 300,
+      unit: 'min',
+      activity: 'a',
+    })
+    const asks = tallyAsks([weekly, goal(), mins], '2026-10-14')
+    /* the hand-moved one is not asked about */
+    expect(asks.map((a) => a.id)).toEqual([weekly.id, mins.id])
+
+    const w = asks[0]
+    /* ⚠️ local midnight, not UTC midnight: parsed from the ISO it sends, the hour must be 0 local */
+    expect(new Date(w.from).getHours()).toBe(0)
+    expect(new Date(w.from).getDay(), 'the week ask starts on a Sunday').toBe(0)
+    /* and it matches the window the view would show, rather than a second opinion */
+    const shown = windowOf('week', '2026-10-14')!
+    expect(new Date(w.from).getDate()).toBe(Number(shown.from.slice(8)))
+    expect(new Date(w.to).getDate()).toBe(Number(shown.to.slice(8)))
+  })
+
+  it('and a lifetime goal with a source is not asked about, having no window', () => {
+    const forever = goal({ scope: 'life', anchor: null, target: 100, unit: 'min', activity: 'a' })
+    expect(tallyAsks([forever], '2026-10-14')).toEqual([])
   })
 })

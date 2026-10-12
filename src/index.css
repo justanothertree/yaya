@@ -15764,3 +15764,13 @@ a.cz-msg-author:focus-visible {
     display: none;
   }
 }
+
+/* a goal whose number comes from the record says so — see Chronicle.tsx */
+.chron-chip.is-auto {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chron-src select {
+  min-height: 36px;
+  max-width: 13rem;
+}
