@@ -1,7 +1,28 @@
 # Chronicle — a design, before any of it is built
 
-**Status: proposed, 12 Oct 2026. No migration applied.** The SQL in §5 is written out so it can be
-argued with first; nothing has touched the database.
+**Status: ✅ STEP 1 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
+`chronicle_goal_window_excludes_life`. The client half is in `src/chronicle/` and
+`src/sections/Chronicle.tsx`. Steps 2–5 in §4 are not started.
+
+⚠️ **AND THE CONSTRAINT IN §5 WAS WRONG WHEN IT WAS WRITTEN, which a probe found and reading would
+not have.** `chronicle_goal_window` has three clauses — "life has no window", "a repeating goal has
+no single anchor", "a one-off has one" — and the third did not exclude `life`. So a lifetime goal
+carrying a date satisfied the clause written to catch one-offs and sailed straight past the clause
+written to stop it. Found by inserting the four rows the table is supposed to refuse and reading
+which ones it took: three refused, `life` with an anchor accepted. Fixed by adding
+`scope <> 'life'` to the two non-life clauses; the SQL below is the corrected version, and the
+whole probe was wrapped in a `raise` so it rolled back and left the table empty.
+
+**What else was proven rather than assumed**, all of it rolled back:
+
+- As `authenticated`, a direct `select` on `chronicle_goals` is `permission denied for table` —
+  the table is unreachable except through the four functions.
+- From the browser with no session, `chronicle_goal_save` returns `401 permission denied for
+function`, so `anon` cannot execute it.
+- Impersonating a member: both goals come back, the title and unit are trimmed, `progress` reads
+  as a number, the repeating goal keeps `every = 1` with no anchor, and a bogus scope is refused.
+- **Impersonating a different member holding a valid goal id**: cannot move it, cannot delete it,
+  and their own list comes back empty.
 
 Asked for in these words: _"i want to make a chronicle module - but more than that i want to make a
 goal tracker/to do list (similar concept to how i have the circuit goal of 100 points but it doesnt
@@ -139,10 +160,12 @@ create table if not exists public.chronicle_goals (
   -- ⚠️ a target without a unit is a bare number nobody can read six months later
   constraint chronicle_goal_unit_with_target check ((target is null) = (unit is null)),
   -- ⚠️ a repeating goal has no single anchor, and a one-off outside 'life' needs one
+  -- ⚠️ CORRECTED: the two non-life clauses must EXCLUDE life, or a lifetime goal carrying a
+  -- date satisfies the third one and never reaches the first. See the status note at the top.
   constraint chronicle_goal_window check (
     (scope = 'life' and anchor is null and repeat_every is null)
-    or (repeat_every is not null and anchor is null)
-    or (repeat_every is null and anchor is not null)
+    or (scope <> 'life' and repeat_every is not null and anchor is null)
+    or (scope <> 'life' and repeat_every is null and anchor is not null)
   )
 );
 
@@ -276,10 +299,20 @@ never stops; a `check (ended_at is null or ended_at > started_at)` and an index 
 
 ## 8 · Open, for Evan
 
-1. **Apply §5?** It is additive — a new table and four functions, nothing existing is touched — so
-   it is recoverable, but it is the first write to the database for this module.
-2. **`quarter` in the scope list**: worth having, or noise? It is in the check constraint and costs
-   nothing to leave out, but a constraint is cheaper to widen than to narrow.
+1. ~~**Apply §5?**~~ Applied 12 Oct 2026.
+2. **`quarter` in the scope list**: worth having, or noise? Still unanswered, so the room shows a
+   "This quarter" window — because a scope the table accepts and no view shows is a goal somebody
+   can create and never see again. Removing the view is one line; narrowing the check constraint
+   behind it would not be, which is why the view came first.
 3. **Does a goal need a category** (`locked`/`free`/`life`) the way an activity does? It would make
-   "what am I aiming at that is actually mine" askable. Left out of §5 as something easier to add
-   than to remove.
+   "what am I aiming at that is actually mine" askable. Left out as something easier to add than to
+   remove.
+4. **The two feel questions the room raises**, now that it exists: whether ticking should wait for
+   the server (it does — there is no local copy, deliberately, see `src/chronicle/cloud.ts`), and
+   whether the counts on the window strip should show unfinished work or everything. They show
+   unfinished, on the grounds that a total is not news.
+5. **`localISO` lives in `src/circuit/dates.ts`** and chronicle imports it from there, which is
+   backwards semantically — a time module importing the Circuit's clock. One home for the decision
+   beat tidiness while chronicle is the newer of the two; worth moving to a neutral place if a
+   third room ever needs it. The Sunday-week rule is likewise duplicated in `Feed.tsx`, and both
+   copies now say so.

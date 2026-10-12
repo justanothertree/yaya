@@ -15485,3 +15485,165 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   color: var(--warn, #f0b429);
 }
+
+/**
+ * Chronicle — the planner. See docs/2026-10-12-chronicle-design.md.
+ *
+ * ⚠️ THE SEVEN WINDOWS SCROLL RATHER THAN WRAP, which is the same decision the Circuit's sub-tabs
+ * make and for the same reason its note gives: a strip that wraps to a second line at 375 pushes
+ * the content it labels below the fold, where a strip that scrolls keeps one row and lets a
+ * cut-off chip say "there is more". The fade is what makes that readable rather than clipped.
+ */
+.chron-strip {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  margin-bottom: 0.5rem;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+}
+.chron-strip::-webkit-scrollbar {
+  display: none;
+}
+.chron-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  /* ⚠️ WCAG 2.5.8 — these sit in a row, so the spacing exception cannot rescue them */
+  min-height: 36px;
+}
+/* the number of unfinished things, not the total — a total is not news */
+.chron-count {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 0 0.3rem;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.chron-blurb {
+  margin: 0 0 0.7rem;
+  font-size: 0.86rem;
+}
+.chron-win {
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.chron-list {
+  list-style: none;
+  margin: 0 0 0.7rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.chron-goal {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: var(--panel);
+}
+/* ⚠️ struck through AND faded, because colour alone is not a signal somebody colourblind reads */
+.chron-goal.is-done .chron-name,
+.chron-goal.is-done .chron-tick span {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.chron-goal-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chron-tick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  cursor: pointer;
+  /* a whole row is the target, not the box in it */
+  min-height: 36px;
+}
+.chron-tick input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.chron-name {
+  flex: 1;
+}
+.chron-chip {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.05rem 0.4rem;
+}
+.chron-x {
+  min-width: 36px;
+  min-height: 36px;
+}
+.chron-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.4rem;
+}
+.chron-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 100px;
+  background: var(--border);
+  overflow: hidden;
+  min-width: 3rem;
+}
+.chron-bar i {
+  display: block;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 100px;
+}
+.chron-num {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chron-meter .btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 0.5rem;
+}
+.chron-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.chron-add input {
+  min-height: 36px;
+}
+.chron-add > label:first-child {
+  flex: 1 1 12rem;
+}
+.chron-add > label:first-child input {
+  width: 100%;
+}
+.chron-qty input {
+  width: 5.5rem;
+}
+.chron-rep {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 36px;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+.chron-say {
+  margin: 0.5rem 0 0;
+  font-size: 0.86rem;
+  color: var(--accent);
+}

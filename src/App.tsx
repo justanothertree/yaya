@@ -8,6 +8,7 @@ import { PresenceBeacon } from './components/PresenceBeacon'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
+import { Chronicle } from './sections/Chronicle'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
@@ -1463,6 +1464,10 @@ export default function App() {
         return <Ratings authed={isFinanceAuthed || previewMember} />
       case 'people':
         return <People authed={isFinanceAuthed || previewMember} />
+      case 'chronicle':
+        /* ⚠️ previewMember like its neighbours, so the dev harness can open a members-only room —
+           see dev/previewMember.ts, and the note on Circuit's own authed prop */
+        return <Chronicle authed={isFinanceAuthed || previewMember} />
       case 'profile':
         return <Profile authed={isFinanceAuthed} />
       default:
@@ -2101,6 +2106,11 @@ export default function App() {
               >
                 <People authed={isFinanceAuthed || previewMember} />
               </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'chronicle' && (
+            <section id="chronicle" className="reveal">
+              <Chronicle authed={isFinanceAuthed || previewMember} />
             </section>
           )}
           {!sharedCanvasShowing && active === 'chat' && (

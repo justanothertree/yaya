@@ -74,6 +74,15 @@ export const PLACES = [
   { id: 'ratings', label: 'Ratings', icon: '⭐', title: 'Ratings', nav: () => true },
   { id: 'chat', label: 'Chat', icon: '💬', title: 'Chat', nav: member },
   { id: 'people', label: 'People', icon: '🧑‍🤝‍🧑', title: 'People', nav: member },
+  /**
+   * ⚠️ MEMBERS ONLY, AND WITH NO DEMO, which is the difference between this and Circuit or
+   * Investments. Those two have something honest to show a visitor — a public board, a sample
+   * portfolio — because what they display is either already public or invented. A planner has
+   * neither: it is one person's own list of what they are trying to do, and a fabricated one
+   * would be a page of pretend goals teaching nobody anything. Signed out it says what the room
+   * is for and stops, which is the whole reason it does not take a `demo` prop.
+   */
+  { id: 'chronicle', label: 'Chronicle', icon: '🗓', title: 'Chronicle', nav: member },
   {
     id: 'investments',
     label: 'Investments',
