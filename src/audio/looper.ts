@@ -152,6 +152,21 @@ type State = {
   /** the layer a take will REPLACE, if you armed onto one */
   replacing: string | null
   /**
+   * The layer a capture or a finished take just produced.
+   *
+   * ⚠️ IT EXISTS SO THE ROOM CAN SHOW YOU THE NOTES. Reported from somebody else's first try:
+   * they played something, recorded it, and could not get from "it is in there" to "I can change
+   * it" — so they pressed ✎ New part, which is the one control that opens the editor, and it
+   * opens it on an EMPTY layer. The thing they had just played was two inches away and the only
+   * door to it was the layer's own name in the list below.
+   *
+   * A take finishes on the audio clock rather than on a click — `commitTake` runs from the
+   * scheduler tick when the loop comes round — so there is nothing for a button handler to
+   * return. This is the signal instead: it changes when a layer is made, and the room decides
+   * what to do about it.
+   */
+  made: string | null
+  /**
    * Recordings placed on the loop — see takes.ts.
    *
    * ⚠️ BESIDE THE LAYERS, NOT AMONG THEM, and that separation is the whole design. A Layer
@@ -220,6 +235,7 @@ const TICK_MS = 25
 let state: State = {
   playing: false,
   recording: false,
+  made: null,
   waiting: false,
   bpm: 96,
   bars: 2,
@@ -930,7 +946,14 @@ export function stopLoop() {
  * guess is not a trade worth making — with layers present, capture uses the tempo you set and
  * leaves the guess alone.
  */
-export function captureLast(): { ok: boolean; notes: number; bpm: number; tempoSet: boolean } {
+export function captureLast(): {
+  ok: boolean
+  notes: number
+  bpm: number
+  tempoSet: boolean
+  /** the layer it made, so the room can open its notes — see State.made */
+  id?: string
+} {
   const c = sharedCtx()
   const now = c.currentTime
   const last = lastPlayedAt()
@@ -1032,9 +1055,9 @@ export function captureLast(): { ok: boolean; notes: number; bpm: number; tempoS
     len,
   }
   if (tempoSet || bpm !== state.bpm) set({ bpm })
-  set({ layers: [...state.layers, layer] })
+  set({ layers: [...state.layers, layer], made: layer.id })
   if (!state.playing) startLoop()
-  return { ok: true, notes: placed.length, bpm, tempoSet }
+  return { ok: true, notes: placed.length, bpm, tempoSet, id: layer.id }
 }
 
 export function armRecord(replaceId?: string) {
@@ -1171,13 +1194,16 @@ function commitTake() {
     })
     return
   }
+  const id = String(Date.now())
   set({
     recording: false,
     replacing: null,
+    /* ⚠️ so the room can offer you the notes you just played — see State.made */
+    made: id,
     layers: [
       ...state.layers,
       {
-        id: String(Date.now()),
+        id,
         instrument: takeInstrument,
         events,
         muted: false,

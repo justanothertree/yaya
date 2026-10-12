@@ -810,6 +810,27 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
 
   /** which layer's notes are open in the editor, if any */
   const [editing, setEditing] = useState<string | null>(null)
+  /**
+   * The first thing you record opens its own notes.
+   *
+   * ⚠️ THE FIRST, AND NOT EVERY ONE, because the two situations want opposite things. Somebody
+   * who has just recorded their first part does not know the notes are editable at all — the only
+   * door is the layer's name in the list, and the report that prompted this says plainly what
+   * happens next: they went looking and pressed ✎ New part, which starts a blank one. Somebody on
+   * their fourth pass is stacking a loop, and a panel that opened itself every time would be in
+   * the way of the thing they are doing.
+   *
+   * ⚠️ KEYED ON THE ID RATHER THAN ON A COUNT, so it fires once per thing made. `made` keeps its
+   * value until the next one, and an effect that re-ran on any state change would reopen the
+   * editor somebody had just closed.
+   */
+  const opened = useRef<string | null>(null)
+  useEffect(() => {
+    const id = loop.made
+    if (!id || opened.current === id) return
+    opened.current = id
+    if (loop.layers.length === 1) setEditing(id)
+  }, [loop.made, loop.layers.length])
   /** the bar picked up and waiting to be put down — the touch half of drag and drop */
   const [lifted, setLifted] = useState<{ id: string; bar: number } | null>(null)
   /* a finger cannot start an HTML5 drag, so the tap-to-lift path is the real one on a phone */
@@ -1349,6 +1370,23 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               </button>
               <span className="muted inst-start-or">or just play</span>
             </span>
+            {/**
+             * ⚠️ STEP 3, BECAUSE THE SCAFFOLDING STOPPED EXACTLY WHERE THE CONFUSION STARTS. The
+             * row taught the two decisions you make BEFORE playing and then said "or just play",
+             * which is where somebody's first try ended: they played something good and had no
+             * idea what to do about it. Capture is the answer and its name does not say so — and
+             * a `title` is not an answer either, because a tooltip does not exist on a phone.
+             *
+             * ⚠️ IT NAMES THE BUTTON RATHER THAN BEING ONE. A second Capture here would be two
+             * controls doing one job, and the one in the transport is the one that will still be
+             * there tomorrow when this row has gone.
+             */}
+            <span className="inst-start-step">
+              <span className="muted">3. Liked what you played?</span>
+              <span className="muted inst-start-or">
+                press ⧉ Capture — it keeps the last bit, no recording needed
+              </span>
+            </span>
           </div>
         )}
         {/* Start a part by drawing it rather than by playing it. The editor was only reachable
@@ -1403,6 +1441,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           className="btn"
           onClick={() => {
             const r = captureLast()
+            /**
+             * ⚠️ AND IT OPENS WHAT IT KEPT, which is the whole of the gap this closes. Capture is
+             * a decision made AFTER playing — you press it because you liked what you heard — so
+             * the next thing anybody wants is to look at what they got. Leaving the notes closed
+             * meant the reward for pressing it was a four-second message and no visible change.
+             */
+            if (r.ok && r.id) setEditing(r.id)
             setCapMsg(
               !r.ok
                 ? 'Nothing to capture yet — play something first.'

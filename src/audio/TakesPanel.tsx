@@ -233,7 +233,15 @@ export function TakesPanel() {
         onClick={() => void (going ? finish() : begin())}
         title={going ? 'Stop and keep it' : 'Sing or play something into the microphone'}
       >
-        {going ? `■ Stop — ${secs(held)}` : '● Record a take'}
+        {/* ⚠️ THE MIC GLYPH BECAUSE THERE ARE TWO RECORD BUTTONS IN THIS ROOM, and they record
+            different kinds of thing: the transport's ⏺ Record keeps the NOTES you play, which are
+            editable, quantisable and transposable, and this one keeps SOUND off a microphone,
+            which is none of those. Reported as "there are two record functions" by somebody who
+            had met both and could not tell which was which — a fair complaint about two buttons
+            that both said Record. The word "take" is this room's name for the audio kind and the
+            line below the button explains it; the glyph is what makes them tell apart at a
+            glance, before anybody reads anything. */}
+        {going ? `■ Stop — ${secs(held)}` : '🎤 Record a take'}
       </button>
       {going && (
         <button
