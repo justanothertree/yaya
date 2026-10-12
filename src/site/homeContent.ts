@@ -50,7 +50,7 @@ export const HOME: {
 } = {
   hero: {
     heading:
-      'The internets number one Claude Maxer. Creating fun tools that anyone can use, together.',
+      'The internet’s number-one Claude Maxer. Creating fun tools that anyone can use, together.',
     blurb:
       'Tools and toys my friends and family use every day. Everything here is live — press something.',
   },
