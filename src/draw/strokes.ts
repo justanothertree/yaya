@@ -1,4 +1,5 @@
 import { dripsFrom } from './drip'
+import { furFrom } from './fur'
 /**
  * A drawing, as the things you did rather than the pixels they left.
  *
@@ -46,6 +47,7 @@ export type Tool =
   | 'comet'
   | 'text'
   | 'drip'
+  | 'fur'
 
 /**
  * Tools that are no longer OFFERED, but are still drawn.
@@ -86,6 +88,8 @@ export const TOOLS: Array<[Tool, string, string]> = [
   /* ⚠️ AND SO IS THIS ONE. Wet ink that runs — see drip.ts, which holds the physics and the
      reason it is a pure function of the points rather than a live simulation. */
   ['drip', '💧', 'Drip'],
+  /* ⚠️ AND THIS ONE. Fur that lies the way your hand went — see fur.ts. */
+  ['fur', '🦔', 'Fur'],
 ]
 
 /** How many mirrored copies a stroke is drawn as. 0 or 1 is "just the one". */
@@ -1408,6 +1412,42 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
    * to be there for it to leave: painted first, the line sits over the top of every run and they
    * read as drips landing on it from something above.
    */
+  /**
+   * The coat, laid along the line.
+   *
+   * ⚠️ THE LAY IS WORKED OUT HERE AND NOT IN fur.ts, because it is the one part that needs the
+   * canvas. A direction in the drawing's own space is not a direction on screen — x is scaled by
+   * the width and y by the height — so the travel direction is taken in PIXELS and the hair's own
+   * `turn` is added to the reverse of it. The same split ember makes, and the reason its sparks
+   * leave the line correctly whatever shape the paper is.
+   *
+   * ⚠️ AND THE DIRECTION COMES FROM THE NEIGHBOUR BEHIND, falling back to the one ahead at the
+   * very start. Reading only forwards would leave the last hair of every stroke with no direction
+   * to lie along and standing bolt upright, which is exactly where the eye goes.
+   */
+  if (s.t === 'fur') {
+    const hairs = furFrom(s.p, s.w)
+    /* nearest point index for a hair, so the lay follows the line it actually grew on */
+    const at = new Map<string, number>()
+    for (let i = 0; i + 1 < s.p.length; i += 2) at.set(s.p[i] + ',' + s.p[i + 1], i)
+    ctx.lineWidth = Math.max(0.4, s.w * short * 0.3)
+    for (const hair of hairs) {
+      const i = at.get(hair.x + ',' + hair.y)
+      if (i === undefined) continue
+      const bx = i >= 2 ? X(i) - X(i - 2) : i + 3 < s.p.length ? X(i + 2) - X(i) : 1
+      const by = i >= 2 ? Y(i + 1) - Y(i - 1) : i + 3 < s.p.length ? Y(i + 3) - Y(i + 1) : 0
+      /* straight BACK: the reverse of travel, which is which way a coat sweeps */
+      const back = Math.atan2(-by, -bx)
+      const a = back + hair.turn
+      const px = X(i)
+      const py = Y(i + 1)
+      const len = hair.len * short
+      ctx.beginPath()
+      ctx.moveTo(px, py)
+      ctx.lineTo(px + Math.cos(a) * len, py + Math.sin(a) * len)
+      ctx.stroke()
+    }
+  }
   if (s.t === 'drip') {
     const runs = dripsFrom(s.p, s.w)
     for (const d of runs) {
@@ -1698,7 +1738,8 @@ export const isFreehand = (t: Tool) =>
   t === 'neon' ||
   /* ⚠️ AND BEING IN HERE MEANS ITS POINTS GET THINNED to fit a byte ceiling, which is the whole
      reason dripsFrom seeds itself from a point's POSITION and not its index — see drip.ts. */
-  t === 'drip'
+  t === 'drip' ||
+  t === 'fur'
 
 /**
  * ⚠️ APPEND ONLY, NEVER REORDER. A packed stroke stores its tool as an INDEX into this

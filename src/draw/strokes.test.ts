@@ -79,8 +79,9 @@ describe('the tool list is append only', () => {
       'neon',
       'triangle',
       'text',
-      /* ⚠️ one more line, on the end — see drip.ts */
+      /* ⚠️ one more line each, on the end — see drip.ts and fur.ts */
       'drip',
+      'fur',
     ])
   })
 
