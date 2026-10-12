@@ -203,5 +203,15 @@ Each one is shippable alone and each is reversible.
   - The vocabulary offered in the maker is `POSE_WORDS`, which holds only `down` — a word offered
     before the room reads it is a drawing somebody made for nothing. It grows as each state is
     wired, and never before.
-- ◻️ **Step 3 — `hurt`**, once the encoding has survived contact.
+- ✅ **Step 3 — `hurt`.** Applied 11 Oct 2026. A blow starts a clock, the minion wears its
+  `hurt` frame while it runs, and it keeps 0.6 of its step against the bite's 0.35. The span is
+  THIRDS OF `A_CYCLE` — new in attack.ts, the quickest swing's `span + rest` — so a held attack
+  button can never hold a wave still, which is the only real risk the feature had. It does not
+  interrupt a committed bite: the reward for swinging first is killing it, not switching its move
+  off. `POSE_WORDS` gained `hurt`.
+  - ⚠️ **And it found a bug in step 2.** `loopFrames` is only consulted when two or more frames
+    are left to play, so a creature with exactly ONE unnamed frame fell through to the rig — which
+    drew every stroke. A two-frame creature whose second frame was named `down` wore its death pose
+    while it walked. That is the simplest use of the whole feature. `plainFrames` is the other half
+    of `loopFrames` now, and the rig path asks it.
 - ◻️ _(not on the path)_ `wary`, for the boss, whenever it is worth the drawing.
