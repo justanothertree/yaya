@@ -1220,4 +1220,4 @@ export function bodyPose(t: number, energy = 1): { dy: number; rot: number } {
  * already written down beside whyCasts: a line that can disagree with the thing it describes is
  * worse than no line. This list grows as each state is wired, and never before.
  */
-export const POSE_WORDS: string[] = ['down']
+export const POSE_WORDS: string[] = ['down', 'hurt']

@@ -451,6 +451,25 @@ export const A_SWING: number = Math.min(
 )
 
 /**
+ * And how soon the QUICKEST of them can land again — `span` plus `rest`, the whole cycle.
+ *
+ * ⚠️ IT EXISTS SO THAT A STAGGER CANNOT BECOME A LOCK, which is the sibling problem to the one
+ * A_SWING solves. Anything the park does to a creature for being hit — a flinch, a stun, a
+ * knockback it cannot steer out of — is chainable if it outlasts this number, and harmless if it
+ * does not: hold a swing down and you land one every `A_CYCLE` seconds, so an effect shorter
+ * than that always leaves the gap it does not cover. `flinchOf` in minion.ts is written against
+ * it as thirds.
+ *
+ * ⚠️ THE QUICKEST RATHER THAN THE AVERAGE, for the reason A_SWING gives about the softest: a
+ * bound measured against the mean holds for most people and quietly breaks for whoever is playing
+ * the fastest, which is backwards. The worst case for a lock is the player who can swing most
+ * often.
+ */
+export const A_CYCLE: number = Math.min(
+  ...[...Object.values(FROM), POUNCE].map((a) => (a ? a.span + a.rest : Infinity)),
+)
+
+/**
  * The attacks somebody actually drew.
  *
  * ⚠️ WHERE YOU DREW IT IS THE MOVE. Everything about a drawn attack comes out of the ink: how

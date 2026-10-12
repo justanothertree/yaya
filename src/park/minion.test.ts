@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BAND, biteOf, biteSpan, biting, minionOf } from './minion'
-import { A_SWING } from '../pets/attack'
+import { BAND, biteOf, biteSpan, biting, flinchOf, minionOf } from './minion'
+import { A_CYCLE, A_SWING } from '../pets/attack'
 import { temperOf, BAND as BOSS } from './temper'
 import type { Drawing, Stroke } from '../draw/strokes'
 
@@ -217,5 +217,72 @@ describe('a minion bites in three stages', () => {
     expect(fast.wind, 'wind-up').toBeLessThan(slow.wind)
     expect(fast.rest, 'recovery').toBeLessThan(slow.rest)
     expect(biteSpan(fast)).toBeLessThan(biteSpan(slow))
+  })
+})
+
+/**
+ * The flinch — what a minion does about being hit.
+ *
+ * ⚠️ THE WHOLE RISK IN THIS FEATURE IS THAT IT BECOMES CROWD CONTROL, so that is what these ask
+ * about. A flinch is meant to make a swing feel like it connected; a flinch that outlasts the
+ * gap between swings is a held attack button that keeps a wave off you, which is the same shape
+ * as the bug where the safety window and the no-control window were one number. Both ends of the
+ * band are checked against tables that own the answer, not against the arithmetic above them.
+ */
+describe('how long a blow rocks a minion', () => {
+  const at = (pace: number) => flinchOf({ scale: 1, life: 10, pace, bite: 5 })
+
+  /**
+   * ⚠️ ASKED OF attack.ts, WHICH OWNS THE NUMBER. A_CYCLE is `span + rest` for the quickest
+   * swing in the game — hold the button and you land one that often — so an effect shorter than
+   * it always leaves a gap and one longer than it never has to. Comparing against 0.42 here
+   * would be a second copy of the move table, agreeing with it until somebody retunes a swipe.
+   */
+  it('is always shorter than the gap between the quickest swings', () => {
+    /* the whole band, because flinchOf reads `pace` and these are its ends */
+    for (const pace of BAND.pace) {
+      expect(at(pace), `pace ${pace}`).toBeLessThan(A_CYCLE)
+    }
+    /* and with room to spare: a third of every cycle has the crowd moving freely */
+    for (const pace of BAND.pace) {
+      expect(A_CYCLE - at(pace), `free time at pace ${pace}`).toBeGreaterThanOrEqual(A_CYCLE / 3)
+    }
+  })
+
+  /**
+   * ⚠️ AND THE OTHER END IS A CLAIM ABOUT TWO TABLES AT ONCE, which is why it is a test rather
+   * than a comment: the floor comes from attack.ts via A_CYCLE and the thing it has to clear
+   * comes from BITE in minion.ts. Either moving could make a flinch a flicker nobody can tell
+   * they caused, and neither file can see the other's number.
+   */
+  it('and long enough to see, against the shortest window the game asks you to read', () => {
+    for (const pace of BAND.pace) {
+      const b = biteOf({ scale: 1, life: 10, pace, bite: 5 })
+      expect(at(pace), `pace ${pace} against its own bite window`).toBeGreaterThanOrEqual(b.live)
+    }
+  })
+
+  /** ⚠️ the same reading of the drawing the bite makes — a quick thing shrugs a blow off */
+  it('and a quicker minion shrugs it off faster than a heavy one', () => {
+    expect(at(BAND.pace[1])).toBeLessThan(at(BAND.pace[0]))
+  })
+
+  /**
+   * ⚠️ AND IT CANNOT OUTLAST THE BITE IT DOES NOT INTERRUPT. The park holds a committed minion
+   * to its wind-up whatever hits it — the reward for swinging first is killing it, not switching
+   * its move off — so a flinch longer than a whole bite would be a picture waiting for a pose
+   * that has already finished playing.
+   */
+  it('and never outlasts the bite it is not allowed to interrupt', () => {
+    for (const pace of BAND.pace) {
+      const b = biteOf({ scale: 1, life: 10, pace, bite: 5 })
+      expect(at(pace), `pace ${pace}`).toBeLessThan(biteSpan(b))
+    }
+  })
+
+  /** ⚠️ and outside the band is inside it, like every other derived number here */
+  it('and anything outside the band is held at its ends', () => {
+    expect(at(-5)).toBeCloseTo(at(BAND.pace[0]), 10)
+    expect(at(99)).toBeCloseTo(at(BAND.pace[1]), 10)
   })
 })

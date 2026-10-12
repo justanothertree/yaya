@@ -1,4 +1,4 @@
-import { A_SWING, movesOf } from '../pets/attack'
+import { A_CYCLE, A_SWING, movesOf } from '../pets/attack'
 import { BAND as BOSS, temperOf } from './temper'
 import type { Drawing } from '../draw/strokes'
 
@@ -211,3 +211,37 @@ export const biting = (b: Bite, t: number): boolean => t >= b.wind && t < b.wind
 
 /** and whether it is still winding up, which is the part you are meant to see and answer */
 export const winding = (b: Bite, t: number): boolean => t >= 0 && t < b.wind
+
+/**
+ * How long a blow rocks a minion, in seconds.
+ *
+ * ⚠️ FEEDBACK, NOT CROWD CONTROL, and the difference is the whole design of this number. `hp`
+ * drops with no reaction today, so a swing into a crowd is forty things walking on unchanged and
+ * a counter going down somewhere — the minion-states proposal calls the fix "a `hurt` frame plus
+ * a brief stagger makes a swing feel like it connected with something". A stagger long enough to
+ * be a stun would answer that and create something worse: a held swing that keeps a whole wave
+ * off you is an invulnerability field, which is the shape `canBeHurt` was already caught in when
+ * the safety window and the no-control window were one number.
+ *
+ * ⚠️ SO IT IS ASKED OF THE MOVE TABLE RATHER THAN TYPED OUT, which is the rule A_SWING is
+ * already written against: a bound typed in beside a table that owns the answer agrees with the
+ * bug the day the table changes. `A_CYCLE` is how soon the quickest swing in the game can land
+ * again, so the band is THIRDS OF A CYCLE — two at the slow end, one at the quick end. Two
+ * thirds is the longest a flinch can be and still leave a third of every perfect swinger's
+ * cycle with the crowd moving freely, and retuning a swipe moves this with it.
+ *
+ * ⚠️ AND A THIRD OF A CYCLE IS STILL LONGER THAN THE SHORTEST THING THE GAME ASKS YOU TO SEE,
+ * which is a bite's own `live` window. Below that it is a flicker you cannot tell you caused —
+ * the sentence POUNCE_FOR is written against. That is a claim about two tables rather than
+ * something this line can guarantee, so a test asserts it and will go red if either moves.
+ *
+ * ⚠️ DOWNWARD WITH `pace`, like `biteOf`: a quick thing shrugs it off, a heavy one rocks. That
+ * is one more reading of the drawing rather than a dial, which is the rule every number in this
+ * file follows.
+ */
+const FLINCH = [(A_CYCLE * 2) / 3, A_CYCLE / 3] as const
+
+export function flinchOf(k: Minion): number {
+  /* ⚠️ the band runs DOWNWARD, because quicker means shorter — see FLINCH and BITE */
+  return into(where(k.pace, BAND.pace), FLINCH)
+}

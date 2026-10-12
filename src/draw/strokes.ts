@@ -2217,3 +2217,32 @@ export const loopFrames = (d: Drawing): number[] => {
   for (let i = 0; i < n; i++) if (!d.poses?.[String(i)]) out.push(i)
   return out
 }
+
+/**
+ * Which frames the ORDINARY picture may use — `null` for "all of them, no restriction".
+ *
+ * ⚠️ THE OTHER HALF OF loopFrames, AND IT WAS MISSING. `loopFrames` decides what an animation
+ * PLAYS, which is only consulted when there are two or more frames to play; a creature with
+ * exactly one unnamed frame has no animation, falls through to the rig, and the rig drew every
+ * stroke the drawing had. So a two-frame creature whose second frame is named `down` wore its
+ * death pose while it walked about — the two frames painted on top of each other, with the named
+ * one last and therefore winning. Measured through paintPet with no pose asked for: 8297 pixels
+ * of the posed frame's colour and ZERO of the ordinary one's.
+ *
+ * ⚠️ AND THAT IS THE SIMPLEST USE OF THE FEATURE, which is what made it worth finding: draw a
+ * creature, add one frame, name it. Nothing in the three states shipped so far is reachable
+ * without passing through this case first.
+ *
+ * ⚠️ NULL WHEN EVERY FRAME IS A POSE, which keeps the decision the rig path already documents:
+ * a creature whose every frame is named has no ordinary picture to show, and showing nothing
+ * reads as a bug where showing the ink reads as a drawing. A single-frame creature answers null
+ * for the same reason by a different route: it has no frames to tell apart.
+ *
+ * ⚠️ AND A DRAWING WITH NOTHING NAMED ANSWERS WITH ALL OF ITS FRAMES, not null — which is the
+ * same thing as no restriction, because no stroke can fall outside it. Said here because the
+ * first version of this sentence claimed null and was wrong about its own function.
+ */
+export const plainFrames = (d: Drawing): Set<number> | null => {
+  const loop = loopFrames(d)
+  return loop.length ? new Set(loop) : null
+}

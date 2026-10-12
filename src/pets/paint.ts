@@ -1,4 +1,11 @@
-import { loopFrames, paintDrawing, paintStroke, poseFrame, type Drawing } from '../draw/strokes'
+import {
+  loopFrames,
+  paintDrawing,
+  paintStroke,
+  plainFrames,
+  poseFrame,
+  type Drawing,
+} from '../draw/strokes'
 import {
   bodyPose,
   PART_PARENT,
@@ -146,6 +153,9 @@ export function paintPet(
    * which is the right answer rather than a creature that renders as nothing.
    */
   const loop = loopFrames(art)
+  /* ⚠️ computed ONCE, not per stroke: a bake paints this path eight times over every part of
+     every layer, and a Set built inside that would be the one expensive thing in it */
+  const plain = plainFrames(art)
   if (loop.length > 1) {
     const fps = Math.max(1, Math.min(24, art.fps ?? 8))
     const f = energy > 0 ? Math.floor(rt * fps) % loop.length : 0
@@ -222,7 +232,14 @@ export function paintPet(
     if (parent && parent !== part) place(parent)
     place(part)
     if (onPart) onPart(part, ctx)
-    else for (const s of part.strokes) paintStroke(ctx, s, w, h)
+    else
+      for (const s of part.strokes) {
+        /* ⚠️ A FRAME SOMEBODY GAVE TO A STATE IS NOT PART OF STANDING THERE, which is the same
+           rule the move-layer line above states about an attack. Without this the rig drew every
+           frame at once — see plainFrames, which is where the measurement is written down. */
+        if (plain && s.f !== undefined && !plain.has(s.f)) continue
+        paintStroke(ctx, s, w, h)
+      }
     ctx.restore()
   }
   ctx.restore()

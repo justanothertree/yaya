@@ -131,7 +131,7 @@ import { BOLT_UP, CAST, castSlot, inPatch, patchesOf, type CastKind, type Patch 
 import { ALL_CASTS, castsFor, loadout, setLoadout } from './loadout'
 import { shapeOf, type CastShape } from './castShape'
 import { SwipePatch } from './SwipePatch'
-import { biteOf, biteSpan, biting, minionOf, type Minion } from './minion'
+import { biteOf, biteSpan, biting, flinchOf, minionOf, type Minion } from './minion'
 import { FLOCK, ringOf, stepSwarm, waveSize, type Mob } from './swarm'
 import { bakePose, bakeSpell, bakeWalk, blitBaked, type Baked } from '../pets/bake'
 import { recordFought, recordWin, subscribeWins, winFor, wins, winsWith } from './records'
@@ -464,6 +464,16 @@ const MOB_LINGER = 1.1
 
 /** how much of its step a minion keeps while it is winding up a bite — see the lean-in note */
 const BITE_CREEP = 0.35
+/**
+ * How much of its step a FLINCHING minion keeps — more than a biting one, deliberately.
+ *
+ * ⚠️ THE BITE'S HOLD IS A TELL AND THIS ONE IS NOT. A committed minion nearly stops because
+ * stopping is how you read what it is about to do; a rocked one is just rocked, and taking its
+ * movement away would mean a swing does the player's dodging for them. The direction to err in
+ * was settled by a report on the bite's own first version — freezing them made the wave "a
+ * little easy to dodge" — so a flinch keeps most of the step and shows in the picture instead.
+ */
+const HURT_CREEP = 0.6
 
 const SWARM_WIDE = PARK.across * FIELD_ASPECT
 const toHeights = (s: Spot) => ({ x: s.x * SWARM_WIDE, y: s.y * PARK.down })
@@ -1615,7 +1625,16 @@ export function ParkRoom({
   /** `cut` and `zapped` are which swing and which cast last hit this one — see the `cut` note */
   const mobs = useRef<
     Array<
-      Mob & { hp: number; cut: number; zapped: number; bit: number; fed: boolean; gone: number }
+      Mob & {
+        hp: number
+        cut: number
+        zapped: number
+        bit: number
+        fed: boolean
+        gone: number
+        /** seconds into a flinch, or -1 for one that is not being rocked — see flinchOf */
+        hurt: number
+      }
     >
   >([])
   /**
@@ -1627,6 +1646,8 @@ export function ParkRoom({
     kind: Minion
     baked: Baked | null
     down: Baked | null
+    /** the `hurt` pose, or null when nobody drew one — see bakePose */
+    hurt: Baked | null
     wide: number
     no: number
     were: number
@@ -2900,7 +2921,11 @@ export function ParkRoom({
           const id = swingNo.current
           crowd = crowd.map((m) =>
             m.cut !== id && inSwipe(toWorld(m), kit.wide, area)
-              ? { ...m, hp: m.hp - mv.bite, cut: id }
+              ? /* ⚠️ the flinch starts where the DAMAGE does, not where contact does. Both of
+                   these maps already answer "did this blow reach this one", and asking that
+                   question a second time somewhere else is how a creature comes to be rocked by
+                   a swing that missed it. */
+                { ...m, hp: m.hp - mv.bite, cut: id, hurt: 0 }
               : m,
           )
         }
@@ -2925,11 +2950,24 @@ export function ParkRoom({
             if (!patch.live) continue
             crowd = crowd.map((m) =>
               m.zapped !== id && inPatch(toWorld(m), kit.wide, patch)
-                ? { ...m, hp: m.hp - wound, zapped: id }
+                ? { ...m, hp: m.hp - wound, zapped: id, hurt: 0 }
                 : m,
             )
           }
         }
+
+        /**
+         * The flinch clock, run before the bite so a blow landed this frame is already showing.
+         *
+         * ⚠️ ITS OWN PASS RATHER THAN A LINE INSIDE THE BITE, because the bite's map returns
+         * early for a felled minion and a flinch has to keep running on one that is dying — the
+         * body is lying down a tenth of a second later and the two pictures would fight over
+         * which of them it is wearing.
+         */
+        const flinch = flinchOf(kit.kind)
+        crowd = crowd.map((m) =>
+          m.hurt < 0 ? m : m.hurt + dt >= flinch ? { ...m, hurt: -1 } : { ...m, hurt: m.hurt + dt },
+        )
 
         /**
          * A minion's bite, which is a MOVE now rather than a fact about being near one.
@@ -3009,7 +3047,21 @@ export function ParkRoom({
           /* ⚠️ A FELLED ONE STOPS DEAD, for a plainer reason: a body that keeps flocking is a
              body sliding across the grass toward you, which reads as a bug rather than a death. */
           if (m.gone >= 0) return { ...m, x: was.x, y: was.y, vx: 0, vy: 0 }
-          if (m.bit < 0) return m
+          /**
+           * ⚠️ A FLINCH DOES NOT INTERRUPT A BITE, which is the one rule that keeps this from
+           * being a stun. A minion already winding up stays committed and still lands it — the
+           * reward for swinging first is that you can KILL it before the jaws close, not that
+           * hitting it switches the move off. The boss's own states say the same thing about
+           * being in the air: "the air is not a place it can change its mind from".
+           */
+          if (m.bit < 0)
+            return m.hurt < 0
+              ? m
+              : {
+                  ...m,
+                  x: was.x + (m.x - was.x) * HURT_CREEP,
+                  y: was.y + (m.y - was.y) * HURT_CREEP,
+                }
           /**
            * ⚠️ IT LEANS IN RATHER THAN STOPPING DEAD, AND THAT IS A CORRECTION. Freezing a
            * minion for the whole wind-up made the tell perfectly readable and the bite free to
@@ -4099,7 +4151,14 @@ export function ParkRoom({
                * because something now takes a moment about it.
                */
               const dead = m.gone >= 0
-              const stamp = dead ? (mobKit.current?.down ?? baked) : baked
+              /* ⚠️ DEAD BEATS HURT, because the last blow sets both and a body wearing its
+                 flinch is a creature that died mid-stagger — see the flinch clock, which keeps
+                 running on a felled minion precisely so this choice is the one being made. */
+              const stamp = dead
+                ? (mobKit.current?.down ?? baked)
+                : m.hurt >= 0
+                  ? (mobKit.current?.hurt ?? baked)
+                  : baked
               if (dead) {
                 g.save()
                 g.globalAlpha = Math.max(0, 1 - m.gone / MOB_LINGER)
@@ -4729,6 +4788,9 @@ ${parkLink(hostName)}`
                 /* ⚠️ null when nobody drew a down pose, which is what lets the draw loop fall
                    back rather than branch — see bakePose */
                 down: bakePose(art, Math.max(2, 54 * kind.scale), 'down'),
+                /* ⚠️ baked beside `down` and for the same reason: a pose looked up on the frame
+                   a swing lands is 110ms of bake arriving exactly as the blow does */
+                hurt: bakePose(art, Math.max(2, 54 * kind.scale), 'hurt'),
                 wide: petWide(art) * kind.scale,
                 no,
                 were: n,
@@ -4749,6 +4811,8 @@ ${parkLink(hostName)}`
                 fed: false,
                 /* ⚠️ and -1 is "alive", so nothing spawns already lying down — see MOB_LINGER */
                 gone: -1,
+                /* ⚠️ -1 is "not hurt", so a wave does not arrive flinching — see flinchOf */
+                hurt: -1,
               }))
               setMobsLeft(n)
               mobsLeftRef.current = n

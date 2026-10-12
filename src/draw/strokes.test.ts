@@ -4,6 +4,7 @@ import {
   isFreehand,
   layerCount,
   loopFrames,
+  plainFrames,
   MAX_LAYERS,
   NONE,
   packDrawing,
@@ -422,6 +423,49 @@ describe('a frame can be given to a state', () => {
     expect(loopFrames(withDown), 'the walk is one frame shorter').toEqual([0, 1, 2])
     expect(poseFrame(withDown, 'down'), 'and the pose is where it was put').toBe(3)
     expect(frameCount(withDown), 'the drawing still has four frames').toBe(4)
+  })
+
+  /**
+   * ⚠️ AND OUT OF THE ORDINARY PICTURE TOO, which is the half that was missing and shipped
+   * broken. `loopFrames` is only ever consulted when there are two or more frames left to play,
+   * so a creature with exactly ONE unnamed frame has no animation, falls through to the rig —
+   * and the rig drew every stroke in the drawing. A two-frame creature whose second frame was
+   * named `down` therefore wore its death pose while it walked about, with the posed frame
+   * painted last and so winning outright. Measured through paintPet with no pose asked for:
+   * 8297 pixels of the posed frame's colour and zero of the ordinary one's.
+   *
+   * ⚠️ AND THAT IS THE SIMPLEST POSSIBLE USE OF THE FEATURE — draw a creature, add one frame,
+   * name it — so nothing anybody does with states is reachable without going through it.
+   */
+  it('and out of the ordinary picture, even when it is the only frame left', () => {
+    const two = drawing({ strokes: [stroke({ f: 0 }), stroke({ f: 1 })], poses: { '1': 'down' } })
+    expect(loopFrames(two), 'nothing left to animate').toEqual([0])
+    const plain = plainFrames(two)
+    expect(plain, 'so the picture is restricted').not.toBeNull()
+    expect(plain?.has(0), 'to the frame nobody named').toBe(true)
+    expect(plain?.has(1), 'and never the pose').toBe(false)
+  })
+
+  /** ⚠️ every drawing made before any of this: all frames allowed, which is no restriction */
+  it('and restricts nothing in a drawing nobody has named a frame of', () => {
+    const plain = plainFrames(walk)
+    for (const f of [0, 1, 2, 3]) expect(plain?.has(f), `frame ${f}`).toBe(true)
+    /* and a one-frame creature has no frames to tell apart */
+    expect(plainFrames(drawing({ strokes: [stroke({})] }))).toBeNull()
+  })
+
+  /**
+   * ⚠️ AND A CREATURE WHOSE EVERY FRAME IS A POSE SHOWS ITS INK, which is the decision the rig
+   * path already documented: there is no ordinary picture to fall back to, and rendering nothing
+   * reads as a bug where rendering the drawing reads as a drawing.
+   */
+  it('and shows everything when every frame is a pose', () => {
+    const allPosed = drawing({
+      strokes: [stroke({ f: 0 }), stroke({ f: 1 })],
+      poses: { '0': 'down', '1': 'hurt' },
+    })
+    expect(loopFrames(allPosed)).toEqual([])
+    expect(plainFrames(allPosed), 'no restriction rather than nothing to draw').toBeNull()
   })
 
   /** ⚠️ nobody types `down` — see poseFrame, and partOf for the rule it follows */
