@@ -1,6 +1,6 @@
 # Chronicle — a design, before any of it is built
 
-**Status: ✅ STEP 1 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
+**Status: ✅ STEPS 1 AND 2 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
 `chronicle_goal_window_excludes_life`. The client half is in `src/chronicle/` and
 `src/sections/Chronicle.tsx`. Steps 2–5 in §4 are not started.
 
@@ -119,8 +119,7 @@ two: a goal that reads the time you actually spent is the thing a to-do list can
 1. **Goals and horizons.** The table in §5, the RPCs, a `#chronicle` room with the six windows, and
    goals you can add, tick and count up by hand. No timer, no entries. Shippable alone and it is the
    half that was missing from the HTML app.
-2. **The record.** `chronicle_activities` and `chronicle_entries` (§6) — the timer, the log, the
-   three categories. Shippable alone as a time tracker.
+2. ~~**The record.**~~ ✅ APPLIED 12 Oct 2026 — see §6.
 3. **Derived progress.** Goals that read minutes out of the record instead of being told. Needs 1
    and 2, and is the payoff for having both.
 4. **Routines and planning.** The HTML app's routines, and `planned` as intention-vs-actual.
@@ -269,7 +268,59 @@ grant execute on function public.chronicle_goal_drop(uuid) to authenticated;
 
 ---
 
-## 6 · Step 2 — the record, sketched, and the one cost worth checking
+## 6 · Step 2 — ✅ APPLIED, and two things the probe changed
+
+**Migrations `chronicle_record`, `chronicle_record_rpcs`, `chronicle_timer_uses_wall_clock`,
+`chronicle_mispress_threshold`.** Client: `src/chronicle/record.ts`, `src/chronicle/Timer.tsx`.
+
+⚠️ **THE RUNNING TIMER IS THE OPEN ENTRY**, not a piece of client state — that is what lets it
+survive a closed tab and turn up on a phone. So "one timer at a time" is a database invariant
+rather than a client convention:
+
+```sql
+create unique index chronicle_one_running
+  on public.chronicle_entries (owner) where ended_at is null;
+```
+
+Proven by direct insert: a second open row raises `unique_violation`, and a closed row alongside it
+is still fine, so the index is not too broad. Two devices pressing start at the same moment cannot
+produce two answers to "what am I doing right now".
+
+⚠️ **`now()` WAS THE WRONG CLOCK, and a probe found it.** `now()` is the TRANSACTION's start time
+and does not advance while a transaction runs — so two timer calls batched into one transaction
+stamp a start and an end identically, the span check refuses the zero length, and the entry is
+silently discarded. Expected three spans, got two. A single RPC call per transaction, which is how
+the client sends these, cannot tell the two functions apart; that is exactly why it was worth
+fixing, because a behaviour that depends on how calls happen to be grouped is one that breaks the
+first time anything batches them. Everything timing-related now uses `clock_timestamp()`.
+
+⚠️ **AND THAT EXPOSED A SECOND THING I HAD FUDGED.** With `now()`, "zero length" and "abandoned"
+happened to be the same row, so leaning on timestamp equality worked by accident. With a real
+clock an instant switch is a few microseconds long, passes the span check, and lands in the log as
+a 0-minute entry. So the rule is stated instead of implied: **a run under one second is a
+mis-press and is discarded; anything longer is kept exactly as long as it was.** Verified both
+ways round — switching twice leaves one span, and a session over a second keeps its real length.
+
+### The shape
+
+```
+chronicle_activities (id, owner, name, cat in (locked|free|life), colour, archived_at)
+chronicle_entries    (id, owner, activity, started_at, ended_at, note)
+```
+
+Both deny-all like the goals table: RLS on, zero policies, grants only to `postgres` and
+`service_role`, reached through eight `SECURITY DEFINER` functions. Checked: no `chronicle_%`
+function is callable by `anon`, and as `authenticated` a direct `select` on any of the three tables
+is `permission denied for table`.
+
+⚠️ **The pure half is where the real difficulty lives**, and it is not the timer. Attributing a
+span to a day is exact arithmetic that goes quietly wrong: a session from 23:00 to 01:00 belongs to
+two days, an hour each. `overlapMs` in `record.ts` answers it, and the test asserts the property
+rather than an hour — the overlaps across any windows that tile a range sum to the span's length
+inside that range, never twice and never none. Attributing to the start day was perturbed in and
+turns it red.
+
+### The one cost worth checking
 
 ```
 chronicle_activities (id, owner, name, cat in (locked|free|life), colour, archived_at, …)

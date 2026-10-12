@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../finance/client'
 import type { Goal, Scope } from './goal'
+import type { Activity, Entry } from './record'
 
 /**
  * Goals, in the account rather than in this browser.
@@ -126,5 +127,106 @@ export async function setProgress(id: string, progress: number, done: boolean): 
 
 export async function dropGoal(id: string): Promise<boolean> {
   const { error } = await getSupabaseClient().rpc('chronicle_goal_drop', { p_id: id })
+  return !error
+}
+
+/* ── the record ─────────────────────────────────────────────────────────────── */
+
+/**
+ * ⚠️ THE SAME NO-LOCAL-COPY RULE AS THE GOALS ABOVE, and it matters more here. The running timer
+ * IS the open entry in the database — that is what lets it survive a closed tab and show up on a
+ * phone — so a local mirror would be a second opinion about what you are doing right now. The
+ * table has a partial unique index making two open entries impossible, which is the same decision
+ * enforced one layer down.
+ */
+export async function myActivities(): Promise<Activity[]> {
+  const { data, error } = await getSupabaseClient().rpc('chronicle_activities_mine')
+  if (error || !Array.isArray(data)) return []
+  return (data as Activity[]).map((a) => ({
+    id: String(a.id),
+    name: String(a.name ?? ''),
+    cat: a.cat,
+    colour: a.colour ?? null,
+    archived: !!a.archived,
+  }))
+}
+
+export async function saveActivity(
+  name: string,
+  cat: Activity['cat'],
+  colour: string | null,
+  id?: string,
+): Promise<{ id: string } | { why: string }> {
+  const { data, error } = await getSupabaseClient().rpc('chronicle_activity_save', {
+    p_id: id ?? null,
+    p_name: name,
+    p_cat: cat,
+    p_colour: colour,
+  })
+  if (error) return { why: error.message || 'that did not save' }
+  const made = data == null ? '' : String(data)
+  return made ? { id: made } : { why: 'that did not save — nothing came back' }
+}
+
+export async function archiveActivity(id: string, archived: boolean): Promise<boolean> {
+  const { error } = await getSupabaseClient().rpc('chronicle_activity_archive', {
+    p_id: id,
+    p_archived: archived,
+  })
+  return !error
+}
+
+/** Start a timer. Whatever was running stops; a run under a second leaves no trace. */
+export async function startTimer(activity: string): Promise<{ why: string } | null> {
+  const { error } = await getSupabaseClient().rpc('chronicle_start', { p_activity: activity })
+  return error ? { why: error.message || 'that did not start' } : null
+}
+
+/** Stop whatever is running. Stopping nothing is not an error — see the function's own note. */
+export async function stopTimer(note: string | null): Promise<{ why: string } | null> {
+  const { error } = await getSupabaseClient().rpc('chronicle_stop', { p_note: note })
+  return error ? { why: error.message || 'that did not stop' } : null
+}
+
+/**
+ * The log over a range.
+ *
+ * ⚠️ A RANGE RATHER THAN EVERYTHING, because after a year this is thousands of rows and every view
+ * of it is a day or a week. The server refuses a range over 400 days and one that ends before it
+ * starts, so a bad call is a message rather than a download.
+ */
+export async function entriesBetween(fromISO: string, toISO: string): Promise<Entry[]> {
+  const { data, error } = await getSupabaseClient().rpc('chronicle_entries_between', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Entry[]).map((e) => ({
+    id: String(e.id),
+    activity: String(e.activity),
+    start: String(e.start),
+    end: e.end ? String(e.end) : null,
+    note: e.note ?? null,
+  }))
+}
+
+/** A span you forgot to time, which is the commonest hole in any log. */
+export async function addEntry(
+  activity: string,
+  fromISO: string,
+  toISO: string,
+  note: string | null,
+): Promise<{ why: string } | null> {
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_add', {
+    p_activity: activity,
+    p_from: fromISO,
+    p_to: toISO,
+    p_note: note,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+export async function dropEntry(id: string): Promise<boolean> {
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_drop', { p_id: id })
   return !error
 }

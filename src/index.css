@@ -15647,3 +15647,120 @@ a.cz-msg-author:focus-visible {
   font-size: 0.86rem;
   color: var(--accent);
 }
+
+/* ── chronicle, the record half — see src/chronicle/Timer.tsx ───────────────── */
+.chron-rec {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.8rem;
+  background: var(--panel);
+}
+.chron-timer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.chron-timer .btn,
+.chron-timer select {
+  min-height: 36px;
+}
+.chron-pickrow {
+  flex: 1 1 11rem;
+}
+.chron-pickrow select {
+  width: 100%;
+}
+/* ⚠️ monospace and tabular, or a running clock jiggles every second as the digits change width */
+.chron-run {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+.chron-run-name {
+  flex: 1 1 6rem;
+  font-weight: 600;
+}
+.chron-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.82rem;
+}
+.chron-cat {
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.1rem 0.55rem;
+}
+/* the three categories, so a glance says committed / yours / upkeep without reading */
+.chron-cat.is-locked {
+  border-color: #7c6af7;
+}
+.chron-cat.is-free {
+  border-color: #f5a623;
+}
+.chron-cat.is-life {
+  border-color: #5b9cf6;
+}
+.chron-log,
+.chron-acts {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.chron-ent,
+.chron-acts li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  min-height: 36px;
+}
+.chron-ent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-ent-span {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.chron-ent-when {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+/* the one that is still going says so, rather than looking like a finished span with no end */
+.chron-ent.is-live .chron-ent-span {
+  color: var(--accent);
+  font-weight: 700;
+}
+.chron-gap input {
+  min-height: 36px;
+}
+.chron-tidy {
+  margin-top: 0.6rem;
+  font-size: 0.88rem;
+}
+.chron-tidy > summary {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+.chron-acts li > span:first-child {
+  flex: 1;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  /* a timestamp range is the first thing worth dropping when a row will not fit a thumb */
+  .chron-ent-when {
+    display: none;
+  }
+}

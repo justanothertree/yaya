@@ -12,6 +12,7 @@ import {
   type Scope,
 } from '../chronicle/goal'
 import { dropGoal, myGoals, saveGoal, setProgress } from '../chronicle/cloud'
+import { Timer } from '../chronicle/Timer'
 
 /**
  * Chronicle — what you are aiming at, at every cadence.
@@ -231,6 +232,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         ) : null}
       </p>
 
+      {/**
+       * ⚠️ THE TIMER IS ABOVE THE WINDOWS, NOT INSIDE ONE. A running clock is the one thing in
+       * this room that is true regardless of which horizon you are looking at — hiding it
+       * behind a tab would mean a session you forgot to stop could run all day unseen. The
+       * day it writes into follows the view only for Today and Tomorrow, because those are
+       * the two views that name a day; the longer windows show the record for today.
+       */}
+      <Timer day={v.scope === 'day' ? on : todayISO()} onChange={() => void load()} />
       {goals === null ? (
         <p className="muted" aria-busy>
           Loading…
