@@ -479,6 +479,43 @@ export function Circuit({
             </span>
           </div>
 
+          {/**
+           * You are not in a circuit yet, said where you land rather than where the fix lives.
+           *
+           * ⚠️ REPORTED EXACTLY THIS WAY: "when you arent in a circuit you only see my read only
+           * stuff and the make a circuit is hidden in the second circuits tab". Both halves were
+           * true. A member lands on the Log — `initialTab` returns 'log' for anybody signed in,
+           * because logging is the daily reason to open the room — and with no circuits of their
+           * own the filter resolves to '' , which is "every circuit you can see", which for a new
+           * member is Evan's public board and nothing they can write to. The sentence telling
+           * them what to do about it lived inside CircuitsPanel, which is the fifth tab, which on
+           * a phone is not even a chip: it is in the ☰ launcher.
+           *
+           * ⚠️ A SIGNPOST RATHER THAN A REDIRECT, and that is deliberate. Sending them to the
+           * Circuits tab instead would need `initialTab` to know about groups, which it cannot —
+           * it runs once in a `useState` initialiser, before the adapter has loaded, where every
+           * member looks like a member with no circuits. A notice can wait for the answer; a
+           * one-shot redirect would have to guess, and would guess wrong for everybody who has a
+           * circuit already.
+           *
+           * ⚠️ AND IT SHOWS ON EVERY TAB, not just the Board. The complaint is about not finding
+           * the door, so the door is visible from wherever you are standing — including the Log,
+           * which is where a member actually arrives.
+           */}
+          {authed &&
+            (state.groupsLoaded || previewMember) &&
+            !groups.length &&
+            tab !== 'circuits' && (
+              <p className="cz-no-circuit">
+                <span>
+                  You’re not in a circuit yet, so everything here is somebody else’s and read-only.
+                </span>
+                <button className="btn" type="button" onClick={() => setTab('circuits')}>
+                  👥 Make or join one
+                </button>
+              </p>
+            )}
+
           <div className="cz-pane" key={tab}>
             {tab === 'board' && (
               <Board onLogToday={requestLogToday} onLogDate={requestLog} viewGroup={activeGroup} />

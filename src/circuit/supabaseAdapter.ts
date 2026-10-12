@@ -284,6 +284,10 @@ export function createSupabaseAdapter(): CircuitAdapter {
         id: g.id,
         name: g.name,
       })),
+      /* ⚠️ the server has now answered, even if the answer was none — see CircuitState.groupsLoaded.
+         The local adapter deliberately does not set this: the signed-out demo has no circuits to
+         be in and nothing to offer somebody about it. */
+      groupsLoaded: true,
       pools: ((pools.data as PoolRow[] | null) ?? []).map(rowToPool),
       votes: ((votes.data as VoteRow[] | null) ?? []).map(rowToVote),
       ratings: ((ratings.data as RatingRow[] | null) ?? []).map(rowToRating),

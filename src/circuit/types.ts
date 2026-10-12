@@ -201,6 +201,21 @@ export interface CircuitState {
   watchlist: WatchlistItem[]
   /** Circuits the signed-in user belongs to (server-loaded). Empty in the demo. */
   groups?: CircuitGroup[]
+  /**
+   * Whether the server has ANSWERED about circuits yet.
+   *
+   * ⚠️ BECAUSE `groups: []` MEANS TWO DIFFERENT THINGS. `emptyCircuitState` starts it empty and
+   * the adapter replaces the whole state when its load resolves, so "a member with no circuits"
+   * and "a member whose circuits have not arrived" are the same value — and an empty state that
+   * says "you are not in a circuit yet" would say it to everybody for the length of a round trip.
+   * Telling somebody they have nothing, briefly and wrongly, every time they open the room is a
+   * worse bug than the one the empty state fixes.
+   *
+   * Optional, like `pools` and for the same reason: an older cached board deserialises unchanged
+   * and simply reads as "not answered", which is the safe way round — no empty state rather than
+   * a wrong one.
+   */
+  groupsLoaded?: boolean
   /** Pools you own or are in. Optional so older cached boards deserialise unchanged. */
   pools?: Pool[]
   votes?: PoolVote[]

@@ -2070,7 +2070,12 @@ export default function App() {
               }
             >
               <Circuit
-                authed={isFinanceAuthed || !hasFinanceSupabaseEnv()}
+                /* ⚠️ `previewMember` HERE TOO, which it was missing. ChatPage, Ratings and People all
+                   take it and this did not, so the dev harness could not reach the Circuit's
+                   members-only half at all — no Circuits tab, and therefore no way to look at the
+                   empty state that tells a new member to make one. See dev/previewMember.ts, whose
+                   whole job is making these states reachable. */
+                authed={isFinanceAuthed || previewMember || !hasFinanceSupabaseEnv()}
                 canvasMode={canvasOpen && desktop}
                 isActiveTab={active === 'circuit'}
                 // re-clicking Circuit in the nav pans back to its Board, same as every other tab
