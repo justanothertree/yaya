@@ -1,3 +1,4 @@
+import { dripsFrom } from './drip'
 /**
  * A drawing, as the things you did rather than the pixels they left.
  *
@@ -44,6 +45,7 @@ export type Tool =
   | 'vine'
   | 'comet'
   | 'text'
+  | 'drip'
 
 /**
  * Tools that are no longer OFFERED, but are still drawn.
@@ -81,6 +83,9 @@ export const TOOLS: Array<[Tool, string, string]> = [
   ['triangle', '△', 'Triangle'],
   /* ⚠️ ON THE END, like everything after it will be — see TOOL_ORDER. */
   ['text', 'T', 'Text'],
+  /* ⚠️ AND SO IS THIS ONE. Wet ink that runs — see drip.ts, which holds the physics and the
+     reason it is a pure function of the points rather than a live simulation. */
+  ['drip', '💧', 'Drip'],
 ]
 
 /** How many mirrored copies a stroke is drawn as. 0 or 1 is "just the one". */
@@ -1391,6 +1396,43 @@ function paintOne(ctx: CanvasRenderingContext2D, s: Stroke, w: number, h: number
       ctx.stroke()
     }
   }
+  /**
+   * The runs a wet brush leaves behind it.
+   *
+   * ⚠️ NOT A `case`, SO THE LINE ITSELF COSTS NOTHING TO WRITE. `drip` falls into the default
+   * branch above and is drawn as the polyline every freehand tool is — rainbow, eraser, taps and
+   * all — and the ink it sheds is extra geometry on top rather than a second renderer that has
+   * to be kept in step with the first.
+   *
+   * ⚠️ AFTER THE LINE, NOT BEFORE IT. A run leaves the underside of a stroke, so the stroke has
+   * to be there for it to leave: painted first, the line sits over the top of every run and they
+   * read as drips landing on it from something above.
+   */
+  if (s.t === 'drip') {
+    const runs = dripsFrom(s.p, s.w)
+    for (const d of runs) {
+      const px = d.x * w
+      const top = d.y * h
+      const len = d.fall * short
+      /* ⚠️ STRAIGHT DOWN IN THE PICTURE'S OWN SPACE, because that is where down is for whoever
+         is looking at it. Following the stroke's normal would be more correct about the brush and
+         less correct about gravity, and gravity is the thing anybody can see is wrong. */
+      ctx.lineWidth = Math.max(0.4, d.thick * short)
+      ctx.beginPath()
+      ctx.moveTo(px, top)
+      ctx.lineTo(px, top + len)
+      ctx.stroke()
+      /**
+       * ⚠️ AND A BEAD ON THE END, which is the detail that makes it read as liquid rather than as
+       * a tick. Surface tension gathers a run's ink at its lowest point; without it the taper
+       * just stops, and a line that stops is a line.
+       */
+      const bead = Math.max(0.5, d.thick * short * 0.9)
+      ctx.beginPath()
+      ctx.arc(px, top + len, bead, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
   ctx.restore()
 }
 
@@ -1653,7 +1695,10 @@ export const isFreehand = (t: Tool) =>
   t === 'nib' ||
   t === 'pencil' ||
   t === 'crayon' ||
-  t === 'neon'
+  t === 'neon' ||
+  /* ⚠️ AND BEING IN HERE MEANS ITS POINTS GET THINNED to fit a byte ceiling, which is the whole
+     reason dripsFrom seeds itself from a point's POSITION and not its index — see drip.ts. */
+  t === 'drip'
 
 /**
  * ⚠️ APPEND ONLY, NEVER REORDER. A packed stroke stores its tool as an INDEX into this
