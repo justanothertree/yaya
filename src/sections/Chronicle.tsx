@@ -22,7 +22,8 @@ import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '.
 import { CATS, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
-import { SaveCopy } from '../chronicle/SaveCopy'
+import { YourCopy } from '../chronicle/YourCopy'
+import { Toast } from '../circuit/ui/Toast'
 
 /**
  * Chronicle — what you are aiming at, at every cadence.
@@ -802,7 +803,17 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * ⚠️ OUTSIDE THE TAB BODY, so it is reachable from every window rather than only from
        * whichever one happens to be open. It is about the whole record, not about this week.
        */}
-      <SaveCopy />
+      <YourCopy onPutBack={() => void load()} />
+
+      {/**
+       * ⚠️ THE ROOM HAD NO TOAST, so every message it sent went nowhere. `<Toast/>` is mounted per
+       * room — the Circuit, Ratings, the Instrument and Account each mount their own — and this
+       * one never did, which nothing noticed while the room had nothing to say. Putting a file
+       * back does: a file that is not ours, or one the account already holds, changes nothing on
+       * screen, so the sentence is the ONLY feedback there is. Found by watching for it rather
+       * than by reading the code, which showed a perfectly ordinary showToast call.
+       */}
+      <Toast />
     </section>
   )
 }

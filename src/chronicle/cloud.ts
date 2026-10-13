@@ -11,6 +11,7 @@ import {
   pvEditEntry,
   pvEntries,
   pvExport,
+  pvImport,
   pvQuality,
   pvMoods,
   pvPlanDid,
@@ -625,4 +626,45 @@ export async function exportMine(): Promise<Record<string, unknown> | null> {
   const { data, error } = await getSupabaseClient().rpc('chronicle_export')
   if (error || !data || typeof data !== 'object') return null
   return data as Record<string, unknown>
+}
+
+/** What a put-back did: how many of each went in, and how many the account already had. */
+export type Putback = {
+  activities: number
+  entries: number
+  goals: number
+  routines: number
+  plans: number
+  skipped: number
+}
+
+/**
+ * Put a file back.
+ *
+ * ⚠️ IT ADDS, IT NEVER REPLACES, which is the same promise the Account page makes about the other
+ * backup and the reason this is safe to press. A row whose id the account already has is skipped,
+ * so restoring onto a machine that has been used since cannot overwrite the newer thing with the
+ * older one — and `skipped` is counted rather than hidden, because "nothing happened" and
+ * "everything in that file was already here" are different things to be told.
+ *
+ * ⚠️ AND IT IS WHY A TAMPERED FILE CANNOT REACH SOMEBODY ELSE'S ROW. The ids in a file are the
+ * ids the rows had, and a file can be edited by anybody; `on conflict (id) do nothing` means an
+ * id that exists is skipped rather than written to, whoever owns it. There is no update path in
+ * chronicle_import at all. See docs/2026-10-13-chronicle-import.sql.
+ */
+export async function importMine(doc: unknown): Promise<Putback | { why: string }> {
+  if (previewMember) return pvImport(doc)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_import', { p_doc: doc })
+  if (error) return { why: error.message || 'that file could not be put back' }
+  if (!data || typeof data !== 'object') return { why: 'that file could not be put back' }
+  const r = data as Record<string, unknown>
+  const n = (k: string) => (typeof r[k] === 'number' ? (r[k] as number) : 0)
+  return {
+    activities: n('activities'),
+    entries: n('entries'),
+    goals: n('goals'),
+    routines: n('routines'),
+    plans: n('plans'),
+    skipped: n('skipped'),
+  }
 }

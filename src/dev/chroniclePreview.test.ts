@@ -4,6 +4,7 @@ import {
   pvAddEntry,
   pvEmpty,
   pvExport,
+  pvImport,
   pvSaveRoutine,
   pvEntries,
   pvMoods,
@@ -459,5 +460,216 @@ describe('the file you can take away', () => {
     const doc = pvExport() as Record<string, unknown>
     for (const list of Object.keys(KEYS)) expect(doc[list], list).toEqual([])
     expect(doc.kind).toBe('chronicle')
+  })
+})
+
+describe('putting a file back', () => {
+  beforeEach(() => {
+    pvAddEntry(draw, h(9), h(10), 'a note')
+    pvAddEntry(draw, h(7), h(8), null)
+    goalOn({ target: 30, activity: draw })
+    pvSaveRoutine('Morning', [{ activity: draw, mins: 20 }])
+    pvPlanSave(draw, h(14), h(15), null)
+  })
+
+  const rows = (doc: Record<string, unknown>) =>
+    ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
+      (n, k) => n + (Array.isArray(doc[k]) ? (doc[k] as unknown[]).length : 0),
+      0,
+    )
+
+  it('refuses a file that is not one of ours', () => {
+    expect(pvImport({ kind: 'songs', version: 1 })).toEqual({ why: 'not a chronicle file' })
+    expect(pvImport({ version: 1 })).toEqual({ why: 'not a chronicle file' })
+    expect(pvImport([])).toEqual({ why: 'not a chronicle file' })
+    expect(pvImport(null)).toEqual({ why: 'not a chronicle file' })
+    expect(pvImport('chronicle')).toEqual({ why: 'not a chronicle file' })
+    expect(pvImport({ kind: 'chronicle', version: 2 })).toEqual({
+      why: 'that file is from a newer version',
+    })
+  })
+
+  /**
+   * ⚠️ THE WHOLE POINT, STATED AS A ROUND TRIP. Save a copy, lose everything, put the copy back,
+   * and the account must hold what it held — which is a claim about the export and the import
+   * agreeing, and the only one that catches a field either of them forgets.
+   */
+  it('gives back exactly what was saved', () => {
+    const before = pvExport()
+    pvEmpty()
+    expect(rows(pvExport())).toBe(0)
+
+    const got = pvImport(before)
+    expect('why' in got).toBe(false)
+    expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...before, at: '' }))
+  })
+
+  it('adds what is missing and leaves what is there alone', () => {
+    const file = pvExport()
+    const got = pvImport(file)
+    expect(got).toEqual({
+      activities: 0,
+      entries: 0,
+      goals: 0,
+      routines: 0,
+      plans: 0,
+      skipped: rows(file),
+    })
+    expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...file, at: '' }))
+  })
+
+  /**
+   * ⚠️ A FILE CAN BE EDITED BY ANYBODY, so an import naming an id that already exists must skip
+   * it rather than write to it. On the server that is `on conflict (id) do nothing` and it is the
+   * reason a tampered file cannot reach somebody else's row; here it is the same rule, so the
+   * harness cannot make an import look more powerful than it is.
+   */
+  it('never writes over a row that already exists', () => {
+    const file = pvExport() as { activities: Array<Record<string, unknown>> }
+    const was = file.activities[0].name
+    file.activities[0].name = 'HACKED'
+    pvImport(file)
+    const after = pvExport() as { activities: Array<Record<string, unknown>> }
+    expect(after.activities[0].name).toBe(was)
+    expect(JSON.stringify(after)).not.toContain('HACKED')
+  })
+
+  it('drops a session pointing at an activity that is not yours', () => {
+    const got = pvImport({
+      kind: 'chronicle',
+      version: 1,
+      entries: [{ id: 'x1', activity: 'not-an-activity', started_at: h(9), ended_at: h(10) }],
+    })
+    expect(got).toMatchObject({ entries: 0, skipped: 1 })
+  })
+
+  it('drops a sitting that ends before it starts', () => {
+    const got = pvImport({
+      kind: 'chronicle',
+      version: 1,
+      entries: [{ id: 'x2', activity: draw, started_at: h(10), ended_at: h(9) }],
+    })
+    expect(got).toMatchObject({ entries: 0, skipped: 1 })
+  })
+
+  it('takes one sitting still running and refuses a second', () => {
+    const got = pvImport({
+      kind: 'chronicle',
+      version: 1,
+      entries: [
+        { id: 'x3', activity: draw, started_at: h(11), ended_at: null },
+        { id: 'x4', activity: draw, started_at: h(12), ended_at: null },
+      ],
+    })
+    expect(got).toMatchObject({ entries: 1, skipped: 1 })
+  })
+
+  /**
+   * ⚠️ A FILE WITH EVERY FIELD FILLED IN, because the round trip above proves only as much as its
+   * fixture populates. Deleting `quality` from the put-back left all 34 tests green: the entries
+   * it was built from had no rating, so a field that was null before and after said nothing. The
+   * same way a tidy fixture hid a missing sort order, and a life-scope window hid a wrong bound in
+   * chronicle_tally. Here every column carries a value that is not its default.
+   *
+   * ⚠️ THE TIMESTAMPS ARE THE EPOCH ON PURPOSE. The double keeps a BOOLEAN where the table keeps
+   * a moment — `archived`, `done` — so it cannot give back the particular instant an activity was
+   * archived; it gives back the stand-in it exports. That is a property of the harness, not of
+   * chronicle_import, and the server's own round trip is checked in SQL instead. Using the
+   * stand-in here keeps the test about the fields the double really does carry.
+   */
+  it('gives back a file with every field filled in, unchanged', () => {
+    const EPOCH = new Date(0).toISOString()
+    const act = '11111111-1111-4111-8111-111111111111'
+    const file = {
+      kind: 'chronicle',
+      version: 1,
+      at: '',
+      activities: [
+        {
+          id: act,
+          name: 'Reading',
+          cat: 'life',
+          colour: '#aabbcc',
+          archived_at: EPOCH,
+          created_at: EPOCH,
+          auto: true,
+          metric: 'pages',
+          session_mins: 25,
+        },
+      ],
+      entries: [
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          activity: act,
+          started_at: h(9),
+          ended_at: h(10),
+          note: 'a note',
+          amount: 12.5,
+          quality: 4,
+          created_at: h(9),
+        },
+      ],
+      goals: [
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          title: 'Read more',
+          scope: 'week',
+          anchor: DAY,
+          repeat_every: 1,
+          target: 30,
+          unit: 'pages',
+          progress: 7,
+          done_at: EPOCH,
+          note: 'why it matters',
+          sort: 3,
+          activity: act,
+          cat: null,
+          counts: 'amount',
+          est_mins: 45,
+          priority: 2,
+          created_at: EPOCH,
+          updated_at: EPOCH,
+        },
+      ],
+      routines: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          name: 'Evening',
+          steps: [{ activity: act, mins: 20 }],
+          created_at: EPOCH,
+          updated_at: EPOCH,
+        },
+      ],
+      plans: [
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          activity: act,
+          starts_at: h(14),
+          ends_at: h(15),
+          note: 'planned',
+          created_at: h(14),
+        },
+      ],
+    }
+
+    pvEmpty()
+    const got = pvImport(file)
+    expect(got).toEqual({
+      activities: 1,
+      entries: 1,
+      goals: 1,
+      routines: 1,
+      plans: 1,
+      skipped: 0,
+    })
+    expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify(file))
+  })
+
+  it('accounts for every row in the file, added or skipped', () => {
+    const file = pvExport()
+    pvEmpty()
+    const got = pvImport(file) as Record<string, number>
+    const added = got.activities + got.entries + got.goals + got.routines + got.plans
+    expect(added + got.skipped).toBe(rows(file))
   })
 })

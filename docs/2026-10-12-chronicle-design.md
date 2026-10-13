@@ -2621,6 +2621,71 @@ as `chronicle_export`.
 has become untrue — but somebody looking for "save my data" would look at Account first and find a
 card that does not mention chronicle. Whether that earns a line there is a call about that page.
 
+## 6aa · ✅ And back in again — plus two things only pressing it could find
+
+§6z gave the room a file. A copy you cannot put back does not survive anything, so this is the
+other half rather than a feature of its own: **⬆ Put one back**, beside the save.
+
+**One rule, two jobs.** `on conflict (id) do nothing` on every insert. It is the promise the
+Account page already makes about the other backup — adds what is missing, leaves what you have
+alone, so restoring onto a machine used since cannot overwrite the newer thing with the older. And
+it is a door: a file can be edited by anybody, so an import naming a row id belonging to **somebody
+else** must not write to it. It cannot — the row exists, the insert is skipped, that row's owner is
+never consulted or changed. There is no update path in `chronicle_import` at all, which is why
+there is no update path that reaches a stranger.
+
+**Row by row, inside its own exception block**, which is slower than one statement and the only
+honest option: these tables carry real check constraints, and a set-based insert fails _entirely_
+on the first row that breaks one. Restating those constraints in the function would be a second
+copy of the rules that drifts from the table. So the table stays the authority, a row it refuses is
+counted, and the rest still go in — measured: a goal breaking a constraint is skipped while a valid
+goal beside it lands.
+
+**The round trip is the test.** Export, delete exactly those rows, import, export again: the two
+documents are identical. Then it was done **again with every column set to a non-default value** —
+`archived_at`, `done_at`, `anchor`, `progress`, `priority`, `est_mins`, `amount`, `quality`,
+`colour`, `metric`, `session_mins`, routine steps, and `created_at`s dated 2024 — because the first
+round trip proved less than it looked: its fixture left all of those at their defaults. That is the
+same blindness as §6z's missing sort and §6x's life-scope window, for the **third** time in two
+days. The matching harness test uses a file with every field filled, and deleting any one of nine
+fields from the put-back now turns it red; before, dropping every rating left all 34 tests green.
+
+A restored row also **keeps the day it was made** — `created_at` defaults to `now()`, so letting it
+default would stamp a two-year-old backup with the moment it was restored, losing what the file was
+carrying and making a round trip a thing that changes the data. That was a second migration; the
+first had it wrong.
+
+### What pressing the button found, that reading the code did not
+
+Both of these look like perfectly ordinary code.
+
+1. **The room did not repaint.** A put-back into an empty account restored 17 sessions and 11
+   goals, the file came back byte-identical — and the page still said there was nothing here. The
+   room reads once on mount and after its own edits; an import is an edit it did not make. It takes
+   an `onPutBack` callback now, the same way `Timer` already took `onChange`.
+2. **The room had no toast at all.** `<Toast/>` is mounted per room — the Circuit, Ratings, the
+   Instrument and Account each mount their own — and chronicle never did. Every `showToast` the
+   room made went nowhere, _including the export's failure messages shipped the day before_.
+   Nothing noticed while the room had nothing to say; a put-back does, because a file that is not
+   ours or one the account already holds changes nothing on screen, so the sentence is the only
+   feedback there is. All five paths were then watched landing in the live region:
+
+   | what was put back          | what it says                                      |
+   | -------------------------- | ------------------------------------------------- |
+   | the saved file             | `Added 39 — 17 sessions, 6 activities, 11 goals.` |
+   | the same file again        | `Everything in that file was already here`        |
+   | a songs backup             | `Not a chronicle file`                            |
+   | a file from version 9      | `That file is from a newer version`               |
+   | something that is not JSON | `That file could not be read`                     |
+
+   Postgres writes exception messages in lower case, so a refusal arrived as "not a chronicle file"
+   beside the room's own "That file could not be read"; sentence-cased where it is shown.
+
+At 375 the row holds both buttons on one line, ending at 282px of 375, with the sentence wrapping
+beneath — zero overflow at the document, the card and the row. 3,293 entries go back in **454ms**.
+
+Reasoning and the standing privilege check are in `docs/2026-10-13-chronicle-import.sql`.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

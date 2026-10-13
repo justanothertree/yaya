@@ -7,7 +7,7 @@ import {
   type Entry,
   type Moods,
 } from '../chronicle/record'
-import type { NewGoal, Routine, Total } from '../chronicle/cloud'
+import type { NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
 import type { Plan } from '../chronicle/plan'
 
 // ── DEV-ONLY chronicle preview store ─────────────────────────────────────────
@@ -789,6 +789,152 @@ export const pvExport = (): Record<string, unknown> => ({
       created_at: p.start,
     })),
 })
+
+/**
+ * Putting a file back, the way `chronicle_import` does it.
+ *
+ * ⚠️ WHAT THIS MIRRORS IS THE RULES, NOT THE TABLE. Add-only by id, the file's own `owner` ignored
+ * because there isn't one, an activity reference that resolves to nothing dropped rather than
+ * stored, activities inserted before anything that points at them, and a refusal for a file that
+ * is not one of ours. What it CANNOT mirror is the check constraints — a goal's unit accompanying
+ * its target, a category being one of three words — because those live in the table and copying
+ * them here would be a second set of rules that drifts from it. The one exception is the pair the
+ * room can produce by itself and would otherwise look broken about: a sitting that ends before it
+ * starts, and a second sitting left running when the table allows exactly one.
+ */
+export const pvImport = (doc: unknown): Putback | { why: string } => {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { why: 'not a chronicle file' }
+  const d = doc as Record<string, unknown>
+  if (d.kind !== 'chronicle') return { why: 'not a chronicle file' }
+  if (Number(d.version ?? 0) > 1) return { why: 'that file is from a newer version' }
+
+  const list = (k: string): Array<Record<string, unknown>> =>
+    Array.isArray(d[k]) ? (d[k] as Array<Record<string, unknown>>) : []
+  const total = ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
+    (n, k) => n + list(k).length,
+    0,
+  )
+  if (total > 50_000) return { why: 'that file is too big to put back in one go' }
+
+  const out: Putback = {
+    activities: 0,
+    entries: 0,
+    goals: 0,
+    routines: 0,
+    plans: 0,
+    skipped: 0,
+  }
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+  const numOr = (v: unknown, fallback: number): number =>
+    typeof v === 'number' ? v : typeof v === 'string' && v !== '' ? Number(v) : fallback
+
+  /* activities first, so everything below can be checked against them */
+  for (const a of list('activities')) {
+    const id = str(a.id)
+    if (!id || db().acts.some((x) => x.id === id)) {
+      out.skipped++
+      continue
+    }
+    db().acts.push({
+      id,
+      name: String(a.name ?? ''),
+      cat: (a.cat === 'locked' || a.cat === 'life' ? a.cat : 'free') as Activity['cat'],
+      colour: str(a.colour),
+      archived: a.archived_at != null,
+      auto: a.auto === true,
+      metric: str(a.metric),
+      session: a.session_mins == null ? null : numOr(a.session_mins, 0) || null,
+    })
+    out.activities++
+  }
+
+  for (const r of list('routines')) {
+    const id = str(r.id)
+    if (!id || db().routines.some((x) => x.id === id)) {
+      out.skipped++
+      continue
+    }
+    db().routines.push({
+      id,
+      name: String(r.name ?? ''),
+      steps: Array.isArray(r.steps) ? (r.steps as Routine['steps']) : [],
+    })
+    out.routines++
+  }
+
+  const ours = (activity: unknown): string | null => {
+    const id = str(activity)
+    return id && db().acts.some((x) => x.id === id) ? id : null
+  }
+
+  for (const e of list('entries')) {
+    const id = str(e.id)
+    const act = ours(e.activity)
+    const start = str(e.started_at)
+    const end = str(e.ended_at)
+    /* ⚠️ the two the table would refuse and the room can produce: a span that runs backwards, and
+       a second sitting still running where exactly one is allowed */
+    const backwards = start != null && end != null && Date.parse(end) <= Date.parse(start)
+    const secondOpen = end == null && db().ents.some((x) => x.end == null)
+    if (!id || !act || !start || backwards || secondOpen || db().ents.some((x) => x.id === id)) {
+      out.skipped++
+      continue
+    }
+    db().ents.push({
+      id,
+      activity: act,
+      start,
+      end,
+      note: str(e.note),
+      amount: e.amount == null ? null : numOr(e.amount, 0),
+      quality: e.quality == null ? null : numOr(e.quality, 0),
+    })
+    out.entries++
+  }
+
+  for (const g of list('goals')) {
+    const id = str(g.id)
+    if (!id || db().goals.some((x) => x.id === id) || (g.activity != null && !ours(g.activity))) {
+      out.skipped++
+      continue
+    }
+    db().goals.push({
+      id,
+      title: String(g.title ?? ''),
+      scope: String(g.scope ?? 'day') as Goal['scope'],
+      anchor: str(g.anchor),
+      every: g.repeat_every == null ? null : numOr(g.repeat_every, 0) || null,
+      target: g.target == null ? null : numOr(g.target, 0),
+      unit: str(g.unit),
+      progress: numOr(g.progress, 0),
+      done: g.done_at != null,
+      note: str(g.note),
+      sort: numOr(g.sort, 0),
+      activity: ours(g.activity),
+      cat: (g.cat === 'locked' || g.cat === 'free' || g.cat === 'life'
+        ? g.cat
+        : null) as Goal['cat'],
+      counts: g.counts === 'amount' ? 'amount' : 'minutes',
+      est: g.est_mins == null ? null : numOr(g.est_mins, 0) || null,
+      priority: (numOr(g.priority, 0) || 0) as Goal['priority'],
+    })
+    out.goals++
+  }
+
+  for (const p of list('plans')) {
+    const id = str(p.id)
+    const act = ours(p.activity)
+    const start = str(p.starts_at)
+    if (!id || !act || !start || db().plans.some((x) => x.id === id)) {
+      out.skipped++
+      continue
+    }
+    db().plans.push({ id, activity: act, start, end: str(p.ends_at), note: str(p.note) })
+    out.plans++
+  }
+
+  return out
+}
 
 export const pvSaveRoutine = (
   name: string,
