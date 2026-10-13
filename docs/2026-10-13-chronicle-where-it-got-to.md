@@ -5,6 +5,10 @@ which is about twenty pages of reasoning; this is the page you actually need.
 
 **17 commits, 6,290 lines, 845 tests, 10 migrations.** All pushed to `main`.
 
+> ⚠️ **That was the state at `ba11193`. Eleven more commits landed after it** — see "After this page
+> was written" at the bottom, which is the part you have not seen. Current totals: **913 tests, 15
+> chronicle migrations, 31 chronicle functions.**
+
 ---
 
 ## The headline
@@ -72,3 +76,96 @@ left out with a reason, or answered differently and said so. That happened at
 - **A clean number is not a clean room.** Three times a layout change measured perfectly and had
   destroyed the page — crushed titles, 39px bars, a collapsed strip. Screenshot before believing a
   layout fix, and ask the container rather than the page. Both are in CLAUDE.md §2 and §6 now.
+
+---
+
+# After this page was written
+
+Eleven commits, `ba11193..6b4df26`. The first was performance; everything after it was found by
+**using** the room rather than by reading it, which is the short version of why this section is
+mostly bugs.
+
+## Two things it can now do
+
+**Take your record out, and put it back.** Chronicle was the only store on this site with no local
+copy — which was the right call (one copy, the server's, so a phone and a laptop agree) and left it
+the only thing here you could not get out. The Account page has promised for months that "a file is
+the copy that survives losing the account" about songs, drawings, looks and minions. Now chronicle
+keeps that promise too: **⬇ Save a copy** and **⬆ Put one back** at the foot of the room.
+
+Both go through one RPC returning or taking one document, rather than five calls over five lists —
+a list comes back through PostgREST, which can cap rows, and a download quietly missing a year looks
+exactly like one that is not. Putting a file back **adds, never replaces**, which is also why a file
+edited by somebody else cannot reach your rows: an id that exists is skipped rather than written to.
+Three years of entries export in 45ms and restore in 454ms.
+
+**Correct a session you got wrong.** Pressing Start on the wrong activity is the likeliest mistake a
+stopwatch allows, and the only remedy used to be deleting the session and typing it in again. A
+finished session can now be moved to the activity you meant, keeping its amount, its rating and the
+day it was recorded — and the one you are **in the middle of** can be moved too, or have its start
+wound back to when you actually began, without pressing Stop.
+
+## Four bugs, three of them data loss
+
+| what                                                                                | who could hit it        |
+| ----------------------------------------------------------------------------------- | ----------------------- |
+| Opening a session's editor and pressing **Save** destroyed the note you had written | anyone who wrote one    |
+| Renaming an activity deleted its **colour**                                         | anyone restoring a file |
+| Editing a goal deleted its **note**                                                 | anyone restoring a file |
+| The room sent messages nobody could see — it had no `<Toast/>` mounted at all       | everyone                |
+
+All four are the same shape, and it is now a rule in `CLAUDE.md` §8: **a save that writes every
+column deletes the ones the caller forgot.** An optional field, a caller that does not mention it,
+and a function that reads that silence as erasure. Null means "I am not talking about this" now,
+across every save path in the module; clearing is asked for with an empty string.
+
+Two of them were **dormant until I shipped the import** — nothing in the room can set an activity's
+colour or a goal's note, so there was nothing to lose until a restored file could put something
+there. My own feature made two old bugs reachable, which took two more days to notice.
+
+The toast one is worth its own line: `<Toast/>` is mounted per room, and chronicle never mounted
+one, so every message it sent went nowhere — _including the export's own failure messages_. Nothing
+noticed while the room had nothing to say.
+
+## And the first screen
+
+Read cold, as a new member meets it: signed in, nothing recorded. The explainer is still true. But
+**three controls are dead on a fresh account and a phone was told nothing about any of them** —
+Start, Fill a gap and Plan a span. The explanations were a `cursor: not-allowed`, which no touch
+screen has, and a tooltip on one of the three. There is a sentence there now, in the same shape as
+the one the Planned section already used.
+
+## Where it stands
+
+- **913 tests**, up from 845. The preview double is pinned against its server counterparts by 54 of
+  them, and every new test in this stretch was made to fail once before being kept.
+- **31 chronicle functions**: none reachable by `anon`, all `SECURITY DEFINER`, all with
+  `search_path` pinned. That is the standing check, not a remembered fact — the query is at the
+  bottom of each `docs/2026-10-13-chronicle-*.sql`.
+- **The streak batch is finished**: 2.75s → 617ms → **9ms** at three years of data. The last step
+  bounded each goal's scan by the span of its own windows instead of re-reading every entry ever
+  written, for all 190 of them.
+
+## Still yours to decide
+
+1. The three questions above this section, unchanged.
+2. **An activity's colour and a goal's note exist in the table, the type, the save path, the export
+   and the import — and nothing on screen writes or shows either.** A colour per activity would read
+   instantly in a list of bars; a goal's note is the obvious home for "why this matters". Both are
+   one input away. I did not invent them, because what they should look like is a decision about
+   the room.
+3. **The Account page's backup card does not mention chronicle.** Its wording is accurate — it names
+   its four things — but somebody looking for "save my data" would look there first.
+
+## One thing found in another room, not fixed
+
+`src/game/manager.tsx` — in a connected versus game, **five settings controls are disabled for
+anyone who is not the host and explained only by a `title`** (lines 3959, 3987, 4045, 4074, 4111:
+speed, map size and three more). A tooltip does not exist on a phone, so a guest sees a panel of
+dead buttons with no reason. The same room already does it right one panel over: "Waiting for the
+host to start the next round…" is ordinary visible text.
+
+The fix is one line — a visible "Only the host changes these" when that condition holds — and I
+have not shipped it, because reaching that state needs two connected players with me as the guest.
+I could not verify it, and an unverified change to a crowded panel is the thing §2 of `CLAUDE.md`
+exists to stop.
