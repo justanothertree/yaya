@@ -2161,6 +2161,57 @@ would need a ceiling on how long a session may be, and `chronicle_start`/`stop` 
 
 The client does not wait on it either way (§6p).
 
+## 6r · ✅ The month behind the streak, for free
+
+The chip says `🔥 4`. This says **which** four, and what the month around them looked like:
+
+```
+30 minutes drawing     .....................#..##.####     🔥 4
+Wash up every evening  ......................#.......#
+```
+
+⚠️ **It costs no query.** `streakAsks` has always fetched thirty-one windows for every repeating
+goal, and `streakOf` throws all but the run away — the room was paying for a month of history and
+rendering one number. `marksOf` reads the same answers instead of discarding them: no fetch, no
+state, no load.
+
+And it makes an existing feature honest. "Wash up every evening" has a streak of **1**, which is
+below the chip's two-in-a-row floor, so it shows no chip at all — and the row above makes the
+difference between "no streak" and "a streak of one" something you can see rather than infer.
+
+### The rules, and the test that binds them together
+
+- **Today is its own kind of mark.** The window you are in is unfinished, not missed — the same
+  rule `streakOf` is built on, where a five-day run at nine in the morning is still five. Drawn as
+  a gap it would make every morning look like a broken streak. It is outlined rather than filled.
+- **Oldest first**, so the row reads left to right and the streak is the run on its right-hand end.
+- **A miss is the quiet one** — the default bar colour, never red. A record of your own life has no
+  business marking a day you did something else as a fault.
+- **It is not a control**: no touch target, nothing to press. A month of history you can tap is a
+  month of history somebody taps by accident while scrolling. Thirty-one `<i>`s are also thirty-one
+  pieces of nothing to a screen reader, so the row is `aria-hidden` with the count beside it in
+  sr-only text.
+
+⚠️ **The marks and the number have to tell the same story**, and one test exists to keep them from
+drifting: the run of met marks at the right-hand end must equal `streakOf` exactly. It has two
+branches, because today being unfinished does not break a streak — a single tail count would be
+wrong every morning. Perturbed: drawing today as a miss reddens it, reversing the order reddens it.
+
+⚠️ **And the first version of that sweep could not see a boundary.** Every fixture value was
+comfortably over or well under the target of 30, so a mark requiring the target to be _beaten_
+while the streak only required it _reached_ passed straight through. Added `[30, 30, 30, 29, 30]`
+and `[29, 30, 30]` and the perturbation reddens. **The boundary is where two readings of one fact
+part company** — the same lesson as the band-sweeping note in CLAUDE.md §2.
+
+### ⚠️ And a desktop flaw only looking could find
+
+With `flex: 1 1 0` each mark grew to fill the row — **39.5px apiece at 1440**, which stops being a
+month of days and becomes a bar chart of nothing. Every measurement said the layout was clean: no
+overflow on the marks, the list, the card or the container, nothing undersized, off-edge or
+clipped. `flex: 0 1 10px` shrinks on a phone and holds at 10px on a desk.
+
+That is the third time in this project that the numbers passed a layout the screenshot failed.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

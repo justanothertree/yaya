@@ -15966,6 +15966,39 @@ a.cz-msg-author:focus-visible {
   font-size: 0.78rem;
 }
 
+/* a month of a repeating goal's history — see marksOf, and the note in Chronicle.tsx */
+.chron-marks {
+  display: flex;
+  gap: 2px;
+  margin-top: 0.4rem;
+  /* ⚠️ it may shrink but never wrap: a month of history that reflows onto two lines stops reading
+     as a timeline and starts reading as a grid of something else */
+  flex-wrap: nowrap;
+}
+.chron-marks i {
+  /* ⚠️ IT SHRINKS BUT DOES NOT STRETCH. With a bare flex: 1 1 0 each mark grew to fill the row —
+     39.5px apiece on a 1440 screen, which stops being a month of days and becomes a bar chart of
+     nothing. Every measurement said the layout was clean; only looking at it said otherwise. */
+  flex: 0 1 10px;
+  min-width: 2px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.chron-marks i.is-met {
+  background: var(--accent);
+}
+/* ⚠️ A MISS IS THE QUIET ONE. It is the default bar colour rather than anything red — a record of
+   your own life has no business marking a day you did something else as a fault. */
+.chron-marks i.is-missed {
+  opacity: 0.45;
+}
+/* today, still going: outlined rather than filled, because it has not happened yet */
+.chron-marks i.is-now {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 /* a flagged goal, and a guess at how long it takes — see Chronicle.tsx */
 .chron-chip.is-pri {
   border-color: #f5a623;

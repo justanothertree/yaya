@@ -14,6 +14,7 @@ import {
   streakOf,
   STREAK_BACK,
   likeForLike,
+  marksOf,
   tallyAsks,
   weight,
   windowOf,
@@ -659,5 +660,88 @@ describe('this window against the one before it', () => {
     const got = likeForLike('day', TUE, localMidnight(TUE).getTime())!
     expect(got.now.toMs - got.now.fromMs).toBe(0)
     expect(got.before.toMs - got.before.fromMs).toBe(0)
+  })
+})
+
+describe('the last thirty windows, drawn', () => {
+  const daily = goal({
+    id: 'g-run',
+    title: '30 minutes drawing',
+    scope: 'day',
+    anchor: null,
+    every: 1,
+    target: 30,
+    unit: 'min',
+    activity: 'act-draw',
+  })
+  /** what the server would hand back for a list of windows, newest first */
+  const answers = (mins: number[]) =>
+    Object.fromEntries(mins.map((m, i) => [streakKey(daily.id, i), m]))
+
+  /**
+   * ⚠️ THE MARKS AND THE NUMBER HAVE TO TELL THE SAME STORY, and this is the only test that can
+   * catch them drifting apart. They are computed separately from the same answers — a chip saying
+   * "🔥 4" above a row whose right-hand end shows three filled marks is two readings of one fact
+   * disagreeing on screen, and nobody would know which to believe.
+   */
+  it('ends in a run of met marks exactly as long as the streak says', () => {
+    for (const mins of [
+      [35, 40, 31, 50, 0, 38, 33],
+      /* ⚠️ EXACTLY ON THE TARGET, because the first version of this sweep had no value equal
+         to it — every fixture was comfortably over or well under 30. A mark that required
+         BEATING the target while the streak only required reaching it would have drawn a gap
+         under an unbroken run, and the sweep stayed green through that perturbation. The
+         boundary is where the two readings can part. */
+      [30, 30, 30, 29, 30],
+      [29, 30, 30],
+      [0, 40, 31, 50],
+      [35, 35, 35, 35, 35, 35],
+      [10, 10, 10],
+      [],
+    ]) {
+      const got = answers(mins)
+      const marks = marksOf(daily, got)
+      const run = streakOf(daily, got)
+      /* ⚠️ TWO BRANCHES, BECAUSE TODAY DOES NOT BREAK A STREAK. When today has been met it is
+         a 'met' mark and counts in the run; when it has not, it is 'now' and the run is the
+         met marks BEHIND it. A single tail count would be wrong every morning. */
+      const end = marks.length - (marks[marks.length - 1] === 'now' ? 2 : 1)
+      let tail = 0
+      for (let i = end; i >= 0 && marks[i] === 'met'; i--) tail++
+      expect(tail).toBe(run)
+    }
+  })
+
+  /** ⚠️ oldest first, so the row reads left to right and today is the last mark */
+  it('is oldest first, one mark per window, today last', () => {
+    const marks = marksOf(daily, answers([35, 0, 40]))
+    expect(marks).toHaveLength(STREAK_BACK + 1)
+    expect(marks[marks.length - 1]).toBe('met') /* today, 35 >= 30 */
+    expect(marks[marks.length - 2]).toBe('missed') /* yesterday, 0 */
+    expect(marks[marks.length - 3]).toBe('met') /* the day before, 40 */
+  })
+
+  /**
+   * ⚠️ TODAY UNFINISHED IS ITS OWN MARK, not a miss. At nine in the morning nothing has been done
+   * yet and drawing that as a gap would make every streak look broken every day — the same rule
+   * streakOf is built on, and the reason a third kind of mark exists at all.
+   */
+  it('and today still going is "now", never "missed"', () => {
+    const marks = marksOf(daily, answers([0, 40, 31]))
+    expect(marks[marks.length - 1]).toBe('now')
+    /* and the streak is unbroken behind it */
+    expect(streakOf(daily, answers([0, 40, 31]))).toBe(2)
+  })
+
+  it('and a day long past with nothing in it is a miss, not a "now"', () => {
+    const marks = marksOf(daily, answers([35, 0]))
+    expect(marks.filter((m) => m === 'now')).toHaveLength(0)
+    expect(marks[marks.length - 2]).toBe('missed')
+  })
+
+  it('and a goal with nothing to draw gets no row at all', () => {
+    expect(marksOf(goal({ target: null }), {})).toEqual([])
+    expect(marksOf(goal({ every: null, target: 30, activity: 'a' }), {})).toEqual([])
+    expect(marksOf(goal({ every: 1, target: 30 }), {})).toEqual([])
   })
 })

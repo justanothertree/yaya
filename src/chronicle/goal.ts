@@ -480,6 +480,33 @@ export function streakAsks(
  * miss would mean every streak read zero every morning, which is the opposite of the thing a
  * streak is for.
  */
+/**
+ * How each of the last windows went: one mark per window, oldest first.
+ *
+ * ⚠️ IT COSTS NOTHING, which is the whole reason it exists. `streakAsks` already fetches thirty-one
+ * windows for every repeating goal and `streakOf` throws all but the run away — the room was
+ * paying for a month of history and showing a single number. These are the same answers, read
+ * instead of discarded.
+ *
+ * ⚠️ AND TODAY IS ITS OWN KIND OF MARK. The window you are in is not a miss, it is unfinished —
+ * the same rule `streakOf` is built on, where a five-day run at nine in the morning is still five.
+ * Drawing today as a gap would make every morning look like a broken streak.
+ */
+export type Mark = 'met' | 'missed' | 'now'
+
+export function marksOf(g: Goal, got: Record<string, number>, back = STREAK_BACK): Mark[] {
+  if (!repeats(g) || !derived(g) || g.target == null || !(g.target > 0)) return []
+  const out: Mark[] = []
+  /* oldest first, so the row reads left to right the way a calendar does and the streak is the
+     run on its right-hand end */
+  for (let i = back; i >= 0; i--) {
+    const had = got[streakKey(g.id, i)]
+    if (i === 0 && !(had != null && had >= g.target)) out.push('now')
+    else out.push(had != null && had >= g.target ? 'met' : 'missed')
+  }
+  return out
+}
+
 export function streakOf(g: Goal, got: Record<string, number>, back = STREAK_BACK): number {
   if (!repeats(g) || !derived(g) || g.target == null || !(g.target > 0)) return 0
   const met = (i: number) => (got[streakKey(g.id, i)] ?? 0) >= g.target!

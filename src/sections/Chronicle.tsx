@@ -3,6 +3,7 @@ import {
   finished,
   derived,
   inScope,
+  marksOf,
   streakAsks,
   streakOf,
   lastDay,
@@ -461,6 +462,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               const done = finished(g, got, on)
               const auto = derived(g)
               const have = reached(g, got, on)
+              /**
+               * ⚠️ FREE, WHICH IS THE WHOLE REASON IT EXISTS. `streakAsks` already fetches
+               * thirty-one windows for every repeating goal and the chip throws all but the run
+               * away — the room was paying for a month of history and showing one number. These
+               * are the same answers, read instead of discarded: no query, no state, no load.
+               */
+              const marks = marksOf(g, runs)
               const act = g.activity ? acts.find((a) => a.id === g.activity) : null
               const from = g.activity
                 ? (act?.name ?? 'an activity')
@@ -587,6 +595,32 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         </>
                       )}
                     </div>
+                  )}
+
+                  {/**
+                   * ⚠️ ONE MARK PER WINDOW ALREADY FETCHED — see marksOf. The chip says "🔥 4"; this
+                   * says which four, and what the month around them looked like. It costs no query.
+                   *
+                   * ⚠️ IT IS NOT A CONTROL, so it carries no touch target and nothing to press. A
+                   * month of history you can tap is a month of history somebody taps by accident
+                   * while scrolling.
+                   *
+                   * ⚠️ AND IT IS READ ALOUD AS A SENTENCE. Thirty-one `<i>`s are thirty-one pieces
+                   * of nothing to a screen reader, so the row is aria-hidden and the count sits
+                   * beside it in sr-only text — the same division the tick-boxes use.
+                   */}
+                  {marks.length > 0 && (
+                    <>
+                      <div className="chron-marks" aria-hidden>
+                        {marks.map((m, i) => (
+                          <i key={i} className={'is-' + m} />
+                        ))}
+                      </div>
+                      <span className="sr-only">
+                        {marks.filter((m) => m === 'met').length} of the last {marks.length}{' '}
+                        {g.scope}s reached
+                      </span>
+                    </>
                   )}
                 </li>
               )
