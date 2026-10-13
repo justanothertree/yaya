@@ -2039,7 +2039,7 @@ The room's rendering of these numbers. The preview harness answers from its own 
 `pvMoods`, so the real functions are reachable only with a session — this step's evidence is the
 SQL above and nothing on screen. No client code changed.
 
-## 6p · ⚠️ The streak batch costs 2.75 seconds — measured, mitigated, not yet fixed
+## 6p · ✅ The streak batch cost 2.75 seconds — measured, mitigated, and now fixed in §6x
 
 Same volume as §6o — 2,196 sessions over 19 activities — pointed at the other half of what the room
 calls.
@@ -2446,6 +2446,67 @@ the activity `auto` reddens two.
 fixes above are reasoned from the code and the server function rather than observed firing. What is
 now possible — and was not before — is watching a visit accrue in the harness, because the call
 finally has a route it can answer.
+
+## 6x · ✅ Two things verified rather than reasoned about
+
+Nothing new on screen this time. Both of these were already written and both were believed on the
+strength of the code reading correctly, which §2 of `CLAUDE.md` is explicit about not accepting.
+
+### The `pagehide` fix, now watched doing it
+
+§6w rewired `pagehide` from `flip` to a reporter that always reports, on the reasoning that
+`flip`'s first question is "can I still be seen" — so on any browser where the page is still
+**visible** when `pagehide` fires, the branch taken resets the clock and reports nothing, and the
+tail of the visit is lost. That was shipped on the argument alone.
+
+It is now observed. With the preview harness blank, `document.visibilityState` stood in as
+`'visible'` (the pane reports `hidden` while undisplayed, and `useVisits` treats hidden as "not
+viewing" by design), a wait of 34 seconds past the thirty-second floor, and then `pagehide`
+dispatched **while still visible** — the exact case the old wiring dropped:
+
+| wiring                     | activity           | entry |
+| -------------------------- | ------------------ | ----- |
+| `pagehide → flip` (before) | —                  | —     |
+| `pagehide → away` (after)  | `Chronicle (auto)` | `51s` |
+
+The control is the row that matters. The old wiring was put back, the identical sequence run again,
+and **nothing** appeared — so the row above is the fix's doing and not the heartbeat's, or the
+room change's, or anything else that was also running. The fix was then restored.
+
+The other half of §6w — that the clock starts at sign-in rather than at page load — **remains
+reasoned only**, and this is the honest boundary: `authed` is React state that the harness starts
+as `true`, so the false→true transition cannot be reached without a real sign-in. It is one line,
+and it is the line somebody who reads the site for twenty minutes before signing in depends on.
+
+### The streak batch, 656ms to 14.8ms
+
+§6p measured the batch at 2.75 seconds and §6q brought it to 617ms by answering all the windows in
+one statement. What remained was the shape of that statement: the entries were joined to **every
+window**, and the only lower bound was the window's own `coalesce(ended_at, now) > from`, which no
+index can serve. So each of a streak's ~190 windows considered every entry the person had ever
+made — a cost that is the product of how long they have used the site and how far back a streak
+looks.
+
+Bounding the candidates once per **goal**, by the span of that goal's own asks, is lossless: every
+window a goal is asked about lies inside `[min(from), max(to))`. Synthesised at three years of
+three sittings a day — 3,293 entries, 192 windows — **656ms → 14.8ms**, byte-identical JSON.
+
+The check is the part worth keeping. A differential sweep ran the live function as the oracle
+against the candidate over eight rounds of random entries and random windows, including a sitting
+that began 400 days before any window and ended inside one, both ends exactly on a day boundary,
+the one open entry the table allows, all four goal source shapes, and an id that is not a goal:
+**0.0000 minutes apart on every round**.
+
+And then it was perturbed, because a sweep that cannot go red is decoration — the lower bound
+changed to ask where the entry **started** rather than whether it had **ended**, which drops that
+400-day sitting. It reported agreement on all eight rounds. The fault was in the fixture: it hung a
+life-scope window on every goal, which drags `min(from)` back to 1970 and makes any lower bound a
+no-op. **The fixture had neutralised the thing under test and still looked thorough.** With the
+life window given a goal of its own, the same perturbation is 3,068–4,106 minutes wrong across
+21–23 keys, every round — and the candidate is still exact.
+
+Reasoning and the standing privilege check are in `docs/2026-10-13-chronicle-tally-span.sql`,
+applied as `chronicle_tally_span_bound`.
 
 ## 7 · What is deliberately not being ported
 

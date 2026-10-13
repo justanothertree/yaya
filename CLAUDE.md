@@ -78,6 +78,17 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   sitting: the gallery's cap was "120 items", which is the store's own limit, and the question
   underneath it was how many BYTES that is and what happens to the one that does not fit.
   **Measure a gap against the thing that has to occupy it, not against zero.**
+- **A FIXTURE CAN NEUTRALISE THE THING UNDER TEST AND STILL LOOK THOROUGH, which is worse than a
+  thin test because it reads as a wide one.** `chronicle_tally` was rewritten to bound its candidate
+  entries by the span of each goal's own windows, and the check was a differential sweep against the
+  live function over eight rounds of random data — random sittings, boundary-exact ones, a 400-day
+  one, an open entry, every goal shape. It agreed exactly. Perturbed with the new bound asking
+  where an entry STARTED rather than whether it had ENDED, it still agreed exactly, on all eight
+  rounds: the sweep hung a life-scope window on every goal, which drags `min(from)` back to 1970 and
+  makes any lower bound a no-op. The data was generous and the one dimension being tested was
+  pinned flat. **Perturb before believing a sweep, and when it stays green ask what in the fixture
+  is holding the thing still** — here, one window per goal was setting the very bound under test.
+  With the life window given a goal of its own, the mistake was 3,068–4,106 minutes across ~22 keys.
 - **A UNIT IN A COMMENT IS NOT A UNIT, and a bound typed in beside a table that owns the answer
   will agree with the bug.** Two of the three things the park's first wave got wrong were a
   number disagreeing with the sentence above it. The flock's standoff was `PARK_TALL * scale *
