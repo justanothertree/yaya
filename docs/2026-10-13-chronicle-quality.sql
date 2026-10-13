@@ -49,9 +49,18 @@
 --   select set_config('request.jwt.claims','{"sub":"<a member>","role":"authenticated"}',true);
 --   select
 --     (select sum((value)::numeric) from jsonb_each_text(public.chronicle_moods(:from, :to)))
---     = (select coalesce(sum((e->>'mins')::numeric),0)
---          from jsonb_array_elements(public.chronicle_totals(:from, :to)) e)   as they_agree;
+--     - (select coalesce(sum((e->>'mins')::numeric),0)
+--          from jsonb_array_elements(public.chronicle_totals(:from, :to)) e)   as difference;
 --   rollback;
+--
+-- ⚠️ COMPARE TO A TOLERANCE, NOT TO ZERO — and the first version of this probe did not, which
+-- made it a check that passed by luck. Each function divides by 60 at a DIFFERENT grouping:
+-- chronicle_moods per rating, chronicle_totals per activity. Summing separately-divided numerics
+-- in two groupings is not exactly equal, so the two totals differ in the last digit. On four
+-- fixture rows that difference was zero and the probe read green; against a year of a heavy user
+-- — 2,196 sessions, 19 activities — it is 0.0000000000000001 of a minute out of 143,566, which is
+-- six femtoseconds, and the probe failed. The claim worth testing is that they agree about the
+-- window, so: abs(difference) < 0.000001 minutes. Exact equality is the wrong question.
 --
 -- Measured on four sessions — 60m rated 5, 30m rated 2, 20m unrated, and 23:00→01:00 rated 4:
 --

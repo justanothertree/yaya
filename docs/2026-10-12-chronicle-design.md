@@ -1970,6 +1970,75 @@ undersized, off-edge, clipped or wordless, and no overflow on the card or the co
   counts. Harmless for CSS and it made a probe in this very step grab the wrong control; worth a
   rename if that class is touched again.
 
+## 6o · ✅ The long view — 180ms to 2.8ms, and two checks that were passing by luck
+
+Everything in chronicle had been exercised against a week of fixture data. This step seeded a year
+of a heavy user — **2,196 sessions over 19 activities**, inside `begin/rollback` so nothing landed
+— and timed what the room actually calls.
+
+| call                            | before       |
+| ------------------------------- | ------------ |
+| one day's entries               | 1.1 ms       |
+| `chronicle_activities_mine`     | 2.1 ms       |
+| `chronicle_moods`, a year       | 5.7 ms       |
+| **`chronicle_totals`, a year**  | **180.7 ms** |
+| **`chronicle_totals`, a month** | **177.9 ms** |
+
+**A month costing the same as a year is the tell**: the range was never the cost. `chronicle_totals`
+called the scalar `chronicle_sum` once per activity for the minutes, again for the amount, **and
+again in its own ORDER BY** — roughly forty scans of the window where one would do. Looking back
+makes that call on every horizon tab, beside `chronicle_moods`, which was already doing it right.
+
+### One shared pass
+
+A third copy of the overlap expression inside `chronicle_totals` would have been the duplication
+CLAUDE.md warns about, three ways. So the grouped scan is lifted into `chronicle_spread(from, to)`
+— one row per (activity, rating), carrying seconds and amount — and both readers aggregate from it.
+One copy of the arithmetic, one scan each. It is granted to **nobody**, like `chronicle_sum` beside
+it, which still serves `chronicle_minutes` and the goal tally.
+
+| call                                  | after            |
+| ------------------------------------- | ---------------- |
+| `chronicle_totals`, a year            | **2.8 ms** (65×) |
+| `chronicle_totals`, a month           | 1.6 ms           |
+| `chronicle_moods`, a year             | 2.6 ms           |
+| both, which is what Looking back does | 5.0 ms           |
+
+### ⚠️ Divide last — and the md5 baseline is the only reason it was visible
+
+The first version divided by 60 **inside** the grouped scan, so each group's quotient was rounded
+to numeric's scale and the caller summed _rounded_ quotients. Against the real rows `chronicle_moods`
+then returned `86.9048353499999999` where it had returned `86.9048353500000000` — 1e-16 of a
+minute, which matters not at all on screen and entirely to the claim that the change was a no-op.
+Summing numerics is exact and associative, so `chronicle_spread` returns **seconds** and each
+reader divides once at the end. Taking a behavioural baseline before replacing a live function (§4)
+is the whole reason this surfaced.
+
+One difference remains and it is **text rather than value**: the output now carries more decimal
+places — `68.8468066833333333` where the old gave `68.84680668333333`, and `0.00000000000000000000`
+where it gave `0` — because the old value passed through `chronicle_sum`'s `CASE`, which scaled it.
+Proven row by row against a reconstruction of the old expression: **4 of 4 exactly equal, biggest
+difference 0**. The client does `Number(x)` and renders whole minutes. Recorded because an md5 that
+no longer matches should never be waved past.
+
+### ⚠️ And the cross-check was passing by luck
+
+§6k's probe asserts that `chronicle_moods` and `chronicle_totals` agree about a window — the
+detection that justified keeping two copies of the overlap arithmetic. It compared them for
+**exact** equality and passed on four fixture rows. At a year of real volume it **failed**: by
+0.0000000000000001 of a minute out of 143,566, six femtoseconds, because the two divide by 60 at
+different groupings and summing separately-divided numerics in two groupings is not exactly equal.
+The probe now compares to a tolerance and says why.
+
+**A check that only passes on small fixtures is a check that has not been run.** That is the second
+time in this step that a test looked green for a reason unrelated to the thing it was testing.
+
+### What was not verified here
+
+The room's rendering of these numbers. The preview harness answers from its own `pvTotals` and
+`pvMoods`, so the real functions are reachable only with a session — this step's evidence is the
+SQL above and nothing on screen. No client code changed.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
