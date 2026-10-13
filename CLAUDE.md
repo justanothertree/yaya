@@ -395,6 +395,27 @@ a deletion, so keeping a 121st picture deleted your first off your account. **No
 quietly drop an item that something else mirrors**: refuse the new one and say so. The fifth
 store, maps, does not sync and so holds the ONLY copy — where an eviction is worse still.
 
+**A SAVE THAT WRITES EVERY COLUMN IS A DELETE FOR THE ONES THE CALLER FORGOT.** The sibling of the
+rule above, found three times in two days in chronicle. The shape is always the same: an optional
+field, a caller that does not mention it, and a function that reads that silence as erasure.
+`editEntry` passed `null` for the note on every edit and `chronicle_entry_edit` said
+`note = nullif(btrim(coalesce(p_note,'')),'')` — so opening a session's editor and pressing Save,
+changing nothing, destroyed what you had written. `saveActivity` passes null for `colour` because
+there is no colour picker; `saveGoal` omits a goal's `note` entirely. Each half looks unremarkable
+on its own and together they are a delete.
+
+**Two things make it hard to see.** The field is usually one nothing on screen DRAWS — a session's
+note was written at Stop and rendered nowhere, so there was no surface on which the loss could
+show. And it is often harmless for a long time: erasing a column that is always already null is a
+no-op, so the bug sits dormant until something else gives the column a value. Here that something
+was `chronicle_import`, which I had shipped two ticks earlier — a restored file became the one way
+an activity could have a colour, and the next rename deleted it.
+
+So: **null means "I am not talking about this", never "throw it away"**, and clearing is asked for
+with `''`. Prefer that to fixing the caller, because it also repairs the bundle somebody already
+has open rather than waiting for them to reload. And when adding a column, ask immediately which
+save paths will now overwrite it and what on screen would ever reveal that they had.
+
 **Read the comments before overturning a decision.** This codebase explains _why_ in the places it
 matters, and several of those notes were written after the obvious-looking change had already been
 tried and had failed.
