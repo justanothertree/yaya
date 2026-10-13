@@ -167,6 +167,21 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   by load order, so a passing run proves nothing about the next one. Anything that survives a
   reload can cross the gap — write to localStorage, reload, and drive the app's own controls
   like a person would. Module state cannot.
+- **`?fresh=` COPIES THE MODULE YOU NAME AND SHARES EVERYTHING IT IMPORTS, and both halves of that
+  will mislead you.** The two notes above are each true and each incomplete. Measured in the pane:
+  a fresh `import('/src/dev/chroniclePreview.ts?fresh=…')` came back with an EMPTY store, so the
+  module you name really is a second copy — but a write made through a fresh
+  `import('/src/chronicle/cloud.ts?fresh=…')` landed in the APP's store, because that module's own
+  `import '../dev/chroniclePreview'` carries no query and resolves to the instance already loaded.
+  So a probe can reach the running app's state, as long as the state lives in a DEPENDENCY of the
+  module it freshly imports — and putting `?fresh=` on the module that owns the state is how you
+  get a blank answer and conclude the feature is broken.
+- **The pane reports `document.visibilityState` as `hidden` while it is not displayed**, so anything
+  gated on being seen simply does not run — `useVisits` treats hidden as "not viewing" by
+  design, so its beat never fires there and the feature reads as dead. Stand it in like `rAF`:
+  `Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })`
+  With that and a wait past the beat, it was observable for the first time — it created its own
+  `auto` activity and wrote the visit.
 - **`if (rule.cssRules)` is not how you tell a group rule from a style rule, and believing it
   cost two wrong diagnoses in one sitting.** Chrome's `CSSStyleRule` implements
   `CSSGroupingRule` now, for CSS nesting — so every plain rule HAS a `cssRules`, an empty list,
