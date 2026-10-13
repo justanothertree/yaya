@@ -2880,6 +2880,51 @@ the bug it was added for: _"six hundred milliseconds after signing in, the look 
 replaced by 'dark, no palette, no flair, no backdrop', silently, having chosen nothing."_ An honest
 negative result: the three instances were chronicle's own.
 
+## 6af · ✅ The one screen every member sees exactly once
+
+Six ticks of additions later, the room was read end to end in the state nobody had looked at since:
+**signed in, with nothing recorded**. Every word on screen was pulled out and checked against what
+the code does.
+
+The explainer is still true — "Two halves", the three numbered steps, the signed-out blurb. The day
+list says "Nothing recorded for this day yet.", the goal list says "Nothing here yet.", and both
+collapsed sections explain themselves when opened. What was wrong was smaller and worse.
+
+**Three controls are dead on a fresh account, and a phone was told nothing about any of them.**
+Start, Fill a gap and Plan a span are all correctly disabled — there is nothing to time yet. The
+explanations were: `cursor: not-allowed`, which no touch screen has, and a `title` on exactly one
+of the three, which is a tooltip and does not exist on a phone either. Measured rather than
+eyeballed, because the screenshot misled me first: all three are `opacity: 0.6`, so the bright
+green Start **is** dimmed and simply does not look it against a dark card.
+
+| control          | disabled | what said why                 |
+| ---------------- | -------- | ----------------------------- |
+| `▶ Start`       | yes      | nothing                       |
+| `⏱ Fill a gap`  | yes      | a `title` — a desktop tooltip |
+| `＋ Plan a span` | yes      | nothing                       |
+
+**The room already knew how to say it, one section down.** The Planned details reads _"Name an
+activity with ＋ Activity first — a plan is a stretch of a day set aside for one of them."_ So the
+fix is that sentence, where the dead buttons actually are and in the same shape, so the two do not
+read as different rules:
+
+> Name an activity with ＋ Activity first — the stopwatch times one of them.
+
+It appears only while there are no activities, and the check that matters is that it **goes**: a
+permanent nag would be worse than the gap. Verified by naming one — the line disappears, the picker
+fills, Fill a gap enables, and Start's new tooltip correctly vanishes. Start stays disabled until
+you pick, which needs no words because the control saying "Pick an activity…" is beside it.
+
+At 375 the line wraps to two lines, 302px wide, unclipped, with no overflow at the card or the
+document. Four things do sit past the right edge — "This month" through "Years" — and all four are
+inside `.chron-strip`, which is `overflow-x: auto` and genuinely scrolls: the deliberate pattern,
+like a piano keyboard, not a defect.
+
+**What this did not find** is worth recording too, because it was the thing I went looking for: six
+ticks of additions — the export, the import, a session's note, a moveable session, a correctable
+running one — added nothing the explainer now gets wrong. The additions are all corrections and
+exits, which is why: none of them changed what the room is **for**.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

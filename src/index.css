@@ -15675,6 +15675,12 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, the first thing a new member needs — see src/chronicle/Timer.tsx ── */
+.chron-firstly {
+  margin: 0.1rem 0 0.6rem;
+  font-size: 0.82rem;
+}
+
 /* ── chronicle, a session's own note — see src/chronicle/Timer.tsx ──────────── */
 .chron-ent-note {
   /* ⚠️ it can be a sentence where everything else on the row is a word or a number, so it gets

@@ -525,7 +525,13 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                 })}
               </select>
             </label>
-            <button className="btn" disabled={!pick || busy} onClick={() => void go(pick)}>
+            <button
+              className="btn"
+              disabled={!pick || busy}
+              /* the sentence below is what a phone reads; this is for a pointer hovering it */
+              title={open.length ? undefined : 'Name an activity first'}
+              onClick={() => void go(pick)}
+            >
               ▶ Start
             </button>
           </>
@@ -562,6 +568,26 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
           ⏱ Fill a gap
         </button>
       </div>
+
+      {/**
+       * ⚠️ A DEAD CONTROL HAS TO SAY SO IN WORDS, and until now this row said it three different
+       * ways, none of which a phone can show. Start, Fill a gap and Plan a span are all correctly
+       * disabled on a fresh account — there is nothing to time yet — but the only explanations
+       * were a `cursor: not-allowed`, which no touch screen has, and a `title` on one of the
+       * three, which is a tooltip and does not exist on a phone either. So the first screen every
+       * member passes through exactly once showed a picker with nothing in it and a Start that
+       * does nothing, and said why to nobody holding a phone.
+       *
+       * ⚠️ THE ROOM ALREADY KNEW HOW TO SAY IT, one section down: the Planned details reads "Name
+       * an activity with ＋ Activity first — a plan is a stretch of a day set aside for one of
+       * them." This is that sentence, where the dead buttons actually are, and in the same shape
+       * so the two do not read as different rules.
+       */}
+      {acts !== null && !acts.some((a) => !a.archived) && (
+        <p className="muted chron-firstly">
+          Name an activity with ＋ Activity first — the stopwatch times one of them.
+        </p>
+      )}
 
       {/**
        * ⚠️ ONE TAP FOR THE THING YOU ACTUALLY DO, because starting a timer is the most repeated
