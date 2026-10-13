@@ -103,6 +103,30 @@ export function overlapMs(e: Entry, fromMs: number, toMs: number, nowMs: number)
   return hi > lo ? hi - lo : 0
 }
 
+/**
+ * A session's quantity, if it belongs to this window — otherwise null.
+ *
+ * ⚠️ THIS IS WHERE A QUANTITY PARTS COMPANY WITH THE MINUTES BESIDE IT, and the two rules are
+ * deliberately next to each other because that is the only way to read them as a pair. Time
+ * genuinely elapses in both of the days a session straddles, so `overlapMs` splits it. Five pages
+ * written across midnight are not two and a half pages each side — the quantity belongs to the
+ * SESSION, so it counts once, against the day the session started.
+ *
+ * ⚠️ AND THE DAY LIST WAS SHOWING IT TWICE. `chronicle_sum` and `chronicle_totals` have had this
+ * rule since the column existed; the entry row in Timer.tsx asked only whether the amount was
+ * non-null, so one session of Writing from 23:00 to 00:30 read "1h · 2 pages" on one day and
+ * "30m · 2 pages" on the next. The minutes were right both times. Anybody reading two days
+ * counted four pages from a session that produced two, and the list disagreed with the totals and
+ * with every goal counting that metric. A rule enforced in two places out of three is a rule the
+ * third place contradicts.
+ */
+export function amountIn(e: Entry, fromMs: number, toMs: number): number | null {
+  if (e.amount == null) return null
+  const s = Date.parse(e.start)
+  if (!Number.isFinite(s)) return null
+  return s >= fromMs && s < toMs ? e.amount : null
+}
+
 /** Minutes per activity id inside a window — what a day's totals are made of. */
 export function minutesByActivity(
   entries: Entry[],

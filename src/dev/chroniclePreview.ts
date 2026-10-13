@@ -42,6 +42,21 @@ const at = (daysAgo: number, h: number, m = 0): Date => {
   return d
 }
 
+/**
+ * A finished session, `daysAgo` days back, starting at hour `h`.
+ *
+ * ⚠️ ON TODAY THE HOUR IS A CEILING, NOT THE TIME. A fixture is read at whatever o-clock it
+ * happens to be, and "today at 19:00" is in the FUTURE for most of the day — which is not a
+ * product bug but reads as several. It made the gap form look like it was defaulting to a span
+ * the day did not contain, and it would make any "what have I done so far" reading wrong. So a
+ * session on today is pulled back to fit before now, keeping its length.
+ *
+ * ⚠️ WHICH MEANS TODAY IS CRAMPED IN THE SMALL HOURS, and that is the honest trade: read at
+ * 00:41 there are only 41 minutes for today to have happened in, so the seeded sessions pile up
+ * against midnight and overlap. Everything still counts on the right day, which is what the
+ * streak and the tallies need. Anything being judged on how a NORMAL day lays out wants reading
+ * later in the day, or on one of the earlier ones, which are at their stated hours.
+ */
 const span = (
   id: string,
   activity: string,
@@ -51,7 +66,11 @@ const span = (
   amount: number | null = null,
   note: string | null = null,
 ): Entry => {
-  const a = at(daysAgo, h)
+  let a = at(daysAgo, h)
+  if (daysAgo === 0) {
+    const latest = Date.now() - mins * 60_000
+    if (a.getTime() > latest) a = new Date(Math.max(localMidnight(todayISO()).getTime(), latest))
+  }
   return {
     id,
     activity,

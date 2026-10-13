@@ -20,6 +20,7 @@ import {
   localMidnight,
   minutesByActivity,
   minutesByCat,
+  amountIn,
   overlapMs,
   spanText,
   type Activity,
@@ -82,6 +83,16 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [stopNote, setStopNote] = useState('')
   const [gapFrom, setGapFrom] = useState('')
   const [gapTo, setGapTo] = useState('')
+  /**
+   * Which activity the gap is for.
+   *
+   * ⚠️ ITS OWN, RATHER THAN THE TOP PICKER'S, because the top picker is not always there. While a
+   * timer is running the picker is replaced by the name of what you are doing — so Fill a gap read
+   * "Add to the picked activity", could not say which, and answered a press with "pick an activity
+   * first": an instruction you cannot follow, because the room had removed the means. A form that
+   * needs a thing has to carry the control for it.
+   */
+  const [gapAct, setGapAct] = useState('')
   /**
    * Which activity and which span are being edited, if any.
    *
@@ -208,11 +219,11 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   }
 
   const fillGap = async () => {
-    if (!pick) return moan('pick an activity first')
+    if (!gapAct) return moan('which activity was it?')
     if (!gapFrom || !gapTo) return moan('both ends of the span, please')
     setBusy(true)
     const bad = await addEntry(
-      pick,
+      gapAct,
       new Date(gapFrom).toISOString(),
       new Date(gapTo).toISOString(),
       null,
@@ -275,11 +286,74 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
   }
 
+  /**
+   * ⚠️ IT ASKS ABOUT THE WHOLE SESSION, BECAUSE THAT IS WHAT IT DELETES. The day list shows a
+   * straddling session's OVERLAP with the day you are looking at, so this read "Delete the 30m of
+   * Writing?" for a session that was 1h 30m and then removed all of it, including the hour sitting
+   * on yesterday's screen. A confirmation that understates what it does is worse than none: it is
+   * the one moment somebody is deciding, and it was answering a different question.
+   */
+  /**
+   * Where the gap form starts, so nobody types four fields on a phone.
+   *
+   * ⚠️ IT OPENED COMPLETELY EMPTY, which made repairing the commonest hole in any log — "I did
+   * that and forgot to press Start" — into two full datetimes typed from scratch on a touch
+   * keyboard. The two rules here are the two halves of what a gap actually is:
+   *
+   * - the END is now, when you are looking at today, because that is when you noticed. On a past
+   *   day there is no "now" in it, so it is that day's last session, or midday if the day is bare.
+   * - the START is the end of the last session before that — the gap IS the unlogged stretch — and
+   *   an hour back when there is nothing to butt against.
+   *
+   * Both are clamped into the day on screen, so the form can never open describing a span the day
+   * you are looking at does not contain.
+   */
+  const gapOpens = (): { from: string; to: string } => {
+    const now = Date.now()
+    const onToday = seeing === todayISO()
+    /* a minute inside the end, so "the whole of this day" never rounds into the next one */
+    const dayEnd = bounds.toMs - 60_000
+    const ends = log
+      .filter((e) => e.end != null)
+      .map((e) => Date.parse(e.end!))
+      .filter((t) => Number.isFinite(t) && t > bounds.fromMs && t <= dayEnd)
+    /* ⚠️ `ends.length ?` rather than `Math.max(...ends, -Infinity)`, which returns -Infinity for
+       an empty day — and -Infinity is truthy, so a `||` fallback behind it never fires and
+       `new Date(-Infinity).toISOString()` throws. An empty past day would have opened this form
+       by crashing the room. */
+    const lastEnd = ends.length ? Math.max(...ends) : null
+    const to = Math.min(dayEnd, onToday ? now : (lastEnd ?? bounds.fromMs + 12 * 3_600_000))
+    const before = ends.filter((t) => t < to)
+    const from = Math.max(bounds.fromMs, before.length ? Math.max(...before) : to - 3_600_000)
+    /**
+     * ⚠️ A MINIMUM LENGTH, NOT MERELY A FORWARD ONE. The first guard here asked `from < to`, which
+     * a span of four seconds satisfies — and when the last session ended moments ago that is
+     * exactly what came out: the form opened with both ends reading 00:41, a default that is
+     * either refused or records nothing. "Butt it against the last session" needs the last session
+     * to be a while ago; five minutes is the line below which the gap is not the thing you are
+     * describing.
+     */
+    const safe = to - from >= 5 * 60_000 ? from : Math.max(bounds.fromMs, to - 3_600_000)
+    return {
+      from: forInput(new Date(safe).toISOString()),
+      to: forInput(new Date(to).toISOString()),
+    }
+  }
+
   const forget = async (e: Entry) => {
     const name = byId.get(e.activity)?.name ?? 'that'
+    const here = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
+    /* an unbounded window, so the whole span comes back — and a running one still measures to
+       the clock, and a backwards or unreadable one still comes back as zero, for free */
+    const all = overlapMs(e, -Infinity, Infinity, Date.now())
+    /* ⚠️ a minute of slack rather than `!==`: a session can poke a few seconds past midnight and
+       "1h 30m of which 1h 30m is on this day" is a sentence about nothing */
+    const spans = all - here > 60_000
     if (
       !window.confirm(
-        `Delete the ${spanText(overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()))} of ${name}?`,
+        spans
+          ? `Delete the whole ${spanText(all)} of ${name}? It runs past this day — only ${spanText(here)} of it is here.`
+          : `Delete the ${spanText(here)} of ${name}?`,
       )
     )
       return
@@ -392,7 +466,23 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
-        <button className="btn btn-ghost" onClick={() => setGap((v) => !v)}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            const next = !gap
+            setGap(next)
+            if (next) {
+              const o = gapOpens()
+              setGapFrom(o.from)
+              setGapTo(o.to)
+              /* ⚠️ the top picker's choice when there is one, and what you are doing otherwise —
+                 but never blank, because a select nobody notices is the dead end all over again */
+              setGapAct(
+                pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '',
+              )
+            }
+          }}
+        >
           ⏱ Fill a gap
         </button>
       </div>
@@ -471,6 +561,18 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
       {gap && (
         <div className="chron-add">
           <label className="chron-gap">
+            <span className="sr-only">Which activity</span>
+            <select value={gapAct} onChange={(e) => setGapAct(e.target.value)}>
+              {(acts ?? [])
+                .filter((a) => !a.archived || a.id === gapAct)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="chron-gap">
             <span className="sr-only">From when</span>
             <input
               type="datetime-local"
@@ -482,8 +584,8 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
             <span className="sr-only">Until when</span>
             <input type="datetime-local" value={gapTo} onChange={(e) => setGapTo(e.target.value)} />
           </label>
-          <button className="btn" disabled={busy} onClick={() => void fillGap()}>
-            Add to {byId.get(pick)?.name ?? 'the picked activity'}
+          <button className="btn" disabled={busy || !gapAct} onClick={() => void fillGap()}>
+            Add it
           </button>
           <button className="btn btn-ghost" onClick={() => setGap(false)}>
             Cancel
@@ -510,16 +612,20 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
           {log.map((e) => {
             const a = byId.get(e.activity)
             const ms = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
+            const amt = amountIn(e, bounds.fromMs, bounds.toMs)
             return (
               <li key={e.id} className={'chron-ent' + (e.end == null ? ' is-live' : '')}>
                 <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
                 <span className="chron-ent-span">{spanText(ms)}</span>
                 {/* ⚠️ the amount sits with the length because they are the same fact measured two
                     ways — "40m, 4 pages" is one session, and separating them would invite reading
-                    the number as a second entry */}
-                {e.amount != null && a?.metric ? (
+                    the number as a second entry.
+                    ⚠️ AND `amountIn` RATHER THAN `e.amount != null`, which showed it on both of
+                    the days a session straddles. See amountIn — the minutes split at midnight and
+                    the quantity does not. */}
+                {amt != null && a?.metric ? (
                   <span className="chron-amount">
-                    {e.amount} {a.metric}
+                    {amt} {a.metric}
                   </span>
                 ) : null}
                 <span className="muted chron-ent-when">

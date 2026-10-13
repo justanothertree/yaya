@@ -645,6 +645,108 @@ any future harness here.
 - Still only reachable with a session: the production path on :4173, which has no harness because
   the harness is DEV-only. Unchanged, and the reason the empty states are worth a trip there.
 
+## 6h · ✅ The sweep — six features looked at for the first time
+
+§6g built the harness. This is what it found when the six features that had shipped against an
+unobservable room were finally driven. Four of eleven paths were broken, and three of the four were
+things no amount of reading would have shown, because each was correct in the code and wrong on
+the screen.
+
+| path                                              | verdict                            |
+| ------------------------------------------------- | ---------------------------------- |
+| Day stepper (`‹ ›`, "Yesterday", "back to today") | ✅                                 |
+| **An amount on a session that crosses midnight**  | 🐛 shown on both days              |
+| **Deleting a straddling session**                 | 🐛 the confirmation understated it |
+| Entry editor — both ends and the metric           | ✅ and it propagates to the goal   |
+| **Fill a gap, with a timer running**              | 🐛 a dead end                      |
+| **Fill a gap, the two datetime fields**           | 🐛 opened empty                    |
+| Routines fold — run, edit, "2 of 3"               | ✅                                 |
+| Activities fold — metric, time today, archive     | ✅                                 |
+| Looking back — week / month / quarter / year      | ✅                                 |
+| Goal form, source picker, counts picker           | ✅                                 |
+| 375px audit of the populated room                 | ✅ 43 controls, nothing under 36px |
+
+### ⚠️ A quantity does not split at midnight, and the day list split it anyway
+
+One session of Writing, 23:00 to 00:30, four pages. The day list showed `1h · 4 pages` on the ninth
+and `30m · 4 pages` on the tenth. The **minutes were right both times** — that is what `overlapMs`
+is for, and the hour and the half-hour are both real. The pages were not: five pages written across
+midnight are not two and a half pages each side, so the quantity belongs to the **session**, and
+counts once, against the day it started.
+
+`chronicle_sum` and `chronicle_totals` have had that rule since the column existed. The entry row
+asked only whether `e.amount` was non-null. **A rule enforced in two places out of three is a rule
+the third place contradicts** — so anybody reading two days counted eight pages from a session that
+produced four, and the list disagreed with the totals beside it and with every goal counting that
+metric.
+
+`amountIn(e, fromMs, toMs)` now lives next to `overlapMs`, deliberately adjacent, because the two
+rules can only be read as a pair. The test sweeps a **tiling** rather than two fixtures, the same
+shape as the overlap test above it: over any set of windows that tile the range, the minutes sum to
+the session's length and the quantity appears exactly once. Two hand-picked days would agree with a
+rule saying "the first day wins" and with one saying "whichever day I happened to open".
+
+Perturbed back to the shipped behaviour — the amount shown whenever the session touches the day —
+two tests go red, including the running-session one.
+
+### ⚠️ And the confirmation for deleting it was answering a different question
+
+The day list shows a straddling session's **overlap** with the day you are on, so the prompt read
+`Delete the 30m of Writing?` and then removed all ninety minutes, including the hour sitting on
+yesterday's screen. A confirmation that understates what it does is worse than none: it is the one
+moment somebody is deciding. It now names the whole span and says how much of it is here, with a
+minute of slack so a session that pokes a few seconds past midnight does not get a sentence about
+nothing.
+
+### ⚠️ Fill a gap was a dead end whenever a timer was running
+
+The form's button read `Add to the picked activity`, took the activity from the **top picker** — and
+while a timer runs the top picker is not there, because it is replaced by the name of what you are
+doing. So the button could not say which activity it meant, and pressing it answered
+`pick an activity first`: an instruction you cannot follow, because the room has removed the means.
+Same shape as `.park-field`, one layer up — **when a thing does not happen, check that the room is
+letting you ask.**
+
+A form that needs a thing has to carry the control for it, so the gap has its own activity select
+now, defaulting to the picked activity, else what is running, else the first unarchived one — never
+blank, because a select nobody notices is the dead end again.
+
+### ⚠️ And it opened completely empty, which is four typed fields on a phone
+
+Repairing the commonest hole in any log — "I did that and forgot to press Start" — meant typing two
+full datetimes on a touch keyboard. It opens filled in now, from the two halves of what a gap
+actually is:
+
+- **the end** is now, when you are looking at today, because that is when you noticed. On a past day
+  there is no "now" in it, so it is that day's last session, or midday if the day is bare.
+- **the start** is the end of the last session before that — the gap _is_ the unlogged stretch — and
+  an hour back when there is nothing to butt against.
+
+Both clamped into the day on screen. Observed: today at 00:42 opens `00:00 → 00:42`; a past day with
+sessions opens `09:31 → 14:50`, which is exactly the unlogged stretch between two of them; a bare
+day opens `11:00 → 12:00`.
+
+Two of my own mistakes in that one function, both caught before pushing and worth recording because
+neither is specific to this room:
+
+- **`Math.max(...ends, -Infinity)` returns `-Infinity` for an empty day, and `-Infinity` is
+  truthy** — so a `||` fallback behind it never fires, and `new Date(-Infinity).toISOString()`
+  **throws**. An empty past day would have opened the form by crashing the room. `ends.length ? …`
+  instead.
+- **`from < to` is not a guard against a degenerate span.** Four seconds satisfies it, and when the
+  last session ended moments ago that is what came out — the form opened with both ends reading
+  `00:41`. The rule needs a minimum length, not a direction.
+
+### A note on the fixture itself
+
+The seed placed today's sessions at fixed hours, and "today at 19:00" is in the **future** for most
+of the day — which is not a product bug but reads as several, including making the gap defaults look
+wrong. Today's sessions are pulled back to fit before now. The honest trade is that read in the
+small hours today is cramped: at 00:41 there are only forty-one minutes for it to have happened in,
+so sessions pile up against midnight and overlap. Everything still falls on the right day, which is
+what the streaks and tallies need; anything being judged on how a _normal_ day lays out wants
+reading later, or on one of the earlier days, which sit at their stated hours.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

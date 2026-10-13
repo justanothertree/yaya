@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  amountIn,
   clockText,
   dayBounds,
   minutesByActivity,
@@ -110,6 +111,62 @@ describe('how much of a span falls inside a window', () => {
     expect(
       overlapMs(openJunk, at('2026-10-12T00:00:00Z'), at('2026-10-13T00:00:00Z'), NOW),
     ).toBeGreaterThan(0)
+  })
+})
+
+describe('a quantity, which does not split the way the minutes do', () => {
+  /**
+   * ⚠️ THE CLAIM IS ABOUT THE WORLD, NOT ABOUT THE FUNCTION: a session of writing that runs from
+   * eleven at night to half past midnight is ninety minutes spread over two days and FOUR PAGES
+   * ONCE. The minutes are asked about with `overlapMs` and the pages with `amountIn`, and the
+   * test asserts that pairing rather than either one alone — because each was individually right
+   * while the screen was wrong. The day list showed the pages on both days.
+   *
+   * ⚠️ AND IT SWEEPS A TILING RATHER THAN CHECKING TWO FIXTURES, the same shape as the overlap
+   * test above it: over any set of windows that tile the range, the minutes sum to the session's
+   * length and the quantity appears exactly once. A pair of hand-picked days would agree with a
+   * rule that said "the first day wins" and with one that said "whichever day I looked at".
+   */
+  const night = entry({
+    start: '2026-10-09T23:00:00.000Z',
+    end: '2026-10-10T00:30:00.000Z',
+    amount: 4,
+  })
+
+  /* the five UTC days around it, as a tiling — these are UTC rather than local on purpose, so the
+     sweep is a tiling of instants and does not re-ask the local-midnight question dayBounds owns */
+  const days = [8, 9, 10, 11, 12].map((d) => {
+    const from = at(`2026-10-${String(d).padStart(2, '0')}T00:00:00.000Z`)
+    return { from, to: from + 86_400_000 }
+  })
+
+  it('splits the minutes across the days it touches', () => {
+    const mins = days.map((w) => overlapMs(night, w.from, w.to, NOW))
+    expect(mins.filter((m) => m > 0)).toHaveLength(2)
+    expect(mins.reduce((a, b) => a + b, 0)).toBe(90 * 60_000)
+  })
+
+  it('and gives the quantity to exactly one of them — the day it began', () => {
+    const got = days.map((w) => amountIn(night, w.from, w.to))
+    /* four pages, once, and on the ninth rather than the tenth */
+    expect(got).toEqual([null, 4, null, null, null])
+    expect(got.filter((x) => x != null).reduce((a, b) => a + b!, 0)).toBe(4)
+  })
+
+  it('and a session with no quantity has nothing to give', () => {
+    const plain = entry({ start: '2026-10-09T23:00:00.000Z', end: '2026-10-10T00:30:00.000Z' })
+    expect(days.map((w) => amountIn(plain, w.from, w.to))).toEqual([null, null, null, null, null])
+  })
+
+  /** ⚠️ a running session's quantity still belongs to the day it started, end or no end */
+  it('and a running session still answers for the day it started', () => {
+    const live = entry({ start: '2026-10-09T23:00:00.000Z', end: null, amount: 2 })
+    expect(days.map((w) => amountIn(live, w.from, w.to))).toEqual([null, 2, null, null, null])
+  })
+
+  it('and an unreadable start gives nothing rather than a number on the wrong day', () => {
+    const junk = entry({ start: 'not a date', amount: 9 })
+    expect(days.map((w) => amountIn(junk, w.from, w.to))).toEqual([null, null, null, null, null])
   })
 })
 
