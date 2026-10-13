@@ -650,6 +650,52 @@ export const pvMoods = (fromISO: string, toISO: string): Moods => {
   return out
 }
 
+/**
+ * A stretch of time in a room, as `chronicle_visit` records it.
+ *
+ * ⚠️ THE THREE RULES THAT FUNCTION KEEPS, and all three matter to what the room shows:
+ *  - the seconds are clamped to between 30 and 600, so one report can never claim more than ten
+ *    minutes however long the caller thought it was;
+ *  - the activity is found or made, named after the room and marked `auto`, which is what makes
+ *    "Paint 4h" visibly a room that was open rather than four hours of painting;
+ *  - a finished entry for it that ended under THREE MINUTES ago is EXTENDED rather than added to,
+ *    which is why the beat is two minutes and why the client restarts its stretch after each one.
+ */
+export const pvVisit = (room: string, secs: number): void => {
+  const name = room.trim()
+  if (!name || name.length > 40) return
+  const span = Math.min(Math.max(Math.round(secs) || 0, 30), 600)
+  const now = Date.now()
+  let act = db().acts.find((a) => a.auto && a.name === name)
+  if (!act) {
+    act = {
+      id: mint('pv-a'),
+      name,
+      cat: 'free',
+      colour: null,
+      archived: false,
+      auto: true,
+      metric: null,
+      session: null,
+    }
+    db().acts.push(act)
+  }
+  const recent = db()
+    .ents.filter((e) => e.activity === act.id && e.end != null && now - Date.parse(e.end) < 180_000)
+    .sort((a, b) => Date.parse(b.end!) - Date.parse(a.end!))[0]
+  if (recent) recent.end = new Date(now).toISOString()
+  else
+    db().ents.push({
+      id: mint('pv-e'),
+      activity: act.id,
+      start: new Date(now - span * 1000).toISOString(),
+      end: new Date(now).toISOString(),
+      note: null,
+      amount: null,
+      quality: null,
+    })
+}
+
 export const pvSaveRoutine = (
   name: string,
   steps: Array<{ activity: string; mins: number | null }>,

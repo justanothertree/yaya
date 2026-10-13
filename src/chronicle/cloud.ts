@@ -26,6 +26,7 @@ import {
   pvStop,
   pvTally,
   pvTotals,
+  pvVisit,
 } from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
 import type { Plan } from './plan'
@@ -579,4 +580,27 @@ export async function moodsBetween(fromISO: string, toISO: string): Promise<Mood
   for (const [k, v] of Object.entries(data as Record<string, unknown>))
     out[k] = num(v as number | string | null)
   return out
+}
+
+/**
+ * Time on the site, recorded without being asked for — see chronicle/useVisits.ts.
+ *
+ * ⚠️ IT CAME THROUGH HERE LATE. useVisits called `getSupabaseClient().rpc` itself, which made it
+ * the one chronicle call with no preview route: in the dev harness it reached for a Supabase
+ * session that does not exist, failed, and swallowed the failure. So the one feature that writes
+ * rows on its own, for every member, without anybody pressing anything, was also the only one that
+ * could not be watched doing it. That is the shape of the blind spot §6g was about.
+ *
+ * ⚠️ AND THE SERVER CLAMPS TO BETWEEN THIRTY SECONDS AND TEN MINUTES, which is worth knowing
+ * before trusting any arithmetic here: a single report can never claim more than ten minutes
+ * however long the caller says it was.
+ */
+export async function recordVisit(room: string, secs: number): Promise<void> {
+  if (previewMember) return pvVisit(room, secs)
+  const { error } = await getSupabaseClient().rpc('chronicle_visit', {
+    p_module: room,
+    p_seconds: Math.round(secs),
+  })
+  /* ⚠️ a visit that does not land is not worth telling anybody about — see useVisits */
+  void error
 }

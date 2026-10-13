@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getSupabaseClient } from '../finance/client'
+import { recordVisit } from './cloud'
 
 /**
  * Time on the site, recorded without being asked for.
@@ -55,10 +55,9 @@ export function useVisits(room: string | null, authed: boolean) {
        write nothing. The server floors it at thirty seconds too, so this only saves a round trip. */
     if (secs < 30) return
     try {
-      await getSupabaseClient().rpc('chronicle_visit', {
-        p_module: name,
-        p_seconds: Math.round(secs),
-      })
+      /* ⚠️ through cloud.ts rather than straight at Supabase, so the dev harness can answer it —
+         this was the one chronicle call nobody could watch happening. See recordVisit. */
+      await recordVisit(name, secs)
     } catch {
       /* ⚠️ a visit that does not land is not worth telling anybody about. This is bookkeeping
          nobody asked for in the moment, so a failed one must be quieter than a failed save. */
@@ -78,6 +77,14 @@ export function useVisits(room: string | null, authed: boolean) {
 
   useEffect(() => {
     if (!authed) return
+    /**
+     * ⚠️ THE CLOCK STARTS WHEN YOU SIGN IN, NOT WHEN THE PAGE LOADED. `since` is set at mount, and
+     * the page mounts for a signed-out visitor too — so somebody who read the site for twenty
+     * minutes and then signed in had their first beat report twenty-two minutes, twenty of which
+     * were nobody's record. The ask was "the time when I am LOGGED IN viewing the site", and this
+     * is the line between the two.
+     */
+    since.current = Date.now()
     const beat = () => {
       if (!seeing() || !was.current) return
       const secs = (Date.now() - since.current) / 1000
@@ -104,14 +111,30 @@ export function useVisits(room: string | null, authed: boolean) {
       if (was.current) void send.current(was.current, (Date.now() - since.current) / 1000)
       since.current = Date.now()
     }
+    /**
+     * ⚠️ GOING AWAY REPORTS UNCONDITIONALLY, which `flip` cannot do because it has to decide.
+     * pagehide was wired to flip, and flip's first question is "can I still be seen" — so on any
+     * browser where the page is still VISIBLE when pagehide fires, the branch taken is the one
+     * that resets the clock and reports nothing, and the tail of the visit is simply lost.
+     *
+     * Modern browsers do set visibility to hidden before pagehide, so in the common case flip
+     * happened to do the right thing by having already reported on visibilitychange. Relying on
+     * that ordering is relying on something this code cannot check, for the event that is the
+     * commonest way a visit ends on a phone. Reporting twice is harmless — the server extends the
+     * span it already has, and the second report is under the thirty-second floor anyway.
+     */
+    const away = () => {
+      if (was.current) void send.current(was.current, (Date.now() - since.current) / 1000)
+      since.current = Date.now()
+    }
     document.addEventListener('visibilitychange', flip)
     /* ⚠️ pagehide rather than beforeunload: it fires on a phone putting the browser away, which
        beforeunload does not, and that is the commonest way a visit on a phone ends. */
-    window.addEventListener('pagehide', flip)
+    window.addEventListener('pagehide', away)
     return () => {
       window.clearInterval(t)
       document.removeEventListener('visibilitychange', flip)
-      window.removeEventListener('pagehide', flip)
+      window.removeEventListener('pagehide', away)
     }
   }, [authed])
 }

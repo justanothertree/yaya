@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  pvActivities,
   pvAddEntry,
   pvEmpty,
   pvEntries,
@@ -10,6 +11,7 @@ import {
   pvSaveActivity,
   pvSaveGoal,
   pvTally,
+  pvVisit,
   pvTotals,
 } from './chroniclePreview'
 import type { NewGoal } from '../chronicle/cloud'
@@ -230,5 +232,85 @@ describe('the store is isolated between runs', () => {
     expect(pvTotals(dayStart(), dayEnd())).toEqual([])
     expect(pvMoods(dayStart(), dayEnd())).toEqual({})
     expect(pvQuality('nope', 3)).toBe(false)
+  })
+})
+
+describe('a visit recorded without being asked for', () => {
+  beforeEach(() => pvEmpty())
+
+  /**
+   * ⚠️ THE ACTIVITY IS MADE, AND MARKED auto. That mark is what lets the room say "on the site"
+   * beside it — "Paint 4h" meaning the room was open is a different claim from four hours of
+   * painting, and the difference matters most when reading a week back.
+   */
+  it('makes the room an activity the first time, marked as written by the site', () => {
+    pvVisit('Paint', 120)
+    const acts = pvActivities()
+    expect(acts).toHaveLength(1)
+    expect(acts[0].name).toBe('Paint')
+    expect(acts[0].auto).toBe(true)
+    expect(acts[0].cat).toBe('free')
+    /* and not a second one on the next visit */
+    pvVisit('Paint', 120)
+    expect(pvActivities()).toHaveLength(1)
+  })
+
+  /**
+   * ⚠️ A REPORT CANNOT CLAIM MORE THAN TEN MINUTES, whatever the caller says. chronicle_visit
+   * clamps to [30, 600] seconds, and that clamp is the safety net under every arithmetic mistake
+   * the client could make about how long somebody has been looking at a page.
+   */
+  it('and clamps a wild report to ten minutes', () => {
+    pvVisit('Paint', 86_400)
+    const [e] = pvEntries(
+      new Date(Date.now() - 86_400_000).toISOString(),
+      new Date(Date.now() + 1000).toISOString(),
+    )
+    const mins = (Date.parse(e.end!) - Date.parse(e.start)) / 60_000
+    expect(mins).toBeCloseTo(10, 1)
+  })
+
+  it('and refuses a report under half a minute by stretching it, never by shrinking below it', () => {
+    pvVisit('Paint', 1)
+    const [e] = pvEntries(
+      new Date(Date.now() - 86_400_000).toISOString(),
+      new Date(Date.now() + 1000).toISOString(),
+    )
+    expect((Date.parse(e.end!) - Date.parse(e.start)) / 1000).toBeCloseTo(30, 0)
+  })
+
+  /**
+   * ⚠️ A RECENT VISIT IS EXTENDED, NOT ADDED TO, which is the whole reason the beat is two
+   * minutes inside a three-minute slack — a beat any slower would split one sitting into separate
+   * rows, and the client restarts its stretch after each beat because the extend ignores the
+   * seconds it is given and simply moves the end to now.
+   */
+  it('and extends the sitting it is already in rather than starting another', () => {
+    pvVisit('Paint', 120)
+    const win = [
+      new Date(Date.now() - 86_400_000).toISOString(),
+      new Date(Date.now() + 1000).toISOString(),
+    ] as const
+    expect(pvEntries(win[0], win[1])).toHaveLength(1)
+    pvVisit('Paint', 120)
+    const after = pvEntries(win[0], win[1])
+    expect(after).toHaveLength(1)
+    expect(Date.parse(after[0].end!)).toBeGreaterThanOrEqual(Date.parse(after[0].start))
+  })
+
+  it('and a different room is a different activity', () => {
+    pvVisit('Paint', 120)
+    pvVisit('Instrument', 120)
+    expect(
+      pvActivities()
+        .map((a) => a.name)
+        .sort(),
+    ).toEqual(['Instrument', 'Paint'])
+  })
+
+  it('and a nameless or absurd room is not recorded at all', () => {
+    pvVisit('   ', 120)
+    pvVisit('x'.repeat(41), 120)
+    expect(pvActivities()).toEqual([])
   })
 })

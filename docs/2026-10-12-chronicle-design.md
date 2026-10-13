@@ -2398,6 +2398,55 @@ rather than find one they asserted that the minutes were still the minutes. `pvE
 door the room uses to draw the log; going through it made them about the rating instead. Worth
 noticing that a test which cannot reach its subject will happily assert something else and pass.
 
+## 6w · ✅ The one part of chronicle nobody had ever looked at
+
+`useVisits` writes rows automatically, for every member, without anybody pressing anything — and it
+was the only file in the module I had never read. Two real problems and one structural one.
+
+### ⚠️ The clock started when the page loaded, not when you signed in
+
+`since` is set at mount, and the page mounts for a signed-out visitor too. So somebody who read the
+site for twenty minutes and then signed in had their first beat report twenty-two minutes, twenty
+of which were nobody's record. The ask was "the time when I am **logged in** viewing the site".
+
+Worth saying accurately: **`chronicle_visit` clamps every report to between 30 seconds and ten
+minutes**, so this was capped rather than unbounded — ten minutes of signed-out time counted as
+yours rather than twenty. Reading the function before writing the sentence is the only reason that
+is stated correctly.
+
+### ⚠️ Leaving the page could report nothing at all
+
+`pagehide` was wired to the same handler as `visibilitychange`, and that handler's first question is
+"can I still be seen". On any browser where the page is still **visible** when `pagehide` fires, the
+branch taken resets the clock and reports nothing — and the tail of the visit is lost.
+
+Modern browsers do set visibility to hidden before `pagehide`, so in the common case it happened to
+work because `visibilitychange` had already reported. That is relying on an ordering this code
+cannot check, for the event that is the commonest way a visit ends on a phone. Going away now
+reports unconditionally; reporting twice is harmless, because the server extends the span it already
+has and the second report is under the thirty-second floor anyway.
+
+### ⚠️ And it was the one chronicle call with no door in `cloud.ts`
+
+It called `getSupabaseClient().rpc` itself, so in the dev harness it reached for a session that does
+not exist, failed, and swallowed the failure. **The one feature that writes rows on its own was also
+the only one that could not be watched doing it** — the exact shape of the blind spot §6g was about,
+surviving in a corner for sixteen steps.
+
+It goes through `recordVisit` now, with `pvVisit` behind the preview guard, and six tests pin that
+double to the three rules `chronicle_visit` keeps: the clamp, the find-or-make of an `auto`
+activity, and the **extend** of any finished entry that ended under three minutes ago — which is
+why the beat is two minutes and why the client restarts its stretch after each one. Perturbed:
+dropping the clamp reddens two, always inserting instead of extending reddens one, failing to mark
+the activity `auto` reddens two.
+
+### What this still cannot prove
+
+`useVisits` is a hook; this repo tests pure modules in node and has no React test setup, so the two
+fixes above are reasoned from the code and the server function rather than observed firing. What is
+now possible — and was not before — is watching a visit accrue in the harness, because the call
+finally has a route it can answer.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
