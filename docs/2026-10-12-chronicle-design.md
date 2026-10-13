@@ -1758,6 +1758,81 @@ separately — see the §6 note about asking the container rather than the page.
 `sessionGoal` (a per-session rather than per-window target) and the `dash` panel of stat tiles.
 Money, alarms, presence and `lib` stay out — §7.
 
+## 6l · ✅ The dash, answered as a comparison
+
+The HTML app's last unported surface was `dash`, a panel of stat tiles. **The horizon tabs already
+are chronicle's dashboard** — they hold the totals, the categories, the bars and now the moods — so
+porting tiles would have meant a second home for numbers the room already shows, which §5 of
+CLAUDE.md names as a bug class. What tiles have that the tabs did not is **comparison**: this week
+against last week. That is what was built, folded into Looking back rather than added beside it.
+
+No new SQL. `chronicle_totals` already takes an arbitrary range.
+
+### ⚠️ The same stretch, not the whole previous window
+
+This is the whole feature and it is the thing a naive version gets wrong **every single morning**.
+On Tuesday "this week" is two and a bit days old and last week was seven, so comparing them reports
+the calendar as a collapse in effort: `4h less than last week` is arithmetically true and useless.
+Every Monday would open with bad news.
+
+`likeForLike(scope, on, nowMs)` returns two stretches of **equal length** — this window so far, and
+the same number of hours into the one before it — plus `part`, saying the window is still running
+so the sentence can read "this point last week".
+
+Observed on screen, and the seed is built to prove it: a session sits in last week but _after_
+today's hour, so it is inside the previous window and outside the compared stretch. The reading is
+`1h 37m more than this point last week`; counting the whole previous window would have said `47m`.
+
+```
+3h 42m recorded this week   Locked In 2h 38m · Free Time 52m · Life 12m
+1h 37m more than this point last week
+1h 20m good · 50m fine · 42m rough · 50m unrated
+```
+
+### ⚠️ Only the difference is shown, never the earlier total
+
+The headline is the **whole** window; the comparison is over the **elapsed** stretch. Both are
+honest and they are not the same number, so putting both on screen would be one block disagreeing
+with itself. Showing only the delta means there is never a second number to contradict the first.
+
+### ⚠️ And the clamp, which the first test could not see
+
+The earlier range is clamped to its own window's end, or a stretch longer than the previous window
+bleeds forward into the current one and a period is partly compared against itself — flattering
+every reading by exactly the overlap.
+
+The first version of the test swept a mid-October date, where every window is the same length as
+the one before it, so **removing the clamp changed nothing and the test stayed green**. A
+perturbation found it. The case that bites is the end of a long month after a short one: 31 March
+has thirty-one days elapsed and February had twenty-eight, so without the clamp the "before" range
+runs three days into March. The test now uses that date and the perturbation reddens it alone.
+
+All three perturbations, each red for its own reason:
+
+| perturbation                                        | result                               |
+| --------------------------------------------------- | ------------------------------------ |
+| compare against the whole previous window           | 2 red                                |
+| drop the clamp                                      | **1 red**, the long-month test alone |
+| step back thirty days instead of one calendar month | 2 red                                |
+
+Both directions exercised in the room rather than reasoned about: deleting 122 minutes of this week
+turned `1h 37m more` into `24m less`, with the arithmetic agreeing to the minute once the running
+timer is counted.
+
+### A smaller one found by looking
+
+`Chronicle (on the site)` was cut mid-word in the bar list — the name **had** `text-overflow:
+ellipsis` and it did nothing, because the element carrying it is a flex container and the text is
+an anonymous flex item. Ellipsis applies to a block container's inline content, so the name needed
+to be a real element of its own. Measured after: `scrollWidth 136` in `clientWidth 55`, ellipsed
+true.
+
+### What this leaves
+
+`sessionGoal` — a per-session rather than per-window target, "when I draw, draw at least thirty
+minutes" — is the last named thing on the HTML list. Money, alarms, presence and `lib` stay out
+(§7), and `dash` is answered above rather than ported.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

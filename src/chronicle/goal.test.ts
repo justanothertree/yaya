@@ -13,12 +13,14 @@ import {
   streakKey,
   streakOf,
   STREAK_BACK,
+  likeForLike,
   tallyAsks,
   weight,
   windowOf,
   type Goal,
   type Scope,
 } from './goal'
+import { localMidnight } from './record'
 
 const goal = (over: Partial<Goal> = {}): Goal => ({
   id: 'g1',
@@ -567,5 +569,95 @@ describe('what a window still asks of you', () => {
       mins: 0,
       vague: 2,
     })
+  })
+})
+
+describe('this window against the one before it', () => {
+  const HOUR = 3_600_000
+  const DAY = 86_400_000
+  /* Tue 13 Oct 2026. The site's week starts on Sunday, so this week began Sun 11 Oct. */
+  const TUE = '2026-10-13'
+  const at = (iso: string, h: number) => localMidnight(iso).getTime() + h * HOUR
+
+  /**
+   * ⚠️ THE CLAIM THE NAIVE VERSION GETS WRONG, and it gets it wrong every single morning. On
+   * Tuesday "this week" is two and a bit days and last week was seven, so comparing them reports
+   * the calendar as a collapse in effort — "4h less than last week" is true and useless. The two
+   * stretches have to be the SAME LENGTH, so the assertion is about their lengths rather than
+   * about any particular hour.
+   */
+  it('compares the same number of hours on both sides, mid-week', () => {
+    const got = likeForLike('week', TUE, at(TUE, 10))
+    expect(got).not.toBeNull()
+    const now = got!.now.toMs - got!.now.fromMs
+    const before = got!.before.toMs - got!.before.fromMs
+    expect(now).toBe(before)
+    /* Sunday 00:00 to Tuesday 10:00 is two days and ten hours */
+    expect(now).toBe(2 * DAY + 10 * HOUR)
+    expect(got!.part).toBe(true)
+  })
+
+  it('and the earlier stretch is the week before, starting on its own Sunday', () => {
+    const got = likeForLike('week', TUE, at(TUE, 10))!
+    expect(got.now.fromMs).toBe(localMidnight('2026-10-11').getTime())
+    expect(got.before.fromMs).toBe(localMidnight('2026-10-04').getTime())
+  })
+
+  /** ⚠️ a window that has finished compares whole against whole, with no "so far" about it */
+  it('and a window already over compares all of itself with all of the one before', () => {
+    const got = likeForLike('week', '2026-09-15', at(TUE, 10))!
+    expect(got.now.toMs - got.now.fromMs).toBe(7 * DAY)
+    expect(got.before.toMs - got.before.fromMs).toBe(7 * DAY)
+    expect(got.part).toBe(false)
+  })
+
+  /**
+   * ⚠️ AND THE EARLIER RANGE CANNOT RUN PAST ITS OWN WINDOW. Without the clamp a stretch longer
+   * than the window would bleed the "before" range forward into the current one, and a week would
+   * be partly compared against itself — which flatters every reading by exactly the overlap.
+   */
+  it('and the earlier stretch never reaches into the window it is being compared with', () => {
+    for (const scope of ['day', 'week', 'month', 'quarter', 'year'] as const) {
+      const got = likeForLike(scope, TUE, at(TUE, 23))
+      expect(got).not.toBeNull()
+      expect(got!.before.toMs).toBeLessThanOrEqual(got!.now.fromMs)
+      expect(got!.before.fromMs).toBeLessThan(got!.before.toMs)
+    }
+  })
+
+  /**
+   * ⚠️ THE CLAMP ONLY MATTERS WHERE CONSECUTIVE WINDOWS DIFFER IN LENGTH, and the first version
+   * of the test above missed that: it swept a mid-October date, where every window is the same
+   * size as the one before it, so removing the clamp changed nothing and the test stayed green.
+   * A perturbation found it. The case that bites is the END OF A LONG MONTH after a short one —
+   * 31 March has thirty-one days elapsed and February had twenty-eight, so without the clamp the
+   * "before" range runs three days into MARCH and the month is partly compared against itself,
+   * flattering every reading by exactly the overlap.
+   */
+  it('and a long month after a short one does not compare against its own first days', () => {
+    const END = '2026-03-31'
+    const got = likeForLike('month', END, at(END, 23))!
+    /* February 2026 has 28 days, so the stretch elapsed in March is longer than February is */
+    expect(got.now.toMs - got.now.fromMs).toBeGreaterThan(got.before.toMs - got.before.fromMs)
+    expect(got.before.toMs).toBe(localMidnight('2026-03-01').getTime())
+    expect(got.before.toMs).toBeLessThanOrEqual(got.now.fromMs)
+  })
+
+  it('and a month compares with the month before, not with thirty days before', () => {
+    /* ⚠️ February is the case that tells calendar steps from day arithmetic */
+    const got = likeForLike('month', '2026-03-10', at('2026-03-10', 12))!
+    expect(got.now.fromMs).toBe(localMidnight('2026-03-01').getTime())
+    expect(got.before.fromMs).toBe(localMidnight('2026-02-01').getTime())
+  })
+
+  it('and a lifetime goal has no window to compare', () => {
+    expect(likeForLike('life', TUE, at(TUE, 10))).toBeNull()
+  })
+
+  /** ⚠️ the very first instant of a window is not "part way through" it — there is nothing yet */
+  it('and the stroke of midnight compares nothing with nothing', () => {
+    const got = likeForLike('day', TUE, localMidnight(TUE).getTime())!
+    expect(got.now.toMs - got.now.fromMs).toBe(0)
+    expect(got.before.toMs - got.before.fromMs).toBe(0)
   })
 })

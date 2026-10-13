@@ -15897,6 +15897,20 @@ a.cz-msg-author:focus-visible {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* this window against the same stretch of the one before — see Looking.tsx */
+.chron-shift {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+}
+/* ⚠️ up is the accent and down is merely muted, not red. A quieter week is a fact about a week,
+   and a record of your own life has no business scolding you for one. */
+.chron-shift .is-up {
+  color: var(--accent);
+}
+.chron-shift .is-down {
+  color: var(--muted);
+}
+
 /* how a session went — see record.ts moodWord, and Looking.tsx */
 .chron-mood {
   font-size: 0.74rem;
@@ -16004,12 +16018,16 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ a fixed share of the row for the name, so the bars all start at the same place — ragged bar
    starts make two activities of similar length look different at a glance, which is the one thing
    a bar chart is for */
-.chron-bar-name {
-  flex: 0 0 9rem;
+.chron-bar-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.chron-bar-name {
+  flex: 0 0 9rem;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 0.35rem;

@@ -169,6 +169,14 @@ function seed(): Store {
       /* ⚠️ a span that crosses midnight, because that is the one case where the two window rules
          disagree: the minutes split across both days and the amount does not. */
       span('pv-e12', 'pv-write', 4, 23, 90, 2),
+      /* ⚠️ THE WEEK BEFORE, so the like-for-like comparison has something to compare with — and
+         pv-e15 is deliberately LATE in its day: it falls inside last week but outside the stretch
+         that has elapsed this week, so an implementation comparing against the whole previous
+         window counts it and the correct one does not. The difference is visible on screen. */
+      span('pv-e13', 'pv-draw', 9, 10, 45, null, null, 4),
+      span('pv-e14', 'pv-write', 8, 14, 60, 5, null, 3),
+      span('pv-e15', 'pv-gym', 7, 10, 50, 65),
+      span('pv-e16', 'pv-dish', 8, 19, 20),
       /* the running one — no end. The stopwatch has no other way to be seen in the pane. */
       {
         id: 'pv-run',

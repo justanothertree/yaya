@@ -702,7 +702,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * year and calling it everything.
            */}
           {win && v.scope !== 'day' && v.scope !== 'life' ? (
-            <Looking win={win} label={v.label} />
+            <Looking win={win} label={v.label} scope={v.scope} on={on} />
           ) : null}
           {say && <p className="chron-say">{say}</p>}
         </>

@@ -396,6 +396,49 @@ export function weight(
   return { left, mins, vague }
 }
 
+/** A stretch of real time, as instants — what a comparison is actually made over. */
+export type Stretch = { fromMs: number; toMs: number }
+
+/**
+ * This window so far, and THE SAME STRETCH of the window before it.
+ *
+ * ⚠️ THE SAME STRETCH, NOT THE WHOLE PREVIOUS WINDOW, and that is the entire point of this
+ * function. On Tuesday morning "this week" is a day and a half and last week was seven days, so
+ * "4h less than last week" is arithmetically true and completely misleading — it compares a
+ * fragment with a finished thing and reports the calendar as a collapse in effort. Every morning
+ * would open with bad news. The honest comparison is this week SO FAR against the same number of
+ * hours into last week, which is what somebody means when they ask.
+ *
+ * ⚠️ AND THE EARLIER RANGE IS CLAMPED TO ITS OWN WINDOW. If the elapsed stretch ever exceeded the
+ * window's length the "before" range would run past the previous window's end and into the
+ * current one, so a week would partly compare against itself.
+ *
+ * `part` says the current window is still running, so the caller can say "so far" rather than
+ * presenting a fragment as a finished total.
+ */
+export function likeForLike(
+  scope: Scope,
+  on: string,
+  nowMs: number,
+): { now: Stretch; before: Stretch; part: boolean } | null {
+  if (scope === 'life') return null
+  const w = windowOf(scope, on)
+  const p = windowBack(scope, on, 1)
+  if (!w || !p) return null
+  const fromMs = localMidnight(w.from).getTime()
+  const toMs = localMidnight(w.to).getTime()
+  const pFrom = localMidnight(p.from).getTime()
+  const pTo = localMidnight(p.to).getTime()
+  /* how much of the window on screen has actually happened — the whole of it for a past window */
+  const elapsed = Math.max(0, Math.min(nowMs, toMs) - fromMs)
+  const part = nowMs > fromMs && nowMs < toMs
+  return {
+    now: { fromMs, toMs: fromMs + elapsed },
+    before: { fromMs: pFrom, toMs: Math.min(pTo, pFrom + elapsed) },
+    part,
+  }
+}
+
 /** the key a streak ask uses, so one goal can be asked about many windows */
 export const streakKey = (id: string, back: number): string => `${id}|${back}`
 

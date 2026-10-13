@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { moodsBetween, totalsBetween, type Total } from './cloud'
 import { CATS, localMidnight, moodOf, spanText, type Moods } from './record'
-import type { Window } from './goal'
+import { likeForLike, type Scope, type Window } from './goal'
 
 /**
  * What a window actually held — the looking-back half.
@@ -16,10 +16,43 @@ import type { Window } from './goal'
  * above, entry by entry with the times on them, which is strictly more than a total — showing both
  * would be the same day said twice in two shapes.
  */
-export function Looking({ win, label }: { win: Window; label: string }) {
+/** "this week" → "last week", for the only four scopes this block is rendered for */
+const BEFORE: Partial<Record<Scope, string>> = {
+  week: 'last week',
+  month: 'last month',
+  quarter: 'last quarter',
+  year: 'last year',
+}
+
+export function Looking({
+  win,
+  label,
+  scope,
+  on,
+}: {
+  win: Window
+  label: string
+  /* ⚠️ the scope and the day, not just the window, because the comparison needs to step BACK one
+     window of the same kind — and a month back from 31 March is not thirty-one days. That is
+     calendar arithmetic and it lives in goal.ts, where it is tested. */
+  scope: Scope
+  on: string
+}) {
   const [rows, setRows] = useState<Total[] | null>(null)
   /** the same window's minutes, divided by how the sessions went — see moodOf */
   const [moods, setMoods] = useState<Moods | null>(null)
+  /**
+   * The same stretch of the window before this one, in minutes — or null while it loads, and
+   * undefined when there is nothing to compare with.
+   *
+   * ⚠️ ONLY THE DIFFERENCE IS EVER SHOWN, never the earlier total beside the headline. The
+   * headline is the WHOLE window and the comparison is over the ELAPSED stretch — two honest
+   * numbers that are not the same number, and putting both on screen would be one block
+   * disagreeing with itself. See likeForLike.
+   */
+  const [was, setWas] = useState<number | null>(null)
+  /** whether the window on screen is still running, so the comparison can say "this point" */
+  const [part, setPart] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -32,16 +65,30 @@ export function Looking({ win, label }: { win: Window; label: string }) {
          stretches of time, which is exactly the disagreement this block exists to avoid. */
       const from = localMidnight(win.from).toISOString()
       const to = localMidnight(win.to).toISOString()
-      const [got, how] = await Promise.all([totalsBetween(from, to), moodsBetween(from, to)])
+      /* ⚠️ the clock is read ONCE, here, rather than in the render: a comparison whose "now"
+         moved between two renders would quietly change the number on screen */
+      const pair = likeForLike(scope, on, Date.now())
+      const [got, how, before] = await Promise.all([
+        totalsBetween(from, to),
+        moodsBetween(from, to),
+        pair
+          ? totalsBetween(
+              new Date(pair.before.fromMs).toISOString(),
+              new Date(pair.before.toMs).toISOString(),
+            )
+          : Promise.resolve(null),
+      ])
       if (alive) {
         setRows(got)
         setMoods(how)
+        setWas(before === null ? null : before.reduce((n, r) => n + r.mins, 0))
+        setPart(pair?.part ?? false)
       }
     })()
     return () => {
       alive = false
     }
-  }, [win.from, win.to])
+  }, [win.from, win.to, scope, on])
 
   const done = useMemo(() => (rows ?? []).filter((r) => r.mins > 0), [rows])
   const most = useMemo(() => Math.max(1, ...done.map((r) => r.mins)), [done])
@@ -91,6 +138,24 @@ export function Looking({ win, label }: { win: Window; label: string }) {
        * nobody has ever rated is a reproach for not using a feature, which is not what a record of
        * your own life is for. It appears once there is an opinion in it.
        */}
+      {/**
+       * ⚠️ THE SAME POINT, NOT THE WHOLE OF LAST WEEK. On Tuesday morning this week is two days
+       * old and last week was seven, so comparing them reports the calendar as a collapse in
+       * effort and every Monday would open with bad news. likeForLike gives two stretches of
+       * equal length; this says which one it used.
+       *
+       * ⚠️ AND NOTHING WHEN NEITHER SIDE HAS ANYTHING. "0m more than last week" on a fresh account
+       * is a line about nothing, and a difference under a minute is not news either.
+       */}
+      {was != null && BEFORE[scope] && (all > 0 || was > 0) && Math.abs(all - was) >= 1 && (
+        <p className="muted chron-shift">
+          <span className={all >= was ? 'is-up' : 'is-down'}>
+            {spanText(Math.abs(all - was) * 60_000)} {all >= was ? 'more' : 'less'}
+          </span>{' '}
+          than {part ? 'this point ' : ''}
+          {BEFORE[scope]}
+        </p>
+      )}
       {mood.rated > 0 && (
         <p className="muted chron-mood-line">
           {mood.good > 0 && (
@@ -109,7 +174,11 @@ export function Looking({ win, label }: { win: Window; label: string }) {
         {done.map((r) => (
           <li key={r.activity}>
             <span className="chron-bar-name">
-              {r.name}
+              {/* ⚠️ ITS OWN ELEMENT, because the parent is a flex container and text-overflow does not
+                  apply to an anonymous flex item — the name had the ellipsis properties on it and
+                  still came out cut mid-word, "Chronicle (on the", which reads as a rendering
+                  fault rather than as a long name. */}
+              <span className="chron-bar-label">{r.name}</span>
               {/* ⚠️ the ones the site wrote are marked, because "Paint 4h" meaning "the Paint room
                   was open" is a different claim from "I painted for four hours" and the difference
                   matters when you are reading your own week back */}
