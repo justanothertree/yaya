@@ -248,7 +248,9 @@ export function Plans({
         Planned
         {whole.planned > 0 && (
           <span className="muted">
-            {spanText(whole.planned * 60_000)} planned · {spanText(whole.did * 60_000)} done
+            {/* ⚠️ "Planned · 2h 30m planned" said it twice — the fold's own name is the first
+                half of that sentence, so the figure only has to be the number */}
+            {spanText(whole.planned * 60_000)} · {spanText(whole.did * 60_000)} done
           </span>
         )}
       </summary>
@@ -269,6 +271,20 @@ export function Plans({
            */}
           {(strip.meant.length > 0 || strip.had.length > 0) && (
             <div className="chron-shape">
+              {/**
+               * ⚠️ TWO WORDS, BECAUSE TWO LANES OF COLOUR SAY NOTHING. The strip went in with no
+               * label anywhere on it — a reader could see that something was drawn twice and had
+               * no way to learn which row was the plan and which was the day. Everything else in
+               * this room is learnable by looking at it; this was the one thing that needed to be
+               * explained by somebody who already knew.
+               *
+               * ⚠️ AND THEY ARE "meant" AND "did", not "Planned" and "Actual". The fold above is
+               * already called Planned, and the row beneath already says "planned · done" — a
+               * third vocabulary for the same pair is a thing to learn rather than a thing to read.
+               */}
+              <span className="chron-lane-key" aria-hidden>
+                meant
+              </span>
               <div className="chron-lane is-meant">
                 {strip.meant.map((b, i) => (
                   <i
@@ -278,6 +294,9 @@ export function Plans({
                   />
                 ))}
               </div>
+              <span className="chron-lane-key" aria-hidden>
+                did
+              </span>
               <div className="chron-lane is-had">
                 {strip.had.map((b, i) => (
                   <i

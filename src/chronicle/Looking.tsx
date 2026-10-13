@@ -182,6 +182,20 @@ export function Looking({
           {mood.unrated > 0 && <span>{spanText(mood.unrated * 60_000)} unrated</span>}
         </p>
       )}
+      {/**
+       * ⚠️ ONE LINE FOR THE WHOLE LIST, not a label on every bar. A tick on a bar is the least
+       * self-explanatory thing in the room — the headline above gives the window's own total, but
+       * nothing connects a grey mark to it, and the `title` that explains each one does not exist
+       * on a phone (CLAUDE.md §6). It appears only when there is at least one tick to explain.
+       */}
+      {done.some((r) => {
+        const then = wasEach[r.activity]
+        return then != null && then > 0 && Math.abs(then - r.mins) >= 1
+      }) && (
+        <p className="muted chron-key">
+          The tick on a bar is where that one stood at this point {BEFORE[scope] ?? 'before'}.
+        </p>
+      )}
       <ul className="chron-bars">
         {done.map((r) => (
           <li key={r.activity}>

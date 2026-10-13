@@ -16008,9 +16008,31 @@ a.cz-msg-author:focus-visible {
    collapsed these lanes to zero width (their children are absolutely positioned, so they have no
    intrinsic size), and the new margin silently applied to the tabs. A class name is a selector
    and a selector is global. */
+/* ⚠️ THE LANES NEED A ROW NOW, because each has a word beside it. Grid rather than flex so the two
+   bars start at the same x whatever the labels measure — "meant" and "did" are different widths,
+   and lanes that did not line up would make the comparison they exist for impossible. */
 .chron-shape {
-  display: block;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 0.4rem;
+  row-gap: 3px;
   margin: 0.5rem 0 0.6rem;
+}
+.chron-lane-key {
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+/* the ticks sit under the second column, where the lanes are */
+.chron-ticks {
+  grid-column: 2;
+}
+.chron-key {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
 }
 .chron-lane {
   position: relative;

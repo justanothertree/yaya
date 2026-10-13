@@ -2310,6 +2310,51 @@ length**, at the end of the row, where it has nothing to fight. Names intact, ev
 Checked at 375 and 1440: 48 controls, nothing undersized, off-edge, clipped or wordless, and no
 overflow on the bars, the day strip, the goal list, the plan list, the card or the container.
 
+## 6u · ✅ Reading the room's own words
+
+Three steps added three new visual languages — a month of streak marks, a two-lane day strip, and a
+tick on every bar — and not one of them said what it was. The rule this project keeps citing is
+_check what your own change made untrue_, and it had been applied to code rather than to copy.
+
+Every sentence the room renders was dumped and read against what the room now does. Four findings.
+
+### ⚠️ The day strip had no words on it at all
+
+Two lanes of colour and an hour axis. A reader could see that something was drawn twice and had no
+way to learn which row was the plan and which was the day — the one thing in the room that could
+only be explained by somebody who already knew.
+
+Now `meant` and `did`, which is also why they are **not** "Planned" and "Actual": the fold is
+already called Planned and its summary already says "done", so a third vocabulary for the same
+pair is a thing to learn rather than a thing to read. The strip became a two-column grid so both
+lanes start at the same x whatever the labels measure — lanes that did not line up would make the
+comparison they exist for impossible.
+
+### ⚠️ "Planned · 2h 30m planned · 1h 39m done" said it twice
+
+The fold's own name is the first half of that sentence. Now `Planned · 2h 30m · 1h 39m done`.
+
+### ⚠️ A tick on a bar is the least self-explanatory thing in the room
+
+One line for the whole list rather than a label on every bar — _"The tick on a bar is where that
+one stood at this point last week."_ It appears only when there is at least one tick to explain,
+and it is absent on a window with no previous data at all (verified on This year, which has none).
+The `title` on each tick does not exist on a phone, which is the whole reason the line is needed.
+
+### What was judged and left
+
+**The streak marks row still carries its count in `sr-only` text only.** The `🔥 4` chip above
+labels the row when there is a streak; below the two-in-a-row floor there is an unlabelled row of
+marks. A visible count would be a line of text per goal in a list that already carries up to five
+chips, a meter and two buttons — the crowding this room has fixed three times. Left as a judgement,
+not as a thing solved.
+
+**"Two halves" in the top blurb is still true.** Plans, Routines and Activities are folds _within_
+the stopwatch half, not a third thing, so the framing holds.
+
+Checked at 375 and 1440: 56 controls, nothing undersized, off-edge, clipped or wordless, no
+overflow on the strip, the bars, the goal list, the plan list, the card or the container.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
