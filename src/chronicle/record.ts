@@ -336,3 +336,61 @@ export function metSession(e: Span, target: number | null, nowMs: number): boole
   if (mins >= target) return true
   return e.end == null ? null : false
 }
+
+/** Where one span sits on a day, as percentages of that day's width. */
+export type Block = { activity: string; left: number; width: number; cut: boolean }
+
+/**
+ * A day laid out as a strip: one block per span, positioned across the window.
+ *
+ * ⚠️ IT COSTS NOTHING, like the streak marks. The day's entries are already in hand with their
+ * exact ends — the log draws them as a column of LENGTHS and throws the placement away, so the
+ * one thing the record cannot currently tell you is the SHAPE of a day: that the morning was
+ * solid and the afternoon went somewhere else. Same spans, read instead of discarded.
+ *
+ * ⚠️ AND THE WIDTH IS `overlapMs`, NOT A SECOND SUBTRACTION. Only the left edge is new arithmetic
+ * here; the length of every block is the same function the totals, the goals and the day's
+ * categories all use. A strip that disagreed with the minutes printed beside it would be two
+ * answers to one question — and the test asserts that pairing rather than any particular pixel.
+ *
+ * ⚠️ `cut` SAYS THE SPAN RUNS PAST THIS DAY, which a clipped block cannot say by itself: a
+ * session from 23:00 to 01:00 is a block hard against the right edge on one day and against the
+ * left on the next, and without the flag both look like sessions that happened to end at midnight.
+ */
+export function lane(
+  spans: Array<Span & { activity: string }>,
+  fromMs: number,
+  toMs: number,
+  nowMs: number,
+): Block[] {
+  const width = toMs - fromMs
+  if (!(width > 0)) return []
+  const out: Block[] = []
+  for (const s of spans) {
+    const ms = overlapMs(s, fromMs, toMs, nowMs)
+    if (ms <= 0) continue
+    const began = Date.parse(s.start)
+    const ended = s.end == null ? nowMs : Date.parse(s.end)
+    const lo = Math.max(began, fromMs)
+    out.push({
+      activity: s.activity,
+      left: ((lo - fromMs) / width) * 100,
+      width: (ms / width) * 100,
+      cut: began < fromMs || (Number.isFinite(ended) ? ended : nowMs) > toMs,
+    })
+  }
+  return out
+}
+
+/**
+ * How far through the window the clock is, 0 to 100 — or null when it is not inside it.
+ *
+ * ⚠️ NULL RATHER THAN 0 OR 100 FOR A DAY THAT IS NOT TODAY. A marker pinned to one end of every
+ * past day reads as a thing that happened at midnight, and on a future day it would claim the day
+ * had already started.
+ */
+export function nowAt(fromMs: number, toMs: number, nowMs: number): number | null {
+  if (!(toMs > fromMs)) return null
+  if (nowMs < fromMs || nowMs > toMs) return null
+  return ((nowMs - fromMs) / (toMs - fromMs)) * 100
+}

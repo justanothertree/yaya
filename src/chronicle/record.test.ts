@@ -7,7 +7,9 @@ import {
   moodWord,
   MOODS,
   dayBounds,
+  lane,
   localMidnight,
+  nowAt,
   minutesByActivity,
   minutesByCat,
   overlapMs,
@@ -400,5 +402,112 @@ describe('whether a sitting was long enough to be one', () => {
   it('and a backwards or unreadable span is short rather than a throw', () => {
     expect(metSession(sit('2026-10-12T10:00:00Z', '2026-10-12T09:00:00Z'), 30, NOW_T)).toBe(false)
     expect(metSession(sit('not a date', '2026-10-12T09:00:00Z'), 30, NOW_T)).toBe(false)
+  })
+})
+
+describe('a day laid out as a strip', () => {
+  const DAY = dayBounds('2026-10-12')
+  const W = DAY.toMs - DAY.fromMs
+  const h = (n: number) => DAY.fromMs + n * 3_600_000
+  const at9 = new Date(h(9)).toISOString()
+  const at10 = new Date(h(10)).toISOString()
+  const span = (start: string, end: string | null, activity = 'a1') => ({ start, end, activity })
+
+  /**
+   * ⚠️ THE WIDTH IS THE OVERLAP, AND THAT IS THE WHOLE CLAIM. Every block's width as a fraction of
+   * the day must be exactly what `overlapMs` reports for the same span — otherwise the strip and
+   * the minutes printed beside it in the log are two answers to one question, and the strip is the
+   * one nobody can check by eye. Asserting a pixel would test the arithmetic twice; this tests
+   * that the two readings agree.
+   */
+  it('gives every block the width its own overlap says, to the millisecond', () => {
+    const spans = [
+      span(at9, at10),
+      span(new Date(h(14)).toISOString(), new Date(h(14.5)).toISOString()),
+      /* starts on the day before and runs into this one */
+      span(new Date(h(-2)).toISOString(), new Date(h(1)).toISOString()),
+      /* starts on this day and runs into the next */
+      span(new Date(h(23)).toISOString(), new Date(h(25)).toISOString()),
+    ]
+    const blocks = lane(spans, DAY.fromMs, DAY.toMs, h(12))
+    expect(blocks).toHaveLength(4)
+    blocks.forEach((b, i) => {
+      expect((b.width / 100) * W).toBeCloseTo(overlapMs(spans[i], DAY.fromMs, DAY.toMs, h(12)), 6)
+    })
+  })
+
+  it('and places a nine-to-ten session where nine to ten is', () => {
+    const [b] = lane([span(at9, at10)], DAY.fromMs, DAY.toMs, h(12))
+    expect(b.left).toBeCloseTo(37.5, 10) /* 9/24 */
+    expect(b.width).toBeCloseTo(100 / 24, 10)
+    expect(b.cut).toBe(false)
+  })
+
+  /**
+   * ⚠️ A BLOCK MAY NEVER LEAVE THE STRIP. A span that starts before the day or ends after it is
+   * clipped to the edge, not drawn hanging off one — and the flag says so, because a block pinned
+   * to the right edge is otherwise indistinguishable from a session that happened to stop at
+   * midnight.
+   */
+  it('and clips to the day at both ends, saying so', () => {
+    const before = lane(
+      [span(new Date(h(-2)).toISOString(), new Date(h(1)).toISOString())],
+      DAY.fromMs,
+      DAY.toMs,
+      h(12),
+    )[0]
+    expect(before.left).toBe(0)
+    expect(before.width).toBeCloseTo(100 / 24, 10)
+    expect(before.cut).toBe(true)
+
+    const after = lane(
+      [span(new Date(h(23)).toISOString(), new Date(h(25)).toISOString())],
+      DAY.fromMs,
+      DAY.toMs,
+      h(12),
+    )[0]
+    expect(after.left + after.width).toBeCloseTo(100, 10)
+    expect(after.cut).toBe(true)
+  })
+
+  it('and never produces a block outside nought to a hundred', () => {
+    const spans = [
+      span(new Date(h(-30)).toISOString(), new Date(h(30)).toISOString()),
+      span(new Date(h(23.9)).toISOString(), new Date(h(26)).toISOString()),
+      span(new Date(h(-1)).toISOString(), new Date(h(0.1)).toISOString()),
+    ]
+    for (const b of lane(spans, DAY.fromMs, DAY.toMs, h(12))) {
+      expect(b.left).toBeGreaterThanOrEqual(0)
+      expect(b.width).toBeGreaterThan(0)
+      expect(b.left + b.width).toBeLessThanOrEqual(100 + 1e-9)
+    }
+  })
+
+  /** ⚠️ a running session reaches the clock it is handed and no further — not the end of the day */
+  it('and a running session stops at now, not at midnight', () => {
+    const [b] = lane([span(new Date(h(11)).toISOString(), null)], DAY.fromMs, DAY.toMs, h(12))
+    expect(b.width).toBeCloseTo(100 / 24, 10)
+    expect(b.left + b.width).toBeCloseTo(50, 10)
+    expect(b.cut).toBe(false)
+  })
+
+  it('and a span that misses the day entirely draws nothing', () => {
+    const miss = span(new Date(h(30)).toISOString(), new Date(h(31)).toISOString())
+    expect(lane([miss], DAY.fromMs, DAY.toMs, h(12))).toEqual([])
+    const junk = span('not a date', at10)
+    expect(lane([junk], DAY.fromMs, DAY.toMs, h(12))).toEqual([])
+    const backwards = span(at10, at9)
+    expect(lane([backwards], DAY.fromMs, DAY.toMs, h(12))).toEqual([])
+  })
+
+  /**
+   * ⚠️ NULL WHEN THE CLOCK IS NOT IN THIS DAY. A marker pinned to one end of every past day reads
+   * as something that happened at midnight, and on a future day it would claim the day had
+   * already begun.
+   */
+  it('and the now-marker only exists on the day that is now', () => {
+    expect(nowAt(DAY.fromMs, DAY.toMs, h(6))).toBeCloseTo(25, 10)
+    expect(nowAt(DAY.fromMs, DAY.toMs, h(-1))).toBeNull()
+    expect(nowAt(DAY.fromMs, DAY.toMs, h(25))).toBeNull()
   })
 })

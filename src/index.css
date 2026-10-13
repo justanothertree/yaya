@@ -15966,6 +15966,78 @@ a.cz-msg-author:focus-visible {
   font-size: 0.78rem;
 }
 
+/* a day as a strip — what was meant above, what happened below. See record.ts lane().
+
+   ⚠️ NAMED chron-shape BECAUSE chron-strip WAS ALREADY TAKEN — it is the horizon tab row in
+   Chronicle.tsx, and reusing the name did two things at once: the existing rule display:flex
+   collapsed these lanes to zero width (their children are absolutely positioned, so they have no
+   intrinsic size), and the new margin silently applied to the tabs. A class name is a selector
+   and a selector is global. */
+.chron-shape {
+  display: block;
+  margin: 0.5rem 0 0.6rem;
+}
+.chron-lane {
+  position: relative;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--border);
+  opacity: 0.55;
+}
+.chron-lane + .chron-lane {
+  margin-top: 3px;
+  opacity: 1;
+}
+.chron-lane i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  /* ⚠️ a sliver still has to be visible: half an hour of a day is 2% of the strip, which on a
+     phone is six pixels, and a block narrower than a pixel is a block that did not happen */
+  min-width: 2px;
+}
+/* what was meant: outlined, because it has not happened — the same idea as the unfinished
+   streak mark being hollow rather than filled */
+.chron-lane.is-meant i {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  border-radius: 2px;
+}
+/* what happened, in the colours the three categories already wear */
+.chron-lane.is-had i.is-locked {
+  background: #7c6af7;
+}
+.chron-lane.is-had i.is-free {
+  background: #f5a623;
+}
+.chron-lane.is-had i.is-life {
+  background: #5b9cf6;
+}
+/* ⚠️ a block clipped by midnight says so with a square edge on the side it was cut, so a session
+   that ran past the day is not mistaken for one that happened to stop there */
+.chron-lane i.is-cut {
+  border-radius: 0;
+}
+.chron-now {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.8;
+}
+.chron-ticks {
+  position: relative;
+  height: 0.85rem;
+  font-size: 0.62rem;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.chron-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
 /* a month of a repeating goal's history — see marksOf, and the note in Chronicle.tsx */
 .chron-marks {
   display: flex;

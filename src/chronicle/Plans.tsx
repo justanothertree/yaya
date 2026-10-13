@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dropPlan, planDid, plansBetween, savePlan } from './cloud'
 import { against, dayAgainst, planOpens, type Plan } from './plan'
-import { spanText, type Activity, type Entry } from './record'
+import { lane, nowAt, spanText, type Activity, type Entry } from './record'
 
 /**
  * Planned — what you mean a day to be, beside what it was.
@@ -72,6 +72,36 @@ export function Plans({
     () => (rows ? against(rows, log, bounds.fromMs, bounds.toMs, Date.now()) : []),
     [rows, log, bounds.fromMs, bounds.toMs],
   )
+  /**
+   * The day as a strip: what was meant above, what happened below.
+   *
+   * ⚠️ IT COSTS NO QUERY, like the streak marks. This block already receives the day's entries —
+   * it needs them for the comparison — and holds the plans itself, so both lanes are spans that
+   * are already in memory. The log beneath draws them as a column of LENGTHS and throws the
+   * placement away; this is the one thing the record could not say until now, which is the SHAPE
+   * of a day: a solid morning, an afternoon that went somewhere else, an evening that was meant
+   * to hold something and did not.
+   *
+   * ⚠️ AND IT LIVES HERE RATHER THAN IN THE TIMER, because here both lanes exist. An actual-only
+   * strip above the log would be prettier and would say less than the log already does — the gap
+   * between the two rows is the whole reason to draw it.
+   */
+  const strip = useMemo(
+    () => ({
+      meant: rows
+        ? lane(
+            rows.filter((p) => p.end),
+            bounds.fromMs,
+            bounds.toMs,
+            Date.now(),
+          )
+        : [],
+      had: lane(log, bounds.fromMs, bounds.toMs, Date.now()),
+      now: nowAt(bounds.fromMs, bounds.toMs, Date.now()),
+    }),
+    [rows, log, bounds.fromMs, bounds.toMs],
+  )
+
   const whole = useMemo(
     () =>
       rows ? dayAgainst(rows, log, bounds.fromMs, bounds.toMs, Date.now()) : { planned: 0, did: 0 },
@@ -229,6 +259,44 @@ export function Plans({
         </p>
       ) : (
         <>
+          {/**
+           * ⚠️ A FIXED TWENTY-FOUR HOURS, never scaled to the part of the day that was used. A
+           * strip that stretched an hour of work across its whole width would make a quiet day
+           * look like a full one — the axis has to be the day, or the shape it shows is a lie.
+           *
+           * ⚠️ AND THE TICKS ARE THERE SO THE STRIP MEANS SOMETHING. Six, twelve and eighteen are
+           * enough to place a block at a glance; an unlabelled bar is a decoration.
+           */}
+          {(strip.meant.length > 0 || strip.had.length > 0) && (
+            <div className="chron-shape">
+              <div className="chron-lane is-meant">
+                {strip.meant.map((b, i) => (
+                  <i
+                    key={i}
+                    style={{ left: b.left + '%', width: b.width + '%' }}
+                    className={b.cut ? 'is-cut' : undefined}
+                  />
+                ))}
+              </div>
+              <div className="chron-lane is-had">
+                {strip.had.map((b, i) => (
+                  <i
+                    key={i}
+                    style={{ left: b.left + '%', width: b.width + '%' }}
+                    className={
+                      'is-' + (byId.get(b.activity)?.cat ?? 'free') + (b.cut ? ' is-cut' : '')
+                    }
+                  />
+                ))}
+                {strip.now != null && <b className="chron-now" style={{ left: strip.now + '%' }} />}
+              </div>
+              <div className="chron-ticks" aria-hidden>
+                <span style={{ left: '25%' }}>6</span>
+                <span style={{ left: '50%' }}>12</span>
+                <span style={{ left: '75%' }}>18</span>
+              </div>
+            </div>
+          )}
           {rows.length > 0 && (
             <ul className="chron-plans">
               {rows.map((p) => {

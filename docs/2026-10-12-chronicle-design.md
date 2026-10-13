@@ -2212,6 +2212,55 @@ clipped. `flex: 0 1 10px` shrinks on a phone and holds at 10px on a desk.
 
 That is the third time in this project that the numbers passed a layout the screenshot failed.
 
+## 6s · ✅ The shape of a day, also for free
+
+Same thread as §6r. The day's entries are already in hand **with their exact ends** — the log draws
+them as a column of lengths and throws the placement away. So the one thing the record could not
+say was the _shape_ of a day: a solid morning, an afternoon that went somewhere else, an evening
+that was meant to hold something and did not.
+
+Two lanes, twenty-four hours wide: **what was meant above, what happened below.**
+
+It lives in the Planned fold rather than in the Timer because **here both lanes already exist** —
+that block is handed the day's entries for the comparison and holds the plans itself. An
+actual-only strip above the log would be prettier and would say less than the log already does;
+the gap between the two rows is the whole reason to draw it.
+
+### The rules
+
+- ⚠️ **A fixed twenty-four hours, never scaled to the part of the day that was used.** A strip that
+  stretched an hour of work across its full width would make a quiet day look like a full one. The
+  axis has to be the day or the shape it shows is a lie. Ticks at 6, 12 and 18, because an
+  unlabelled bar is a decoration.
+- ⚠️ **The width of every block is `overlapMs`**, not a second subtraction — only the left edge is
+  new arithmetic. A strip that disagreed with the minutes printed beside it would be two answers to
+  one question, and the strip is the one nobody can check by eye. The test asserts exactly that
+  pairing, to the millisecond, rather than any particular pixel.
+- ⚠️ **`cut` says a span runs past this day**, drawn as a square edge. A session from 23:00 to 01:00
+  is a block hard against the right edge on one day and the left on the next, and without the flag
+  both look like sessions that happened to stop at midnight.
+- ⚠️ **The now-marker is null on any day that is not today.** Pinned to one end of a past day it
+  reads as something that happened at midnight; on a future day it would claim the day had begun.
+- A half-hour session is 2% of a day — six pixels on a phone — so blocks carry a 2px floor. A block
+  narrower than a pixel is a block that did not happen.
+
+Perturbed: not clipping the left edge reddens two tests, taking the width from the whole span
+rather than the overlap reddens three, and a now-marker on every day reddens its own.
+
+### ⚠️ And a class name is a selector, and a selector is global
+
+The strip was called `.chron-strip` — which **was already the horizon tab row** in `Chronicle.tsx`.
+Two things happened at once and neither announced itself: the existing rule's `display: flex`
+collapsed the new lanes to **zero width** (their children are absolutely positioned, so they have
+no intrinsic size), and the new `margin` silently applied to the tabs.
+
+Found with `whoSets()` from `scripts/mobile-audit.js` rather than by reading the stylesheet — it
+reported one rule, `.chron-strip { display: flex }`, that I had not written. Renamed to
+`.chron-shape`, and the tab row verified unharmed afterwards.
+
+Checked at 375, 820 and 1440: 56 controls, nothing undersized, off-edge, clipped or wordless, and
+no overflow on the strip, the marks, the goal list, the plan list, the card or the container.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
