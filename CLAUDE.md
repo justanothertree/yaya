@@ -315,6 +315,19 @@ cannot be 24px tall without changing the line it sits in. **A checker that cries
 room's whole toolbar is one nobody runs twice** — so each exclusion is a rule, never a skip
 list of names. What survived it was three things, and all three were real.
 
+**`mobileAudit` asks the PAGE, so ask the CONTAINER too — and then look at it.** `sideways` and
+`offEdge` are measured against the viewport, and an ancestor that manages its own scrolling
+swallows everything inside it: the goal row sat **32px wider than the list holding it** through
+every clean report. Check `el.scrollWidth - el.clientWidth` on the list, the card and the
+container separately. **And a clean number is not a clean room.** Fixing that overflow with
+`flex-wrap` plus `min-width: 0` took every figure to zero — `listOver`, `cardOver`, `mainOver`,
+`sideways`, nothing undersized or clipped — while a screenshot showed every title crushed to a
+3px column reading ":". The numbers were zero BECAUSE the titles had been destroyed. `min-width:
+0` without a floor is not "let it shrink", it is "let it vanish": whatever in the row is rigid
+wins and the one flexible thing pays the entire bill. Give the text a floor in **pixels** (the
+root size is fluid, so `rem` is not a length here), and take a screenshot before believing a
+layout fix.
+
 **A new control counts as a UI change.** It is easy to remember the viewport pass for a layout and
 skip it for "just a button" — but buttons are what crowd a tile, overflow a toolbar and end up
 under a thumb. The block toolbar carries six of them on a cell that is 61px tall.
