@@ -1903,6 +1903,73 @@ actual, an estimate and a priority, a time-weighted reading of how the hours wen
 against the same point in the last one. The next tick has no parity list to work from — it goes to
 depth: what is thin, what is unexplained, and what a person who has never seen it would do first.
 
+## 6n · ✅ The first visit, from outside the door and in
+
+With the parity list closed there is no list to work from, so this step was the trip CLAUDE.md §2
+keeps recommending and ten steps of building never took: the **production build on :4173**, where
+the dev harness does not exist and the room is seen signed out, and then the room walked cold as a
+member with nothing in it.
+
+Three things, none of them features, all of them things only this trip finds.
+
+### ⚠️ The pitch outside the door described step 1
+
+```
+A planner for what you are aiming at — today, tomorrow, this week, this month,
+this year, and the things that take years. … Sign in to use it.
+```
+
+That was written when the room really was only the horizons, and it stayed while the stopwatch,
+the record, the routines, the plans, the ratings and the rest were built on top of it. **The room's
+own blurb three lines below says "Two halves"; the pitch outside said one.** A sentence describing
+a feature is a thing a later feature can make untrue, and nothing fails when it does — the same
+shape as the Account card still saying the library lived "in this browser only".
+
+### ⚠️ And "Sign in to use it." was not a link
+
+Every other members-only room pairs that sentence with the house's `<a href="#signin"
+className="btn">` — the Circuit and Investments both do. Chronicle told somebody to do something
+and gave them no way to do it, on the one page that cannot otherwise help them.
+
+Both fixed; the card now describes both halves and carries the door.
+
+**What was NOT done, and why:** a demo, the way the Circuit and Investments have one. `places.ts`
+already argues this out — "a fabricated one would be a page of pretend goals teaching nobody
+anything" — and chronicle keeping **no local copy** is §2's deliberate decision, so a sandbox would
+contradict the architecture on purpose. `dev/chroniclePreview.ts` could technically serve as one
+now, and shipping it would reverse the measured decision in §6g to keep it out of the bundle. The
+signed-out card is a description and a door, and that is the whole of it.
+
+### ⚠️ Then, walked cold as a new member: a form that could never be submitted
+
+On a fresh account `⏱ Fill a gap` opened a form with an **empty activity picker** and an "Add it"
+that could never enable. `▶ Start` beside it has always been disabled for exactly that reason; this
+was not. A dead form that explains nothing, on the one screen where somebody has the least idea
+what to do.
+
+And the Planned fold's `＋ Plan a span` was correctly disabled with no activities and **said nothing
+about why** — a greyed-out button with its reason in a `title` is a reason that does not exist on a
+phone (§6). The empty sentence now carries it: _"Name an activity with ＋ Activity first — a plan is
+a stretch of a day set aside for one of them."_
+
+The rest of the first run is sound, and was walked end to end rather than assumed: name an activity
+→ it is pre-selected and Start lights up → Start → Stop → the record appears with its category total
+→ `＋ Add to today` → the source picker offers the new activity → a goal reading `0 / 30 minutes`.
+The three-step scaffold goes away for good once anything exists, as its comment promises.
+
+Audited at 375 on the **first-visit** layout, which had never been looked at: 16 controls, nothing
+undersized, off-edge, clipped or wordless, and no overflow on the card or the container.
+
+### Two notes rather than changes
+
+- **Chronicle is `nav: member`**, so a signed-out visitor reaches that card only by a shared link.
+  That is consistent with Chat and People and argued in `places.ts`. Worth knowing rather than
+  changing — but it does mean the card matters more, not less, since everybody who sees it arrived
+  deliberately.
+- **`.chron-src` dresses three different selects** — the goal's source, its priority, and what it
+  counts. Harmless for CSS and it made a probe in this very step grab the wrong control; worth a
+  rename if that class is touched again.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

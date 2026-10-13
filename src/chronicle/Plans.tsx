@@ -291,8 +291,13 @@ export function Plans({
 
           {!rows.length && !adding && (
             <p className="muted">
-              Nothing planned for this day. A plan is where in a day something goes — the horizon
-              tabs below say what you are aiming at, this says when.
+              {/* ⚠️ A DISABLED BUTTON THAT SAYS NOTHING IS ITS OWN DEAD END. With no activities yet
+                  the adder above cannot work, and a new member staring at a greyed-out "＋ Plan a
+                  span" has no way to learn what is missing — a tooltip does not exist on a phone
+                  (CLAUDE.md §6), so the reason has to be in the sentence. */}
+              {acts.length
+                ? 'Nothing planned for this day. A plan is where in a day something goes — the horizon tabs below say what you are aiming at, this says when.'
+                : 'Name an activity with ＋ Activity first — a plan is a stretch of a day set aside for one of them.'}
             </p>
           )}
 

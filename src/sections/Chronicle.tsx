@@ -266,15 +266,38 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     await load()
   }
 
+  /**
+   * What a visitor sees. Reachable only by a shared link — chronicle is `nav: member` in
+   * places.ts, which explains there why it has no demo: a page of invented goals teaches nobody
+   * anything. So this is a description and a door, and deliberately nothing else.
+   *
+   * ⚠️ IT SAID "A PLANNER" FOR EIGHT STEPS AFTER IT STOPPED BEING ONE. This copy was written at
+   * step 1, when the room really was only the horizons — and it stayed while the stopwatch, the
+   * record, the routines, the plans and the ratings were built on top of it. The room's own blurb
+   * three lines below says "Two halves"; the pitch outside the door still said one. A sentence
+   * that describes a feature is a thing a later feature can make untrue, and nothing fails when
+   * it does.
+   *
+   * ⚠️ AND "Sign in to use it." WAS NOT A LINK. Every other members-only room pairs that sentence
+   * with the house's `<a href="#signin" className="btn">` — the Circuit and Investments both do.
+   * This told somebody to do something and gave them no way to do it, which is worse than saying
+   * nothing: they are already on the one page that cannot help them.
+   */
   if (!authed) {
     return (
       <section className="card">
         <h2 className="section-title">Chronicle</h2>
         <p className="muted">
-          A planner for what you are aiming at — today, tomorrow, this week, this month, this year,
-          and the things that take years. It lives in your account rather than in this browser, so
-          it is here on your phone too. Sign in to use it.
+          Two halves: a stopwatch for what you are doing, and what you are aiming at — today, this
+          week, this year, and the things that take years. Point a goal at an activity and it fills
+          itself in as you work.
         </p>
+        <p className="muted">
+          It lives in your account rather than in this browser, so it is on your phone too.
+        </p>
+        <a href="#signin" className="btn">
+          Sign in
+        </a>
       </section>
     )
   }

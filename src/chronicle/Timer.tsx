@@ -504,8 +504,17 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
+        {/**
+         * ⚠️ NOTHING TO FILL A GAP WITH UNTIL AN ACTIVITY EXISTS. On a fresh account this opened a
+         * form with an empty picker and an "Add it" that could never enable — a dead form that
+         * explains nothing, on the one screen where somebody has the least idea what to do. Start
+         * beside it has always been disabled for the same reason; this was not, and the first
+         * walk through the room as a new member is what found it.
+         */}
         <button
           className="btn btn-ghost"
+          disabled={!(acts ?? []).some((a) => !a.archived)}
+          title={(acts ?? []).some((a) => !a.archived) ? undefined : 'Name an activity first'}
           onClick={() => {
             const next = !gap
             setGap(next)
