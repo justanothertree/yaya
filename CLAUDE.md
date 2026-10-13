@@ -89,6 +89,14 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   pinned flat. **Perturb before believing a sweep, and when it stays green ask what in the fixture
   is holding the thing still** — here, one window per goal was setting the very bound under test.
   With the life window given a goal of its own, the mistake was 3,068–4,106 minutes across ~22 keys.
+  **And the commonest version of this is a fixture sitting on DEFAULTS.** It happened twice more
+  within two days, both in round trips — save a copy, lose everything, put it back, compare. Those
+  are only worth the fields the fixture fills: deleting every rating from the import left all 34
+  tests green, because nothing in the fixture had a rating, and an unsorted list passed because the
+  fixture inserted it in order already. A round trip, a serialiser, a copy constructor or a
+  migration must be fed a row where **every field is something other than its default**, and then
+  each field dropped in turn to watch it go red — nine of them here, all caught only after the
+  fixture was rebuilt.
 - **A UNIT IN A COMMENT IS NOT A UNIT, and a bound typed in beside a table that owns the answer
   will agree with the bug.** Two of the three things the park's first wave got wrong were a
   number disagreeing with the sentence above it. The flock's standoff was `PARK_TALL * scale *
