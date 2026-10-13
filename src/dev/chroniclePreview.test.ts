@@ -9,6 +9,7 @@ import {
   pvAmount,
   pvEditEntry,
   pvEntries,
+  pvGoals,
   pvMoods,
   pvPlanDid,
   pvPlanSave,
@@ -794,5 +795,89 @@ describe('the note on a session', () => {
     const other = added(gym, h(13), h(14), 'something')
     pvEditEntry(other, h(13), h(14), '    ')
     expect(noteOf(other)).toBe(null)
+  })
+})
+
+describe('fields the room cannot write, and so used to erase', () => {
+  /**
+   * ⚠️ THE SAME SHAPE AS A SESSION'S NOTE, TWICE MORE — and both became reachable only when the
+   * import shipped. An activity's `colour` and a goal's `note` are columns the room has never been
+   * able to set: `saveActivity` passes null for the colour because there is no colour picker, and
+   * `saveGoal` omits the note field entirely. Both save functions read that silence as "clear it",
+   * which was harmless for as long as nothing could put a value there in the first place.
+   *
+   * chronicle_export carries both columns and chronicle_import puts them back, so a restored file
+   * is now the one way either can hold anything — and the next ordinary edit in the room was
+   * deleting it. Measured in a simulated session before the fix: "#aabbcc" and "because I keep
+   * meaning to" both became NULL after a rename and a re-save.
+   */
+  it('keeps an activity colour through a rename that does not mention it', () => {
+    const id = pvSaveActivity('Reading', 'free', '#aabbcc').id
+    expect(pvActivities().find((a) => a.id === id)?.colour).toBe('#aabbcc')
+
+    pvSaveActivity('Reading in the evening', 'life', null, id)
+
+    const after = pvActivities().find((a) => a.id === id)
+    expect(after?.colour).toBe('#aabbcc')
+    /* and the rename still happened */
+    expect(after?.name).toBe('Reading in the evening')
+    expect(after?.cat).toBe('life')
+  })
+
+  it('clears an activity colour when that is asked for', () => {
+    const id = pvSaveActivity('Reading', 'free', '#aabbcc').id
+    pvSaveActivity('Reading', 'free', '', id)
+    expect(pvActivities().find((a) => a.id === id)?.colour).toBe(null)
+  })
+
+  it('keeps a goal note through an edit that does not mention it', () => {
+    const id = pvSaveGoal({
+      title: 'Read more',
+      scope: 'day',
+      anchor: DAY,
+      every: null,
+      target: 30,
+      unit: 'mins',
+      note: 'because I keep meaning to',
+    }).id
+
+    /* the shape the room actually sends: no note field at all */
+    pvSaveGoal({
+      id,
+      title: 'Read even more',
+      scope: 'day',
+      anchor: DAY,
+      every: null,
+      target: 45,
+      unit: 'mins',
+    })
+
+    const after = pvGoals().find((g) => g.id === id)
+    expect(after?.note).toBe('because I keep meaning to')
+    expect(after?.title).toBe('Read even more')
+    expect(after?.target).toBe(45)
+  })
+
+  it('clears a goal note when that is asked for', () => {
+    const id = pvSaveGoal({
+      title: 'Read more',
+      scope: 'day',
+      anchor: DAY,
+      every: null,
+      target: 30,
+      unit: 'mins',
+      note: 'because I keep meaning to',
+    }).id
+    pvSaveGoal({
+      id,
+      title: 'Read more',
+      scope: 'day',
+      anchor: DAY,
+      every: null,
+      target: 30,
+      unit: 'mins',
+      note: '  ',
+    })
+    expect(pvGoals().find((g) => g.id === id)?.note).toBe(null)
   })
 })

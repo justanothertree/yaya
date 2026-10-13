@@ -517,7 +517,16 @@ export const pvSaveGoal = (g: NewGoal): { id: string } => {
      the save path — the same division the server makes. Overwriting them here would make the
      preview's edit destroy a tick that the real one preserves. */
   if (i < 0) db().goals.push(made)
-  else db().goals[i] = { ...made, progress: db().goals[i].progress, done: db().goals[i].done }
+  else
+    db().goals[i] = {
+      ...made,
+      progress: db().goals[i].progress,
+      done: db().goals[i].done,
+      /* ⚠️ and the note, for the same reason and a worse one: `saveGoal` does not send the field
+         at all, so every edit used to arrive here as null and overwrite it. chronicle_goal_save
+         reads null as "leave it alone" now; '' still clears. */
+      note: g.note === undefined || g.note === null ? db().goals[i].note : g.note.trim() || null,
+    }
   return { id }
 }
 
@@ -543,7 +552,16 @@ export const pvSaveActivity = (
   const made = id ?? mint('pv-a')
   const found = db().acts.find((x) => x.id === made)
   if (found)
-    Object.assign(found, { name, cat, colour, metric: metric || null, session: session || null })
+    Object.assign(found, {
+      name,
+      cat,
+      /* ⚠️ null leaves the colour alone, '' clears it — chronicle_activity_save's rule. The room
+         passes null here on every rename because it has no colour picker, so reading null as
+         "clear it" meant a rename deleted whatever a restored file had put there. */
+      colour: colour === null ? found.colour : colour.trim() || null,
+      metric: metric || null,
+      session: session || null,
+    })
   else
     db().acts.push({
       id: made,

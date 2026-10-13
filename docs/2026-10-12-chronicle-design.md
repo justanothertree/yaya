@@ -2783,6 +2783,50 @@ nothing under 24px. Four tests pin the rule; perturbed with the original bug, fo
 
 Reasoning and the standing check are in `docs/2026-10-13-chronicle-entry-note.sql`.
 
+## 6ad · ✅ The same erasure twice more, woken up by my own import
+
+§6ac fixed a session's note being destroyed by its own editor. The thing that hid it was a field
+written but never drawn, so this was a sweep for others — and it found the identical shape in two
+more places:
+
+| column                        | who writes it                                     | what the save function said                        |
+| ----------------------------- | ------------------------------------------------- | -------------------------------------------------- |
+| `chronicle_activities.colour` | `saveActivity` passes **null** — no colour picker | `colour = nullif(btrim(coalesce(p_colour,'')),'')` |
+| `chronicle_goals.note`        | `saveGoal` **omits the field** — no note box      | `note = p_note`                                    |
+
+So every rename deleted an activity's colour, and every goal edit deleted a goal's note.
+
+**They were harmless for the whole life of the room, and stopped being harmless this week.** Nothing
+in the room can write either field — erasing a column that is always already null is a no-op. But
+`chronicle_export` carries both and `chronicle_import` puts them back, so **from the day the import
+shipped (§6aa), a restored file became the one way an activity can have a colour or a goal can have
+a note** — and the next ordinary edit deleted it. My own feature is what made two dormant bugs
+reachable, which is exactly what §2 of `CLAUDE.md` means by checking what a change made untrue; it
+took two more ticks to notice.
+
+Demonstrated before touching either function: import a file carrying `#aabbcc` and
+`"because I keep meaning to"`, then make the room's own two calls — a rename and a re-save — and
+both read NULL.
+
+The fix is the entry's fix, twice: **null leaves the value alone, `''` clears it.** There is now one
+rule for every optional field on every save path in this module — silence means "I am not talking
+about this", never "throw it away".
+
+After: the import's values survive a rename and a re-save, and those edits still take (renamed,
+recategorised; retitled with a new scope, target and priority). `''` clears a colour, `'   '` clears
+a goal note, a new activity still starts with none, and a new goal written _with_ a note keeps it
+trimmed. The refusals are unchanged. Through the double, renaming an activity keeps its metric and
+editing a goal keeps its tick, its progress and its source. Four tests; perturbed with the original
+bugs, two go red each.
+
+**Left for Evan, deliberately.** Both columns are still unreachable from the room — no colour picker
+on an activity, no note box on a goal. They exist in the table, the type, the save path, the export
+and the import, and nothing on screen writes or shows them. Making either visible is a design
+decision about the room rather than a bug fix: a colour per activity would read instantly in a list
+of bars, and a goal's note is the obvious home for "why this matters". Named rather than invented.
+
+Reasoning and the standing check are in `docs/2026-10-13-chronicle-silent-erasures.sql`.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
