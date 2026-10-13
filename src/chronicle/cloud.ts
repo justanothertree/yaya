@@ -11,6 +11,7 @@ import {
   pvEditEntry,
   pvEntries,
   pvExport,
+  pvFixRunning,
   pvImport,
   pvQuality,
   pvMoods,
@@ -678,4 +679,27 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     plans: n('plans'),
     skipped: n('skipped'),
   }
+}
+
+/**
+ * Correct the session you are in the middle of — when it began, and what it is.
+ *
+ * ⚠️ THE TWO MISTAKES YOU NOTICE WHILE WORKING, which both used to have the same remedy: press
+ * Stop. That ends the session at a moment you did not choose and leaves you starting a second one,
+ * which is a worse record of the day than the one you were trying to fix. Pressing Start on the
+ * wrong activity, and pressing it twenty minutes after you actually began, are the two.
+ *
+ * ⚠️ NULL LEAVES EACH ONE ALONE, and there is no way to set an end: the open entry is open because
+ * it has no end, and typing one in is what Stop is for. See chronicle_running_fix.
+ */
+export async function fixRunning(
+  fromISO: string | null,
+  activity: string | null,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvFixRunning(fromISO, activity)
+  const { error } = await getSupabaseClient().rpc('chronicle_running_fix', {
+    p_from: fromISO,
+    p_activity: activity,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
 }

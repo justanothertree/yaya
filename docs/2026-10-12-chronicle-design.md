@@ -2827,6 +2827,59 @@ of bars, and a goal's note is the obvious home for "why this matters". Named rat
 
 Reasoning and the standing check are in `docs/2026-10-13-chronicle-silent-erasures.sql`.
 
+## 6ae · ✅ The sitting you are in the middle of
+
+§6ab let you move a finished session to the activity you meant. The one you are _in_ could not be
+touched at all — and the comment saying so gave a mechanical reason rather than a principled one:
+
+> only a finished span can be edited: the editor needs both ends, and the running one is closed
+> with Stop rather than by typing a time into it
+
+The second half still holds. The first half had a cost: **the two mistakes you notice while
+working both had the same remedy, which was to press Stop** — ending the session at a moment you
+did not choose and leaving you to start a second one, which is a worse record of the day than the
+one you were trying to fix. The two are pressing Start on the wrong activity, and pressing it
+twenty minutes after you actually began.
+
+`chronicle_running_fix` takes either, or both. It deliberately has **no `p_to`**: the one open
+entry is open _because_ it has no end, typing one in is what Stop is for, and a second way to close
+a session would carry none of Stop's own rules about notes and short sittings. The editor hides the
+end box, the amount, the rating and the note while a session runs for the same reason — those are
+things you say about a sitting once you know how it went.
+
+It keeps the rules the rest of the module keeps: null leaves each field alone; a start cannot be in
+the future or more than a day ago; and the activity is checked against `auth.uid()` rather than
+against the entry, because a uuid naming somebody else's activity is a real row the foreign key
+would happily accept.
+
+Driven through the UI: the running row has a pencil for the first time — four on screen where there
+were three — and its editor offers exactly four controls. **"Chronicle (on the site)" begun 7
+minutes ago became "Gym" begun 26 minutes ago, and was still running afterwards.** A finished
+session's editor is unchanged: two dates, the rating, the note box and the rest. At 375 the running
+editor is three rows with no overflow and nothing under 24px.
+
+Six tests, each made to fail — ending the session while correcting it (4 red), a start in the
+future (1), somebody else's activity (1), null read as "clear it" (3), and correcting the last
+entry rather than the open one (2).
+
+Reasoning and the standing check are in `docs/2026-10-13-chronicle-running-fix.sql`.
+
+### The sweep that opened the tick, and what it did not find
+
+§6ad's rule — _a save that writes every column deletes the ones the caller forgot_ — was worth
+asking about the rest of the site, where the save paths are older. Every `update` in a public
+function was pulled apart and checked against its callers. The multi-column writers are
+`update_my_profile` (10 columns), `set_my_nicknames` (3) and `set_my_profile_look` (4), and all
+three are **whole-form saves**: the client holds the complete current state and sends every field,
+which is the legitimate version of the pattern. The rest are single-field setters, which cannot
+forget anything.
+
+`set_my_profile_look` is the one that could have gone wrong differently — it writes from an effect
+rather than from a form — and it already carries a `lookMirrored` guard, with a comment recording
+the bug it was added for: _"six hundred milliseconds after signing in, the look on your profile was
+replaced by 'dark, no palette, no flair, no backdrop', silently, having chosen nothing."_ An honest
+negative result: the three instances were chronicle's own.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

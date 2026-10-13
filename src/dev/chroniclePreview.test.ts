@@ -9,6 +9,7 @@ import {
   pvAmount,
   pvEditEntry,
   pvEntries,
+  pvFixRunning,
   pvGoals,
   pvMoods,
   pvPlanDid,
@@ -16,6 +17,8 @@ import {
   pvQuality,
   pvSaveActivity,
   pvSaveGoal,
+  pvStart,
+  pvStop,
   pvTally,
   pvVisit,
   pvTotals,
@@ -879,5 +882,81 @@ describe('fields the room cannot write, and so used to erase', () => {
       note: '  ',
     })
     expect(pvGoals().find((g) => g.id === id)?.note).toBe(null)
+  })
+})
+
+describe('correcting the session you are in the middle of', () => {
+  /**
+   * ⚠️ UNTIL NOW IT COULD NOT BE CORRECTED AT ALL. The editor needs both ends of a span, so it was
+   * offered only on finished sessions — a consequence of the editor's shape rather than a
+   * decision — which left the two mistakes you notice WHILE WORKING with the same remedy: press
+   * Stop. That ends the session at a moment you did not choose and leaves you starting a second
+   * one, which is a worse record of the day than the one you were trying to fix.
+   */
+  /* ⚠️ a wide window, not the fixture's day: pvStart begins NOW, and the rest of this file works
+     in a fixed day in the past, so the running sitting is not inside dayStart()..dayEnd() */
+  const wide = (): string[] => [
+    new Date(Date.now() - 2 * 86_400_000).toISOString(),
+    new Date(Date.now() + 86_400_000).toISOString(),
+  ]
+  const running = () => pvEntries(wide()[0], wide()[1]).find((e) => e.end == null)
+
+  beforeEach(() => {
+    pvStart(draw)
+    /* ⚠️ wound back half an hour, because pvEntries asks for OVERLAP greater than zero and a
+       sitting begun a millisecond ago has none yet — it would be invisible to every reader in
+       this file. Half an hour in is also the state the feature is for. */
+    pvFixRunning(new Date(Date.now() - 30 * 60_000).toISOString(), null)
+  })
+
+  it('moves it to another activity without ending it', () => {
+    expect(running()?.activity).toBe(draw)
+    expect(pvFixRunning(null, gym)).toBe(null)
+    expect(running()?.activity).toBe(gym)
+    expect(running()?.end).toBe(null)
+  })
+
+  it('winds the start back without touching what it is', () => {
+    const was = running()!.start
+    const earlier = new Date(Date.parse(was) - 20 * 60_000).toISOString()
+    expect(pvFixRunning(earlier, null)).toBe(null)
+    expect(running()?.start).toBe(earlier)
+    expect(running()?.activity).toBe(draw)
+  })
+
+  it('takes both at once', () => {
+    const earlier = new Date(Date.now() - 45 * 60_000).toISOString()
+    pvFixRunning(earlier, gym)
+    expect(running()?.start).toBe(earlier)
+    expect(running()?.activity).toBe(gym)
+  })
+
+  it('refuses a start in the future, one more than a day ago, and an activity that is not yours', () => {
+    const was = running()!.start
+    expect(pvFixRunning(new Date(Date.now() + 60_000).toISOString(), null)).toEqual({
+      why: 'that is in the future',
+    })
+    expect(pvFixRunning(new Date(Date.now() - 25 * 3_600_000).toISOString(), null)).toEqual({
+      why: 'that is more than a day ago',
+    })
+    expect(pvFixRunning(null, 'not-an-activity')).toEqual({
+      why: 'that is not one of your activities',
+    })
+    /* and none of them moved it */
+    expect(running()?.start).toBe(was)
+    expect(running()?.activity).toBe(draw)
+  })
+
+  it('refuses when nothing is running', () => {
+    pvStop(null)
+    expect(running()).toBe(undefined)
+    expect(pvFixRunning(new Date().toISOString(), gym)).toEqual({ why: 'nothing is running' })
+  })
+
+  it('leaves the finished sessions alone', () => {
+    pvAddEntry(gym, h(9), h(10), 'earlier')
+    const before = pvEntries(dayStart(), dayEnd())
+    pvFixRunning(new Date(Date.now() - 10 * 60_000).toISOString(), gym)
+    expect(pvEntries(dayStart(), dayEnd())).toEqual(before)
   })
 })

@@ -666,6 +666,32 @@ export const pvEditEntry = (
   return null
 }
 
+/**
+ * Correcting the one open sitting, the way `chronicle_running_fix` does it.
+ *
+ * ⚠️ IT KEEPS ALL FOUR OF THAT FUNCTION'S RULES, and three of them are refusals rather than
+ * behaviour: there has to be something running, a start cannot be in the future or more than a
+ * day ago, and an activity has to be one of yours. A double that accepted any of those would make
+ * the room look as though it worked and leave the server to say no.
+ */
+export const pvFixRunning = (
+  fromISO: string | null,
+  activity: string | null,
+): { why: string } | null => {
+  const e = db().ents.find((x) => x.end == null)
+  if (!e) return { why: 'nothing is running' }
+  if (fromISO != null) {
+    const when = Date.parse(fromISO)
+    if (when > Date.now()) return { why: 'that is in the future' }
+    if (Date.now() - when > 24 * 3_600_000) return { why: 'that is more than a day ago' }
+  }
+  if (activity != null && !db().acts.some((a) => a.id === activity))
+    return { why: 'that is not one of your activities' }
+  /* ⚠️ null leaves each one alone — the rule every save path in this module keeps */
+  Object.assign(e, { start: fromISO ?? e.start, activity: activity ?? e.activity })
+  return null
+}
+
 export const pvAmount = (id: string, amount: number | null): boolean => {
   const e = db().ents.find((x) => x.id === id)
   if (e) e.amount = amount

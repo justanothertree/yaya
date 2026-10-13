@@ -4,6 +4,7 @@ import {
   archiveActivity,
   dropEntry,
   editEntry,
+  fixRunning,
   setAmount,
   setQuality,
   entriesBetween,
@@ -288,7 +289,24 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
    * is right rather than the UTC trap, because the string genuinely has no zone in it.
    */
   const saveEnt = async (metric?: string | null) => {
-    if (!fixEnt || !entFrom || !entTo || busy) return
+    if (!fixEnt || !entFrom || busy) return
+    /**
+     * ⚠️ THE ONE STILL GOING TAKES A DIFFERENT CALL, because it has no end to send and nothing
+     * should give it one — that is what Stop is for. Everything else on the row is set after a
+     * session finishes, so the running editor offers exactly the two things you notice while you
+     * are working: what it is, and when it began. See chronicle_running_fix.
+     */
+    const running = log.find((e) => e.id === fixEnt)?.end == null
+    if (running) {
+      setBusy(true)
+      const no = await fixRunning(new Date(entFrom).toISOString(), entAct || null)
+      setBusy(false)
+      if (no) return moan(no.why)
+      setFixEnt(null)
+      await after()
+      return
+    }
+    if (!entTo) return
     setBusy(true)
     const bad = await editEntry(
       fixEnt,
@@ -761,19 +779,24 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                         onChange={(ev) => setEntFrom(ev.target.value)}
                       />
                     </label>
-                    <label className="chron-gap">
-                      <span className="sr-only">Ended</span>
-                      <input
-                        type="datetime-local"
-                        value={entTo}
-                        onChange={(ev) => setEntTo(ev.target.value)}
-                      />
-                    </label>
+                    {/* ⚠️ no end, no amount, no rating and no note while it is still going:
+                        the end is Stop's to write, and the other three are things you say about a
+                        session once you know how it went */}
+                    {e.end && (
+                      <label className="chron-gap">
+                        <span className="sr-only">Ended</span>
+                        <input
+                          type="datetime-local"
+                          value={entTo}
+                          onChange={(ev) => setEntTo(ev.target.value)}
+                        />
+                      </label>
+                    )}
                     {/* ⚠️ only for an activity that has a metric: a box asking for a number with
                         no unit is a box nobody can answer — and it follows the activity SELECTED
                         above rather than the one the session used to be, so moving a session onto
                         something that counts nothing takes the box away with it */}
-                    {byId.get(entAct)?.metric && (
+                    {e.end && byId.get(entAct)?.metric && (
                       <label className="chron-qty">
                         <span className="sr-only">How many {byId.get(entAct)?.metric}</span>
                         <input
@@ -791,17 +814,19 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                      * choose, and it can say the WORD beside the number — "4 good" rather than a
                      * rank nobody has a legend for.
                      */}
-                    <label className="chron-src">
-                      <span className="sr-only">How did it go?</span>
-                      <select value={entMood} onChange={(ev) => setEntMood(ev.target.value)}>
-                        <option value="">not rated</option>
-                        {MOODS.map(([n, word]) => (
-                          <option key={n} value={String(n)}>
-                            {n} {word}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {e.end && (
+                      <label className="chron-src">
+                        <span className="sr-only">How did it go?</span>
+                        <select value={entMood} onChange={(ev) => setEntMood(ev.target.value)}>
+                          <option value="">not rated</option>
+                          {MOODS.map(([n, word]) => (
+                            <option key={n} value={String(n)}>
+                              {n} {word}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     {/**
                      * ⚠️ THE NOTE WAS WRITE-ONLY UNTIL NOW. There has been a box for one at Stop
                      * since the room was built, and nothing on the page ever showed it back — a
@@ -809,14 +834,16 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                      * written, never read, and then quietly destroyed by the first edit. It is
                      * shown in the row above, and editable here.
                      */}
-                    <label className="chron-note-fix">
-                      <span className="sr-only">A note about this session</span>
-                      <input
-                        value={entNote}
-                        placeholder="a note, if you like"
-                        onChange={(ev) => setEntNote(ev.target.value)}
-                      />
-                    </label>
+                    {e.end && (
+                      <label className="chron-note-fix">
+                        <span className="sr-only">A note about this session</span>
+                        <input
+                          value={entNote}
+                          placeholder="a note, if you like"
+                          onChange={(ev) => setEntNote(ev.target.value)}
+                        />
+                      </label>
+                    )}
                     <button
                       className="btn"
                       disabled={busy}
@@ -834,26 +861,30 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                     next line while another wrapped part way through its facts, which reads as a
                     broken layout rather than a deliberate one. */}
                 <span className="chron-ent-do">
-                  {/* ⚠️ only a finished span can be edited: the editor needs both ends, and the
-                      running one is closed with Stop rather than by typing a time into it */}
-                  {e.end && (
-                    <button
-                      className="btn btn-ghost chron-x"
-                      onClick={() => {
-                        setFixEnt(fixEnt === e.id ? null : e.id)
-                        setEntAct(e.activity)
-                        setEntNote(e.note ?? '')
-                        setEntFrom(forInput(e.start))
-                        setEntTo(forInput(e.end!))
-                        setEntAmount(e.amount == null ? '' : String(e.amount))
-                        setEntMood(e.quality == null ? '' : String(e.quality))
-                      }}
-                      aria-label="Change this session"
-                      title="Change this session"
-                    >
-                      ✎
-                    </button>
-                  )}
+                  {/**
+                   * ⚠️ IT USED TO SAY "only a finished span can be edited: the editor needs both
+                   * ends, and the running one is closed with Stop rather than by typing a time
+                   * into it". The second half still holds and is why there is no end box below
+                   * for a running one — but the first half was a consequence of the editor's
+                   * shape rather than a decision, and it left the two mistakes you notice WHILE
+                   * WORKING with no remedy but pressing Stop.
+                   */}
+                  <button
+                    className="btn btn-ghost chron-x"
+                    onClick={() => {
+                      setFixEnt(fixEnt === e.id ? null : e.id)
+                      setEntAct(e.activity)
+                      setEntNote(e.note ?? '')
+                      setEntFrom(forInput(e.start))
+                      setEntTo(e.end ? forInput(e.end) : '')
+                      setEntAmount(e.amount == null ? '' : String(e.amount))
+                      setEntMood(e.quality == null ? '' : String(e.quality))
+                    }}
+                    aria-label="Change this session"
+                    title="Change this session"
+                  >
+                    ✎
+                  </button>
                   <button
                     className="btn btn-ghost chron-x"
                     onClick={() => void forget(e)}
