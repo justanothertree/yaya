@@ -441,36 +441,51 @@ export const pvTally = (
   const out: Record<string, number> = {}
   for (const ask of asks) {
     const g = db().goals.find((x) => x.id === ask.id)
-    if (!g) continue
+    /* ⚠️ A GOAL WITH NEITHER SOURCE IS NOT ANSWERED, as chronicle_tally's own join requires —
+       it returned 0 for a hand-moved goal, which is a different claim from "I have nothing to
+       say about that". The room never asks (tallyAsks skips them), so nothing was wrong on
+       screen; the contract was. */
+    if (!g || (!g.activity && !g.cat)) continue
     out[ask.key ?? ask.id] = worth(g, ask.from, ask.to)
   }
   return out
 }
 
+/**
+ * ⚠️ EVERY ACTIVITY, INCLUDING ONES WITH NO TIME IN THE WINDOW. This built its rows from the
+ * ENTRIES, so a quiet activity simply was not in the answer — while `chronicle_totals` selects
+ * from the activities and LEFT JOINs the sums precisely so that it appears at 0. The room filters
+ * those out itself, so nothing on screen was wrong; the double was answering a different question
+ * from the one the server answers, which is how a double starts producing false bugs.
+ */
 export const pvTotals = (fromISO: string, toISO: string): Total[] => {
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   const now = Date.now()
-  const out = new Map<string, Total>()
+  const out = new Map<string, Total>(
+    db().acts.map((a) => [
+      a.id,
+      {
+        activity: a.id,
+        name: a.name,
+        cat: a.cat,
+        auto: a.auto,
+        mins: 0,
+        metric: a.metric,
+        /* only when there is a metric to total: a zero beside no unit reads as a bug */
+        amount: a.metric ? 0 : null,
+      },
+    ]),
+  )
   for (const e of db().ents) {
     const ms = overlapMs(e, from, to, now)
     if (ms <= 0) continue
-    const act = db().acts.find((x) => x.id === e.activity)
-    if (!act) continue
-    const row: Total = out.get(act.id) ?? {
-      activity: act.id,
-      name: act.name,
-      cat: act.cat,
-      auto: act.auto,
-      mins: 0,
-      metric: act.metric,
-      amount: act.metric ? 0 : null,
-    }
+    const row = out.get(e.activity)
+    if (!row) continue
     row.mins += ms / 60_000
-    const s = Date.parse(e.start)
-    if (act.metric && e.amount != null && s >= from && s < to)
+    const began = Date.parse(e.start)
+    if (row.metric && e.amount != null && began >= from && began < to)
       row.amount = (row.amount ?? 0) + e.amount
-    out.set(act.id, row)
   }
   return [...out.values()].sort((x, y) => y.mins - x.mins)
 }

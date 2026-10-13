@@ -2355,6 +2355,49 @@ the stopwatch half, not a third thing, so the framing holds.
 Checked at 375 and 1440: 56 controls, nothing undersized, off-edge, clipped or wordless, no
 overflow on the strip, the bars, the goal list, the plan list, the card or the container.
 
+## 6v · ✅ The double, checked against the thing it doubles
+
+`chronicle_totals`, `chronicle_moods` and `chronicle_tally` were all rewritten within a day of each
+other for performance. `dev/chroniclePreview.ts` implements the same three contracts and answers
+every judgement made by looking at the room — and nobody had checked it still agreed.
+
+Fourteen tests now pin it to the behaviours the SQL docs say those functions keep. **Two had
+already drifted.**
+
+### ⚠️ `pvTotals` was omitting activities with no time in the window
+
+It built its rows from the **entries**, so a quiet activity simply was not in the answer — while
+`chronicle_totals` selects from the activities and LEFT JOINs the sums _precisely so_ it appears at 0. Nothing on screen was wrong, because `Looking` filters `mins > 0` itself. The double was
+answering a different question from the one the server answers, which is how a double starts
+producing false bugs rather than how it produces one today.
+
+### ⚠️ `pvTally` was answering goals the server refuses
+
+A goal with neither an activity nor a category came back as `0`. `chronicle_tally`'s own join
+requires one or the other and drops the ask entirely — `{}`, which is a different claim from zero.
+Again invisible: `tallyAsks` never asks about a hand-moved goal.
+
+Both fixed; both perturbed back in and the tests redden.
+
+### Why this is worth test weight at all
+
+A dev-only harness is worth testing **when it is a double**. This one has already cost real time
+twice: once returning goals in seed order while the server sorted them by priority — which looked
+exactly like the priority ordering not working, hours after it had been proven in SQL — and once,
+in the park, with a roster keyed differently from the relay. CLAUDE.md's line is that an unfaithful
+double looks exactly like a product bug, and the rule it implies is that **a double's agreement with
+its original is a thing to assert, not to assume.**
+
+The tests are explicit that they check the **rules** and not the numbers: nothing in a browser can
+say what `chronicle_minutes` would return, and the harness's own header says so.
+
+### And two of the tests were not testing anything
+
+The first pass at the rating tests could not reach an entry — `pvAddEntry` returns no id — so
+rather than find one they asserted that the minutes were still the minutes. `pvEntries` is the same
+door the room uses to draw the log; going through it made them about the rating instead. Worth
+noticing that a test which cannot reach its subject will happily assert something else and pass.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
