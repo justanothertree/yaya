@@ -15933,3 +15933,69 @@ a.cz-msg-author:focus-visible {
   width: 100%;
   min-height: 36px;
 }
+
+/* ── routines: a list you tap down in order — see chronicle/Routines.tsx ────── */
+.chron-routines {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+.chron-routine {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+}
+.chron-routine-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+}
+.chron-routine-top > strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+.chron-step {
+  min-height: 36px;
+}
+/* ⚠️ done is dimmed and struck rather than hidden: a routine that shortens as you go gives you no
+   way to see what it is, and no way to do a step twice on purpose */
+.chron-step.is-done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+/* and the one you are up to is the only thing with a border, so the eye lands on it */
+.chron-step.is-next {
+  border: 1px solid var(--accent);
+  font-weight: 650;
+}
+.chron-draft {
+  list-style: decimal;
+  margin: 0.4rem 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.chron-draft li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 36px;
+  font-size: 0.88rem;
+}
+.chron-draft-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

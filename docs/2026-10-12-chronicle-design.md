@@ -1,6 +1,6 @@
 # Chronicle — a design, before any of it is built
 
-**Status: ✅ STEPS 1–4 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
+**Status: ✅ STEPS 1–4 APPLIED plus looking back, editing and routines, 12–13 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
 `chronicle_goal_window_excludes_life`. The client half is in `src/chronicle/` and
 `src/sections/Chronicle.tsx`. Steps 2–5 in §4 are not started.
 
@@ -467,6 +467,35 @@ Shown only for windows longer than a day: Today and Tomorrow already have the Ti
 entry by entry with times, which is strictly more than a total. Not shown for Years, which has no
 window — all-time is a different question and the range cap is 400 days, so pretending would mean
 showing a year and calling it everything.
+
+## 6e · ✅ Routines — the last named feature the HTML app had
+
+**Migration `chronicle_routines`.** Client: `src/chronicle/Routines.tsx`.
+
+A morning you run through, a shutdown list, the three things you always do before drawing.
+
+⚠️ **ONE ROW WITH A JSONB LIST, NOT A SECOND TABLE OF STEPS.** A routine is edited as a whole — you
+reorder it, drop a step, add one — so a steps table would mean an ordering column, an RPC to move a
+step up, and two writes that can half-succeed. The house pattern for a small document edited whole
+is already jsonb: `member_library` and `park_maps` both do it.
+
+⚠️ **AND THERE IS NO "RUNNING ROUTINE"**, which is the HTML app's `activeRoutine` deliberately left
+out. The useful 80% of a routine is a saved list you tap down in order, and the timer already knows
+what is running — a second idea of "where am I in the routine" would be a second answer to that,
+kept in step by hope. **Which step you are up to is derived**: the first one with fewer minutes
+against it today than it asked for. So a routine resumes itself after a reload, after a day, and on
+another device, with nothing stored about where you were.
+
+⚠️ **A STEP IS A SUGGESTION, NOT A LIMIT.** "10m" says how long you meant it to take; nothing stops
+it or nags. A routine that enforced its own timings would be a schedule, which is a different thing
+from a list and a much easier thing to abandon.
+
+Ten probes, all rolled back. The one that matters: **a step naming somebody else's activity is
+dropped rather than stored**, because a routine is a list of ids a request can type, and a tap on
+such a step would try to start it. Also proven: the steps keep their order, minutes clamp at 600,
+junk minutes become null rather than breaking the row, a non-list is refused, a blank or duplicate
+name is refused, an edit keeps the id and may empty the list, and another member can neither read
+nor delete one.
 
 ## 7 · What is deliberately not being ported
 

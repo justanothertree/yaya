@@ -320,3 +320,57 @@ export async function editEntry(
   })
   return error ? { why: error.message || 'that did not save' } : null
 }
+
+/* ── routines ───────────────────────────────────────────────────────────────── */
+
+/** An ordered list of things you do together. `mins` is a suggestion, not a limit. */
+export type Routine = {
+  id: string
+  name: string
+  steps: Array<{ activity: string; mins: number | null }>
+}
+
+export async function myRoutines(): Promise<Routine[]> {
+  const { data, error } = await getSupabaseClient().rpc('chronicle_routines_mine')
+  if (error || !Array.isArray(data)) return []
+  return (data as Routine[]).map((r) => ({
+    id: String(r.id),
+    name: String(r.name ?? ''),
+    steps: Array.isArray(r.steps)
+      ? r.steps.map((s) => ({
+          activity: String(s.activity),
+          mins: s.mins == null ? null : num(s.mins as number | string | null, 0) || null,
+        }))
+      : [],
+  }))
+}
+
+/**
+ * Save a routine, new or edited.
+ *
+ * ⚠️ THE WHOLE LIST EVERY TIME, which is what makes reordering and removing a step one write
+ * rather than three. The server rebuilds `steps` from what it is given, dropping any step naming
+ * an activity that is not yours — see chronicle_routine_save.
+ */
+export async function saveRoutine(
+  name: string,
+  steps: Array<{ activity: string; mins: number | null }>,
+  id?: string,
+): Promise<{ id: string } | { why: string }> {
+  const { data, error } = await getSupabaseClient().rpc('chronicle_routine_save', {
+    p_id: id ?? null,
+    p_name: name,
+    p_steps: steps.map((s) => ({
+      activity: s.activity,
+      mins: s.mins == null ? null : String(s.mins),
+    })),
+  })
+  if (error) return { why: error.message || 'that did not save' }
+  const made = data == null ? '' : String(data)
+  return made ? { id: made } : { why: 'that did not save — nothing came back' }
+}
+
+export async function dropRoutine(id: string): Promise<boolean> {
+  const { error } = await getSupabaseClient().rpc('chronicle_routine_drop', { p_id: id })
+  return !error
+}

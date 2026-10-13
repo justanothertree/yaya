@@ -11,6 +11,7 @@ import {
   stopTimer,
 } from './cloud'
 import { today as todayISO } from './goal'
+import { Routines } from './Routines'
 import {
   CATS,
   clockText,
@@ -553,6 +554,21 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
 
       {!log.length && <p className="muted">Nothing recorded for this day yet.</p>}
 
+      {/**
+       * ⚠️ ROUTINES SIT WITH THE ACTIVITIES, not above the timer. A routine is a thing you reach
+       * for at the start of a stretch and then forget about, so it earns a fold rather than a
+       * permanent row — the same judgement the activity list makes.
+       *
+       * ⚠️ AND IT IS HANDED TODAY'S MINUTES rather than fetching them. That is what makes a step
+       * look done, and the room already has the number: a second query for it would be a second
+       * answer to how long you spent on something today.
+       */}
+      {seeing === todayISO() && (
+        <details className="chron-tidy">
+          <summary>Routines</summary>
+          <Routines acts={acts ?? []} mins={mins} onStart={(id) => void go(id)} busy={busy} />
+        </details>
+      )}
       {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
       {open.length > 0 && (
