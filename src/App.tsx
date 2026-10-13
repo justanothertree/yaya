@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
 import { Chronicle } from './sections/Chronicle'
+import { useVisits } from './chronicle/useVisits'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
 import { SettingsMenu } from './components/SettingsMenu'
@@ -248,6 +249,16 @@ export default function App() {
   const uidRef = useRef<string | null>(boot.uid)
   // DEV member preview (previewMember): render the signed-in UI with fake data, no login
   const [isFinanceAuthed, setIsFinanceAuthed] = useState(!!boot.uid || previewMember)
+  /**
+   * ⚠️ TIME ON THE SITE, RECORDED HERE BECAUSE THIS IS WHERE THE ROOM IS KNOWN. Asked for as the
+   * online time and which module, which are one thing — see chronicle/useVisits. It writes
+   * finished spans a heartbeat extends, so it never touches the single open-entry slot the
+   * hand-started timer owns, and it stops counting the moment the tab is not being looked at.
+   *
+   * ⚠️ AND ONLY FOR A SIGNED-IN MEMBER. A visitor has no account to write to and nothing here
+   * leaves the browser for one — the hook returns before any call when authed is false.
+   */
+  useVisits(SECTION_TITLES[active] ?? null, isFinanceAuthed)
   const [isAdmin, setIsAdmin] = useState(boot.flags?.admin ?? false)
   /**
    * May this viewer edit the home page — used by BOTH the normal page and the canvas window, so

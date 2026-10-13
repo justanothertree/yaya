@@ -1,6 +1,6 @@
 # Chronicle — a design, before any of it is built
 
-**Status: ✅ STEPS 1, 2 AND 3 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
+**Status: ✅ STEPS 1–4 APPLIED, 12 Oct 2026.** Migrations `chronicle_goals`, `chronicle_goal_rpcs` and
 `chronicle_goal_window_excludes_life`. The client half is in `src/chronicle/` and
 `src/sections/Chronicle.tsx`. Steps 2–5 in §4 are not started.
 
@@ -121,7 +121,8 @@ two: a goal that reads the time you actually spent is the thing a to-do list can
    half that was missing from the HTML app.
 2. ~~**The record.**~~ ✅ APPLIED 12 Oct 2026 — see §6.
 3. ~~**Derived progress.**~~ ✅ APPLIED 12 Oct 2026 — see §6b.
-4. **Routines and planning.** The HTML app's routines, and `planned` as intention-vs-actual.
+4. ✅ **Time on the site** — asked for on 12 Oct, applied the same day; see §6c. (Routines and
+   intention-vs-actual move to step 6.)
 5. **Only then**, the question of whether the Circuit wants to sit on this.
 
 ---
@@ -377,6 +378,62 @@ The client side refuses to lie while the tally is in flight: a derived goal's `p
 never written, so `reached()` returns **zero** rather than that column when the tally is missing.
 A stale number wearing the authority of a reading is the failure that would have survived review,
 because the fallback reads as defensive. It is perturbed in and turns a test red.
+
+## 6c · Step 4 — ✅ time on the site, recorded without being asked
+
+**Migrations `chronicle_auto_visits`, `chronicle_visit_reads_the_clock_once`.** Client:
+`src/chronicle/useVisits.ts`, called once from `App.tsx` where the room is known.
+
+Asked for as _"the online/offline time of when i am logged in viewing the site and maybe even over
+time what module i am in and at what times"_. Those are one thing: the time you were online **is**
+the union of the time you were in rooms, so recording the rooms gives both and nothing has to be
+reconciled with anything.
+
+⚠️ **THEY ARE ORDINARY ACTIVITIES**, flagged `auto`, one per room. That means the whole machine
+already works on them — the day's log lists them, the category totals include them, and a goal can
+point at "my time in Paint" exactly as it points at "Drawing". A separate table would have needed
+its own log, its own totals and its own tally.
+
+⚠️ **AND A VISIT NEVER OPENS AN ENTRY, which is the collision this design exists to avoid.**
+`chronicle_one_running` allows exactly one entry with no end per person, and that one **is** the
+hand-started timer. A visit that opened a row would fight it for the slot, so pressing Start on
+Drawing would either fail or silently close the visit. A visit is a **finished** span that each
+heartbeat extends. Proven: with a hand timer running, a visit still leaves exactly one open row.
+
+**The rules, each proven to hold:**
+
+- Nothing shorter than thirty seconds is recorded — tabbing through five rooms looking for one
+  writes nothing. Measured in the browser: three hops of under a second reported nothing at all,
+  then sitting in one room for 34 seconds reported `Games:34`.
+- A duration is clamped to ten minutes, so a sleeping or lying client cannot claim an afternoon.
+  Exactly `00:10:00`, which took a second fix — see below.
+- A heartbeat every two minutes inside a three-minute extend window, so one slow beat cannot split
+  a sitting into two rows.
+- **Hidden is not viewing.** The clock stops when the tab goes away and reports what accrued;
+  `pagehide` as well as `visibilitychange`, because a phone putting the browser away does not fire
+  `beforeunload`.
+- Signed out writes nothing: measured zero calls across room changes with no session.
+
+⚠️ **AND THE CLOCK MUST BE READ ONCE.** The first version called `clock_timestamp()` twice in one
+insert — once for the start, once for the end — which are two instants a few microseconds apart, so
+a span clamped to "ten minutes" came out fractionally longer. Found by asserting the clamp and
+watching it fail by microseconds. The same mistake as the `now()` one in kind: a single logical
+moment read more than once stops being single, and a bound that is only nearly true is one somebody
+will eventually compare against and disbelieve.
+
+### ⚠️ And the gap in steps 1–3 closed itself
+
+Every write I attempted in the Browser pane returned `401`, because the harness has no Supabase
+session — so the join between `supabase-js` and these functions was the one thing I could only
+infer. On 12 Oct, while this was being built, Evan signed in and used the room: an activity
+("Claude maxing", Locked In) and a goal ("Make my website better") are in the tables, written
+through `chronicle_activity_save` and `chronicle_goal_save` by a real browser with a real token.
+
+⚠️ **Those two rows are HIS and must never be cleaned up.** I found them while checking for probe
+residue and nearly treated them as mine; the only reason I did not is that I read them first.
+
+What that leaves untested is the **timer**: `chronicle_entries` is still empty, so Start/Stop has
+not been exercised by a real session.
 
 ## 7 · What is deliberately not being ported
 
