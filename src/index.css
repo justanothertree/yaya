@@ -15897,3 +15897,39 @@ a.cz-msg-author:focus-visible {
 .chron-act-name > .muted {
   font-size: 0.78rem;
 }
+
+/* the day you are looking at, and the one-tap starts — see chronicle/Timer.tsx */
+.chron-day {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.92rem;
+}
+.chron-day .btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 0.5rem;
+}
+.chron-day > strong {
+  min-width: 7.5rem;
+}
+.chron-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: 0.88rem;
+}
+.chron-quick .btn {
+  min-height: 36px;
+}
+.chron-note {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.chron-note input {
+  width: 100%;
+  min-height: 36px;
+}

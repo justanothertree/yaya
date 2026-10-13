@@ -10,10 +10,12 @@ import {
   startTimer,
   stopTimer,
 } from './cloud'
+import { today as todayISO } from './goal'
 import {
   CATS,
   clockText,
   dayBounds,
+  localMidnight,
   minutesByActivity,
   minutesByCat,
   overlapMs,
@@ -34,7 +36,36 @@ import {
  * server owns; nothing is accumulated here, so a tab that was asleep for an hour is right the
  * moment it wakes rather than an hour behind.
  */
+/** a day either side, by local calendar arithmetic rather than by adding hours */
+const dayStep = (iso: string, by: number): string => {
+  const d = localMidnight(iso)
+  d.setDate(d.getDate() + by)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+const niceDay = (iso: string) =>
+  localMidnight(iso).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+
 export function Timer({ day, onChange }: { day: string; onChange?: () => void }) {
+  /**
+   * The day being looked at, which is not always the day the room asked for.
+   *
+   * ⚠️ YOU COULD NOT LOOK AT YESTERDAY, which for a record is most of the point missing. The views
+   * are all "this something" — today, tomorrow, this week — so an ordinary question like "what did
+   * I do on Friday" had no way to be asked at all. A stepper here opens every day that was ever
+   * recorded without adding a view for each one.
+   *
+   * ⚠️ AND IT FOLLOWS THE ROOM WHEN THE ROOM MOVES. Switching the tab from Today to Tomorrow has
+   * to win over wherever the stepper had wandered to, or the two controls would disagree about
+   * which day is on screen and the room would be showing a date nothing had named.
+   */
+  const [seeing, setSeeing] = useState(day)
+  useEffect(() => setSeeing(day), [day])
   const [acts, setActs] = useState<Activity[] | null>(null)
   const [log, setLog] = useState<Entry[]>([])
   const [pick, setPick] = useState('')
@@ -44,6 +75,8 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [newName, setNewName] = useState('')
   const [newCat, setNewCat] = useState<Activity['cat']>('free')
   const [gap, setGap] = useState(false)
+  /** what you were doing, written down as you stop — the field the table has always had */
+  const [stopNote, setStopNote] = useState('')
   const [gapFrom, setGapFrom] = useState('')
   const [gapTo, setGapTo] = useState('')
   /**
@@ -64,7 +97,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [, setBeat] = useState(0)
   const live = useRef(false)
 
-  const bounds = useMemo(() => dayBounds(day), [day])
+  const bounds = useMemo(() => dayBounds(seeing), [seeing])
 
   const load = useCallback(async () => {
     const [a, e] = await Promise.all([
@@ -96,6 +129,22 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     () => minutesByActivity(log, bounds.fromMs, bounds.toMs, Date.now()),
     [log, bounds.fromMs, bounds.toMs],
   )
+  /**
+   * The handful worth a button of their own.
+   *
+   * ⚠️ ORDERED BY WHAT YOU HAVE DONE TODAY, then by name — so the list settles into your actual
+   * habits rather than the order you happened to create things in, and the first button is
+   * usually the right one. Six, because a seventh wraps the row on a phone and a row of buttons
+   * that wraps has stopped reading as a shortcut.
+   */
+  const quick = useMemo(
+    () =>
+      [...open]
+        .filter((a) => !a.auto)
+        .sort((x, y) => (mins[y.id] ?? 0) - (mins[x.id] ?? 0) || x.name.localeCompare(y.name))
+        .slice(0, 6),
+    [open, mins],
+  )
   const cats = useMemo(
     () => minutesByCat(log, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
     [log, acts, bounds.fromMs, bounds.toMs],
@@ -123,9 +172,15 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const halt = async () => {
     if (busy) return
     setBusy(true)
-    const bad = await stopTimer(null)
+    /**
+     * ⚠️ THE NOTE GOES IN ON THE WAY OUT, which is the only moment anybody knows what to write.
+     * `chronicle_stop` has taken one since step 2 and this passed null — so the column existed,
+     * the function stored it, the log rendered it, and there was no way to put anything in it.
+     */
+    const bad = await stopTimer(stopNote.trim() || null)
     setBusy(false)
     if (bad) return moan(bad.why)
+    setStopNote('')
     await after()
   }
 
@@ -226,6 +281,43 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
 
   return (
     <div className="chron-rec">
+      {/**
+       * ⚠️ TODAY IS NAMED RATHER THAN DATED, because "Today" is what anybody calls it and a date
+       * where the word should be makes you work out whether it is the word. Every other day gets
+       * its date, which is the only thing that identifies it.
+       */}
+      <div className="chron-day">
+        <button
+          className="btn btn-ghost"
+          onClick={() => setSeeing(dayStep(seeing, -1))}
+          aria-label="The day before"
+          title="The day before"
+        >
+          ‹
+        </button>
+        <strong>
+          {seeing === todayISO()
+            ? 'Today'
+            : seeing === dayStep(todayISO(), 1)
+              ? 'Tomorrow'
+              : seeing === dayStep(todayISO(), -1)
+                ? 'Yesterday'
+                : niceDay(seeing)}
+        </strong>
+        <button
+          className="btn btn-ghost"
+          onClick={() => setSeeing(dayStep(seeing, 1))}
+          aria-label="The day after"
+          title="The day after"
+        >
+          ›
+        </button>
+        {seeing !== todayISO() && (
+          <button className="btn btn-ghost" onClick={() => setSeeing(todayISO())}>
+            back to today
+          </button>
+        )}
+      </div>
       <div className="chron-timer">
         {running ? (
           <>
@@ -235,10 +327,25 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
             <span className="chron-run-name">
               {byId.get(running.activity)?.name ?? 'something'}
             </span>
+            <label className="chron-note">
+              <span className="sr-only">What are you doing? (optional)</span>
+              <input
+                value={stopNote}
+                placeholder="a note, if you like"
+                onChange={(e) => setStopNote(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void halt()}
+              />
+            </label>
             <button className="btn" disabled={busy} onClick={() => void halt()}>
               ■ Stop
             </button>
           </>
+        ) : seeing !== todayISO() ? (
+          /* ⚠️ a timer runs in the present or not at all. On another day the controls would be a
+             lie — there is nothing to time — so the day offers the repair tools instead. */
+          <span className="muted">
+            Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.
+          </span>
         ) : (
           <>
             <label className="chron-pickrow">
@@ -271,6 +378,32 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
           ⏱ Fill a gap
         </button>
       </div>
+
+      {/**
+       * ⚠️ ONE TAP FOR THE THING YOU ACTUALLY DO, because starting a timer is the most repeated
+       * action in the room and it cost two: open a dropdown, find the name, press Start. These are
+       * the same activities the picker holds, in the order you have used them today, so the one
+       * you want is almost always the first.
+       *
+       * ⚠️ AND NOT THE SITE-WRITTEN ONES. "Paint" as an auto activity means the room was open; a
+       * button that started a timer on it would be recording something the site is already
+       * recording, twice over.
+       */}
+      {!running && seeing === todayISO() && quick.length > 0 && (
+        <div className="chron-quick">
+          <span className="muted">or just</span>
+          {quick.map((a) => (
+            <button
+              key={a.id}
+              className="btn btn-ghost"
+              disabled={busy}
+              onClick={() => void go(a.id)}
+            >
+              ▶ {a.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {adding && (
         <div className="chron-add">
