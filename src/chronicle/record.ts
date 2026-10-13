@@ -30,11 +30,22 @@ export type Activity = {
   archived: boolean
 }
 
-/** The three categories, in the order the room shows them. */
+/**
+ * The three categories, in the order the room shows them.
+ *
+ * ⚠️ THESE ARE THE WORDS THE HTML APP USED, which is the only reason they are the right words.
+ * The first version of this list said "Committed / Yours / Upkeep" — my invention, and reported
+ * exactly as you would expect: "i dont understand the choices". The app being rebuilt has said
+ * `Locked In`, `Free Time` and `Life` on screen for its whole life, in a picker, in a filter row
+ * and in the day's totals. Somebody who has used it knows what they mean, and no amount of my
+ * being pleased with a synonym is worth making them learn it twice.
+ *
+ * The stored values are unchanged — `locked`, `free`, `life` — so this was only ever a label.
+ */
 export const CATS = [
-  ['locked', 'Committed'],
-  ['free', 'Yours'],
-  ['life', 'Upkeep'],
+  ['locked', 'Locked In'],
+  ['free', 'Free Time'],
+  ['life', 'Life'],
 ] as const
 
 /**

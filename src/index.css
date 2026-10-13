@@ -15774,3 +15774,21 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   max-width: 13rem;
 }
+
+/* the room's one line of explanation, and the three steps it shows while empty */
+.chron-how {
+  margin: 0 0 0.7rem;
+  font-size: 0.88rem;
+  max-width: 60ch;
+}
+.chron-first {
+  margin: 0 0 0.8rem;
+  padding-left: 1.3rem;
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  max-width: 60ch;
+}
+.chron-first strong {
+  color: var(--text);
+}

@@ -229,6 +229,34 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     <section className="card chron">
       <h2 className="section-title">Chronicle</h2>
 
+      {/**
+       * ⚠️ THE ROOM HAS TO SAY WHAT IT IS, and it did not. Reported plainly by the person who
+       * asked for it and watched it get built — "i am not sure how most of it works yet" — which
+       * is as clear a signal as a room can give. Every word in it was mine: scope, source,
+       * repeats, and three category names he had never used.
+       *
+       * ⚠️ TWO SENTENCES, AND THE LONG VERSION LIVES IN A COMMENT. The page gets the shortest true
+       * thing; docs/2026-10-12-chronicle-design.md gets the reasoning.
+       */}
+      <p className="muted chron-how">
+        Two halves. <strong>The stopwatch</strong> below times what you are doing, against
+        activities you name. <strong>The tabs</strong> under it hold what you are aiming at, at
+        whichever size you think about it — today, this week, this year. Point a numbered goal at an
+        activity and it fills itself in as you work.
+      </p>
+
+      {/**
+       * ⚠️ THE TIMER COMES FIRST, which is what this comment claimed while the element sat below
+       * the window strip — the layout and the sentence disagreed and the sentence was the one I
+       * had read. A running clock is the one thing in this room that is true regardless of which
+       * horizon you are looking at, so a session you forgot to stop must not be able to hide
+       * behind a tab.
+       *
+       * ⚠️ AND THE DAY IT WRITES INTO FOLLOWS THE VIEW only for Today and Tomorrow, because those
+       * are the two views that name a day. The longer windows show the record for today.
+       */}
+      <Timer day={v.scope === 'day' ? on : todayISO()} onChange={() => void load()} />
+
       {/* ⚠️ the counts are UNFINISHED work, not totals — a strip of totals tells you how much you
           have written down, which is not a thing anybody needs to know at a glance */}
       <div className="chron-strip" role="tablist" aria-label="How far ahead">
@@ -267,20 +295,38 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         ) : null}
       </p>
 
-      {/**
-       * ⚠️ THE TIMER IS ABOVE THE WINDOWS, NOT INSIDE ONE. A running clock is the one thing in
-       * this room that is true regardless of which horizon you are looking at — hiding it
-       * behind a tab would mean a session you forgot to stop could run all day unseen. The
-       * day it writes into follows the view only for Today and Tomorrow, because those are
-       * the two views that name a day; the longer windows show the record for today.
-       */}
-      <Timer day={v.scope === 'day' ? on : todayISO()} onChange={() => void load()} />
       {goals === null ? (
         <p className="muted" aria-busy>
           Loading…
         </p>
       ) : (
         <>
+          {/**
+           * ⚠️ SEVEN EMPTY TABS IS NOT AN EMPTY STATE. With nothing made yet the room was a strip
+           * of windows over "Nothing here yet", which says where you are and not what to do — and
+           * the two things to do are in two different places, one of them above this list. So
+           * while there is nothing at all, the room says the steps in order and stops pretending
+           * the tabs are useful.
+           *
+           * ⚠️ AND IT GOES AWAY FOR GOOD once anything exists, like the instrument's start row:
+           * scaffolding that never leaves is how a room gets cluttered by the help it needed once.
+           */}
+          {!goals.length && !acts.length ? (
+            <ol className="chron-first">
+              <li>
+                <strong>Name something you do.</strong> Press ＋ Activity up there — "Drawing",
+                "Dishes", "Work". Each one is Locked In, Free Time or Life.
+              </li>
+              <li>
+                <strong>Press Start when you begin it</strong>, Stop when you are done. That is the
+                record, and it keeps running if you close the tab.
+              </li>
+              <li>
+                <strong>Then aim at something.</strong> Add a goal below — a tick-box, or a number
+                like 30 minutes. Point a number at an activity and you never have to tick it.
+              </li>
+            </ol>
+          ) : null}
           <ul className="chron-list">
             {mine.map((g) => {
               const s = share(g, got)
@@ -303,7 +349,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     ) : (
                       <span className="chron-name">{g.title}</span>
                     )}
-                    {repeats(g) ? <span className="chron-chip">repeats</span> : null}
+                    {/* ⚠️ "every day" rather than "repeats": the useful half of the fact is the
+                        cadence and the room already knows it, so a chip saying only that a thing
+                        repeats is a label that raises the question it should answer */}
+                    {repeats(g) ? <span className="chron-chip">every {g.scope}</span> : null}
                     {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
                         moves on its own and does not say why reads as a bug rather than a feature */}
                     {from ? <span className="chron-chip is-auto">from {from}</span> : null}
@@ -388,8 +437,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 <label className="chron-src">
                   <span className="sr-only">Counted from what?</span>
                   <select value={src} onChange={(e) => setSrc(e.target.value)}>
-                    <option value="">counted by hand</option>
-                    <optgroup label="from one activity">
+                    <option value="">I will count it myself</option>
+                    <optgroup label="count my time on…">
                       {acts
                         .filter((a) => !a.archived)
                         .map((a) => (
@@ -398,7 +447,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                           </option>
                         ))}
                     </optgroup>
-                    <optgroup label="from a whole category">
+                    <optgroup label="count all my time that is…">
                       {CATS.map(([c, label]) => (
                         <option key={c} value={'c:' + c}>
                           {label}
