@@ -2686,6 +2686,63 @@ beneath — zero overflow at the document, the card and the row. 3,293 entries g
 
 Reasoning and the standing privilege check are in `docs/2026-10-13-chronicle-import.sql`.
 
+## 6ab · ✅ The session you started on the wrong thing
+
+Everything about a finished session was editable except the one fact you were least able to get
+right at the time: **what it was**. Pressing Start on the wrong activity is the likeliest mistake a
+stopwatch allows, and the only remedy was to delete the session and type it in again — losing the
+amount, the rating, and the day it was recorded.
+
+`chronicle_entry_edit` takes the activity now, and the editor's first control is a list of your
+activities — what it was, then when it was, which is the order the mistake happens in.
+
+**Replacing a live function without breaking the page somebody has open.** `create or replace`
+cannot add a parameter, and the overload it would create is worse than useless here: a
+four-argument call would match both the old function and the new one's defaulted form, and Postgres
+refuses that as _not unique_ — so the room would break for everybody rather than for nobody. The
+answer is to drop and recreate with `p_activity uuid default null`, in one migration. PostgREST
+matches by name and a defaulted parameter is optional, so the bundle already loaded in somebody's
+browser goes on calling four arguments and still means "leave the activity alone". The behavioural
+baseline says so rather than the reasoning: that exact call produces md5
+`ef8a5486388a59e4c5f312d8e8ec8ae3` before and after, and the four refusals are word for word the
+same.
+
+**The check the foreign key would not have made.** A caller who can name one activity can name any
+uuid, and somebody else's activity is a real row — so the reference would be _accepted_, leaving
+that person with a session of their own pointing into another member's list and their minutes
+landing in that member's totals from the other side. The activity is checked against
+`auth.uid()`, not against the entry. An archived activity of your own is still allowed: archived
+means put away, not gone, and refusing it would make a tidy-up irreversible for anything already
+recorded against it.
+
+Verified in the room: a session rated **5** moved from Drawing to Writing, kept its 5, and the
+day's totals followed — Drawing left the list, Writing went to 35m. The amount box follows the
+_selected_ activity rather than the one the session used to be, so moving a session onto something
+that counts nothing takes the box away with it. At 375 the editor wraps to six rows with nothing
+overflowing and nothing under 24px.
+
+The pencil said "Change when this was"; it says "Change this session", because it no longer only
+changes when.
+
+Reasoning and the standing check are in `docs/2026-10-13-chronicle-entry-move.sql`.
+
+### A sweep this came out of, and one thing it found elsewhere
+
+§6aa ended with chronicle having sent toasts nobody could see, so every `showToast` caller was
+traced to the room that renders it. Three of the four non-section senders are fine — `circuit/store`
+is used by the Circuit and Ratings, `party/jam` only by the Instrument, `CircuitsPanel` only by the
+Circuit, and all of those mount a `<Toast/>`.
+
+The fourth is **`CircuitCanvas`, which App lazy-loads rather than a section**, and which confirms
+its layout actions with `▣ Everything, fitted`, `▭ Fit to content` and `⊞ Windows tiled`. Measured
+across every room: each has one `aria-live` region — but on Paint and the Visualiser that one is the
+route announcer (`Section: Paint`, clipped to a pixel), not a toast host. So those three
+confirmations are unseen when the canvas is open over either room.
+
+Left alone deliberately: it is two rooms that are not chronicle's, the actions confirm something
+you can watch happen, and whether those rooms want a toast host at all is a decision about them.
+Named here rather than fixed.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

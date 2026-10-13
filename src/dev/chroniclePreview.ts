@@ -623,11 +623,21 @@ export const pvEditEntry = (
   fromISO: string,
   toISO: string,
   note: string | null,
+  activity?: string | null,
 ): { why: string } | null => {
   const e = db().ents.find((x) => x.id === id)
   if (!e) return { why: 'that entry is gone' }
   if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that ends before it starts' }
-  Object.assign(e, { start: fromISO, end: toISO, note })
+  /**
+   * ⚠️ NULL LEAVES IT WHERE IT IS, and a named activity has to be one of yours — the same two
+   * rules chronicle_entry_edit keeps. The second one matters more than it looks: the server
+   * checks it because a foreign key would happily accept somebody else's activity, which would
+   * leave you holding a row that points into another person's list and puts your minutes in
+   * their totals. A double that accepted any uuid would make that look fine here.
+   */
+  if (activity != null && !db().acts.some((a) => a.id === activity))
+    return { why: 'that is not one of your activities' }
+  Object.assign(e, { start: fromISO, end: toISO, note, activity: activity ?? e.activity })
   return null
 }
 

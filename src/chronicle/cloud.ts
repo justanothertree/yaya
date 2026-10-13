@@ -396,18 +396,29 @@ export async function totalsBetween(fromISO: string, toISO: string): Promise<Tot
  * second entry with no end possible and `chronicle_one_running` exists to keep that at exactly one.
  * Starting is `startTimer` and nothing else.
  */
+/**
+ * Change a finished session: when it was, and what it was.
+ *
+ * ⚠️ `activity` NULL MEANS LEAVE IT ALONE, not "no activity" — an entry always has one, the
+ * column is NOT NULL, and that reading is what let the server grow this parameter without
+ * breaking the bundle somebody already had open. The server checks the activity belongs to the
+ * caller; a uuid naming somebody else's is refused rather than quietly accepted by the foreign
+ * key. See docs/2026-10-13-chronicle-entry-move.sql.
+ */
 export async function editEntry(
   id: string,
   fromISO: string,
   toISO: string,
   note: string | null,
+  activity?: string | null,
 ): Promise<{ why: string } | null> {
-  if (previewMember) return pvEditEntry(id, fromISO, toISO, note)
+  if (previewMember) return pvEditEntry(id, fromISO, toISO, note, activity ?? null)
   const { error } = await getSupabaseClient().rpc('chronicle_entry_edit', {
     p_id: id,
     p_from: fromISO,
     p_to: toISO,
     p_note: note,
+    p_activity: activity ?? null,
   })
   return error ? { why: error.message || 'that did not save' } : null
 }

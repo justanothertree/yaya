@@ -119,6 +119,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   /** how the span being edited went, '' for unrated — see Entry.quality */
   const [entMood, setEntMood] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
+  const [entAct, setEntAct] = useState('')
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -293,6 +294,10 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
       new Date(entFrom).toISOString(),
       new Date(entTo).toISOString(),
       null,
+      /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
+         mistake this room allows and the only remedy used to be deleting the session and typing
+         it in again — losing the amount, the rating and the day it was recorded. */
+      entAct || null,
     )
     /**
      * ⚠️ THE AMOUNT IS A SECOND CALL, and only when the activity has something to count. It is a
@@ -719,6 +724,24 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                 </span>
                 {fixEnt === e.id && (
                   <span className="chron-fix">
+                    {/**
+                     * ⚠️ WHAT IT WAS COMES BEFORE WHEN IT WAS, which is the order the mistake
+                     * happens in: you notice you timed the wrong thing, not that you timed the
+                     * wrong hour. The list is the activities you have open, plus this session's
+                     * own if it has since been archived — otherwise the control could not show
+                     * its own current value, and opening the editor would silently propose
+                     * moving the session somewhere else.
+                     */}
+                    <label className="chron-src">
+                      <span className="sr-only">What this was</span>
+                      <select value={entAct} onChange={(ev) => setEntAct(ev.target.value)}>
+                        {[...open, ...(a && a.archived ? [a] : [])].map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="chron-gap">
                       <span className="sr-only">Started</span>
                       <input
@@ -736,14 +759,16 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       />
                     </label>
                     {/* ⚠️ only for an activity that has a metric: a box asking for a number with
-                        no unit is a box nobody can answer */}
-                    {a?.metric && (
+                        no unit is a box nobody can answer — and it follows the activity SELECTED
+                        above rather than the one the session used to be, so moving a session onto
+                        something that counts nothing takes the box away with it */}
+                    {byId.get(entAct)?.metric && (
                       <label className="chron-qty">
-                        <span className="sr-only">How many {a.metric}</span>
+                        <span className="sr-only">How many {byId.get(entAct)?.metric}</span>
                         <input
                           value={entAmount}
                           inputMode="decimal"
-                          placeholder={a.metric}
+                          placeholder={byId.get(entAct)?.metric ?? ''}
                           onChange={(ev) => setEntAmount(ev.target.value)}
                         />
                       </label>
@@ -766,7 +791,11 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                         ))}
                       </select>
                     </label>
-                    <button className="btn" disabled={busy} onClick={() => void saveEnt(a?.metric)}>
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void saveEnt(byId.get(entAct)?.metric)}
+                    >
                       Save
                     </button>
                     <button className="btn btn-ghost" onClick={() => setFixEnt(null)}>
@@ -786,13 +815,14 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       className="btn btn-ghost chron-x"
                       onClick={() => {
                         setFixEnt(fixEnt === e.id ? null : e.id)
+                        setEntAct(e.activity)
                         setEntFrom(forInput(e.start))
                         setEntTo(forInput(e.end!))
                         setEntAmount(e.amount == null ? '' : String(e.amount))
                         setEntMood(e.quality == null ? '' : String(e.quality))
                       }}
-                      aria-label="Change when this was"
-                      title="Change when this was"
+                      aria-label="Change this session"
+                      title="Change this session"
                     >
                       ✎
                     </button>

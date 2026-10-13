@@ -6,6 +6,8 @@ import {
   pvExport,
   pvImport,
   pvSaveRoutine,
+  pvAmount,
+  pvEditEntry,
   pvEntries,
   pvMoods,
   pvPlanDid,
@@ -671,5 +673,77 @@ describe('putting a file back', () => {
     const got = pvImport(file) as Record<string, number>
     const added = got.activities + got.entries + got.goals + got.routines + got.plans
     expect(added + got.skipped).toBe(rows(file))
+  })
+})
+
+describe('moving a session to another activity', () => {
+  /* ⚠️ pvAddEntry answers null on success rather than the row, the same as its server
+     counterpart returns void — so the id has to be read back off the day */
+  const added = (activity: string, from: string, to: string): string => {
+    pvAddEntry(activity, from, to, null)
+    const mine = pvEntries(dayStart(), dayEnd()).filter(
+      (e) => e.activity === activity && e.start === from,
+    )
+    return mine[mine.length - 1].id
+  }
+
+  /**
+   * ⚠️ THE MISTAKE THIS IS FOR is pressing Start on the wrong activity, which is the likeliest one
+   * a stopwatch allows. Until now the only remedy was deleting the session and typing it in again,
+   * which loses the amount, the rating and the day it was recorded — so the test that matters is
+   * that moving it KEEPS those.
+   */
+  it('keeps the amount and the rating that were already on it', () => {
+    const id = added(gym, h(9), h(10))
+    pvAmount(id, 12)
+    pvQuality(id, 4)
+
+    expect(pvEditEntry(id, h(9), h(10), null, draw)).toBe(null)
+
+    const moved = pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)
+    expect(moved?.activity).toBe(draw)
+    expect(moved?.amount).toBe(12)
+    expect(moved?.quality).toBe(4)
+  })
+
+  it('leaves the activity alone when none is named', () => {
+    const id = added(gym, h(9), h(10))
+    expect(pvEditEntry(id, h(11), h(12), null)).toBe(null)
+    const after = pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)
+    expect(after?.activity).toBe(gym)
+    expect(after?.start).toBe(h(11))
+  })
+
+  /**
+   * ⚠️ THE ONE THE FOREIGN KEY WOULD NOT CATCH. An activity id that is not yours is a real row, so
+   * the database would accept the reference — leaving you with a session pointing into somebody
+   * else's list, and your minutes landing in their totals from the other side. It is refused by
+   * ownership, not by existence.
+   */
+  it('refuses an activity that is not yours, and does not move the session', () => {
+    const id = added(gym, h(9), h(10))
+    expect(pvEditEntry(id, h(9), h(10), null, 'somebody-elses-activity')).toEqual({
+      why: 'that is not one of your activities',
+    })
+    expect(pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.activity).toBe(gym)
+  })
+
+  it('still refuses a span that ends before it starts, whatever it is being moved to', () => {
+    const id = added(gym, h(9), h(10))
+    expect(pvEditEntry(id, h(10), h(9), null, draw)).toEqual({ why: 'that ends before it starts' })
+    expect(pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.activity).toBe(gym)
+  })
+
+  /** moving it moves its minutes with it — the totals are the reason any of this matters */
+  it('moves the minutes to the activity it was moved to', () => {
+    const id = added(gym, h(9), h(10))
+    const was = pvTotals(dayStart(), dayEnd())
+    expect(was.find((t) => t.activity === gym)?.mins).toBe(60)
+
+    pvEditEntry(id, h(9), h(10), null, draw)
+
+    const now = pvTotals(dayStart(), dayEnd())
+    expect(now.find((t) => t.activity === gym)?.mins).toBe(0)
+    expect(now.find((t) => t.activity === draw)?.mins).toBe(60)
   })
 })
