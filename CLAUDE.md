@@ -140,6 +140,25 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   the frame; only its contents are gated on `walking`. Two long measuring runs this session
   produced nothing because they were driving a park nobody had walked into. Check for
   `.park-one.is-me`, or for the Leave button.
+- **`previewMember` MAKES NO SESSION, so a room whose data only comes from Supabase renders
+  empty in the pane — and an audit of it passes.** The harness flips client-side gates and feeds
+  components mock data; it has no token, so every RPC quietly answers nothing. Chat, People,
+  Profile and Ratings have stand-ins in `src/dev/previewMember.ts` and are fine. Chronicle keeps
+  **no local copy** by design, so for six features it rendered its empty state and only its empty
+  state: a streak chip was called verified because the module exported the function that makes it,
+  and a 375px sweep reported `0 undersized, 0 off-edge, 0 clipped` against a paragraph and two
+  buttons. The first load of a seeded room found a live bug — every repeating derived goal on the
+  site read `0 / 30` with the minutes in the totals two inches above it. **A room with nothing in
+  it passes every check there is**, so count what the sweep examined before believing it, and give
+  a members-only surface a stand-in the way `src/dev/chroniclePreview.ts` does.
+- **A DEV-only harness is a claim about the BUNDLE, and the bundle is greppable.** `previewMember`
+  folds to `false` in production, which kills the branches and not necessarily the module: a
+  statement-level call at module scope — `let S = seed()` — is a side effect rollup cannot prove
+  pure, so it keeps the whole file. 2.78 kB of invented fixture shipped to real users on a module
+  whose header said it tree-shook out. Neither the `import.meta.env.DEV` guard nor switching a
+  namespace import to named ones changed it, both measured as an identical bundle hash; building
+  the store behind a function fixed it. `grep` the built `dist/assets/*.js` for a string only the
+  harness contains, and keep its data in plain literals on exports nobody reaches.
 - **A dynamic `import()` in the pane is a SECOND COPY of the module, and the app is bound to
   the other one.** Reaching into a module store from the console to drive a room —
   `setWorld(...)`, and the like — can update that store, fire a listener you registered on it,
