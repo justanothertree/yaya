@@ -30,6 +30,19 @@ export type Entry = {
    * STARTED — see chronicle_sum, where the two window rules sit side by side.
    */
   amount: number | null
+  /**
+   * How it went, 1 to 5 — the HTML app's `quality`, and null for the vast majority.
+   *
+   * ⚠️ UNRATED IS THE NORMAL STATE, not a missing value, which is why every reading of this has to
+   * say how much time it could not account for. A figure covering a third of the hours, shown
+   * without saying so, is a figure that looks complete — the same trap an estimate on a goal sets,
+   * and `weight` in goal.ts answers it the same way.
+   *
+   * ⚠️ AND UNLIKE `amount`, IT DOES SPLIT AT MIDNIGHT. A quantity belongs to the session; a rating
+   * is a property OF the minutes, so an hour either side of midnight is an hour of rated time on
+   * each day. chronicle_moods sums the overlap for exactly that reason.
+   */
+  quality: number | null
 }
 
 export type Activity = {
@@ -227,3 +240,64 @@ export function dayBounds(iso: string): { fromMs: number; toMs: number } {
   const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1, 0, 0, 0, 0)
   return { fromMs: from.getTime(), toMs: to.getTime() }
 }
+
+/**
+ * What the server says about a window's minutes, keyed by rating: '1'…'5' and 'none'.
+ *
+ * ⚠️ RAW, NOT BUCKETED, deliberately. "4 and 5 are good" is a product decision, and a server that
+ * returned good/mid/poor would be a second place that rule lived — see `moodOf`, which is the one
+ * place it lives and the one place it is tested.
+ */
+export type Moods = Record<string, number>
+
+/** A window's minutes, divided by how the time went. */
+export type Mood = {
+  good: number
+  fine: number
+  rough: number
+  unrated: number
+  /** good + fine + rough — the time there is actually an opinion about */
+  rated: number
+}
+
+/**
+ * Bucket a window's minutes.
+ *
+ * ⚠️ EVERY MINUTE LANDS IN EXACTLY ONE BUCKET, and the test asserts that as a property rather than
+ * checking particular numbers: good + fine + rough + unrated is the whole window, always. A bucket
+ * rule with a gap in it — forgetting that 3 is a rating, or reading 1-2 as 1 only — loses time
+ * silently, and silently is how a reading of your own month becomes quietly wrong.
+ *
+ * ⚠️ AND IT IS MINUTES RATHER THAN AN AVERAGE. Averaging the ratings weights a five-minute session
+ * the same as a three-hour one, so an afternoon that went badly is cancelled by two good five
+ * minute ones. Time is what was actually spent.
+ */
+export function moodOf(m: Moods | null | undefined): Mood {
+  const at = (k: string) => {
+    const v = m?.[k]
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
+  }
+  const good = at('4') + at('5')
+  const fine = at('3')
+  const rough = at('1') + at('2')
+  return { good, fine, rough, unrated: at('none'), rated: good + fine + rough }
+}
+
+/**
+ * The word for one rating — the same three the aggregate uses.
+ *
+ * ⚠️ THE ROW SAYS THE BUCKET AND THE EDITOR HOLDS THE NUMBER. Five words in a log row is a legend
+ * somebody has to learn; three is a thing you can read. The precision is not lost, it is just kept
+ * where it is being set rather than where it is being skimmed.
+ */
+export const moodWord = (q: number | null): string | null =>
+  q == null ? null : q >= 4 ? 'good' : q === 3 ? 'fine' : 'rough'
+
+/** the five, for the picker — numbers with the word they fall under */
+export const MOODS = [
+  [1, 'rough'],
+  [2, 'poor'],
+  [3, 'fine'],
+  [4, 'good'],
+  [5, 'flying'],
+] as const

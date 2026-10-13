@@ -1675,6 +1675,89 @@ elements in a flex with no gap.
 `quality` on an entry, `sessionGoal` (a per-session rather than per-window target), and the `dash`
 panel of stat tiles. Money, alarms, presence and `lib` stay out — §7.
 
+## 6k · ✅ How a session went — the last of the HTML's entry shape
+
+**Migration `chronicle_entry_quality`, applied 13 Oct 2026 — reasoning in
+`docs/2026-10-13-chronicle-quality.sql`.** Client: `moodOf` / `moodWord` in `record.ts`, the picker
+in `Timer.tsx`, the aggregate in `Looking.tsx`.
+
+`quality` was the last field on the HTML app's entry that this one did not have. It makes "I spent
+three hours and it was rubbish" sayable, which three hours alone cannot say.
+
+### ⚠️ Unrated is the normal state, so every reading says how much it skipped
+
+Nearly all time goes unrated. `2h good` over a month with thirty unrated hours in it reads as a
+verdict on the month and is a verdict on two hours of it — the same trap an optional estimate on a
+goal sets, answered the same way: **the gap goes beside the figure, never instead of it.**
+
+```
+1h 20m good · 50m fine · 42m rough · 50m unrated
+```
+
+And the line is absent entirely until something is rated, because `32h unrated` on a window nobody
+has rated is a reproach for not using a feature.
+
+### ⚠️ Minutes, not sessions — so it is not an average
+
+Averaging the ratings weights a five-minute session the same as a three-hour one, and an afternoon
+that went badly gets cancelled out by two good five-minute ones. Time is what was actually spent.
+
+### ⚠️ And unlike an amount, a rating DOES split at midnight
+
+A quantity belongs to the session — five pages across midnight are not two and a half each side —
+but a rating is a property _of_ the minutes, so an hour either side is an hour of rated time on
+each day. `chronicle_moods` sums the overlap for exactly that reason, and the probe shows a
+23:00→01:00 session rated 4 contributing only its 60 minutes inside the window.
+
+### The property, and three perturbations
+
+`moodOf` buckets 4–5 good, 3 fine, 1–2 rough — and the test asserts a **tiling** rather than
+particular numbers: `good + fine + rough + unrated` is the whole window, for any input. A bucket
+rule with a gap in it loses time _silently_, which is how a reading of your own month goes quietly
+wrong. Forgetting that 3 is a rating reddens three tests; dropping 2 reddens three; making the
+row's word disagree with the aggregate's bucket reddens exactly the test named for that.
+
+Confirmed live, in all four windows, through two **different** queries: the mood line sums to
+exactly what `chronicle_totals` reports for the same window — 222 = 222 for the week, 513 = 513 for
+the month, quarter and year. And the tiling survived a write: rating a 12-minute session moved
+rough +12 and unrated −12 with the total unchanged.
+
+### ⚠️ A second copy of the overlap arithmetic, detected rather than prevented
+
+`chronicle_moods` needs a `GROUP BY` and `chronicle_sum` returns a scalar, so the overlap
+expression is written twice. Contorting `chronicle_sum` into answering both would have meant a
+drop-and-recreate of a function three live callers depend on, for a sentinel parameter. The
+duplication is **checked** instead — the SQL doc holds a probe asserting the two agree, to be run
+after touching either. Two copies that are checked against each other beat one contorted into
+answering both questions.
+
+### The row says the word, the editor holds the number
+
+Five words in a log row is a legend somebody has to learn; three is a thing you can read. The
+precision is kept where it is being _set_ rather than where it is being skimmed — and `moodWord`'s
+test asserts the row's word and the month's buckets are the same rule, because a row saying "good"
+beside a month counting that session as fine is two answers to one question.
+
+The picker is **one select, not five buttons** — a row of stars is five targets on a line already
+carrying two datetimes and a number, and this room has just been through what crowding does to it.
+
+### ⚠️ And the same min-width trap again, one row over
+
+The plan row's activity name was ellipsed to `Dr…`, because `min-width: 0` let the three buttons
+keep the line. Found by **looking**, not measuring — every overflow number read zero. Fixed the
+same way as the goal row (a pixel floor), plus the three buttons are now a group so they wrap
+together: as loose siblings the `✓` kept the first line while `✎` and `✕` dropped to the second,
+which reads as a broken layout rather than a deliberate one.
+
+Verified at 375, 820 and 1440: 56 controls, nothing undersized, off-edge or clipped, and zero
+overflow measured on the log, the goal list, the plan list, the card **and** the container
+separately — see the §6 note about asking the container rather than the page.
+
+### What this leaves on the parity list
+
+`sessionGoal` (a per-session rather than per-window target) and the `dash` panel of stat tiles.
+Money, alarms, presence and `lib` stay out — §7.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

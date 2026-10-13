@@ -15832,7 +15832,17 @@ a.cz-msg-author:focus-visible {
   font-size: 0.78rem;
   white-space: nowrap;
 }
-.chron-plan-name,
+/* ⚠️ A FLOOR HERE TOO — the same trap as the goal row, one row over, and found the same way: by
+   looking rather than measuring. With min-width 0 the three buttons kept the line and "Drawing"
+   was ellipsed to "Dr…", which is not a name. The row already wraps; it just had nothing to make
+   it. A plan name is short by nature, so this floor is lower than the goal row's 150px. */
+.chron-plan-name {
+  flex: 1 1 110px;
+  min-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chron-vs-name {
   flex: 1;
   min-width: 0;
@@ -15867,6 +15877,13 @@ a.cz-msg-author:focus-visible {
 .chron-plan .btn {
   min-width: 24px;
 }
+.chron-plan-do {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 @media (max-width: 700px), (pointer: coarse) {
   /* a note is the first thing to go when a planned row will not fit a thumb — the time and the
      activity are what identify it, and the note is visible again in the editor */
@@ -15880,6 +15897,34 @@ a.cz-msg-author:focus-visible {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* how a session went — see record.ts moodWord, and Looking.tsx */
+.chron-mood {
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* ⚠️ three different hues rather than one scale, because "fine" is not a lesser "good" — it is
+   the honest middle, and a gradient from green to red would make an ordinary session look like a
+   failure. Rough is the muted one: a bad hour is a fact, not an alarm. */
+.chron-mood.is-good {
+  color: var(--accent);
+}
+.chron-mood.is-fine {
+  color: #5b9cf6;
+}
+.chron-mood.is-rough {
+  color: var(--muted);
+  font-style: italic;
+}
+.chron-mood-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.7rem;
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+}
+
 /* a flagged goal, and a guess at how long it takes — see Chronicle.tsx */
 .chron-chip.is-pri {
   border-color: #f5a623;

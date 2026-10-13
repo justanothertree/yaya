@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   amountIn,
   clockText,
+  moodOf,
+  moodWord,
+  MOODS,
   dayBounds,
   minutesByActivity,
   minutesByCat,
@@ -20,6 +23,7 @@ const entry = (over: Partial<Entry> = {}): Entry => ({
   end: '2026-10-12T10:00:00.000Z',
   note: null,
   amount: null,
+  quality: null,
   ...over,
 })
 
@@ -253,5 +257,83 @@ describe('saying a length out loud', () => {
     expect(clockText(9_000)).toBe('0:09')
     expect(clockText(70_000)).toBe('1:10')
     expect(clockText(3_661_000)).toBe('1:01:01')
+  })
+})
+
+describe('how a window went', () => {
+  /**
+   * ⚠️ THE PROPERTY, NOT THE NUMBERS. Every minute the server reports has to land in exactly one
+   * bucket, so good + fine + rough + unrated is the whole window — always, for any input. A bucket
+   * rule with a gap in it loses time SILENTLY, which is how a reading of your own month becomes
+   * quietly wrong: forget that 3 is a rating and three hours of fine work simply stop existing.
+   * Asserting particular totals would agree with a rule that dropped a bucket; asserting the
+   * tiling cannot.
+   */
+  it('divides every minute into exactly one bucket, whatever the ratings are', () => {
+    const windows: Record<string, number>[] = [
+      { '1': 10, '2': 20, '3': 30, '4': 40, '5': 50, none: 60 },
+      { '3': 7 },
+      { none: 99 },
+      { '5': 1, '1': 1 },
+      {},
+    ]
+    for (const w of windows) {
+      const m = moodOf(w)
+      const whole = Object.values(w).reduce((a, b) => a + b, 0)
+      expect(m.good + m.fine + m.rough + m.unrated).toBe(whole)
+      expect(m.rated).toBe(m.good + m.fine + m.rough)
+      expect(m.rated + m.unrated).toBe(whole)
+    }
+  })
+
+  it('and puts 4 and 5 with the good, 3 on its own, 1 and 2 with the rough', () => {
+    expect(moodOf({ '1': 1, '2': 2, '3': 4, '4': 8, '5': 16 })).toEqual({
+      good: 24,
+      fine: 4,
+      rough: 3,
+      unrated: 0,
+      rated: 31,
+    })
+  })
+
+  /** ⚠️ a window nobody rated is not an empty window — the hours were still spent */
+  it('and an unrated window reports its hours as unrated rather than as nothing', () => {
+    expect(moodOf({ none: 180 })).toEqual({
+      good: 0,
+      fine: 0,
+      rough: 0,
+      unrated: 180,
+      rated: 0,
+    })
+  })
+
+  it('and nothing at all is all zeroes rather than a throw', () => {
+    const empty = { good: 0, fine: 0, rough: 0, unrated: 0, rated: 0 }
+    expect(moodOf({})).toEqual(empty)
+    expect(moodOf(null)).toEqual(empty)
+    expect(moodOf(undefined)).toEqual(empty)
+    /* and junk from somewhere else cannot make a total smaller */
+    expect(moodOf({ '4': -5, '9': 100, none: 10 } as Record<string, number>)).toEqual({
+      good: 0,
+      fine: 0,
+      rough: 0,
+      unrated: 10,
+      rated: 0,
+    })
+  })
+
+  /**
+   * ⚠️ THE ROW'S WORD AND THE AGGREGATE'S BUCKETS ARE THE SAME RULE, and this is what keeps them
+   * so. A log row saying "good" beside a month that counts that session as fine is two answers to
+   * one question, and it is the kind of disagreement nobody notices until they are counting on it.
+   */
+  it('and the word on a row agrees with the bucket in the total, for all five', () => {
+    for (const [n] of MOODS) {
+      const m = moodOf({ [String(n)]: 10 })
+      const word = moodWord(n)
+      expect(word).not.toBeNull()
+      expect(m[word as 'good' | 'fine' | 'rough']).toBe(10)
+    }
+    expect(moodWord(null)).toBeNull()
   })
 })

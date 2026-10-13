@@ -10,6 +10,8 @@ import {
   pvDropRoutine,
   pvEditEntry,
   pvEntries,
+  pvQuality,
+  pvMoods,
   pvPlanDid,
   pvPlanDrop,
   pvPlanSave,
@@ -27,7 +29,7 @@ import {
 } from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
 import type { Plan } from './plan'
-import type { Activity, Entry } from './record'
+import type { Activity, Entry, Moods } from './record'
 
 /**
  * Goals, in the account rather than in this browser.
@@ -285,6 +287,7 @@ export async function entriesBetween(fromISO: string, toISO: string): Promise<En
     end: e.end ? String(e.end) : null,
     note: e.note ?? null,
     amount: e.amount == null ? null : num(e.amount as number | string | null),
+    quality: e.quality == null ? null : num(e.quality as number | string | null) || null,
   }))
 }
 
@@ -537,4 +540,40 @@ export async function planDid(id: string): Promise<{ why: string } | null> {
   if (previewMember) return pvPlanDid(id)
   const { error } = await getSupabaseClient().rpc('chronicle_plan_did', { p_id: id })
   return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * How a session went. Null clears it.
+ *
+ * ⚠️ ITS OWN CALL, like `setAmount` beside it and for the same reason: stop, add and edit would
+ * each have needed a new signature, and how a session went is something you decide afterwards at
+ * least as often as at the time.
+ */
+export async function setQuality(id: string, quality: number | null): Promise<boolean> {
+  if (previewMember) return pvQuality(id, quality)
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_quality', {
+    p_id: id,
+    p_quality: quality,
+  })
+  return !error
+}
+
+/**
+ * A window's minutes by rating — '1'…'5' and 'none'.
+ *
+ * ⚠️ SUMMED ON THE SERVER, like `totalsBetween`, because the windows this is wanted for are a
+ * month and a year. And the numbers are RAW ratings rather than buckets: see `moodOf`, which owns
+ * the rule about which of them count as good.
+ */
+export async function moodsBetween(fromISO: string, toISO: string): Promise<Moods> {
+  if (previewMember) return pvMoods(fromISO, toISO)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_moods', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error || !data || typeof data !== 'object') return {}
+  const out: Moods = {}
+  for (const [k, v] of Object.entries(data as Record<string, unknown>))
+    out[k] = num(v as number | string | null)
+  return out
 }

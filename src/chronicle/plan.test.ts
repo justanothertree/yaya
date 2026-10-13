@@ -20,6 +20,7 @@ const entry = (over: Partial<Entry> = {}): Entry => ({
   end: '2026-10-12T10:00:00.000Z',
   note: null,
   amount: null,
+  quality: null,
   ...over,
 })
 

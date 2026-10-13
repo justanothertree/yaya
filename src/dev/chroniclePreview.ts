@@ -1,6 +1,12 @@
 import type { Goal, Scope } from '../chronicle/goal'
 import { today as todayISO } from '../chronicle/goal'
-import { localMidnight, overlapMs, type Activity, type Entry } from '../chronicle/record'
+import {
+  localMidnight,
+  overlapMs,
+  type Activity,
+  type Entry,
+  type Moods,
+} from '../chronicle/record'
 import type { NewGoal, Routine, Total } from '../chronicle/cloud'
 import type { Plan } from '../chronicle/plan'
 
@@ -66,6 +72,7 @@ const span = (
   mins: number,
   amount: number | null = null,
   note: string | null = null,
+  quality: number | null = null,
 ): Entry => {
   let a = at(daysAgo, h)
   if (daysAgo === 0) {
@@ -79,6 +86,7 @@ const span = (
     end: new Date(a.getTime() + mins * 60_000).toISOString(),
     note,
     amount,
+    quality,
   }
 }
 
@@ -146,16 +154,16 @@ function seed(): Store {
       a('pv-old', 'Guitar', 'free', { archived: true }),
     ],
     ents: [
-      span('pv-e1', 'pv-draw', 0, 10, 35),
-      span('pv-e2', 'pv-draw', 1, 10, 42, null, 'the hands again'),
+      span('pv-e1', 'pv-draw', 0, 10, 35, null, null, 5),
+      span('pv-e2', 'pv-draw', 1, 10, 42, null, 'the hands again', 2),
       span('pv-e3', 'pv-draw', 2, 9, 31),
       span('pv-e4', 'pv-draw', 3, 11, 50),
       /* no day 4 — see the note above */
       span('pv-e5', 'pv-draw', 5, 10, 38),
       span('pv-e6', 'pv-draw', 6, 10, 33),
-      span('pv-e7', 'pv-write', 2, 14, 50, 4),
+      span('pv-e7', 'pv-write', 2, 14, 50, 4, null, 3),
       span('pv-e8', 'pv-write', 5, 15, 40, 3),
-      span('pv-e9', 'pv-gym', 0, 7, 45, 60),
+      span('pv-e9', 'pv-gym', 0, 7, 45, 60, null, 4),
       span('pv-e10', 'pv-gym', 3, 7, 40, 55),
       span('pv-e11', 'pv-dish', 0, 19, 12),
       /* ⚠️ a span that crosses midnight, because that is the one case where the two window rules
@@ -169,6 +177,7 @@ function seed(): Store {
         end: null,
         note: null,
         amount: null,
+        quality: null,
       },
     ],
     goals: [
@@ -544,6 +553,7 @@ export const pvStart = (activity: string): { why: string } | null => {
     end: null,
     note: null,
     amount: null,
+    quality: null,
   })
   return null
 }
@@ -555,7 +565,15 @@ export const pvAddEntry = (
   note: string | null,
 ): { why: string } | null => {
   if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that ends before it starts' }
-  db().ents.push({ id: mint('pv-e'), activity, start: fromISO, end: toISO, note, amount: null })
+  db().ents.push({
+    id: mint('pv-e'),
+    activity,
+    start: fromISO,
+    end: toISO,
+    note,
+    amount: null,
+    quality: null,
+  })
   return null
 }
 
@@ -581,6 +599,28 @@ export const pvAmount = (id: string, amount: number | null): boolean => {
   const e = db().ents.find((x) => x.id === id)
   if (e) e.amount = amount
   return !!e
+}
+
+export const pvQuality = (id: string, quality: number | null): boolean => {
+  const e = db().ents.find((x) => x.id === id)
+  if (e) e.quality = quality
+  return !!e
+}
+
+/** ⚠️ the OVERLAP, as chronicle_moods does — a rating is a property of the minutes, not of the
+    session, so an hour either side of midnight is rated time on both days */
+export const pvMoods = (fromISO: string, toISO: string): Moods => {
+  const from = Date.parse(fromISO)
+  const to = Date.parse(toISO)
+  const now = Date.now()
+  const out: Moods = {}
+  for (const e of db().ents) {
+    const ms = overlapMs(e, from, to, now)
+    if (ms <= 0) continue
+    const k = e.quality == null ? 'none' : String(e.quality)
+    out[k] = (out[k] ?? 0) + ms / 60_000
+  }
+  return out
 }
 
 export const pvSaveRoutine = (

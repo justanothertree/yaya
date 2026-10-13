@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { totalsBetween, type Total } from './cloud'
-import { CATS, localMidnight, spanText } from './record'
+import { moodsBetween, totalsBetween, type Total } from './cloud'
+import { CATS, localMidnight, moodOf, spanText, type Moods } from './record'
 import type { Window } from './goal'
 
 /**
@@ -18,6 +18,8 @@ import type { Window } from './goal'
  */
 export function Looking({ win, label }: { win: Window; label: string }) {
   const [rows, setRows] = useState<Total[] | null>(null)
+  /** the same window's minutes, divided by how the sessions went — see moodOf */
+  const [moods, setMoods] = useState<Moods | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -25,11 +27,16 @@ export function Looking({ win, label }: { win: Window; label: string }) {
        somebody has already clicked away from is dropped instead of being rendered late over the
        one they are now looking at */
     void (async () => {
-      const got = await totalsBetween(
-        localMidnight(win.from).toISOString(),
-        localMidnight(win.to).toISOString(),
-      )
-      if (alive) setRows(got)
+      /* ⚠️ ONE PAIR OF BOUNDS FOR BOTH, worked out once. Two calls each converting the window
+         themselves is two chances for a total and its ratings to be about slightly different
+         stretches of time, which is exactly the disagreement this block exists to avoid. */
+      const from = localMidnight(win.from).toISOString()
+      const to = localMidnight(win.to).toISOString()
+      const [got, how] = await Promise.all([totalsBetween(from, to), moodsBetween(from, to)])
+      if (alive) {
+        setRows(got)
+        setMoods(how)
+      }
     })()
     return () => {
       alive = false
@@ -44,6 +51,7 @@ export function Looking({ win, label }: { win: Window; label: string }) {
     return out
   }, [done])
   const all = useMemo(() => done.reduce((n, r) => n + r.mins, 0), [done])
+  const mood = useMemo(() => moodOf(moods), [moods])
 
   if (rows === null) {
     return (
@@ -72,6 +80,31 @@ export function Looking({ win, label }: { win: Window; label: string }) {
           ) : null,
         )}
       </p>
+      {/**
+       * ⚠️ IT SAYS THE UNRATED TIME OUT LOUD, and that is the only way this figure is honest.
+       * Nearly all time goes unrated, so "2h good" over a month with thirty unrated hours in it
+       * reads as a verdict on the month and is a verdict on two hours of it. The same shape as an
+       * estimate on a goal, answered the same way: show the gap beside the figure, never instead
+       * of it.
+       *
+       * ⚠️ AND NOTHING AT ALL WHEN NOTHING IS RATED. A line reading "32h unrated" on a window
+       * nobody has ever rated is a reproach for not using a feature, which is not what a record of
+       * your own life is for. It appears once there is an opinion in it.
+       */}
+      {mood.rated > 0 && (
+        <p className="muted chron-mood-line">
+          {mood.good > 0 && (
+            <span className="chron-mood is-good">{spanText(mood.good * 60_000)} good</span>
+          )}
+          {mood.fine > 0 && (
+            <span className="chron-mood is-fine">{spanText(mood.fine * 60_000)} fine</span>
+          )}
+          {mood.rough > 0 && (
+            <span className="chron-mood is-rough">{spanText(mood.rough * 60_000)} rough</span>
+          )}
+          {mood.unrated > 0 && <span>{spanText(mood.unrated * 60_000)} unrated</span>}
+        </p>
+      )}
       <ul className="chron-bars">
         {done.map((r) => (
           <li key={r.activity}>

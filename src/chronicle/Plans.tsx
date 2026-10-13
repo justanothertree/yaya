@@ -240,32 +240,41 @@ export function Plans({
                       {a?.name ?? 'an activity since deleted'}
                     </span>
                     {p.note && <span className="muted chron-plan-note">{p.note}</span>}
-                    {/* ⚠️ "I did it" writes the entry and KEEPS the plan — see planDid */}
-                    <button
-                      className="btn btn-ghost"
-                      disabled={busy}
-                      title="I did this — log it"
-                      onClick={() => void did(p)}
-                    >
-                      <span aria-hidden>✓</span>
-                      <span className="sr-only">Log this as done</span>
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      disabled={busy}
-                      onClick={() => startFixing(p)}
-                    >
-                      <span aria-hidden>✎</span>
-                      <span className="sr-only">Change this plan</span>
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      disabled={busy}
-                      onClick={() => void forget(p)}
-                    >
-                      <span aria-hidden>✕</span>
-                      <span className="sr-only">Drop this plan</span>
-                    </button>
+                    {/**
+                     * ⚠️ THE THREE WRAP AS ONE. They are a single group of things you can do to
+                     * this plan, and as loose siblings of a wrapping row the ✓ kept the first
+                     * line while ✎ and ✕ dropped to the second — which reads as a broken layout
+                     * rather than a deliberate one.
+                     *
+                     * ⚠️ And "I did it" writes the entry and KEEPS the plan — see planDid.
+                     */}
+                    <span className="chron-plan-do">
+                      <button
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        title="I did this — log it"
+                        onClick={() => void did(p)}
+                      >
+                        <span aria-hidden>✓</span>
+                        <span className="sr-only">Log this as done</span>
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => startFixing(p)}
+                      >
+                        <span aria-hidden>✎</span>
+                        <span className="sr-only">Change this plan</span>
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => void forget(p)}
+                      >
+                        <span aria-hidden>✕</span>
+                        <span className="sr-only">Drop this plan</span>
+                      </button>
+                    </span>
                   </li>
                 )
               })}

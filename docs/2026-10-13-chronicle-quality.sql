@@ -1,0 +1,84 @@
+-- ✅ APPLIED 13 Oct 2026 — migration `chronicle_entry_quality`
+--
+-- How a session went, 1 to 5 — the HTML app's `quality` on an entry, and the last thing its entry
+-- shape had that this one did not.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- UNRATED IS THE NORMAL STATE
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Nearly all time goes unrated, which is why every reading of this has to say how much time it
+-- could not account for. "2h good" over a month with thirty unrated hours in it reads as a verdict
+-- on the month and is a verdict on two hours of it. Same trap as an optional estimate on a goal,
+-- answered the same way: show the gap beside the figure, never instead of it.
+--
+-- ⚠️ AND UNLIKE `amount`, A RATING DOES SPLIT AT MIDNIGHT. A quantity belongs to the session —
+-- five pages written across midnight are not two and a half each side — but a rating is a property
+-- OF the minutes, so an hour either side of midnight is an hour of rated time on each day.
+-- chronicle_moods sums the OVERLAP for exactly that reason, and the probe below shows it.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE SHAPE
+-- ─────────────────────────────────────────────────────────────────────────────
+--   chronicle_entries.quality smallint   check (quality is null or quality between 1 and 5)
+--
+--   chronicle_entry_quality(id, quality)  -> void    its own door, like chronicle_entry_amount
+--   chronicle_entries_between(...)        -> now carries 'quality'
+--   chronicle_moods(from, to)             -> jsonb, minutes keyed by '1'…'5' and 'none'
+--
+-- ⚠️ MINUTES, NOT SESSIONS, so this is not an average. Averaging the ratings weights a five-minute
+-- session the same as a three-hour one, and an afternoon that went badly gets cancelled out by two
+-- good five-minute ones. Time is what was actually spent.
+--
+-- ⚠️ AND THE QUALITY IS NOT BUCKETED ON THE SERVER. It comes back keyed by the raw 1-5 because
+-- "4 and 5 are good" is a product decision, and `moodOf` in src/chronicle/record.ts is the one
+-- place it lives and the one place it is tested. A server returning good/mid/poor would be a
+-- second home for that rule.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ⚠️ A SECOND COPY OF THE OVERLAP ARITHMETIC, DETECTED RATHER THAN PREVENTED
+-- ─────────────────────────────────────────────────────────────────────────────
+-- chronicle_moods needs a GROUP BY and chronicle_sum returns a scalar, so the overlap expression
+-- is written twice. Contorting chronicle_sum into answering both questions would have meant a
+-- drop-and-recreate of a function three live callers depend on, for a sentinel parameter.
+--
+-- The duplication is instead CHECKED: the moods of a window must sum to exactly what the window's
+-- own totals report. Run this after touching either function.
+--
+--   begin;
+--   set local role authenticated;
+--   select set_config('request.jwt.claims','{"sub":"<a member>","role":"authenticated"}',true);
+--   select
+--     (select sum((value)::numeric) from jsonb_each_text(public.chronicle_moods(:from, :to)))
+--     = (select coalesce(sum((e->>'mins')::numeric),0)
+--          from jsonb_array_elements(public.chronicle_totals(:from, :to)) e)   as they_agree;
+--   rollback;
+--
+-- Measured on four sessions — 60m rated 5, 30m rated 2, 20m unrated, and 23:00→01:00 rated 4:
+--
+--   moods           {"2": 30, "4": 60, "5": 60, "none": 20}
+--   moods total     170
+--   totals minutes  170
+--   THEY_AGREE      true
+--
+-- The straddling session contributed only its 60 minutes inside the window, which is the rating
+-- splitting where an amount would not have.
+--
+-- ⚠️ chronicle_sum IS NOT CALLABLE BY `authenticated`, correctly — it takes an activity and a
+-- category and would be a way to ask shaped questions. The probe above compares against
+-- chronicle_totals instead, which is better anyway: it is the path the app actually uses.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- REFUSALS, all inside begin/rollback in a simulated session
+-- ─────────────────────────────────────────────────────────────────────────────
+--   rating 6 / 0 / -2      refused: a rating is 1 to 5
+--   B rates A's session    silent no-op, and A's session was STILL unrated afterwards
+--   B's moods of A's day   {}
+--   anon moods / rate      refused: not authenticated
+--   clearing to null       works, and the row reads unrated again
+
+-- The standing check, which cannot go stale:
+select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f'
+   and has_function_privilege('anon', p.oid, 'execute');
+-- expected: zero rows for anything chronicle_%

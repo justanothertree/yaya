@@ -5,6 +5,7 @@ import {
   dropEntry,
   editEntry,
   setAmount,
+  setQuality,
   entriesBetween,
   myActivities,
   saveActivity,
@@ -22,6 +23,8 @@ import {
   minutesByActivity,
   minutesByCat,
   amountIn,
+  moodWord,
+  MOODS,
   overlapMs,
   spanText,
   type Activity,
@@ -109,6 +112,8 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [actMetric, setActMetric] = useState('')
   /** the amount being typed against a span, keyed by entry id */
   const [entAmount, setEntAmount] = useState('')
+  /** how the span being edited went, '' for unrated — see Entry.quality */
+  const [entMood, setEntMood] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
@@ -273,6 +278,13 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     if (!bad && metric) {
       const n = Number(entAmount)
       await setAmount(fixEnt, entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n)
+    }
+    /* ⚠️ a third call on an edit, for the same reason the amount is a second one — see setQuality.
+       Only when it CHANGED, so the common case of nudging a timestamp stays two round trips. */
+    if (!bad) {
+      const was = log.find((e) => e.id === fixEnt)?.quality ?? null
+      const now = entMood === '' ? null : Number(entMood)
+      if (was !== now) await setQuality(fixEnt, now)
     }
     setBusy(false)
     if (bad) return moan(bad.why)
@@ -629,6 +641,14 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                     {amt} {a.metric}
                   </span>
                 ) : null}
+                {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
+                    and a log is skimmed. The exact rating is kept where it is set — see moodWord,
+                    whose test asserts this word and the month's buckets are the same rule. */}
+                {moodWord(e.quality) ? (
+                  <span className={'chron-mood is-' + moodWord(e.quality)}>
+                    {moodWord(e.quality)}
+                  </span>
+                ) : null}
                 <span className="muted chron-ent-when">
                   {new Date(e.start).toLocaleTimeString(undefined, {
                     hour: 'numeric',
@@ -669,6 +689,24 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                         />
                       </label>
                     )}
+                    {/**
+                     * ⚠️ ONE CONTROL, NOT FIVE BUTTONS. A row of stars is five targets on a line
+                     * that already carries two datetimes and a number, and the room has just been
+                     * through what crowding does to it. A select is one tap to open and one to
+                     * choose, and it can say the WORD beside the number — "4 good" rather than a
+                     * rank nobody has a legend for.
+                     */}
+                    <label className="chron-src">
+                      <span className="sr-only">How did it go?</span>
+                      <select value={entMood} onChange={(ev) => setEntMood(ev.target.value)}>
+                        <option value="">not rated</option>
+                        {MOODS.map(([n, word]) => (
+                          <option key={n} value={String(n)}>
+                            {n} {word}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button className="btn" disabled={busy} onClick={() => void saveEnt(a?.metric)}>
                       Save
                     </button>
@@ -687,6 +725,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       setEntFrom(forInput(e.start))
                       setEntTo(forInput(e.end!))
                       setEntAmount(e.amount == null ? '' : String(e.amount))
+                      setEntMood(e.quality == null ? '' : String(e.quality))
                     }}
                     aria-label="Change when this was"
                     title="Change when this was"
