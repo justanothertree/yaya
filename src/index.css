@@ -15966,6 +15966,41 @@ a.cz-msg-author:focus-visible {
   font-size: 0.78rem;
 }
 
+/* where an activity stood at this point in the previous window — see Looking.tsx */
+.chron-then {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 1px;
+  /* ⚠️ translateX so the mark sits ON the level rather than starting at it — a 2px bar
+     anchored by its left edge reads a pixel late, which at a glance is a different answer */
+  transform: translateX(-1px);
+  background: var(--text);
+  opacity: 0.55;
+}
+/* ⚠️ the direction is in the colour and the position together: a mark to the LEFT of the bar end
+   means more than last time. Neither alone is enough — colour alone is not a signal somebody
+   colourblind reads, and the position alone needs you to remember which way is good. */
+.chron-then.is-up {
+  background: var(--accent);
+  opacity: 0.9;
+}
+/* the bars list positions its own bar, so the marker has something to sit in */
+.chron-bars .chron-bar {
+  position: relative;
+  overflow: visible;
+}
+
+/* ⚠️ THE MARKER OF AN AUTO ACTIVITY MUST NOT WRAP. "ON THE SITE" in a 6.5rem name column broke
+   across three lines and made that row three times taller than its neighbours — it reads as a
+   paragraph rather than a tag. One line, and the NAME beside it gives way instead, which is what
+   the ellipsis on .chron-bar-label is for. */
+.chron-bars .chron-chip {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 /* a day as a strip — what was meant above, what happened below. See record.ts lane().
 
    ⚠️ NAMED chron-shape BECAUSE chron-strip WAS ALREADY TAKEN — it is the horizon tab row in

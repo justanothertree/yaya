@@ -51,6 +51,15 @@ export function Looking({
    * disagreeing with itself. See likeForLike.
    */
   const [was, setWas] = useState<number | null>(null)
+  /**
+   * The same stretch of the previous window, per activity.
+   *
+   * ⚠️ IT WAS ALREADY BEING FETCHED AND THROWN AWAY. The comparison call returns a full `Total[]`
+   * — one row per activity — and this block kept only the sum of it. The bars below can say which
+   * activity moved for nothing, which is the question somebody actually has when the headline says
+   * "1h 37m more than this point last week": more of WHAT.
+   */
+  const [wasEach, setWasEach] = useState<Record<string, number>>({})
   /** whether the window on screen is still running, so the comparison can say "this point" */
   const [part, setPart] = useState(false)
 
@@ -82,6 +91,9 @@ export function Looking({
         setRows(got)
         setMoods(how)
         setWas(before === null ? null : before.reduce((n, r) => n + r.mins, 0))
+        setWasEach(
+          before === null ? {} : Object.fromEntries(before.map((r) => [r.activity, r.mins])),
+        )
         setPart(pair?.part ?? false)
       }
     })()
@@ -179,10 +191,6 @@ export function Looking({
                   still came out cut mid-word, "Chronicle (on the", which reads as a rendering
                   fault rather than as a long name. */}
               <span className="chron-bar-label">{r.name}</span>
-              {/* ⚠️ the ones the site wrote are marked, because "Paint 4h" meaning "the Paint room
-                  was open" is a different claim from "I painted for four hours" and the difference
-                  matters when you are reading your own week back */}
-              {r.auto ? <span className="chron-chip">on the site</span> : null}
             </span>
             <span className="chron-bar">
               {/* ⚠️ a share of the BIGGEST rather than of the total, so the longest bar fills the
@@ -191,8 +199,44 @@ export function Looking({
                 className={'is-' + r.cat}
                 style={{ width: `${Math.round((r.mins / most) * 100)}%` }}
               />
+              {/**
+               * ⚠️ WHERE IT STOOD AT THIS POINT LAST TIME, drawn on the bar rather than written
+               * beside it. A row at 375px already carries a name with a 130px floor, a bar, a
+               * length, a metric total and a rating; a sixth thing in text is the crowding this
+               * room keeps relearning. A tick costs no horizontal space and says the same thing.
+               *
+               * ⚠️ THE SAME DENOMINATOR AS THE BAR, or the two would be on different scales and the
+               * mark would be a lie about its own row. And CLAMPED, because `most` is the biggest
+               * of THIS window — an activity that was busier last time would otherwise put its
+               * marker past the end of the bar.
+               */}
+              {(() => {
+                const then = wasEach[r.activity]
+                if (then == null || then <= 0 || Math.abs(then - r.mins) < 1) return null
+                const at = Math.min(100, Math.round((then / most) * 100))
+                return (
+                  <b
+                    className={'chron-then' + (r.mins >= then ? ' is-up' : ' is-down')}
+                    style={{ left: `${at}%` }}
+                    title={`${spanText(then * 60_000)} at this point ${BEFORE[scope] ?? 'before'}`}
+                  />
+                )
+              })()}
             </span>
             <span className="chron-ent-span">{spanText(r.mins * 60_000)}</span>
+            {/**
+             * ⚠️ the ones the site wrote are marked, because "Paint 4h" meaning "the Paint room was
+             * open" is a different claim from "I painted for four hours", and the difference
+             * matters when you are reading your own week back.
+             *
+             * ⚠️ AFTER THE LENGTH RATHER THAN BESIDE THE NAME, which is where it was. The name
+             * column is a fixed width so that every bar in the list starts at the same place — a
+             * bar chart whose bars do not line up is a worse chart — and a chip sharing that column
+             * with "Chronicle (on the site)" left the name ellipsed to "C.". First it wrapped to
+             * three lines, then it ate the name; the column was never big enough for both. Out
+             * here it competes with nothing.
+             */}
+            {r.auto ? <span className="chron-chip">on the site</span> : null}
             {/* ⚠️ the metric total beside the time, because for anything with one the quantity is
                 usually the point and the hours are the cost of it */}
             {r.amount != null && r.metric ? (

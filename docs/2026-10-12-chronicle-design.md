@@ -2261,6 +2261,55 @@ reported one rule, `.chron-strip { display: flex }`, that I had not written. Ren
 Checked at 375, 820 and 1440: 56 controls, nothing undersized, off-edge, clipped or wordless, and
 no overflow on the strip, the marks, the goal list, the plan list, the card or the container.
 
+## 6t · ✅ Where each activity stood last time — and the collision audit
+
+### First, the thing §6s said to check
+
+`.chron-strip` turned out to be the only name collision. A sweep of every `chron-*` class across the
+five components found fourteen shared names, and all the rest are deliberate: `chron-chip`,
+`chron-x`, `chron-qty`, `chron-add`, `chron-say`, `chron-tidy` and the others are a small design
+system, and `chron-bar` — the one that looked most like a repeat — is **scoped on purpose** with
+`.chron-bars .chron-bar { … }`. Reuse with an override is not a collision; reuse of a name for a
+different _thing_, with no scoping, is. That was `.chron-strip` and only `.chron-strip`.
+
+### Then the same free-reading thread
+
+`Looking` fetches the previous window's totals as a full `Total[]` — one row per activity — and
+kept **only the sum**. So the bars can say which activity moved, for nothing: when the headline
+says "47m more than this point last week", the obvious next question is _more of what_.
+
+A tick on each bar marks where that activity stood at the same point in the previous window:
+
+```
+Drawing   ████████████▏          1h 48m     ← tick inside the bar: ahead
+Writing   ████▏   ▏              50m        ← tick beyond the bar: behind
+```
+
+- ⚠️ **A tick, not more text.** A row at 375px already carries a name with a 130px floor, a bar, a
+  length, a metric total and a rating; a sixth thing in words is the crowding this room keeps
+  relearning. The marker costs no horizontal space.
+- ⚠️ **The same denominator as the bar**, or the mark would be a lie about its own row — and
+  **clamped**, because `most` is the biggest of _this_ window and an activity that was busier last
+  time would otherwise put its marker past the end of the bar.
+- ⚠️ **Direction is in the position and the colour together.** Inside the bar means more than last
+  time; the accent reinforces it. Colour alone is not a signal somebody colourblind reads, and
+  position alone needs you to remember which way is good.
+
+### ⚠️ And a chip that had nowhere to live
+
+"ON THE SITE" sat inside the bar's name column, which is a **fixed width so every bar in the list
+starts at the same place** — a bar chart whose bars do not line up is a worse chart. Against
+"Chronicle (on the site)" that column was never big enough for both: first the chip wrapped to
+three lines and made the row three times taller than its neighbours, then `white-space: nowrap`
+fixed the height and ate the name instead, leaving **"C."**.
+
+Two wrong answers before the right one, which was to stop it competing: the chip moved **after the
+length**, at the end of the row, where it has nothing to fight. Names intact, every row back to
+32px.
+
+Checked at 375 and 1440: 48 controls, nothing undersized, off-edge, clipped or wordless, and no
+overflow on the bars, the day strip, the goal list, the plan list, the card or the container.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
