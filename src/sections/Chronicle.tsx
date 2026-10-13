@@ -17,6 +17,7 @@ import {
 import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '../chronicle/cloud'
 import { CATS, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
+import { Looking } from '../chronicle/Looking'
 
 /**
  * Chronicle — what you are aiming at, at every cadence.
@@ -480,6 +481,20 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             </button>
           )}
 
+          {/**
+           * ⚠️ LOOKING BACK, FOR THE WINDOWS WHERE IT IS THE ONLY WAY TO SEE ANYTHING. Today and
+           * Tomorrow have the Timer log above, entry by entry with the times on them, which is
+           * strictly more than a total — showing both would be one day said twice. A week, a
+           * month, a quarter and a year have no other view at all, which was the biggest hole in
+           * the room: it recorded a life and could not show it back.
+           *
+           * ⚠️ AND NOT FOR Years, which has no window to add up. All-time totals are a different
+           * question and the range cap is 400 days, so pretending would mean quietly showing a
+           * year and calling it everything.
+           */}
+          {win && v.scope !== 'day' && v.scope !== 'life' ? (
+            <Looking win={win} label={v.label} />
+          ) : null}
           {say && <p className="chron-say">{say}</p>}
         </>
       )}

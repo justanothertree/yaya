@@ -263,3 +263,37 @@ export async function tally(
   }
   return out
 }
+
+/** One row per activity: what a stretch of time actually held. */
+export type Total = {
+  activity: string
+  name: string
+  cat: Activity['cat']
+  auto: boolean
+  mins: number
+}
+
+/**
+ * What a window actually held, summed on the server.
+ *
+ * ⚠️ SUMMED THERE RATHER THAN HERE, because the point of it is the long views: a month is a few
+ * hundred entries and a year a few thousand, so adding them up in the browser would make "what did
+ * I do this year" the most expensive thing in the room. One row per activity comes back instead —
+ * and it shares `chronicle_minutes` with the goal tally, so a total and a goal cannot disagree
+ * about the same stretch of time.
+ */
+export async function totalsBetween(fromISO: string, toISO: string): Promise<Total[]> {
+  const { data, error } = await getSupabaseClient().rpc('chronicle_totals', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Total[]).map((r) => ({
+    activity: String(r.activity),
+    name: String(r.name ?? ''),
+    cat: r.cat,
+    auto: !!r.auto,
+    /* numeric arrives as a string — see the note on num above */
+    mins: num(r.mins as number | string | null),
+  }))
+}

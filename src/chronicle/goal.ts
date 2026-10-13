@@ -1,4 +1,5 @@
 import { localISO } from '../circuit/dates'
+import { localMidnight } from './record'
 
 /**
  * A goal, and the window it is judged over.
@@ -233,18 +234,8 @@ export function tallyAsks(
   return out
 }
 
-/**
- * Local midnight on a date, as an instant the server can read.
- *
- * ⚠️ BUILT FROM LOCAL PARTS, NEVER PARSED. `new Date('2026-10-12')` is UTC midnight, which is the
- * 11th at 8pm in New York — so a day sent that way starts four hours early and a late-evening
- * session is counted against the wrong date. The same trap circuit/dates.ts opens with a warning
- * about, and the reason record.ts builds its day bounds the same way.
- */
-const dayStartISO = (iso: string): string => {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0).toISOString()
-}
+/* ⚠️ borrowed rather than written again — see localMidnight, which says why there is one of it */
+const dayStartISO = (iso: string): string => localMidnight(iso).toISOString()
 
 /**
  * The last day a window actually covers.

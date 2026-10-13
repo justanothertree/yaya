@@ -435,6 +435,39 @@ residue and nearly treated them as mine; the only reason I did not is that I rea
 What that leaves untested is the **timer**: `chronicle_entries` is still empty, so Start/Stop has
 not been exercised by a real session.
 
+## 6d · ✅ Looking back — the biggest hole, closed
+
+**Migration `chronicle_minutes_one_home`.** Client: `src/chronicle/Looking.tsx`.
+
+Chronicle recorded a life and could not show it back: the log listed today and nothing summed a
+week, a month or a year, which for a thing asked for as an all-time tracking tool is most of the
+point missing. The windows already existed — the plan half has used them since step 1 — so looking
+back is the same windows pointed at the record instead of at the intentions.
+
+⚠️ **AND THE OVERLAP RULE WAS ABOUT TO EXIST THREE TIMES.** It was in `record.ts` (TypeScript,
+tested) and inside `chronicle_tally` (SQL) — a duplication taken knowingly, because the alternative
+is shipping a year of entries to a browser. A totals function would have written it a third time,
+and three copies is how a day's figure comes to depend on which panel you read it from. So the SQL
+side now has **one** function, `chronicle_minutes`, and both callers ask it: `chronicle_tally` was
+rewritten to use it and the old probe re-run to prove the answers did not move — 150, 20 and 60,
+unchanged. The helper is revoked from `authenticated` entirely, reachable only from inside the two
+`SECURITY DEFINER` functions above it, which a refused member call proves.
+
+⚠️ **THE SAME THING HAPPENED IN TYPESCRIPT TEN MINUTES LATER.** `localMidnight` — build a local date
+rather than parse one — was written separately in `record.ts`, `goal.ts` and the new panel, and in
+the third copy I wrote a comment pointing out that it was the third copy instead of fixing it. It
+now lives once, in `record.ts`, the leaf nothing else in chronicle imports from.
+
+Totals come back one row per activity, busiest first, including the ones with nothing in the range
+— a list that silently omits what you did not do is not a record of a week. Site-written rows are
+marked "on the site", because "Paint 4h" meaning the room was open is a different claim from having
+painted for four hours.
+
+Shown only for windows longer than a day: Today and Tomorrow already have the Timer's own log,
+entry by entry with times, which is strictly more than a total. Not shown for Years, which has no
+window — all-time is a different question and the range cap is 400 days, so pretending would mean
+showing a year and calling it everything.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

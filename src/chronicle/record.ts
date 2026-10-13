@@ -139,13 +139,29 @@ export function clockText(ms: number): string {
   return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`
 }
 
+/**
+ * Local midnight on a date.
+ *
+ * ⚠️ BUILT FROM PARTS, NEVER PARSED, and this is the one home for that. `new Date('2026-10-12')`
+ * is parsed as UTC midnight — the 11th at 8pm in New York — so a day built that way starts four
+ * hours early and a late-evening session is counted against the wrong date. The trap
+ * circuit/dates.ts opens with a warning about.
+ *
+ * ⚠️ AND IT LIVES HERE BECAUSE IT WAS ABOUT TO EXIST THREE TIMES. `dayBounds` below needed it,
+ * `tallyAsks` in goal.ts needed it to send a window to the server, and the looking-back panel
+ * needed it to ask for one — and I had written it separately in all three before noticing, with a
+ * comment in the third saying so rather than fixing it. Three copies of a rule about midnight is
+ * how one of them quietly stops agreeing with the others. record.ts is the leaf nothing else in
+ * chronicle imports from, so it is the only one of the three that can hold it.
+ */
+export const localMidnight = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0)
+}
+
 /** The local day a window covers, as millisecond bounds — half-open, like every other window. */
 export function dayBounds(iso: string): { fromMs: number; toMs: number } {
-  const [y, m, d] = iso.split('-').map(Number)
-  /* ⚠️ built from local parts rather than parsed from the string, because `new Date('2026-10-12')`
-     is parsed as UTC midnight and lands on the 11th for anybody behind it — the same trap
-     circuit/dates.ts opens with a warning about */
-  const from = new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0)
-  const to = new Date(y, (m ?? 1) - 1, (d ?? 1) + 1, 0, 0, 0, 0)
+  const from = localMidnight(iso)
+  const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1, 0, 0, 0, 0)
   return { fromMs: from.getTime(), toMs: to.getTime() }
 }

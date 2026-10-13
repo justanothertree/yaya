@@ -15792,3 +15792,76 @@ a.cz-msg-author:focus-visible {
 .chron-first strong {
   color: var(--text);
 }
+
+/* ── looking back: what a window actually held — see chronicle/Looking.tsx ──── */
+.chron-look {
+  margin-top: 0.8rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.7rem;
+}
+.chron-look-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.86rem;
+}
+.chron-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.chron-bars li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 32px;
+  font-size: 0.88rem;
+}
+/* ⚠️ a fixed share of the row for the name, so the bars all start at the same place — ragged bar
+   starts make two activities of similar length look different at a glance, which is the one thing
+   a bar chart is for */
+.chron-bar-name {
+  flex: 0 0 9rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.chron-bars .chron-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 100px;
+  background: var(--border);
+  overflow: hidden;
+  min-width: 2rem;
+}
+.chron-bars .chron-bar i {
+  display: block;
+  height: 10px;
+  border-radius: 100px;
+  background: var(--accent);
+}
+/* the three categories keep their colours here too, so a week reads at a glance */
+.chron-bars .chron-bar i.is-locked {
+  background: #7c6af7;
+}
+.chron-bars .chron-bar i.is-free {
+  background: #f5a623;
+}
+.chron-bars .chron-bar i.is-life {
+  background: #5b9cf6;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  /* ⚠️ the name gets less room on a thumb rather than the bar disappearing: the bar is the thing
+     being compared, and a 2rem bar compares nothing */
+  .chron-bar-name {
+    flex: 0 0 6.5rem;
+  }
+}
