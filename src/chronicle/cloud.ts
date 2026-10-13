@@ -10,6 +10,10 @@ import {
   pvDropRoutine,
   pvEditEntry,
   pvEntries,
+  pvPlanDid,
+  pvPlanDrop,
+  pvPlanSave,
+  pvPlans,
   pvGoals,
   pvProgress,
   pvRoutines,
@@ -22,6 +26,7 @@ import {
   pvTotals,
 } from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
+import type { Plan } from './plan'
 import type { Activity, Entry } from './record'
 
 /**
@@ -459,4 +464,67 @@ export async function setAmount(id: string, amount: number | null): Promise<bool
     p_amount: amount,
   })
   return !error
+}
+
+/* ── plans ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * The spans you intend to spend, over a range.
+ *
+ * ⚠️ ASCENDING, unlike `entriesBetween`, which is newest-first. A log is read backwards and a plan
+ * is read forwards: "what is next" is the question a list of intentions answers.
+ */
+export async function plansBetween(fromISO: string, toISO: string): Promise<Plan[]> {
+  if (previewMember) return pvPlans(fromISO, toISO)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_plans_between', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Plan[]).map((p) => ({
+    id: String(p.id),
+    activity: String(p.activity),
+    start: String(p.start),
+    end: p.end ? String(p.end) : null,
+    note: p.note ?? null,
+  }))
+}
+
+export async function savePlan(
+  activity: string,
+  fromISO: string,
+  toISO: string,
+  note: string | null,
+  id?: string,
+): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvPlanSave(activity, fromISO, toISO, note, id)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_plan_save', {
+    p_id: id ?? null,
+    p_activity: activity,
+    p_from: fromISO,
+    p_to: toISO,
+    p_note: note,
+  })
+  if (error) return { why: error.message || 'that did not save' }
+  const made = data == null ? '' : String(data)
+  return made ? { id: made } : { why: 'that did not save — nothing came back' }
+}
+
+export async function dropPlan(id: string): Promise<boolean> {
+  if (previewMember) return pvPlanDrop(id)
+  const { error } = await getSupabaseClient().rpc('chronicle_plan_drop', { p_id: id })
+  return !error
+}
+
+/**
+ * Turn an intention into the record: one tap that logs the plan's span as time spent.
+ *
+ * ⚠️ THE PLAN SURVIVES IT, deliberately. Deleting it on the way past would make the comparison the
+ * whole feature exists for read "planned nothing, did an hour" the moment you agreed with
+ * yourself. The plan is what you meant; the entry is what happened; the point is seeing both.
+ */
+export async function planDid(id: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvPlanDid(id)
+  const { error } = await getSupabaseClient().rpc('chronicle_plan_did', { p_id: id })
+  return error ? { why: error.message || 'that did not save' } : null
 }

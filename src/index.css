@@ -15765,6 +15765,86 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/* ── planned, against what the day held — see chronicle/Plans.tsx ─────────── */
+.chron-plans,
+.chron-against {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.chron-plan,
+.chron-vs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  min-height: 36px;
+}
+/* ⚠️ IT WRAPS RATHER THAN OVERFLOWS. A plan row carries a time range, a name, a note and three
+   buttons, and its min-content came to 347px inside a 302px list — so the buttons hung 45px past
+   the card's own edge. A grid item whose min-content exceeds its track does not shrink, it
+   overflows, and clipping it instead would leave an unreachable button, which is worse than a
+   second line. Wrapping degrades; overflow breaks. */
+.chron-plan {
+  flex-wrap: wrap;
+}
+.chron-plan-when {
+  flex: 0 0 auto;
+}
+.chron-plan .btn {
+  flex: 0 0 auto;
+}
+.chron-plan-when {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.chron-plan-name,
+.chron-vs-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-plan-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+/* the comparison is two numbers that have to be read against each other, so they are columns */
+.chron-against {
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--line, rgba(128, 128, 128, 0.25));
+  padding-top: 0.4rem;
+}
+.chron-vs-num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5rem;
+  text-align: right;
+}
+/* more than you meant is worth seeing as a fact rather than as a failure */
+.chron-vs-num.is-over {
+  color: var(--accent);
+}
+.chron-plans .btn,
+.chron-plan .btn {
+  min-width: 24px;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  /* a note is the first thing to go when a planned row will not fit a thumb — the time and the
+     activity are what identify it, and the note is visible again in the editor */
+  .chron-plan-note {
+    display: none;
+  }
+}
+
 /* a goal whose number comes from the record says so — see Chronicle.tsx */
 .chron-chip.is-auto {
   border-color: var(--accent);

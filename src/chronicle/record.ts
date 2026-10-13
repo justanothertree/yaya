@@ -90,7 +90,17 @@ export const CATS = [
  * length is "so far" — and the caller passes the clock rather than this reading it, so a test can
  * ask about a running timer without waiting.
  */
-export function overlapMs(e: Entry, fromMs: number, toMs: number, nowMs: number): number {
+/**
+ * The two fields anything time-shaped has to have.
+ *
+ * ⚠️ SO overlapMs TAKES WHAT IT READS, RATHER THAN AN ENTRY. It only ever looks at the two
+ * ends, and a PLAN is the same two ends about the future — see chronicle/plan.ts. Widening the
+ * parameter is what lets both sides of "planned against actual" be measured by the same
+ * function, which is the only reason the two columns cannot disagree about what a span is worth.
+ */
+export type Span = { start: string; end: string | null }
+
+export function overlapMs(e: Span, fromMs: number, toMs: number, nowMs: number): number {
   const a = Date.parse(e.start)
   if (!Number.isFinite(a)) return 0
   const raw = e.end == null ? nowMs : Date.parse(e.end)

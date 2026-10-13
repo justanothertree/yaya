@@ -1,0 +1,118 @@
+-- ✅ APPLIED 13 Oct 2026 — migrations `chronicle_plans` and `chronicle_plan_rpcs`
+--
+-- A span you INTEND to spend: the HTML app's `planned` store, and the half of "looking ahead"
+-- the horizon tabs do not cover. A goal says what you are aiming at over a window — thirty
+-- minutes of drawing a day, twenty pages a month. A plan says WHERE IN TOMORROW the drawing
+-- goes. Different questions, both asked.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY ITS OWN TABLE RATHER THAN A `planned` FLAG ON chronicle_entries
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The flag is the smaller diff and the wrong answer. It would need `where not planned` adding
+-- to chronicle_entries_between, chronicle_sum, chronicle_totals, chronicle_minutes and every
+-- chronicle_entry_* function — and forgetting it in ONE of them means an intention counts as
+-- work done. That is the worst thing this feature could do: goals filling themselves in from
+-- what somebody MEANT to do. A separate table cannot be read by accident by anything that
+-- already exists, and the HTML app kept `planned` as its own store for the same reason.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY starts_at / ends_at AND NOT started_at / ended_at
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The sibling tables use the past tense because their rows describe things that happened. A
+-- column called `started_at` on a row about tomorrow is a small lie every future reader has to
+-- un-learn. The RPCs hand back `start` and `end` exactly as chronicle_entries_between does, so
+-- the client shape is identical and nothing downstream knows the difference.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE SHAPE
+-- ─────────────────────────────────────────────────────────────────────────────
+-- chronicle_plans (id, owner, activity, starts_at, ends_at, note, created_at)
+--   check ends_at > starts_at
+--   check ends_at - starts_at <= interval '24 hours'
+--   check note is null or char_length(note) <= 500
+--   index (owner, starts_at)
+--
+-- Deny-all like its three siblings: RLS on, ZERO policies, grants only to postgres and
+-- service_role. Four SECURITY DEFINER functions, each checking auth.uid() on its first line,
+-- each revoked `from public, anon` — `anon` holds execute directly in this project, so a revoke
+-- aimed at PUBLIC alone leaves it untouched (CLAUDE.md §3).
+--
+--   chronicle_plans_between(from, to)                 -> jsonb, ASCENDING
+--   chronicle_plan_save(id, activity, from, to, note) -> uuid, insert or update, cap 5000
+--   chronicle_plan_drop(id)                           -> void, silent on somebody else's
+--   chronicle_plan_did(id)                            -> uuid, the entry it made
+--
+-- ⚠️ chronicle_plans_between IS ASCENDING, unlike chronicle_entries_between, which is
+-- newest-first. A log is read backwards and a plan is read forwards: "what is next" is the
+-- question a list of intentions answers.
+--
+-- ⚠️ chronicle_plan_did DOES NOT WRITE THE ENTRY ITSELF. It calls chronicle_entry_add, so the
+-- span check, the day ceiling, the activity-is-mine check and the insert stay in one place. A
+-- second copy of that insert is a second thing to keep in step.
+--
+-- ⚠️ AND THE PLAN SURVIVES IT. Deleting the plan on the way past would make the comparison the
+-- whole feature exists for read "planned nothing, did an hour" the moment you agreed with
+-- yourself. The plan is what you meant; the entry is what happened; the point is seeing both.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- PROVEN, NOT ASSUMED
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Every probe ran inside `begin … rollback` in a simulated session, so nothing landed in a real
+-- account — which is better than create-then-delete, and worth keeping: an earlier tick of this
+-- work went looking for probe residue and nearly deleted two of Evan's real goals instead.
+-- Confirmed afterwards: 0 rows in chronicle_plans, 0 stray entries.
+--
+--   deny-all              policies 0 · rls on · authenticated select false · anon select false
+--   anon execute          no chronicle_% function is callable by anon at all
+--   save + read           note '   a probe plan   ' came back trimmed; 90m span
+--   edit                  same id returned, span 90m -> 120m
+--   plan_did              made an entry of 120m, matching the edited plan
+--   plan survived         still 1 row after being turned into time
+--   backwards span        refused: that span ends before it starts
+--   over a day            refused: that is more than a day
+--   bogus activity        refused: no such activity
+--   B sees of A           0
+--   B plans on A activity refused: no such activity
+--   B edits A plan        refused: no such activity
+--   B does A plan         refused: no such plan
+--   B drops A plan        silent, and A's plan was STILL THERE afterwards
+--   anon reads            refused: not authenticated
+--
+-- ⚠️ ONE PROBE ARTEFACT WORTH RECORDING. The first attempt did the save and the read-back in a
+-- single statement with CTEs, and reported `rows_back: 0`. That is not a bug in the reader: the
+-- function is STABLE, so it sees the snapshot from the start of the statement and cannot see
+-- rows the same statement just wrote. In the real client every call is its own statement. A
+-- stable reader probed inside one statement will always report itself blind.
+
+-- The applied DDL, for the record:
+--
+-- create table public.chronicle_plans (
+--   id uuid primary key default gen_random_uuid(),
+--   owner uuid not null references auth.users (id) on delete cascade,
+--   activity uuid not null references public.chronicle_activities (id) on delete cascade,
+--   starts_at timestamptz not null,
+--   ends_at timestamptz not null,
+--   note text,
+--   created_at timestamptz not null default now(),
+--   constraint chronicle_plan_forward check (ends_at > starts_at),
+--   constraint chronicle_plan_within_a_day check (ends_at - starts_at <= interval '24 hours'),
+--   constraint chronicle_plan_note_len check (note is null or char_length(note) <= 500)
+-- );
+-- create index chronicle_plans_by_day on public.chronicle_plans (owner, starts_at);
+-- alter table public.chronicle_plans enable row level security;
+-- revoke all on public.chronicle_plans from public, anon, authenticated;
+-- grant all on public.chronicle_plans to postgres, service_role;
+--
+-- The four functions are in migration `chronicle_plan_rpcs`; read them from the database
+-- rather than from a copy here, which is the rule docs/rpc-inventory.md exists to enforce:
+--
+--   select p.proname, pg_get_functiondef(p.oid)
+--     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'public' and p.proname like 'chronicle_plan%';
+
+-- The standing check, which cannot go stale:
+select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f'
+   and has_function_privilege('anon', p.oid, 'execute');
+-- expected: zero rows for anything chronicle_%

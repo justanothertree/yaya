@@ -2,6 +2,7 @@ import type { Goal, Scope } from '../chronicle/goal'
 import { today as todayISO } from '../chronicle/goal'
 import { localMidnight, overlapMs, type Activity, type Entry } from '../chronicle/record'
 import type { NewGoal, Routine, Total } from '../chronicle/cloud'
+import type { Plan } from '../chronicle/plan'
 
 // ── DEV-ONLY chronicle preview store ─────────────────────────────────────────
 // Chronicle is members-only and keeps NO local copy — by design, see the long note at the top of
@@ -96,7 +97,13 @@ const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): G
   ...g,
 })
 
-type Store = { acts: Activity[]; ents: Entry[]; goals: Goal[]; routines: Routine[] }
+type Store = {
+  acts: Activity[]
+  ents: Entry[]
+  goals: Goal[]
+  routines: Routine[]
+  plans: Plan[]
+}
 
 /**
  * The seed.
@@ -248,6 +255,43 @@ function seed(): Store {
         sort: 1,
       }),
     ],
+    /**
+     * ⚠️ FOUR PLANS THAT COVER THE THREE READINGS, because the comparison has three outcomes and a
+     * fixture with one of them proves nothing: something planned and done (Drawing), something
+     * planned and skipped (Writing), something still to come this evening (Gym), and — the one the
+     * obvious implementation hides — a day that also held something nobody planned at all, which
+     * the seeded Dishes session supplies for free.
+     */
+    plans: [
+      {
+        id: 'pv-p1',
+        activity: 'pv-draw',
+        start: at(0, 10).toISOString(),
+        end: new Date(at(0, 10).getTime() + 60 * 60_000).toISOString(),
+        note: null,
+      },
+      {
+        id: 'pv-p2',
+        activity: 'pv-write',
+        start: at(0, 14).toISOString(),
+        end: new Date(at(0, 14).getTime() + 90 * 60_000).toISOString(),
+        note: 'the difficult chapter',
+      },
+      {
+        id: 'pv-p3',
+        activity: 'pv-gym',
+        start: at(-1, 7).toISOString(),
+        end: new Date(at(-1, 7).getTime() + 45 * 60_000).toISOString(),
+        note: null,
+      },
+      {
+        id: 'pv-p4',
+        activity: 'pv-draw',
+        start: at(-1, 10).toISOString(),
+        end: new Date(at(-1, 10).getTime() + 30 * 60_000).toISOString(),
+        note: null,
+      },
+    ],
     routines: [
       {
         id: 'pv-r1',
@@ -269,7 +313,7 @@ const localISO = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const BLANK = 'dev_chron_blank'
-const blank = (): Store => ({ acts: [], ents: [], goals: [], routines: [] })
+const blank = (): Store => ({ acts: [], ents: [], goals: [], routines: [], plans: [] })
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
 const asked = (): boolean => {
@@ -524,6 +568,45 @@ export const pvSaveRoutine = (
   if (r) Object.assign(r, { name, steps: mine })
   else db().routines.push({ id: made, name, steps: mine })
   return { id: made }
+}
+
+export const pvPlans = (fromISO: string, toISO: string): Plan[] => {
+  const from = Date.parse(fromISO)
+  const to = Date.parse(toISO)
+  return db()
+    .plans.filter((p) => Date.parse(p.start) < to && Date.parse(p.end ?? p.start) > from)
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((p) => ({ ...p }))
+}
+
+export const pvPlanSave = (
+  activity: string,
+  fromISO: string,
+  toISO: string,
+  note: string | null,
+  id?: string,
+): { id: string } | { why: string } => {
+  if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that span ends before it starts' }
+  if (Date.parse(toISO) - Date.parse(fromISO) > 86_400_000)
+    return { why: 'that is more than a day' }
+  if (!db().acts.some((a) => a.id === activity)) return { why: 'no such activity' }
+  const made = id ?? mint('pv-p')
+  const had = db().plans.find((p) => p.id === made)
+  if (had) Object.assign(had, { activity, start: fromISO, end: toISO, note })
+  else db().plans.push({ id: made, activity, start: fromISO, end: toISO, note })
+  return { id: made }
+}
+
+export const pvPlanDrop = (id: string): boolean => {
+  db().plans = db().plans.filter((p) => p.id !== id)
+  return true
+}
+
+/** ⚠️ the plan stays, as chronicle_plan_did leaves it — see the note on planDid */
+export const pvPlanDid = (id: string): { why: string } | null => {
+  const p = db().plans.find((x) => x.id === id)
+  if (!p || p.end == null) return { why: 'no such plan' }
+  return pvAddEntry(p.activity, p.start, p.end, p.note)
 }
 
 export const pvDropRoutine = (id: string): boolean => {

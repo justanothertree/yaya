@@ -12,6 +12,7 @@ import {
   stopTimer,
 } from './cloud'
 import { today as todayISO } from './goal'
+import { Plans } from './Plans'
 import { Routines } from './Routines'
 import {
   CATS,
@@ -708,6 +709,19 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
       )}
 
       {!log.length && <p className="muted">Nothing recorded for this day yet.</p>}
+
+      {/**
+       * ⚠️ EVERY DAY, NOT JUST TODAY — unlike Routines above, which is today-only because running a
+       * step means starting a timer. Planning is the opposite: the day it is most wanted for is
+       * tomorrow, and the stepper already goes there and already says "Tomorrow".
+       *
+       * ⚠️ AND IT IS HANDED THE DAY'S ENTRIES rather than fetching them. The comparison has to be
+       * about the same list the log above is drawn from — two queries for one day's record is two
+       * chances to show a plan beaten by work the list above does not mention.
+       */}
+      {acts !== null && (
+        <Plans acts={acts} log={log} bounds={bounds} onChange={after} busy={busy} />
+      )}
 
       {/**
        * ⚠️ ROUTINES SIT WITH THE ACTIVITIES, not above the timer. A routine is a thing you reach
