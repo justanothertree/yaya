@@ -531,6 +531,120 @@ least as often as at the time. `chronicle_entry_amount` is one door, usable when
 Ten probes. The first one returned a single `<NULL>` because a subquery in my own probe found no
 row and `||` nulled the whole message — the probe's bug, not the product's, fixed with `coalesce`.
 
+## 6g · ✅ Streaks, and the two bugs that finding them required
+
+Streaks were the plan for this step: a run of windows behind a repeating goal, which the HTML app
+had no concept of. They took twenty minutes. The rest of the step was the reason they could not be
+seen, and the live bug that was hiding behind the same blind spot.
+
+### The streak itself
+
+`streakAsks` asks about `STREAK_BACK = 30` windows per repeating derived goal; `streakOf` counts
+the run. Two rules worth keeping written down:
+
+- **The window you are in cannot break a streak.** A five-day run at nine in the morning on the
+  sixth day is still five — today is unfinished, not failed. Counting it as a miss would make every
+  streak read zero every morning, which is the opposite of what a streak is for.
+- **Thirty windows back is thirty calendar steps, not thirty day-lengths.** A month back from 31
+  March is not 31 days and a year back across a leap day is not 365; `setMonth`/`setDate` are the
+  only arithmetic that knows that.
+
+The chip appears from **two** in a row. A streak of one is just "done", and a badge that shows up
+the first time you do anything teaches nobody that it means anything.
+
+### ⚠️ The room could not be seen at all, and a whole tick was spent not noticing
+
+Chronicle keeps **no local copy** — §6's decision, and the right one. The consequence nobody wrote
+down: `dev/previewMember.ts` flips the UI gates but **never creates a Supabase session**, so in the
+preview every chronicle RPC answers nothing and the room renders its empty state and only its
+empty state.
+
+So the streak chip was "verified" on the strength of the module exporting the function that makes
+it, and a 375px audit of the room reported **0 undersized, 0 off-edge, 0 clipped** — against a room
+containing a paragraph and two buttons. `scripts/mobile-audit.js` has a warning at the top of the
+file about exactly that reading. It is the same shape as `.park-field` always being rendered: the
+room being there does not mean anything is in it.
+
+**`src/dev/chroniclePreview.ts`** is the fix, and it is the analogue of `#dev-park` one room over.
+It is careful about what it claims:
+
+- **What it proves**: the room renders. Every state a goal and an entry can be in, at every
+  viewport, with the editors drivable and the empty states reachable.
+- **What it cannot prove**: any number. The sums are the _browser's_ arithmetic, so a figure that
+  looks right there says nothing about what `chronicle_minutes` returns for the same window. That
+  question already has two homes and neither is that file — vitest over `goal.ts`/`record.ts`, and
+  a simulated session in SQL.
+- The seed is **chosen to light up every branch**, not to look like a plausible week: a goal at
+  zero, one part way, one exactly met, one past its target, a tick ticked and one not, a hand-moved
+  number, a goal on a category, a goal counting an amount, an archived activity, an auto one, a
+  span across midnight, and a timer running now.
+- **The drawing days have a hole in them** — 0, 1, 2, 3 then 5, 6. So the streak is **four** while
+  six windows that week were met, which is the one seed shape that can tell a run from a count.
+  Seven unbroken days agrees with both and distinguishes neither.
+- It borrows `overlapMs` rather than writing a second opinion about what a span is worth. An
+  unfaithful double looks exactly like a product bug.
+
+### ⚠️ And then the room showed a live bug on its first load
+
+`30 minutes drawing` read **0 / 30** with `Drawing 35m` in the day's totals two inches above it.
+Every repeating derived goal on the site did, and had since they existed.
+
+One load asks about a repeating goal **twice** — today's window for the Today list, tomorrow's for
+the Tomorrow list, because the window strip has to count unfinished work in both. The asks were
+keyed by **goal id**, so both answers were the same entry, `jsonb_object_agg` kept the last, and
+tomorrow's window — zero every time, because tomorrow has not happened — overwrote the reading.
+
+It is the **same mistake as `chronicle_tally`'s own**, found the day before and fixed one layer
+down so a streak could ask about thirty windows. The caller that had been colliding all along was
+never looked at, because the room it renders in could not be seen without a session.
+
+The fix is `windowKey(id, fromISO)`: say which window you are asking about, and read the answer to
+that question rather than to the goal. `reached`, `share` and `finished` now take the day as a
+**required** argument — four callers, each of which already had it in hand. A default of "today"
+would have let the Tomorrow view keep asking a question it cannot name and keep getting a number
+with a plausible shape.
+
+Three perturbations, each red for its own reason:
+
+| perturbation                                              | result                                     |
+| --------------------------------------------------------- | ------------------------------------------ |
+| `tallyAsks` keys by goal id                               | 3 red — asker and reader disagree          |
+| `reached` reads `tally[g.id]`                             | 3 red — same, from the other side          |
+| key coarsened to the year, so only today/tomorrow collide | **1 red**, the duplicate-window test alone |
+
+The third is the one that matters: it proves the test is sensitive to the actual collision rather
+than to a changed string, and the one-off test stayed green because a one-off does not collide.
+
+On screen afterwards, from one `got` map: `30 minutes drawing` reads **35 / 30 in Today** and
+**0 / 30 in Tomorrow**, and the Today badge fell from 3 to 1.
+
+### ⚠️ And the harness was shipping to real users
+
+Measured, not assumed: `grep` the built bundle for a string only that file contains. The whole
+seed was in `index.js` as unreachable dead weight — 2.78 kB — while `dev/previewMember.ts`, which
+makes the same DEV-only claim, does not leak at all.
+
+The difference is not the `import.meta.env.DEV` guard and not the namespace import, both of which
+were tried and measured as making no difference (identical bundle hash). It is `let S = seed()`: a
+**statement-level call at module scope**, which rollup cannot prove pure, so it keeps the module
+for its side effect. `previewMember.ts` is all plain literals assigned to exports nobody reaches.
+Behind a function — `const db = () => (S ??= …)` — there is nothing to run at import time and the
+module drops out entirely. 375.22 kB → 372.44 kB.
+
+**A DEV-only comment is a claim about the bundle, and the bundle is greppable.** Worth doing for
+any future harness here.
+
+### What this leaves
+
+- `dev/chroniclePreview.ts` is now the way to look at chronicle. `window.__chron.empty()` and
+  `.seed()` switch between the full room and a first visit; both reload, because the room reads
+  its data once on mount.
+- Verified at 375, 820 and 1440: 49 controls examined, none under 36px, nothing off-edge, clipped
+  or scrolling sideways. The write path is drivable end to end — a real checkbox click moved a row
+  to `is-done` and the Today badge to zero unfinished.
+- Still only reachable with a session: the production path on :4173, which has no harness because
+  the harness is DEV-only. Unchanged, and the reason the empty states are worth a trip there.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

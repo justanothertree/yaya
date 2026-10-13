@@ -1,4 +1,26 @@
 import { getSupabaseClient } from '../finance/client'
+import { previewMember } from '../dev/previewMember'
+import {
+  pvActivities,
+  pvAddEntry,
+  pvAmount,
+  pvArchive,
+  pvDropEntry,
+  pvDropGoal,
+  pvDropRoutine,
+  pvEditEntry,
+  pvEntries,
+  pvGoals,
+  pvProgress,
+  pvRoutines,
+  pvSaveActivity,
+  pvSaveGoal,
+  pvSaveRoutine,
+  pvStart,
+  pvStop,
+  pvTally,
+  pvTotals,
+} from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
 import type { Activity, Entry } from './record'
 
@@ -17,9 +39,20 @@ import type { Activity, Entry } from './record'
  * this is one person's private list: the Circuit is optimistic because several people write to one
  * board and somebody has to win, which is a problem a planner for one does not have.
  *
- * Everything here goes through the four SECURITY DEFINER functions in
- * docs/2026-10-12-chronicle-design.md. The table grants nothing to `anon` or `authenticated`, so
+ * Everything here goes through the SECURITY DEFINER functions in
+ * docs/2026-10-12-chronicle-design.md. The tables grant nothing to `anon` or `authenticated`, so
  * these calls are the only way in and `auth.uid()` is checked on the first line of each.
+ *
+ * ⚠️ AND EVERY ONE OF THEM HAS A `previewMember` GUARD, which is a thing a production module would
+ * rather not know about and has to. The no-local-copy rule above means that signed out there is
+ * nothing to show — and the dev member preview is signed out, since it flips UI gates and never
+ * makes a session. So without these the harness renders the empty room and nothing else, which it
+ * did: a tick of 375px audits passed against a room holding a paragraph and two buttons.
+ *
+ * The guard is `import.meta.env.DEV &&` at its source, so in a production build `previewMember`
+ * is statically false and each branch is dead code. Seven other members-only modules take the
+ * same import for the same reason — see dev/previewMember.ts and dev/chroniclePreview.ts, which
+ * is careful about what it does and does not prove.
  */
 
 /** What the server hands back for one goal — see chronicle_goals_mine. */
@@ -73,6 +106,7 @@ const read = (r: Row): Goal => ({
 
 /** Every goal of mine. Empty rather than throwing, so a dead network is a quiet room. */
 export async function myGoals(): Promise<Goal[]> {
+  if (previewMember) return pvGoals()
   const { data, error } = await getSupabaseClient().rpc('chronicle_goals_mine')
   if (error || !Array.isArray(data)) return []
   return (data as Row[]).map(read)
@@ -103,6 +137,7 @@ export type NewGoal = {
  * no-op, which is the failure mode library/cloud.ts has a long note about.
  */
 export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvSaveGoal(g)
   const { data, error } = await getSupabaseClient().rpc('chronicle_goal_save', {
     p_id: g.id ?? null,
     p_title: g.title,
@@ -132,6 +167,7 @@ export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: stri
 
 /** Move a goal along, or tick it. `done` false un-ticks. */
 export async function setProgress(id: string, progress: number, done: boolean): Promise<boolean> {
+  if (previewMember) return pvProgress(id, progress, done)
   const { error } = await getSupabaseClient().rpc('chronicle_goal_progress', {
     p_id: id,
     p_progress: progress,
@@ -141,6 +177,7 @@ export async function setProgress(id: string, progress: number, done: boolean): 
 }
 
 export async function dropGoal(id: string): Promise<boolean> {
+  if (previewMember) return pvDropGoal(id)
   const { error } = await getSupabaseClient().rpc('chronicle_goal_drop', { p_id: id })
   return !error
 }
@@ -155,6 +192,7 @@ export async function dropGoal(id: string): Promise<boolean> {
  * enforced one layer down.
  */
 export async function myActivities(): Promise<Activity[]> {
+  if (previewMember) return pvActivities()
   const { data, error } = await getSupabaseClient().rpc('chronicle_activities_mine')
   if (error || !Array.isArray(data)) return []
   return (data as Activity[]).map((a) => ({
@@ -175,6 +213,7 @@ export async function saveActivity(
   id?: string,
   metric?: string | null,
 ): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvSaveActivity(name, cat, colour, id, metric)
   const { data, error } = await getSupabaseClient().rpc('chronicle_activity_save', {
     p_id: id ?? null,
     p_name: name,
@@ -188,6 +227,7 @@ export async function saveActivity(
 }
 
 export async function archiveActivity(id: string, archived: boolean): Promise<boolean> {
+  if (previewMember) return pvArchive(id, archived)
   const { error } = await getSupabaseClient().rpc('chronicle_activity_archive', {
     p_id: id,
     p_archived: archived,
@@ -197,12 +237,14 @@ export async function archiveActivity(id: string, archived: boolean): Promise<bo
 
 /** Start a timer. Whatever was running stops; a run under a second leaves no trace. */
 export async function startTimer(activity: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvStart(activity)
   const { error } = await getSupabaseClient().rpc('chronicle_start', { p_activity: activity })
   return error ? { why: error.message || 'that did not start' } : null
 }
 
 /** Stop whatever is running. Stopping nothing is not an error — see the function's own note. */
 export async function stopTimer(note: string | null): Promise<{ why: string } | null> {
+  if (previewMember) return pvStop(note)
   const { error } = await getSupabaseClient().rpc('chronicle_stop', { p_note: note })
   return error ? { why: error.message || 'that did not stop' } : null
 }
@@ -215,6 +257,7 @@ export async function stopTimer(note: string | null): Promise<{ why: string } | 
  * starts, so a bad call is a message rather than a download.
  */
 export async function entriesBetween(fromISO: string, toISO: string): Promise<Entry[]> {
+  if (previewMember) return pvEntries(fromISO, toISO)
   const { data, error } = await getSupabaseClient().rpc('chronicle_entries_between', {
     p_from: fromISO,
     p_to: toISO,
@@ -237,6 +280,7 @@ export async function addEntry(
   toISO: string,
   note: string | null,
 ): Promise<{ why: string } | null> {
+  if (previewMember) return pvAddEntry(activity, fromISO, toISO, note)
   const { error } = await getSupabaseClient().rpc('chronicle_entry_add', {
     p_activity: activity,
     p_from: fromISO,
@@ -247,6 +291,7 @@ export async function addEntry(
 }
 
 export async function dropEntry(id: string): Promise<boolean> {
+  if (previewMember) return pvDropEntry(id)
   const { error } = await getSupabaseClient().rpc('chronicle_entry_drop', { p_id: id })
   return !error
 }
@@ -260,11 +305,16 @@ export async function dropEntry(id: string): Promise<boolean> {
  *
  * ⚠️ AND THE ASKS CARRY WINDOWS, NOT SOURCES. What to count comes off the goal's own row inside
  * the function — see its note. A caller that could name an activity could name somebody else's.
+ *
+ * ⚠️ AND EACH ASK MAY CARRY ITS OWN KEY, which is what lets one goal be asked about thirty
+ * windows at once. Without it the result was keyed by goal id and postgres silently kept the last
+ * of a duplicate — so a streak was unaskable. Omitting the key still answers by goal id.
  */
 export async function tally(
-  asks: Array<{ id: string; from: string; to: string }>,
+  asks: Array<{ id: string; from: string; to: string; key?: string }>,
 ): Promise<Record<string, number>> {
   if (!asks.length) return {}
+  if (previewMember) return pvTally(asks)
   const { data, error } = await getSupabaseClient().rpc('chronicle_tally', { p_asks: asks })
   if (error || !data || typeof data !== 'object') return {}
   const out: Record<string, number> = {}
@@ -297,6 +347,7 @@ export type Total = {
  * about the same stretch of time.
  */
 export async function totalsBetween(fromISO: string, toISO: string): Promise<Total[]> {
+  if (previewMember) return pvTotals(fromISO, toISO)
   const { data, error } = await getSupabaseClient().rpc('chronicle_totals', {
     p_from: fromISO,
     p_to: toISO,
@@ -327,6 +378,7 @@ export async function editEntry(
   toISO: string,
   note: string | null,
 ): Promise<{ why: string } | null> {
+  if (previewMember) return pvEditEntry(id, fromISO, toISO, note)
   const { error } = await getSupabaseClient().rpc('chronicle_entry_edit', {
     p_id: id,
     p_from: fromISO,
@@ -346,6 +398,7 @@ export type Routine = {
 }
 
 export async function myRoutines(): Promise<Routine[]> {
+  if (previewMember) return pvRoutines()
   const { data, error } = await getSupabaseClient().rpc('chronicle_routines_mine')
   if (error || !Array.isArray(data)) return []
   return (data as Routine[]).map((r) => ({
@@ -372,6 +425,7 @@ export async function saveRoutine(
   steps: Array<{ activity: string; mins: number | null }>,
   id?: string,
 ): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvSaveRoutine(name, steps, id)
   const { data, error } = await getSupabaseClient().rpc('chronicle_routine_save', {
     p_id: id ?? null,
     p_name: name,
@@ -386,6 +440,7 @@ export async function saveRoutine(
 }
 
 export async function dropRoutine(id: string): Promise<boolean> {
+  if (previewMember) return pvDropRoutine(id)
   const { error } = await getSupabaseClient().rpc('chronicle_routine_drop', { p_id: id })
   return !error
 }
@@ -398,6 +453,7 @@ export async function dropRoutine(id: string): Promise<boolean> {
  * as at the time. One door, usable whenever.
  */
 export async function setAmount(id: string, amount: number | null): Promise<boolean> {
+  if (previewMember) return pvAmount(id, amount)
   const { error } = await getSupabaseClient().rpc('chronicle_entry_amount', {
     p_id: id,
     p_amount: amount,

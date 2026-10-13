@@ -3,6 +3,8 @@ import {
   finished,
   derived,
   inScope,
+  streakAsks,
+  streakOf,
   lastDay,
   reached,
   repeats,
@@ -111,6 +113,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * numbers without re-reading every goal.
    */
   const [got, setGot] = useState<Record<string, number>>({})
+  /**
+   * The run of windows behind each repeating goal.
+   *
+   * ⚠️ ITS OWN FETCH, SEPARATE FROM THE TALLY, because the two are asked about different things:
+   * the tally is one window per goal and changes whenever the timer runs, while a streak is thirty
+   * windows per goal and only changes when a window flips. Folding them together would mean a
+   * thirty-fold query every time somebody stopped a stopwatch.
+   */
+  const [runs, setRuns] = useState<Record<string, number>>({})
   const [acts, setActs] = useState<Activity[]>([])
   const [src, setSrc] = useState('')
   /**
@@ -135,14 +146,19 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
      * the window strip were right for the window you were looking at and zero everywhere else —
      * and the strip's whole job is to say where the work is before you go there.
      */
+    /* ⚠️ DEDUPED ON THE KEY, which is now the identity of the question rather than of the goal:
+       a repeating daily goal is two different asks here — today's window and tomorrow's — and
+       collapsing them to one was the bug windowKey is named after */
     const asks = [
       ...new Map(
-        [todayISO(), tomorrowISO()]
-          .flatMap((d) => tallyAsks(mine, d))
-          .map((x) => [x.id + x.from, x]),
+        [todayISO(), tomorrowISO()].flatMap((d) => tallyAsks(mine, d)).map((x) => [x.key, x]),
       ).values(),
     ]
     setGot(asks.length ? await tally(asks) : {})
+    /* ⚠️ the streak windows are asked for from TODAY, not from the view: a streak is a fact about
+       the goal rather than about which horizon you happen to be looking at */
+    const back = streakAsks(mine, todayISO())
+    setRuns(back.length ? await tally(back) : {})
   }, [authed])
 
   useEffect(() => {
@@ -165,7 +181,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     const out: Record<string, number> = {}
     for (const x of VIEWS) {
       const when = x.when()
-      out[x.id] = (goals ?? []).filter((g) => inScope(g, x.scope, when) && !finished(g, got)).length
+      out[x.id] = (goals ?? []).filter(
+        (g) => inScope(g, x.scope, when) && !finished(g, got, when),
+      ).length
     }
     return out
   }, [goals, got])
@@ -351,10 +369,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
           ) : null}
           <ul className="chron-list">
             {mine.map((g) => {
-              const s = share(g, got)
-              const done = finished(g, got)
+              const s = share(g, got, on)
+              const done = finished(g, got, on)
               const auto = derived(g)
-              const have = reached(g, got)
+              const have = reached(g, got, on)
               const act = g.activity ? acts.find((a) => a.id === g.activity) : null
               const from = g.activity
                 ? (act?.name ?? 'an activity')
@@ -380,6 +398,19 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         cadence and the room already knows it, so a chip saying only that a thing
                         repeats is a label that raises the question it should answer */}
                     {repeats(g) ? <span className="chron-chip">every {g.scope}</span> : null}
+                    {/**
+                     * ⚠️ TWO IN A ROW IS THE FLOOR, because "a streak of 1" is just "done", and a
+                     * badge that appears the first time you do anything teaches nobody that it
+                     * means anything. It earns its place on the second window.
+                     */}
+                    {(() => {
+                      const run = streakOf(g, runs)
+                      return run >= 2 ? (
+                        <span className="chron-chip is-run" title={`${run} ${g.scope}s in a row`}>
+                          🔥 {run}
+                        </span>
+                      ) : null
+                    })()}
                     {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
                         moves on its own and does not say why reads as a bug rather than a feature */}
                     {from ? (

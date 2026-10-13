@@ -9,6 +9,10 @@ import {
   repeats,
   share,
   SCOPES,
+  streakAsks,
+  streakKey,
+  streakOf,
+  STREAK_BACK,
   tallyAsks,
   windowOf,
   type Goal,
@@ -194,27 +198,45 @@ describe('which list a goal shows up in', () => {
   })
 })
 
+/**
+ * A day to ask the readers about. Any day works for a hand-moved goal — the argument exists for
+ * the derived ones, which have a different answer per window.
+ */
+const DAY = '2026-10-12'
+
+/**
+ * The map a server would hand back, keyed BY THE ASK.
+ *
+ * ⚠️ BUILT FROM `tallyAsks` RATHER THAN FROM A KEY THIS FILE WRITES ITSELF. The claim under test
+ * is that the side that ASKS and the side that READS agree about where an answer is filed, and a
+ * test that spells the key out a second time asserts its own spelling instead — it would have
+ * stayed green through the whole duplicate-key bug, because both halves of it were wrong in the
+ * same way. Going through the ask is the only path that shares no arithmetic with the reader.
+ */
+const answered = (g: Goal, on: string, n: number): Record<string, number> =>
+  Object.fromEntries(tallyAsks([g], on).map((a) => [a.key, n]))
+
 describe('how far along a goal is', () => {
   /** ⚠️ a tick-box has no fraction — see share, and the progress bar it would otherwise invite */
   it('is nothing at all for a tick-box', () => {
-    expect(share(goal())).toBeNull()
-    expect(share(goal({ target: 0, unit: 'x' }))).toBeNull()
+    expect(share(goal(), undefined, DAY)).toBeNull()
+    expect(share(goal({ target: 0, unit: 'x' }), undefined, DAY)).toBeNull()
   })
 
   it('and a share of the target for a quantity, never outside 0 to 1', () => {
-    expect(share(goal({ target: 100, unit: 'points', progress: 0 }))).toBe(0)
-    expect(share(goal({ target: 100, unit: 'points', progress: 40 }))).toBe(0.4)
-    expect(share(goal({ target: 100, unit: 'points', progress: 100 }))).toBe(1)
+    expect(share(goal({ target: 100, unit: 'points', progress: 0 }), undefined, DAY)).toBe(0)
+    expect(share(goal({ target: 100, unit: 'points', progress: 40 }), undefined, DAY)).toBe(0.4)
+    expect(share(goal({ target: 100, unit: 'points', progress: 100 }), undefined, DAY)).toBe(1)
     /* over-achieving is not 140% of a bar */
-    expect(share(goal({ target: 100, unit: 'points', progress: 140 }))).toBe(1)
+    expect(share(goal({ target: 100, unit: 'points', progress: 140 }), undefined, DAY)).toBe(1)
   })
 
   /** ⚠️ two ways to be finished, and a quantity that reached its target did not need ticking */
   it('and is finished either by being ticked or by reaching the number', () => {
-    expect(finished(goal())).toBe(false)
-    expect(finished(goal({ done: true }))).toBe(true)
-    expect(finished(goal({ target: 10, unit: 'min', progress: 10 }))).toBe(true)
-    expect(finished(goal({ target: 10, unit: 'min', progress: 9 }))).toBe(false)
+    expect(finished(goal(), undefined, DAY)).toBe(false)
+    expect(finished(goal({ done: true }), undefined, DAY)).toBe(true)
+    expect(finished(goal({ target: 10, unit: 'min', progress: 10 }), undefined, DAY)).toBe(true)
+    expect(finished(goal({ target: 10, unit: 'min', progress: 9 }), undefined, DAY)).toBe(false)
   })
 
   /**
@@ -233,8 +255,8 @@ describe('how far along a goal is', () => {
     })
     expect(inScope(hundred, 'year', '2026-10-12')).toBe(true)
     expect(inScope(hundred, 'day', '2026-10-12')).toBe(false)
-    expect(share(hundred)).toBeCloseTo(0.63, 10)
-    expect(finished(hundred)).toBe(false)
+    expect(share(hundred, undefined, DAY)).toBeCloseTo(0.63, 10)
+    expect(finished(hundred, undefined, DAY)).toBe(false)
   })
 })
 
@@ -265,25 +287,72 @@ describe('a goal that reads the record instead of waiting to be told', () => {
    */
   it('and shows nothing rather than its stale column when the tally is missing', () => {
     const stale = { ...mins, progress: 999 }
-    expect(reached(stale, undefined)).toBe(0)
-    expect(reached(stale, {})).toBe(0)
-    expect(share(stale, {})).toBe(0)
-    expect(finished(stale, {})).toBe(false)
+    expect(reached(stale, undefined, DAY)).toBe(0)
+    expect(reached(stale, {}, DAY)).toBe(0)
+    expect(share(stale, {}, DAY)).toBe(0)
+    expect(finished(stale, {}, DAY)).toBe(false)
     /* and the tally, when it comes, is the number */
-    expect(reached(stale, { [stale.id]: 20 })).toBe(20)
-    expect(share(stale, { [stale.id]: 15 })).toBe(0.5)
-    expect(finished(stale, { [stale.id]: 30 })).toBe(true)
+    expect(reached(stale, answered(stale, DAY, 20), DAY)).toBe(20)
+    expect(share(stale, answered(stale, DAY, 15), DAY)).toBe(0.5)
+    expect(finished(stale, answered(stale, DAY, 30), DAY)).toBe(true)
+  })
+
+  /**
+   * ⚠️ THE BUG THIS WHOLE KEY EXISTS FOR, and it was live on the site. One load asks about a
+   * repeating daily goal TWICE — today's window for the Today list, tomorrow's for the Tomorrow
+   * list — and tomorrow's answer is zero every time, because tomorrow has not happened. Keyed by
+   * goal id alone the two answers were the same entry, `jsonb_object_agg` kept the last, and
+   * every repeating derived goal on the site read 0 of its target with the minutes sitting in the
+   * day's totals two inches above it.
+   *
+   * ⚠️ AND THE TWO WINDOWS CARRY DIFFERENT NUMBERS HERE, which is what makes this a test rather
+   * than a restatement. Give both windows 35 and a reader that looks up the wrong one still
+   * passes; 35 today and 0 tomorrow can only be told apart by asking the right question.
+   */
+  it('and one load asking about two windows gets two answers, not the last one twice', () => {
+    const on = '2026-10-12'
+    const next = '2026-10-13'
+    const asks = [...tallyAsks([mins], on), ...tallyAsks([mins], next)]
+    expect(asks).toHaveLength(2)
+    expect(asks[0].key).not.toBe(asks[1].key)
+
+    /* 35 minutes drawn today; tomorrow has not happened */
+    const got = { [asks[0].key]: 35, [asks[1].key]: 0 }
+    expect(reached(mins, got, on)).toBe(35)
+    expect(reached(mins, got, next)).toBe(0)
+    expect(finished(mins, got, on)).toBe(true)
+    expect(finished(mins, got, next)).toBe(false)
+  })
+
+  /**
+   * ⚠️ AND A ONE-OFF IS ONE ASK FROM EITHER END, because its window comes from its anchor and not
+   * from where you are standing. Looking at it from tomorrow must not invent a second question
+   * about it — that would put the same goal in the batch twice for no reason and, before the key,
+   * would have been a collision that happened to be harmless.
+   */
+  it('and a one-off is the same single question from whichever day you look', () => {
+    const once = goal({
+      scope: 'day',
+      anchor: '2026-10-12',
+      target: 30,
+      unit: 'min',
+      activity: 'a',
+    })
+    const a = tallyAsks([once], '2026-10-12')[0]
+    const b = tallyAsks([once], '2026-10-13')[0]
+    expect(b.key).toBe(a.key)
+    expect(reached(once, { [a.key]: 30 }, '2026-10-13')).toBe(30)
   })
 
   it('and a hand-moved goal ignores the tally entirely', () => {
     const hand = goal({ target: 100, unit: 'points', progress: 40 })
-    expect(reached(hand, { [hand.id]: 7 })).toBe(40)
-    expect(share(hand, { [hand.id]: 7 })).toBe(0.4)
+    expect(reached(hand, { [hand.id]: 7 }, DAY)).toBe(40)
+    expect(share(hand, { [hand.id]: 7 }, DAY)).toBe(0.4)
   })
 
   /** ⚠️ ticking by hand still finishes a derived goal — the record is evidence, not a jailer */
   it('and can still be ticked done by hand', () => {
-    expect(finished({ ...mins, done: true }, {})).toBe(true)
+    expect(finished({ ...mins, done: true }, {}, DAY)).toBe(true)
   })
 
   /**
@@ -317,5 +386,104 @@ describe('a goal that reads the record instead of waiting to be told', () => {
   it('and a lifetime goal with a source is not asked about, having no window', () => {
     const forever = goal({ scope: 'life', anchor: null, target: 100, unit: 'min', activity: 'a' })
     expect(tallyAsks([forever], '2026-10-14')).toEqual([])
+  })
+})
+
+describe('how many windows in a row', () => {
+  const daily = goal({
+    title: '30 min a day',
+    scope: 'day',
+    anchor: null,
+    every: 1,
+    target: 30,
+    unit: 'min',
+    activity: 'a1',
+  })
+
+  /** met on the given window offsets, missed on the rest */
+  const run = (hits: number[]): Record<string, number> => {
+    const out: Record<string, number> = {}
+    for (let i = 0; i <= STREAK_BACK; i++) out[streakKey(daily.id, i)] = hits.includes(i) ? 40 : 0
+    return out
+  }
+
+  /**
+   * ⚠️ THE DECISION THE WHOLE FEATURE TURNS ON. A five day streak at nine in the morning on the
+   * sixth day is still five — today is not a failure, it is unfinished. Counting the current
+   * window as a miss would make every streak read zero every morning, which is the exact opposite
+   * of what a streak is for, and it is the version somebody writes first.
+   */
+  it('is not broken by the window you are still in', () => {
+    /* yesterday and the four before it, nothing today yet */
+    expect(streakOf(daily, run([1, 2, 3, 4, 5]))).toBe(5)
+    /* and doing today adds to it rather than starting again */
+    expect(streakOf(daily, run([0, 1, 2, 3, 4, 5]))).toBe(6)
+  })
+
+  it('and stops at the first window that was missed', () => {
+    expect(streakOf(daily, run([0, 1, 3, 4]))).toBe(2)
+    expect(streakOf(daily, run([0]))).toBe(1)
+    expect(streakOf(daily, run([]))).toBe(0)
+    /* a gap at yesterday with today done is a streak of exactly one */
+    expect(streakOf(daily, run([0, 2, 3]))).toBe(1)
+  })
+
+  it('and needs the target met, not merely approached', () => {
+    const nearly: Record<string, number> = {}
+    for (let i = 0; i <= 3; i++) nearly[streakKey(daily.id, i)] = 29
+    expect(streakOf(daily, nearly)).toBe(0)
+    nearly[streakKey(daily.id, 0)] = 30
+    expect(streakOf(daily, nearly)).toBe(1)
+  })
+
+  /** ⚠️ a goal with no run of windows, or no per-window history, has no streak to measure */
+  it('and is nothing at all for a goal that cannot have one', () => {
+    const once = goal({
+      scope: 'day',
+      anchor: '2026-10-12',
+      target: 30,
+      unit: 'min',
+      activity: 'a1',
+    })
+    expect(streakOf(once, run([0, 1, 2]))).toBe(0)
+    const byHand = goal({ scope: 'day', anchor: null, every: 1, target: 30, unit: 'min' })
+    expect(streakOf(byHand, run([0, 1, 2]))).toBe(0)
+    const tickBox = goal({ scope: 'day', anchor: null, every: 1, activity: 'a1' })
+    expect(streakOf(tickBox, run([0, 1, 2]))).toBe(0)
+  })
+
+  /**
+   * ⚠️ THE ASKS STEP BY CALENDAR, NOT BY MULTIPLES OF A DAY. A month back from 31 March is not
+   * thirty-one days, and a year back across a leap day is not 365 — so a monthly streak asked for
+   * in multiples of 86,400,000 would drift a day per step and eventually land in the wrong month.
+   */
+  it('and asks for its own windows, stepping back by the right unit', () => {
+    const monthly = goal({
+      scope: 'month',
+      anchor: null,
+      every: 1,
+      target: 4,
+      unit: 'maps',
+      activity: 'a1',
+    })
+    const asks = streakAsks([monthly], '2026-03-31', 3)
+    expect(asks.length).toBe(4)
+    /* each ask begins on the first of a month, and they walk backwards one month at a time */
+    const firsts = asks.map((a) => new Date(a.from).getMonth())
+    expect(firsts).toEqual([2, 1, 0, 11])
+    for (const a of asks) expect(new Date(a.from).getDate(), a.key).toBe(1)
+  })
+
+  it('and asks nothing for goals that cannot have a streak', () => {
+    const once = goal({
+      scope: 'day',
+      anchor: '2026-10-12',
+      target: 30,
+      unit: 'min',
+      activity: 'a1',
+    })
+    const byHand = goal({ scope: 'day', anchor: null, every: 1, target: 30, unit: 'min' })
+    expect(streakAsks([once, byHand], '2026-10-12', 3)).toEqual([])
+    expect(streakAsks([daily], '2026-10-12', 3).length).toBe(4)
   })
 })

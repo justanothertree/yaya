@@ -16008,3 +16008,10 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
   white-space: nowrap;
 }
+
+/* a run of windows met in a row — see streakOf */
+.chron-chip.is-run {
+  border-color: #f5a623;
+  color: #f5a623;
+  font-variant-numeric: tabular-nums;
+}

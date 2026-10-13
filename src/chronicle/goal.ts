@@ -183,6 +183,32 @@ export function inScope(g: Goal, scope: Scope, on: string): boolean {
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
 
 /**
+ * Where a tally answer about one goal over one window is filed.
+ *
+ * ⚠️ THE WINDOW IS PART OF THE KEY, AND LEAVING IT OUT WAS A BUG FOR AS LONG AS REPEATING GOALS
+ * EXISTED. A repeating goal is asked about more than one window on a single load — the window
+ * strip has to count what is unfinished in Today AND in Tomorrow, which for "30 minutes drawing"
+ * are two different numbers about one row. Keyed by goal id alone they both answer to `got[id]`,
+ * `jsonb_object_agg` keeps the LAST of a duplicate key, and tomorrow's empty window — zero, every
+ * time, because tomorrow has not happened — overwrote the real reading. Every repeating derived
+ * goal on the site read 0 / 30 with the minutes sitting in the day's totals two inches above it.
+ *
+ * ⚠️ IT IS THE SAME MISTAKE THE SERVER'S OWN TALLY HAD, found the day before this one and fixed
+ * one layer down: `chronicle_tally` grew per-ask keys so a streak could ask about thirty windows.
+ * The caller that had been colliding all along was not looked at, because the room it renders in
+ * cannot be seen without a session — which is what dev/chroniclePreview.ts now exists for. The
+ * fix below is the same shape: say which window you are asking about, and read back the answer to
+ * that question rather than to the goal.
+ */
+export const windowKey = (id: string, fromISO: string): string => `${id}@${fromISO}`
+
+/** The key `tallyAsks` files this goal's answer under, looked at from this day. */
+export function tallyKey(g: Goal, on: string): string | null {
+  const w = goalWindow(g, on)
+  return w ? windowKey(g.id, dayStartISO(w.from)) : null
+}
+
+/**
  * How much has actually been done — the one place that decides WHICH number counts.
  *
  * ⚠️ IT IS ONE FUNCTION BECAUSE IT WAS NEARLY THREE. `share`, `finished` and the room's own
@@ -194,10 +220,17 @@ export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
  * never written — the server does not touch it and the room offers no way to — so falling back to
  * it would show a stale or empty number as though it were a reading. Zero while the tally loads
  * is honest; the stored value would be a lie with a plausible shape.
+ *
+ * ⚠️ AND `on` IS REQUIRED RATHER THAN DEFAULTING TO TODAY. "How far along is this" has no answer
+ * without a day: a daily goal is 35 of 30 today and 0 of 30 tomorrow, about the same row. A
+ * default would have let the Tomorrow view keep asking the question it cannot name and keep
+ * getting a number with a plausible shape — see windowKey, which is about exactly that. There
+ * are four callers and every one of them already has the day in hand.
  */
-export function reached(g: Goal, tally?: Record<string, number>): number {
-  if (derived(g)) return tally?.[g.id] ?? 0
-  return g.progress
+export function reached(g: Goal, tally: Record<string, number> | undefined, on: string): number {
+  if (!derived(g)) return g.progress
+  const k = tallyKey(g, on)
+  return (k ? tally?.[k] : undefined) ?? 0
 }
 
 /**
@@ -207,15 +240,23 @@ export function reached(g: Goal, tally?: Record<string, number>): number {
  * 0% or 100% would invite a progress bar onto something that has no middle. Null is the honest
  * answer and the caller draws a box instead of a bar.
  */
-export function share(g: Goal, tally?: Record<string, number>): number | null {
+export function share(
+  g: Goal,
+  tally: Record<string, number> | undefined,
+  on: string,
+): number | null {
   if (g.target == null || !(g.target > 0)) return null
-  return Math.max(0, Math.min(1, reached(g, tally) / g.target))
+  return Math.max(0, Math.min(1, reached(g, tally, on) / g.target))
 }
 
 /** Whether a goal counts as finished, by either of the two ways it can be. */
-export const finished = (g: Goal, tally?: Record<string, number>): boolean => {
+export const finished = (
+  g: Goal,
+  tally: Record<string, number> | undefined,
+  on: string,
+): boolean => {
   if (g.done) return true
-  const s = share(g, tally)
+  const s = share(g, tally, on)
   return s != null && s >= 1
 }
 
@@ -230,15 +271,17 @@ export const finished = (g: Goal, tally?: Record<string, number>): boolean => {
 export function tallyAsks(
   goals: Goal[],
   on: string,
-): Array<{ id: string; from: string; to: string }> {
-  const out: Array<{ id: string; from: string; to: string }> = []
+): Array<{ key: string; id: string; from: string; to: string }> {
+  const out: Array<{ key: string; id: string; from: string; to: string }> = []
   for (const g of goals) {
     if (!derived(g)) continue
     const w = goalWindow(g, on)
     /* ⚠️ a lifetime goal has no window, so a source on one has nothing to add up over. It is
        allowed to exist — it just counts by hand, like it did before. */
     if (!w) continue
-    out.push({ id: g.id, from: dayStartISO(w.from), to: dayStartISO(w.to) })
+    const from = dayStartISO(w.from)
+    /* ⚠️ a key per WINDOW, not per goal — see windowKey, and the bug it is named after */
+    out.push({ key: windowKey(g.id, from), id: g.id, from, to: dayStartISO(w.to) })
   }
   return out
 }
@@ -263,3 +306,83 @@ export const lastDay = (w: Window): string => plusDays(w.to, -1)
 /** Today, and the day after, as local ISO dates — the two views that name a day. */
 export const today = (): string => localISO(new Date())
 export const tomorrow = (): string => plusDays(today(), 1)
+
+/**
+ * How many windows back a streak looks.
+ *
+ * ⚠️ THIRTY, WHICH IS A MONTH OF DAYS AND HALF A YEAR OF WEEKS. A streak needs a run of windows
+ * asked for at once, and the server caps the batch — so this is the number that decides both how
+ * long a run can be reported and how much work a page load does. Thirty days is long enough that
+ * nobody's daily streak is silently truncated in the first month, and if one is, the number stops
+ * being a motivator and becomes a lie.
+ */
+export const STREAK_BACK = 30
+
+/** the same window, n of its own size earlier */
+function windowBack(scope: Scope, on: string, n: number): Window | null {
+  if (scope === 'life') return null
+  const w = windowOf(scope, on)
+  if (!w || n <= 0) return w
+  const d = dayOf(w.from)
+  /* ⚠️ calendar steps, not multiples of days: a month back from 31 March is not 31 days, and a
+     year back across a leap day is not 365. setMonth and setDate are the only arithmetic that
+     knows that. */
+  if (scope === 'day') d.setDate(d.getDate() - n)
+  else if (scope === 'week') d.setDate(d.getDate() - 7 * n)
+  else if (scope === 'month') d.setMonth(d.getMonth() - n)
+  else if (scope === 'quarter') d.setMonth(d.getMonth() - 3 * n)
+  else d.setFullYear(d.getFullYear() - n)
+  return windowOf(scope, localISO(d))
+}
+
+/** the key a streak ask uses, so one goal can be asked about many windows */
+export const streakKey = (id: string, back: number): string => `${id}|${back}`
+
+/**
+ * What to ask for, to work out the streaks of every repeating goal on the books.
+ *
+ * ⚠️ ONLY REPEATING GOALS WITH A SOURCE. A one-off has no run of windows to have a streak over,
+ * and a hand-moved goal keeps its progress in a single column — there is no per-window history to
+ * count, so a streak would be invented rather than measured.
+ */
+export function streakAsks(
+  goals: Goal[],
+  on: string,
+  back = STREAK_BACK,
+): Array<{ key: string; id: string; from: string; to: string }> {
+  const out: Array<{ key: string; id: string; from: string; to: string }> = []
+  for (const g of goals) {
+    if (!repeats(g) || !derived(g) || g.target == null) continue
+    for (let i = 0; i <= back; i++) {
+      const w = windowBack(g.scope, on, i)
+      if (!w) break
+      out.push({
+        key: streakKey(g.id, i),
+        id: g.id,
+        from: dayStartISO(w.from),
+        to: dayStartISO(w.to),
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * How many windows in a row this goal has been met.
+ *
+ * ⚠️ THE WINDOW YOU ARE IN DOES NOT BREAK IT. A five day streak at nine in the morning on the
+ * sixth day is still five — today is not a failure, it is unfinished. So the run is counted from
+ * the last COMPLETED window, and today adds one if it has already been met. Counting today as a
+ * miss would mean every streak read zero every morning, which is the opposite of the thing a
+ * streak is for.
+ */
+export function streakOf(g: Goal, got: Record<string, number>, back = STREAK_BACK): number {
+  if (!repeats(g) || !derived(g) || g.target == null || !(g.target > 0)) return 0
+  const met = (i: number) => (got[streakKey(g.id, i)] ?? 0) >= g.target!
+  let run = met(0) ? 1 : 0
+  for (let i = 1; i <= back; i++) {
+    if (!met(i)) break
+    run++
+  }
+  return run
+}
