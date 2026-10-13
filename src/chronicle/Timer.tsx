@@ -120,6 +120,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [entMood, setEntMood] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
   const [entAct, setEntAct] = useState('')
+  const [entNote, setEntNote] = useState('')
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -293,7 +294,12 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
       fixEnt,
       new Date(entFrom).toISOString(),
       new Date(entTo).toISOString(),
-      null,
+      /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
+         read null as "clear it" — so opening a session's editor and pressing Save, changing
+         nothing, destroyed whatever you had written about it. The server now reads null as "leave
+         it alone" so no caller can lose one by forgetting; this sends the box, so you can change
+         one or empty it on purpose. */
+      entNote.trim(),
       /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
          mistake this room allows and the only remedy used to be deleting the session and typing
          it in again — losing the amount, the rating and the day it was recorded. */
@@ -713,6 +719,11 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                     {moodWord(e.quality)}
                   </span>
                 ) : null}
+                {/* ⚠️ last of the facts, because it is the only one that can be a sentence — the
+                    others are a word or a number and keep their place in the row. A plan's note
+                    has been shown beside its plan all along; this is the same thing for a
+                    session, which had been written and never read. */}
+                {e.note ? <span className="muted chron-ent-note">{e.note}</span> : null}
                 <span className="muted chron-ent-when">
                   {new Date(e.start).toLocaleTimeString(undefined, {
                     hour: 'numeric',
@@ -791,6 +802,21 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                         ))}
                       </select>
                     </label>
+                    {/**
+                     * ⚠️ THE NOTE WAS WRITE-ONLY UNTIL NOW. There has been a box for one at Stop
+                     * since the room was built, and nothing on the page ever showed it back — a
+                     * plan's note is rendered beside the plan, a session's was not. So it could be
+                     * written, never read, and then quietly destroyed by the first edit. It is
+                     * shown in the row above, and editable here.
+                     */}
+                    <label className="chron-note-fix">
+                      <span className="sr-only">A note about this session</span>
+                      <input
+                        value={entNote}
+                        placeholder="a note, if you like"
+                        onChange={(ev) => setEntNote(ev.target.value)}
+                      />
+                    </label>
                     <button
                       className="btn"
                       disabled={busy}
@@ -816,6 +842,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       onClick={() => {
                         setFixEnt(fixEnt === e.id ? null : e.id)
                         setEntAct(e.activity)
+                        setEntNote(e.note ?? '')
                         setEntFrom(forInput(e.start))
                         setEntTo(forInput(e.end!))
                         setEntAmount(e.amount == null ? '' : String(e.amount))

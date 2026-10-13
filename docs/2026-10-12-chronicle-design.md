@@ -2743,6 +2743,46 @@ Left alone deliberately: it is two rooms that are not chronicle's, the actions c
 you can watch happen, and whether those rooms want a toast host at all is a decision about them.
 Named here rather than fixed.
 
+## 6ac · ✅ The note you could write, never read, and then lost
+
+Looking for other facts fixed at creation after §6ab turned up none — a goal's source and a plan's
+activity are both already editable. What it turned up instead, in the handler that had just been
+changed, was this:
+
+```
+editEntry(fixEnt, from, to, null)   ← the note, hard-coded, on every edit
+```
+
+and on the server, `note = nullif(btrim(coalesce(p_note, '')), '')`. Each half is unremarkable.
+Together they are a delete: **opening a session's editor and pressing Save, changing nothing,
+destroyed whatever you had written about it.** Measured in the harness before touching anything —
+`"drafted chapter three"` → `null`, with no other field altered.
+
+**It lasted because it was invisible.** Nothing on the page ever showed a session's note. There has
+been a box for one beside Stop since the room was built — _"a note, if you like"_ — and the day list
+rendered the activity, the length, the amount, the rating and whether it fell short, but never the
+note. A **plan's** note has been rendered beside its plan all along, which is what makes the gap
+plain once you look for it. So the field could be written, never read, and then quietly thrown
+away: there was no screen on which the loss could show.
+
+**The contract changed, not just the caller.** Fixing only the caller leaves the trap set — four
+positional arguments where the fourth silently means "throw away what is there". Null now means
+what it already means for `p_activity` one field up: leave it as it is. A caller that forgets the
+argument can no longer lose somebody's writing, and clearing one has to be asked for with an empty
+string. It also repairs the bundle people already have open, which passes null on every edit: that
+stopped destroying notes the moment the migration landed, rather than whenever its owner next
+reloads.
+
+So the note is now three things it was not: **kept** through an edit, **shown** in the day list in
+italics on its own line, and **editable** in the editor rather than only at Stop.
+
+Verified by doing it: the editor opens holding the note, Save keeps it, rewriting trims
+`"  rewrote the ending  "`, emptying the box clears it and the row stops showing one. At 375 the
+editor wraps to five rows with no overflow at the row, the list, the card or the document, and
+nothing under 24px. Four tests pin the rule; perturbed with the original bug, four go red.
+
+Reasoning and the standing check are in `docs/2026-10-13-chronicle-entry-note.sql`.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

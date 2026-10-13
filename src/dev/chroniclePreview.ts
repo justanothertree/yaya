@@ -637,7 +637,14 @@ export const pvEditEntry = (
    */
   if (activity != null && !db().acts.some((a) => a.id === activity))
     return { why: 'that is not one of your activities' }
-  Object.assign(e, { start: fromISO, end: toISO, note, activity: activity ?? e.activity })
+  /* ⚠️ null leaves the note alone, '' clears it — chronicle_entry_edit's rule, and the reason a
+     caller that forgets this argument can no longer destroy what somebody wrote */
+  Object.assign(e, {
+    start: fromISO,
+    end: toISO,
+    note: note === null ? e.note : note.trim() || null,
+    activity: activity ?? e.activity,
+  })
   return null
 }
 

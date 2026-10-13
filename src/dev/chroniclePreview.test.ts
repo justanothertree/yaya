@@ -747,3 +747,52 @@ describe('moving a session to another activity', () => {
     expect(now.find((t) => t.activity === draw)?.mins).toBe(60)
   })
 })
+
+describe('the note on a session', () => {
+  const added = (activity: string, from: string, to: string, note: string | null): string => {
+    pvAddEntry(activity, from, to, note)
+    const mine = pvEntries(dayStart(), dayEnd()).filter(
+      (e) => e.activity === activity && e.start === from,
+    )
+    return mine[mine.length - 1].id
+  }
+  const noteOf = (id: string) => pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.note
+
+  /**
+   * ⚠️ THE BUG THIS IS FOR WAS REAL AND SHIPPED. The room passed `null` as the note on every edit
+   * and the server read null as "clear it", so opening a session's editor and pressing Save —
+   * changing nothing — destroyed whatever you had written. Measured in the harness before the fix:
+   * "drafted chapter three" became null with no other field touched. Null means LEAVE IT ALONE
+   * now, which is also what makes the bundle somebody already has open stop losing notes.
+   */
+  it('survives an edit that does not mention it', () => {
+    const id = added(draw, h(9), h(10), 'drafted chapter three')
+    expect(pvEditEntry(id, h(11), h(12), null)).toBe(null)
+    expect(noteOf(id)).toBe('drafted chapter three')
+    /* and the edit still did what it was for */
+    expect(pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.start).toBe(h(11))
+  })
+
+  it('survives being moved to another activity', () => {
+    const id = added(draw, h(9), h(10), 'drafted chapter three')
+    pvEditEntry(id, h(9), h(10), null, gym)
+    expect(noteOf(id)).toBe('drafted chapter three')
+  })
+
+  it('can be rewritten, and is trimmed', () => {
+    const id = added(draw, h(9), h(10), 'first go')
+    pvEditEntry(id, h(9), h(10), '  second go  ')
+    expect(noteOf(id)).toBe('second go')
+  })
+
+  /** clearing one is still possible and now has to be asked for */
+  it('is cleared by an empty box, and by one holding only spaces', () => {
+    const id = added(draw, h(9), h(10), 'first go')
+    pvEditEntry(id, h(9), h(10), '')
+    expect(noteOf(id)).toBe(null)
+
+    const other = added(gym, h(13), h(14), 'something')
+    pvEditEntry(other, h(13), h(14), '    ')
+    expect(noteOf(other)).toBe(null)
+  })
+})

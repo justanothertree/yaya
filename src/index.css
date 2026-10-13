@@ -15675,6 +15675,24 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, a session's own note — see src/chronicle/Timer.tsx ──────────── */
+.chron-ent-note {
+  /* ⚠️ it can be a sentence where everything else on the row is a word or a number, so it gets
+     the whole remaining width and wraps rather than pushing the facts off the end */
+  flex: 1 1 100%;
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+.chron-note-fix {
+  flex: 1 1 160px;
+  min-width: 160px;
+}
+
+.chron-note-fix input {
+  width: 100%;
+}
+
 /* ── chronicle, taking it with you — see src/chronicle/SaveCopy.tsx ─────────── */
 .chron-keep {
   display: flex;
