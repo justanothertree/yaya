@@ -1,0 +1,62 @@
+-- ⚠️ MEASURED, NOT FIXED — 13 Oct 2026. No migration. Read this before touching chronicle_tally.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE FINDING
+-- ─────────────────────────────────────────────────────────────────────────────
+-- A streak asks about THIRTY-ONE windows per repeating goal (STREAK_BACK = 30, plus today), so a
+-- member with ten repeating goals sends 310 questions in one chronicle_tally call. The function
+-- answers each one with its own chronicle_sum, which is its own scan of the record.
+--
+-- Timed against a year of a heavy user — 2,196 sessions over 19 activities, seeded inside
+-- begin/rollback:
+--
+--   twenty asks      186 ms
+--   310 asks       2,750 ms        <— and this fires on every load of the room
+--
+-- It is the same shape as the chronicle_totals problem fixed the same day (180ms -> 2.8ms by
+-- replacing N scalar calls with one grouped pass), and it is roughly fifteen times worse.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHAT WAS DONE ABOUT IT, AND WHAT WAS NOT
+-- ─────────────────────────────────────────────────────────────────────────────
+-- DONE (client, src/sections/Chronicle.tsx): `load()` no longer AWAITS the streak call. load() is
+-- what every write waits on — ticking a goal, stopping a timer, editing a span all call it — so
+-- awaiting 2.75s of streak arithmetic froze the room after every tap, for a number that decorates
+-- a chip. The fetch now lands on its own, guarded by a generation counter so a slow answer cannot
+-- paint runs over goals that have since been replaced.
+--
+-- ⚠️ THAT HIDES THE LATENCY, IT DOES NOT FIX IT. The database still does the same work.
+--
+-- NOT DONE: the one-pass rewrite. A set-based replacement was written and compared against the
+-- live function rather than deployed, and it is NOT trustworthy yet:
+--
+--   one activity goal, session crossing midnight     old 150      new 150      ✅
+--   one category goal over three activities          old 133.85   new 133.85   ✅
+--   310 asks over a year, ten mixed goals            94 of 310 disagree, biggest gap 1440 ✗
+--
+-- 1440 is a whole day in minutes, and 94 is almost exactly the 93 asks belonging to the three
+-- CATEGORY goals in that fixture — so the category path is the suspect, even though the targeted
+-- category test passes. An earlier attempt was worse (248 of 310, totals 80x too large) because an
+-- unguarded join to chronicle_activities multiplied every ask by every activity; that one was
+-- caught the same way.
+--
+-- ⚠️ IT IS NOT SHIPPED BECAUSE IT IS NOT UNDERSTOOD. chronicle_tally is what tells somebody their
+-- streak; a replacement that is right twice and wrong ninety-four times is not worth 2.5 seconds.
+-- Whoever finishes it should start from the two passing cases above, then build a THREE-activity
+-- category fixture at volume and bisect from there.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE OTHER DIRECTION, IF THE REWRITE STAYS HARD
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The client could ask for fewer windows. STREAK_BACK = 30 is a product decision — "long enough
+-- that nobody's daily streak is silently truncated in the first month" — but a streak could be
+-- asked for lazily (only for goals on screen) or shortened, and both are client-only changes with
+-- no correctness risk. The reason neither was done here is that they trade a real feature for a
+-- problem that belongs in one SQL function.
+
+-- Reproduce the measurement (adjust the member id):
+--   begin;
+--   select set_config('request.jwt.claims','{"sub":"<a member>","role":"authenticated"}',true);
+--   -- seed a year of entries + ten repeating derived goals, build 31 windows each,
+--   -- then time:  perform public.chronicle_tally(<the asks>);
+--   rollback;

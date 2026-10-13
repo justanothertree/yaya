@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   finished,
   derived,
@@ -138,6 +138,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   /** 0 normal, 1 important, 2 urgent — see Goal.priority, which is the list's order */
   const [pri, setPri] = useState<0 | 1 | 2>(0)
 
+  /** which streak fetch is the current one — see the note in `load` about late answers */
+  const runSeq = useRef(0)
+
   const load = useCallback(async () => {
     if (!authed) {
       setGoals([])
@@ -160,10 +163,39 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       ).values(),
     ]
     setGot(asks.length ? await tally(asks) : {})
-    /* ⚠️ the streak windows are asked for from TODAY, not from the view: a streak is a fact about
-       the goal rather than about which horizon you happen to be looking at */
+    /**
+     * ⚠️ THE STREAKS ARE NOT AWAITED, and that is a measured decision rather than a style one.
+     * A streak asks about THIRTY-ONE windows per repeating goal, so ten of them is 310 questions
+     * in one call — and `chronicle_tally` answers each by scanning the record separately. Timed
+     * against a year of a heavy user (2,196 sessions, 19 activities) that call takes **2.75
+     * seconds**; twenty asks take 186ms. See docs/2026-10-13-chronicle-tally-cost.sql.
+     *
+     * `load()` is what every write waits on — `after()` calls it when you tick a goal, stop a
+     * timer, edit a span. Awaiting the streaks inside it meant each of those sat for the whole
+     * 2.75s before the room settled, for a number that only decorates a chip. Letting it land on
+     * its own turns the cost into "the flames appear a moment later" instead of "the room is
+     * frozen after every tap".
+     *
+     * ⚠️ IT STILL COSTS THE DATABASE THE SAME. This hides the latency from the person; it does not
+     * fix it. The fix is one pass in `chronicle_tally` rather than one scan per ask, the way
+     * `chronicle_spread` fixed `chronicle_totals` — not done here because a replacement that
+     * agreed with the old function on two targeted cases still disagreed on 94 of 310 at volume,
+     * and a half-verified rewrite of the function that computes somebody's streaks is not worth
+     * the speed. The evidence is in that file for whoever finishes it.
+     *
+     * ⚠️ AND THE ANSWER IS DROPPED IF THE GOALS HAVE MOVED ON. Without that, a slow streak reply
+     * can land after a later load has already replaced the goals, painting runs for rows that are
+     * no longer there — the same guard `Looking` uses for its own late answers.
+     */
     const back = streakAsks(mine, todayISO())
-    setRuns(back.length ? await tally(back) : {})
+    if (!back.length) {
+      setRuns({})
+      return
+    }
+    const mark = ++runSeq.current
+    void tally(back).then((r) => {
+      if (mark === runSeq.current) setRuns(r)
+    })
   }, [authed])
 
   useEffect(() => {

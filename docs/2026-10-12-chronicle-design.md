@@ -2039,6 +2039,63 @@ The room's rendering of these numbers. The preview harness answers from its own 
 `pvMoods`, so the real functions are reachable only with a session — this step's evidence is the
 SQL above and nothing on screen. No client code changed.
 
+## 6p · ⚠️ The streak batch costs 2.75 seconds — measured, mitigated, not yet fixed
+
+Same volume as §6o — 2,196 sessions over 19 activities — pointed at the other half of what the room
+calls.
+
+A streak asks about **thirty-one windows per repeating goal**, so ten repeating goals is **310
+questions in one `chronicle_tally` call**, and the function answers each with its own
+`chronicle_sum`, which is its own scan.
+
+| asks    | time         |
+| ------- | ------------ |
+| 20      | 186 ms       |
+| **310** | **2,750 ms** |
+
+The same shape as §6o's `chronicle_totals` problem, and roughly fifteen times worse.
+
+### What was done
+
+`load()` no longer **awaits** the streak call. That matters more than it sounds: `load()` is what
+every write waits on — ticking a goal, stopping a timer, editing a span all call `after()` which
+calls it — so awaiting 2.75s of streak arithmetic froze the room after every tap, for a number that
+decorates a chip. The fetch lands on its own now, guarded by a generation counter so a slow answer
+cannot paint runs over goals a later load has already replaced.
+
+**That hides the latency from the person. It does not fix it** — the database does the same work.
+
+### ⚠️ What was NOT done, and why
+
+The one-pass rewrite. It was written and **compared against the live function rather than
+deployed**:
+
+| case                                         | result                                     |
+| -------------------------------------------- | ------------------------------------------ |
+| one activity goal, session crossing midnight | old 150, new 150 ✅                        |
+| one category goal over three activities      | old 133.85, new 133.85 ✅                  |
+| 310 asks over a year, ten mixed goals        | **94 of 310 disagree**, biggest gap 1440 ✗ |
+
+1440 is a whole day in minutes, and 94 is almost exactly the 93 asks belonging to that fixture's
+three **category** goals — so the category path is the suspect, even though the targeted category
+test passes. An earlier attempt was worse still (248 of 310, totals 80× too large) because an
+unguarded join multiplied every ask by every activity.
+
+**It is not shipped because it is not understood.** `chronicle_tally` is what tells somebody their
+streak; a replacement that is right twice and wrong ninety-four times is not worth 2.5 seconds. The
+evidence and a suggested starting point are in `docs/2026-10-13-chronicle-tally-cost.sql`.
+
+This is the second time in two steps that comparing against the live function before deploying
+caught something — §6o's 1e-16 drift, and now an 80× join blowup followed by a subtler one. The
+baseline is not ceremony.
+
+### The other direction, if the rewrite stays hard
+
+`STREAK_BACK = 30` is a product decision — "long enough that nobody's daily streak is silently
+truncated in the first month". Asking lazily (only for goals on screen) or shortening it are
+client-only changes with no correctness risk. Neither was done because both trade a real feature
+for a problem that belongs in one SQL function.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
