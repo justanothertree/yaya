@@ -1,62 +1,80 @@
--- ⚠️ MEASURED, NOT FIXED — 13 Oct 2026. No migration. Read this before touching chronicle_tally.
+-- ✅ APPLIED 13 Oct 2026 — migration `chronicle_tally_one_pass`
+--
+-- (This file was written the day before as a MEASURED-NOT-FIXED record, because the first two
+--  rewrites were wrong and shipping a half-verified replacement for the function that computes
+--  somebody's streak was not worth the speed. It is now the record of how it was finished.)
 --
 -- ─────────────────────────────────────────────────────────────────────────────
 -- THE FINDING
 -- ─────────────────────────────────────────────────────────────────────────────
 -- A streak asks about THIRTY-ONE windows per repeating goal (STREAK_BACK = 30, plus today), so a
 -- member with ten repeating goals sends 310 questions in one chronicle_tally call. The function
--- answers each one with its own chronicle_sum, which is its own scan of the record.
+-- answered each with its own chronicle_sum, which is its own scan of the record.
 --
--- Timed against a year of a heavy user — 2,196 sessions over 19 activities, seeded inside
--- begin/rollback:
+-- Timed against a year of a heavy user — 2,196 sessions over 19 activities, inside begin/rollback:
 --
---   twenty asks      186 ms
---   310 asks       2,750 ms        <— and this fires on every load of the room
+--                        before     after
+--   twenty asks           186 ms     42 ms
+--   310 asks            2,750 ms    617 ms     (4.5x)
 --
--- It is the same shape as the chronicle_totals problem fixed the same day (180ms -> 2.8ms by
--- replacing N scalar calls with one grouped pass), and it is roughly fifteen times worse.
---
--- ─────────────────────────────────────────────────────────────────────────────
--- WHAT WAS DONE ABOUT IT, AND WHAT WAS NOT
--- ─────────────────────────────────────────────────────────────────────────────
--- DONE (client, src/sections/Chronicle.tsx): `load()` no longer AWAITS the streak call. load() is
--- what every write waits on — ticking a goal, stopping a timer, editing a span all call it — so
--- awaiting 2.75s of streak arithmetic froze the room after every tap, for a number that decorates
--- a chip. The fetch now lands on its own, guarded by a generation counter so a slow answer cannot
--- paint runs over goals that have since been replaced.
---
--- ⚠️ THAT HIDES THE LATENCY, IT DOES NOT FIX IT. The database still does the same work.
---
--- NOT DONE: the one-pass rewrite. A set-based replacement was written and compared against the
--- live function rather than deployed, and it is NOT trustworthy yet:
---
---   one activity goal, session crossing midnight     old 150      new 150      ✅
---   one category goal over three activities          old 133.85   new 133.85   ✅
---   310 asks over a year, ten mixed goals            94 of 310 disagree, biggest gap 1440 ✗
---
--- 1440 is a whole day in minutes, and 94 is almost exactly the 93 asks belonging to the three
--- CATEGORY goals in that fixture — so the category path is the suspect, even though the targeted
--- category test passes. An earlier attempt was worse (248 of 310, totals 80x too large) because an
--- unguarded join to chronicle_activities multiplied every ask by every activity; that one was
--- caught the same way.
---
--- ⚠️ IT IS NOT SHIPPED BECAUSE IT IS NOT UNDERSTOOD. chronicle_tally is what tells somebody their
--- streak; a replacement that is right twice and wrong ninety-four times is not worth 2.5 seconds.
--- Whoever finishes it should start from the two passing cases above, then build a THREE-activity
--- category fixture at volume and bisect from there.
+-- Same shape as the chronicle_totals problem (§6o), which went 180ms -> 2.8ms the same day.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
--- THE OTHER DIRECTION, IF THE REWRITE STAYS HARD
+-- ⚠️ THE BUG THAT TOOK THREE GOES: greatest() AND least() IGNORE NULLS
 -- ─────────────────────────────────────────────────────────────────────────────
--- The client could ask for fewer windows. STREAK_BACK = 30 is a product decision — "long enough
--- that nobody's daily streak is silently truncated in the first month" — but a streak could be
--- asked for lazily (only for goals on screen) or shortened, and both are client-only changes with
--- no correctness risk. The reason neither was done here is that they trade a real feature for a
--- problem that belongs in one SQL function.
+-- On a LEFT JOIN the no-match row has e.* null — and `greatest(null, a.f)` is NOT null in
+-- postgres, it is a.f. So the overlap expression quietly computed `a.t - a.f` for a row that
+-- matched nothing, and every ask whose source had no sessions in that window came back with the
+-- WHOLE WINDOW: 1440 minutes for a day, where the old function correctly said 0.
+--
+-- That is why `case when e.id is null then 0` is the FIRST branch and not a tidy-up.
+--
+-- Diagnosis worth copying: rather than reason about it a third time, the comparison was reduced
+-- to two goals over five days and the rows PRINTED side by side. The pattern was immediate —
+-- every category ask agreed, every activity ask disagreed EXCEPT the one day that activity had a
+-- session. The guess carried in from the previous day ("the category path is the suspect") was
+-- exactly backwards, and five minutes of printing beat an hour of thinking.
+--
+-- The first attempt was differently wrong — an unguarded join to chronicle_activities multiplied
+-- every ask by every activity, 80x too large. Hence `exists` rather than a join for the category
+-- test: a category covering five activities must not multiply the entries it matches.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- VERIFIED BEFORE AND AFTER DEPLOYING
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Against the live function, 310 asks over a year with ten mixed goals (activity goals, category
+-- goals, and goals counting an amount):
+--
+--   keys 310 / 310 · disagreements 0 · biggest difference 0 · totals equal to six decimals
+--
+-- And on the deployed function, three hand-checkable cases:
+--
+--   one activity, 3 sessions incl. one crossing midnight   150   (60 + 30 + 60)
+--   an activity with NO sessions at all                      0   (was 1440)
+--   a day on which that activity did nothing                 0   (was 1440)
+--
+-- Security re-checked, because the rewrite touched the auth path:
+--
+--   A asking about A's own goal      {"x": 60}
+--   B asking about A's goal          {}            ← isolation holds
+--   anon                             refused: not authenticated
+--   1,300 asks                       refused: too many at once
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHAT IS STILL TRUE
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 617ms is better, not cheap. The remaining cost is one index probe per ask: the predicate is
+-- `started_at < to AND coalesce(ended_at, now) > from`, and the index on (owner, started_at) can
+-- prune the top of the range but not the bottom, so each ask still walks backwards. Bounding the
+-- lower end would need a ceiling on how long a session may be, and chronicle_start/stop imposes
+-- none — only chronicle_entry_add does. Not worth inventing one for this.
+--
+-- The client no longer waits on it either way: load() does not await the streak call, so a write
+-- settles without it. See §6p and src/sections/Chronicle.tsx.
 
--- Reproduce the measurement (adjust the member id):
---   begin;
---   select set_config('request.jwt.claims','{"sub":"<a member>","role":"authenticated"}',true);
---   -- seed a year of entries + ten repeating derived goals, build 31 windows each,
---   -- then time:  perform public.chronicle_tally(<the asks>);
---   rollback;
+-- The standing checks:
+select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f'
+   and has_function_privilege('anon', p.oid, 'execute');
+-- expected: zero rows for anything chronicle_%

@@ -2096,6 +2096,71 @@ truncated in the first month". Asking lazily (only for goals on screen) or short
 client-only changes with no correctness risk. Neither was done because both trade a real feature
 for a problem that belongs in one SQL function.
 
+## 6q · ✅ The tally, finished — and `greatest()` ignores NULLs
+
+§6p left this measured and unfixed: 310 streak asks took **2,750 ms**, and two attempts at a
+one-pass rewrite were wrong in ways I had not isolated. This finishes it.
+
+|              | before       | after      |
+| ------------ | ------------ | ---------- |
+| twenty asks  | 186 ms       | 42 ms      |
+| **310 asks** | **2,750 ms** | **617 ms** |
+
+### ⚠️ The bug, and it is a Postgres fact worth carrying
+
+**`greatest()` and `least()` ignore NULLs.** On a `LEFT JOIN` the no-match row has `e.*` null — and
+`greatest(null, a.f)` is _not_ null, it is `a.f`. So the overlap expression quietly computed
+`a.t - a.f` for a row that matched **nothing**, and every ask whose source had no sessions in that
+window came back with the whole window: **1440 minutes for a day**, where the old function
+correctly said 0.
+
+That is why `case when e.id is null then 0` is the first branch and not a tidy-up.
+
+### How it was actually found, after a day of guessing
+
+§6p ended with a confident guess: _"94 is almost exactly the 93 category-goal asks, so the category
+path is the suspect."_ **That was exactly backwards.** Every category ask agreed; every _activity_
+ask disagreed, except on the one day that activity had a session.
+
+The thing that found it was not more reasoning. It was shrinking the comparison to two goals over
+five days and **printing the rows side by side**:
+
+```
+g-act|0   old 0.00     new 791.74    gap 791.74
+g-act|1   old 0.00     new 1440.00   gap 1440.00
+g-act|2   old 97.00    new 97.00     gap 0.00      ← the only day it had a session
+g-cat|0   old 177.85   new 177.85    gap 0.00
+```
+
+Five minutes of printing beat an hour of thinking, and the hour of thinking had produced a
+confident wrong answer that went into a commit message. **A plausible explanation for a failure
+is not a diagnosis.**
+
+The first attempt was differently wrong — an unguarded join to `chronicle_activities` multiplied
+every ask by every activity, 80× too large. Hence `exists` rather than a join for the category
+test: a category covering five activities must not multiply the entries it matches.
+
+### Verified before and after deploying
+
+Against the live function, 310 asks over a year with ten mixed goals — activity goals, category
+goals, and goals counting an amount: **310 of 310 keys, 0 disagreements, biggest difference 0,
+totals equal to six decimals.** Then on the deployed function, three hand-checkable cases: 150 for
+three sessions including one crossing midnight, **0** for an activity with no sessions at all, and
+**0** for a day that activity did nothing — the last two being precisely the case that returned 1440.
+
+Security re-checked because the rewrite touched the auth path: A sees their own goal's 60, **B
+asking about A's goal gets `{}`**, anon is refused, and 1,300 asks still hit the cap.
+
+### What is still true
+
+617ms is better, not cheap. The remaining cost is one index probe per ask: the predicate is
+`started_at < to AND coalesce(ended_at, now) > from`, and the index on `(owner, started_at)` prunes
+the top of the range but not the bottom, so each ask still walks backwards. Bounding the lower end
+would need a ceiling on how long a session may be, and `chronicle_start`/`stop` imposes none — only
+`chronicle_entry_add` does. Not worth inventing one for this.
+
+The client does not wait on it either way (§6p).
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
