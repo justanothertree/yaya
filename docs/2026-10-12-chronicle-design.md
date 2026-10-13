@@ -1591,6 +1591,90 @@ and is correct in a 24-hour locale, where there is simply nothing to strip.
 `quality` on an entry, `sessionGoal` (a per-session rather than per-window target), and the `dash`
 panel of stat tiles. Money, alarms, presence and `lib` stay out — §7.
 
+## 6j · ✅ An estimate and a priority — the to-do half of the ask
+
+**Migrations `chronicle_goal_est_and_priority` and `chronicle_goal_save_takes_est_and_priority`,
+both applied 13 Oct 2026 — reasoning in `docs/2026-10-13-chronicle-est-and-priority.sql`.**
+
+The two things the HTML app's `TD` store had that a chronicle goal did not: how long you think a
+thing will take, and how much it matters. The ask was "a goal tracker/to do list", and a to-do list
+that can say neither is thinner than the thing being replaced.
+
+### Priority is the order, and that is free rather than a compromise
+
+`sort` has been the server's order key since the table existed **and the room has never set it** —
+every row is 0, so the list has really been ordered by creation all along. That left priority free
+to become the first key of _one_ ordering, with `sort` and `created_at` behind it, instead of a
+rival ordering that can disagree with a manual one. `sort` is kept rather than dropped: it is the
+hook a hand-reordering would use, and dropping a column is not recoverable the way a
+`create or replace` is.
+
+Observed: `urgent/2 > silly/2 > important/1 > (old goal)/0 > (new goal)/0` — priority descending,
+creation order within a band.
+
+### ⚠️ The sum is a floor, and it has to say so
+
+`weight(goals, tally, scope, on)` returns `{ left, mins, vague }` and **deliberately has no single
+figure in it**. An estimate is optional, so summing the ones that exist and showing the total as
+"the day's work" understates it by however many were never guessed — _silently_, which is the bad
+part, because the number looks complete. Five things of which two are guessed at twenty minutes
+each is not a forty-minute day.
+
+So the line reads three ways, all three seen on screen:
+
+| window   | line                               |
+| -------- | ---------------------------------- |
+| Today    | `1 left · about 10m`               |
+| Tomorrow | `3 left · about 40m · 2 unguessed` |
+| Years    | `1 left · none of them guessed at` |
+
+And it counts through `finished` rather than `done`, so a derived goal the record has already
+satisfied drops out too — otherwise the weight of a day would go **up** as the day went well.
+Perturbed: dropping `vague` reddens three tests, counting by the tick-box alone reddens exactly the
+derived one.
+
+### ⚠️ The numbers said fixed and the screen said broken
+
+This is the one worth keeping. Adding two chips to the goal row pushed its content past the list,
+so the row got `flex-wrap` and the title got `min-width: 0`. Every measurement then read clean —
+`listOver: 0`, `cardOver: 0`, `mainOver: 0`, `sideways: 0`, the audit reporting nothing undersized,
+off-edge or clipped. **A screenshot showed every title in the room crushed to a single character
+wide**: `30 minutes drawing` was rendering as a 3px column reading ":". The overflow numbers were
+zero _because_ the titles had been destroyed.
+
+Three things came out of it, all general:
+
+- **`min-width: 0` without a floor is not "let it shrink", it is "let it vanish."** The chips were
+  rigid and the title was not, so the title paid the whole bill. Both title paths now carry
+  `flex: 1 1 150px; min-width: 150px`, in **pixels** — `rem` is unreliable here because the root
+  size is fluid (§6).
+- **There were TWO title paths and it is easy to fix one.** A goal you tick renders its title inside
+  the `<label>`; a goal the record answers for has no tick-box, so its title is a bare span one
+  level up. Fixing only the label left every _derived_ goal crushed while the tick-box ones read
+  fine — which looks like a bug in the chips rather than in the title.
+- **A to-do wraps, it does not ellipse.** `Ring the dentist about the thi…` is worse than two lines,
+  and an ellipsis needs `nowrap` to do anything at all, which is what crushed them in the first
+  place.
+
+### ⚠️ And `mobileAudit` called the original overflow clean
+
+Measured with a null control: hiding the two **newest** chips changed nothing, hiding **all** chips
+fixed it. So the goal row had been 32px wider than its list since the chips existed, and the audit
+never said so — the overflow is swallowed by an ancestor that manages its own scrolling, so the
+document-level check reads `sideways: 0` and nothing is technically past the viewport edge. **Ask
+the container, not the page.** Every viewport check in this section reports
+`list / card / main` separately for that reason.
+
+Two more things only the screenshot could have found: `~10m` rendered as `~10M` (the chip style
+uppercases, and this is the first chip whose text carries a unit — megabytes? ten months?), and the
+Planned fold's summary read `Planned2h 30m planned` because the name and the figures are separate
+elements in a flex with no gap.
+
+### What this leaves on the parity list
+
+`quality` on an entry, `sessionGoal` (a per-session rather than per-window target), and the `dash`
+panel of stat tiles. Money, alarms, presence and `lib` stay out — §7.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

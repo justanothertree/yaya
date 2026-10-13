@@ -59,6 +59,27 @@ export type Goal = {
    * gives a number with no unit — which the table refuses and the save function corrects.
    */
   counts: 'minutes' | 'amount'
+  /**
+   * How long you think it will take, in minutes — or null for "no idea".
+   *
+   * ⚠️ MINUTES, LIKE EVERYTHING ELSE HERE: the tallies, the targets, a routine's steps and a
+   * plan's span are all minutes, and an estimate in its own unit would be the one number on
+   * screen that had to be converted before it could be compared with any of them.
+   *
+   * ⚠️ AND NULL IS A REAL ANSWER, not a missing one. Most things worth writing down are written
+   * down before anybody knows how long they take, so a guess is optional — which is exactly why
+   * `weight` below has to report how many it could not count.
+   */
+  est: number | null
+  /**
+   * 0 normal, 1 important, 2 urgent — and it is the ORDER, not a decoration.
+   *
+   * ⚠️ IT DOES NOT COMPETE WITH `sort`. `sort` has been the server's order key since the table
+   * existed and the room never set it, so every row is 0 and the list has really been ordered by
+   * creation all along. That left priority free to become the first key of ONE ordering, with sort
+   * and created_at behind it, rather than a second opinion about where a row belongs.
+   */
+  priority: 0 | 1 | 2
 }
 
 /** Inclusive `from`, EXCLUSIVE `to`, both local ISO dates. Null for 'life', which has no window. */
@@ -333,6 +354,46 @@ function windowBack(scope: Scope, on: string, n: number): Window | null {
   else if (scope === 'quarter') d.setMonth(d.getMonth() - 3 * n)
   else d.setFullYear(d.getFullYear() - n)
   return windowOf(scope, localISO(d))
+}
+
+/** What a window still asks of you: how many things, and how long they are guessed to take. */
+export type Weight = {
+  /** unfinished goals in this window */
+  left: number
+  /** the sum of the estimates among them, in minutes */
+  mins: number
+  /** how many of them carry no estimate at all */
+  vague: number
+}
+
+/**
+ * How much is left in a window, and how much of that is actually known.
+ *
+ * ⚠️ `mins` IS A FLOOR, AND `vague` IS WHY. An estimate is optional, so summing the ones that
+ * exist and showing the total as "the day's work" understates it by however many were never
+ * guessed — and it understates it silently, which is worse, because the number looks complete.
+ * Five things of which two are guessed at twenty minutes each is not a forty-minute day. The
+ * caller gets both numbers and has to say both; there is deliberately no single figure to show.
+ *
+ * ⚠️ AND IT COUNTS THE UNFINISHED ONLY, through `finished`, which is the same question the window
+ * strip asks. A weight that included things already done would go up as the day went well.
+ */
+export function weight(
+  goals: Goal[],
+  tally: Record<string, number> | undefined,
+  scope: Scope,
+  on: string,
+): Weight {
+  let left = 0
+  let mins = 0
+  let vague = 0
+  for (const g of goals) {
+    if (!inScope(g, scope, on) || finished(g, tally, on)) continue
+    left++
+    if (g.est != null && g.est > 0) mins += g.est
+    else vague++
+  }
+  return { left, mins, vague }
 }
 
 /** the key a streak ask uses, so one goal can be asked about many windows */

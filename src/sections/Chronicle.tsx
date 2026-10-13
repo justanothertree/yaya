@@ -9,6 +9,7 @@ import {
   reached,
   repeats,
   tallyAsks,
+  weight,
   share,
   today as todayISO,
   tomorrow as tomorrowISO,
@@ -17,7 +18,7 @@ import {
   type Scope,
 } from '../chronicle/goal'
 import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '../chronicle/cloud'
-import { CATS, type Activity } from '../chronicle/record'
+import { CATS, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
 
@@ -132,6 +133,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * that pairing and the save function corrects it, and the picker below simply does not offer it.
    */
   const [countWhat, setCountWhat] = useState<'minutes' | 'amount'>('minutes')
+  /** how long this is guessed to take, as typed — minutes, blank for "no idea" */
+  const [est, setEst] = useState('')
+  /** 0 normal, 1 important, 2 urgent — see Goal.priority, which is the list's order */
+  const [pri, setPri] = useState<0 | 1 | 2>(0)
 
   const load = useCallback(async () => {
     if (!authed) {
@@ -208,6 +213,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
       cat: hasTarget && src.startsWith('c:') ? (src.slice(2) as Activity['cat']) : null,
       counts: hasTarget && src.startsWith('a:') ? countWhat : 'minutes',
+      /* ⚠️ a blank or unreadable guess is null, not zero: "no idea" is a real answer and zero
+         minutes of work is not — see Goal.est, and `weight`, which has to count the difference */
+      est: (() => {
+        const n = Number(est)
+        return est.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
+      })(),
+      priority: pri,
       /* ⚠️ a target always carries a unit, or the number means nothing in six months */
       unit: hasTarget ? unit.trim() || 'done' : null,
     })
@@ -223,6 +235,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setEvery(false)
     setSrc('')
     setCountWhat('minutes')
+    setEst('')
+    setPri(0)
     setFixing(null)
     setAdding(false)
     await load()
@@ -335,6 +349,25 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         ) : null}
       </p>
 
+      {/**
+       * ⚠️ IT SAYS WHAT IT COULD NOT COUNT, and that is the whole reason this is two sentences
+       * rather than one number. An estimate is optional, so the minutes are a FLOOR — "about 50m"
+       * on a day with three unguessed things in it is not a fifty-minute day, and showing the
+       * total alone would understate it silently, which is worse than not showing it. See
+       * `weight`, whose answer deliberately has no single figure in it.
+       *
+       * ⚠️ AND IT IS ABSENT WHEN THERE IS NOTHING TO SAY. An empty window already has its own
+       * sentence below, and "0 left" under a heading is a line that only ever states the obvious.
+       */}
+      {(() => {
+        const w = weight(goals ?? [], got, v.scope, on)
+        if (!w.left) return null
+        const parts = [`${w.left} left`]
+        if (w.mins > 0) parts.push(`about ${spanText(w.mins * 60_000)}`)
+        if (w.vague > 0) parts.push(w.mins > 0 ? `${w.vague} unguessed` : `none of them guessed at`)
+        return <p className="muted chron-weight">{parts.join(' · ')}</p>
+      })()}
+
       {goals === null ? (
         <p className="muted" aria-busy>
           Loading…
@@ -399,6 +432,30 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         repeats is a label that raises the question it should answer */}
                     {repeats(g) ? <span className="chron-chip">every {g.scope}</span> : null}
                     {/**
+                     * ⚠️ FLAGGED ONLY WHEN IT IS FLAGGED. Ordinary is the overwhelming majority, and
+                     * a chip reading "ordinary" on every row would be noise that makes the two that
+                     * matter harder to find rather than easier — which is the opposite of what a
+                     * priority is for. The order already puts these at the top; the chip says why.
+                     */}
+                    {g.priority > 0 ? (
+                      <span
+                        className={'chron-chip is-pri' + (g.priority === 2 ? ' is-now' : '')}
+                        title={g.priority === 2 ? 'Urgent' : 'Important'}
+                      >
+                        {g.priority === 2 ? 'urgent' : 'important'}
+                      </span>
+                    ) : null}
+                    {/* ⚠️ "~20m" with the tilde, because it is a guess and a bare "20m" beside a
+                        row that also carries real measured minutes reads as one of them */}
+                    {g.est != null ? (
+                      <span
+                        className="chron-chip is-est"
+                        title="How long you thought it would take"
+                      >
+                        ~{spanText(g.est * 60_000)}
+                      </span>
+                    ) : null}
+                    {/**
                      * ⚠️ TWO IN A ROW IS THE FLOOR, because "a streak of 1" is just "done", and a
                      * badge that appears the first time you do anything teaches nobody that it
                      * means anything. It earns its place on the second window.
@@ -433,6 +490,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         setEvery(repeats(g))
                         setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
                         setCountWhat(g.counts)
+                        setEst(g.est == null ? '' : String(g.est))
+                        setPri(g.priority)
                       }}
                       aria-label={`Change ${g.title}`}
                       title={`Change ${g.title}`}
@@ -501,6 +560,31 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                   placeholder="100"
                   onChange={(e) => setTarget(e.target.value)}
                 />
+              </label>
+              {/**
+               * ⚠️ MINUTES, SAID IN THE PLACEHOLDER, because a bare number box next to another
+               * bare number box is two fields nobody can tell apart. "20m?" says both the unit and
+               * that it is optional.
+               */}
+              <label className="chron-qty">
+                <span className="sr-only">How long will it take? In minutes</span>
+                <input
+                  value={est}
+                  inputMode="numeric"
+                  placeholder="20m?"
+                  onChange={(e) => setEst(e.target.value)}
+                />
+              </label>
+              <label className="chron-src">
+                <span className="sr-only">How much does it matter?</span>
+                <select
+                  value={String(pri)}
+                  onChange={(e) => setPri(Number(e.target.value) as 0 | 1 | 2)}
+                >
+                  <option value="0">ordinary</option>
+                  <option value="1">important</option>
+                  <option value="2">urgent</option>
+                </select>
               </label>
               <label className="chron-qty">
                 <span className="sr-only">What the number counts</span>
@@ -597,6 +681,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 setEvery(false)
                 setSrc('')
                 setCountWhat('minutes')
+                setEst('')
+                setPri(0)
                 setAdding(true)
               }}
             >

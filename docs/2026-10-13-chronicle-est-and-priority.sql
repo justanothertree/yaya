@@ -1,0 +1,82 @@
+-- ✅ APPLIED 13 Oct 2026 — migrations `chronicle_goal_est_and_priority`
+--                           and `chronicle_goal_save_takes_est_and_priority`
+--
+-- The two things the HTML app's `TD` store had that a chronicle goal did not: how long you think
+-- a thing will take, and how much it matters. "a goal tracker/to do list" was the ask, and a
+-- to-do list that can say neither is a thinner thing than the one being replaced.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY priority CAN BE THE ORDER WITHOUT BECOMING A SECOND OPINION
+-- ─────────────────────────────────────────────────────────────────────────────
+-- `sort` has been chronicle_goals_mine's order key since the table existed — and the room has
+-- never set it. Every row is 0, so the list has really been ordered by created_at all along.
+-- That left priority free to become the FIRST key of one ordering, with sort and created_at
+-- behind it, rather than a rival ordering that can disagree with the manual one. Two orderings
+-- that can disagree is the bug class §5 of CLAUDE.md names, and this avoids it by accident of
+-- `sort` never having been wired up.
+--
+-- `sort` is kept rather than dropped: it is the hook a hand-reordering would use, and dropping a
+-- column is not recoverable the way a create-or-replace is.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ⚠️ DROP AND RECREATE, NOT create or replace
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Adding parameters to a plpgsql function makes an OVERLOAD rather than a replacement. The old
+-- 12-argument chronicle_goal_save would have stayed callable, and since the client sends NAMED
+-- arguments, which one answers is postgres's choice — it silently kept saving without the new
+-- columns the first time this was done to this very function (see §6b/§6f). Proven afterwards:
+--
+--   select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname='public' and p.proname='chronicle_goal_save';
+--   -- exactly ONE row, the 14-argument signature
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE SHAPE
+-- ─────────────────────────────────────────────────────────────────────────────
+--   est_mins integer           check (est_mins is null or (est_mins > 0 and est_mins <= 10080))
+--   priority smallint not null default 0   check (priority between 0 and 2)
+--   index (owner, priority desc) where priority > 0
+--
+-- ⚠️ MINUTES, like the tallies, the targets, a routine's steps and a plan's span. An estimate in
+-- its own unit would be the one number on screen that had to be converted before it could be
+-- compared with any of them.
+--
+-- ⚠️ A WEEK IS THE CEILING, generous on purpose: an estimate is somebody's guess, and refusing a
+-- large one teaches them the field is fussy. NULL is a real answer — "no idea" is the commonest
+-- state of a thing worth writing down — which is exactly why `weight` in goal.ts reports how
+-- many it could not count rather than handing back a single figure.
+--
+-- ⚠️ A PARTIAL INDEX ON THE FLAGGED ONES, not on the column. Nearly every goal is priority 0, so
+-- an index over the whole column is a near-constant with no selectivity; the question actually
+-- asked is "what is flagged", which is the small end.
+--
+-- ⚠️ CLAMPED RATHER THAN RAISED, both of them, for the same reason the `counts` correction in the
+-- same function is: a goal with a silly estimate is still a goal somebody is trying to write
+-- down, and losing the whole save over an optional field is worse than losing the field.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- PROVEN, NOT ASSUMED — all inside begin/rollback in a simulated session
+-- ─────────────────────────────────────────────────────────────────────────────
+--   live rows unharmed     the one real goal came back with est null, priority 0 — inert
+--   est 99999              -> 10080   (clamped to a week)
+--   est 0                  -> null
+--   est -5                 -> null
+--   priority 97            -> 2       (clamped)
+--   edit                   est 45 -> 90, priority 0 -> 2, same id
+--   order                  urgent/2 > silly/2 > important/1 > (old goal)/0 > (new goal)/0
+--                          — priority descending, creation order within a band
+--   exactly one signature  no overload left behind
+--   anon                   no chronicle_% function callable by anon at all
+--
+-- The standing check, which cannot go stale:
+select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f'
+   and has_function_privilege('anon', p.oid, 'execute');
+-- expected: zero rows for anything chronicle_%
+
+-- And that the save function has not grown a twin:
+select p.oid::regprocedure::text
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname = 'chronicle_goal_save';
+-- expected: exactly one row

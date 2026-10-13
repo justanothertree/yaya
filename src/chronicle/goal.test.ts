@@ -14,6 +14,7 @@ import {
   streakOf,
   STREAK_BACK,
   tallyAsks,
+  weight,
   windowOf,
   type Goal,
   type Scope,
@@ -34,6 +35,8 @@ const goal = (over: Partial<Goal> = {}): Goal => ({
   activity: null,
   cat: null,
   counts: 'minutes',
+  est: null,
+  priority: 0,
   ...over,
 })
 
@@ -485,5 +488,84 @@ describe('how many windows in a row', () => {
     const byHand = goal({ scope: 'day', anchor: null, every: 1, target: 30, unit: 'min' })
     expect(streakAsks([once, byHand], '2026-10-12', 3)).toEqual([])
     expect(streakAsks([daily], '2026-10-12', 3).length).toBe(4)
+  })
+})
+
+describe('what a window still asks of you', () => {
+  const DAY = '2026-10-12'
+  const todo = (title: string, est: number | null, over: Partial<Goal> = {}) =>
+    goal({ id: title, title, scope: 'day', anchor: DAY, est, ...over })
+
+  /**
+   * ⚠️ THE CLAIM THE OBVIOUS VERSION GETS WRONG. An estimate is optional, so summing the ones that
+   * exist and handing back a single figure understates the day by however many were never guessed
+   * — silently, which is the bad part, because the number looks complete. Five things of which two
+   * are guessed at twenty minutes each is not a forty-minute day. So `vague` is part of the
+   * answer, and a caller cannot render the total without also being handed the gap.
+   */
+  it('reports what it could not count, rather than a total that looks complete', () => {
+    const w = weight(
+      [todo('a', 20), todo('b', 20), todo('c', null), todo('d', null), todo('e', null)],
+      {},
+      'day',
+      DAY,
+    )
+    expect(w).toEqual({ left: 5, mins: 40, vague: 3 })
+  })
+
+  it('and a list nobody has guessed at is five things and no minutes, not an empty day', () => {
+    const w = weight([todo('a', null), todo('b', null)], {}, 'day', DAY)
+    expect(w).toEqual({ left: 2, mins: 0, vague: 2 })
+  })
+
+  /** ⚠️ the unfinished only, or the weight of a day would go UP as the day went well */
+  it('and drops things as they are finished', () => {
+    const list = [todo('a', 30), todo('b', 45, { done: true }), todo('c', 15)]
+    expect(weight(list, {}, 'day', DAY)).toEqual({ left: 2, mins: 45, vague: 0 })
+  })
+
+  /**
+   * ⚠️ AND IT ASKS `finished` RATHER THAN `done`, so a derived goal that the record has already
+   * satisfied drops out too — the same question the window strip asks one line above it. A weight
+   * that only noticed hand-ticked goals would keep counting half an hour of drawing you had
+   * already done.
+   */
+  it('and a derived goal the record has already met drops out as well', () => {
+    const drawing = goal({
+      id: 'g-draw',
+      title: '30 minutes drawing',
+      scope: 'day',
+      anchor: DAY,
+      target: 30,
+      unit: 'minutes',
+      activity: 'act-draw',
+      est: 30,
+    })
+    const ask = tallyAsks([drawing], DAY)[0]
+    expect(weight([drawing], { [ask.key]: 10 }, 'day', DAY)).toEqual({
+      left: 1,
+      mins: 30,
+      vague: 0,
+    })
+    expect(weight([drawing], { [ask.key]: 35 }, 'day', DAY)).toEqual({
+      left: 0,
+      mins: 0,
+      vague: 0,
+    })
+  })
+
+  it('and only this window — a yearly goal is not part of today', () => {
+    const year = goal({ id: 'y', title: 'big', scope: 'year', anchor: '2026-01-01', est: 600 })
+    expect(weight([year], {}, 'day', DAY)).toEqual({ left: 0, mins: 0, vague: 0 })
+    expect(weight([year], {}, 'year', DAY)).toEqual({ left: 1, mins: 600, vague: 0 })
+  })
+
+  /** ⚠️ a nonsense estimate counts as no estimate, rather than as zero minutes of work */
+  it('and treats a zero or negative guess as no guess at all', () => {
+    expect(weight([todo('a', 0), todo('b', -30)], {}, 'day', DAY)).toEqual({
+      left: 2,
+      mins: 0,
+      vague: 2,
+    })
   })
 })

@@ -15550,16 +15550,33 @@ a.cz-msg-author:focus-visible {
   text-decoration: line-through;
   opacity: 0.6;
 }
+/* ⚠️ IT WRAPS, AND IT HAS NOT UNTIL NOW. A goal row can carry five chips — the cadence, a
+   streak, where its number comes from, how much it matters and how long it is guessed to take —
+   beside a tick-box, a title and two buttons, and with nowrap its min-content came to 359px
+   inside a 327px list. Measured with a null control: hiding the two NEWEST chips changed
+   nothing and hiding all of them fixed it, so this was latent before the flag and the estimate
+   arrived, and they only made a crowded row more crowded.
+
+   ⚠️ AND scripts/mobile-audit.js CALLED IT CLEAN, which is the part worth remembering. The
+   overflow is swallowed by an ancestor that manages its own scrolling, so the document-level
+   check reads sideways: 0 and nothing is technically past the viewport edge — while a row sits
+   32px wider than the list holding it. Ask the container, not the page. */
 .chron-goal-top {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
+/* ⚠️ A FLOOR IN PIXELS, which is what makes the wrap above do the right thing: with no floor
+   the chips simply won the line and the title collapsed to nothing, and the overflow numbers all
+   read zero while the room was unreadable. Pixels rather than rem because the root size is fluid
+   here — see CLAUDE.md §6. */
 .chron-tick {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
+  flex: 1 1 150px;
+  min-width: 150px;
   cursor: pointer;
   /* a whole row is the target, not the box in it */
   min-height: 36px;
@@ -15569,8 +15586,18 @@ a.cz-msg-author:focus-visible {
   height: 20px;
   flex: 0 0 auto;
 }
+/* ⚠️ IT WRAPS, IT DOES NOT ELLIPSE. A to-do is read, so "Ring the dentist about the thi…"
+   is worse than two lines — and an ellipsis needs nowrap to do anything at all, which with a
+   min-width of 0 crushed every title in the room to a single character wide. The floor lives on
+   .chron-tick below. */
 .chron-name {
-  flex: 1;
+  /* ⚠️ THE SAME FLOOR AS .chron-tick, because there are TWO title paths and they are easy to
+     fix one of. A goal you tick renders its title inside the label; a goal the record answers for
+     has no tick-box, so its title is this bare span one level up — a direct child of the wrapping
+     row. Protecting only the label left every DERIVED goal crushed to three pixels wide while the
+     tick-box ones read fine, which looks like a bug in the chips rather than in the title. */
+  flex: 1 1 150px;
+  min-width: 150px;
 }
 .chron-chip {
   font-size: 0.7rem;
@@ -15754,6 +15781,9 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   display: flex;
   align-items: center;
+  /* the fold name and its figures are separate elements, so without this they ran together as
+     "Planned2h 30m planned" */
+  gap: 0.45rem;
 }
 .chron-acts li > span:first-child {
   flex: 1;
@@ -15850,6 +15880,31 @@ a.cz-msg-author:focus-visible {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* a flagged goal, and a guess at how long it takes — see Chronicle.tsx */
+.chron-chip.is-pri {
+  border-color: #f5a623;
+  color: #f5a623;
+}
+/* ⚠️ urgent is the accent rather than red: the room has no other red, and one invented here
+   would be the only alarming colour on the page for a thing somebody chose themselves */
+.chron-chip.is-pri.is-now {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+/* ⚠️ IT OPTS OUT OF THE UPPERCASE every other chip wears, because this is the first chip whose
+   text carries a UNIT: "~10m" came out as "~10M", which reads as megabytes or as ten months. The
+   chip style was right until a chip had something to say in lower case. */
+.chron-chip.is-est {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+.chron-weight {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+}
+
 .chron-src select {
   min-height: 36px;
   max-width: 13rem;

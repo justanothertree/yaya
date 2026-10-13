@@ -94,6 +94,8 @@ const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): G
   activity: null,
   cat: null,
   counts: 'minutes',
+  est: null,
+  priority: 0,
   ...g,
 })
 
@@ -179,7 +181,16 @@ function seed(): Store {
         unit: 'minutes',
         activity: 'pv-draw',
       }),
-      goal({ id: 'pv-g2', title: 'Ring the dentist', scope: 'day', anchor: todayISO(), sort: 1 }),
+      /* ⚠️ a guess AND a flag, so the row shows both chips at once and they have to fit */
+      goal({
+        id: 'pv-g2',
+        title: 'Ring the dentist',
+        scope: 'day',
+        anchor: todayISO(),
+        sort: 1,
+        est: 10,
+        priority: 2,
+      }),
       goal({
         id: 'pv-g3',
         title: 'Water the plants',
@@ -198,9 +209,14 @@ function seed(): Store {
         activity: 'pv-dish',
         sort: 3,
       }),
+      /* ⚠️ and one with a guess but no flag, and one flagged with NO guess — because the day's
+         weight has to report what it could not count, and a seed where everything is estimated
+         agrees with a version that silently ignores the gap */
       goal({
         id: 'pv-g5',
         title: 'Pack for the trip',
+        est: 40,
+        priority: 1,
         scope: 'day',
         /* ⚠️ at(-1, …) is TOMORROW — the only goal the Tomorrow view can show by itself */
         anchor: localISO(at(-1, 12)),
@@ -350,7 +366,18 @@ const mint = (p: string): string => `${p}-new-${next++}`
 
 /* ── reads ──────────────────────────────────────────────────────────────────── */
 
-export const pvGoals = (): Goal[] => db().goals.map((g) => ({ ...g }))
+/**
+ * ⚠️ SORTED LIKE chronicle_goals_mine, because the ORDER is a server decision and the room
+ * renders whatever order it is handed. This returned the seed array and the first flagged goal
+ * duly rendered second — which looks exactly like the priority ordering not working, and it was
+ * working: it had been proven in SQL minutes earlier. A double that gets the order wrong is the
+ * "unfaithful double" trap, and this is the third time reading the server first has been the
+ * answer.  is a stable sort, so insertion order stands in for created_at.
+ */
+export const pvGoals = (): Goal[] =>
+  db()
+    .goals.map((g) => ({ ...g }))
+    .sort((a, b) => b.priority - a.priority || a.sort - b.sort)
 export const pvActivities = (): Activity[] => db().acts.map((x) => ({ ...x }))
 export const pvRoutines = (): Routine[] =>
   db().routines.map((r) => ({ ...r, steps: r.steps.map((s) => ({ ...s })) }))

@@ -76,6 +76,8 @@ type Row = {
   activity: string | null
   cat: Goal['cat']
   counts: Goal['counts']
+  est: number | string | null
+  priority: number | string | null
 }
 
 /**
@@ -107,6 +109,10 @@ const read = (r: Row): Goal => ({
   /* ⚠️ anything but 'amount' is minutes, so a row from before this column existed reads as the
      thing it has always been rather than as undefined */
   counts: r.counts === 'amount' ? 'amount' : 'minutes',
+  /* ⚠️ a row from before these columns existed reads as the thing it has always been — no guess
+     and no flag — rather than as undefined */
+  est: r.est == null ? null : num(r.est) || null,
+  priority: (Math.min(Math.max(num(r.priority), 0), 2) || 0) as Goal['priority'],
 })
 
 /** Every goal of mine. Empty rather than throwing, so a dead network is a quiet room. */
@@ -131,6 +137,8 @@ export type NewGoal = {
   activity?: string | null
   cat?: Goal['cat']
   counts?: Goal['counts']
+  est?: number | null
+  priority?: Goal['priority']
 }
 
 /**
@@ -156,6 +164,8 @@ export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: stri
     p_activity: g.activity ?? null,
     p_cat: g.cat ?? null,
     p_counts: g.counts ?? 'minutes',
+    p_est: g.est ?? null,
+    p_priority: g.priority ?? 0,
   })
   if (error) return { why: error.message || 'that did not save' }
   /**
