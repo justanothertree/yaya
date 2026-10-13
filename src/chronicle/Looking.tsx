@@ -91,6 +91,13 @@ export function Looking({ win, label }: { win: Window; label: string }) {
               />
             </span>
             <span className="chron-ent-span">{spanText(r.mins * 60_000)}</span>
+            {/* ⚠️ the metric total beside the time, because for anything with one the quantity is
+                usually the point and the hours are the cost of it */}
+            {r.amount != null && r.metric ? (
+              <span className="chron-amount">
+                {Math.round(r.amount * 100) / 100} {r.metric}
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>

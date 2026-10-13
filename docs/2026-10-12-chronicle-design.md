@@ -497,6 +497,40 @@ junk minutes become null rather than breaking the row, a non-list is refused, a 
 name is refused, an edit keeps the id and may empty the list, and another member can neither read
 nor delete one.
 
+## 6f · ✅ Metrics — a thing to count besides time
+
+**Migrations `chronicle_metrics`, `chronicle_metric_write_paths`.**
+
+The HTML app's `metricLabel` / `metricGoalTarget` on an activity and `metricValues` on an entry.
+Pages, reps, miles, words. **Time is the only universal measure and a poor one for anything whose
+point is a quantity** — half an hour of writing is not the achievement, four pages is.
+
+An activity may name one metric. A session may record an amount of it. And a goal with one activity
+as its source may count **either** the minutes or the metric, which is what makes "100 pages this
+month" sayable where before only "100 minutes" was.
+
+⚠️ **MINUTES SPLIT ACROSS MIDNIGHT; AN AMOUNT DOES NOT.** This is the one place the two behave
+differently and it is written beside both. A session from 23:00 to 01:00 gives an hour to each day
+because time genuinely elapsed in both. Five pages written across midnight are not two and a half
+pages each side — the quantity is indivisible, so it counts against the day the session **started**.
+Proven: minutes 120 today, amount 4 today and the whole 10 yesterday, summing to the 14 written.
+
+⚠️ **COUNTING AN AMOUNT NEEDS ONE ACTIVITY, NOT A CATEGORY.** A category's activities have different
+metrics, and adding pages to reps to miles gives a number with no unit. A check constraint refuses
+the pair and `chronicle_goal_save` corrects it to minutes rather than raising — the goal is still a
+goal, it just measures time. The picker never offers the combination.
+
+⚠️ **AND THE AMOUNT GOT ITS OWN FUNCTION** rather than a parameter on stop, add and edit. Those
+three would each have needed a new signature — three drops and recreates, since an extra parameter
+makes `create or replace` build an overload — and an amount is something you remember afterwards at
+least as often as at the time. `chronicle_entry_amount` is one door, usable whenever.
+
+`chronicle_minutes` became `chronicle_sum`, because the right function with a name that says
+"minutes" would have started lying the moment it summed pages. Still one home for the rule.
+
+Ten probes. The first one returned a single `<NULL>` because a subquery in my own probe found no
+row and `||` nulled the whole message — the probe's bug, not the product's, fixed with `coalesce`.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

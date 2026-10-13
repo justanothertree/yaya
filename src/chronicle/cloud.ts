@@ -37,6 +37,7 @@ type Row = {
   sort: number | null
   activity: string | null
   cat: Goal['cat']
+  counts: Goal['counts']
 }
 
 /**
@@ -65,6 +66,9 @@ const read = (r: Row): Goal => ({
   sort: num(r.sort),
   activity: r.activity ?? null,
   cat: r.cat ?? null,
+  /* ⚠️ anything but 'amount' is minutes, so a row from before this column existed reads as the
+     thing it has always been rather than as undefined */
+  counts: r.counts === 'amount' ? 'amount' : 'minutes',
 })
 
 /** Every goal of mine. Empty rather than throwing, so a dead network is a quiet room. */
@@ -87,6 +91,7 @@ export type NewGoal = {
   /** one of these at most — see Goal.activity, and the check constraint behind it */
   activity?: string | null
   cat?: Goal['cat']
+  counts?: Goal['counts']
 }
 
 /**
@@ -110,6 +115,7 @@ export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: stri
     p_sort: g.sort ?? 0,
     p_activity: g.activity ?? null,
     p_cat: g.cat ?? null,
+    p_counts: g.counts ?? 'minutes',
   })
   if (error) return { why: error.message || 'that did not save' }
   /**
@@ -158,6 +164,7 @@ export async function myActivities(): Promise<Activity[]> {
     colour: a.colour ?? null,
     archived: !!a.archived,
     auto: !!a.auto,
+    metric: a.metric ?? null,
   }))
 }
 
@@ -166,12 +173,14 @@ export async function saveActivity(
   cat: Activity['cat'],
   colour: string | null,
   id?: string,
+  metric?: string | null,
 ): Promise<{ id: string } | { why: string }> {
   const { data, error } = await getSupabaseClient().rpc('chronicle_activity_save', {
     p_id: id ?? null,
     p_name: name,
     p_cat: cat,
     p_colour: colour,
+    p_metric: metric ?? null,
   })
   if (error) return { why: error.message || 'that did not save' }
   const made = data == null ? '' : String(data)
@@ -217,6 +226,7 @@ export async function entriesBetween(fromISO: string, toISO: string): Promise<En
     start: String(e.start),
     end: e.end ? String(e.end) : null,
     note: e.note ?? null,
+    amount: e.amount == null ? null : num(e.amount as number | string | null),
   }))
 }
 
@@ -272,6 +282,9 @@ export type Total = {
   cat: Activity['cat']
   auto: boolean
   mins: number
+  metric: string | null
+  /** the metric's total for the window, or null when the activity has no metric */
+  amount: number | null
 }
 
 /**
@@ -296,6 +309,8 @@ export async function totalsBetween(fromISO: string, toISO: string): Promise<Tot
     auto: !!r.auto,
     /* numeric arrives as a string — see the note on num above */
     mins: num(r.mins as number | string | null),
+    metric: r.metric ?? null,
+    amount: r.amount == null ? null : num(r.amount as number | string | null),
   }))
 }
 
@@ -372,5 +387,20 @@ export async function saveRoutine(
 
 export async function dropRoutine(id: string): Promise<boolean> {
   const { error } = await getSupabaseClient().rpc('chronicle_routine_drop', { p_id: id })
+  return !error
+}
+
+/**
+ * How much of its metric a session produced. Null clears it.
+ *
+ * ⚠️ ITS OWN CALL RATHER THAN A PARAMETER ON stop, add AND edit — those three would each have
+ * needed a new signature, and the amount is something you remember afterwards at least as often
+ * as at the time. One door, usable whenever.
+ */
+export async function setAmount(id: string, amount: number | null): Promise<boolean> {
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_amount', {
+    p_id: id,
+    p_amount: amount,
+  })
   return !error
 }

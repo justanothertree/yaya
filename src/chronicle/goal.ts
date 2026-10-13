@@ -50,6 +50,15 @@ export type Goal = {
    */
   activity: string | null
   cat: 'locked' | 'free' | 'life' | null
+  /**
+   * Which of the two things a derived goal counts.
+   *
+   * ⚠️ WITHOUT THIS A SOURCE COULD ONLY EVER MEAN MINUTES, so "100 pages this month" was
+   * unsayable while "100 minutes" was. Counting an amount needs ONE activity rather than a
+   * category — a category's activities have different metrics, and adding pages to reps to miles
+   * gives a number with no unit — which the table refuses and the save function corrects.
+   */
+  counts: 'minutes' | 'amount'
 }
 
 /** Inclusive `from`, EXCLUSIVE `to`, both local ISO dates. Null for 'life', which has no window. */

@@ -29,6 +29,7 @@ const goal = (over: Partial<Goal> = {}): Goal => ({
   sort: 0,
   activity: null,
   cat: null,
+  counts: 'minutes',
   ...over,
 })
 

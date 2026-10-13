@@ -20,6 +20,16 @@ export type Entry = {
   start: string
   end: string | null
   note: string | null
+  /**
+   * How much of the activity's metric this session produced, or null.
+   *
+   * ⚠️ AN AMOUNT DOES NOT SPLIT ACROSS MIDNIGHT, which is the one place it behaves unlike the
+   * minutes beside it. A session from 23:00 to 01:00 gives an hour to each day because time
+   * genuinely elapsed in both; five pages written across midnight are not two and a half pages
+   * each side. The quantity belongs to the session, so it counts against the day the session
+   * STARTED — see chronicle_sum, where the two window rules sit side by side.
+   */
+  amount: number | null
 }
 
 export type Activity = {
@@ -37,6 +47,15 @@ export type Activity = {
    * towards a goal like any other.
    */
   auto: boolean
+  /**
+   * A thing to count besides time — "pages", "reps", "miles".
+   *
+   * ⚠️ TIME IS THE ONLY UNIVERSAL MEASURE AND A POOR ONE for anything whose point is a quantity.
+   * Half an hour of writing is not the achievement; four pages is. The HTML app had this as
+   * metricLabel on an activity and metricValues on an entry, and it is the one thing an activity
+   * can carry that changes what a goal is allowed to count.
+   */
+  metric: string | null
 }
 
 /**

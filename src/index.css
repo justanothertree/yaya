@@ -15999,3 +15999,12 @@ a.cz-msg-author:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* a session's or a window's metric total, beside the time it took */
+.chron-amount {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--accent);
+  white-space: nowrap;
+}

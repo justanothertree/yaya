@@ -18,13 +18,38 @@ const entry = (over: Partial<Entry> = {}): Entry => ({
   start: '2026-10-12T09:00:00.000Z',
   end: '2026-10-12T10:00:00.000Z',
   note: null,
+  amount: null,
   ...over,
 })
 
 const acts: Activity[] = [
-  { id: 'a1', name: 'Drawing', cat: 'free', colour: null, archived: false, auto: false },
-  { id: 'a2', name: 'Dishes', cat: 'life', colour: null, archived: false, auto: false },
-  { id: 'a3', name: 'Work', cat: 'locked', colour: null, archived: false, auto: false },
+  {
+    id: 'a1',
+    name: 'Drawing',
+    cat: 'free',
+    colour: null,
+    archived: false,
+    auto: false,
+    metric: null,
+  },
+  {
+    id: 'a2',
+    name: 'Dishes',
+    cat: 'life',
+    colour: null,
+    archived: false,
+    auto: false,
+    metric: null,
+  },
+  {
+    id: 'a3',
+    name: 'Work',
+    cat: 'locked',
+    colour: null,
+    archived: false,
+    auto: false,
+    metric: null,
+  },
 ]
 
 const NOW = at('2026-10-12T12:00:00.000Z')

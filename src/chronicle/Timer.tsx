@@ -4,6 +4,7 @@ import {
   archiveActivity,
   dropEntry,
   editEntry,
+  setAmount,
   entriesBetween,
   myActivities,
   saveActivity,
@@ -75,6 +76,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCat, setNewCat] = useState<Activity['cat']>('free')
+  const [newMetric, setNewMetric] = useState('')
   const [gap, setGap] = useState(false)
   /** what you were doing, written down as you stop — the field the table has always had */
   const [stopNote, setStopNote] = useState('')
@@ -91,6 +93,10 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [fixAct, setFixAct] = useState<string | null>(null)
   const [actName, setActName] = useState('')
   const [actCat, setActCat] = useState<Activity['cat']>('free')
+  /** what this activity counts besides time — "pages", "reps", blank for nothing */
+  const [actMetric, setActMetric] = useState('')
+  /** the amount being typed against a span, keyed by entry id */
+  const [entAmount, setEntAmount] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
@@ -189,10 +195,11 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     const n = newName.trim()
     if (!n || busy) return
     setBusy(true)
-    const r = await saveActivity(n, newCat, null)
+    const r = await saveActivity(n, newCat, null, undefined, newMetric)
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setNewName('')
+    setNewMetric('')
     setAdding(false)
     await load()
     /* ⚠️ a new activity is almost always one you are about to do, so it is pre-selected rather
@@ -224,7 +231,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     setBusy(true)
     /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
        id since step 2 and nothing had ever passed one, which is why a category was permanent */
-    const r = await saveActivity(n, actCat, null, fixAct)
+    const r = await saveActivity(n, actCat, null, fixAct, actMetric)
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setFixAct(null)
@@ -236,7 +243,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
    * which `new Date()` reads as LOCAL — correct here, and the one case where parsing a date string
    * is right rather than the UTC trap, because the string genuinely has no zone in it.
    */
-  const saveEnt = async () => {
+  const saveEnt = async (metric?: string | null) => {
     if (!fixEnt || !entFrom || !entTo || busy) return
     setBusy(true)
     const bad = await editEntry(
@@ -245,6 +252,16 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
       new Date(entTo).toISOString(),
       null,
     )
+    /**
+     * ⚠️ THE AMOUNT IS A SECOND CALL, and only when the activity has something to count. It is a
+     * separate function on the server for a reason the migration records — three signatures would
+     * have had to change otherwise — so the UI pays one extra round trip on an edit rather than
+     * the whole write path paying for a field most sessions do not have.
+     */
+    if (!bad && metric) {
+      const n = Number(entAmount)
+      await setAmount(fixEnt, entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n)
+    }
     setBusy(false)
     if (bad) return moan(bad.why)
     setFixEnt(null)
@@ -428,6 +445,16 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
               ))}
             </select>
           </label>
+          {/* ⚠️ OPTIONAL AND LAST, because most activities are measured in time alone and a
+              required field would make everybody answer a question that is usually "nothing" */}
+          <label className="chron-qty">
+            <span className="sr-only">Also counts (optional)</span>
+            <input
+              value={newMetric}
+              placeholder="pages?"
+              onChange={(e) => setNewMetric(e.target.value)}
+            />
+          </label>
           <button
             className="btn"
             disabled={!newName.trim() || busy}
@@ -487,6 +514,14 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
               <li key={e.id} className={'chron-ent' + (e.end == null ? ' is-live' : '')}>
                 <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
                 <span className="chron-ent-span">{spanText(ms)}</span>
+                {/* ⚠️ the amount sits with the length because they are the same fact measured two
+                    ways — "40m, 4 pages" is one session, and separating them would invite reading
+                    the number as a second entry */}
+                {e.amount != null && a?.metric ? (
+                  <span className="chron-amount">
+                    {e.amount} {a.metric}
+                  </span>
+                ) : null}
                 <span className="muted chron-ent-when">
                   {new Date(e.start).toLocaleTimeString(undefined, {
                     hour: 'numeric',
@@ -514,7 +549,20 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                         onChange={(ev) => setEntTo(ev.target.value)}
                       />
                     </label>
-                    <button className="btn" disabled={busy} onClick={() => void saveEnt()}>
+                    {/* ⚠️ only for an activity that has a metric: a box asking for a number with
+                        no unit is a box nobody can answer */}
+                    {a?.metric && (
+                      <label className="chron-qty">
+                        <span className="sr-only">How many {a.metric}</span>
+                        <input
+                          value={entAmount}
+                          inputMode="decimal"
+                          placeholder={a.metric}
+                          onChange={(ev) => setEntAmount(ev.target.value)}
+                        />
+                      </label>
+                    )}
+                    <button className="btn" disabled={busy} onClick={() => void saveEnt(a?.metric)}>
                       Save
                     </button>
                     <button className="btn btn-ghost" onClick={() => setFixEnt(null)}>
@@ -531,6 +579,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       setFixEnt(fixEnt === e.id ? null : e.id)
                       setEntFrom(forInput(e.start))
                       setEntTo(forInput(e.end!))
+                      setEntAmount(e.amount == null ? '' : String(e.amount))
                     }}
                     aria-label="Change when this was"
                     title="Change when this was"
@@ -595,6 +644,14 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       ))}
                     </select>
                   </label>
+                  <label className="chron-qty">
+                    <span className="sr-only">Also counts (optional)</span>
+                    <input
+                      value={actMetric}
+                      placeholder="pages?"
+                      onChange={(e) => setActMetric(e.target.value)}
+                    />
+                  </label>
                   <button
                     className="btn"
                     disabled={!actName.trim() || busy}
@@ -624,11 +681,13 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       setFixAct(a.id)
                       setActName(a.name)
                       setActCat(a.cat)
+                      setActMetric(a.metric ?? '')
                     }}
                     title={`Rename ${a.name}, or change what kind it is`}
                   >
                     {a.name}
                     <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
+                    {a.metric ? <span className="muted">· {a.metric}</span> : null}
                     {a.auto ? <span className="chron-chip">on the site</span> : null}
                   </button>
                   {mins[a.id] ? (

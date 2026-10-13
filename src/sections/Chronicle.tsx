@@ -113,6 +113,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const [got, setGot] = useState<Record<string, number>>({})
   const [acts, setActs] = useState<Activity[]>([])
   const [src, setSrc] = useState('')
+  /**
+   * Whether a derived goal counts minutes or the activity's own metric.
+   *
+   * ⚠️ IT IS ONLY A REAL CHOICE FOR ONE ACTIVITY WITH A METRIC. A category's activities have
+   * different metrics, so adding pages to reps gives a number with no unit — the table refuses
+   * that pairing and the save function corrects it, and the picker below simply does not offer it.
+   */
+  const [countWhat, setCountWhat] = useState<'minutes' | 'amount'>('minutes')
 
   const load = useCallback(async () => {
     if (!authed) {
@@ -181,6 +189,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
          tick-box would tick itself the moment you did a minute of anything */
       activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
       cat: hasTarget && src.startsWith('c:') ? (src.slice(2) as Activity['cat']) : null,
+      counts: hasTarget && src.startsWith('a:') ? countWhat : 'minutes',
       /* ⚠️ a target always carries a unit, or the number means nothing in six months */
       unit: hasTarget ? unit.trim() || 'done' : null,
     })
@@ -195,6 +204,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setUnit('')
     setEvery(false)
     setSrc('')
+    setCountWhat('minutes')
     setFixing(null)
     setAdding(false)
     await load()
@@ -345,11 +355,16 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               const done = finished(g, got)
               const auto = derived(g)
               const have = reached(g, got)
+              const act = g.activity ? acts.find((a) => a.id === g.activity) : null
               const from = g.activity
-                ? (acts.find((a) => a.id === g.activity)?.name ?? 'an activity')
+                ? (act?.name ?? 'an activity')
                 : g.cat
                   ? (CATS.find(([c]) => c === g.cat)?.[1] ?? g.cat)
                   : null
+              /* ⚠️ "from Writing · pages" rather than just "from Writing", because two goals on
+                 one activity — an hour a day AND four pages a day — are otherwise identical on
+                 screen while measuring completely different things */
+              const fromWhat = auto && g.counts === 'amount' && act?.metric ? act.metric : null
               return (
                 <li key={g.id} className={'chron-goal' + (done ? ' is-done' : '')}>
                   <div className="chron-goal-top">
@@ -367,7 +382,12 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     {repeats(g) ? <span className="chron-chip">every {g.scope}</span> : null}
                     {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
                         moves on its own and does not say why reads as a bug rather than a feature */}
-                    {from ? <span className="chron-chip is-auto">from {from}</span> : null}
+                    {from ? (
+                      <span className="chron-chip is-auto">
+                        from {from}
+                        {fromWhat ? ' · ' + fromWhat : ''}
+                      </span>
+                    ) : null}
                     {/* ⚠️ next to the delete rather than on the title, unlike the activity rows:
                         a goal's title is already a checkbox for the tick-box kind, and a label
                         that both ticks and opens an editor is a label you cannot press safely */}
@@ -381,6 +401,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         setUnit(g.unit ?? '')
                         setEvery(repeats(g))
                         setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
+                        setCountWhat(g.counts)
                       }}
                       aria-label={`Change ${g.title}`}
                       title={`Change ${g.title}`}
@@ -488,6 +509,27 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                   </select>
                 </label>
               )}
+              {/**
+               * ⚠️ ONLY WHEN THE SOURCE IS ONE ACTIVITY THAT COUNTS SOMETHING. Without a metric
+               * there is nothing to choose between, and for a category the choice is meaningless —
+               * so the control appears exactly when it is a real question and never as a dropdown
+               * with one answer.
+               */}
+              {(() => {
+                const picked = src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null
+                return picked?.metric ? (
+                  <label className="chron-src">
+                    <span className="sr-only">Count what?</span>
+                    <select
+                      value={countWhat}
+                      onChange={(e) => setCountWhat(e.target.value as 'minutes' | 'amount')}
+                    >
+                      <option value="minutes">count the time</option>
+                      <option value="amount">count the {picked.metric}</option>
+                    </select>
+                  </label>
+                ) : null
+              })()}
               {v.scope !== 'life' && (
                 <label className="chron-rep">
                   <input
@@ -523,6 +565,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 setUnit('')
                 setEvery(false)
                 setSrc('')
+                setCountWhat('minutes')
                 setAdding(true)
               }}
             >
