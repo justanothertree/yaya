@@ -2508,6 +2508,55 @@ life window given a goal of its own, the same perturbation is 3,068–4,106 minu
 Reasoning and the standing privilege check are in `docs/2026-10-13-chronicle-tally-span.sql`,
 applied as `chronicle_tally_span_bound`.
 
+## 6y · ✅ The room in the real bundle, and the index that lists it
+
+Everything until now was checked against `npm run dev`. The built bundle is a different program —
+`import.meta.env.DEV` strips whole branches, and `:4173` is its own origin, so localStorage is
+empty and every room opens the way a first-time visitor finds it.
+
+**The harness is not in it.** `src/dev/chroniclePreview.ts` invents a whole seeded account, and a
+module-scope call once shipped 2.78 kB of it to real users (§6g). Grepped against the built
+`dist/assets/*.js` for six strings only the harness contains — `pv-a`, `__chron`,
+`dev_chron_blank`, `pvVisit` and two seed names — **zero files**, including the `pvVisit` added
+last tick.
+
+**The signed-out page, measured at 375 on the real build.** Chronicle is `nav: member`, so what
+production actually shows a visitor is the explainer and a Sign in button — that page _is_ the
+production surface, and it is clean: `scrollWidth - clientWidth` is **0** at the document, `main`,
+the section and the card; nothing clipped, nothing past the right edge, and the one control is
+82×40 against the 24px floor. Then looked at it, because §6 of `CLAUDE.md` is explicit that zeroes
+can mean the text has been destroyed rather than that the layout is right. It reads correctly.
+
+**What the trip actually turned up was a question about a neighbour.** The footer's "What's here?"
+dialog says _"Every room you can open"_, and standing on Chronicle signed out, Chronicle was not in
+it. That is the `nav: member` gate working — Chat and People are absent for the same reason, and
+the dialog is built from `navFor(viewer)` rather than a typed list, so a member does see it.
+
+But "by construction" was the whole of the evidence. `src/nav/places.ts` exists **because Paint was
+missing from the phone for its entire life** — one fact written in six places and one copy wrong —
+and it had no test at all. One of its own comments names a decision nothing checked: `#pets` points
+at `games` rather than at `minions` so that no alias resolves through another alias, "a chain
+nobody wrote and nothing tests".
+
+`src/nav/places.test.ts` now does, in 14 tests that deliberately **do not restate the list** — a
+test holding its own array of room ids is the seventh copy, and it rots like the other six. Every
+assertion is either a rule quantified over `PLACES` (every members-only room, derived as
+`nav(member) && !nav(visitor)`, is withheld from a suspended member and from a build with no
+members' side; no place that answers false to everyone is ever offered; every id appears once;
+every place has a word, a glyph and a title) or a claim about one named room (Chronicle is offered
+to a member, withheld from a visitor, routable and titled; every alias resolves to a real section
+and never to another alias; a challenge link's query survives; a Circuit link that means Chat still
+does; an unknown hash lands on Home rather than nowhere).
+
+Made to fail, four ways: Chronicle offered to everybody (1 red), `member` forgetting suspension
+(2 red), an alias pointed at another alias (1 red), the Circuit-means-Chat rule deleted (1 red) —
+each reverted from a scratchpad copy, and the file byte-identical afterwards.
+
+**The honest limit**: the room itself cannot be reached in production without an account, and the
+workbench does not exist there by design. What is verified here is the bundle and the signed-out
+page; the signed-in room has only ever been exercised against the dev server and the preview
+double.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
