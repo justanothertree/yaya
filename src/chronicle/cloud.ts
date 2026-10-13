@@ -10,6 +10,7 @@ import {
   pvDropRoutine,
   pvEditEntry,
   pvEntries,
+  pvExport,
   pvQuality,
   pvMoods,
   pvPlanDid,
@@ -603,4 +604,25 @@ export async function recordVisit(room: string, secs: number): Promise<void> {
   })
   /* ⚠️ a visit that does not land is not worth telling anybody about — see useVisits */
   void error
+}
+
+/**
+ * Everything you have recorded, as one file.
+ *
+ * ⚠️ THE ONE STORE ON THIS SITE WITH NO LOCAL COPY. Songs, drawings, looks and minions are
+ * localStorage with the account as a mirror, and the Account page offers all four as a file
+ * because "a file is the copy that survives losing the account". Chronicle went the other way on
+ * purpose — see the note at the top of this module — which is right for a record that has to be
+ * the same on a phone and a laptop, and which left it the only thing here nobody could take out.
+ *
+ * ⚠️ IT IS ONE RPC RETURNING ONE DOCUMENT, not five calls returning five lists. A list comes back
+ * through PostgREST, which can cap rows; a cap applied quietly would turn "everything you ever
+ * recorded" into "some of it", with the download looking exactly as successful either way. One
+ * row cannot be truncated by a row limit. See docs/2026-10-13-chronicle-export.sql.
+ */
+export async function exportMine(): Promise<Record<string, unknown> | null> {
+  if (previewMember) return pvExport()
+  const { data, error } = await getSupabaseClient().rpc('chronicle_export')
+  if (error || !data || typeof data !== 'object') return null
+  return data as Record<string, unknown>
 }

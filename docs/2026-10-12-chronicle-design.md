@@ -2557,6 +2557,70 @@ workbench does not exist there by design. What is verified here is the bundle an
 page; the signed-in room has only ever been exercised against the dev server and the preview
 double.
 
+## 6z · ✅ The one thing here nobody could take out
+
+The room's own first decision was that chronicle keeps **no local copy** — a record of your days
+has to read the same on a phone and a laptop, so there is one copy and it is the server's. That is
+still right, and it had a cost nothing had named: chronicle was the only store on this site a
+person could not get out of it.
+
+The Account page has said the other half out loud for months. It offers songs, drawings, looks and
+minions as a file, on the grounds that **"a file is the copy that survives losing the account"** —
+and chronicle, the thing most likely to be worth years, had no such file. The app this room
+replaced kept everything in localStorage, where it was the person's by accident. A "⬇ Save a copy"
+at the foot of the room, and `chronicle_export()`, make it theirs on purpose.
+
+**One RPC returning one document, not five calls returning five lists.** The obvious build is
+client-side — call the five list RPCs and stitch them. The reason not to is truncation: a set comes
+back through PostgREST, which can cap rows, and a cap applied quietly turns "everything you ever
+recorded" into "some of it", with the download looking exactly as successful either way. That is
+the shape of a local ceiling under the server's, where the person is told it worked. One row cannot
+be truncated by a row limit.
+
+Three things the function is careful about: `owner` is **not** in the file (the same uuid on every
+row, the caller's own account id, in a file meant to be carried between machines); every list is
+**ordered**, so two exports of unchanged data are byte-identical and a diff of last month's file
+against this month's shows only what changed; and it is **not bounded**, because an export that
+quietly stopped at N rows would be the exact failure it exists to prevent.
+
+Measured: refused with no session; a session owning nothing sees all zeros, which is the
+`owner = me` filter doing real work rather than being assumed; the owner's uuid appears nowhere in
+the file; three synthetic years export in **45–52ms**, 3,293 rows in and 3,293 out, 931 kB,
+ascending, against an 8s statement timeout. End to end in the pane, the button produced a
+12,912-byte `application/json` blob named `chronicle-2026-10-13.json`. At 375 the row is clean —
+zero overflow at the document, the card and the row itself, the sentence wrapping under the button
+rather than being squeezed beside it.
+
+**And the double had to learn a second vocabulary.** `pvExport` is the one place in
+`chroniclePreview.ts` that speaks the server's column names — `started_at`, `repeat_every`,
+`done_at`, `archived_at` — while every other export in that file speaks the room's: `start`,
+`every`, `done`, `archived`. A double that exported its own words would be internally consistent,
+would look right in the pane, and would agree about a file nobody will ever receive.
+
+Seven perturbations ran against the six new tests, and **three passed at first**, which is the part
+worth keeping:
+
+| what was broken                        | first result | why                                           |
+| -------------------------------------- | ------------ | --------------------------------------------- |
+| entries exported under the room's keys | ✅ caught    |                                               |
+| goals exported under the room's keys   | ✅ caught    |                                               |
+| an empty account exporting null        | ✅ caught    |                                               |
+| the entries list left unsorted         | ❌ missed    | the fixture inserted them in ascending order  |
+| the plans list left unsorted           | ❌ missed    | the test compared two exports — both unsorted |
+| a timestamp built from `new Date()`    | ❌ missed    | the two calls landed in the same millisecond  |
+| the activities list left unsorted      | ❌ missed    | same as plans                                 |
+
+The fixture now inserts sessions and plans out of order on purpose, each list is asked about its
+own key rather than about agreeing with a second copy of itself, and the byte-for-byte comparison
+has a few milliseconds between its two calls. All seven go red now.
+
+Reasoning and the standing privilege check are in `docs/2026-10-13-chronicle-export.sql`, applied
+as `chronicle_export`.
+
+**Left for Evan**: the Account page's backup card names its four things precisely, so nothing there
+has become untrue — but somebody looking for "save my data" would look at Account first and find a
+card that does not mention chronicle. Whether that earns a line there is a call about that page.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

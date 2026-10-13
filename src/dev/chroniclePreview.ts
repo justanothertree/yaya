@@ -375,6 +375,15 @@ const asked = (): boolean => {
  * a function there is nothing to run at import time and the module drops out entirely. Measured
  * both ways: grep the built bundle for a string only this file contains.
  */
+/**
+ * The stand-in for a timestamp the double does not keep.
+ *
+ * ⚠️ A FIXED MOMENT RATHER THAN `new Date()`, so two exports of an unchanged store are the same
+ * bytes — which is the property `chronicle_export` orders its lists for, and a harness that
+ * churned on every call could not be used to check it.
+ */
+const EPOCH = new Date(0).toISOString()
+
 let S: Store | undefined
 const db = (): Store => (S ??= asked() ? blank() : seed())
 
@@ -695,6 +704,91 @@ export const pvVisit = (room: string, secs: number): void => {
       quality: null,
     })
 }
+
+/**
+ * The whole account as one document, the way `chronicle_export` builds it.
+ *
+ * ⚠️ IT MIRRORS THE SERVER'S FIELD NAMES, NOT THIS MODULE'S. The double stores the shapes the
+ * room reads — `start`, `end`, `cat` — while the file carries the column names, `started_at`,
+ * `ended_at`, `archived_at`. A double that exported its own vocabulary would make the harness
+ * agree with a file nobody will ever receive.
+ *
+ * ⚠️ AND EVERY LIST IS ORDERED, for the same reason the function orders them: two exports of
+ * unchanged data should be the same bytes.
+ */
+export const pvExport = (): Record<string, unknown> => ({
+  kind: 'chronicle',
+  version: 1,
+  at: new Date().toISOString(),
+  activities: [...db().acts]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      cat: a.cat,
+      colour: a.colour,
+      /* the double keeps a boolean where the table keeps the moment it happened */
+      archived_at: a.archived ? EPOCH : null,
+      created_at: EPOCH,
+      auto: a.auto,
+      metric: a.metric,
+      session_mins: a.session,
+    })),
+  entries: [...db().ents]
+    .sort((x, y) => Date.parse(x.start) - Date.parse(y.start) || x.id.localeCompare(y.id))
+    .map((e) => ({
+      id: e.id,
+      activity: e.activity,
+      started_at: e.start,
+      ended_at: e.end,
+      note: e.note,
+      amount: e.amount,
+      quality: e.quality,
+      created_at: e.start,
+    })),
+  goals: [...db().goals]
+    .sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
+    .map((g) => ({
+      id: g.id,
+      title: g.title,
+      scope: g.scope,
+      anchor: g.anchor,
+      repeat_every: g.every,
+      target: g.target,
+      unit: g.unit,
+      progress: g.progress,
+      /* `done` is a boolean here and a moment there, the same as `archived` above */
+      done_at: g.done ? EPOCH : null,
+      note: g.note,
+      sort: g.sort,
+      activity: g.activity,
+      cat: g.cat,
+      counts: g.counts,
+      est_mins: g.est,
+      priority: g.priority,
+      created_at: EPOCH,
+      updated_at: EPOCH,
+    })),
+  routines: [...db().routines]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      steps: r.steps,
+      created_at: EPOCH,
+      updated_at: EPOCH,
+    })),
+  plans: [...db().plans]
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || a.id.localeCompare(b.id))
+    .map((p) => ({
+      id: p.id,
+      activity: p.activity,
+      starts_at: p.start,
+      ends_at: p.end,
+      note: p.note,
+      created_at: p.start,
+    })),
+})
 
 export const pvSaveRoutine = (
   name: string,

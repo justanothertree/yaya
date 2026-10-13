@@ -22,6 +22,7 @@ import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '.
 import { CATS, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
+import { SaveCopy } from '../chronicle/SaveCopy'
 
 /**
  * Chronicle — what you are aiming at, at every cadence.
@@ -796,6 +797,12 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
           {say && <p className="chron-say">{say}</p>}
         </>
       )}
+
+      {/**
+       * ⚠️ OUTSIDE THE TAB BODY, so it is reachable from every window rather than only from
+       * whichever one happens to be open. It is about the whole record, not about this week.
+       */}
+      <SaveCopy />
     </section>
   )
 }

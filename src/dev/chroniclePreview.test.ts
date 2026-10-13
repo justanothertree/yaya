@@ -3,6 +3,8 @@ import {
   pvActivities,
   pvAddEntry,
   pvEmpty,
+  pvExport,
+  pvSaveRoutine,
   pvEntries,
   pvMoods,
   pvPlanDid,
@@ -312,5 +314,150 @@ describe('a visit recorded without being asked for', () => {
     pvVisit('   ', 120)
     pvVisit('x'.repeat(41), 120)
     expect(pvActivities()).toEqual([])
+  })
+})
+
+describe('the file you can take away', () => {
+  /**
+   * ⚠️ THE FILE SPEAKS THE SERVER'S VOCABULARY, NOT THE ROOM'S, and that is the whole hazard of
+   * doubling an export. Everywhere else in this store an entry has `start`, a goal has `every`
+   * and `done`, and an activity has `archived` — because those are the shapes the room reads.
+   * `chronicle_export` writes the COLUMN names: started_at, repeat_every, done_at, archived_at.
+   * A double that exported its own words would be internally consistent, would look right in the
+   * pane, and would agree about a file no member will ever be sent.
+   *
+   * These key lists are the one place in this file where the server's contract is written down
+   * rather than derived, because vitest cannot reach Postgres. They were taken from the function
+   * itself and checked against a live call — see docs/2026-10-13-chronicle-export.sql.
+   */
+  const KEYS = {
+    activities: [
+      'id',
+      'name',
+      'cat',
+      'colour',
+      'archived_at',
+      'created_at',
+      'auto',
+      'metric',
+      'session_mins',
+    ],
+    entries: [
+      'id',
+      'activity',
+      'started_at',
+      'ended_at',
+      'note',
+      'amount',
+      'quality',
+      'created_at',
+    ],
+    goals: [
+      'id',
+      'title',
+      'scope',
+      'anchor',
+      'repeat_every',
+      'target',
+      'unit',
+      'progress',
+      'done_at',
+      'note',
+      'sort',
+      'activity',
+      'cat',
+      'counts',
+      'est_mins',
+      'priority',
+      'created_at',
+      'updated_at',
+    ],
+    routines: ['id', 'name', 'steps', 'created_at', 'updated_at'],
+    plans: ['id', 'activity', 'starts_at', 'ends_at', 'note', 'created_at'],
+  } as const
+
+  /**
+   * One row in every list, so the shape assertions have something to be about — and the sessions
+   * written OUT OF ORDER on purpose.
+   *
+   * ⚠️ WITH THEM IN ORDER THE ORDERING TESTS BELOW WERE BLIND. Deleting the sort from pvExport
+   * left all 26 tests green, because a list that arrives sorted is sorted whether or not anything
+   * sorts it. A fixture that is tidy in the dimension under test pins that dimension flat, which
+   * is the same way a life-scope window hid a wrong lower bound in chronicle_tally.
+   */
+  beforeEach(() => {
+    pvAddEntry(draw, h(9), h(10), 'a note')
+    pvAddEntry(draw, h(7), h(8), null)
+    pvAddEntry(draw, h(13), h(14), null)
+    goalOn({ target: 30, activity: draw })
+    pvSaveRoutine('Morning', [{ activity: draw, mins: 20 }])
+    pvPlanSave(draw, h(16), h(17), null)
+    pvPlanSave(draw, h(14), h(15), null)
+  })
+
+  it('says what it is, so a reader can refuse a file that is not one', () => {
+    const doc = pvExport()
+    expect(doc.kind).toBe('chronicle')
+    expect(doc.version).toBe(1)
+    expect(typeof doc.at).toBe('string')
+  })
+
+  it('carries every list, under the column names the file uses', () => {
+    const doc = pvExport() as Record<string, Array<Record<string, unknown>>>
+    for (const [list, keys] of Object.entries(KEYS)) {
+      expect(Array.isArray(doc[list]), list).toBe(true)
+      expect(doc[list].length, list).toBeGreaterThan(0)
+      for (const row of doc[list]) expect(Object.keys(row).sort(), list).toEqual([...keys].sort())
+    }
+  })
+
+  it('never writes the account id into a file people pass between machines', () => {
+    /* the double has no owner column at all, so this asserts the shape rather than a value —
+       a row that grew one would be caught by the key lists above, and this says why that matters */
+    const doc = pvExport() as Record<string, Array<Record<string, unknown>>>
+    for (const list of Object.keys(KEYS))
+      for (const row of doc[list]) expect(Object.keys(row), list).not.toContain('owner')
+  })
+
+  /**
+   * ⚠️ EVERY LIST, BY ITS OWN KEY, because "the two calls matched" is not the claim. The first
+   * version of this asserted that two exports were the same bytes, and deleting the sort from the
+   * PLANS list left it green — two unsorted lists agree with each other perfectly. What the file
+   * promises is an order, so each list is asked about its own.
+   */
+  it('orders every list by the key the file promises', () => {
+    const doc = pvExport() as Record<string, Array<Record<string, string | number>>>
+    const by = (rows: Array<Record<string, string | number>>, key: string, time = false) =>
+      rows.map((r) => (time ? Date.parse(String(r[key])) : String(r[key])))
+    const sorted = <T>(xs: T[]) => [...xs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+
+    expect(by(doc.activities, 'id')).toEqual(sorted(by(doc.activities, 'id')))
+    expect(by(doc.entries, 'started_at', true)).toEqual(sorted(by(doc.entries, 'started_at', true)))
+    expect(doc.goals.map((g) => Number(g.sort))).toEqual(
+      sorted(doc.goals.map((g) => Number(g.sort))),
+    )
+    expect(by(doc.routines, 'id')).toEqual(sorted(by(doc.routines, 'id')))
+    expect(by(doc.plans, 'starts_at', true)).toEqual(sorted(by(doc.plans, 'starts_at', true)))
+  })
+
+  /**
+   * ⚠️ WITH A REAL GAP BETWEEN THE TWO CALLS. Taken back to back they land in the same
+   * millisecond, so a field built from `new Date()` rather than a fixed moment compares equal and
+   * the test says nothing — it passed against exactly that mistake until the wait was added.
+   */
+  it('gives the same bytes for an unchanged store, a moment later', () => {
+    const first = JSON.stringify({ ...pvExport(), at: '' })
+    const until = Date.now() + 3
+    while (Date.now() < until) {
+      /* a few milliseconds, deliberately: see above */
+    }
+    expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(first)
+  })
+
+  it('exports an empty account as empty lists rather than as nothing', () => {
+    pvEmpty()
+    const doc = pvExport() as Record<string, unknown>
+    for (const list of Object.keys(KEYS)) expect(doc[list], list).toEqual([])
+    expect(doc.kind).toBe('chronicle')
   })
 })

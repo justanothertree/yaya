@@ -15675,6 +15675,26 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, taking it with you — see src/chronicle/SaveCopy.tsx ─────────── */
+.chron-keep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.chron-keep .muted {
+  /* ⚠️ a floor in PIXELS, not rem: the root size here is fluid, so a rem floor is not a length.
+     Without one the sentence is what pays for the button on a narrow phone, and `min-width: 0`
+     would let it shrink to a column of punctuation rather than wrap. */
+  flex: 1 1 200px;
+  min-width: 200px;
+  font-size: 0.78rem;
+}
+
 /* ── chronicle, the record half — see src/chronicle/Timer.tsx ───────────────── */
 .chron-rec {
   border: 1px solid var(--border);
