@@ -23,6 +23,7 @@ import {
   minutesByActivity,
   minutesByCat,
   amountIn,
+  metSession,
   moodWord,
   MOODS,
   overlapMs,
@@ -82,6 +83,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [newName, setNewName] = useState('')
   const [newCat, setNewCat] = useState<Activity['cat']>('free')
   const [newMetric, setNewMetric] = useState('')
+  const [newSession, setNewSession] = useState('')
   const [gap, setGap] = useState(false)
   /** what you were doing, written down as you stop — the field the table has always had */
   const [stopNote, setStopNote] = useState('')
@@ -110,6 +112,8 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [actCat, setActCat] = useState<Activity['cat']>('free')
   /** what this activity counts besides time — "pages", "reps", blank for nothing */
   const [actMetric, setActMetric] = useState('')
+  /** how long a sitting of it ought to be, in minutes — blank for no opinion */
+  const [actSession, setActSession] = useState('')
   /** the amount being typed against a span, keyed by entry id */
   const [entAmount, setEntAmount] = useState('')
   /** how the span being edited went, '' for unrated — see Entry.quality */
@@ -193,6 +197,12 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     await after()
   }
 
+  /* ⚠️ blank and nonsense both mean "no opinion", never zero — see Activity.session */
+  const asMins = (typed: string): number | null => {
+    const n = Number(typed)
+    return typed.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
+  }
+
   const halt = async () => {
     if (busy) return
     setBusy(true)
@@ -201,22 +211,37 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
      * `chronicle_stop` has taken one since step 2 and this passed null — so the column existed,
      * the function stored it, the log rendered it, and there was no way to put anything in it.
      */
+    /**
+     * ⚠️ MEASURED BEFORE THE STOP, because afterwards the running entry is gone and finding it
+     * again means guessing which of the day's rows was the one that just ended.
+     */
+    const was = running
+    const target = was ? (byId.get(was.activity)?.session ?? null) : null
+    const ran = was ? overlapMs(was, -Infinity, Infinity, Date.now()) : 0
     const bad = await stopTimer(stopNote.trim() || null)
     setBusy(false)
     if (bad) return moan(bad.why)
     setStopNote('')
     await after()
+    /* ⚠️ SAID ONCE, AFTER THE FACT, and not a confirmation beforehand: this is a note about what
+       happened, not a gate on stopping. Somebody who wants to stop at twelve minutes is allowed
+       to, and being asked to justify it would make the feature something to turn off. */
+    if (target != null && ran > 0 && ran / 60_000 < target)
+      moan(
+        `${spanText(ran)} — under the ${spanText(target * 60_000)} you aim for on ${byId.get(was!.activity)?.name ?? 'that'}.`,
+      )
   }
 
   const makeActivity = async () => {
     const n = newName.trim()
     if (!n || busy) return
     setBusy(true)
-    const r = await saveActivity(n, newCat, null, undefined, newMetric)
+    const r = await saveActivity(n, newCat, null, undefined, newMetric, asMins(newSession))
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setNewName('')
     setNewMetric('')
+    setNewSession('')
     setAdding(false)
     await load()
     /* ⚠️ a new activity is almost always one you are about to do, so it is pre-selected rather
@@ -248,7 +273,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     setBusy(true)
     /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
        id since step 2 and nothing had ever passed one, which is why a category was permanent */
-    const r = await saveActivity(n, actCat, null, fixAct, actMetric)
+    const r = await saveActivity(n, actCat, null, fixAct, actMetric, asMins(actSession))
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setFixAct(null)
@@ -558,6 +583,18 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
               onChange={(e) => setNewMetric(e.target.value)}
             />
           </label>
+          {/* ⚠️ "a sitting?" rather than "minutes", because the question is how long one GO of this
+              ought to be — a box labelled minutes beside a box labelled pages is two optional
+              numbers nobody can tell apart */}
+          <label className="chron-qty">
+            <span className="sr-only">How long should one sitting be, in minutes</span>
+            <input
+              value={newSession}
+              inputMode="numeric"
+              placeholder="30m a sitting?"
+              onChange={(e) => setNewSession(e.target.value)}
+            />
+          </label>
           <button
             className="btn"
             disabled={!newName.trim() || busy}
@@ -644,6 +681,19 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                 {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
                     and a log is skimmed. The exact rating is kept where it is set — see moodWord,
                     whose test asserts this word and the month's buckets are the same rule. */}
+                {/**
+                 * ⚠️ ONLY WHEN IT FINISHED SHORT, never while it runs — see metSession, which
+                 * returns null rather than false for a sitting still going. A reproach on screen
+                 * for the first half of every session is the opposite of what this is for.
+                 */}
+                {metSession(e, a?.session ?? null, Date.now()) === false ? (
+                  <span
+                    className="chron-short"
+                    title={`Shorter than the ${a?.session}m you aim for`}
+                  >
+                    short
+                  </span>
+                ) : null}
                 {moodWord(e.quality) ? (
                   <span className={'chron-mood is-' + moodWord(e.quality)}>
                     {moodWord(e.quality)}
@@ -715,32 +765,38 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                     </button>
                   </span>
                 )}
-                {/* ⚠️ only a finished span can be edited: the editor needs both ends, and the
-                    running one is closed with Stop rather than by typing a time into it */}
-                {e.end && (
+                {/* ⚠️ THE BUTTONS ARE A GROUP, like the plan row's. As loose siblings of a
+                    wrapping row they split across lines — one row dropped its ✕ alone onto the
+                    next line while another wrapped part way through its facts, which reads as a
+                    broken layout rather than a deliberate one. */}
+                <span className="chron-ent-do">
+                  {/* ⚠️ only a finished span can be edited: the editor needs both ends, and the
+                      running one is closed with Stop rather than by typing a time into it */}
+                  {e.end && (
+                    <button
+                      className="btn btn-ghost chron-x"
+                      onClick={() => {
+                        setFixEnt(fixEnt === e.id ? null : e.id)
+                        setEntFrom(forInput(e.start))
+                        setEntTo(forInput(e.end!))
+                        setEntAmount(e.amount == null ? '' : String(e.amount))
+                        setEntMood(e.quality == null ? '' : String(e.quality))
+                      }}
+                      aria-label="Change when this was"
+                      title="Change when this was"
+                    >
+                      ✎
+                    </button>
+                  )}
                   <button
                     className="btn btn-ghost chron-x"
-                    onClick={() => {
-                      setFixEnt(fixEnt === e.id ? null : e.id)
-                      setEntFrom(forInput(e.start))
-                      setEntTo(forInput(e.end!))
-                      setEntAmount(e.amount == null ? '' : String(e.amount))
-                      setEntMood(e.quality == null ? '' : String(e.quality))
-                    }}
-                    aria-label="Change when this was"
-                    title="Change when this was"
+                    onClick={() => void forget(e)}
+                    aria-label="Delete this span"
+                    title="Delete this span"
                   >
-                    ✎
+                    ✕
                   </button>
-                )}
-                <button
-                  className="btn btn-ghost chron-x"
-                  onClick={() => void forget(e)}
-                  aria-label="Delete this span"
-                  title="Delete this span"
-                >
-                  ✕
-                </button>
+                </span>
               </li>
             )
           })}
@@ -811,6 +867,15 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       onChange={(e) => setActMetric(e.target.value)}
                     />
                   </label>
+                  <label className="chron-qty">
+                    <span className="sr-only">How long should one sitting be, in minutes</span>
+                    <input
+                      value={actSession}
+                      inputMode="numeric"
+                      placeholder="30m a sitting?"
+                      onChange={(e) => setActSession(e.target.value)}
+                    />
+                  </label>
                   <button
                     className="btn"
                     disabled={!actName.trim() || busy}
@@ -841,12 +906,16 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       setActName(a.name)
                       setActCat(a.cat)
                       setActMetric(a.metric ?? '')
+                      setActSession(a.session == null ? '' : String(a.session))
                     }}
                     title={`Rename ${a.name}, or change what kind it is`}
                   >
                     {a.name}
                     <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
                     {a.metric ? <span className="muted">· {a.metric}</span> : null}
+                    {a.session ? (
+                      <span className="muted">· {spanText(a.session * 60_000)} a sitting</span>
+                    ) : null}
                     {a.auto ? <span className="chron-chip">on the site</span> : null}
                   </button>
                   {mins[a.id] ? (

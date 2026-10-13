@@ -15740,6 +15740,16 @@ a.cz-msg-author:focus-visible {
   display: grid;
   gap: 0.25rem;
 }
+/* ⚠️ THEY WRAP, AND THIS IS THE STANDING RULE FOR EVERY ROW IN THIS ROOM. A row here is a name
+   plus an open-ended run of small facts — a length, an amount, a rating, a short marker, a
+   category, a metric, a sitting target — and then one or two buttons. Every time a new fact was
+   added the row's min-content grew past its list and the buttons hung off the card: the goal row
+   did it with five chips, the plan row with three buttons, and this one with the word "short".
+   Three separate fixes for one shape, so it is a rule now rather than a habit.
+
+   ⚠️ AND THE AUDIT CALLS IT CLEAN EVERY TIME, because the overflow is swallowed by an ancestor
+   that scrolls — `offEdge` and `sideways` are measured against the viewport. Measure
+   scrollWidth - clientWidth on the LIST, not on the page. See CLAUDE.md §6. */
 .chron-ent,
 .chron-acts li {
   display: flex;
@@ -15747,10 +15757,16 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
   font-size: 0.88rem;
   min-height: 36px;
+  flex-wrap: wrap;
+}
+/* ⚠️ a floor in PIXELS on whatever carries the name, or the rigid facts win the line and the one
+   flexible thing collapses to nothing — which measures as "no overflow" and reads as a bug */
+.chron-ent-name,
+.chron-acts li > span:first-child {
+  flex: 1 1 130px;
+  min-width: 130px;
 }
 .chron-ent-name {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -15785,9 +15801,7 @@ a.cz-msg-author:focus-visible {
      "Planned2h 30m planned" */
   gap: 0.45rem;
 }
-.chron-acts li > span:first-child {
-  flex: 1;
-}
+
 @media (max-width: 700px), (pointer: coarse) {
   /* a timestamp range is the first thing worth dropping when a row will not fit a thumb */
   .chron-ent-when {
@@ -15877,6 +15891,7 @@ a.cz-msg-author:focus-visible {
 .chron-plan .btn {
   min-width: 24px;
 }
+.chron-ent-do,
 .chron-plan-do {
   display: flex;
   align-items: center;
@@ -15909,6 +15924,18 @@ a.cz-msg-author:focus-visible {
 }
 .chron-shift .is-down {
   color: var(--muted);
+}
+
+/* a sitting that came up short of what its activity asks for — see metSession */
+.chron-short {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 100px;
+  padding: 0.02rem 0.35rem;
+  white-space: nowrap;
 }
 
 /* how a session went — see record.ts moodWord, and Looking.tsx */

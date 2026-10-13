@@ -69,6 +69,16 @@ export type Activity = {
    * can carry that changes what a goal is allowed to count.
    */
   metric: string | null
+  /**
+   * How long a single sitting ought to be, in minutes — or null, which is most of them.
+   *
+   * ⚠️ THIS IS NOT A GOAL POINTING AT THE ACTIVITY, and the difference is the whole point. A goal
+   * counts a WINDOW: thirty minutes of drawing today is met by six five-minute sessions. This
+   * counts each SESSION, and six five-minute sessions is the exact thing somebody setting one is
+   * trying to stop doing. Same number, opposite question — so it is a column here rather than
+   * another row in chronicle_goals.
+   */
+  session: number | null
 }
 
 /**
@@ -301,3 +311,28 @@ export const MOODS = [
   [4, 'good'],
   [5, 'flying'],
 ] as const
+
+/**
+ * Did this sitting reach the length its activity asks for?
+ *
+ * `null` means there is nothing to say — either the activity has no target, or the session is
+ * still going and has not got there YET.
+ *
+ * ⚠️ A RUNNING SESSION IS NEVER SHORT. Five minutes into a thirty-minute target you have not
+ * failed, you are five minutes in — and marking it short while it runs would put a reproach on
+ * screen for the entire first half of every sitting, which is the opposite of what a target like
+ * this is for. It turns true the moment you pass the line and never turns false until you stop.
+ *
+ * ⚠️ AND IT IS THE WHOLE SPAN, NOT THE OVERLAP WITH THE DAY YOU ARE LOOKING AT. A session's LENGTH
+ * belongs to the session, the same way its `amount` does — so a sitting from 23:00 to 00:30 is an
+ * hour and a half of work seen from either day. Judging it by the overlap would call it short on
+ * the morning side and not on the evening side: the same sitting, two verdicts, depending on which
+ * day you happened to open.
+ */
+export function metSession(e: Span, target: number | null, nowMs: number): boolean | null {
+  if (target == null || !(target > 0)) return null
+  /* an unbounded window, so a running session measures to the clock and a backwards one to zero */
+  const mins = overlapMs(e, -Infinity, Infinity, nowMs) / 60_000
+  if (mins >= target) return true
+  return e.end == null ? null : false
+}

@@ -220,6 +220,7 @@ export async function myActivities(): Promise<Activity[]> {
     archived: !!a.archived,
     auto: !!a.auto,
     metric: a.metric ?? null,
+    session: a.session == null ? null : num(a.session as number | string | null) || null,
   }))
 }
 
@@ -229,14 +230,16 @@ export async function saveActivity(
   colour: string | null,
   id?: string,
   metric?: string | null,
+  session?: number | null,
 ): Promise<{ id: string } | { why: string }> {
-  if (previewMember) return pvSaveActivity(name, cat, colour, id, metric)
+  if (previewMember) return pvSaveActivity(name, cat, colour, id, metric, session)
   const { data, error } = await getSupabaseClient().rpc('chronicle_activity_save', {
     p_id: id ?? null,
     p_name: name,
     p_cat: cat,
     p_colour: colour,
     p_metric: metric ?? null,
+    p_session: session ?? null,
   })
   if (error) return { why: error.message || 'that did not save' }
   const made = data == null ? '' : String(data)

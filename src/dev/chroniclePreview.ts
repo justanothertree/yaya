@@ -142,13 +142,14 @@ function seed(): Store {
     archived: false,
     auto: false,
     metric: null,
+    session: null,
     ...extra,
   })
   return {
     acts: [
-      a('pv-draw', 'Drawing', 'locked'),
+      a('pv-draw', 'Drawing', 'locked', { session: 30 }),
       a('pv-write', 'Writing', 'locked', { metric: 'pages' }),
-      a('pv-gym', 'Gym', 'free', { metric: 'reps' }),
+      a('pv-gym', 'Gym', 'free', { metric: 'reps', session: 60 }),
       a('pv-dish', 'Dishes', 'life'),
       a('pv-site', 'Chronicle (on the site)', 'free', { auto: true }),
       a('pv-old', 'Guitar', 'free', { archived: true }),
@@ -513,10 +514,12 @@ export const pvSaveActivity = (
   colour: string | null,
   id?: string,
   metric?: string | null,
+  session?: number | null,
 ): { id: string } => {
   const made = id ?? mint('pv-a')
   const found = db().acts.find((x) => x.id === made)
-  if (found) Object.assign(found, { name, cat, colour, metric: metric || null })
+  if (found)
+    Object.assign(found, { name, cat, colour, metric: metric || null, session: session || null })
   else
     db().acts.push({
       id: made,
@@ -526,6 +529,7 @@ export const pvSaveActivity = (
       archived: false,
       auto: false,
       metric: metric || null,
+      session: session || null,
     })
   return { id: made }
 }

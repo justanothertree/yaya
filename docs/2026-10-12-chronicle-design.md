@@ -1833,6 +1833,76 @@ true.
 minutes" — is the last named thing on the HTML list. Money, alarms, presence and `lib` stay out
 (§7), and `dash` is answered above rather than ported.
 
+## 6m · ✅ How long one sitting ought to be — and the parity list closes
+
+**Migration `chronicle_activity_session_target`, applied 13 Oct 2026 — reasoning in
+`docs/2026-10-13-chronicle-session-target.sql`.**
+
+The HTML app's `sessionGoal`, and the last of its named features this one did not have. **With this
+the parity list is closed**: everything in §1's table is either built, deliberately not ported
+(§7), or answered differently and said so (`dash`, §6l).
+
+### ⚠️ Why it is a column and not a goal pointing at the activity
+
+A goal counts a **window**: thirty minutes of drawing today is met by six five-minute sessions.
+This counts each **sitting**, and six five-minute sessions is the exact thing somebody setting one
+is trying to stop doing. Same number, opposite question — so `chronicle_goals` cannot express it.
+
+### ⚠️ A running session is never short
+
+Five minutes into a thirty-minute target you have not failed, you are five minutes in. `false`
+there would put a reproach on screen for the whole first half of every sitting, which is the
+opposite of what the target is for. `metSession` returns **null** until the line is passed, then
+**true**, and can only return **false** once the session has actually stopped.
+
+Verified in the room rather than reasoned about: a session seven minutes into a two-hour target
+carried no marker, and gained one the instant Stop was pressed — along with
+`7m — under the 2h you aim for on Chronicle (on the site).`
+
+The nudge is said **after** the fact and is not a confirmation beforehand: somebody who wants to
+stop at twelve minutes is allowed to, and being asked to justify it would make this a feature to
+turn off.
+
+### ⚠️ And the whole span, not the overlap with the day on screen
+
+A session's length belongs to the session, the way its `amount` does. A sitting from 23:00 to 00:30
+is an hour and a half seen from either day; judging it by the overlap would call it long enough on
+the evening you did it and too short the next morning. One sitting, two verdicts, decided by which
+day you opened.
+
+**The first version of that test could not see the difference.** It built the fixture from
+`23:00Z → 00:30Z`, which crosses UTC midnight and — in this machine's timezone — is an evening
+entirely inside one local day. So it crossed nothing, and swapping the whole span for a day overlap
+left the test green. A perturbation caught it. **The day a session belongs to is a LOCAL question,
+so a fixture about midnight has to be built from local midnight.** Rebuilt that way, the
+perturbation reddens it.
+
+### ⚠️ Row wrapping is a standing rule now, not a third fix
+
+The `short` marker pushed the log row past its list — `log: 28, acts: 37, card: 12` — and
+`mobileAudit` reported `offEdge: 0, sideways: 0` **again**, because the overflow is swallowed by an
+ancestor that scrolls.
+
+That is three separate fixes for one shape: the goal row with five chips, the plan row with three
+buttons, and now the log row with one word. A row in this room is a name plus an **open-ended run
+of small facts** — a length, an amount, a rating, a short marker, a category, a metric, a sitting
+target — and then its buttons. Every new fact grows the min-content again. So the shared
+`.chron-ent, .chron-acts li` rule now carries `flex-wrap: wrap` and a 130px pixel floor on whatever
+holds the name, and the buttons are a group (`.chron-ent-do`, sharing `.chron-plan-do`'s style) so
+they wrap together instead of one dropping alone onto the next line.
+
+Verified at 375, 820 and 1440 with zero overflow on the log, the activities list, the goal list,
+the plan list, the card **and** the container separately — and with a screenshot, because the
+numbers have read clean through two broken layouts now.
+
+### Where chronicle stands
+
+Everything the HTML app had, plus: seven horizons rather than a flat list, goals that read the
+record, streaks, routines derived from the day rather than kept in step by hope, plans against
+actual, an estimate and a priority, a time-weighted reading of how the hours went, and this week
+against the same point in the last one. The next tick has no parity list to work from — it goes to
+depth: what is thin, what is unexplained, and what a person who has never seen it would do first.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

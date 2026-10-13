@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   amountIn,
   clockText,
+  metSession,
   moodOf,
   moodWord,
   MOODS,
   dayBounds,
+  localMidnight,
   minutesByActivity,
   minutesByCat,
   overlapMs,
@@ -36,6 +38,7 @@ const acts: Activity[] = [
     archived: false,
     auto: false,
     metric: null,
+    session: null,
   },
   {
     id: 'a2',
@@ -45,6 +48,7 @@ const acts: Activity[] = [
     archived: false,
     auto: false,
     metric: null,
+    session: null,
   },
   {
     id: 'a3',
@@ -54,6 +58,7 @@ const acts: Activity[] = [
     archived: false,
     auto: false,
     metric: null,
+    session: null,
   },
 ]
 
@@ -335,5 +340,65 @@ describe('how a window went', () => {
       expect(m[word as 'good' | 'fine' | 'rough']).toBe(10)
     }
     expect(moodWord(null)).toBeNull()
+  })
+})
+
+describe('whether a sitting was long enough to be one', () => {
+  const NOW_T = at('2026-10-12T12:00:00Z')
+  const sit = (fromISO: string, toISO: string | null) => entry({ start: fromISO, end: toISO })
+
+  it('says nothing at all when the activity asks for nothing', () => {
+    expect(metSession(sit('2026-10-12T09:00:00Z', '2026-10-12T09:05:00Z'), null, NOW_T)).toBeNull()
+    expect(metSession(sit('2026-10-12T09:00:00Z', '2026-10-12T09:05:00Z'), 0, NOW_T)).toBeNull()
+  })
+
+  it('and judges a finished sitting against the line', () => {
+    expect(metSession(sit('2026-10-12T09:00:00Z', '2026-10-12T09:20:00Z'), 30, NOW_T)).toBe(false)
+    expect(metSession(sit('2026-10-12T09:00:00Z', '2026-10-12T09:30:00Z'), 30, NOW_T)).toBe(true)
+    expect(metSession(sit('2026-10-12T09:00:00Z', '2026-10-12T09:35:00Z'), 30, NOW_T)).toBe(true)
+  })
+
+  /**
+   * ⚠️ THE ONE THAT MATTERS. Five minutes into a thirty-minute target you have not failed, you are
+   * five minutes in — and `false` here would put a reproach on screen for the whole first half of
+   * every sitting, which is the opposite of what a target like this is for. It stays silent until
+   * you pass the line, then says yes, and can only say no once you have actually stopped.
+   */
+  it('and a sitting still running is never short — only not there yet', () => {
+    const young = sit('2026-10-12T11:55:00Z', null) /* five minutes in */
+    expect(metSession(young, 30, NOW_T)).toBeNull()
+    const grown = sit('2026-10-12T11:00:00Z', null) /* an hour in */
+    expect(metSession(grown, 30, NOW_T)).toBe(true)
+    /* and the moment it stops at five minutes, it is short */
+    expect(metSession(sit('2026-10-12T11:55:00Z', '2026-10-12T12:00:00Z'), 30, NOW_T)).toBe(false)
+  })
+
+  /**
+   * ⚠️ THE WHOLE SPAN, NOT THE OVERLAP, which is what keeps one sitting from getting two verdicts.
+   * A session from 23:00 to 00:30 is ninety minutes of work seen from either day — but only sixty
+   * of them fall on the first day and thirty on the second, so an overlap-based version calls it
+   * long enough on the evening you did it and too short the next morning. Same sitting, opposite
+   * answers, decided by which day you happened to open.
+   */
+  it('and a sitting across midnight gets one verdict, not one per day', () => {
+    /* ⚠️ BUILT FROM LOCAL MIDNIGHT, not from a Z time. The first version of this fixture ran
+       23:00Z to 00:30Z and crossed UTC midnight — which in this machine's timezone is an evening
+       entirely inside one local day, so it crossed nothing and the overlap-versus-whole-span
+       distinction was never exercised. A perturbation caught it: swapping the whole span for a
+       day overlap left this test green. The day a session is attributed to is a LOCAL question,
+       so a fixture about midnight has to be built from the local one. */
+    const mid = localMidnight('2026-10-13').getTime()
+    const night = sit(
+      new Date(mid - 60 * 60_000).toISOString(),
+      new Date(mid + 30 * 60_000).toISOString(),
+    )
+    expect(metSession(night, 60, NOW_T)).toBe(true)
+    expect(metSession(night, 90, NOW_T)).toBe(true)
+    expect(metSession(night, 120, NOW_T)).toBe(false)
+  })
+
+  it('and a backwards or unreadable span is short rather than a throw', () => {
+    expect(metSession(sit('2026-10-12T10:00:00Z', '2026-10-12T09:00:00Z'), 30, NOW_T)).toBe(false)
+    expect(metSession(sit('not a date', '2026-10-12T09:00:00Z'), 30, NOW_T)).toBe(false)
   })
 })
