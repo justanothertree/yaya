@@ -15865,3 +15865,35 @@ a.cz-msg-author:focus-visible {
     flex: 0 0 6.5rem;
   }
 }
+
+/* an inline repair, in the row that is wrong — see Timer.tsx */
+.chron-fix {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 100%;
+}
+.chron-fix input,
+.chron-fix select,
+.chron-fix .btn {
+  min-height: 36px;
+}
+.chron-fix input[type='text'],
+.chron-fix input:not([type]) {
+  min-width: 7rem;
+}
+/* the activity name is the control for editing it, so it has to look pressable but not shout */
+.chron-act-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: flex-start;
+  min-height: 36px;
+  text-align: left;
+  min-width: 0;
+}
+.chron-act-name > .muted {
+  font-size: 0.78rem;
+}

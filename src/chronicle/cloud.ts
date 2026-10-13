@@ -157,6 +157,7 @@ export async function myActivities(): Promise<Activity[]> {
     cat: a.cat,
     colour: a.colour ?? null,
     archived: !!a.archived,
+    auto: !!a.auto,
   }))
 }
 
@@ -296,4 +297,26 @@ export async function totalsBetween(fromISO: string, toISO: string): Promise<Tot
     /* numeric arrives as a string — see the note on num above */
     mins: num(r.mins as number | string | null),
   }))
+}
+
+/**
+ * Move the ends of a logged span, or close a running one.
+ *
+ * ⚠️ IT CANNOT RE-OPEN A TIMER, deliberately: the end is required, because a null end would make a
+ * second entry with no end possible and `chronicle_one_running` exists to keep that at exactly one.
+ * Starting is `startTimer` and nothing else.
+ */
+export async function editEntry(
+  id: string,
+  fromISO: string,
+  toISO: string,
+  note: string | null,
+): Promise<{ why: string } | null> {
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_edit', {
+    p_id: id,
+    p_from: fromISO,
+    p_to: toISO,
+    p_note: note,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
 }

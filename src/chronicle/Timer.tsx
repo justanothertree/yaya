@@ -3,6 +3,7 @@ import {
   addEntry,
   archiveActivity,
   dropEntry,
+  editEntry,
   entriesBetween,
   myActivities,
   saveActivity,
@@ -45,6 +46,20 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [gap, setGap] = useState(false)
   const [gapFrom, setGapFrom] = useState('')
   const [gapTo, setGapTo] = useState('')
+  /**
+   * Which activity and which span are being edited, if any.
+   *
+   * ⚠️ INLINE RATHER THAN IN A DIALOG, and the reason is what they are for. Both of these are
+   * repairs made while you are looking at the thing that is wrong — "that says Free Time and it
+   * should say Life", "that ran for four hours because I forgot to stop it" — so the fix belongs
+   * in the row rather than behind a button that covers it up.
+   */
+  const [fixAct, setFixAct] = useState<string | null>(null)
+  const [actName, setActName] = useState('')
+  const [actCat, setActCat] = useState<Activity['cat']>('free')
+  const [fixEnt, setFixEnt] = useState<string | null>(null)
+  const [entFrom, setEntFrom] = useState('')
+  const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
   const [, setBeat] = useState(0)
   const live = useRef(false)
@@ -145,6 +160,46 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     setGapFrom('')
     setGapTo('')
     await after()
+  }
+
+  const saveAct = async () => {
+    const n = actName.trim()
+    if (!fixAct || !n || busy) return
+    setBusy(true)
+    /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
+       id since step 2 and nothing had ever passed one, which is why a category was permanent */
+    const r = await saveActivity(n, actCat, null, fixAct)
+    setBusy(false)
+    if ('why' in r) return moan(r.why)
+    setFixAct(null)
+    await after()
+  }
+
+  /**
+   * ⚠️ LOCAL TIME IN, ISO OUT. A `datetime-local` input gives "2026-10-12T21:30" with no zone,
+   * which `new Date()` reads as LOCAL — correct here, and the one case where parsing a date string
+   * is right rather than the UTC trap, because the string genuinely has no zone in it.
+   */
+  const saveEnt = async () => {
+    if (!fixEnt || !entFrom || !entTo || busy) return
+    setBusy(true)
+    const bad = await editEntry(
+      fixEnt,
+      new Date(entFrom).toISOString(),
+      new Date(entTo).toISOString(),
+      null,
+    )
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    setFixEnt(null)
+    await after()
+  }
+
+  /** what a datetime-local input wants: local time, no zone, to the minute */
+  const forInput = (iso: string): string => {
+    const d = new Date(iso)
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
   }
 
   const forget = async (e: Entry) => {
@@ -307,6 +362,48 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                     ? ` – ${new Date(e.end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
                     : ' – now'}
                 </span>
+                {fixEnt === e.id && (
+                  <span className="chron-fix">
+                    <label className="chron-gap">
+                      <span className="sr-only">Started</span>
+                      <input
+                        type="datetime-local"
+                        value={entFrom}
+                        onChange={(ev) => setEntFrom(ev.target.value)}
+                      />
+                    </label>
+                    <label className="chron-gap">
+                      <span className="sr-only">Ended</span>
+                      <input
+                        type="datetime-local"
+                        value={entTo}
+                        onChange={(ev) => setEntTo(ev.target.value)}
+                      />
+                    </label>
+                    <button className="btn" disabled={busy} onClick={() => void saveEnt()}>
+                      Save
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => setFixEnt(null)}>
+                      Cancel
+                    </button>
+                  </span>
+                )}
+                {/* ⚠️ only a finished span can be edited: the editor needs both ends, and the
+                    running one is closed with Stop rather than by typing a time into it */}
+                {e.end && (
+                  <button
+                    className="btn btn-ghost chron-x"
+                    onClick={() => {
+                      setFixEnt(fixEnt === e.id ? null : e.id)
+                      setEntFrom(forInput(e.start))
+                      setEntTo(forInput(e.end!))
+                    }}
+                    aria-label="Change when this was"
+                    title="Change when this was"
+                  >
+                    ✎
+                  </button>
+                )}
                 <button
                   className="btn btn-ghost chron-x"
                   onClick={() => void forget(e)}
@@ -329,24 +426,77 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
         <details className="chron-tidy">
           <summary>Activities</summary>
           <ul className="chron-acts">
-            {(acts ?? []).map((a) => (
-              <li key={a.id}>
-                <span>{a.name}</span>
-                <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
-                {mins[a.id] ? (
-                  <span className="chron-ent-span">{spanText(mins[a.id] * 60_000)}</span>
-                ) : null}
-                <button
-                  className="btn btn-ghost"
-                  onClick={async () => {
-                    await archiveActivity(a.id, !a.archived)
-                    await load()
-                  }}
-                >
-                  {a.archived ? 'Bring back' : 'Archive'}
-                </button>
-              </li>
-            ))}
+            {(acts ?? []).map((a) =>
+              fixAct === a.id ? (
+                <li key={a.id} className="chron-fix">
+                  <label>
+                    <span className="sr-only">Name</span>
+                    <input value={actName} onChange={(e) => setActName(e.target.value)} />
+                  </label>
+                  <label>
+                    <span className="sr-only">Which kind</span>
+                    <select
+                      value={actCat}
+                      onChange={(e) => setActCat(e.target.value as Activity['cat'])}
+                    >
+                      {CATS.map(([c, label]) => (
+                        <option key={c} value={c}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="btn"
+                    disabled={!actName.trim() || busy}
+                    onClick={() => void saveAct()}
+                  >
+                    Save
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setFixAct(null)}>
+                    Cancel
+                  </button>
+                </li>
+              ) : (
+                <li key={a.id}>
+                  {/**
+                   * ⚠️ THE NAME IS THE BUTTON, like the instrument's layer rows: the row already
+                   * names the thing and says what kind it is, so it may as well be the control
+                   * for changing both. A separate pencil would be a sixth small target in a row.
+                   *
+                   * ⚠️ AND THE SITE-WRITTEN ONES ARE EDITABLE TOO, which is the point of making
+                   * them ordinary activities. They arrive as Free Time because that is the only
+                   * honest guess, and reading a week back showed exactly why it matters: time in
+                   * the Instrument sitting in the same bucket as actual free time.
+                   */}
+                  <button
+                    className="btn btn-ghost chron-act-name"
+                    onClick={() => {
+                      setFixAct(a.id)
+                      setActName(a.name)
+                      setActCat(a.cat)
+                    }}
+                    title={`Rename ${a.name}, or change what kind it is`}
+                  >
+                    {a.name}
+                    <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
+                    {a.auto ? <span className="chron-chip">on the site</span> : null}
+                  </button>
+                  {mins[a.id] ? (
+                    <span className="chron-ent-span">{spanText(mins[a.id] * 60_000)}</span>
+                  ) : null}
+                  <button
+                    className="btn btn-ghost"
+                    onClick={async () => {
+                      await archiveActivity(a.id, !a.archived)
+                      await load()
+                    }}
+                  >
+                    {a.archived ? 'Bring back' : 'Archive'}
+                  </button>
+                </li>
+              ),
+            )}
           </ul>
         </details>
       )}

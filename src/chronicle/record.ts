@@ -28,6 +28,15 @@ export type Activity = {
   cat: 'locked' | 'free' | 'life'
   colour: string | null
   archived: boolean
+  /**
+   * Written by the site rather than by you — one per room, see useVisits.
+   *
+   * ⚠️ IT IS SHOWN, NOT HIDDEN. "Paint 4h" meaning the room was open is a different claim from
+   * having painted for four hours, and reading a week back is exactly when the difference matters.
+   * Otherwise these are ordinary activities: editable, categorisable, archivable, and countable
+   * towards a goal like any other.
+   */
+  auto: boolean
 }
 
 /**

@@ -22,9 +22,9 @@ const entry = (over: Partial<Entry> = {}): Entry => ({
 })
 
 const acts: Activity[] = [
-  { id: 'a1', name: 'Drawing', cat: 'free', colour: null, archived: false },
-  { id: 'a2', name: 'Dishes', cat: 'life', colour: null, archived: false },
-  { id: 'a3', name: 'Work', cat: 'locked', colour: null, archived: false },
+  { id: 'a1', name: 'Drawing', cat: 'free', colour: null, archived: false, auto: false },
+  { id: 'a2', name: 'Dishes', cat: 'life', colour: null, archived: false, auto: false },
+  { id: 'a3', name: 'Work', cat: 'locked', colour: null, archived: false, auto: false },
 ]
 
 const NOW = at('2026-10-12T12:00:00.000Z')

@@ -87,6 +87,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const [goals, setGoals] = useState<Goal[] | null>(null)
   const [view, setView] = useState('today')
   const [adding, setAdding] = useState(false)
+  /**
+   * The goal the form is editing, or null when it is adding a new one.
+   *
+   * ⚠️ THE SAME FORM FOR BOTH, because they take the same six answers and two forms would be two
+   * places for the source picker's rules to drift apart. `chronicle_goal_save` has taken an id
+   * since step 1 and nothing had ever passed one — which is why a typo in a goal's name was
+   * permanent, and why one of the first real goals in the database has its unit spelled "p0ints".
+   */
+  const [fixing, setFixing] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [target, setTarget] = useState('')
   const [unit, setUnit] = useState('')
@@ -160,6 +169,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     const n = Number(target)
     const hasTarget = target.trim() !== '' && Number.isFinite(n) && n > 0
     const r = await saveGoal({
+      id: fixing ?? undefined,
       title: t,
       scope: v.scope,
       /* ⚠️ a repeat has no anchor and a one-off must have one — the check constraint enforces
@@ -185,6 +195,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setUnit('')
     setEvery(false)
     setSrc('')
+    setFixing(null)
     setAdding(false)
     await load()
   }
@@ -357,6 +368,25 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
                         moves on its own and does not say why reads as a bug rather than a feature */}
                     {from ? <span className="chron-chip is-auto">from {from}</span> : null}
+                    {/* ⚠️ next to the delete rather than on the title, unlike the activity rows:
+                        a goal's title is already a checkbox for the tick-box kind, and a label
+                        that both ticks and opens an editor is a label you cannot press safely */}
+                    <button
+                      className="btn btn-ghost chron-x"
+                      onClick={() => {
+                        setFixing(g.id)
+                        setAdding(true)
+                        setTitle(g.title)
+                        setTarget(g.target == null ? '' : String(g.target))
+                        setUnit(g.unit ?? '')
+                        setEvery(repeats(g))
+                        setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
+                      }}
+                      aria-label={`Change ${g.title}`}
+                      title={`Change ${g.title}`}
+                    >
+                      ✎
+                    </button>
                     <button
                       className="btn btn-ghost chron-x"
                       onClick={() => void remove(g)}
@@ -469,14 +499,33 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 </label>
               )}
               <button className="btn" disabled={!title.trim() || busy} onClick={() => void add()}>
-                Add
+                {fixing ? 'Save' : 'Add'}
               </button>
-              <button className="btn btn-ghost" onClick={() => setAdding(false)}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setAdding(false)
+                  setFixing(null)
+                }}
+              >
                 Cancel
               </button>
             </div>
           ) : (
-            <button className="btn" onClick={() => setAdding(true)}>
+            <button
+              className="btn"
+              onClick={() => {
+                /* ⚠️ cleared on the way in, or opening Add straight after a Cancel would show the
+                   goal you were editing and quietly save over it */
+                setFixing(null)
+                setTitle('')
+                setTarget('')
+                setUnit('')
+                setEvery(false)
+                setSrc('')
+                setAdding(true)
+              }}
+            >
               ＋ Add to {v.label.toLowerCase()}
             </button>
           )}
