@@ -83,6 +83,16 @@
 -- activity name is, and it is why this one is opt-in and why the editor says in plain words what
 -- the card will show — including changing that sentence the moment the box is ticked.
 --
+-- ⚠️ → SUPERSEDED THE SAME DAY, and deliberately: the per-goal opt-in this paragraph asks for is
+-- built, in docs/2026-10-14-chronicle-goal-share.sql. Two switches, both off by default — the
+-- block says it will show goals, and each goal is ticked on its own. The paragraph stays because
+-- the reasoning in it is why the feature has the shape it has.
+--
+-- ⚠️ → SUPERSEDED THE SAME DAY, and deliberately: the per-goal opt-in this paragraph asks for is
+-- built, in docs/2026-10-14-chronicle-goal-share.sql. Two switches, both off by default — the
+-- block says it will show goals, and each goal is ticked on its own. The paragraph stays, because
+-- the reasoning in it is why the feature has the shape it has.
+--
 -- ⚠️ NO GOAL TITLES, in this first version, and that is a privacy decision rather than a scoping
 -- one. A goal is free text somebody wrote about their own life — the seed for this room has "Ring
 -- the dentist" in it, and real ones will be franker than that. Agreeing to show how many hours you

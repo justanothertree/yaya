@@ -32,8 +32,8 @@ if it happens.
 The account half was already true. Both other halves are built.
 
 **The block** shows your hours over a window you pick (a week, a month, three months), split by
-Locked In / Free Time / Life, your top five activities with their colours, and two counts: goals
-reached, goals still going.
+Locked In / Free Time / Life, your top five activities with their colours, two counts — goals
+reached, goals still going — and, if you tick them, the goals you chose to show.
 
 **The live line**, if you tick it, shows what you are doing _right now_ — the activity, its colour,
 how long it has been running — above the week's figures.
@@ -62,12 +62,20 @@ A side effect worth knowing: `get_public_profile` only ever returns blocks at th
 refusing that tier is also what keeps chronicle off a published page — one rule, not two that have
 to agree.
 
-**3 · No goal titles, and the live line is off by default.** The card shows activity _names_ — it
-has to, or "9h 24m" is a number about nothing — and the editor says so in plain words. Goal titles
-are different: they are what you wrote about your own life. While testing this, your own data
-printed an activity called _"talking with josh and parker"_, which made the point better than any
-argument I had. If you want titles, they belong behind a tick per goal, not one tick for all of
-them.
+**3 · Goal titles need two ticks, and the live line is off by default.** The card shows activity
+_names_ — it has to, or "9h 24m" is a number about nothing — and the editor says so in plain words.
+Goal titles are different: they are what you wrote about your own life. While testing this, your own
+data printed an activity called _"talking with josh and parker"_, which made the point better than
+any argument I had.
+
+So goals sit behind **two** switches rather than one, and both start off: the block says it is
+willing to show goals at all, and then you tick each goal individually in Chronicle — the ○ beside
+it. Ticking a goal with no block publishes nothing; a block asking on an account where nothing is
+ticked shows nothing. An imported file can never arrive pre-shared.
+
+A shared goal shows its title, its target and whether you reached it — never how far along. That is
+not laziness: a goal's window is computed in the app, not the database, and a progress bar would
+need a second copy of all that date arithmetic living in SQL and agreeing with the first forever.
 
 ---
 

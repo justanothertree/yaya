@@ -2030,14 +2030,43 @@ function BlockFields({
               Pick them in Chronicle — ○ beside a goal puts it here. Nothing shows until you do.
             </p>
           )}
-          {/* ⚠️ WHAT IT DOES NOT SHOW IS THE PART WORTH SAYING. Somebody deciding whether to put
-              this on their page is deciding how much of themselves to hand over, and "hours" and
-              "what I am trying to fix about myself" are very different answers. */}
-          <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-            Your hours and the activities you spent them on
-            {block.config.live === true ? ', including the one running now' : ''}. Never the names
-            of your goals, or your notes.
-          </p>
+          {/**
+           * ⚠️ WHAT IT DOES NOT SHOW IS THE PART WORTH SAYING. Somebody deciding whether to put
+           * this on their page is deciding how much of themselves to hand over, and "hours" and
+           * "what I am trying to fix about myself" are very different answers.
+           *
+           * ⚠️ BOTH HALVES COME FROM ONE PAIR OF LISTS, because the hand-written version went
+           * stale the same day it was written. It said "Never the names of your goals, or your
+           * notes" — true when the only thing the card could show was hours, and a flat lie the
+           * moment the goals switch existed, to somebody reading it with their goal titles on the
+           * page beneath. A privacy promise that has to be remembered separately from the feature
+           * it describes is a promise that will be wrong, and this is the second time today one
+           * of these lists drifted from what it was summarising (see `backupSays`).
+           *
+           * So each thing the card can show appears in exactly ONE of the two lists, chosen by
+           * the same flag that decides whether it is drawn at all.
+           */}
+          {(() => {
+            const wantsGoals = block.config.goals === true
+            const shows = [
+              'your hours',
+              'what you spent them on',
+              block.config.live === true && 'the one running now',
+              wantsGoals && 'the goals you pick in Chronicle',
+            ].filter((x): x is string => typeof x === 'string')
+            const never = [!wantsGoals && 'the names of your goals', 'your notes'].filter(
+              (x): x is string => typeof x === 'string',
+            )
+            /* ⚠️ `or` for the second list: "never A and B" reads as permission to show one of
+               them, which is the opposite of what it promises */
+            const list = (xs: string[], join: string) =>
+              xs.length < 2 ? xs[0] : xs.slice(0, -1).join(', ') + ` ${join} ` + xs[xs.length - 1]
+            return (
+              <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+                Shows {list(shows, 'and')}. Never {list(never, 'or')}.
+              </p>
+            )
+          })()}
         </div>
       )
     }
