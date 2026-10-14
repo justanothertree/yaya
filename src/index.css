@@ -15675,7 +15675,143 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
-/* ── chronicle, the week as a grid — see src/chronicle/Week.tsx ─────────────── */
+/* ── chronicle, the day beside the room — see src/chronicle/Rail.tsx ────────── */
+.chron-body {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.chron-main {
+  min-width: 0;
+}
+
+/**
+ * ⚠️ 900px, NOT THE PAGE'S OWN 700px BREAKPOINT. The page grid collapses to one column below 700
+ * and this card is only one of its cells — a rail beside a stopwatch needs room for BOTH, and
+ * between 700 and 900 the card is wide enough to be one column and not two.
+ */
+@media (min-width: 900px) {
+  .chron-body {
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    align-items: start;
+  }
+}
+
+.chron-rail {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0.7rem 0.8rem 0.9rem;
+}
+
+.chron-rail-head {
+  margin: 0 0 0.3rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chron-rail-cov + .chron-rail-head {
+  margin-top: 0.9rem;
+}
+
+.chron-rail-big {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chron-rail-of {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.chron-rail-nums {
+  display: flex;
+  gap: 1rem;
+  margin: 0.5rem 0 0.6rem;
+}
+
+.chron-rail-nums div {
+  display: grid;
+  gap: 1px;
+}
+
+.chron-rail-nums dt {
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.chron-rail-nums dd {
+  margin: 0;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chron-rail-cov {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.chron-rail-cov i {
+  display: block;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.chron-rail-cov b {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.chron-rail-none {
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.chron-rail-next {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.chron-rail-next li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  min-width: 0;
+}
+
+.chron-rail-when {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  flex: none;
+}
+
+.chron-rail-what {
+  /* a long activity name truncates rather than widening a 15rem column */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── chronicle, the week as a grid — see src/chronicle/WeekGrid.tsx ─────────── */
 .chron-week {
   margin: 0.6rem 0 0.8rem;
 }

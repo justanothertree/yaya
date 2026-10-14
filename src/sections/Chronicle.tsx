@@ -22,6 +22,7 @@ import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '.
 import { CATS, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
+import { Rail } from '../chronicle/Rail'
 import { YourCopy } from '../chronicle/YourCopy'
 import { Toast } from '../circuit/ui/Toast'
 
@@ -127,6 +128,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const [runs, setRuns] = useState<Record<string, number>>({})
   const [acts, setActs] = useState<Activity[]>([])
+  /* ⚠️ a counter rather than a callback chain: the rail reads its own two sums, and everything
+     that could change them — starting, stopping, filling a gap, an edit, a plan — already ends in
+     the same `load()` the goals half uses. One number to watch beats five places to remember. */
+  const [beat, setBeat] = useState(0)
   const [src, setSrc] = useState('')
   /**
    * Whether a derived goal counts minutes or the activity's own metric.
@@ -373,7 +378,24 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * ⚠️ AND THE DAY IT WRITES INTO FOLLOWS THE VIEW only for Today and Tomorrow, because those
        * are the two views that name a day. The longer windows show the record for today.
        */}
-      <Timer day={v.scope === 'day' ? on : todayISO()} onChange={() => void load()} />
+      {/**
+       * ⚠️ THE TIMER AND THE RAIL ARE ONE ROW at a width that has room for it, which is the shape
+       * the HTML app has and this did not. Below 900px the rail drops under the timer rather than
+       * squeezing it — a 15rem column beside a stopwatch on a phone is two things too narrow to
+       * read instead of one of each.
+       */}
+      <div className="chron-body">
+        <div className="chron-main">
+          <Timer
+            day={v.scope === 'day' ? on : todayISO()}
+            onChange={() => {
+              setBeat((n) => n + 1)
+              void load()
+            }}
+          />
+        </div>
+        <Rail day={v.scope === 'day' ? on : todayISO()} acts={acts} tick={beat} />
+      </div>
 
       {/* ⚠️ the counts are UNFINISHED work, not totals — a strip of totals tells you how much you
           have written down, which is not a thing anybody needs to know at a glance */}

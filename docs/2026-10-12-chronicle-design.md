@@ -3095,6 +3095,59 @@ to-do, upcoming), top-level nav instead of folds, a live clock, the "what's next
 quick-start chips with more presence than the current "or just". The grid was the centrepiece and
 the one real absence; the rest is arrangement, and arrangement is a decision about the room.
 
+## 6aj · ✅ The rail — and three of its five panels left unbuilt on purpose
+
+The second half of what the screenshot comparison showed. The HTML app's sidebar carries five
+things; **two of them are facts chronicle already had and was throwing away**, and the other three
+are not, so they are named here rather than faked.
+
+| panel       | built | why                                                                                                                                                         |
+| ----------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Daily score | ✅    | every number in it is already in the day's totals                                                                                                           |
+| Upcoming    | ✅    | a plan is already "a span you intend" — this is the ones still ahead                                                                                        |
+| Alarms      | ❌    | a new table, a permission, and a delivery mechanism. A notification is not something a page can promise while it is closed — that is a feature, not a panel |
+| To-do       | ❌    | the goals half **is** the to-do list. A second list of things to do, beside a list of things to do, is two places for one item to be finished in            |
+| Goals today | ❌    | that is the Today tab, four inches below, which already counts itself                                                                                       |
+
+**An empty panel headed "Alarms" is worse than no panel**, which is the whole reason for the second
+column of that table.
+
+### The score
+
+The big number is the share of what you wrote down that was Locked In, and the word under it says
+which share — _a percentage with no noun is the thing a dashboard does that nobody can read_.
+Beside it: focused, written down, and how much of the whole day is accounted for.
+
+`scoreOf` is pure and takes `{cat, mins}` rather than the `Total` rows it will be handed, because
+`Total` lives in cloud.ts, cloud.ts imports record.ts, and a scoring module importing cloud.ts
+would close that ring. Eight tests; perturbed four ways — **`NaN%` on an empty day**, Free Time
+counted as focused, `covered` unclamped, a twelve-hour day — all red. The NaN one is the test that
+earns its place: a new member has recorded nothing, so the first screen computes 0/0.
+
+It reads the day's **totals**, not its entries — the same sum the bars and goals are drawn from, so
+the rail cannot disagree with the list beside it about how long something took.
+
+### Two things the room told me
+
+**"7:00 AM" read at nine at night is a time that has already gone.** The list looks to the end of
+tomorrow, so most of what it shows in an evening is tomorrow's, and a bare clock time says the
+opposite of what it means. Days other than today are named now; today's keep the bare time, because
+a "Today" on every row is noise.
+
+**A rename that only changes a filename needs the dev server restarted.** After `Week.tsx` became
+`WeekGrid.tsx`, Vite went on resolving `week.ts` to the old entry — case-insensitive filesystem —
+and served a module with no `columns` export. The whole app rendered blank, the console said
+`does not provide an export named 'columns'`, and **`npm run build` passed the entire time**,
+because the build starts from a clean graph. A blank page with a passing build is a stale dev
+server, not a broken source.
+
+### Where it sits
+
+Beside the timer at 900px and up, under it below — **not** the page's own 700px breakpoint, because
+this card is one cell of that grid and a rail beside a stopwatch needs room for both. Measured at
+1280 (881px main + 264px rail), 899 (one column, rail full width below) and 375 (327px, no
+overflow, nothing past the edge).
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
