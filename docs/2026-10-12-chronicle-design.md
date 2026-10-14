@@ -3193,6 +3193,59 @@ had destroyed the page. This is its mirror: a clipped-looking screenshot at an e
 evidence of a clipped layout. **When the two disagree, ask the rects for the specific elements that
 look wrong** — which is cheap, and settles it either way.
 
+## 6al · ✅ The month as a calendar, and the fourth blind fixture
+
+The HTML app has Calendar as a top-level tab; this room had a month view that could only say
+_what_ the month held, in bars. The calendar says **which days**.
+
+**It answers a different question from the week grid**, which is why both exist rather than one
+replacing the other. The week shows WHEN inside a day — that the mornings are empty. A month
+cannot: twenty-four hours in a cell an inch wide is four pixels an hour, and a block in it would be
+a speck. A month shows the shape of a _habit_ rather than the shape of a day, and the seeded month
+says it plainly: the run from the 4th to the 13th, the 10th heaviest, nothing since.
+
+`lane` does the arithmetic for the third time — the day strip, the week grid, now this. All three
+ask "how much of this window does this span cover", and the one that gets midnight wrong gets it
+wrong everywhere.
+
+### Three decisions worth the words
+
+**The padding days are real days.** A month starting on a Thursday has the Sunday to Wednesday
+before it in its first row, and those days have time in them. A calendar that drew them blank would
+be lying about them to keep its own edges tidy — they are measured like any other and dimmed.
+
+**The fill is a share of the busiest day, not of twenty-four hours.** This room already reached that
+answer once: `Looking`'s bars are "a share of the BIGGEST rather than of the total". A calendar has
+it worse — nobody records sixteen hours, so against a whole day every cell was a **2px hairline**
+(measured: 4–8% of a 34px cell) and the month read as empty whatever was in it. The absolute number
+is still the one it _says_, in the label and the title, because "tallest" is not a quantity.
+
+**The cells do not click, deliberately rather than unfinished.** The day this half of the room is
+about comes from the horizon view itself, so there is no cursor here to move — where the week grid
+sits beside a stopwatch that owns one. A cell that looked pressable and did nothing would be worse
+than a cell that does not.
+
+Contrast was measured rather than eyeballed, because on the busiest day the fill rises behind the
+whole cell: **5.79** for the number over a full fill and **9.94** over an empty one, against WCAG's
+4.5 for small text. At 375 the seven columns are 44×34 with no overflow at the grid, the month, the
+card or the document.
+
+### And the fourth blind fixture in a week
+
+Thirteen tests, perturbed four ways. Three went red. **Deleting the trailing-padding line left all
+twelve green** — because October 2026 ends on a Saturday, so that month needs no trailing padding,
+and the test asserting "nothing follows" is true whether or not the code pads at all. My own test
+comment said _"it ends on a Saturday, so nothing follows"_: I noticed the property and then rested
+the check on it.
+
+November 2026 runs Sunday the 1st to Monday the 30th, so its last row needs five days of December or
+it is ragged. With that test added, the same perturbation is red.
+
+That is the same shape as the life-scope window in `chronicle_tally` and the two round-trip
+fixtures sitting on defaults — **the fixture was tidy in exactly the dimension under test**, four
+times now. `CLAUDE.md` §2 already carries the rule; what this adds is that "tidy" includes _a
+calendar month that happens to end on a Saturday_.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

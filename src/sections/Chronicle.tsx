@@ -22,6 +22,7 @@ import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '.
 import { CATS, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
+import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
 import { YourCopy } from '../chronicle/YourCopy'
 import { Toast } from '../circuit/ui/Toast'
@@ -847,6 +848,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * question and the range cap is 400 days, so pretending would mean quietly showing a
            * year and calling it everything.
            */}
+          {/**
+           * ⚠️ THE CALENDAR BEFORE THE BARS, and only for the month. The bars say WHAT the month
+           * held; the calendar says WHICH DAYS, and that is the question you are asking when you
+           * open a month — whether the habit held, where the gaps are. The week has its own grid
+           * above, at hour resolution, so a second one here would be the same days twice; a year
+           * in day cells would be 365 specks.
+           */}
+          {v.scope === 'month' && <MonthGrid on={on} />}
           {win && v.scope !== 'day' && v.scope !== 'life' ? (
             <Looking win={win} label={v.label} scope={v.scope} on={on} />
           ) : null}

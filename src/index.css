@@ -15842,6 +15842,79 @@ a.cz-msg-author:focus-visible {
   min-width: 0;
 }
 
+/* ── chronicle, the month as a calendar — see src/chronicle/MonthGrid.tsx ──── */
+.chron-month {
+  margin: 0.2rem 0 0.9rem;
+}
+
+.chron-month-dows,
+.chron-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.chron-month-dows {
+  margin-bottom: 3px;
+}
+
+.chron-month-dows span {
+  text-align: center;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.chron-month-cell {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  /* ⚠️ 34px in PIXELS: seven of these have to fit a 375 phone inside a card with its own padding,
+     and the root size is fluid so a rem floor is not a length. 7 × 34 + 6 × 3 gaps = 256. */
+  min-height: 34px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.chron-month-cell.is-outside {
+  /* the days either side are real and measured — dimmed, never blank */
+  opacity: 0.4;
+}
+
+.chron-month-cell.is-today {
+  border-color: var(--accent);
+}
+
+.chron-month-num {
+  position: relative;
+  z-index: 1;
+  font-size: 0.64rem;
+  /* ⚠️ --text, not --muted: on the busiest day the fill rises behind the whole cell, and a muted
+     grey on the accent colour is the one combination in this grid nobody can read */
+  color: var(--text);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.chron-month-cell.is-today .chron-month-num {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.chron-month-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--accent);
+  /* low enough that the number on top of a full cell still reads */
+  opacity: 0.32;
+}
+
 /* ── chronicle, the week as a grid — see src/chronicle/WeekGrid.tsx ─────────── */
 .chron-week {
   margin: 0.6rem 0 0.8rem;
