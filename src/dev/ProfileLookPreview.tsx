@@ -45,6 +45,10 @@ const SAMPLE_BLOCKS: ProfileBlock[] = [
   { block_type: 'trophies', size: 'medium', config: { tab: 'Numbers' }, visibility: 'friends' },
   // the block whose whole point is the detail it shows — see SAMPLE_ACTIVITY
   { block_type: 'activity', size: 'medium', config: { limit: 4 }, visibility: 'friends' },
+  /* ⚠️ it fetches rather than taking props, and previewMember makes no session — so it is only
+     worth having here because pvMemberChronicle stands the RPC in. Without that it renders
+     "Nothing recorded lately" and looks exactly like a block that works. */
+  { block_type: 'chronicle', size: 'medium', config: { days: 7 }, visibility: 'friends' },
 ]
 
 // stand-in trophies, so the block can be seen with content rather than only its empty state

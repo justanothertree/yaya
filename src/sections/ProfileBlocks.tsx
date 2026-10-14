@@ -9,6 +9,7 @@ import {
 } from '../ui/looks'
 import { createPortal } from 'react-dom'
 import { getSupabaseClient } from '../finance/client'
+import { memberChronicle, type MemberChronicle } from '../chronicle/cloud'
 import { useTouchOnly } from '../ui/pointerKind'
 import {
   BANNER_STYLES,
@@ -122,6 +123,7 @@ export type ProfileBlock = {
     | 'pet'
     | 'looks'
     | 'free'
+    | 'chronicle'
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
@@ -196,6 +198,7 @@ const HAS_OWN_WORDS = new Set<ProfileBlock['block_type']>(['bio', 'status', 'fre
 
 const HAS_HEADING = new Set<ProfileBlock['block_type']>([
   'stats',
+  'chronicle',
   'trophies',
   'activity',
   'guestbook',
@@ -223,6 +226,7 @@ const CAN_TINT: ReadonlySet<ProfileBlock['block_type']> = new Set([
   'status',
   'trophies',
   'song',
+  'chronicle',
 ])
 
 const TIER_LABEL: Record<Tier, string> = {
@@ -256,6 +260,7 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   art: '🖼 Art',
   pet: '🐾 Minion',
   looks: '🎭 Looks',
+  chronicle: '🗓 Chronicle',
 }
 
 /**
@@ -541,6 +546,16 @@ function BlockView({
         <Guestbook
           username={username}
           isMe={isMe}
+          guest={guest}
+          heading={blockHeading(cfg) ?? undefined}
+        />
+      )
+    case 'chronicle':
+      return (
+        <ChronicleBlock
+          username={username}
+          size={block.size}
+          days={typeof cfg.days === 'number' ? cfg.days : 7}
           guest={guest}
           heading={blockHeading(cfg) ?? undefined}
         />
@@ -851,6 +866,145 @@ function LooksPicker({
           <span>{l.name}</span>
         </label>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Chronicle on a profile: the hours, and nothing that reads like a diary.
+ *
+ * ⚠️ IT FETCHES ITS OWN FIGURES, like the guestbook and unlike stats. The stats block renders
+ * `snake_best`, which rides along in get_member_profile behind `profiles.activity_visibility` —
+ * one switch covering the snake score, the shared circuits and the movie count together. Chronicle
+ * is a record of how somebody spends their days, and hanging it off a switch that already means
+ * three other things would make that switch mean something nobody agreed to. get_member_chronicle
+ * uses THIS BLOCK'S OWN visibility as the only gate, and answers nothing at all when the block is
+ * not there — so taking it off the page is a revocation rather than a hiding.
+ *
+ * ⚠️ AND IT SHOWS NO GOAL TITLES, deliberately. A goal is free text somebody wrote about their
+ * own life. Agreeing to show how many hours went into drawing is a different act from agreeing to
+ * show what you are trying to fix about yourself, and one card collecting both consents while
+ * asking for the first is the kind of thing this site should not do. Counts only: reached, and
+ * still going. See docs/2026-10-14-chronicle-profile-block.sql.
+ */
+/** The three the room names, in the order it names them. */
+const CHRON_CATS: ReadonlyArray<[keyof MemberChronicle['time'], string]> = [
+  ['locked', 'Locked In'],
+  ['free', 'Free Time'],
+  ['life', 'Life'],
+]
+
+/** `2h 35m`, the same shape the room's own spanText gives — from whole minutes. */
+function hoursText(mins: number): string {
+  const m = Math.max(0, Math.round(mins))
+  const h = Math.floor(m / 60)
+  return h ? `${h}h${m % 60 ? ' ' + (m % 60) + 'm' : ''}` : `${m}m`
+}
+
+function ChronicleBlock({
+  username,
+  size,
+  days,
+  guest,
+  heading,
+}: {
+  username: string
+  size: ProfileBlock['size']
+  /** ⚠️ THIS block's window, not the page's — so two of them can cover two different spans */
+  days: number
+  guest?: boolean
+  heading?: string
+}) {
+  const [got, setGot] = useState<MemberChronicle | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  const load = useCallback(async () => {
+    /* ⚠️ not attempted when signed out, for the same reason the guestbook does not:
+       get_member_chronicle is granted to `authenticated` alone, so a stranger's call is refused
+       and an empty result would be reported as "nothing recorded" to somebody who simply cannot
+       see it. Those are two different facts. */
+    if (guest) {
+      setLoaded(true)
+      return
+    }
+    setGot(await memberChronicle(username, days))
+    setLoaded(true)
+  }, [username, days, guest])
+
+  useEffect(() => {
+    setLoaded(false)
+    void load()
+  }, [load])
+
+  const window = got == null ? '' : got.days === 7 ? 'the last week' : `the last ${got.days} days`
+  const total = CHRON_CATS.reduce((n, [k]) => n + (got?.time[k] ?? 0), 0)
+  /* a share of the BIGGEST rather than of the total, the same rule the room's own bars use:
+     against the total, five activities are five slivers */
+  const widest = Math.max(...(got?.top ?? []).map((t) => t.mins), 1)
+
+  return (
+    <div className={'card profile-block is-' + size}>
+      <h3 style={{ marginTop: 0 }}>{heading ?? '🗓 Chronicle'}</h3>
+      {!loaded ? null : guest ? (
+        <p className="muted" style={{ margin: 0 }}>
+          Sign in to see this.
+        </p>
+      ) : got == null || total < 1 ? (
+        <p className="muted" style={{ margin: 0 }}>
+          Nothing recorded {window || 'lately'}.
+        </p>
+      ) : (
+        <>
+          <p style={{ margin: 0 }}>
+            <strong style={{ fontSize: '1.4rem' }}>{hoursText(total)}</strong>{' '}
+            <span className="muted">in {window}</span>
+          </p>
+          <ul className="profile-chron-cats">
+            {CHRON_CATS.filter(([k]) => (got.time[k] ?? 0) >= 1).map(([k, label]) => (
+              <li key={k}>
+                <span className={'chron-cat is-' + k}>{label}</span>{' '}
+                <span className="muted">{hoursText(got.time[k] ?? 0)}</span>
+              </li>
+            ))}
+          </ul>
+          {got.top.length > 0 && (
+            <ul className="profile-chron-top">
+              {got.top.map((t) => (
+                <li key={t.name}>
+                  {/* the activity's own colour, which is the one thing on this card its owner
+                      chose rather than the room deriving it */}
+                  <i
+                    className="profile-chron-dot"
+                    style={t.colour ? { background: t.colour } : undefined}
+                    aria-hidden
+                  />
+                  <span className="profile-chron-name">{t.name}</span>
+                  {/**
+                   * ⚠️ A TRACK THAT GROWS, AND A FILL INSIDE IT THAT DOES NOT. The fill was the
+                   * flex child itself, which made `flex: 1 1 auto` beat the inline width — so each
+                   * bar became however much room its row had left over, and the row with the
+                   * SHORTEST label had the most. Drawing at 3h49m drew 270px and Chronicle at 7m
+                   * drew 294px: a chart reading backwards, every figure beside it correct.
+                   */}
+                  <i className="profile-chron-track" aria-hidden>
+                    <i
+                      className="profile-chron-bar"
+                      style={{ width: `${Math.max((t.mins / widest) * 100, 4)}%` }}
+                    />
+                  </i>
+                  <span className="muted profile-chron-mins">{hoursText(t.mins)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* ⚠️ counts, never titles — see the note on this component */}
+          <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
+            {got.reached > 0
+              ? `${got.reached} goal${got.reached === 1 ? '' : 's'} reached, ${got.open} still going`
+              : `${got.open} goal${got.open === 1 ? '' : 's'} on the go`}
+          </p>
+        </>
+      )}
     </div>
   )
 }
@@ -1759,6 +1913,27 @@ function BlockFields({
           Anyone who can see this block can write in it. You can remove anything left here.
         </p>
       )
+    case 'chronicle': {
+      const days = typeof block.config.days === 'number' ? block.config.days : 7
+      return (
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label className="field">
+            <span>How far back</span>
+            <select value={String(days)} onChange={(e) => setCfg({ days: Number(e.target.value) })}>
+              <option value="7">The last week</option>
+              <option value="30">The last month</option>
+              <option value="90">The last three months</option>
+            </select>
+          </label>
+          {/* ⚠️ WHAT IT DOES NOT SHOW IS THE PART WORTH SAYING. Somebody deciding whether to put
+              this on their page is deciding how much of themselves to hand over, and "hours" and
+              "what I am trying to fix about myself" are very different answers. */}
+          <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+            Your hours and what you spent them on. Never the names of your goals, or your notes.
+          </p>
+        </div>
+      )
+    }
     default:
       return null
   }
@@ -1779,7 +1954,11 @@ function BlockFields({
  * second place for it to be wrong.
  */
 function defaultTier(type: ProfileBlock['block_type']): Tier {
-  return type === 'activity' || type === 'stats' ? 'friends' : 'members'
+  /* ⚠️ chronicle joins the two that were already here, and has the strongest claim of the three:
+     it is a record of how somebody spends their days. 'members' would start it at anyone with any
+     account on the site. The server refuses 'public' for it outright — see
+     docs/2026-10-14-chronicle-profile-block.sql — so the widest it can ever go is members. */
+  return type === 'activity' || type === 'stats' || type === 'chronicle' ? 'friends' : 'members'
 }
 
 /**
@@ -3206,11 +3385,23 @@ export function ProfileBlocksEditor({
                         )
                       }
                     >
-                      {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                        <option key={t} value={t}>
-                          {TIER_LABEL[t]}
-                        </option>
-                      ))}
+                      {/**
+                       * ⚠️ A CHRONICLE BLOCK IS NOT OFFERED "ANYONE", because the server refuses
+                       * it — and a control that offers a choice the save then rejects blames the
+                       * member for a decision the site had already made. The reason is in
+                       * docs/2026-10-14-chronicle-profile-block.sql: can_see(owner,'public') is
+                       * true for anon too, but get_member_chronicle refuses an unauthenticated
+                       * caller, so that tier would READ as the open internet and BEHAVE as
+                       * members. The refusal stays on the server, where it is enforceable; this
+                       * only stops the dead end being reachable.
+                       */}
+                      {(Object.keys(TIER_LABEL) as Tier[])
+                        .filter((t) => t !== 'public' || selected.block_type !== 'chronicle')
+                        .map((t) => (
+                          <option key={t} value={t}>
+                            {TIER_LABEL[t]}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   {/**

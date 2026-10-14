@@ -16241,7 +16241,12 @@ a.cz-msg-author:focus-visible {
  * DEFAULT. The accent is themeable; these three have to stay distinct from one another whatever
  * somebody picks, and a palette with an orange accent would collide Locked In with Free Time.
  */
-.chron {
+/* ⚠️ ON :root RATHER THAN .chron, SINCE THE PROFILE BLOCK IS NOT INSIDE THE ROOM. The note
+   above is about these three not drifting into a fourth copy, and a chronicle block on somebody's
+   profile page was exactly that fourth copy waiting to happen — it draws the same three
+   categories and lives nowhere near .chron. Widening the scope is how they stay one declaration;
+   writing #7c6af7 again over there is how they stop being one. */
+:root {
   --chron-locked: #7c6af7;
   --chron-free: #f5a623;
   --chron-life: #5b9cf6;
@@ -16933,5 +16938,86 @@ a.cz-msg-author:focus-visible {
 .chron-chip.is-run {
   border-color: #f5a623;
   color: #f5a623;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── chronicle, on somebody's profile — see sections/ProfileBlocks ChronicleBlock ─────────── */
+
+.profile-chron-cats {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+}
+.profile-chron-top {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.profile-chron-top li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+}
+.profile-chron-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--border);
+}
+/**
+ * ⚠️ A FLOOR IN PIXELS, NOT A PERCENTAGE OR AN EM. The root font-size on this site is fluid, so a
+ * rem is not a length here — and a name column with `min-width: 0` and no floor is not "let it
+ * shrink", it is "let it vanish": whatever in the row is rigid wins and the flexible thing pays
+ * the whole bill, which is how a tidy set of zeroes once came with every title crushed to ":".
+ */
+.profile-chron-name {
+  flex: 0 1 auto;
+  min-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/**
+ * ⚠️ THE TRACK GROWS, THE FILL DOES NOT, and getting that the wrong way round drew the chart
+ * backwards. When the fill was the flex child, `flex: 1 1 auto` beat its inline width and every
+ * bar became whatever room its row had spare — so the row with the shortest minutes label got the
+ * longest bar. Measured: 3h49m drew 270px, 7m drew 294px. Every number on the card was right.
+ */
+.profile-chron-track {
+  flex: 1 1 auto;
+  min-width: 12px;
+  height: 6px;
+  border-radius: 100px;
+  background: var(--border);
+  overflow: hidden;
+}
+.profile-chron-bar {
+  display: block;
+  height: 100%;
+  border-radius: 100px;
+  background: var(--chron-locked);
+  opacity: 0.75;
+}
+/**
+ * ⚠️ A FIXED COLUMN, so every track starts and ends at the same place. Without it the minutes
+ * label sets its own width — "3h 49m" against "3h" — and the track absorbs the difference, so the
+ * bars are drawn against five different baselines and cannot be compared by eye. Measured at 375:
+ * tracks of 166, 196, 166, 185 and 192px for one chart. Looking.tsx already reached this about its
+ * own name column: a bar chart whose bars do not line up is a worse chart.
+ *
+ * ⚠️ IN PIXELS, because the root font-size on this site is fluid and a rem is not a length here.
+ */
+.profile-chron-mins {
+  flex: none;
+  width: 52px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }

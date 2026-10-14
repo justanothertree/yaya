@@ -29,6 +29,7 @@ import {
   pvStop,
   pvTally,
   pvTotals,
+  pvMemberChronicle,
   pvVisit,
 } from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
@@ -705,4 +706,41 @@ export async function fixRunning(
     p_activity: activity,
   })
   return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Somebody else's chronicle, as their profile block shows it.
+ *
+ * ⚠️ THE ONLY READ IN THIS FILE THAT IS NOT ABOUT YOU, which is why it is at the bottom with a
+ * note on it. Every other function here is scoped to `auth.uid()` by the RPC behind it;
+ * get_member_chronicle takes a username and answers about somebody else — but only when that
+ * person has a chronicle block on their page AND the viewer may see that block. No block, no
+ * answer. The gate is the block's own visibility and nothing else, and it lives in SQL where it is
+ * enforceable rather than here. See docs/2026-10-14-chronicle-profile-block.sql.
+ *
+ * Null means all of "no such member", "no chronicle block" and "not for you" — deliberately the
+ * same answer, so this cannot be used to find out who exists.
+ */
+export type MemberChronicle = {
+  /** the window the figures cover, in days — the block's owner picks it */
+  days: number
+  time: Partial<Record<'locked' | 'free' | 'life', number>>
+  top: Array<{ name: string; cat: string; colour: string | null; mins: number }>
+  reached: number
+  open: number
+}
+
+export async function memberChronicle(
+  username: string,
+  days: number,
+): Promise<MemberChronicle | null> {
+  if (previewMember) return pvMemberChronicle(days)
+  const { data, error } = await getSupabaseClient().rpc('get_member_chronicle', {
+    p_username: username,
+    /* ⚠️ the server clamps this to 1–90 and does not trust it — it is which span to cover, not
+       permission to cover it. The gate is the block's own visibility, checked there. */
+    p_days: days,
+  })
+  if (error) return null
+  return (data as MemberChronicle | null) ?? null
 }

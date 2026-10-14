@@ -1125,3 +1125,68 @@ if (import.meta.env.DEV && typeof window !== 'undefined')
       location.reload()
     },
   }
+
+/**
+ * The seed, shaped the way get_member_chronicle shapes it — so a chronicle block on a profile can
+ * be LOOKED at in the workbench.
+ *
+ * ⚠️ WITHOUT THIS THE BLOCK RENDERS ITS EMPTY STATE AND AN AUDIT OF IT PASSES, which is the
+ * trap CLAUDE.md names: previewMember makes no session, so the RPC answers nothing and a card
+ * saying "Nothing recorded lately" looks exactly like a card that works. Every figure here comes
+ * off the same store the room itself uses, so what the workbench draws is what the SQL would.
+ */
+export const pvMemberChronicle = (
+  askedDays = 7,
+): {
+  days: number
+  time: Partial<Record<'locked' | 'free' | 'life', number>>
+  top: Array<{ name: string; cat: string; colour: string | null; mins: number }>
+  reached: number
+  open: number
+} => {
+  /* clamped the same way the SQL clamps it, so the double cannot show a span the server would not */
+  const days = Math.min(Math.max(Math.round(askedDays) || 7, 1), 90)
+  const to = Date.now()
+  const from = to - days * 86_400_000
+  const catOf = new Map(db().acts.map((a) => [a.id, a]))
+  const mins = new Map<string, number>()
+  for (const e of db().ents) {
+    const s0 = Date.parse(e.start)
+    const e0 = e.end == null ? to : Date.parse(e.end)
+    /* the same overlap the SQL takes: clamped to the window, never negative */
+    const over = Math.max(0, Math.min(e0, to) - Math.max(s0, from)) / 60_000
+    if (over <= 0) continue
+    mins.set(e.activity, (mins.get(e.activity) ?? 0) + over)
+  }
+  const time: Partial<Record<'locked' | 'free' | 'life', number>> = {}
+  for (const [id, m] of mins) {
+    const a = catOf.get(id)
+    if (!a) continue
+    time[a.cat] = (time[a.cat] ?? 0) + m
+  }
+  for (const k of Object.keys(time) as Array<'locked' | 'free' | 'life'>) {
+    const v = Math.round(time[k] ?? 0)
+    if (v >= 1) time[k] = v
+    else delete time[k]
+  }
+  const top = [...mins]
+    .map(([id, m]) => {
+      const a = catOf.get(id)
+      return {
+        name: a?.name ?? '?',
+        cat: a?.cat ?? 'free',
+        colour: a?.colour ?? null,
+        mins: Math.round(m),
+      }
+    })
+    .filter((t) => t.mins >= 1)
+    .sort((x, y) => y.mins - x.mins || x.name.localeCompare(y.name))
+    .slice(0, 5)
+  return {
+    days,
+    time,
+    top,
+    reached: db().goals.filter((g) => g.done).length,
+    open: db().goals.filter((g) => !g.done).length,
+  }
+}

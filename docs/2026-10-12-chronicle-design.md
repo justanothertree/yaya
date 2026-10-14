@@ -3511,6 +3511,74 @@ says "Nothing to copy yet", because where they are kept is not what that line is
 24px floor. It is a control inline in a line of text, so it wants a hit area extended without
 disturbing the line rather than a taller button, and it is nothing to do with chronicle.
 
+## 6as · ✅ Chronicle on a profile
+
+The thing Evan asked for and had not deferred: _"a profile block for the goals or stats"_. The
+security reasoning is in `docs/2026-10-14-chronicle-profile-block.sql` and is the larger half of
+the work; this is what it looks like and what the building of it turned up.
+
+**The block is the switch, and there is no other one.** `get_member_chronicle` answers nothing
+unless the member HAS a chronicle block and the viewer may see THAT block — so taking the block off
+the page is a revocation rather than a hiding, and a member who never adds one cannot leak anything
+through this path however the client is called. This is deliberately not how `stats` works: that
+one rides along in `get_member_profile` behind `profiles.activity_visibility`, a single switch
+already covering the snake score, the shared circuits and the movie count. Three unrelated facts
+behind one switch is more than that switch can honestly mean, and a record of how somebody spends
+their days would have been a fourth and much the most personal.
+
+**It cannot be public, refused in SQL rather than discouraged in the UI**, because
+`can_see(owner,'public')` is true for anon while the RPC refuses an unauthenticated caller — so
+that tier would READ as the open internet and BEHAVE as members. The editor stops offering
+"Anyone" for this one block type, which only keeps the dead end unreachable; the refusal that
+matters is the server's. Checked that the filter is narrow: a Banner still offers all four tiers.
+
+**And it shows no goal titles.** A goal is free text somebody wrote about their own life — the seed
+for this room has "Ring the dentist" in it and real ones will be franker. Agreeing to show how many
+hours went into drawing is a different act from agreeing to show what you are trying to fix about
+yourself, and one card collecting the second consent while asking for the first is not something
+this site should do. Counts only: reached, and still going.
+
+### Three things the building of it turned up
+
+**The bars were drawn backwards, and every number beside them was right.** The fill was the flex
+child, so `flex: 1 1 auto` beat its inline width and each bar became however much room its row had
+left over — which is the length of its LABEL, not its time. Measured: Drawing at 3h49m drew 270px
+and Chronicle at 7m drew 294px. The DOM readings that preceded the screenshot were all clean: names
+present at 56px, nothing clipped, no overflow. It took looking at it. Fixed with a track that grows
+and a fill inside it that does not, then re-checked by reading the minutes back out of the LABEL —
+a path sharing no arithmetic with the width — and comparing: 100/79/59/5/4% against 100/79/59/5/3%
+expected, the last being the 4% floor.
+
+**Then the bars did not line up, which is the same chart being wrong more quietly.** Each track
+absorbed whatever its minutes label left, so "3h 49m" and "3h" produced tracks of 166 and 196px
+and the five bars were drawn against five different baselines. `Looking.tsx` had already reached
+this about its own name column — _a bar chart whose bars do not line up is a worse chart_ — so the
+minutes column is a fixed 52px, in pixels because the root font-size here is fluid. All five tracks
+now measure 146px and start at the same x.
+
+**A second block's window picker did nothing.** The window was read off the first chronicle block's
+config, so a second block answered with the first one's span while offering a control that appeared
+to change it. Found by adding a second block in the workbench, not by reading the code. The window
+is a parameter now, clamped 1–90 server-side, and the gate became "a chronicle block THIS viewer
+may see" — the same question as before for one block and the right one for two. Verified through
+the room's own picker: 7 days → 9h 23m, 30 → 11h 29m, 90 → 11h 28m, the last two agreeing because
+the seed only spans about a month.
+
+### What it took to be able to see any of that
+
+`previewMember` makes no session, so the block fetched, got nothing, and rendered "Nothing recorded
+lately" — which looks exactly like a block that works. `pvMemberChronicle` stands the RPC in from
+the same seed store the room itself uses, clamping the window the same way the SQL does. Without it
+the whole card above would have been shipped on reasoning alone, and the two bar bugs were
+invisible to reasoning.
+
+The three category colours moved from `.chron` to `:root` rather than being written out again —
+the note on them says they were consolidated to stop a fourth copy appearing, and a chronicle block
+on a profile page was precisely that fourth copy waiting to happen.
+
+**At 375**: no sideways scroll, nothing past the edge, nothing clipped, nothing under the 24px
+floor, no container overflow. And the bundle was grepped: none of the preview seed reaches it.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
