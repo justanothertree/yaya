@@ -750,9 +750,21 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               </label>
               <label className="chron-qty">
                 <span className="sr-only">What the number counts</span>
+                {/**
+                 * ⚠️ THE HINT IS WHAT LEAVING IT BLANK ACTUALLY GIVES YOU, which "points" was not.
+                 * The box is optional and `unitFor` fills it from what the room already knows —
+                 * minutes for a goal counting an activity's time, that activity's own metric for
+                 * one counting an amount, "done" only where nothing can be known. A placeholder
+                 * naming a fourth word nobody will get is a guess the reader has to un-learn, and
+                 * it changes as the source does, so the preview is live.
+                 */}
                 <input
                   value={unit}
-                  placeholder="points"
+                  placeholder={unitFor('', {
+                    counts: countWhat,
+                    activity: src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null,
+                    cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
+                  })}
                   onChange={(e) => setUnit(e.target.value)}
                 />
               </label>

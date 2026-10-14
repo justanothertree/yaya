@@ -3651,6 +3651,30 @@ into the new phone rule before checking the second one. An activities row begins
 either side of the removal: entry rows `39, 66, 39, 39` and activity rows `64, 50, 50, 37, 69, 62,
 37` before and after. It is gone from both rules now, rather than being dead in two places.
 
+## 6av · ✅ The unit box hinted at a word nobody would get
+
+A phone sweep of the five forms the opening audit cannot see — ＋ Activity, Fill a gap, Plan a span,
+＋ Routine and Add to today — came back clean on every measure at 375, and looking at the richest of
+them confirmed it: the goal form pairs into sensible rows with nothing cramped.
+
+What the look DID turn up was a word. The optional unit box hinted **"points"**, and "points" is
+not what you get by leaving it empty: `unitFor` fills it from what the room already knows —
+`minutes` for a goal counting an activity's time, that activity's own metric for one counting an
+amount, `done` only where nothing can be known. A placeholder naming a fourth word nobody will ever
+receive is a guess the reader has to un-learn.
+
+So the hint IS the answer now, and it follows the source as you change it: `done` on a fresh form,
+`minutes` once it points at Writing counting time, `pages` the moment it counts the amount instead.
+Same function the save uses, so the preview cannot drift from the result.
+
+**And the first measurement of it was wrong, in a way worth recording.** The sequence read `done →
+pages → pages → minutes`, with step two apparently ignoring that the goal was counting TIME. It was
+not: an earlier probe in the same page had left `countWhat` on `amount`, and the form was never
+reopened, so trial two inherited trial one's state. Re-run from a freshly opened form it reads
+`done → minutes → pages`. The same shape as the note in CLAUDE.md about a timed-out call's
+keypresses landing in the next trial — **close and reopen the thing under test between readings**,
+or the state you set two probes ago answers for you.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
