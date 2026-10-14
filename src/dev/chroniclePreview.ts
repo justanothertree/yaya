@@ -313,15 +313,23 @@ function seed(): Store {
         counts: 'amount',
       }),
       goal({ id: 'pv-g10', title: 'Learn to sail', scope: 'life', note: 'the boat comes later' }),
+      /**
+       * ⚠️ THE LONG ONE, AND SHARED, because both surfaces that draw a goal title give it a
+       * fixed column and an ellipsis — the row in this room and the card on a profile — and a
+       * fixture whose longest title is twenty-one characters tests neither. The column allows 120;
+       * this is 71, which is what somebody actually writes when a goal is a whole job rather than
+       * a word. It is also `done`, so the strike-through lands on a title that has to ellipse.
+       */
       goal({
         id: 'pv-g11',
-        title: 'Finish the back fence',
+        title: 'Finish the back fence, including the gate and the post by the shed',
         scope: 'life',
         target: 4,
         unit: 'panels',
         progress: 4,
         done: true,
         sort: 1,
+        shared: true,
       }),
     ],
     /**

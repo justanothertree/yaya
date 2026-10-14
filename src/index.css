@@ -17018,6 +17018,8 @@ a.cz-msg-author:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  /* ⚠️ the same reason as the goals list below — the name has a 56px floor of its own */
+  min-width: 0;
   font-size: 0.84rem;
 }
 .profile-chron-dot {
@@ -17080,10 +17082,23 @@ a.cz-msg-author:focus-visible {
   gap: 0.28rem;
   font-size: 0.84rem;
 }
+/**
+ * ⚠️ `min-width: 0` ON THE ROW, because a grid item defaults to `min-width: auto` and that means
+ * "never shrink below your content" — so the ellipsis on the title below could not fire and the
+ * row simply grew. A 66-character goal measured a 437px title inside a ~300px card and pushed the
+ * card 223px past its own edge, while `mobileAudit` reported no sideways scroll, nothing off the
+ * edge and nothing clipped: all true, because the overflow was INSIDE a container and that sweep
+ * asks the page. The third time today that distinction has mattered.
+ *
+ * ⚠️ AND IT IS SAFE HERE ONLY BECAUSE THE FLOOR IS ONE LEVEL DOWN. `min-width: 0` with nothing
+ * underneath it is not "let it shrink", it is "let it vanish"; the title keeps its own 56px floor,
+ * so what this permits is an ellipsis rather than a disappearance.
+ */
 .profile-chron-goals li {
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
+  min-width: 0;
 }
 .profile-chron-goals li.is-done .profile-chron-goal-title {
   text-decoration: line-through;

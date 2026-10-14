@@ -3759,6 +3759,44 @@ The lesson is not "measure more" — I measured plenty. It is that **wrapping is
 check in `mobileAudit` by construction**, so a change that adds anything to a row needs eyes on it
 at 375 regardless of what the numbers say.
 
+## 6ay · ✅ A long goal title, and the third container of the day
+
+Two checks on yesterday's goal sharing, one clean and one not.
+
+**The round trip is safe, and now measured rather than asserted.** The commit claimed a file
+somebody sends you cannot put goals on your profile, on the grounds that `chronicle_import` does
+not carry the column — but I had only made the PREVIEW DOUBLE ignore it, and never read the real
+function. It does not mention `shared` either, so the guard is real and structural. Checked the
+other direction too, since a new column is exactly what an existing round trip quietly clobbers:
+exporting with a goal shared produces a file with no `shared` key, putting it back skips all
+sixteen rows as already present, and the flag survives. A restore into a FRESH account gives
+unshared goals, which is the right default for a page that has not been looked at yet.
+
+**The long title was a different story.** Every goal in the seed was twenty-odd characters, so
+nothing had ever tested the ellipsis the card's title column exists for. Giving the back-fence goal
+a realistic 66-character name — the column allows 120 — found this:
+
+```
+cardOver   223     ← the card 223px past its own edge
+titleW     437     ← inside a ~300px card
+sideways     0     offEdge 0     clipped 0
+```
+
+The page-level sweep is not wrong there. A grid item defaults to `min-width: auto`, which means
+"never shrink below your content", so the row simply grew and took the card with it — and the
+overflow is INSIDE a container, which `mobileAudit` does not ask about. **That is the third time in
+one day the container-versus-page distinction has been the whole answer**, after the goal row's
+orphaned ✕ and the day log's before it.
+
+`min-width: 0` on the row fixes it, and is safe here only because the floor is one level down: the
+title keeps its own 56px floor, so what this permits is an ellipsis rather than a disappearance.
+After: `cardOver 0`, the title ellipsed at 201px, and "4 panels" still readable beside it. The
+activity rows got the same treatment, since a long activity name would have done the same thing and
+only has not because nothing in the seed is long enough — which is the lesson, not the fix.
+
+The fixture carries the long title permanently now, the way it carries a long activity name, for
+the same reason: a fixture whose longest string is short tests the ellipsis on nothing.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
