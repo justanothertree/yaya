@@ -9,7 +9,11 @@ import {
 } from '../ui/looks'
 import { createPortal } from 'react-dom'
 import { getSupabaseClient } from '../finance/client'
-import { memberChronicle, type MemberChronicle } from '../chronicle/cloud'
+import {
+  memberChronicle,
+  type MemberChronicle,
+  type MemberChronicleResult,
+} from '../chronicle/cloud'
 import { useTouchOnly } from '../ui/pointerKind'
 import {
   BANNER_STYLES,
@@ -915,7 +919,7 @@ function ChronicleBlock({
   guest?: boolean
   heading?: string
 }) {
-  const [got, setGot] = useState<MemberChronicle | null>(null)
+  const [got, setGot] = useState<MemberChronicleResult>(null)
   const [loaded, setLoaded] = useState(false)
 
   const load = useCallback(async () => {
@@ -936,11 +940,12 @@ function ChronicleBlock({
     void load()
   }, [load])
 
-  const window = got == null ? '' : got.days === 7 ? 'the last week' : `the last ${got.days} days`
-  const total = CHRON_CATS.reduce((n, [k]) => n + (got?.time[k] ?? 0), 0)
+  const has = got !== null && got !== 'failed' ? got : null
+  const window = has == null ? '' : has.days === 7 ? 'the last week' : `the last ${has.days} days`
+  const total = CHRON_CATS.reduce((n, [k]) => n + (has?.time[k] ?? 0), 0)
   /* a share of the BIGGEST rather than of the total, the same rule the room's own bars use:
      against the total, five activities are five slivers */
-  const widest = Math.max(...(got?.top ?? []).map((t) => t.mins), 1)
+  const widest = Math.max(...(has?.top ?? []).map((t) => t.mins), 1)
 
   return (
     <div className={'card profile-block is-' + size}>
@@ -949,7 +954,15 @@ function ChronicleBlock({
         <p className="muted" style={{ margin: 0 }}>
           Sign in to see this.
         </p>
-      ) : got == null || total < 1 ? (
+      ) : got === 'failed' ? (
+        /* ⚠️ NOT "nothing recorded" — see memberChronicle. The viewer is already allowed to be
+           here, because the block only reaches them through get_profile_blocks, which applies
+           can_see. So a refusal is a fault, and reporting it as an empty record would be a lie
+           about somebody else's life rather than a tidy fallback. */
+        <p className="muted" style={{ margin: 0 }}>
+          Couldn&apos;t load this just now.
+        </p>
+      ) : has == null || total < 1 ? (
         <p className="muted" style={{ margin: 0 }}>
           Nothing recorded {window || 'lately'}.
         </p>
@@ -960,16 +973,16 @@ function ChronicleBlock({
             <span className="muted">in {window}</span>
           </p>
           <ul className="profile-chron-cats">
-            {CHRON_CATS.filter(([k]) => (got.time[k] ?? 0) >= 1).map(([k, label]) => (
+            {CHRON_CATS.filter(([k]) => (has.time[k] ?? 0) >= 1).map(([k, label]) => (
               <li key={k}>
                 <span className={'chron-cat is-' + k}>{label}</span>{' '}
-                <span className="muted">{hoursText(got.time[k] ?? 0)}</span>
+                <span className="muted">{hoursText(has.time[k] ?? 0)}</span>
               </li>
             ))}
           </ul>
-          {got.top.length > 0 && (
+          {has.top.length > 0 && (
             <ul className="profile-chron-top">
-              {got.top.map((t) => (
+              {has.top.map((t) => (
                 <li key={t.name}>
                   {/* the activity's own colour, which is the one thing on this card its owner
                       chose rather than the room deriving it */}
@@ -999,9 +1012,9 @@ function ChronicleBlock({
           )}
           {/* ⚠️ counts, never titles — see the note on this component */}
           <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
-            {got.reached > 0
-              ? `${got.reached} goal${got.reached === 1 ? '' : 's'} reached, ${got.open} still going`
-              : `${got.open} goal${got.open === 1 ? '' : 's'} on the go`}
+            {has.reached > 0
+              ? `${has.reached} goal${has.reached === 1 ? '' : 's'} reached, ${has.open} still going`
+              : `${has.open} goal${has.open === 1 ? '' : 's'} on the go`}
           </p>
         </>
       )}

@@ -730,10 +730,21 @@ export type MemberChronicle = {
   open: number
 }
 
+/**
+ * ⚠️ 'failed' IS NOT 'null', AND COLLAPSING THEM WOULD HAVE BEEN A LIE ON THE PAGE. This block
+ * only renders at all when get_profile_blocks has already handed it over, which applies `can_see`
+ * — so by the time anything calls this, the viewer is allowed. A null here therefore means the
+ * record is genuinely empty; an ERROR means a parameter name drifted, or the session went, or the
+ * grant was lost. Reported as the same `null` they would read identically on screen as "Nothing
+ * recorded lately", which is the exact shape this repository keeps getting caught by: a call that
+ * is not working and an account that is empty look the same, and the empty one passes every check.
+ */
+export type MemberChronicleResult = MemberChronicle | null | 'failed'
+
 export async function memberChronicle(
   username: string,
   days: number,
-): Promise<MemberChronicle | null> {
+): Promise<MemberChronicleResult> {
   if (previewMember) return pvMemberChronicle(days)
   const { data, error } = await getSupabaseClient().rpc('get_member_chronicle', {
     p_username: username,
@@ -741,6 +752,6 @@ export async function memberChronicle(
        permission to cover it. The gate is the block's own visibility, checked there. */
     p_days: days,
   })
-  if (error) return null
+  if (error) return 'failed'
   return (data as MemberChronicle | null) ?? null
 }
