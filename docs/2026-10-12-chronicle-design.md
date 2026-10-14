@@ -3735,10 +3735,13 @@ it alone` treatment the colour has, rather than to remember at every call site.
 ## 8 · Open, for Evan
 
 1. ~~**Apply §5?**~~ Applied 12 Oct 2026.
-2. **`quarter` in the scope list**: worth having, or noise? Still unanswered, so the room shows a
-   "This quarter" window — because a scope the table accepts and no view shows is a goal somebody
-   can create and never see again. Removing the view is one line; narrowing the check constraint
-   behind it would not be, which is why the view came first.
+2. ~~**`quarter` in the scope list**: worth having, or noise?~~ **Answered 14 Oct 2026** — _"quater
+   is not worth a tab"_. The view is gone. The SCOPE is not: `chronicle_goals_scope_check` still
+   accepts it, `windowOf` still computes it and `Looking` still has a word for it, because a file
+   imported through ⬆ Put one back can contain a quarter goal and a scope the table accepts with
+   nothing able to render it is a goal somebody can create and never see again. That leaves exactly
+   one door into the state, which is the narrowest the question can be left without a migration —
+   see the note at the top of `src/sections/Chronicle.tsx`.
 3. **Does a goal need a category** (`locked`/`free`/`life`) the way an activity does? It would make
    "what am I aiming at that is actually mine" askable. Left out as something easier to add than to
    remove.
