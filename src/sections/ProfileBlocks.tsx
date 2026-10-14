@@ -560,6 +560,7 @@ function BlockView({
           username={username}
           size={block.size}
           days={typeof cfg.days === 'number' ? cfg.days : 7}
+          live={cfg.live === true}
           guest={guest}
           heading={blockHeading(cfg) ?? undefined}
         />
@@ -909,6 +910,7 @@ function ChronicleBlock({
   username,
   size,
   days,
+  live,
   guest,
   heading,
 }: {
@@ -916,6 +918,13 @@ function ChronicleBlock({
   size: ProfileBlock['size']
   /** ⚠️ THIS block's window, not the page's — so two of them can cover two different spans */
   days: number
+  /**
+   * ⚠️ WHETHER TO DRAW what is running right now. The SERVER decides whether to SEND it, from
+   * the block's own config — there is no parameter for it, because that is a different consent
+   * from showing a week's hours. This only decides whether THIS block draws what arrived, so
+   * one block on a page can show it while another does not.
+   */
+  live: boolean
   guest?: boolean
   heading?: string
 }) {
@@ -931,9 +940,9 @@ function ChronicleBlock({
       setLoaded(true)
       return
     }
-    setGot(await memberChronicle(username, days))
+    setGot(await memberChronicle(username, days, live))
     setLoaded(true)
-  }, [username, days, guest])
+  }, [username, days, live, guest])
 
   useEffect(() => {
     setLoaded(false)
@@ -968,6 +977,24 @@ function ChronicleBlock({
         </p>
       ) : (
         <>
+          {/**
+           * ⚠️ ONLY IF THIS BLOCK ASKED, and only if the server sent it. Both are required: the
+           * server will not send it unless a visible block opted in, and a second block on the
+           * same page that did not opt in must not draw what the first one's opt-in fetched.
+           */}
+          {live && has.now && (
+            <p className="profile-chron-now">
+              <i
+                className="profile-chron-dot"
+                style={has.now.colour ? { background: has.now.colour } : undefined}
+                aria-hidden
+              />
+              <span>
+                <strong>{has.now.name}</strong>{' '}
+                <span className="muted">right now · {hoursText(has.now.mins)} so far</span>
+              </span>
+            </p>
+          )}
           <p style={{ margin: 0 }}>
             <strong style={{ fontSize: '1.4rem' }}>{hoursText(total)}</strong>{' '}
             <span className="muted">in {window}</span>
@@ -1938,11 +1965,27 @@ function BlockFields({
               <option value="90">The last three months</option>
             </select>
           </label>
+          {/**
+           * ⚠️ OFF UNLESS ASKED FOR, because it is strictly more than the rest of the card. The
+           * totals say how you spent last week; this says what you are doing at this moment, by
+           * name, to anyone who opens your page. Those are different decisions and only one of
+           * them is made by adding the block.
+           */}
+          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={block.config.live === true}
+              onChange={(e) => setCfg({ live: e.target.checked })}
+            />
+            <span>Show what I&apos;m doing right now</span>
+          </label>
           {/* ⚠️ WHAT IT DOES NOT SHOW IS THE PART WORTH SAYING. Somebody deciding whether to put
               this on their page is deciding how much of themselves to hand over, and "hours" and
               "what I am trying to fix about myself" are very different answers. */}
           <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-            Your hours and what you spent them on. Never the names of your goals, or your notes.
+            Your hours and the activities you spent them on
+            {block.config.live === true ? ', including the one running now' : ''}. Never the names
+            of your goals, or your notes.
           </p>
         </div>
       )

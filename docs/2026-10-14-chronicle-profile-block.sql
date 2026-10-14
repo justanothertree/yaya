@@ -1,4 +1,5 @@
--- ✅ APPLIED — migrations: chronicle_profile_block, then chronicle_profile_block_window
+-- ✅ APPLIED — migrations: chronicle_profile_block, chronicle_profile_block_window,
+--                           chronicle_profile_block_live
 --
 -- A profile block for chronicle, and the one question it has to answer correctly.
 --
@@ -63,6 +64,24 @@
 --
 -- The gate became "does this member have a chronicle block THIS viewer may see", which is the same
 -- question as before for one block and the right one for two.
+--
+-- ⚠️ AND, ONLY IF ASKED FOR, WHAT THEY ARE DOING AT THIS MOMENT — the third migration, and the
+-- rest of what Evan asked for: "chronicle tied to account and profile status if shared". The
+-- account half was already true (it syncs); this is the profile half, a page that says what its
+-- owner is actually doing.
+--
+-- ⚠️ IT IS OFF UNTIL SWITCHED ON, AND THE SWITCH IS READ FROM THE BLOCK — NOT FROM A PARAMETER,
+-- which is the whole difference between it and `days`. A window is not a privacy boundary:
+-- somebody who agreed to show their hours did not make a separate decision about seven of them
+-- versus ninety, so a caller may ask for either. What they are doing RIGHT NOW, by name, to
+-- anyone who opens the page, is a different decision from "here is my week" — so there is
+-- deliberately no way for a caller to request it. `v_live` comes off `config->>'live'` on a block
+-- the viewer can already see, in the same pass as the gate.
+--
+-- The real data made the case for that better than any argument: the first test run of it printed
+-- an activity of Evan's called "talking with josh and parker". That is the sort of thing an
+-- activity name is, and it is why this one is opt-in and why the editor says in plain words what
+-- the card will show — including changing that sentence the moment the box is ticked.
 --
 -- ⚠️ NO GOAL TITLES, in this first version, and that is a privacy decision rather than a scoping
 -- one. A goal is free text somebody wrote about their own life — the seed for this room has "Ring

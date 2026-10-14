@@ -726,6 +726,16 @@ export type MemberChronicle = {
   days: number
   time: Partial<Record<'locked' | 'free' | 'life', number>>
   top: Array<{ name: string; cat: string; colour: string | null; mins: number }>
+  /**
+   * What they are doing at this moment, or null.
+   *
+   * ⚠️ ONLY WHEN A BLOCK THEY CAN SEE ASKED FOR IT, decided in SQL from the block's own config
+   * and never from a parameter — unlike `days`. The window is not a privacy boundary: somebody who
+   * opted into showing their hours did not make a different decision about 7 of them versus 90.
+   * What they are doing right now, by name, IS a different decision, so there is deliberately no
+   * way for a caller to ask for it.
+   */
+  now: { name: string; cat: string; colour: string | null; mins: number } | null
   reached: number
   open: number
 }
@@ -744,8 +754,10 @@ export type MemberChronicleResult = MemberChronicle | null | 'failed'
 export async function memberChronicle(
   username: string,
   days: number,
+  /** ⚠️ the DOUBLE needs telling; the real server reads it off the block and ignores callers */
+  live = false,
 ): Promise<MemberChronicleResult> {
-  if (previewMember) return pvMemberChronicle(days)
+  if (previewMember) return pvMemberChronicle(days, live)
   const { data, error } = await getSupabaseClient().rpc('get_member_chronicle', {
     p_username: username,
     /* ⚠️ the server clamps this to 1–90 and does not trust it — it is which span to cover, not

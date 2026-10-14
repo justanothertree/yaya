@@ -3579,6 +3579,39 @@ on a profile page was precisely that fourth copy waiting to happen.
 **At 375**: no sideways scroll, nothing past the edge, nothing clipped, nothing under the 24px
 floor, no container overflow. And the bundle was grepped: none of the preview seed reaches it.
 
+## 6at · ✅ "Tied to profile status if shared"
+
+The rest of the sentence Evan wrote: _"i will want chronicle to be tied to account and profile
+status if shared"_. The account half has been true since the library started syncing. This is the
+profile half — a page that can say what its owner is actually doing.
+
+The chronicle block can now show the running sitting: the activity's name, its colour, and how long
+it has been going, above a rule and above the week's figures, because it is a different kind of
+fact from them. Those are a week; this is a minute ago.
+
+**It is off until switched on, and the switch is read from the BLOCK rather than passed by the
+caller** — which is the whole difference between it and the window. A window is not a privacy
+boundary: somebody who agreed to show their hours did not make a separate decision about seven of
+them versus ninety, so `p_days` is a parameter and the server merely clamps it. What they are doing
+right now, by name, to anybody who opens the page, IS a different decision — so there is
+deliberately no parameter for it. `v_live` is read off `config->>'live'` on a block the viewer can
+already see, in the same pass as the gate.
+
+**The real data argued for that better than I could.** The first test run printed one of Evan's own
+activities: _"talking with josh and parker"_. That is what an activity name is — and the card has
+always shown the top five by name, which the editor's copy says. Adding "and what they are doing at
+this moment" to that is exactly the step that should need a deliberate tick.
+
+So the editor's sentence changes as the box is ticked: _"Your hours and the activities you spent
+them on. Never the names of your goals, or your notes."_ becomes _"… on, **including the one running
+now**. Never the names of your goals, or your notes."_ The thing you just turned on is named in the
+line underneath it rather than left for you to infer.
+
+Verified through the editor's own checkbox rather than by setting config: off → no line at all; on
+→ "Chronicle right now · 7m so far", and the help text changed with it. The double refuses it the
+same way the SQL does, so the opt-in is exercised where it is easiest to look at. At 375: one line,
+28px, and nothing sideways, off-edge, clipped or under the floor.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

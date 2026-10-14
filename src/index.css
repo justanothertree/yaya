@@ -16943,6 +16943,20 @@ a.cz-msg-author:focus-visible {
 
 /* ── chronicle, on somebody's profile — see sections/ProfileBlocks ChronicleBlock ─────────── */
 
+/**
+ * What they are doing at this moment — the most current thing on the card, so it sits above the
+ * totals rather than under them. A faint rule under it, because it is a different KIND of fact
+ * from the rows below: those are a week, this is a minute ago.
+ */
+.profile-chron-now {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
 .profile-chron-cats {
   list-style: none;
   margin: 0.5rem 0 0;

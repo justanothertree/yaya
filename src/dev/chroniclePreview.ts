@@ -1137,10 +1137,12 @@ if (import.meta.env.DEV && typeof window !== 'undefined')
  */
 export const pvMemberChronicle = (
   askedDays = 7,
+  live = false,
 ): {
   days: number
   time: Partial<Record<'locked' | 'free' | 'life', number>>
   top: Array<{ name: string; cat: string; colour: string | null; mins: number }>
+  now: { name: string; cat: string; colour: string | null; mins: number } | null
   reached: number
   open: number
 } => {
@@ -1182,10 +1184,23 @@ export const pvMemberChronicle = (
     .filter((t) => t.mins >= 1)
     .sort((x, y) => y.mins - x.mins || x.name.localeCompare(y.name))
     .slice(0, 5)
+  /* ⚠️ the running sitting, and only when asked for — the double must refuse it the same way the
+     SQL does, or the opt-in is untested where it is easiest to look at */
+  const open = live ? db().ents.find((e) => e.end == null) : undefined
+  const openAct = open ? catOf.get(open.activity) : undefined
   return {
     days,
     time,
     top,
+    now:
+      open && openAct
+        ? {
+            name: openAct.name,
+            cat: openAct.cat,
+            colour: openAct.colour ?? null,
+            mins: Math.round((to - Date.parse(open.start)) / 60_000),
+          }
+        : null,
     reached: db().goals.filter((g) => g.done).length,
     open: db().goals.filter((g) => !g.done).length,
   }
