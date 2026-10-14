@@ -364,6 +364,33 @@ export function metSession(e: Span, target: number | null, nowMs: number): boole
   return e.end == null ? null : false
 }
 
+/**
+ * How long nothing has been recorded, and what the last thing was.
+ *
+ * ⚠️ IT IS THE ONE FACT A TIME TRACKER CAN OFFER THAT A CLOCK CANNOT. "Timer stopped" is something
+ * you can see — the Start button is right there. The useful half is the hole: that it is nine in
+ * the evening and nothing has been written down since lunch. That is the number `⏱ Fill a gap`
+ * exists to close, and the room never said it.
+ *
+ * ⚠️ NULL WHILE SOMETHING IS RUNNING, because there is no gap — you are in the middle of the
+ * thing. Null also when nothing has finished yet, since "it has been 20 hours" counted from a
+ * midnight nobody was awake for is a true number nobody wants.
+ */
+export function gapSince(
+  spans: Array<Span & { activity: string }>,
+  nowMs: number,
+): { ms: number; activity: string } | null {
+  let last: (Span & { activity: string }) | null = null
+  for (const s of spans) {
+    if (s.end == null) return null
+    const ended = Date.parse(s.end)
+    if (!Number.isFinite(ended) || ended > nowMs) continue
+    if (!last || ended > Date.parse(last.end!)) last = s
+  }
+  if (!last) return null
+  return { ms: nowMs - Date.parse(last.end!), activity: last.activity }
+}
+
 /** Where one span sits on a day, as percentages of that day's width. */
 export type Block = { activity: string; left: number; width: number; cut: boolean }
 

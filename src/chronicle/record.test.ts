@@ -8,6 +8,7 @@ import {
   MOODS,
   COLOURS,
   dayBounds,
+  gapSince,
   lane,
   localMidnight,
   nowAt,
@@ -545,5 +546,58 @@ describe('the colours an activity may be given', () => {
       expect(lum(c), `${c} is too dark for a dark card`).toBeGreaterThan(0.08)
       expect(lum(c), `${c} is too pale for a light page`).toBeLessThan(0.75)
     }
+  })
+})
+
+describe('how long nothing has been recorded', () => {
+  const t = (h: number, m = 0) => new Date(2026, 9, 13, h, m).toISOString()
+  const now = new Date(2026, 9, 13, 21, 0).getTime() /* nine in the evening */
+  const sat = (from: string, to: string | null, activity = 'a1') => ({
+    activity,
+    start: from,
+    end: to,
+  })
+
+  /**
+   * ⚠️ THE FACT A CLOCK CANNOT GIVE YOU. "The timer is stopped" is visible — the Start button is
+   * right there. The useful half is that it is nine at night and nothing has been written down
+   * since lunch, which is the hole `⏱ Fill a gap` exists to close.
+   */
+  it('counts from the end of the last thing that finished', () => {
+    const g = gapSince([sat(t(9), t(10)), sat(t(12), t(13), 'a2')], now)
+    expect(g).not.toBe(null)
+    /* one in the afternoon to nine in the evening is eight hours */
+    expect(g!.ms).toBe(8 * 3_600_000)
+    expect(g!.activity).toBe('a2')
+  })
+
+  it('takes the latest end, not the last in the list', () => {
+    const g = gapSince([sat(t(12), t(13), 'late'), sat(t(9), t(10), 'early')], now)
+    expect(g!.activity).toBe('late')
+  })
+
+  /** there is no gap while you are in the middle of something */
+  it('is nothing at all while a session is running', () => {
+    expect(gapSince([sat(t(9), t(10)), sat(t(20), null)], now)).toBe(null)
+  })
+
+  it('is nothing when the day holds nothing yet', () => {
+    expect(gapSince([], now)).toBe(null)
+  })
+
+  /**
+   * ⚠️ A SESSION THAT HAS NOT ENDED YET IS NOT A GAP EITHER. An entry whose end is in the future
+   * — a plan turned into time ahead of itself, or a clock that disagrees — would otherwise produce
+   * a negative gap, which renders as "-14m since Gym".
+   */
+  it('ignores an end that has not happened yet', () => {
+    const g = gapSince([sat(t(9), t(10), 'done'), sat(t(22), t(23), 'ahead')], now)
+    expect(g!.activity).toBe('done')
+    expect(g!.ms).toBe(11 * 3_600_000)
+  })
+
+  it('is zero at the moment something stops', () => {
+    const g = gapSince([sat(t(20), t(21))], now)
+    expect(g!.ms).toBe(0)
   })
 })

@@ -15675,6 +15675,37 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, the header — see src/chronicle/Timer.tsx ───────────────────── */
+.chron-wall {
+  margin-left: auto;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  color: var(--muted);
+  /* ⚠️ tabular numerals and a fixed slot: a clock whose width changes as the digits do makes the
+     whole header twitch once a second, which is the cost of putting one on a page at all */
+  letter-spacing: 0.02em;
+}
+
+.chron-gapline {
+  margin: 0.3rem 0 0.1rem;
+  font-size: 0.8rem;
+}
+
+.chron-quick-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chron-chip-start {
+  /* a pill, like the HTML app's quick row — the dot inside says which activity it starts */
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
 /* ── chronicle, the day beside the room — see src/chronicle/Rail.tsx ────────── */
 .chron-body {
   display: grid;

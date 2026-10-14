@@ -23,6 +23,7 @@ import {
   clockText,
   COLOURS,
   dayBounds,
+  gapSince,
   localMidnight,
   minutesByActivity,
   minutesByCat,
@@ -62,6 +63,36 @@ const niceDay = (iso: string) =>
     month: 'short',
     day: 'numeric',
   })
+
+/**
+ * The wall clock, in its own component for one reason: it re-renders every second.
+ *
+ * ⚠️ IF IT LIVED IN `Timer` THE WHOLE ROOM WOULD REDRAW ONCE A SECOND — the day's log, the week
+ * grid, the plans, the routines, the activity fold — all to move a colon. React would reconcile
+ * every one of them, and the grid alone is seven columns of absolutely positioned blocks. A
+ * component that owns its own tick redraws eleven characters.
+ *
+ * ⚠️ AND IT IS `aria-live="off"` LIKE THE RUNNING COUNTER BESIDE IT: a clock that announces itself
+ * every second to a screen reader is a room nobody can use.
+ */
+function WallClock() {
+  const [, beat] = useState(0)
+  useEffect(() => {
+    const t = window.setInterval(() => beat((n) => n + 1), 1000)
+    return () => window.clearInterval(t)
+  }, [])
+  return (
+    <span className="chron-wall" aria-live="off">
+      {/* ⚠️ `numeric` hours, `2-digit` the rest: "09:37:05 PM" is a 24-hour habit worn by a
+          12-hour clock, and the leading zero is the giveaway. A 24-hour locale pads it anyway. */}
+      {new Date().toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+      })}
+    </span>
+  )
+}
 
 export function Timer({ day, onChange }: { day: string; onChange?: () => void }) {
   /**
@@ -177,6 +208,19 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   }, [log, loadWeek])
 
   const running = log.find((e) => e.end == null) ?? null
+  /* ⚠️ it follows `beat`, which already ticks once a second while something runs — and when
+     nothing runs the log itself is the only thing that can change it, so the memo is honest
+     either way rather than a clock the component does not own. */
+  /**
+   * ⚠️ `hole`, NOT `gap` — this file already has four `gap` names for the Fill a gap form, and the
+   * two mean opposite things: that one is the repair, this is the damage.
+   *
+   * ⚠️ AND IT RECOMPUTES ON `log` ALONE. The per-second tick is a `const [, setBeat]` with no
+   * reader, so it cannot be a dependency — it exists to force a render, and this memo is
+   * re-evaluated by that render anyway. A dependency on a value nobody can read would not compile
+   * and would not be honest if it did.
+   */
+  const hole = useMemo(() => gapSince(log, Date.now()), [log])
   live.current = !!running
 
   useEffect(() => {
@@ -509,6 +553,9 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
             back to today
           </button>
         )}
+        {/* ⚠️ only on today: a wall clock beside a day you are reading back is the time somewhere
+            else, and the one thing the header must be unambiguous about is which day it means */}
+        {seeing === todayISO() && <WallClock />}
       </div>
       <div className="chron-timer">
         {running ? (
@@ -623,6 +670,23 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
       )}
 
       {/**
+       * ⚠️ THE HOLE, NOT THE STATUS. The HTML app's banner says "Timer stopped", which is a fact
+       * the Start button two inches away already carries. What it cannot tell you is that it is
+       * nine in the evening and nothing has been written down since lunch — and that is the number
+       * `⏱ Fill a gap` exists to close.
+       *
+       * ⚠️ TEN MINUTES BEFORE IT SAYS ANYTHING. A gap of two minutes is the pause between stopping
+       * one thing and starting the next, and a line reporting it on every stop is a room that
+       * nags. See gapSince, which has the arithmetic and the tests.
+       */}
+      {!running && seeing === todayISO() && hole && hole.ms > 10 * 60_000 && (
+        <p className="muted chron-gapline">
+          <strong>{spanText(hole.ms)}</strong> unaccounted since{' '}
+          {byId.get(hole.activity)?.name ?? 'the last thing'}.
+        </p>
+      )}
+
+      {/**
        * ⚠️ ONE TAP FOR THE THING YOU ACTUALLY DO, because starting a timer is the most repeated
        * action in the room and it cost two: open a dropdown, find the name, press Start. These are
        * the same activities the picker holds, in the order you have used them today, so the one
@@ -634,15 +698,23 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
        */}
       {!running && seeing === todayISO() && quick.length > 0 && (
         <div className="chron-quick">
-          <span className="muted">or just</span>
+          <span className="muted chron-quick-label">Quick start</span>
           {quick.map((a) => (
             <button
               key={a.id}
-              className="btn btn-ghost"
+              className="btn btn-ghost chron-chip-start"
               disabled={busy}
               onClick={() => void go(a.id)}
             >
-              ▶ {a.name}
+              {/* ⚠️ the dot rather than ▶, where the activity has a colour: the triangle says
+                  "this starts something", which the row's own label already says, and the colour
+                  says WHICH thing — the same dot the day log and the week grid draw. */}
+              {a.colour ? (
+                <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+              ) : (
+                <span aria-hidden>▶</span>
+              )}
+              {a.name}
             </button>
           ))}
         </div>

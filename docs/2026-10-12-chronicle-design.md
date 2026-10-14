@@ -3148,6 +3148,51 @@ this card is one cell of that grid and a rail beside a stopwatch needs room for 
 1280 (881px main + 264px rail), 899 (one column, rail full width below) and 375 (327px, no
 overflow, nothing past the edge).
 
+## 6ak · ✅ The header — a clock, the hole, and chips that say which
+
+The last of what the screenshot comparison showed, and the one where the HTML app's own copy was
+worth disagreeing with.
+
+**A wall clock, in its own component.** If it lived in `Timer` the whole room would redraw once a
+second — the day's log, the week grid, the plans, the routines, the activity fold — all to move a
+colon, and the grid alone is seven columns of absolutely positioned blocks. A component that owns
+its own tick redraws eleven characters. Only on today, because a wall clock beside a day you are
+reading back is the time somewhere else. And `hour: 'numeric'`, because "09:37:05 PM" is a 24-hour
+habit worn by a 12-hour clock.
+
+**The hole, not the status.** The HTML app's banner says _"Timer stopped — keep every minute
+tracked"_ over _"1% better every day starts with awareness"_. The first half is a fact the Start
+button two inches away already carries; the second is a voice this site does not use. What neither
+says, and what only a time tracker can tell you, is that **it is nine in the evening and nothing has
+been written down since lunch**:
+
+> **2h 25m** unaccounted since Dishes.
+
+That is the number `⏱ Fill a gap` exists to close, and the room had never said it. `gapSince` is
+pure, with six tests and three perturbations — a running session still reporting a gap, an end in
+the future counting, taking the last in the list rather than the latest. It stays quiet under ten
+minutes, because a gap of two minutes is the pause between stopping one thing and starting the
+next, and a line reporting that on every stop is a room that nags.
+
+**Chips that say which.** The quick row was `or just [Dishes] [Writing]` — the right idea with no
+presence. It is a labelled row of pills now, and where an activity has a colour the ▶ becomes its
+dot: the triangle says "this starts something", which the row's own label already says, while the
+colour says _which_ thing — the same dot the day log, the week grid and the rail all draw.
+
+### And one measurement that looked wrong and was not
+
+The 375 screenshot came back visibly clipped — Start cut off, a chip cut off, the last day column
+missing — while every number said clean. The numbers were right. Each element's rect is inside 375
+(the card ends at 365, Start at 339), `scrollWidth === clientWidth === 375`, and the only things
+past the edge are the horizon tabs in their deliberately-scrolling strip. **The screenshot's own
+coordinate frame was 469 for a 375 viewport**: the pane was rendering a window onto the emulation
+rather than the whole of it, so the image was a crop.
+
+The existing rule is "measure, then look", written after three layout fixes measured perfectly and
+had destroyed the page. This is its mirror: a clipped-looking screenshot at an emulated width is not
+evidence of a clipped layout. **When the two disagree, ask the rects for the specific elements that
+look wrong** — which is cheap, and settles it either way.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
