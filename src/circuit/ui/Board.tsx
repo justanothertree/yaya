@@ -355,6 +355,18 @@ export function Board({
                   <button
                     className="cz-tap"
                     onClick={() => onLogToday(r.p.id)}
+                    /**
+                     * ⚠️ THE WORD AS WELL AS THE TOOLTIP, because a tooltip does not exist on a
+                     * phone — and this is the board's main action, sitting on every row. A
+                     * glyph explained only by `title` reads as "plus" to a screen reader and as
+                     * nothing at all to a thumb. It also names WHO, since there is one of these
+                     * per person and "Log today" on its own does not say whose day it is.
+                     */
+                    aria-label={
+                      state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
+                        ? `${r.p.name} — logged today`
+                        : `Log today for ${r.p.name}`
+                    }
                     title={
                       state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
                         ? 'Logged today'
