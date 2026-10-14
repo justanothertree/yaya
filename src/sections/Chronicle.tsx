@@ -385,7 +385,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * squeezing it — a 15rem column beside a stopwatch on a phone is two things too narrow to
        * read instead of one of each.
        */}
-      <div className="chron-body">
+      <div className={'chron-body' + (acts.length ? '' : ' is-alone')}>
         <div className="chron-main">
           <Timer
             day={v.scope === 'day' ? on : todayISO()}
@@ -395,7 +395,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             }}
           />
         </div>
-        <Rail day={v.scope === 'day' ? on : todayISO()} acts={acts} tick={beat} />
+        {/**
+         * ⚠️ THE SAME RULE AS THE WEEK GRID ABOVE: a rail reading 0%, 0m, 0m and "0% of the day"
+         * beside a room nobody has used yet is four zeros where one instruction belongs. The big
+         * number is the most prominent thing on the screen, and for a new member it would be a
+         * verdict on a day they have not had a chance to spend.
+         */}
+        {acts.length > 0 && (
+          <Rail day={v.scope === 'day' ? on : todayISO()} acts={acts} tick={beat} />
+        )}
       </div>
 
       {/* ⚠️ the counts are UNFINISHED work, not totals — a strip of totals tells you how much you

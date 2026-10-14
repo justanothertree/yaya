@@ -3282,6 +3282,47 @@ end. All four red. **The clamp is on the bar and not on the fact** — a bar dra
 rendering fault, where a sitting that ran long is an ordinary and good thing, so `over` has to
 survive where `pct` stops.
 
+## 6an · ✅ Four zeros at a new member, and the bug they uncovered
+
+The empty state was last read at §6af, before the week grid, the rail, the calendar and the sitting
+target all landed on top of each other. Read again, cold.
+
+**A brand-new member was told "0%" four times before doing anything.** An empty seven-column grid
+with an hour scale beside it, then _"0% of these 4 days is written down"_ — a reproach about days
+they had not been a member for — then a rail whose single most prominent element was a large **0%**,
+with `Focused 0m`, `Written down 0m` and `0% of the day` under it. The one sentence that mattered,
+_"Name an activity with ＋ Activity first"_, was competing with a dashboard of nothing.
+
+The grid and the rail now wait. **The condition is activities, not entries**, and the difference is
+the whole argument: an empty week for somebody who HAS activities is a real answer — "you did
+nothing this week" is worth seeing — while an empty week for somebody with no activities cannot be
+anything else, because an entry needs an activity to point at. Nothing can be hidden that way.
+
+Measured on a fresh account: **1,574px and four zeros → 1,042px and none**, 1.9 screens to 1.3. The
+`.chron-body` grid also had to stop reserving the rail's 15rem column when there is no rail, or a
+new member got a strip of nothing beside a squeezed stopwatch.
+
+### And then the rail would not come back
+
+Naming an activity made the grid appear and the rail did not — so the gate was checked rather than
+trusted, and it was not the gate. **Chronicle's own activity list was stale.** The Timer's picker
+had "Drawing" in it; the goals half still thought it had none.
+
+The cause is one word, in a file where the right version sits twelve lines away. `saveAct` — the
+EDIT path — ends with `await after()`, which reloads and then calls `onChange`, which is how the
+goals half hears about anything. `makeActivity` — the ADD path — ended with `await load()`, which
+tells only itself. Archive had the same omission.
+
+**What that actually cost, before any of this week's work existed:** the goal form's source picker
+is hidden when the activity list is empty, so after naming your FIRST activity you could not point
+a goal at it — the "from Drawing" option simply was not offered until something else reloaded the
+page. The first goal a new member sets is exactly the one most likely to want a source.
+
+It was invisible because nothing on screen contradicted it: an empty list that should have had one
+thing in it looks like an empty list. The rail is what made it visible, by being a second reader of
+the same list that could be seen to be missing. Verified after the fix, through the room's own
+controls rather than through cloud calls: grid, rail, and the goal form offering **"Drawing"**.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

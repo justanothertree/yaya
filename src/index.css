@@ -15759,6 +15759,12 @@ a.cz-msg-author:focus-visible {
     grid-template-columns: minmax(0, 1fr) 15rem;
     align-items: start;
   }
+
+  /* ⚠️ without this the column is still RESERVED when the rail is not rendered, so a new member
+     gets a 15rem strip of nothing beside a stopwatch squeezed into the rest */
+  .chron-body.is-alone {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .chron-rail {

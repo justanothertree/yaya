@@ -322,7 +322,14 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     setNewMetric('')
     setNewSession('')
     setAdding(false)
-    await load()
+    /**
+     * ⚠️ `after`, NOT `load` — the goals half reads the activity list too, and this path told only
+     * itself. The symptom was invisible until a rail appeared that depends on the same list: after
+     * naming your FIRST activity, the goal form still offered no "from Drawing" source, because
+     * that picker is hidden when the list is empty and the list was a stale empty. The edit path
+     * beside this one has always called `after`; this one and Archive below had not.
+     */
+    await after()
     /* ⚠️ a new activity is almost always one you are about to do, so it is pre-selected rather
        than leaving somebody to find it in a list they just added to */
     setPick(r.id)
@@ -1081,7 +1088,21 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
        * ⚠️ IT PICKS THE DAY the rest of the card is about, so the grid and the log are one control
        * rather than two views of different days.
        */}
-      {acts !== null && <WeekGrid on={seeing} log={weekLog} acts={acts} onPick={setSeeing} />}
+      {/**
+       * ⚠️ NOT UNTIL THERE IS SOMETHING IT COULD HOLD. On a fresh account this drew seven empty
+       * columns with an hour scale beside them and the sentence "0% of these 4 days is written
+       * down" underneath — furniture pretending to be information, on the one screen where
+       * somebody has the least idea what to do, and a reproach about days they had not yet been a
+       * member for.
+       *
+       * ⚠️ THE CONDITION IS ACTIVITIES, NOT ENTRIES, and the difference matters. An empty week for
+       * somebody who HAS activities is a real and useful answer — "you did nothing this week" is
+       * worth seeing. An empty week for somebody with no activities cannot be anything else: an
+       * entry needs an activity to point at, so there is provably nothing being hidden.
+       */}
+      {acts !== null && acts.length > 0 && (
+        <WeekGrid on={seeing} log={weekLog} acts={acts} onPick={setSeeing} />
+      )}
 
       {acts !== null && (
         <Plans acts={acts} log={log} bounds={bounds} onChange={after} busy={busy} />
@@ -1226,7 +1247,9 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                     className="btn btn-ghost"
                     onClick={async () => {
                       await archiveActivity(a.id, !a.archived)
-                      await load()
+                      /* ⚠️ `after` for the same reason as makeActivity: archiving the last
+                         activity leaves the goals half still offering it as a source */
+                      await after()
                     }}
                   >
                     {a.archived ? 'Bring back' : 'Archive'}
