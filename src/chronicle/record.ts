@@ -120,11 +120,30 @@ export type Activity = {
  *
  * The stored values are unchanged — `locked`, `free`, `life` — so this was only ever a label.
  */
+/**
+ * ⚠️ THE FIRST OF EACH PAIR IS A CONTRACT WITH STORED DATA, not a label. `locked`, `free` and
+ * `life` are what sits in `chronicle_activities.cat` for every row anybody has ever written, what
+ * `chronicle_goals.cat` points at, and what `chronicle_sum(p_cat)` and `chronicle_totals` filter
+ * on.
+ *
+ * ⚠️ AND THE SERVER ALREADY REFUSES A FOURTH WORD — `chronicle_activities_cat_check` and
+ * `chronicle_goal_cat_known` both spell the three out. So a rename is not the silent-mismatch trap
+ * it looks like; it is an exception the first time anybody saves an activity. (That was worth
+ * checking rather than assuming: the sibling note in §4 of CLAUDE.md is about `profile_blocks
+ * .block_type`, which has NO constraint, and the habit of expecting that here would have been
+ * wrong.)
+ *
+ * What `satisfies` buys, then, is WHEN it fails rather than whether: at the keyboard, naming the
+ * three it must be one of, instead of in front of somebody trying to rename an activity. It is
+ * also a contract the type system can hold for free, where a test would be a second copy of the
+ * list to keep level — the thing §11 of the standard exists to avoid. The labels stay free to be
+ * re-worded, which is the half that is allowed to change.
+ */
 export const CATS = [
   ['locked', 'Locked In'],
   ['free', 'Free Time'],
   ['life', 'Life'],
-] as const
+] as const satisfies ReadonlyArray<readonly [Activity['cat'], string]>
 
 /**
  * How much of an entry falls inside a window, in milliseconds.
