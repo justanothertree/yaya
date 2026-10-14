@@ -365,6 +365,34 @@ export function metSession(e: Span, target: number | null, nowMs: number): boole
 }
 
 /**
+ * How far through its intended length a running sitting is.
+ *
+ * ⚠️ THE TARGET ONLY EVER SPOKE AFTERWARDS. `session_mins` has existed since the sitting-length
+ * work, and `metSession` reads it to mark a finished session SHORT — so the room could tell you
+ * that you stopped early, and never that you were about to. That is the wrong half: "you failed"
+ * is a verdict, "seven minutes left" is a reason to keep going.
+ *
+ * ⚠️ AND IT IS THE HALF OF THE HTML APP'S `DURATION` FIELD WORTH HAVING. That form takes a length
+ * when you press Start; this room already knows one, per activity, set once instead of typed every
+ * time. The thing it was missing was not the number — it was showing it while it matters.
+ *
+ * ⚠️ `pct` IS CLAMPED AND `over` IS NOT. A bar past its own end is a rendering fault; a sitting
+ * past its target is an ordinary and good thing, and the two must not be the same number.
+ */
+export function sitting(
+  elapsedMins: number,
+  target: number | null,
+): { pct: number; over: boolean; left: number } | null {
+  if (target == null || !(target > 0)) return null
+  const done = Math.max(0, elapsedMins)
+  return {
+    pct: Math.min(100, (done / target) * 100),
+    over: done >= target,
+    left: Math.max(0, target - done),
+  }
+}
+
+/**
  * How long nothing has been recorded, and what the last thing was.
  *
  * ⚠️ IT IS THE ONE FACT A TIME TRACKER CAN OFFER THAT A CLOCK CANNOT. "Timer stopped" is something

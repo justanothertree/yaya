@@ -24,6 +24,7 @@ import {
   COLOURS,
   dayBounds,
   gapSince,
+  sitting,
   localMidnight,
   minutesByActivity,
   minutesByCat,
@@ -566,6 +567,31 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
             <span className="chron-run-name">
               {byId.get(running.activity)?.name ?? 'something'}
             </span>
+            {/**
+             * ⚠️ THE TARGET, WHILE IT STILL MATTERS. `session_mins` has been read only by
+             * `metSession`, which marks a FINISHED sitting short — so the room could tell you that
+             * you stopped early and never that you were about to. "Seven minutes left" is a reason
+             * to keep going; "short" is a verdict on something already over.
+             *
+             * ⚠️ AND IT SAYS THE MINUTES, NOT ONLY THE BAR. A bar with no number is a shape; the
+             * one thing you want at a glance is how much longer, so the bar carries the sentence
+             * rather than replacing it.
+             */}
+            {(() => {
+              const aim = byId.get(running.activity)?.session ?? null
+              const far = sitting((Date.now() - Date.parse(running.start)) / 60_000, aim)
+              if (!far) return null
+              return (
+                <span className={'chron-aim' + (far.over ? ' is-met' : '')}>
+                  <i aria-hidden>
+                    <b style={{ width: `${far.pct}%` }} />
+                  </i>
+                  <span>
+                    {far.over ? `${aim}m done` : `${Math.ceil(far.left)}m left of ${aim}m`}
+                  </span>
+                </span>
+              )
+            })()}
             <label className="chron-note">
               <span className="sr-only">What are you doing? (optional)</span>
               <input

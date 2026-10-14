@@ -3246,6 +3246,42 @@ fixtures sitting on defaults — **the fixture was tidy in exactly the dimension
 times now. `CLAUDE.md` §2 already carries the rule; what this adds is that "tidy" includes _a
 calendar month that happens to end on a Saturday_.
 
+## 6am · ✅ The stock-take, and the half of `DURATION` worth having
+
+### The nav question, answered by measuring
+
+The one structural thing left against the HTML app was its section nav — Dashboard / Log / Calendar
+/ Goals / Activities — against this room's single long card. I had been treating that as Evan's
+call, and the reason to raise it at all was that the room has grown a lot.
+
+**Measured at 375, with the folds closed: 2,046px — 2.5 screens.** For a room holding a stopwatch, a
+day's log, a week grid, a rail and a goals list, that is ordinary. The parts: timer card 867,
+goals-and-below 674, week grid 302, rail 270, explainer 110.
+
+So the nav would be **solving a problem the room does not have**, and a second tab row would sit
+above the horizon tabs that are already there, on a different axis — sections versus time windows —
+which is the arrangement most likely to confuse. Not built, and now not pending either: it is
+declined on a number rather than left open.
+
+### What the stock-take did find
+
+The HTML's start form takes **ACTIVITY / CATEGORY / DURATION**. This room has no duration — but it
+has known one all along: `session_mins`, set once per activity rather than typed on every start.
+
+What it did with it was the wrong half. `metSession` reads the target to mark a **finished** sitting
+SHORT, so the room could tell you that you stopped early and never that you were about to. "Seven
+minutes left" is a reason to keep going; "short" is a verdict on something already over.
+
+A running sitting now carries its target: a thin bar and the sentence `16m left of 25m`, or
+`25m done` once it is past. Three states verified in the room — under (28.6% of 30, from 8.5
+minutes), past (100%, "5m done"), and no target at all, where nothing is drawn.
+
+`sitting()` is pure, six tests, four perturbations: `over` clamped along with the bar, met only
+_after_ the target rather than at it, time left going negative, and the bar running past its own
+end. All four red. **The clamp is on the bar and not on the fact** — a bar drawn past its end is a
+rendering fault, where a sitting that ran long is an ordinary and good thing, so `over` has to
+survive where `pct` stops.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

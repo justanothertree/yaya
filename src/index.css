@@ -15675,6 +15675,39 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, how far through a sitting is — see src/chronicle/record.ts ─── */
+.chron-aim {
+  display: inline-grid;
+  gap: 3px;
+  min-width: 108px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.chron-aim i {
+  display: block;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.chron-aim b {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+}
+
+/* ⚠️ met is a quieter state, not a louder one: the bar has done its job and the row's own clock is
+   the thing still moving. A colour change that shouted would compete with the running time. */
+.chron-aim.is-met b {
+  background: var(--accent);
+}
+
+.chron-aim.is-met {
+  color: var(--accent);
+}
+
 /* ── chronicle, the header — see src/chronicle/Timer.tsx ───────────────────── */
 .chron-wall {
   margin-left: auto;

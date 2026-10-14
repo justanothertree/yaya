@@ -9,6 +9,7 @@ import {
   COLOURS,
   dayBounds,
   gapSince,
+  sitting,
   lane,
   localMidnight,
   nowAt,
@@ -599,5 +600,55 @@ describe('how long nothing has been recorded', () => {
   it('is zero at the moment something stops', () => {
     const g = gapSince([sat(t(20), t(21))], now)
     expect(g!.ms).toBe(0)
+  })
+})
+
+describe('how far through a sitting is', () => {
+  /**
+   * ⚠️ THE TARGET ONLY EVER SPOKE AFTERWARDS. `metSession` marks a finished session SHORT, so the
+   * room could say "you stopped early" and never "you are nearly there" — the wrong half, since
+   * one is a verdict and the other is a reason to keep going.
+   */
+  it('says nothing when the activity has no intended length', () => {
+    expect(sitting(20, null)).toBe(null)
+    expect(sitting(20, 0)).toBe(null)
+    expect(sitting(20, -5)).toBe(null)
+  })
+
+  it('is half way at half the length', () => {
+    const s = sitting(15, 30)!
+    expect(s.pct).toBeCloseTo(50, 6)
+    expect(s.over).toBe(false)
+    expect(s.left).toBe(15)
+  })
+
+  it('starts at nothing with nothing left off it', () => {
+    const s = sitting(0, 30)!
+    expect(s.pct).toBe(0)
+    expect(s.over).toBe(false)
+    expect(s.left).toBe(30)
+  })
+
+  it('is met exactly at the target, not a minute after', () => {
+    const s = sitting(30, 30)!
+    expect(s.over).toBe(true)
+    expect(s.pct).toBe(100)
+    expect(s.left).toBe(0)
+  })
+
+  /**
+   * ⚠️ THE CLAMP IS ON THE BAR AND NOT ON THE FACT. A bar drawn past its own end is a rendering
+   * fault; a sitting that ran long is an ordinary and good thing, so `over` has to survive where
+   * `pct` stops.
+   */
+  it('stops the bar at the end and keeps saying it is past it', () => {
+    const s = sitting(90, 30)!
+    expect(s.pct).toBe(100)
+    expect(s.over).toBe(true)
+    expect(s.left).toBe(0)
+  })
+
+  it('never reports negative time left', () => {
+    for (const mins of [31, 60, 1440]) expect(sitting(mins, 30)!.left).toBe(0)
   })
 })
