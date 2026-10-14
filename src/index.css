@@ -16291,8 +16291,14 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ a floor in PIXELS on whatever carries the name, or the rigid facts win the line and the one
    flexible thing collapses to nothing — which measures as "no overflow" and reads as a bug */
-.chron-ent-name,
-.chron-acts li > span:first-child {
+/**
+ * ⚠️ `.chron-acts li > span:first-child` USED TO BE HERE AND MATCHED NOTHING. An activities row
+ * begins with `<button class="chron-act-name">`, not a span — the spans inside it are the category
+ * and the metric — so the selector was dead in every state the fold renders, archived rows
+ * included: 0 of 7 matched. Removing it is provably a no-op, and it was about to be copied into
+ * the phone rule below, which is how a dead selector becomes two.
+ */
+.chron-ent-name {
   flex: 1 1 130px;
   min-width: 130px;
 }
@@ -16434,6 +16440,27 @@ a.cz-msg-author:focus-visible {
      activity are what identify it, and the note is visible again in the editor */
   .chron-plan-note {
     display: none;
+  }
+  /**
+   * ⚠️ A NARROWER NAME ON A PHONE, because 130px of a 303px row is not a name column, it is most
+   * of the row — and what it cost was the ✎ and ✕ being pushed onto a line of their own, floating
+   * right under an empty space with nothing to attach them to. A log of four sittings had two
+   * rows one line tall and two rows with orphaned buttons: not a list that looks designed.
+   *
+   * Measured at 375: the row is 303px and the gap resolves to 8.5px, so
+   * `dot 9 + name + 25 + 30 + buttons 99 + four gaps 34` fits only while the name is under 106.
+   * At 100 the common row — a name, how long, and one chip — is one line with 13px to spare.
+   *
+   * ⚠️ IN PIXELS AND WITH A FLOOR, never `min-width: 0`: the root font-size here is fluid so a rem
+   * is not a length, and a flexible name with no floor does not shrink, it vanishes — whatever is
+   * rigid in the row wins and the one flexible thing pays the whole bill.
+   *
+   * A rich row — a metric AND a length chip AND a rating — still wraps, and honestly: seven things
+   * do not fit across a phone at any name width. This makes the ordinary row ordinary.
+   */
+  .chron-ent-name {
+    flex: 1 1 100px;
+    min-width: 100px;
   }
 }
 

@@ -3612,6 +3612,45 @@ Verified through the editor's own checkbox rather than by setting config: off �
 same way the SQL does, so the opt-in is exercised where it is easiest to look at. At 375: one line,
 28px, and nothing sideways, off-edge, clipped or under the floor.
 
+## 6au · ✅ The day's log had orphaned buttons on a phone
+
+Chasing the thing Evan actually said — _"even the ui is so much cooler in the html"_ — rather than
+another feature.
+
+A log of four sittings at 375 had two rows one line tall and two rows **two** lines tall, and the
+second line was not what you would guess. On the Drawing row — a name, a length and one rating
+chip — everything fitted on line one and the ✎ and ✕ **wrapped onto a line of their own**, floating
+right under an empty space with nothing to attach them to. A row that looks broken rather than
+wrapped.
+
+**The numbers nearly hid it.** `mobileAudit` was clean: no sideways scroll, nothing off the edge,
+nothing clipped, nothing under the touch floor, and no container overflowing. The row heights said
+`39, 66, 39, 66`, which reads as "some rows are taller", not as "the controls have come off". And
+a count of distinct `top` values said `lines: 4` and `lines: 6`, which sounds like chaos and is
+really just centred items of different heights. **It took a screenshot**, which is the rule this
+file has been written about twice already.
+
+The cause was one declaration: `.chron-ent-name { flex: 1 1 130px; min-width: 130px }`. On a 303px
+row that is not a name column, it is most of the row. Measured there, the gap resolves to 8.5px, so
+`dot 9 + name + length 25 + chip 30 + buttons 99 + four gaps 34` fits only while the name is under
+**106px**. At a 100px floor on phones the ordinary row — what it was, how long, how it went — is one
+line with 13px to spare, and the names still grow to 162 and 171px where there is room. Nothing is
+clipped at either width; desktop is untouched, still 42px rows with names at 494–740px.
+
+A rich row still wraps — Gym carries a name, a length, a metric total, a SHORT chip, a rating and
+two buttons, and seven things do not cross a phone at any name width. The point was never to make
+every row one line; it was to stop the ORDINARY row looking like a mistake.
+
+### A dead selector, found by checking the one I was about to copy
+
+The rule read `.chron-ent-name, .chron-acts li > span:first-child`, and I had duplicated both halves
+into the new phone rule before checking the second one. An activities row begins with
+`<button class="chron-act-name">` — the spans inside it are the category and the metric — so
+`> span:first-child` matched **nothing**, in every state the fold renders, archived rows included:
+0 of 7. Removing it is provably a no-op and the proof is in the measurements, which are identical
+either side of the removal: entry rows `39, 66, 39, 39` and activity rows `64, 50, 50, 37, 69, 62,
+37` before and after. It is gone from both rules now, rather than being dead in two places.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
