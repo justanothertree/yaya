@@ -929,7 +929,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                      * its own current value, and opening the editor would silently propose
                      * moving the session somewhere else.
                      */}
-                    <label className="chron-src">
+                    <label className="chron-choice">
                       <span className="sr-only">What this was</span>
                       <select value={entAct} onChange={(ev) => setEntAct(ev.target.value)}>
                         {[...open, ...(a && a.archived ? [a] : [])].map((x) => (
@@ -983,7 +983,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                      * rank nobody has a legend for.
                      */}
                     {e.end && (
-                      <label className="chron-src">
+                      <label className="chron-choice">
                         <span className="sr-only">How did it go?</span>
                         <select value={entMood} onChange={(ev) => setEntMood(ev.target.value)}>
                           <option value="">not rated</option>

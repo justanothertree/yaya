@@ -16678,8 +16678,16 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
 }
 
-.chron-src select {
+/**
+ * ⚠️ `choice`, NOT `src`. This dressed FIVE selects — a session's activity, its rating, a goal's
+ * source, a goal's priority, and the gap form's activity — and "src" described exactly one of
+ * them. A class named after the first thing it was used for is a name that lies about the other
+ * four, and the one place a reader looks to find out what a rule is for is its name.
+ */
+.chron-choice select {
   min-height: 36px;
+  /* a cap rather than a width: these sit in wrapping rows beside number boxes, and a select wide
+     enough for "Chronicle (on the site)" would push the row's buttons onto their own line */
   max-width: 13rem;
 }
 

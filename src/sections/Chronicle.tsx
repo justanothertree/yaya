@@ -729,7 +729,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                   onChange={(e) => setWhy(e.target.value)}
                 />
               </label>
-              <label className="chron-src">
+              <label className="chron-choice">
                 <span className="sr-only">How much does it matter?</span>
                 <select
                   value={String(pri)}
@@ -755,7 +755,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                * them here would be offering a thing that cannot be saved.
                */}
               {target.trim() !== '' && v.scope !== 'life' && acts.length > 0 && (
-                <label className="chron-src">
+                <label className="chron-choice">
                   <span className="sr-only">Counted from what?</span>
                   <select value={src} onChange={(e) => setSrc(e.target.value)}>
                     <option value="">I will count it myself</option>
@@ -787,7 +787,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               {(() => {
                 const picked = src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null
                 return picked?.metric ? (
-                  <label className="chron-src">
+                  <label className="chron-choice">
                     <span className="sr-only">Count what?</span>
                     <select
                       value={countWhat}
