@@ -150,3 +150,40 @@ describe('old links still land', () => {
     for (const id of ALL_SECTIONS) expect(sectionOf('#' + id), id).toBe(id as Section)
   })
 })
+
+/**
+ * ⚠️ THE SPELLING ON SCREEN MUST BE A DOOR, which is the general form of a real miss: the
+ * visualiser's id is `visualizer` and every word the site shows for it is "Visualiser", so the one
+ * spelling anybody could read was the one the URL refused — it landed on home, silently, which is
+ * indistinguishable from a typo on the reader's part.
+ *
+ * Asked of every room with a ONE-WORD label rather than of that room by name, so the next rename
+ * that changes a label without changing an id is caught by the same line. Multi-word labels are
+ * excluded deliberately: nobody types `#acceptinvite`.
+ */
+describe('a room can be reached by the name it shows', () => {
+  it('resolves every one-word label as a hash', () => {
+    const missed: string[] = []
+    for (const p of PLACES) {
+      const word = p.label.trim()
+      if (/\s/.test(word)) continue
+      if (sectionOf('#' + word.toLowerCase()) !== p.id) missed.push(`${word} → ${p.id}`)
+    }
+    expect(missed).toEqual([])
+  })
+
+  /** the one that was wrong, named, so the reason this test exists stays legible */
+  it('takes the visualiser by its British spelling and its American id', () => {
+    expect(sectionOf('#visualiser')).toBe('visualizer')
+    expect(sectionOf('#visualizer')).toBe('visualizer')
+  })
+
+  /** an alias must point at a real room, never at another alias */
+  it('resolves every alias in one hop', () => {
+    for (const [from, to] of Object.entries(SECTION_ALIASES)) {
+      expect(ALL_SECTIONS).toContain(to)
+      expect(SECTION_ALIASES[to]).toBeUndefined()
+      expect(sectionOf('#' + from)).toBe(to)
+    }
+  })
+})

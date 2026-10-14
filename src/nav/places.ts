@@ -184,6 +184,23 @@ export const SECTION_ALIASES: Record<string, Section> = {
   snake: 'games',
   pets: 'games',
   minions: 'games',
+  /**
+   * ⚠️ THE SPELLING THE SITE ACTUALLY SHOWS. The room's id is `visualizer` with a z, and its
+   * label and title are "Visualiser" with an s — so the only spelling anybody ever READS is the
+   * one the URL did not accept, and `#visualiser` landed silently on home. Clicking the nav was
+   * always fine, because that uses the id; typing it from memory, or sharing the spelling you can
+   * see, was not. Found in the production build, by walking the rooms as a signed-out visitor.
+   *
+   * The id stays as it is: it is in people's history and in any link already sent.
+   */
+  visualiser: 'visualizer',
+  /**
+   * ⚠️ AND THE SAME MISS AGAIN, found by the test rather than by the eye. The nav says
+   * "Account"; the id is `account-settings`, because the title is "Account settings". So `#account`
+   * went to home — and I walked into it myself while working on that very page, and assumed I had
+   * mistyped. A dead end that reads as your own mistake is the kind nobody reports.
+   */
+  account: 'account-settings',
 }
 
 /**
