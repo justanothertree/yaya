@@ -32,16 +32,33 @@ describe("a day's score", () => {
    * ⚠️ THE ONE THAT MATTERS ON THE FIRST SCREEN. A new member has recorded nothing, so this is
    * 0/0 — and "NaN%" at the top of the rail is worse than any number it could show.
    */
-  it('is zero, not NaN, on a day with nothing in it', () => {
+  it('has no share at all on a day with nothing in it, rather than NaN or zero', () => {
     const s = scoreOf([])
-    expect(s).toEqual({ logged: 0, focused: 0, share: 0, covered: 0 })
-    expect(Number.isNaN(s.share)).toBe(false)
+    expect(s).toEqual({ logged: 0, focused: 0, share: null, covered: 0 })
   })
 
-  it('is zero and not NaN when everything logged is unfocused', () => {
+  it('is zero and not null when a real amount was logged and none of it was focused', () => {
     const s = scoreOf([row('free', 45)])
     expect(s.share).toBe(0)
     expect(s.logged).toBe(45)
+  })
+
+  /**
+   * ⚠️ THE ONE THE ROOM ACTUALLY SHOWED. Two seconds after pressing Start the rail read "100%
+   * Locked In" above "Focused 0s" and "Written down 0s" — right arithmetic, four contradicting
+   * statements. A proportion needs something to be a proportion of, and a minute is the unit this
+   * room writes everything else in.
+   */
+  it('has no share under a minute, however focused that scrap was', () => {
+    expect(scoreOf([row('locked', 2 / 60)]).share).toBe(null)
+    expect(scoreOf([row('locked', 0.99)]).share).toBe(null)
+    /* and the minutes themselves are still counted — only the proportion is withheld */
+    expect(scoreOf([row('locked', 0.5)]).logged).toBeCloseTo(0.5, 6)
+  })
+
+  it('has a share from exactly a minute', () => {
+    expect(scoreOf([row('locked', 1)]).share).toBeCloseTo(100, 6)
+    expect(scoreOf([row('free', 1)]).share).toBe(0)
   })
 
   /** totals list every activity, including ones with no time — those are not a day's worth of 0s */

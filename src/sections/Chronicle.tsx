@@ -10,6 +10,7 @@ import {
   reached,
   repeats,
   tallyAsks,
+  unitFor,
   weight,
   share,
   today as todayISO,
@@ -266,8 +267,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         return est.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
       })(),
       priority: pri,
-      /* ⚠️ a target always carries a unit, or the number means nothing in six months */
-      unit: hasTarget ? unit.trim() || 'done' : null,
+      /** see `unitFor` — a target always carries a unit, and the room usually knows which */
+      unit: hasTarget
+        ? unitFor(unit, {
+            counts: countWhat,
+            activity: src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null,
+            cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
+          })
+        : null,
     })
     setBusy(false)
     if ('why' in r) {

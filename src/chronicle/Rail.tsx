@@ -58,8 +58,11 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
        * no noun is the thing a dashboard does that nobody can read: 62% of what. It is the part of
        * what you wrote down that was Locked In, so the label is the category's own name.
        */}
+      {/* ⚠️ an em dash when there is under a minute to take a share of — see `share` in score.ts,
+          which withholds the proportion rather than printing one made of noise */}
       <p className="chron-rail-big">
-        {Math.round(s.share)}%<span className="chron-rail-of">Locked In</span>
+        {s.share == null ? '—' : `${Math.round(s.share)}%`}
+        <span className="chron-rail-of">{s.share == null ? 'nothing yet' : 'Locked In'}</span>
       </p>
 
       <dl className="chron-rail-nums">

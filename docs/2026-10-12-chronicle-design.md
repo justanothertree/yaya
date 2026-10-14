@@ -3352,6 +3352,68 @@ for today stayed at five — correct, not a failure: it was past one in the morn
 ago" is yesterday afternoon. The month total moved and the day's did not, which is exactly right,
 and is the sort of thing that reads as a broken refresh if the clock is not checked.
 
+## 6ap · ✅ Two sentences the room said that were not true
+
+Found by walking the whole room from a blank account through its own controls, which is the thing
+that keeps earning its cost: both of these are right arithmetic attached to a wrong claim, so
+neither could have been found by reading the code for mistakes.
+
+### "100% Locked In" above "Focused 0s"
+
+Two seconds after pressing Start, the rail read **100% Locked In**, and four inches under it the
+day's totals read `Focused 0s · Written down 0s`. Every one of those numbers was correctly
+computed: two seconds of a Locked In activity really is 100% of everything recorded today. It is
+still four statements that contradict each other on one screen, and the reader is right and the
+room is wrong.
+
+A proportion needs something to be a proportion of, and **a minute is the unit this room writes
+everything else in** — `spanText` rounds to it, the totals are in it, a goal's target is in it. So
+`scoreOf` now withholds `share` below one logged minute rather than dividing by a scrap:
+
+```ts
+share: logged >= 1 ? (focused / logged) * 100 : null,
+```
+
+`null` rather than `0`, because those are different facts and the rail says so — `— nothing yet`
+against `0% Locked In`. Zero is a verdict on a day you spent badly; it should not also be what an
+empty day says. The same `null` already covers the 0/0 case a new member sees, where the
+alternative was `NaN%` at the top of the first screen.
+
+The minutes themselves are never withheld — only the ratio. A 30-second sitting is still 30
+seconds in the totals.
+
+### "60 / 30 done" on a row counting minutes
+
+Pointing a goal at an activity and asking for 30 minutes produced a row reading **60 / 30 done**,
+two inches below the room's own seeded goals reading `35 / 30 minutes`. A target always carrying a
+unit was the right rule; the DEFAULT was the bug. Everything fell back to `'done'`, including the
+cases where the room already knew the answer:
+
+- a derived goal counting **time** is counting minutes — there is nothing else it could be;
+- one counting an **amount** is counting the activity's own metric, the word already typed against
+  it: `pages`, `reps`;
+- only a goal you move **by hand** has a number nobody can name, and `done` is honest for exactly
+  that one.
+
+So the box stays optional and is filled in from what is known. A typed word still wins, always —
+this fills an empty box, it does not correct anybody, and somebody counting an activity's minutes
+who calls them `pomodoros` means pomodoros.
+
+### Both now live where they can be asked a question
+
+`unitFor` went into `goal.ts` rather than staying a closure in `Chronicle.tsx`, for the reason the
+standard gives: a unit rule inside JSX cannot be asked what it thinks, and this one is four
+branches about a word a reader will see for months. Seven tests in `goal.test.ts`, written as the
+sentence the row says rather than as the branch the function takes, and the fixture is an activity
+with **every field non-default** so a rule reading the wrong field has somewhere to be wrong — the
+metric is not the name and the name is not the category.
+
+Both were made to fail once, from scratchpad copies. Perturbing `goal.ts` back to a bare
+`return 'done'` turned four of the seven red; loosening `score.ts` to `logged > 0` turned exactly
+one red — the under-a-minute case, and nothing else. Then verified a third time through the room's
+own form, which is where the claim actually lives: `0 / 30 minutes`, `0 / 20 pages`,
+`35 / 300 minutes` for a category source, `0 / 12 done` for one moved by hand.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

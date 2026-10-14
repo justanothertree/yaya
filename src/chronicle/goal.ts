@@ -1,5 +1,5 @@
 import { localISO } from '../circuit/dates'
-import { localMidnight } from './record'
+import { localMidnight, type Activity } from './record'
 
 /**
  * A goal, and the window it is judged over.
@@ -202,6 +202,40 @@ export function inScope(g: Goal, scope: Scope, on: string): boolean {
 
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
+
+/**
+ * What the number on a goal counts, when the box was left empty.
+ *
+ * ⚠️ A TARGET ALWAYS CARRIES A UNIT, or the number means nothing in six months. That part was
+ * always right; the DEFAULT was not. Everything fell back to "done", so pointing a goal at an
+ * activity and asking for 30 minutes produced **"60 / 30 done"** — a row whose number counts
+ * minutes and whose word says something else. The room's own seeded goals read "35 / 30 minutes",
+ * which is what it should have been saying all along.
+ *
+ * ⚠️ THE ROOM USUALLY KNOWS THE UNIT, SO IT SHOULD NOT ASK. A derived goal counting time is
+ * counting MINUTES; one counting an amount is counting the activity's own metric — the word
+ * already typed against it, "pages" or "reps". Only a goal you move by hand has a number nobody
+ * can name, and "done" is the honest fallback for exactly that one.
+ *
+ * ⚠️ A TYPED WORD STILL WINS, always. This fills an empty box; it does not correct anybody.
+ * Somebody counting an activity's minutes who calls them "pomodoros" means pomodoros.
+ */
+export function unitFor(
+  typed: string,
+  of: {
+    counts: 'minutes' | 'amount'
+    /** the goal's source activity, already resolved — null for a category or for neither */
+    activity?: Activity | null
+    cat?: 'locked' | 'free' | 'life' | null
+  },
+): string {
+  const said = typed.trim()
+  if (said) return said
+  /* an amount is only sayable against one activity, and only if that activity named its metric */
+  if (of.activity && of.counts === 'amount') return of.activity.metric?.trim() || 'done'
+  if (of.activity || of.cat) return 'minutes'
+  return 'done'
+}
 
 /**
  * Where a tally answer about one goal over one window is filed.

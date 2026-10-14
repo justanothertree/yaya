@@ -16,12 +16,13 @@ import {
   likeForLike,
   marksOf,
   tallyAsks,
+  unitFor,
   weight,
   windowOf,
   type Goal,
   type Scope,
 } from './goal'
-import { localMidnight } from './record'
+import { localMidnight, type Activity } from './record'
 
 const goal = (over: Partial<Goal> = {}): Goal => ({
   id: 'g1',
@@ -743,5 +744,71 @@ describe('the last thirty windows, drawn', () => {
     expect(marksOf(goal({ target: null }), {})).toEqual([])
     expect(marksOf(goal({ every: null, target: 30, activity: 'a' }), {})).toEqual([])
     expect(marksOf(goal({ every: 1, target: 30 }), {})).toEqual([])
+  })
+})
+
+/**
+ * What a target's number is counting, when nobody typed a word for it.
+ *
+ * ⚠️ EVERY EXPECTATION HERE IS THE SENTENCE THE ROW SAYS, not the branch the function takes.
+ * "Thirty minutes of drawing" reads `minutes`; "five pages of reading" reads the word already
+ * typed against reading. The bug this is for showed **"60 / 30 done"** on a row whose number was
+ * counting minutes, so the thing worth pinning is the WORD BESIDE THE NUMBER.
+ *
+ * The fixture is an activity with every field set to something other than its default, so a rule
+ * reading the wrong field has somewhere to be wrong — the metric is not the name, and the name is
+ * not the category.
+ */
+const reading: Activity = {
+  id: 'a-read',
+  name: 'Reading',
+  cat: 'free',
+  colour: '#c2763a',
+  archived: false,
+  auto: false,
+  metric: 'pages',
+  session: 25,
+}
+
+describe("the word beside a target's number", () => {
+  it("says minutes when a goal counts an activity's time", () => {
+    expect(unitFor('', { counts: 'minutes', activity: reading })).toBe('minutes')
+  })
+
+  it("says minutes when a goal counts a whole category's time", () => {
+    expect(unitFor('', { counts: 'minutes', cat: 'locked' })).toBe('minutes')
+  })
+
+  it("takes the activity's own metric when the goal counts an amount", () => {
+    expect(unitFor('', { counts: 'amount', activity: reading })).toBe('pages')
+  })
+
+  /** a goal you move by hand has a number nobody else can name */
+  it('says done when there is no source to ask', () => {
+    expect(unitFor('', { counts: 'minutes' })).toBe('done')
+    expect(unitFor('', { counts: 'minutes', activity: null, cat: null })).toBe('done')
+  })
+
+  /**
+   * ⚠️ THE ONE THE ROOM SHOWED. A derived minutes goal stored "done", so a row counting minutes
+   * read "60 / 30 done" beside the room's own seeded goals reading "35 / 30 minutes".
+   */
+  it('never falls back to done while a source can be asked', () => {
+    for (const counts of ['minutes', 'amount'] as const) {
+      expect(unitFor('', { counts, activity: reading })).not.toBe('done')
+      expect(unitFor('', { counts, cat: 'life' })).not.toBe('done')
+    }
+  })
+
+  it('still says done for an amount against an activity that named no metric', () => {
+    expect(unitFor('', { counts: 'amount', activity: { ...reading, metric: null } })).toBe('done')
+    expect(unitFor('', { counts: 'amount', activity: { ...reading, metric: '   ' } })).toBe('done')
+  })
+
+  /** this fills an empty box; it does not correct anybody */
+  it('lets a typed word win over anything it could have guessed', () => {
+    expect(unitFor('pomodoros', { counts: 'minutes', activity: reading })).toBe('pomodoros')
+    expect(unitFor('  chapters  ', { counts: 'amount', activity: reading })).toBe('chapters')
+    expect(unitFor('reps', { counts: 'minutes' })).toBe('reps')
   })
 })
