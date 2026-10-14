@@ -42,11 +42,18 @@ type View = { id: string; label: string; scope: Scope; when: () => string; blurb
  * rather than a list of scopes. A repeating daily goal appears in both, correctly — that is what
  * "daily" means — while a one-off anchored to tomorrow appears only in the second.
  *
- * ⚠️ AND `quarter` IS HERE BECAUSE THE TABLE ALLOWS IT. The design doc asks whether a quarter is
- * worth having or is noise, and that is unanswered — so it gets a view, because a scope the
- * database accepts and no view shows is a goal somebody can create and never see again. One line
- * to remove if the answer comes back "noise", and removing a view is safe where narrowing the
- * check constraint behind it would not be.
+ * ⚠️ AND `quarter` IS GONE, ANSWERED BY EVAN: "not worth a tab". It was only ever here because
+ * the table allows the scope, and a scope the database accepts with no view to show it is a goal
+ * somebody can create and never see again.
+ *
+ * ⚠️ WHICH IS WHY REMOVING IT IS SAFE RATHER THAN A SHORTCUT, and worth saying precisely. A goal
+ * takes the scope of the TAB it is added from, so with no quarter tab the room can no longer make
+ * one. The check constraint still accepts the word, deliberately: narrowing it would strand an
+ * older file's goal on import instead of merely hiding it, and widening it again if the answer
+ * ever changes is one statement where restoring the type and the window maths would not be. That
+ * leaves exactly one door — importing a file that already contains a quarter goal — and there is
+ * no such goal in any account today. If one ever arrives it is invisible rather than lost: the
+ * row keeps its scope, and putting the tab back is this entry.
  */
 const VIEWS: View[] = [
   { id: 'today', label: 'Today', scope: 'day', when: todayISO, blurb: 'What today is for.' },
@@ -64,13 +71,6 @@ const VIEWS: View[] = [
     scope: 'month',
     when: todayISO,
     blurb: 'The calendar month.',
-  },
-  {
-    id: 'quarter',
-    label: 'This quarter',
-    scope: 'quarter',
-    when: todayISO,
-    blurb: 'Three months at a time.',
   },
   { id: 'year', label: 'This year', scope: 'year', when: todayISO, blurb: 'The whole year.' },
   {
@@ -137,6 +137,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const [countWhat, setCountWhat] = useState<'minutes' | 'amount'>('minutes')
   /** how long this is guessed to take, as typed — minutes, blank for "no idea" */
+  const [why, setWhy] = useState('')
   const [est, setEst] = useState('')
   /** 0 normal, 1 important, 2 urgent — see Goal.priority, which is the list's order */
   const [pri, setPri] = useState<0 | 1 | 2>(0)
@@ -243,6 +244,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       anchor: v.scope === 'life' || every ? null : (win?.from ?? null),
       every: v.scope === 'life' ? null : every ? 1 : null,
       target: hasTarget ? n : null,
+      /* ⚠️ sent on every save, which is what makes the server's "null leaves it alone" something
+         to rely on rather than depend on — see docs/2026-10-13-chronicle-silent-erasures.sql. An
+         empty box clears it, deliberately. */
+      note: why.trim(),
       /* ⚠️ a source needs a target to count towards, which the table also insists on — a derived
          tick-box would tick itself the moment you did a minute of anything */
       activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
@@ -269,6 +274,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setUnit('')
     setEvery(false)
     setSrc('')
+    setWhy('')
     setCountWhat('minutes')
     setEst('')
     setPri(0)
@@ -557,6 +563,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         setCountWhat(g.counts)
                         setEst(g.est == null ? '' : String(g.est))
                         setPri(g.priority)
+                        setWhy(g.note ?? '')
                       }}
                       aria-label={`Change ${g.title}`}
                       title={`Change ${g.title}`}
@@ -572,6 +579,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                       ✕
                     </button>
                   </div>
+                  {/**
+                   * ⚠️ UNDER THE TITLE, NOT BESIDE IT. Everything else on that row is a chip or a
+                   * number — a cadence, a flag, a bar — and a sentence wedged among them would
+                   * either push them off the end or be clipped to a word. This is the only part of
+                   * a goal that can be prose, so it gets its own line and wraps.
+                   */}
+                  {g.note ? <p className="muted chron-goal-why">{g.note}</p> : null}
                   {s != null && (
                     <div className="chron-meter">
                       <div className="chron-bar">
@@ -664,6 +678,24 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                   inputMode="numeric"
                   placeholder="20m?"
                   onChange={(e) => setEst(e.target.value)}
+                />
+              </label>
+              {/**
+               * ⚠️ "WHY" RATHER THAN "NOTE", because the field is only worth a box if it asks a
+               * question somebody wants to answer. A goal's title says what; the one thing that
+               * goes stale about a goal is the reason you set it, which is exactly what you want
+               * back in March about something written in January.
+               *
+               * ⚠️ AND IT WRAPS TO ITS OWN LINE in the row, because it is the only part of this
+               * form that can be a sentence — the same reason the goal row shows it under the
+               * title rather than among the chips.
+               */}
+              <label className="chron-whyfor">
+                <span className="sr-only">Why does this matter? Optional</span>
+                <input
+                  value={why}
+                  placeholder="why, if it helps"
+                  onChange={(e) => setWhy(e.target.value)}
                 />
               </label>
               <label className="chron-src">
@@ -771,6 +803,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 setUnit('')
                 setEvery(false)
                 setSrc('')
+                setWhy('')
                 setCountWhat('minutes')
                 setEst('')
                 setPri(0)

@@ -45,6 +45,33 @@ export type Entry = {
   quality: number | null
 }
 
+/**
+ * The colours an activity may be given, and nothing else.
+ *
+ * ⚠️ A FIXED SET RATHER THAN A FREE PICKER, which is a deliberate narrowing of something the
+ * column would allow. `<input type="color">` can return #000000, and this site has a near-black
+ * card AND a light theme — so a free choice can produce a dot nobody can see, on one theme or the
+ * other, with no way to tell you have done it. Every colour here is mid-luminance on purpose: each
+ * one reads against both.
+ *
+ * ⚠️ AND IT IS NINE TAPS, NOT A DIALOG. The OS colour picker on a phone is a modal with a spectrum
+ * in it, for a decision whose whole value is being quick — see `ui-for-the-non-technical`.
+ *
+ * ⚠️ THE SERVER DOES NOT ENFORCE THIS LIST, and should not: the column is free text, an imported
+ * file may carry any colour somebody's older row had, and refusing it on the way in would lose
+ * data to a preference. The room shows whatever it is given and offers these.
+ */
+export const COLOURS: readonly string[] = [
+  '#e5533d',
+  '#e08b2f',
+  '#d9b320',
+  '#4caf50',
+  '#3d9ae5',
+  '#8b5cf6',
+  '#e06ba8',
+  '#7a8a99',
+]
+
 export type Activity = {
   id: string
   name: string

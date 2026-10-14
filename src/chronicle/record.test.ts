@@ -6,6 +6,7 @@ import {
   moodOf,
   moodWord,
   MOODS,
+  COLOURS,
   dayBounds,
   lane,
   localMidnight,
@@ -509,5 +510,40 @@ describe('a day laid out as a strip', () => {
     expect(nowAt(DAY.fromMs, DAY.toMs, h(6))).toBeCloseTo(25, 10)
     expect(nowAt(DAY.fromMs, DAY.toMs, h(-1))).toBeNull()
     expect(nowAt(DAY.fromMs, DAY.toMs, h(25))).toBeNull()
+  })
+})
+
+describe('the colours an activity may be given', () => {
+  /**
+   * ⚠️ A TYPO HERE IS INVISIBLE RATHER THAN BROKEN. The colour is handed to `background:` on a
+   * 9px dot, so "#3d9ae" or "3d9ae5" renders as nothing at all — no error, no warning, just an
+   * activity that silently has no dot while its row says it has a colour. That is the same
+   * write-without-read shape the room has been bitten by three times, so the list is checked
+   * rather than trusted.
+   */
+  it('is all six-digit hex', () => {
+    for (const c of COLOURS) expect(c, c).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
+  it('offers no colour twice', () => {
+    expect(new Set(COLOURS).size).toBe(COLOURS.length)
+  })
+
+  /**
+   * ⚠️ MID-LUMINANCE, BECAUSE THE SITE HAS A NEAR-BLACK CARD AND A LIGHT THEME. A colour that is
+   * nearly black vanishes on one and a colour that is nearly white vanishes on the other, and
+   * nothing on screen would tell you which had happened. Measured as relative luminance rather
+   * than by eye, against a band that both backgrounds sit outside.
+   */
+  it('is readable against a dark card and a light one', () => {
+    const lum = (hex: string) => {
+      const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      const lin = ch.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    }
+    for (const c of COLOURS) {
+      expect(lum(c), `${c} is too dark for a dark card`).toBeGreaterThan(0.08)
+      expect(lum(c), `${c} is too pale for a light page`).toBeLessThan(0.75)
+    }
   })
 })

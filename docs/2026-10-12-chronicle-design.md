@@ -2925,6 +2925,70 @@ ticks of additions — the export, the import, a session's note, a moveable sess
 running one — added nothing the explainer now gets wrong. The additions are all corrections and
 exits, which is why: none of them changed what the room is **for**.
 
+## 6ag · ✅ Three answers from Evan, and what each one cost
+
+He came back to the open questions. Two were answered outright and one was deferred, which is as
+useful as an answer.
+
+### "quarter is not worth a tab"
+
+Gone. It was only ever there because the table allows the scope and §8 could not answer whether it
+was useful — and a scope the database accepts with no view to show it is a goal somebody can create
+and never see again.
+
+Removing it is safe for a reason worth stating rather than assuming: **a goal takes the scope of the
+tab it is added from**, so with no quarter tab the room can no longer make one. There are no
+quarter goals in any account — checked, not guessed. The check constraint still accepts the word
+deliberately: narrowing it would strand an older file's goal on _import_ rather than merely hiding
+it, and widening again if the answer ever changes is one statement where restoring the type and the
+window maths would not be. That leaves one door, an imported file that already contains one, and if
+it ever opens the row is invisible rather than lost.
+
+### "circuit should sit on chronicle, but I'm not confident yet — don't muddy things"
+
+Not done, deliberately, and recorded here so the next person reading does not take the first half of
+that sentence as a go-ahead. The direction he gave alongside it: chronicle should eventually be
+**tied to account and profile status if shared**, with a **profile block for the goals or stats**.
+Both of those need the visibility story first — which tier a block sits in, and what "anyone" means
+for a record of somebody's days — and that is exactly the decision he is not ready to make. Nothing
+built here forecloses it: chronicle's data is reached only through `SECURITY DEFINER` RPCs that
+check `auth.uid()`, which is the same shape `profile_blocks` already uses.
+
+### "I like things being customizable"
+
+That was the answer to a question I had been holding since §6ad: **an activity's colour and a goal's
+note exist in the table, the type, the save path, the export and the import, and nothing on screen
+writes or shows either.** Both now do.
+
+**The rule that shaped both:** a way to write a field without a way to read it is what made three
+bugs invisible this week, so neither shipped without its other half. The colour is a dot beside the
+activity name in **both** places the name is drawn — the day log and the Activities list. The note is
+a line under the goal's title.
+
+**The colour is a fixed palette, not a picker**, which is a deliberate narrowing of what the column
+allows. `<input type="color">` can return `#000000`, and this site has a near-black card _and_ a
+light theme, so a free choice can produce a dot nobody can see with no way to tell you have done it.
+Eight mid-luminance colours plus a ✕ for none — nine taps rather than an OS modal with a spectrum in
+it. The server does not enforce the list and should not: the column is free text, an imported file
+may carry any colour an older row had, and refusing it on the way in would lose data to a
+preference.
+
+Three tests guard the palette, because a typo in it is **invisible rather than broken** — `#3d9ae`
+hands `background:` something it cannot parse and the dot silently does not render. Perturbed four
+ways: a truncated hex, one too dark for the dark card, one too pale for the light page, and a
+duplicate. All four go red.
+
+**The goal's box asks "why", not "note"**, because the field is only worth a box if it asks a
+question somebody wants to answer. A title says _what_; the thing that goes stale about a goal is
+the reason you set it, which is what you want back in March about something written in January.
+
+Driven through the room: picking the blue stores `#3d9ae5` and **two dots appear**; pressing ✕ and
+saving clears it and both dots go, with the name, category and sitting length untouched. A goal
+saved with `"  because I keep putting it off  "` stores it trimmed, shows it under the title, loads
+it back into the editor, and keeps it when the title is changed. At 375 the nine swatches sit on one
+line at 28×28 — above the 24px floor, in pixels because the root size is fluid — with no overflow at
+the row, the card or the document.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

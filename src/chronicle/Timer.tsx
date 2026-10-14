@@ -19,6 +19,7 @@ import { Routines } from './Routines'
 import {
   CATS,
   clockText,
+  COLOURS,
   dayBounds,
   localMidnight,
   minutesByActivity,
@@ -112,6 +113,7 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const [actName, setActName] = useState('')
   const [actCat, setActCat] = useState<Activity['cat']>('free')
   /** what this activity counts besides time — "pages", "reps", blank for nothing */
+  const [actColour, setActColour] = useState<string | null>(null)
   const [actMetric, setActMetric] = useState('')
   /** how long a sitting of it ought to be, in minutes — blank for no opinion */
   const [actSession, setActSession] = useState('')
@@ -276,7 +278,9 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     setBusy(true)
     /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
        id since step 2 and nothing had ever passed one, which is why a category was permanent */
-    const r = await saveActivity(n, actCat, null, fixAct, actMetric, asMins(actSession))
+    /* ⚠️ '' rather than null when there is no colour: null means "leave it alone" on the way in —
+       see chronicle_activity_save — so clearing one has to be asked for. */
+    const r = await saveActivity(n, actCat, actColour ?? '', fixAct, actMetric, asMins(actSession))
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setFixAct(null)
@@ -729,6 +733,10 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
             const amt = amountIn(e, bounds.fromMs, bounds.toMs)
             return (
               <li key={e.id} className={'chron-ent' + (e.end == null ? ' is-live' : '')}>
+                {/* the same dot as the Activities list, where the day is actually read */}
+                {a?.colour ? (
+                  <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+                ) : null}
                 <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
                 <span className="chron-ent-span">{spanText(ms)}</span>
                 {/* ⚠️ the amount sits with the length because they are the same fact measured two
@@ -982,6 +990,34 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       ))}
                     </select>
                   </label>
+                  {/**
+                   * ⚠️ A COLOUR IS DECORATION BESIDE A NAME, never the only thing carrying it.
+                   * The dot sits next to the word everywhere it is drawn, so somebody who cannot
+                   * tell the colours apart loses nothing — which is the only reason a row of
+                   * swatches is allowed to be the control.
+                   */}
+                  <span className="chron-swatches" role="group" aria-label="A colour for this">
+                    {COLOURS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={'chron-swatch' + (actColour === c ? ' is-on' : '')}
+                        style={{ background: c }}
+                        aria-pressed={actColour === c}
+                        aria-label={`Colour ${COLOURS.indexOf(c) + 1} of ${COLOURS.length}`}
+                        onClick={() => setActColour(c)}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      className={'chron-swatch is-none' + (actColour == null ? ' is-on' : '')}
+                      aria-pressed={actColour == null}
+                      aria-label="No colour"
+                      onClick={() => setActColour(null)}
+                    >
+                      ✕
+                    </button>
+                  </span>
                   <label className="chron-qty">
                     <span className="sr-only">Also counts (optional)</span>
                     <input
@@ -1028,11 +1064,15 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
                       setFixAct(a.id)
                       setActName(a.name)
                       setActCat(a.cat)
+                      setActColour(a.colour)
                       setActMetric(a.metric ?? '')
                       setActSession(a.session == null ? '' : String(a.session))
                     }}
                     title={`Rename ${a.name}, or change what kind it is`}
                   >
+                    {a.colour ? (
+                      <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+                    ) : null}
                     {a.name}
                     <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
                     {a.metric ? <span className="muted">· {a.metric}</span> : null}

@@ -15675,6 +15675,66 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, why a goal is there — see src/sections/Chronicle.tsx ────────── */
+.chron-whyfor {
+  /* the only prose in a row of numbers and chips: it takes the rest of the line and wraps */
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+
+.chron-whyfor input {
+  width: 100%;
+}
+
+.chron-goal-why {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+/* ── chronicle, a colour for an activity — see src/chronicle/record.ts ─────── */
+.chron-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.chron-swatch {
+  /* ⚠️ 28px, not 24: WCAG 2.5.8's floor is 24 and these sit in a wrapping row of nine, which is
+     exactly where a thumb lands between two of them. In PIXELS because the root size is fluid. */
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.chron-swatch.is-on {
+  /* the ring rather than a tick, so the swatch still shows the colour it is offering */
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.chron-swatch.is-none {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.chron-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  /* ⚠️ it sits BESIDE a name it never replaces — see the note in Timer.tsx */
+  vertical-align: baseline;
+  flex: none;
+}
+
 /* ── chronicle, the first thing a new member needs — see src/chronicle/Timer.tsx ── */
 .chron-firstly {
   margin: 0.1rem 0 0.6rem;
