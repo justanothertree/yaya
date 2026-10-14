@@ -396,6 +396,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         <div className="chron-main">
           <Timer
             day={v.scope === 'day' ? on : todayISO()}
+            beat={beat}
             onChange={() => {
               setBeat((n) => n + 1)
               void load()
@@ -882,7 +883,18 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * ⚠️ OUTSIDE THE TAB BODY, so it is reachable from every window rather than only from
        * whichever one happens to be open. It is about the whole record, not about this week.
        */}
-      <YourCopy onPutBack={() => void load()} />
+      {/**
+       * ⚠️ BOTH HALVES, not just this one. `load()` refreshes the goals and the activity list the
+       * goal form offers; the stopwatch half fetches its own activities and its own day and hears
+       * nothing. Restoring a file into an empty account filled the goals in and left the bigger
+       * half of the room saying there was nothing here — see the note on Timer's `beat`.
+       */}
+      <YourCopy
+        onPutBack={() => {
+          setBeat((n) => n + 1)
+          void load()
+        }}
+      />
 
       {/**
        * ⚠️ THE ROOM HAD NO TOAST, so every message it sent went nowhere. `<Toast/>` is mounted per

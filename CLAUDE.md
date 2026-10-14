@@ -195,6 +195,27 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   So a probe can reach the running app's state, as long as the state lives in a DEPENDENCY of the
   module it freshly imports — and putting `?fresh=` on the module that owns the state is how you
   get a blank answer and conclude the feature is broken.
+- **AND HMR HAS ALREADY PUT A QUERY ON THE APP'S COPY, so the plain path is the wrong instance
+  too.** The sharpest version of the trap, because it needs no `?fresh=` to spring and it arrives
+  halfway through a session that was working. After any hot update the app is bound to
+  `/src/dev/chroniclePreview.ts?t=1791958465904`; a probe's `import('/src/dev/chroniclePreview.ts')`
+  resolves to the unqueried URL, which is a THIRD store with its own state — and
+  `import('/src/dev/chroniclePreview')` without the extension is a fourth. Measured: the planner's
+  own form reported saving, the store read back four plans unchanged, the save function returned
+  `{ id: 'pv-p-new-9' }` for a store whose counter was at 1, and the app's real instance had all
+  three plans in it the whole time. An hour of "the planner silently does nothing" about a planner
+  that was never broken. **The counter is the tell** — two instances mint `…-new-1` independently,
+  so a freshly-minted id that disagrees with the ids already in the store means you are holding the
+  wrong copy. To reach the app's own instance, import the URL the browser actually loaded:
+  ```js
+  const url = [...new Set(performance.getEntriesByType('resource').map((e) => e.name))]
+    .filter((n) => /myModule\.ts\?t=/.test(n))
+    .sort()
+    .pop()
+  const app = await import(url)
+  ```
+  And prefer a reading the PAGE gives you over any module read: the plan list on screen had been
+  right from the first submission.
 - **The pane reports `document.visibilityState` as `hidden` while it is not displayed**, so anything
   gated on being seen simply does not run — `useVisits` treats hidden as "not viewing" by
   design, so its beat never fires there and the feature reads as dead. Stand it in like `rAF`:

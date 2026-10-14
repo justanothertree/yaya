@@ -147,11 +147,36 @@ function seed(): Store {
   })
   return {
     acts: [
-      a('pv-draw', 'Drawing', 'locked', { session: 30 }),
-      a('pv-write', 'Writing', 'locked', { metric: 'pages' }),
-      a('pv-gym', 'Gym', 'free', { metric: 'reps', session: 60 }),
+      a('pv-draw', 'Drawing', 'locked', { session: 30, colour: '#8b5cf6' }),
+      a('pv-write', 'Writing', 'locked', { metric: 'pages', colour: '#3d9ae5' }),
+      a('pv-gym', 'Gym', 'free', { metric: 'reps', session: 60, colour: '#4caf50' }),
+      /**
+       * ⚠️ THREE OF THESE CARRY A COLOUR, AND DISHES DELIBERATELY DOES NOT. Every activity here
+       * had `colour: null` until a round trip through the room's own export was checked field by
+       * field and found the one column it could not have tested — which is the column with the
+       * history: a restored file is the only way an activity can get a colour, and a rename used
+       * to delete it (see docs/2026-10-13-chronicle-silent-erasures.sql). A fixture that leaves a
+       * field at its default makes every save of that field a no-op, so losing it reads as a pass.
+       * One row keeps the null so the absent case stays covered too.
+       */
       a('pv-dish', 'Dishes', 'life'),
-      a('pv-site', 'Chronicle (on the site)', 'free', { auto: true }),
+      /**
+       * ⚠️ ONE DELIBERATELY LONG NAME, because several layout decisions in this room were made
+       * against one and say so — the bar list's fixed name column ellipsing to "C." (Looking.tsx),
+       * and the row whose buttons wrapped (index.css). The auto activity used to be that name and
+       * is now called what the room is called, so the stress case lives on an ordinary activity
+       * instead. A member really does write names this long.
+       */
+      a('pv-long', 'Writing the difficult chapter', 'locked', { metric: 'pages' }),
+      /**
+       * ⚠️ NAMED EXACTLY WHAT THE ROOM IS CALLED, because that is what the real one is named.
+       * `pvVisit` finds its auto activity the way chronicle_visit does — one per room, matched on
+       * `auto && name === room` — and the room's title is "Chronicle". This seed said "Chronicle
+       * (on the site)", a clearer label and an unfaithful one: no match, so the first visit minted
+       * a SECOND auto activity beside it. Two auto rows for one room cannot happen on the server,
+       * so the double was inventing a state the product has no code to reach.
+       */
+      a('pv-site', 'Chronicle', 'free', { auto: true }),
       a('pv-old', 'Guitar', 'free', { archived: true }),
     ],
     ents: [

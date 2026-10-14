@@ -3414,6 +3414,64 @@ one red — the under-a-minute case, and nothing else. Then verified a third tim
 own form, which is where the claim actually lives: `0 / 30 minutes`, `0 / 20 pages`,
 `35 / 300 minutes` for a category source, `0 / 12 done` for one moved by hand.
 
+## 6aq · ✅ Putting a copy back told half the room
+
+Walking the rest of the flow — plan a span, run a routine, export, put it back — through the room's
+own controls rather than through its functions.
+
+**The routine works end to end.** Clicking a step starts that activity's timer and stops whatever
+was running; the step ticks to ✓ once there is a minute against it, and the heading went from
+"2 of 3" to "all done today". The entry editor prefills every field it owns — started, ended, the
+metric, the rating, the note — and **a Save with nothing changed erased nothing**, which is the
+check §8 of the standard exists for.
+
+**The import did not.** `YourCopy` already calls `onPutBack()`, with a comment describing exactly
+this symptom from an earlier sitting — but `onPutBack` was `() => void load()`, and `load()` is the
+GOALS half. The stopwatch half fetches its own activities and its own day, so a put-back into an
+empty account restored seven activities, seventeen sessions and eleven goals, filled the goal list
+in, and left the bigger half of the room saying **"Name an activity with ＋ Activity first"** over
+an empty picker and an empty log — indefinitely, not briefly. Measured over eight seconds: the
+goals went 0 → 4 and the picker stayed at one option.
+
+The fix is the same `beat` that `Looking` and `MonthGrid` already take, for the third time and the
+same reason: a component that fetches its own data hears nothing when something else rewrites the
+record. `Timer` now takes `beat`, the put-back bumps it, and both halves fill in together.
+
+**The round trip itself is clean**, compared field by field rather than by counts: all five
+collections — activities, entries, goals, plans, routines — came back byte-identical through the
+room's own ⬇ Save a copy and ⬆ Put one back, with the toast reading "Added 40 — 17 sessions, 7
+activities, 11 goals."
+
+### Two ways the double was lying, both found the same way
+
+**The planner "silently did nothing" for an hour, and had saved everything.** The form closed, the
+save returned `{ id: 'pv-p-new-9' }`, and the store read back four unchanged plans. All three
+readings were of **different module instances**: Vite's HMR binds the app to
+`/src/dev/chroniclePreview.ts?t=1791958465904` after any hot update, so a probe importing the plain
+path gets a second store and the extensionless specifier a third. The tell is the minted id — a
+store handing out `-new-1` while holding rows called `-new-7`, `-8`, `-9` is not that store. Now in
+CLAUDE.md with the recipe for reaching the app's own instance; the short version is to believe the
+page over any module read, and the page had been right from the first submission.
+
+**And the seed was inventing a state the server cannot reach.** `pvVisit` finds its auto activity
+the way `chronicle_visit` does — one per room, matched on `auto && name === room` — but the seed
+called it `Chronicle (on the site)` where the room's title is `Chronicle`, so the first visit minted
+a SECOND auto activity beside it. Two auto rows for one room is not a state the product has code to
+produce. Renamed; and since `Looking` already draws an "on the site" chip for an auto row, the old
+name was saying it twice anyway. The long name it used to provide — which two layout decisions in
+this room were made against and say so — moved to an ordinary activity so the stress case survives.
+
+**The third thing the seed could not test was colour.** Every activity in it had `colour: null`,
+which is the exact column with an erasure history here (a restored file is the only way an activity
+can get one, and a rename used to delete it). A round trip is worth only the fields its fixture
+fills, so three activities now carry one and Dishes deliberately keeps the null. Re-checked
+afterwards: the colours survive the round trip, and a rename keeps them.
+
+**At 375 with that data in the room**: no sideways scroll, nothing past the edge, nothing clipped,
+nothing under the 24px floor, and no container overflowing its list or card. The one zero-width
+element is `.chron-ent-when` under a deliberate `display: none` — "a timestamp range is the first
+thing worth dropping when a row will not fit a thumb".
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

@@ -95,7 +95,26 @@ function WallClock() {
   )
 }
 
-export function Timer({ day, onChange }: { day: string; onChange?: () => void }) {
+export function Timer({
+  day,
+  beat,
+  onChange,
+}: {
+  day: string
+  /**
+   * Bumped by the room when something OUTSIDE this half changed the record — today only a
+   * put-back, which rewrites everything at once.
+   *
+   * ⚠️ THE SAME SIGNAL `Looking` AND `MonthGrid` TAKE, and for the third time the same reason:
+   * this half fetches its own activities and its own day, so nothing it is handed changes when a
+   * file is restored. Measured — a put-back into an empty account restored seven activities and
+   * eleven goals, the goals half filled in, and the stopwatch beside it went on saying "Name an
+   * activity with ＋ Activity first" with an empty picker and no log, for as long as you left it.
+   * The bigger half of the room, still showing a blank account over a full one.
+   */
+  beat?: number
+  onChange?: () => void
+}) {
   /**
    * The day being looked at, which is not always the day the room asked for.
    *
@@ -186,9 +205,11 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
     setLog(e)
   }, [bounds.fromMs, bounds.toMs])
 
+  /* ⚠️ `beat` as well as `load`: an import changes the record without changing the day or the
+     bounds, so `load` itself is unchanged and the effect would never re-run */
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, beat])
 
   const loadWeek = useCallback(async () => {
     if (!weekDays.length) return
