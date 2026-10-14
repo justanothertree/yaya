@@ -3675,6 +3675,51 @@ reopened, so trial two inherited trial one's state. Re-run from a freshly opened
 keypresses landing in the next trial — **close and reopen the thing under test between readings**,
 or the state you set two probes ago answers for you.
 
+## 6aw · ✅ The two remaining save paths, checked — and the one that is safe by accident
+
+No bug this time, which is worth writing down as plainly as a bug would be: §8's rule says a save
+that writes every column is a delete for the ones the caller forgot, and chronicle has two save
+paths that had never been walked for it.
+
+**An activity.** `chronicle_activity_save` does NOT treat its optional columns alike, and the
+difference matters:
+
+| column         | a null means                              |
+| -------------- | ----------------------------------------- |
+| `colour`       | leave it alone — `''` is how you clear it |
+| `metric`       | **erase it**                              |
+| `session_mins` | **erase it**                              |
+
+The colour is defended because it was already lost once: the room passed null on every rename, and
+once `chronicle_import` shipped, a restored file became the only way an activity could HAVE a
+colour, so the next rename deleted it. The other two have no such guard — `metric = v_metric` and
+`session_mins = v_session`, unconditionally.
+
+**They are safe, and they are safe for a reason that is not written down anywhere near them: the
+editor prefills them.** Opening Gym's editor shows `reps` and `60` already in their boxes, so a
+rename sends them back unchanged. That is the only thing standing between a rename and a deletion,
+and it is a property of a component three files away from the SQL that depends on it.
+
+Walked both directions through the room's own controls, since a field you cannot clear is as much
+a bug as one that clears itself:
+
+- renamed Gym to "Gym and weights" and changed nothing else → `metric=reps`, `session=60`,
+  `colour=#4caf50`, `cat=free`, all intact;
+- emptied both optional boxes and saved → `metric=null`, `session=null`, and the colour still
+  `#4caf50`, because it has its own control and was not touched.
+
+**A routine.** Same shape — `chronicle_routine_save` writes `name` and `steps` together — and same
+answer: the editor prefills the steps, so renaming "Morning" to "Morning routine" kept all three,
+including the one whose minutes are null. Then the controls nobody had exercised at all: ▼ reordered
+Dishes below Drawing, ＋ Step added Gym at 20m, and the save persisted
+`pv-draw/30, pv-dish/10, pv-write/null, pv-gym/20` with the fold's own summary moving to "3 of 4".
+
+**What to do with this.** Nothing today. But if a second caller of `chronicle_activity_save` is ever
+added — a quick category toggle, a bulk edit, anything that knows the name and not the metric — it
+deletes both optional columns silently, and the prefill that protects the current one will not
+protect it. The cheap fix at that point is to give `metric` and `session_mins` the same `null leaves
+it alone` treatment the colour has, rather than to remember at every call site.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
