@@ -356,6 +356,8 @@ export type Total = {
   name: string
   cat: Activity['cat']
   auto: boolean
+  /** the activity's own colour, so a reader of totals can draw the same dot the day log does */
+  colour: string | null
   mins: number
   metric: string | null
   /** the metric's total for the window, or null when the activity has no metric */
@@ -383,6 +385,7 @@ export async function totalsBetween(fromISO: string, toISO: string): Promise<Tot
     name: String(r.name ?? ''),
     cat: r.cat,
     auto: !!r.auto,
+    colour: r.colour ?? null,
     /* numeric arrives as a string — see the note on num above */
     mins: num(r.mins as number | string | null),
     metric: r.metric ?? null,

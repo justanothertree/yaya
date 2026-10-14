@@ -2989,6 +2989,46 @@ it back into the editor, and keeps it when the title is changed. At 375 the nine
 line at 28×28 — above the 24px floor, in pixels because the root size is fluid — with no overflow at
 the row, the card or the document.
 
+## 6ah · ✅ Tablet, and the colour's third place
+
+### The viewport nobody had checked
+
+§6 of `CLAUDE.md` asks for phone, tablet and desktop. The room had been measured at 375 and 1440
+over and over and **never at ~820**, which is its own band: above the 700px single-column collapse,
+below the appearance tray's 56rem breakpoint.
+
+Clean, at both 820 and 768, with the room seeded and all three editors open — zero overflow at the
+document, `main`, the card, each list and each row; nothing past the right edge; nothing clipped.
+The only elements that scroll are `sr-only` spans, which are meant to be clipped to a pixel.
+
+Two things are worth keeping from the method rather than the result. The **smallest control is 28px**
+(a colour swatch), above the 24px floor, and the editors wrap to 3–4 lines rather than overflowing.
+And 820 **does not emulate touch** — the pane only does that below 768 — so `(pointer: coarse)` rules
+do not apply there; checked, and not one of the site's coarse-pointer rules touches chronicle, so
+the measurements hold for a real tablet. A side effect of dropping the quarter tab: the horizon
+strip now just fits at 768 instead of scrolling.
+
+### The colour, in the third of three places
+
+§6ag gave an activity a colour and drew it in two places: the day log and the Activities fold. The
+third is `Looking`'s bars — the week, month and year views — which is where scanning by colour
+actually pays, and a feature that appears in two of three places is the "half exists" that
+`nav/places.ts` was written about.
+
+The row carries it now rather than the view looking it up: `chronicle_totals` already returns name,
+cat, auto and metric for exactly that reason, and a colour is the same kind of fact. **It needed no
+drop and breaks nothing** — the function returns a `jsonb` document rather than a table, so the
+signature is unchanged and a bundle somebody has open receives one extra key and ignores it.
+
+Checked by stripping the new key back out of the answer: the result is `5c803ef7e77e74cdc7bfdd836dd7f07d`,
+the same md5 as before the change, so nothing else moved. Every row carries the key, both refusals
+are word for word, and 395 days over 3,293 entries is still **3.0ms**.
+
+The risk in a dot is the name beside it: `.chron-bar-label` ellipsises, so ~13px of dot could push a
+name that fitted over the edge. Measured with **every** activity coloured — the holder is 159px, the
+longest fitting label 57px, and the set of ellipsised labels is identical with and without dots.
+The one that clips, "Chronicle (on the site)", clipped before.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

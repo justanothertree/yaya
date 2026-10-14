@@ -479,6 +479,7 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
         name: a.name,
         cat: a.cat,
         auto: a.auto,
+        colour: a.colour,
         mins: 0,
         metric: a.metric,
         /* only when there is a metric to total: a zero beside no unit reads as a bug */
