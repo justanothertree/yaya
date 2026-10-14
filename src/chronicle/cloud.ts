@@ -30,6 +30,7 @@ import {
   pvTally,
   pvTotals,
   pvMemberChronicle,
+  pvShareGoal,
   pvVisit,
 } from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
@@ -78,6 +79,8 @@ type Row = {
   unit: string | null
   progress: number | string | null
   done: boolean
+  /* optional: a bundle talking to a server from before the column existed gets nothing here */
+  shared?: boolean
   note: string | null
   sort: number | null
   activity: string | null
@@ -109,6 +112,8 @@ const read = (r: Row): Goal => ({
   unit: r.unit ?? null,
   progress: num(r.progress),
   done: !!r.done,
+  /* a row from before the column existed is not shared, which is the safe reading */
+  shared: r.shared === true,
   note: r.note ?? null,
   sort: num(r.sort),
   activity: r.activity ?? null,
@@ -195,6 +200,18 @@ export async function setProgress(id: string, progress: number, done: boolean): 
     p_progress: progress,
     p_done: done,
   })
+  return !error
+}
+
+/**
+ * Put one goal on your profile, or take it off.
+ *
+ * ⚠️ ITS OWN FUNCTION RATHER THAN A FIFTEENTH PARAMETER ON saveGoal, which is both one concern
+ * and no drop-and-recreate of the save path everything else goes through.
+ */
+export async function shareGoal(id: string, on: boolean): Promise<boolean> {
+  if (previewMember) return pvShareGoal(id, on)
+  const { error } = await getSupabaseClient().rpc('chronicle_goal_share', { p_id: id, p_on: on })
   return !error
 }
 
@@ -727,6 +744,19 @@ export type MemberChronicle = {
   time: Partial<Record<'locked' | 'free' | 'life', number>>
   top: Array<{ name: string; cat: string; colour: string | null; mins: number }>
   /**
+   * The goals their owner ticked, at most six.
+   *
+   * ⚠️ TWO SWITCHES AND BOTH ARE REQUIRED — the block asks for goals, and each goal is shared one
+   * at a time. Empty when either is off, which is also what it is for somebody who may not see.
+   *
+   * ⚠️ AND NO PROGRESS FIGURE. A goal's window comes from `goalWindow` here in the client, and
+   * the server has no copy of those rules — which is exactly why `chronicle_tally` takes its
+   * windows FROM the caller. A second copy of six scopes' worth of date arithmetic, living in SQL
+   * and having to agree with this one forever, buys a progress bar and costs the thing this
+   * repository has the most scar tissue about. What a shared goal says is what it IS.
+   */
+  goals: Array<{ title: string; target: number | null; unit: string | null; done: boolean }>
+  /**
    * What they are doing at this moment, or null.
    *
    * ⚠️ ONLY WHEN A BLOCK THEY CAN SEE ASKED FOR IT, decided in SQL from the block's own config
@@ -756,8 +786,9 @@ export async function memberChronicle(
   days: number,
   /** ⚠️ the DOUBLE needs telling; the real server reads it off the block and ignores callers */
   live = false,
+  wantsGoals = false,
 ): Promise<MemberChronicleResult> {
-  if (previewMember) return pvMemberChronicle(days, live)
+  if (previewMember) return pvMemberChronicle(days, live, wantsGoals)
   const { data, error } = await getSupabaseClient().rpc('get_member_chronicle', {
     p_username: username,
     /* ⚠️ the server clamps this to 1–90 and does not trust it — it is which span to cover, not

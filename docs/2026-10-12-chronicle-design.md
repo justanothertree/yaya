@@ -3720,6 +3720,45 @@ deletes both optional columns silently, and the prefill that protects the curren
 protect it. The cheap fix at that point is to give `metric` and `session_mins` the same `null leaves
 it alone` treatment the colour has, rather than to remember at every call site.
 
+## 6ax · ✅ Goals on a profile, behind two switches
+
+The other half of _"a profile block for the goals or stats"_ — the half I deliberately did not ship
+with the block, saying at the time that titles belonged behind a per-goal opt-in rather than a
+block-level one. The security reasoning is in `docs/2026-10-14-chronicle-goal-share.sql`.
+
+**Two switches, both required, both off by default.** `chronicle_goals.shared` is ticked one goal
+at a time, in the room, beside that goal; `config.goals` on the block says it is willing to show
+goals at all. A member who ticks a goal and has no block has published nothing. Proven each way
+round in SQL with the other held still, then again through the controls themselves: ○ beside two
+goals put exactly those two on the card and left the other nine off, and unticking the block's own
+switch emptied the list while the hours stayed.
+
+**No progress figure, and that is a decision rather than a shrug.** A goal's window comes from
+`goalWindow` here in the client — six scopes, anchor-or-repeat, the Sunday-week rule — and the
+server has no copy of it, which is exactly why `chronicle_tally` takes its windows from the caller.
+A bar would buy one line of UI and cost a second home for all of that arithmetic, obliged to agree
+with this one forever. What a shared goal says is what it IS: "Read ten books · 10 books".
+
+### The third button broke the row, and the numbers said it was fine
+
+§6 of the standard says a new control counts as a UI change, and this is why. The goal row carried
+✎ and ✕; ○ made three. At 375 that pushed "Water the plants" over, and what wrapped was not the
+chips — it was **✕, alone on a line of its own, floating right under an empty space.**
+
+`mobileAudit` reported it clean: no sideways scroll, nothing off the edge, nothing clipped, nothing
+under the touch floor, no container overflowing. It is clean — a wrap is not an overflow. **This is
+the second time today the same measurement missed the same shape**, the first being the day log's
+own buttons this morning, and both times the screenshot is what found it.
+
+The fix is the idiom the log row already had: the three controls live in `.chron-goal-do`, which is
+`flex-wrap: nowrap` with `margin-left: auto`, so they move as one unit and stay right. Measured
+after: all four rows, three controls, **1px** of vertical spread between them and a right edge
+consistent at 339px. Desktop untouched at 63/103px rows.
+
+The lesson is not "measure more" — I measured plenty. It is that **wrapping is invisible to every
+check in `mobileAudit` by construction**, so a change that adds anything to a row needs eyes on it
+at 375 regardless of what the numbers say.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

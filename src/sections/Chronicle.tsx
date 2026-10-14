@@ -19,7 +19,15 @@ import {
   type Goal,
   type Scope,
 } from '../chronicle/goal'
-import { dropGoal, myActivities, myGoals, saveGoal, setProgress, tally } from '../chronicle/cloud'
+import {
+  dropGoal,
+  myActivities,
+  myGoals,
+  saveGoal,
+  setProgress,
+  shareGoal,
+  tally,
+} from '../chronicle/cloud'
 import { CATS, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
@@ -312,6 +320,20 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     await load()
   }
 
+  /**
+   * Put one goal on the profile, or take it off.
+   *
+   * ⚠️ IT SHOWS NOTHING ON ITS OWN. The chronicle block has to be asking for goals as well, so a
+   * member who ticks this and has no block — or a block that does not want goals — has published
+   * nothing. Said in the title rather than left to be discovered.
+   */
+  const putOnProfile = async (g: Goal) => {
+    setBusy(true)
+    await shareGoal(g.id, !g.shared)
+    setBusy(false)
+    await load()
+  }
+
   const remove = async (g: Goal) => {
     if (!window.confirm(`Delete “${g.title}”?`)) return
     setBusy(true)
@@ -589,34 +611,67 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     {/* ⚠️ next to the delete rather than on the title, unlike the activity rows:
                         a goal's title is already a checkbox for the tick-box kind, and a label
                         that both ticks and opens an editor is a label you cannot press safely */}
-                    <button
-                      className="btn btn-ghost chron-x"
-                      onClick={() => {
-                        setFixing(g.id)
-                        setAdding(true)
-                        setTitle(g.title)
-                        setTarget(g.target == null ? '' : String(g.target))
-                        setUnit(g.unit ?? '')
-                        setEvery(repeats(g))
-                        setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
-                        setCountWhat(g.counts)
-                        setEst(g.est == null ? '' : String(g.est))
-                        setPri(g.priority)
-                        setWhy(g.note ?? '')
-                      }}
-                      aria-label={`Change ${g.title}`}
-                      title={`Change ${g.title}`}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      className="btn btn-ghost chron-x"
-                      onClick={() => void remove(g)}
-                      aria-label={`Delete ${g.title}`}
-                      title={`Delete ${g.title}`}
-                    >
-                      ✕
-                    </button>
+                    {/**
+                     * ⚠️ THE THREE MOVE AS ONE, the way a log row's do — see `.chron-ent-do`. They
+                     * were siblings of the title in a wrapping row, which is survivable with two
+                     * of them and not with three: at 375 "Water the plants" put ✎ and ○ on the
+                     * title's line and left ✕ alone on the next, under an empty space. Every
+                     * measurement said the room was fine, because a wrap is not an overflow — the
+                     * same way the day log read clean this morning with its buttons orphaned.
+                     */}
+                    <span className="chron-goal-do">
+                      <button
+                        className="btn btn-ghost chron-x"
+                        onClick={() => {
+                          setFixing(g.id)
+                          setAdding(true)
+                          setTitle(g.title)
+                          setTarget(g.target == null ? '' : String(g.target))
+                          setUnit(g.unit ?? '')
+                          setEvery(repeats(g))
+                          setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
+                          setCountWhat(g.counts)
+                          setEst(g.est == null ? '' : String(g.est))
+                          setPri(g.priority)
+                          setWhy(g.note ?? '')
+                        }}
+                        aria-label={`Change ${g.title}`}
+                        title={`Change ${g.title}`}
+                      >
+                        ✎
+                      </button>
+                      {/**
+                       * ⚠️ A WORD, NOT ONLY A GLYPH, in the label — this one decides whether other
+                       * people read the title of something you wrote about your own life, and
+                       * "share" is too consequential to be explained by a tooltip nobody on a phone
+                       * will see. The title names the other half of the switch, because a tick here
+                       * alone genuinely does nothing.
+                       */}
+                      <button
+                        className={'btn btn-ghost chron-x' + (g.shared ? ' is-on' : '')}
+                        onClick={() => void putOnProfile(g)}
+                        aria-label={
+                          g.shared
+                            ? `${g.title} is on your profile — take it off`
+                            : `Put ${g.title} on your profile`
+                        }
+                        title={
+                          g.shared
+                            ? 'On your profile, if your Chronicle block is showing goals'
+                            : 'Put this on your profile'
+                        }
+                      >
+                        {g.shared ? '◉' : '○'}
+                      </button>
+                      <button
+                        className="btn btn-ghost chron-x"
+                        onClick={() => void remove(g)}
+                        aria-label={`Delete ${g.title}`}
+                        title={`Delete ${g.title}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
                   </div>
                   {/**
                    * ⚠️ UNDER THE TITLE, NOT BESIDE IT. Everything else on that row is a chip or a

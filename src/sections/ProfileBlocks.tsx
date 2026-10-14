@@ -561,6 +561,7 @@ function BlockView({
           size={block.size}
           days={typeof cfg.days === 'number' ? cfg.days : 7}
           live={cfg.live === true}
+          wantsGoals={cfg.goals === true}
           guest={guest}
           heading={blockHeading(cfg) ?? undefined}
         />
@@ -911,6 +912,7 @@ function ChronicleBlock({
   size,
   days,
   live,
+  wantsGoals,
   guest,
   heading,
 }: {
@@ -925,6 +927,12 @@ function ChronicleBlock({
    * one block on a page can show it while another does not.
    */
   live: boolean
+  /**
+   * ⚠️ ASKING IS HALF OF IT. The server sends goals only when a visible block asked; each goal
+   * is then shared one at a time by its owner in the chronicle room. Neither switch alone shows
+   * anybody anything, which is why the editor's wording names the other one.
+   */
+  wantsGoals: boolean
   guest?: boolean
   heading?: string
 }) {
@@ -940,9 +948,9 @@ function ChronicleBlock({
       setLoaded(true)
       return
     }
-    setGot(await memberChronicle(username, days, live))
+    setGot(await memberChronicle(username, days, live, wantsGoals))
     setLoaded(true)
-  }, [username, days, live, guest])
+  }, [username, days, live, wantsGoals, guest])
 
   useEffect(() => {
     setLoaded(false)
@@ -1033,6 +1041,30 @@ function ChronicleBlock({
                     />
                   </i>
                   <span className="muted profile-chron-mins">{hoursText(t.mins)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/**
+           * ⚠️ ONLY THE ONES THEIR OWNER TICKED, and only because this block asked. What each says
+           * is what it IS — the aim, and whether it has been reached — never how far along, because
+           * a goal's window is computed here in the client and the server has no copy of those
+           * rules. A progress bar is not worth a second home for six scopes of date arithmetic.
+           */}
+          {wantsGoals && has.goals.length > 0 && (
+            <ul className="profile-chron-goals">
+              {has.goals.map((g, i) => (
+                <li key={i} className={g.done ? 'is-done' : undefined}>
+                  <span className="profile-chron-goal-tick" aria-hidden>
+                    {g.done ? '✓' : '○'}
+                  </span>
+                  <span className="profile-chron-goal-title">{g.title}</span>
+                  {g.target != null && (
+                    <span className="muted profile-chron-goal-aim">
+                      {g.target}
+                      {g.unit ? ' ' + g.unit : ''}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -1979,6 +2011,25 @@ function BlockFields({
             />
             <span>Show what I&apos;m doing right now</span>
           </label>
+          {/**
+           * ⚠️ THIS SWITCH ALONE SHOWS NOTHING, and the line under it says so. Every goal is
+           * private until its owner ticks it one at a time in the Chronicle room — two switches,
+           * both required, so neither a forgotten block nor a forgotten goal can publish a title
+           * by itself.
+           */}
+          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={block.config.goals === true}
+              onChange={(e) => setCfg({ goals: e.target.checked })}
+            />
+            <span>Show the goals I&apos;ve picked</span>
+          </label>
+          {block.config.goals === true && (
+            <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+              Pick them in Chronicle — ○ beside a goal puts it here. Nothing shows until you do.
+            </p>
+          )}
           {/* ⚠️ WHAT IT DOES NOT SHOW IS THE PART WORTH SAYING. Somebody deciding whether to put
               this on their page is deciding how much of themselves to hand over, and "hours" and
               "what I am trying to fix about myself" are very different answers. */}

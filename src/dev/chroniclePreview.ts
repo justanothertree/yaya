@@ -93,6 +93,8 @@ const span = (
 const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): Goal => ({
   anchor: null,
   every: null,
+  /* ⚠️ private unless a fixture says otherwise, which is what the column's default does */
+  shared: false,
   target: null,
   unit: null,
   progress: 0,
@@ -215,6 +217,12 @@ function seed(): Store {
       },
     ],
     goals: [
+      /**
+       * ⚠️ TWO OF THESE ARE SHARED AND THE REST ARE NOT, because a fixture where every goal is
+       * private makes the profile block's goals list untestable and one where they all are makes
+       * the per-goal tick a no-op. Both switches have to be exercisable from the seed, or the
+       * only thing the workbench can show is the empty case — which passes every check there is.
+       */
       goal({
         id: 'pv-g1',
         title: '30 minutes drawing',
@@ -223,6 +231,7 @@ function seed(): Store {
         target: 30,
         unit: 'minutes',
         activity: 'pv-draw',
+        shared: true,
       }),
       /* ⚠️ a guess AND a flag, so the row shows both chips at once and they have to fit */
       goal({
@@ -291,6 +300,7 @@ function seed(): Store {
         target: 10,
         unit: 'books',
         progress: 3,
+        shared: true,
       }),
       goal({
         id: 'pv-g9',
@@ -560,6 +570,14 @@ export const pvProgress = (id: string, progress: number, done: boolean): boolean
   const g = db().goals.find((x) => x.id === id)
   if (g) Object.assign(g, { progress, done })
   return !!g
+}
+
+/** ⚠️ owner-scoped by construction here, the way the `owner = auth.uid()` clause does it there */
+export const pvShareGoal = (id: string, on: boolean): boolean => {
+  const g = db().goals.find((x) => x.id === id)
+  if (!g) return false
+  g.shared = on
+  return true
 }
 
 export const pvDropGoal = (id: string): boolean => {
@@ -993,6 +1011,9 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       every: g.repeat_every == null ? null : numOr(g.repeat_every, 0) || null,
       target: g.target == null ? null : numOr(g.target, 0),
       unit: str(g.unit),
+      /* ⚠️ an imported goal is NOT shared, whatever the file says — chronicle_import does not
+         carry the column, so a file from somebody else cannot put goals on your profile */
+      shared: false,
       progress: numOr(g.progress, 0),
       done: g.done_at != null,
       note: str(g.note),
@@ -1138,11 +1159,13 @@ if (import.meta.env.DEV && typeof window !== 'undefined')
 export const pvMemberChronicle = (
   askedDays = 7,
   live = false,
+  wantsGoals = false,
 ): {
   days: number
   time: Partial<Record<'locked' | 'free' | 'life', number>>
   top: Array<{ name: string; cat: string; colour: string | null; mins: number }>
   now: { name: string; cat: string; colour: string | null; mins: number } | null
+  goals: Array<{ title: string; target: number | null; unit: string | null; done: boolean }>
   reached: number
   open: number
 } => {
@@ -1201,6 +1224,14 @@ export const pvMemberChronicle = (
             mins: Math.round((to - Date.parse(open.start)) / 60_000),
           }
         : null,
+    /* ⚠️ BOTH switches, the way the SQL does it — the block must ask AND the goal must be
+       shared. A double honouring only one makes the other untestable where it is easiest to look */
+    goals: wantsGoals
+      ? db()
+          .goals.filter((g) => g.shared)
+          .slice(0, 6)
+          .map((g) => ({ title: g.title, target: g.target, unit: g.unit, done: g.done }))
+      : [],
     reached: db().goals.filter((g) => g.done).length,
     open: db().goals.filter((g) => !g.done).length,
   }

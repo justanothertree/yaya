@@ -29,6 +29,7 @@ const goal = (over: Partial<Goal> = {}): Goal => ({
   title: 'a goal',
   scope: 'day',
   anchor: '2026-10-12',
+  shared: false,
   every: null,
   target: null,
   unit: null,

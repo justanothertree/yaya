@@ -32,6 +32,16 @@ export type Goal = {
   /** null for a tick-box; a number for a quantity, which always has a unit */
   target: number | null
   unit: string | null
+  /**
+   * Whether this one goes on your profile.
+   *
+   * ⚠️ ONE TICK PER GOAL, never one for all of them. A goal is free text somebody wrote about
+   * their own life — "Ring the dentist" is the mild end of what people put here — so agreeing to
+   * show the hours you spent is a different act from agreeing to show what you are trying to fix
+   * about yourself. And it is only HALF the switch: the chronicle block has to be asking for goals
+   * as well, so neither tick alone shows anybody anything.
+   */
+  shared: boolean
   /** what you have told it, for a goal you move by hand */
   progress: number
   done: boolean

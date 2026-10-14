@@ -15567,6 +15567,20 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+/**
+ * ⚠️ THE ROW'S CONTROLS MOVE AS ONE. They were siblings of the title in the wrapping row above,
+ * which two of them survived and three did not: at 375 a short goal put ✎ and ◯ beside the title
+ * and left ✕ alone on the next line, under an empty space. `nowrap` keeps them together and
+ * `margin-left: auto` keeps them right, which is exactly what `.chron-ent-do` does for a log row.
+ */
+.chron-goal-do {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
 /* ⚠️ A FLOOR IN PIXELS, which is what makes the wrap above do the right thing: with no floor
    the chips simply won the line and the title collapsed to nothing, and the overflow numbers all
    read zero while the room was unreadable. Pixels rather than rem because the root size is fluid
@@ -17056,6 +17070,42 @@ a.cz-msg-author:focus-visible {
  *
  * ⚠️ IN PIXELS, because the root font-size on this site is fluid and a rem is not a length here.
  */
+/* the goals their owner put here — an aim and whether it is reached, never a bar */
+.profile-chron-goals {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.28rem;
+  font-size: 0.84rem;
+}
+.profile-chron-goals li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.profile-chron-goals li.is-done .profile-chron-goal-title {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.profile-chron-goal-tick {
+  flex: none;
+  color: var(--accent, #7c6af7);
+}
+/* ⚠️ a floor in PIXELS, because the root size is fluid and a title that can reach zero does */
+.profile-chron-goal-title {
+  flex: 0 1 auto;
+  min-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-chron-goal-aim {
+  flex: none;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
 .profile-chron-mins {
   flex: none;
   width: 52px;
