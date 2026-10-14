@@ -3323,6 +3323,35 @@ thing in it looks like an empty list. The rail is what made it visible, by being
 the same list that could be seen to be missing. Verified after the fix, through the room's own
 controls rather than through cloud calls: grid, rail, and the goal form offering **"Drawing"**.
 
+## 6ao · ✅ Two more readers that could not hear
+
+§6an found one half of the room not telling the other about a new activity. The same question asked
+of every component: **which of these fetch their own data, and what tells them it changed?**
+
+Five do. `Rail` takes a counter. `Plans` is handed the day's entries as a prop and fetches only its
+own plans, which nothing else writes. `Routines` likewise. The other two could not hear anything:
+
+| component   | fetches                  | told when the record changes |
+| ----------- | ------------------------ | ---------------------------- |
+| `Rail`      | the day's totals, plans  | yes, `tick`                  |
+| `Looking`   | a window's totals, moods | **no**                       |
+| `MonthGrid` | a month's entries        | **no**                       |
+
+It is structural rather than incidental: neither is handed anything that changes when a timer
+stops, so no re-render could refresh them — their `useCallback` dependencies are the window and the
+date, and both stay put. Measured before the fix: two hours added and the month headline still read
+`11h 28m`, the calendar still ten fills.
+
+Both take the same `beat` the rail does. Verified through the room's own controls rather than
+through cloud calls, which is what the last tick's false start taught: pressing **Stop** moved the
+calendar's today cell from `1h 39m recorded` to `1h 40m`, and filling an hour-long gap moved Gym's
+month bar from `2h 15m` to `3h 15m`.
+
+**One reading needed care.** Today's cell did not change when the gap landed, and the entry count
+for today stayed at five — correct, not a failure: it was past one in the morning, so "nine hours
+ago" is yesterday afternoon. The month total moved and the day's did not, which is exactly right,
+and is the sort of thing that reads as a broken refresh if the clock is not checked.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

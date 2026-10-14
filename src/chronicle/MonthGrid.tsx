@@ -22,7 +22,7 @@ import { dayBounds, spanText, type Entry } from './record'
  * up and picks days properly. Each cell still carries the full reading in its title and label, so
  * the facts are not hover-only.
  */
-export function MonthGrid({ on }: { on: string }) {
+export function MonthGrid({ on, beat }: { on: string; beat: number }) {
   const [log, setLog] = useState<Entry[]>([])
   const days = useMemo(() => monthOf(on), [on])
 
@@ -33,9 +33,12 @@ export function MonthGrid({ on }: { on: string }) {
     setLog(await entriesBetween(new Date(from).toISOString(), new Date(to).toISOString()))
   }, [days])
 
+  /* ⚠️ `beat` for the same reason as Looking beside it: this fetches its own month, and nothing it
+     is handed changes when a timer stops — so the calendar kept yesterday's fills while the day's
+     log two inches above it had the new ones */
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, beat])
 
   const cells = useMemo(() => monthCells(days, log, Date.now()), [days, log])
   /**

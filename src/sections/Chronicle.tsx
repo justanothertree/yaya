@@ -863,9 +863,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * above, at hour resolution, so a second one here would be the same days twice; a year
            * in day cells would be 365 specks.
            */}
-          {v.scope === 'month' && <MonthGrid on={on} />}
+          {v.scope === 'month' && <MonthGrid on={on} beat={beat} />}
           {win && v.scope !== 'day' && v.scope !== 'life' ? (
-            <Looking win={win} label={v.label} scope={v.scope} on={on} />
+            <Looking win={win} label={v.label} scope={v.scope} on={on} beat={beat} />
           ) : null}
           {say && <p className="chron-say">{say}</p>}
         </>

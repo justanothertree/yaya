@@ -29,7 +29,15 @@ export function Looking({
   label,
   scope,
   on,
+  beat,
 }: {
+  /**
+   * ⚠️ A COUNTER THAT ONLY EXISTS TO SAY "THE RECORD CHANGED". This component fetches its own
+   * sums, and nothing it is handed changes when somebody stops a timer or fills a gap — so
+   * without this it showed the totals as they were when the window was opened, for as long as it
+   * stayed open. Measured: two hours added, and the headline still read 11h 28m.
+   */
+  beat: number
   win: Window
   label: string
   /* ⚠️ the scope and the day, not just the window, because the comparison needs to step BACK one
@@ -100,7 +108,7 @@ export function Looking({
     return () => {
       alive = false
     }
-  }, [win.from, win.to, scope, on])
+  }, [win.from, win.to, scope, on, beat])
 
   const done = useMemo(() => (rows ?? []).filter((r) => r.mins > 0), [rows])
   const most = useMemo(() => Math.max(1, ...done.map((r) => r.mins)), [done])
