@@ -17,7 +17,15 @@ import { VisibilityPicker } from '../components/VisibilityPicker'
 import type { VisibilityTier } from '../circuit/types'
 import { showToast } from '../circuit/toast'
 import { Toast } from '../circuit/ui/Toast'
-import { backupName, countBackup, makeBackup, restoreBackup } from '../backup'
+import {
+  backupName,
+  backupSays,
+  backupTotal,
+  countBackup,
+  makeBackup,
+  myBackupCounts,
+  restoreBackup,
+} from '../backup'
 
 function normalizeError(err: unknown): string {
   if (!err) return 'Unknown error'
@@ -830,7 +838,10 @@ function BackupCard() {
   const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
   const mine = makeBackup()
-  const total = mine.songs.length + mine.art.length + mine.looks.length + mine.minions.length
+  /* ⚠️ one function answers both — see backupSays: a list of kinds typed into the JSX cannot be
+     kept level with a list of kinds summed here, and for minions and park records it was not */
+  const counts = myBackupCounts()
+  const total = backupTotal(counts)
 
   const download = () => {
     const blob = new Blob([JSON.stringify(mine)], { type: 'application/json' })
@@ -884,6 +895,16 @@ function BackupCard() {
         These follow your account now — sign in anywhere and they come with you. A file is the copy
         that survives losing the account.
       </p>
+      {/**
+       * ⚠️ WHAT THIS FILE DOES NOT HOLD, said here rather than nowhere. "The copy that survives
+       * losing the account" was true of everything on the account when it was written. Chronicle
+       * then arrived with its own record — sessions, goals, routines, plans — and its own ⬇ Save
+       * a copy, which this file knows nothing about. A promise that has quietly narrowed is worse
+       * than no promise: somebody takes one file and believes they have everything.
+       */}
+      <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+        Your chronicle is not in this file. It has its own copy, in the Chronicle room.
+      </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn" type="button" onClick={download} disabled={!total}>
           ⬇ Save a copy
@@ -907,9 +928,10 @@ function BackupCard() {
           }}
         />
         <span className="muted" style={{ fontSize: '0.78rem' }}>
-          {total
-            ? `${mine.songs.length} songs · ${mine.art.length} drawings · ${mine.looks.length} looks`
-            : 'Nothing kept in this browser yet'}
+          {/* ⚠️ "Nothing kept in this browser yet" contradicted the paragraph four lines above
+              it, which was corrected once already for saying the same thing — these follow the
+              account now. Where they are kept is not what this line is about. */}
+          {total ? backupSays(counts) : 'Nothing to copy yet'}
         </span>
       </div>
       {/* ⚠️ Adds, never replaces — see restoreBackup. Said out loud because the thing people

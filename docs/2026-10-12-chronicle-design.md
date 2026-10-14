@@ -3472,6 +3472,45 @@ nothing under the 24px floor, and no container overflowing its list or card. The
 element is `.chron-ent-when` under a deliberate `display: none` — "a timestamp range is the first
 thing worth dropping when a row will not fit a thumb".
 
+## 6ar · ✅ What chronicle made untrue on the Account page
+
+§2 of the standard says to look for what a change just made stale, and this is the one chronicle
+made: the Account page's backup card says **"A file is the copy that survives losing the account"**,
+which was true of everything on the account when it was written. Chronicle then arrived with its own
+record — sessions, goals, routines, plans — and its own ⬇ Save a copy, which that file knows nothing
+about. A promise that has quietly narrowed is worse than no promise, because somebody takes one file
+and believes they have everything. The card now says so in a line.
+
+Two things were already wrong there, and reading the card to add that line is what found them.
+
+**The summary omitted a kind the Save button counted.** The line was written by hand as
+`${songs} songs · ${art} drawings · ${looks} looks` while `total` — the number deciding whether
+⬇ Save a copy is even ENABLED — summed a fourth, minions. So an account holding nothing but minions
+got a live Save button over a line reading "0 songs · 0 drawings · 0 looks", and a file with their
+minions in it.
+
+**And park records were in neither.** `makeBackup` has packed them since it was written and
+`restoreBackup` reports them arriving — "Park records: 3 brought over" — but nothing counted them on
+the way out, so a member whose only keepsake was a run of records had Save **disabled** and no way to
+take them anywhere.
+
+Both are the same shape: a list of kinds typed into JSX cannot be kept level with a list of kinds
+summed four lines above it. `backupSays` and `backupTotal` are now one table that answers both, and
+the test asks by SUM rather than by naming the kinds — a test listing them would be a third copy of
+the list, which is the thing that broke. Perturbed back to three kinds, five of the eight go red.
+
+**Measured on the page**, which is what settles it: this browser holds two looks and three park
+records, the line now reads `2 looks · 3 park records`, and the file it writes holds exactly those
+five things. The old line would have said `0 songs · 0 drawings · 2 looks`.
+
+The empty case also still said "Nothing kept **in this browser** yet", four lines under a paragraph
+that had already been corrected once for claiming exactly that — these follow the account now. It
+says "Nothing to copy yet", because where they are kept is not what that line is about.
+
+**Named, not fixed:** the `Change` button beside the handle in Your info is 62×17px at 375, under the
+24px floor. It is a control inline in a line of text, so it wants a hit area extended without
+disturbing the line rather than a taller button, and it is nothing to do with chronicle.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

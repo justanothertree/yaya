@@ -205,3 +205,61 @@ export function countBackup(
     minions: Array.isArray(b.minions) ? b.minions.length : 0,
   }
 }
+
+/**
+ * What is in the file, said in the order the file holds it.
+ *
+ * ⚠️ IT EXISTS BECAUSE THE SENTENCE AND THE COUNT DISAGREED. The card's summary was written by
+ * hand as "N songs · N drawings · N looks" while the number deciding whether ⬇ Save a copy is
+ * even ENABLED added a fourth kind. So somebody whose account held nothing but minions got a live
+ * Save button over a line reading "0 songs · 0 drawings · 0 looks", and a file with their minions
+ * in it. A list of kinds typed into JSX cannot be kept level with a list of kinds summed four
+ * lines above; one function that does both is the only version of this that stays true.
+ *
+ * ⚠️ PARK RECORDS ARE IN THE FILE AND WERE IN NEITHER. `makeBackup` has packed them since it
+ * was written and `restoreBackup` reports them coming back — but nothing counted them on the way
+ * out, so a member whose only keepsake was a run of park records had Save disabled and no way to
+ * take them anywhere.
+ *
+ * ⚠️ AND IT OMITS WHAT YOU DO NOT HAVE rather than printing a zero for it. "0 songs" is a fact
+ * about songs you were not asking about; the line is there to say what the file will contain.
+ */
+export type BackupCounts = {
+  songs: number
+  art: number
+  looks: number
+  minions: number
+  wins: number
+}
+
+/** Each kind, with the word for one of it and the word for several. */
+const KINDS: ReadonlyArray<readonly [keyof BackupCounts, string, string]> = [
+  ['songs', 'song', 'songs'],
+  ['art', 'drawing', 'drawings'],
+  ['looks', 'look', 'looks'],
+  ['minions', 'minion', 'minions'],
+  ['wins', 'park record', 'park records'],
+]
+
+/** How many things a file would hold — the same sum the summary is built from. */
+export const backupTotal = (c: BackupCounts): number =>
+  KINDS.reduce((n, [k]) => n + Math.max(0, c[k] | 0), 0)
+
+/** `3 songs · 1 drawing · 4 minions`, or '' when there is nothing to say. */
+export function backupSays(c: BackupCounts): string {
+  return KINDS.filter(([k]) => (c[k] | 0) > 0)
+    .map(([k, one, many]) => `${c[k]} ${c[k] === 1 ? one : many}`)
+    .join(' · ')
+}
+
+/** The counts of what is on this machine right now. */
+export function myBackupCounts(): BackupCounts {
+  const b = makeBackup()
+  return {
+    songs: b.songs.length,
+    art: b.art.length,
+    looks: b.looks.length,
+    minions: b.minions.length,
+    wins: b.wins?.length ?? 0,
+  }
+}
