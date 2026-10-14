@@ -3029,6 +3029,72 @@ name that fitted over the edge. Measured with **every** activity coloured — th
 longest fitting label 57px, and the set of ellipsised labels is identical with and without dots.
 The one that clips, "Chronicle (on the site)", clipped before.
 
+## 6ai · ✅ The week as a grid — and what "parity" was actually checked against
+
+Evan put the two side by side: the HTML app and this room. _"i know its not in html and its now on
+my site but even the ui is so much cooler in the html."_ He is right, and the reason I missed it is
+the useful part.
+
+**The parity list was checked against the HTML app's STORE.** Every field in it is built, which is
+why §6 could honestly say parity was closed. What a store cannot tell you is the SHAPE of the app
+around it — and the shape is most of what makes one feel better than another. The HTML app has a
+week grid, a right rail with a daily score, top-level nav, a live clock. This room had a card with a
+paragraph of prose and some folds. Same data; a settings page.
+
+**A list of "Drawing 35m" and a block sitting at nine in the morning are the same data, and only
+one of them shows you your mornings are empty.**
+
+### The grid
+
+Seven columns, hours down, every session a block where it happened. Today is outlined, the clock is
+a line across it, a session across midnight appears in both days with square edges saying it
+continues, and a block takes the activity's own colour when it has one — the thing §6ag added — and
+its category's when it does not.
+
+**It reuses `lane` rather than measuring again.** The day strip already answers "where does this
+span sit in this window, as percentages" and has tests that say so; a column is that question
+turned ninety degrees, so `left` becomes `top` and `width` becomes `height`. A second copy of the
+arithmetic would be a second place for the midnight rule to be wrong.
+
+Twelve tests on `week.ts`, each written from a clock reading rather than from the code: a nine-to-ten
+session sits 9/24 down and is 1/24 tall. Perturbed five ways — a Monday-based week, a day measured
+from the wrong end, the clock marked on every column, `covered` left unclamped, midnight labelled
+"0a" — and all five go red.
+
+### Three things it cost, which is the honest part
+
+**`--good` and `--link` do not exist.** I wrote the block colours against two variables I had
+invented, and the computed background came back `rgba(0,0,0,0)` — transparent, on a dark card,
+which looks exactly like a block that failed to render. The three category colours were already
+literals in **three** places, and this would have been a fourth; they are declared once on `.chron`
+now, deliberately NOT as `--accent` (which is themeable, and an orange accent would collide Locked
+In with Free Time). The chips, the day strip and the week bars all render identically afterwards —
+checked, because a consolidation that changes a colour is not a consolidation.
+
+**`Week.tsx` beside `week.ts` will not compile.** They differ only in casing, and the filesystem
+cannot hold both. `Plans.tsx` beside `plan.ts` dodges it by number; this is `WeekGrid.tsx`, which
+dodges it by saying what the component draws.
+
+**190px for twenty-four hours is eight pixels an hour**, and a half-hour sitting was a hairline —
+in the right place and readable as nothing. 240px makes an hour ten pixels, which is the point at
+which this room's commonest session is a mark you can see, without the grid pushing the day's log
+off the screen.
+
+### And one number that only a screen reader could hear
+
+Each column knows how much of its day is accounted for; it was in every day button's label and
+nowhere else. That is the write-without-read that cost this room three bugs in a week, committed
+afresh in the thing I had just built. It says it out loud now — and over **the days that have
+started**, not seven, because a Tuesday afternoon measured against a whole week is 29% at best and
+reads as failure.
+
+### What is still missing from that screenshot
+
+Named rather than built, so the gap is written down: a right rail (daily score, goals today, alarms,
+to-do, upcoming), top-level nav instead of folds, a live clock, the "what's next?" banner, and
+quick-start chips with more presence than the current "or just". The grid was the centrepiece and
+the one real absence; the rest is arrangement, and arrangement is a decision about the room.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

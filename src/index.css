@@ -15675,6 +15675,133 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 
+/* ── chronicle, the week as a grid — see src/chronicle/Week.tsx ─────────────── */
+.chron-week {
+  margin: 0.6rem 0 0.8rem;
+}
+
+.chron-week-grid {
+  display: grid;
+  /* the hour gutter, then seven equal days — `minmax(0, 1fr)` so a long block cannot widen one */
+  grid-template-columns: 2.1rem repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.chron-week-hours {
+  position: relative;
+  /* the labels hang beside the lanes, so the gutter starts where the lanes do */
+  margin-top: 2.4rem;
+  height: 240px;
+}
+
+.chron-week-hour {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 0.6rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chron-week-col {
+  min-width: 0;
+}
+
+.chron-week-day {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  padding: 0.2rem 0;
+  /* ⚠️ 38px tall, in PIXELS: this is the tap target for focusing a day and the root size is
+     fluid, so a rem floor here is not a length. WCAG 2.5.8 wants 24. */
+  min-height: 38px;
+  line-height: 1.1;
+}
+
+.chron-week-dow {
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chron-week-num {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.chron-week-day.is-today .chron-week-num {
+  color: var(--accent);
+}
+
+.chron-week-day.is-on {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.chron-week-lane {
+  position: relative;
+  /**
+   * ⚠️ 240px FOR TWENTY-FOUR HOURS, which is ten pixels an hour. At 190 a half-hour sitting was a
+   * hairline — technically in the right place and not readable as anything. Ten pixels an hour is
+   * the point at which the commonest session in this room, half an hour to an hour, is a mark you
+   * can see without being so tall that the grid pushes the day's log off the screen.
+   */
+  height: 240px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.chron-week-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+.chron-week-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 3px;
+  /* the category's colour when the activity has none of its own — the same three everything else
+     in the room wears, which is why they are declared in one place now */
+  background: var(--chron-free);
+  opacity: 0.85;
+}
+
+.chron-week-block.is-locked {
+  background: var(--chron-locked);
+}
+
+.chron-week-block.is-life {
+  background: var(--chron-life);
+}
+
+/* ⚠️ a block that runs past midnight loses the corners on the side it continues, so a session
+   clipped by the end of a day does not read as one that stopped there */
+.chron-week-block.is-cut {
+  border-radius: 0;
+}
+
+.chron-week-covered {
+  margin: 0.45rem 0 0;
+  font-size: 0.76rem;
+}
+
+.chron-week-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
 /* ── chronicle, why a goal is there — see src/sections/Chronicle.tsx ────────── */
 .chron-whyfor {
   /* the only prose in a row of numbers and chips: it takes the rest of the line and wraps */
@@ -15826,15 +15953,30 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   padding: 0.1rem 0.55rem;
 }
+/**
+ * ⚠️ THE THREE CATEGORY COLOURS, DECLARED ONCE. They were written out as literals in three places
+ * — the chips, the day strip and the week bars — and a fourth was about to be added for the week
+ * grid, which is the point at which a repeated value starts drifting.
+ *
+ * ⚠️ AND THEY ARE DELIBERATELY NOT `--accent`, even though locked happens to be the accent's
+ * DEFAULT. The accent is themeable; these three have to stay distinct from one another whatever
+ * somebody picks, and a palette with an orange accent would collide Locked In with Free Time.
+ */
+.chron {
+  --chron-locked: #7c6af7;
+  --chron-free: #f5a623;
+  --chron-life: #5b9cf6;
+}
+
 /* the three categories, so a glance says committed / yours / upkeep without reading */
 .chron-cat.is-locked {
-  border-color: #7c6af7;
+  border-color: var(--chron-locked);
 }
 .chron-cat.is-free {
-  border-color: #f5a623;
+  border-color: var(--chron-free);
 }
 .chron-cat.is-life {
-  border-color: #5b9cf6;
+  border-color: var(--chron-life);
 }
 .chron-log,
 .chron-acts {
@@ -16166,13 +16308,13 @@ a.cz-msg-author:focus-visible {
 }
 /* what happened, in the colours the three categories already wear */
 .chron-lane.is-had i.is-locked {
-  background: #7c6af7;
+  background: var(--chron-locked);
 }
 .chron-lane.is-had i.is-free {
-  background: #f5a623;
+  background: var(--chron-free);
 }
 .chron-lane.is-had i.is-life {
-  background: #5b9cf6;
+  background: var(--chron-life);
 }
 /* ⚠️ a block clipped by midnight says so with a square edge on the side it was cut, so a session
    that ran past the day is not mistaken for one that happened to stop there */
@@ -16341,13 +16483,13 @@ a.cz-msg-author:focus-visible {
 }
 /* the three categories keep their colours here too, so a week reads at a glance */
 .chron-bars .chron-bar i.is-locked {
-  background: #7c6af7;
+  background: var(--chron-locked);
 }
 .chron-bars .chron-bar i.is-free {
-  background: #f5a623;
+  background: var(--chron-free);
 }
 .chron-bars .chron-bar i.is-life {
-  background: #5b9cf6;
+  background: var(--chron-life);
 }
 @media (max-width: 700px), (pointer: coarse) {
   /* ⚠️ the name gets less room on a thumb rather than the bar disappearing: the bar is the thing

@@ -15,6 +15,8 @@ import {
 } from './cloud'
 import { today as todayISO } from './goal'
 import { Plans } from './Plans'
+import { WeekGrid } from './WeekGrid'
+import { weekOf } from './week'
 import { Routines } from './Routines'
 import {
   CATS,
@@ -131,6 +133,15 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   const live = useRef(false)
 
   const bounds = useMemo(() => dayBounds(seeing), [seeing])
+  /**
+   * ⚠️ THE WEEK IS A SECOND FETCH, NOT A WIDER FIRST ONE. Widening the day's range would have made
+   * every reader of `log` — the day list, the running session, the category chips, the strip —
+   * filter a week down to a day for themselves, which is six places to get the midnight rule
+   * wrong. One more call over a seven-day range is cheaper than that, and it only moves when the
+   * week does rather than when the day does.
+   */
+  const weekDays = useMemo(() => weekOf(seeing), [seeing])
+  const [weekLog, setWeekLog] = useState<Entry[]>([])
 
   const load = useCallback(async () => {
     const [a, e] = await Promise.all([
@@ -146,6 +157,24 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
   useEffect(() => {
     void load()
   }, [load])
+
+  const loadWeek = useCallback(async () => {
+    if (!weekDays.length) return
+    const from = dayBounds(weekDays[0]).fromMs
+    const to = dayBounds(weekDays[weekDays.length - 1]).toMs
+    setWeekLog(await entriesBetween(new Date(from).toISOString(), new Date(to).toISOString()))
+  }, [weekDays])
+
+  useEffect(() => {
+    void loadWeek()
+  }, [loadWeek])
+
+  /* ⚠️ the grid follows the day's own writes: starting, stopping, filling a gap and every edit
+     all end in `after()`, which reloads `log` — so one effect on it keeps the week honest without
+     every call site having to remember a second reload */
+  useEffect(() => {
+    void loadWeek()
+  }, [log, loadWeek])
 
   const running = log.find((e) => e.end == null) ?? null
   live.current = !!running
@@ -945,6 +974,17 @@ export function Timer({ day, onChange }: { day: string; onChange?: () => void })
        * about the same list the log above is drawn from — two queries for one day's record is two
        * chances to show a plan beaten by work the list above does not mention.
        */}
+      {/**
+       * ⚠️ THE WEEK, ABOVE THE FOLDS AND BELOW THE DAY, which is where the thing it answers sits.
+       * The list above says what today held; this says what the WEEK looks like, and the one
+       * question neither could answer before is the shape — that the mornings are empty, that
+       * Sunday is solid and Thursday is a single block at midnight.
+       *
+       * ⚠️ IT PICKS THE DAY the rest of the card is about, so the grid and the log are one control
+       * rather than two views of different days.
+       */}
+      {acts !== null && <WeekGrid on={seeing} log={weekLog} acts={acts} onPick={setSeeing} />}
+
       {acts !== null && (
         <Plans acts={acts} log={log} bounds={bounds} onChange={after} busy={busy} />
       )}
