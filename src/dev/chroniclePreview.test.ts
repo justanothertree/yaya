@@ -335,7 +335,23 @@ describe('the file you can take away', () => {
    *
    * These key lists are the one place in this file where the server's contract is written down
    * rather than derived, because vitest cannot reach Postgres. They were taken from the function
-   * itself and checked against a live call — see docs/2026-10-13-chronicle-export.sql.
+   * itself and checked against a live call — see docs/2026-10-13-chronicle-export.sql, which now
+   * carries the query that re-derives this from the live function and the table columns, so the
+   * drift is one command away rather than a thing anybody has to notice.
+   *
+   * ⚠️ `shared` IS MISSING FROM goals ON PURPOSE, and this is the note that stops it being
+   * "fixed". It is the only column on any chronicle table that the file does not carry, the
+   * account id aside — checked by the query above on 15 Oct 2026. It stays out because
+   * `chronicle_import` deliberately ignores it, so that a file somebody SENDS you cannot put
+   * goals on your profile; exporting a flag nothing will read would only put a privacy fact into
+   * a file that gets passed around. The file has no owner id either, so "this one is mine" is not
+   * a question it can answer. The cost is that a restore leaves your goals private until you tick
+   * them again, which is the direction this should fail in.
+   *
+   * The key equality below already catches it if the double ever grows the column, which was
+   * proven rather than assumed: adding `shared: g.shared ?? false` to pvExport's goal object
+   * turns two tests red — this one and the round trip that fills every field. So this is a
+   * comment rather than a third test asserting the same thing.
    */
   const KEYS = {
     activities: [

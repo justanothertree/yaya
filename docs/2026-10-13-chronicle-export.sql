@@ -75,3 +75,72 @@ select p.proname,
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public' and p.proname = 'chronicle_export';
+
+-- ── WHAT THE FILE DOES NOT CARRY, 15 OCT 2026 ───────────────────────────────────────────────
+--
+-- The double's key lists in src/dev/chroniclePreview.test.ts are hand-written, because vitest
+-- cannot reach Postgres — and CLAUDE.md §11 is about exactly that shape: rpc-inventory.md was a
+-- hand-kept table of 116 functions and was wrong in both directions inside four weeks. The lists
+-- have to stay, so the drift gets a query instead of a habit.
+--
+-- Run on 15 Oct 2026, after `shared` was added to chronicle_goals the day before:
+--
+--   chronicle_activities   6 rows    owner
+--   chronicle_entries      9 rows    owner
+--   chronicle_goals        1 row     owner, shared
+--   chronicle_plans        0 rows    ⚠ NOT CHECKED
+--   chronicle_routines     0 rows    ⚠ NOT CHECKED
+--
+-- `owner` is deliberate and tested: the file is passed between machines and never names an
+-- account. So `chronicle_goals.shared` is the ONLY column on any chronicle table that the file
+-- leaves behind.
+--
+-- ⚠️ AND IT SHOULD STAY THAT WAY. `chronicle_import` ignores the column on purpose, so that a
+-- file somebody sends you cannot put goals on your profile. Exporting a flag that nothing will
+-- ever read back would only write a privacy fact into a file that gets passed around, and the
+-- file carries no owner id, so "this one is mine" is not a question it can answer. What it costs
+-- is that a restore leaves your goals private until you tick them again — the direction this
+-- should fail in. Checked by reading the function's own output rather than its source.
+--
+-- ⚠️ THE ⚠ MATTERS AS MUCH AS THE ANSWER. The first version of this query derived the keys from
+-- the exported rows and reported every column of chronicle_plans and chronicle_routines as
+-- missing — because the account has none of either, so there were no rows to take keys from. A
+-- list with nothing in it has no keys, and a sweep that cannot say so reports a catastrophe.
+-- Run it against an account that has at least one of each, or read those two off the function.
+
+begin;
+select set_config('request.jwt.claims',
+       json_build_object('sub', owner, 'role', 'authenticated')::text, true)
+  from public.chronicle_entries group by owner order by count(*) desc limit 1;
+set local role authenticated;
+select set_config('probe.f', public.chronicle_export()::text, true);
+reset role;
+
+with f as (select current_setting('probe.f')::jsonb as j),
+map(tbl, list) as (values
+  ('chronicle_activities','activities'), ('chronicle_entries','entries'),
+  ('chronicle_goals','goals'), ('chronicle_routines','routines'), ('chronicle_plans','plans')),
+seen as (
+  select m.list, jsonb_array_length(coalesce(f.j->m.list,'[]'::jsonb)) as rows from map m, f
+),
+keys as (
+  select m.list, k.key
+    from map m, f,
+         lateral jsonb_array_elements(coalesce(f.j->m.list,'[]'::jsonb)) r,
+         lateral jsonb_object_keys(r.value) k(key)
+  group by m.list, k.key
+)
+select m.tbl,
+       s.rows as rows_examined,
+       case when s.rows = 0 then '⚠ NOT CHECKED — no rows on this account'
+            else coalesce(string_agg(c.column_name, ', ' order by c.column_name)
+                            filter (where k.key is null), '(nothing)')
+       end as columns_the_file_does_not_carry
+from map m
+join seen s on s.list = m.list
+join information_schema.columns c
+  on c.table_schema = 'public' and c.table_name = m.tbl
+left join keys k on k.list = m.list and k.key = c.column_name
+group by m.tbl, s.rows
+order by m.tbl;
+rollback;

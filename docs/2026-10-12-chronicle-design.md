@@ -4156,6 +4156,51 @@ year reaches that. It is a `min-width` now with `white-space: nowrap`, so the sh
 align into a column and a long one takes what it needs from the track: 58 → 67 → 74 as the label
 grows, the track giving up 209 → 200 → 193, and the row staying **18px** throughout.
 
+## 6bk · ✅ What ⬇ Save a copy leaves behind, asked as a query rather than read off a list
+
+`shared` was added to `chronicle_goals` on the 14th, and the round trip's key contract lives in a
+hand-written list in `chroniclePreview.test.ts` — described in its own comment as _"the one place
+where the server's contract is written down rather than derived"_. CLAUDE.md §11 is about exactly
+that shape: `rpc-inventory.md` was a hand-kept table and was wrong in both directions in four
+weeks. So the question was whether the list had already drifted.
+
+It had not. Asked of the live function's own output rather than its source, the key sets are
+**9 / 8 / 18** for activities, entries and goals, matching the list exactly, with `shared` absent.
+
+**Then the better question**, which a query can answer and a list cannot: what does the file leave
+behind? Every column of every chronicle table, against the keys the file actually carries:
+
+| table                | rows | not in the file   |
+| -------------------- | ---- | ----------------- |
+| chronicle_activities | 6    | `owner`           |
+| chronicle_entries    | 9    | `owner`           |
+| chronicle_goals      | 1    | `owner`, `shared` |
+| chronicle_plans      | 0    | ⚠ not checked    |
+| chronicle_routines   | 0    | ⚠ not checked    |
+
+`owner` is deliberate and tested — the file is passed between machines and never names an account.
+So **`chronicle_goals.shared` is the only column on any chronicle table the file does not carry**,
+and the two unchecked lists were read off the function instead: routines and plans carry every
+column but `owner`.
+
+⚠️ **The ⚠ is the point.** The first version derived keys from the exported rows and reported
+every column of plans and routines as missing — because this account has none of either, so there
+were no rows to take keys from. A list with nothing in it has no keys, and a sweep that cannot say
+so reports a catastrophe. The same shape as a members-only room rendering its empty state and
+passing every check there is.
+
+**And `shared` stays out.** `chronicle_import` ignores it on purpose, so a file somebody sends you
+cannot put goals on your profile; exporting a flag nothing will read back would only write a
+privacy fact into a file that gets passed around, and the file carries no owner id, so "this one
+is mine" is not a question it can answer. The cost is that a restore leaves your goals private
+until you tick them again — the direction this should fail in. That reasoning now sits beside the
+key list, because the next person to notice the gap will otherwise close it.
+
+**The protection was proven, not assumed.** Adding `shared: g.shared ?? false` to `pvExport`'s goal
+object turns two tests red — the key equality and the round trip that fills every field — so no
+third test was added to say the same thing. Reverted from a scratchpad copy; `git diff` clean,
+996 green.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
