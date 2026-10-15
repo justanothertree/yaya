@@ -6783,9 +6783,20 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
   font-size: 0.82rem;
+  /* ⚠️ a medal and its date read as one thing, so they do not break — except where they cannot
+     fit at all, which is a third-width block: see the rule below. */
   white-space: nowrap;
   background: color-mix(in oklab, #f5b73d, transparent 84%);
   border: 1px solid color-mix(in oklab, #f5b73d, transparent 58%);
+}
+/**
+ * ⚠️ AND IT BREAKS AFTER ALL IN A THIRD-WIDTH BLOCK, because the alternative is worse. A pill is
+ * 158px of nowrap text — "🥇 Gold · Jan 27, 2026" — and that card gives its list 108px, so the
+ * shelf ran 30px past its own card. Wrapping to two lines keeps the date; shrinking with an
+ * ellipsis would take it away, and the date is half of what a trophy says.
+ */
+.profile-block.is-small .profile-trophy {
+  white-space: normal;
 }
 /* every chip used to be gold-tinted whatever the medal, so a silver read as a gold that had
    lost its emoji. The tint is the fastest thing the eye reads here — it should agree. */

@@ -1170,7 +1170,14 @@ function Guestbook({
             onKeyDown={(e) => e.key === 'Enter' && void post()}
             placeholder={isMe ? 'Leave a note on your own page…' : `Say something to ${username}…`}
             aria-label="Write a note"
-            style={{ flex: 1 }}
+            /**
+             * ⚠️ `minWidth: 0` BECAUSE AN INPUT WILL NOT SHRINK WITHOUT IT. A flex child defaults
+             * to `min-width: auto`, and for an input that means its `size` attribute's worth of
+             * characters — twenty by default, about 202px. So `flex: 1` could grow this box and
+             * never shrink it, and a guestbook in a third-width block ran 144px past its own card
+             * (63px at a half). Measured only after `spills` could see inside a container.
+             */
+            style={{ flex: 1, minWidth: 0 }}
           />
           <button className="btn" onClick={() => void post()} disabled={!draft.trim() || busy}>
             {busy ? '…' : 'Post'}

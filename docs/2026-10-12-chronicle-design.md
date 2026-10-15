@@ -3853,6 +3853,30 @@ three goals and five activities at a third, a half and full alike.
 **The lesson is the one-size habit, not the CSS.** Every check I ran on this block for two days was
 run at the width it happened to be created at. A `size` prop with three values is three layouts.
 
+## 6bb · ✅ The same habit, applied to the blocks I did not write
+
+Having learned that a `size` prop with three values is three layouts, the obvious next move was to
+stop treating it as a chronicle lesson. Eight block types × three widths, swept with `spills`.
+
+**Two of the other seven had the same fault, and neither is mine.**
+
+**The guestbook, 144px past its own card at a third** and 63px at a half — only full width was ever
+right. Its compose box is `flex: 1`, which can grow it and never shrink it: a flex child defaults to
+`min-width: auto`, and for an `input` that means its `size` attribute's worth of characters, twenty
+by default, about 202px. `minWidth: 0` is the whole fix.
+
+**The trophy shelf, 30px past** at a third, with the list itself 50px over. A pill is 158px of
+`white-space: nowrap` — "🥇 Gold · Jan 27, 2026" — and that card gives its list 108px. The pill now
+wraps to two lines at `is-small` only, because the alternative is an ellipsis and the date is half
+of what a trophy says. The `nowrap` stays everywhere else, where it is right.
+
+After: eight blocks, three sizes, twenty-four combinations, nothing spilling.
+
+**Worth saying plainly — both were already there.** Neither came from this week's work; they have been
+on the site for as long as those blocks have had a small size, and no sweep found them because every
+sweep ran at the width the block happened to be in. The rule that can see inside a container is what
+made them visible; varying the prop is what made them happen.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
