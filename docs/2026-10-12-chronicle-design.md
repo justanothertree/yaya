@@ -4854,6 +4854,35 @@ UTC-anchored throughout. Two are the same bug in Circuit, left alone as out of t
 and raised separately — including `AddMovie.tsx`, where the line's own comment reads "did-it-tonight
 is the overwhelming case", and tonight is precisely when it defaults to tomorrow.
 
+## 6cc · ✅ The audit run at 375, across states rather than the opening one
+
+`mobile-audit.js` opens with its own warning: `auditRooms` sees a room's opening state and nothing
+else, _"so an empty report is evidence about what was on screen, and nothing more"_ — it has cost
+real work twice. This session added several controls that only exist after you do something, so
+the room was put into each state and `mobileAudit()` called directly.
+
+Seven states, every figure zero — `tooSmall`, `offEdge`, `clipped`, `insideOut`, `spills`,
+`sideways`, `wordless`:
+
+|                                                                                       |
+| ------------------------------------------------------------------------------------- |
+| the opening state                                                                     |
+| every fold open — Planned, Routines, Activities                                       |
+| a routine carrying a disabled "gone" step (§6bl)                                      |
+| ⏱ Fill a gap open                                                                    |
+| the goal editor with every field showing, including the source and count-what pickers |
+| the month calendar                                                                    |
+| the Years view with the Lifetime panel                                                |
+
+⚠️ **And then looked at**, because a clean number is not a clean room — the layout whose figures
+all read zero was the one with every title crushed to a 3px column. The goal editor at 375 is the
+densest thing in the room, ten controls in a 327px column: they wrap into rows, nothing is
+crushed, and Add sits on the same line as the cadence box.
+
+**What this does not cover**, said plainly so the next sweep knows where to start: the entry
+editor's own row, the profile block (which needs a session), and anything behind the account that
+`previewMember` cannot reach.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
