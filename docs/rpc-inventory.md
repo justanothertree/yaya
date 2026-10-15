@@ -182,16 +182,88 @@ that consults `can_see`.
 
 ---
 
-## Snapshot, 2026-09-15
+## Snapshot
 
-Counts only, deliberately — a list would rot the way the last one did.
+Counts only, deliberately — a list would rot the way the last one did. ⚠️ **And counts rot too,
+just slower**: taken on 2026-09-15 and read again on 2026-10-15, the first three had moved by
+about fifty while every rule row was still exactly where it was put. So the table is generated
+now rather than kept, and what follows is output, not a record.
 
-|                                         |     |
-| --------------------------------------- | --- |
-| functions in `public`                   | 152 |
-| `SECURITY DEFINER`                      | 144 |
-| executable by `authenticated`           | 142 |
-| executable by `anon`                    | 8   |
-| definers without a pinned `search_path` | 0   |
-| tables readable with RLS off            | 0   |
-| `set_my_*` / `get_my_*` taking a target | 0   |
+```sql
+with f as (
+  select p.oid, p.proname, p.prosecdef, p.proconfig,
+         pg_get_function_identity_arguments(p.oid) as args
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prokind = 'f'   -- ⚠️ or pg_get_functiondef raises on array_agg
+)
+select 'functions in public' as measure, count(*)::text as n from f
+union all select 'SECURITY DEFINER', count(*)::text from f where prosecdef
+union all select 'executable by authenticated', count(*)::text from f
+  where has_function_privilege('authenticated', oid, 'execute')
+union all select 'executable by anon', count(*)::text from f
+  where has_function_privilege('anon', oid, 'execute')
+union all select 'definers without a pinned search_path', count(*)::text from f
+  where prosecdef and not exists (
+    select 1 from unnest(coalesce(proconfig,'{}')) c where c like 'search_path=%')
+union all select 'tables readable with RLS off', count(*)::text
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+ where c.relkind='r' and n.nspname in ('public','finance') and not c.relrowsecurity
+   and (has_table_privilege('anon', c.oid,'select')
+     or has_table_privilege('authenticated', c.oid,'select'))
+-- ⚠️ the same predicate as Rule 3, not "any uuid or text argument". Asked the loose way this
+-- reported 3 where the rule reports 0: set_my_display_name(p_name text) is not a target.
+union all select 'set_my_* / get_my_* taking a target', count(*)::text from f
+  where (proname like 'set\_my\_%' or proname like 'update\_my\_%' or proname like 'get\_my\_%')
+    and args ilike '%user%';
+```
+
+Run on 2026-10-15, after eight chronicle migrations:
+
+|                                         | 15 Sep | 15 Oct  |
+| --------------------------------------- | ------ | ------- |
+| functions in `public`                   | 152    | **202** |
+| `SECURITY DEFINER`                      | 144    | **194** |
+| executable by `authenticated`           | 142    | **190** |
+| executable by `anon`                    | 8      | 8       |
+| definers without a pinned `search_path` | 0      | 0       |
+| tables readable with RLS off            | 0      | 0       |
+| `set_my_*` / `get_my_*` taking a target | 0      | 0       |
+
+And the house pattern itself, which had no query here and now does — every table reached only
+through definer RPCs should be RLS on, **zero** policies, **zero** grants:
+
+```sql
+select c.relname, c.relrowsecurity as rls_on,
+       (select count(*) from pg_policy p where p.polrelid = c.oid) as policies,
+       (select count(*) from information_schema.role_table_grants g
+         where g.table_schema='public' and g.table_name=c.relname
+           and g.grantee in ('anon','authenticated')) as grants
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname='public' and c.relkind='r'
+  and c.relname in ('profile_blocks','profile_notes','member_library',
+                    'chronicle_activities','chronicle_entries','chronicle_goals',
+                    'chronicle_plans','chronicle_routines')
+order by c.relname;
+```
+
+On 2026-10-15 all five chronicle tables and `member_library` read `true, 0, 0`.
+
+⚠️ **`profile_blocks` and `profile_notes` read `true, 0, 13`.** CLAUDE.md names all three as the
+house pattern — "RLS on, zero policies, no grants — deny-all" — and two of them carry thirteen
+grants each. Driven in a rolled-back transaction to find out which mechanism is doing the work:
+
+| as              | `select * from profile_blocks`                           |
+| --------------- | -------------------------------------------------------- |
+| `anon`          | **refused** — permission denied for table profile_blocks |
+| `authenticated` | **0 rows** — not refused                                 |
+
+So a signed-in member really does hold `select`, and what protects the rows is RLS returning
+nothing, not the absence of a grant. **That is not a hole today**: zero rows is zero rows, and
+every reader goes through a definer RPC anyway. It is the thing Rule 1's own sentence warns about
+one level up — _don't grant what cannot be used_ — because the grant is inert only for as long as
+the table has no policy, and the day somebody adds one for any reason it becomes live without
+anybody deciding that.
+
+`member_library` shows the pattern is reachable: same job, same protection, `0` grants. Left as it
+is rather than revoked, because these are profile tables rather than this room's, and a revoke on
+live tables is Evan's call — raised separately.
