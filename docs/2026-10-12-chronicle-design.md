@@ -3824,6 +3824,35 @@ room was open is a different claim from having painted for four hours. So the ch
 is 61px against the others' 36px, and nothing overflows. A tall row is a worse look than a short
 one and a better answer than a quiet lie.
 
+## 6ba · ✅ The block had only ever been looked at at one size
+
+A profile block has three widths — a third, a half, full — and the chronicle one had been built,
+measured, screenshotted and shipped at `medium` every single time. Switching it to **a third** found
+it overflowing its own card by 45px, with six spills, every goal title pinned at its 56px floor and
+a bar track down to twelve pixels.
+
+The arithmetic is unarguable: a third-width card gives its lists 108px, and a row's rigid parts come
+to about 133 — a 56px label floor, a 52px minutes column or a wider aim, the dot and the gaps. It
+does not fit, and no amount of shrinking makes it fit, because the floors are the point.
+
+**Stacked, not hidden.** What would have had to go is exactly the part somebody chose: the goals
+they ticked and the activities they spent the week on. So at `is-small` the rows wrap and the number
+drops under its label, still right-aligned. The bar track is the one thing dropped, and it earns
+that: twelve pixels cannot express a proportion, and the minutes beside it say the same thing
+exactly — a decoration pretending to be a measurement is worse than no decoration.
+
+**And then a flexbox detail worth keeping.** Wrapping happens on an item's BASIS, before any
+shrinking does. Both labels are `flex: 0 1 auto`, so their basis is the whole title — which did not
+fit beside its ○, wrapped to a line of its own, and only then shrank. Three lines for one goal, with
+the tick sitting alone above it. A basis of the floor (`flex: 1 1 56px`) lets the label sit beside
+its marker and grow into what is left: two lines, reading as a label with its number underneath.
+
+After: all three sizes report `cardOver: 0` and `spills: 0`, with nothing hidden at any of them —
+three goals and five activities at a third, a half and full alike.
+
+**The lesson is the one-size habit, not the CSS.** Every check I ran on this block for two days was
+run at the width it happened to be created at. A `size` prop with three values is three layouts.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
