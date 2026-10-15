@@ -4820,6 +4820,40 @@ a rail that looked stuck beside a room that had not changed either. The same sel
 cost a reading earlier in the session. It is in CLAUDE.md now: scope the query, find a control by
 its `aria-label`, and assert the label moved before believing anything downstream of a step.
 
+## 6cb · ✅ Both calendars ringed the wrong day every evening
+
+Driving the month grid for its data states turned up something simpler on line 56:
+
+```ts
+const today = new Date().toISOString().slice(0, 10)
+```
+
+`src/circuit/dates.ts` opens with a warning against exactly that — _"do NOT use
+new Date().toISOString() for 'today' — that's UTC, so in the evening (timezones behind UTC) it
+returns tomorrow's date"_ — and exports `todayISO()` for it. `WeekGrid.tsx:45` had the same line.
+
+Demonstrated in the page, in America/New_York:
+
+| local time | the grids said | the room said |
+| ---------- | -------------- | ------------- |
+| 19:30      | 2026-10-15     | 2026-10-15    |
+| **20:30**  | **2026-10-16** | 2026-10-15    |
+
+So from eight in the evening the ring marking today sat on **tomorrow's** cell, in both the month
+calendar and the week grid, while every date the room logs against still said today. On the last
+day of a month it is worse: tomorrow is an `is-outside` cell, so the ring lands on a greyed day
+belonging to the next month — or, on a week grid whose columns stop at Saturday, on nothing at all.
+
+Both now call `todayISO()`. Verified at 14:40 local: exactly one month cell carries `is-today` and
+it reads "Thursday, October 15 — 1h 39m recorded", exactly one week column is ringed, and the two
+expressions evaluated for 20:30 in the same page still disagree — which is the bug, held still.
+
+**And the grep found four more.** Two are not bugs and are named so nobody fixes them:
+`finance/timeline.ts` and `PortfolioChart.tsx` both parse with an explicit `'T00:00:00Z'` and are
+UTC-anchored throughout. Two are the same bug in Circuit, left alone as out of this room's scope
+and raised separately — including `AddMovie.tsx`, where the line's own comment reads "did-it-tonight
+is the overwhelming case", and tonight is precisely when it defaults to tomorrow.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

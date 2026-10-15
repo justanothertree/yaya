@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { entriesBetween } from './cloud'
 import { monthCells, monthOf } from './month'
 import { dayBounds, spanText, type Entry } from './record'
+import { todayISO } from '../circuit/dates'
 
 /**
  * The month as a calendar: which days you recorded anything, and how much.
@@ -53,7 +54,15 @@ export function MonthGrid({ on, beat }: { on: string; beat: number }) {
    * label and the title give the real hours, because "tallest" is not a quantity.
    */
   const busiest = useMemo(() => Math.max(...cells.map((c) => c.covered), 0), [cells])
-  const today = new Date().toISOString().slice(0, 10)
+  /**
+   * ⚠️ THE LOCAL DATE, NEVER `toISOString().slice(0, 10)`. That is UTC, and dates.ts carries a
+   * warning against it at the top of the file for this exact reason: in any zone behind UTC it
+   * returns TOMORROW from the evening onwards. Measured in America/New_York — at 19:30 both agree
+   * on the 15th, at 20:30 this said the 16th while every date the room logs against still said the
+   * 15th. So the ring marking today sat on tomorrow's cell all evening, and on the last day of a
+   * month it sat on a cell outside the month or on none at all.
+   */
+  const today = todayISO()
   const dows = useMemo(() => {
     /* ⚠️ built from a known Sunday rather than hard-coded, so the names follow the reader's locale
        the way every other date in this room does */

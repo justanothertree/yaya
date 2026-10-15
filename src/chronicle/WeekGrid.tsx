@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { columns, hours, weekOf } from './week'
 import { spanText, type Activity, type Entry } from './record'
+import { todayISO } from '../circuit/dates'
 
 /**
  * The week as a grid: hours down, days across, every session a block where it happened.
@@ -42,7 +43,10 @@ export function WeekGrid({
    */
   const cols = useMemo(() => columns(days, log, Date.now()), [days, log])
   const rows = useMemo(() => hours(), [])
-  const today = new Date().toISOString().slice(0, 10)
+  /* ⚠️ the LOCAL date — see the note on the same line in MonthGrid, and the warning at the top of
+     dates.ts. `toISOString()` is UTC and reads as tomorrow all evening for anybody behind it, so
+     the column ringed as today was tomorrow's from 20:00 onwards. */
+  const today = todayISO()
   /* only the days that have begun — a week you are three days into is not 60% empty */
   const started = cols.filter((c) => c.fromMs <= Date.now())
 
