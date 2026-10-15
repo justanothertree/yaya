@@ -370,11 +370,18 @@ cannot be 24px tall without changing the line it sits in. **A checker that cries
 room's whole toolbar is one nobody runs twice** — so each exclusion is a rule, never a skip
 list of names. What survived it was three things, and all three were real.
 
-**`mobileAudit` asks the PAGE, so ask the CONTAINER too — and then look at it.** `sideways` and
-`offEdge` are measured against the viewport, and an ancestor that manages its own scrolling
-swallows everything inside it: the goal row sat **32px wider than the list holding it** through
-every clean report. Check `el.scrollWidth - el.clientWidth` on the list, the card and the
-container separately. **And a clean number is not a clean room.** Fixing that overflow with
+**`mobileAudit` NOW ASKS THE CONTAINER TOO, because asking it by hand was a step I kept skipping.**
+`sideways` and `offEdge` are measured against the viewport, and an ancestor that manages its own
+scrolling swallows everything inside it: the goal row sat **32px wider than the list holding it**
+through every clean report. That used to be a manual `el.scrollWidth - el.clientWidth` on the list,
+the card and the container — and on 14 Oct the same blind spot produced **three** faults in one day
+(a day log's buttons orphaned on their own line, a goal row's ✕ the same, and a 66-character title
+taking a card 223px past its own edge), each found by eye and none by the sweep. So `spills` is a
+rule now: content past its own box with `overflow-x: visible`, excluding anything that declares the
+axis itself or contains something that does — the piano keyboard and the day strip stay silent.
+Measured across nine rooms, a healthy site reports one finding at six pixels; with the bug put back
+it names the whole chain down to the culprit while `sideways`, `offEdge`, `clipped` and `insideOut`
+all still read zero. **One fault arrives as a chain and the LAST entry is the one to fix.** **And a clean number is not a clean room.** Fixing that overflow with
 `flex-wrap` plus `min-width: 0` took every figure to zero — `listOver`, `cardOver`, `mainOver`,
 `sideways`, nothing undersized or clipped — while a screenshot showed every title crushed to a
 3px column reading ":". The numbers were zero BECAUSE the titles had been destroyed. `min-width:

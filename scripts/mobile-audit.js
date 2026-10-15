@@ -133,6 +133,50 @@ const scrollsXUnasked = (el, cs) => {
 }
 
 /**
+ * CONTENT THAT OVERFLOWS ITS OWN BOX WITH NOBODY MANAGING IT — the class that got past every
+ * other rule in this file three times in one day.
+ *
+ * ⚠️ WHY THE EXISTING RULES CANNOT SEE IT. `sideways` is the DOCUMENT's overflow, and an
+ * ancestor that clips absorbs the spill long before it reaches the page. `offEdge` and `clipped`
+ * both consult `scrollsX`, which treats "an ancestor manages horizontal overflow" as proof that
+ * going past the edge is the design — so everything inside such an ancestor is exempt. And
+ * `scrollsXUnasked` requires the element to BE a scroll container, which this is not: with
+ * `overflow-x: visible` nothing scrolls, the content simply sticks out.
+ *
+ * What it caught, each found by eye and only afterwards explained: a goal row whose ✕ wrapped
+ * onto a line of its own; a day log doing the same; and a 66-character goal title measuring 437px
+ * inside a ~300px card and taking the card 223px past its own edge. All three reported
+ * `sideways: 0, offEdge: [], clipped: []` — correctly, because none of those is what was wrong.
+ *
+ * ⚠️ THE EXCLUSIONS ARE AGAIN THE WHOLE VALUE. Something deliberately sideways declares it:
+ *   · the element itself manages the axis (`auto`/`scroll`) — the day strip, the piano keyboard;
+ *   · or it CONTAINS something that does, and that is what is sticking out — a tab strip that
+ *     bleeds a few pixels past its toolbar for scroll affordance is a design, not a fault.
+ * Measured across nine rooms with both exclusions in place: the healthy site reports one thing, a
+ * button over by six pixels. Without them it reports the instrument's keyboard at 695px on every
+ * run, which is how a checker stops being a checker.
+ *
+ * ⚠️ ONE FAULT ARRIVES AS A CHAIN, AND THE LAST ENTRY IS THE ONE TO FIX. Everything between the
+ * culprit and the page spills too, so the list runs outermost-first — `MAIN.container` by 190,
+ * then down through the card, to `UL.profile-chron-goals` by 238. The deepest row, which is the
+ * narrowest and usually the largest `by`, is where the thing that cannot shrink actually lives.
+ * Reported whole rather than filtered to the innermost, because the chain is also the blast
+ * radius and a reader deciding how urgent this is wants to see how far it reached.
+ */
+const spillsUnmanaged = (el, cs) => {
+  if (cs.overflowX !== 'visible') return false
+  if (el.scrollWidth - el.clientWidth <= 2) return false
+  /* a chip or an icon, where a stray pixel is not a finding */
+  if (el.clientWidth < 40) return false
+  /* something inside it scrolls sideways on purpose, and that is what is over the edge */
+  for (const kid of el.querySelectorAll('*')) {
+    const k = getComputedStyle(kid)
+    if (k.overflowX === 'auto' || k.overflowX === 'scroll') return false
+  }
+  return true
+}
+
+/**
  * ⚠️ WCAG exempts a target whose size is set by the text around it — a link in a sentence
  * cannot be made 24px tall without changing the line it sits in.
  */
@@ -272,6 +316,8 @@ export function mobileAudit(root = document) {
     offEdge: [],
     clipped: [],
     insideOut: [],
+    /* content past its own box with nothing managing it — see spillsUnmanaged */
+    spills: [],
     wordless: [],
   }
   const once = new Set()
@@ -345,6 +391,22 @@ export function mobileAudit(root = document) {
         el: id(el),
         wide: el.clientWidth,
         by: el.scrollWidth - el.clientWidth,
+      })
+    }
+    if (!once.has('p' + id(el)) && spillsUnmanaged(el, cs)) {
+      once.add('p' + id(el))
+      /* the widest child is what to go and look at — naming the container alone sends the reader
+         hunting through its subtree for whichever thing could not shrink */
+      let worst = null
+      for (const kid of el.children) {
+        const kr = kid.getBoundingClientRect().right
+        if (!worst || kr > worst.right) worst = { right: kr, el: id(kid) }
+      }
+      out.spills.push({
+        el: id(el),
+        wide: el.clientWidth,
+        by: el.scrollWidth - el.clientWidth,
+        widest: worst ? worst.el : null,
       })
     }
   }
