@@ -637,7 +637,20 @@ export function Timer({
           /* ⚠️ a timer runs in the present or not at all. On another day the controls would be a
              lie — there is nothing to time — so the day offers the repair tools instead. */
           <span className="muted">
-            Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.
+            {/**
+             * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. The condition here is "not
+             * today", which is true in both directions, and the copy was written for one of them:
+             * stepping forward to Saturday said "Looking back. Use ⏱ Fill a gap to add time",
+             * which is wrong twice — you are looking forward, and you cannot have spent time on a
+             * day you have not lived. Pointing somebody at Fill a gap there invites them to record
+             * work they have not done.
+             *
+             * ⚠️ AND IT POINTS AT THE THING THAT IS ACTUALLY FOR THIS. A future day is what the
+             * planner is for, and the plan list is a few inches further down the same column.
+             */}
+            {seeing > todayISO()
+              ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
+              : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
           </span>
         ) : (
           <>

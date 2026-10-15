@@ -4025,6 +4025,27 @@ which is the ordinary way a room becomes inconsistent — not a wrong decision, 
 Checked both states: blank gives no calendar and keeps the sentence; seeded gives 35 cells and 10
 fills.
 
+## 6bg · ✅ "Looking back" on a day that has not happened
+
+The same method as the blank-account sweep, pointed at another state nothing had been checked
+against: the day stepper walked forwards.
+
+Stepping to Saturday, the room said **"Looking back. Use ⏱ Fill a gap to add time, or go back to
+today to start a timer."** The condition behind it is `seeing !== todayISO()`, which is true in both
+directions; the sentence was written for one of them. It is wrong twice on a future day — you are
+looking forward, and you cannot have spent time on a day you have not lived — and the second half is
+worse than untidy, because it invites somebody to record work they have not done.
+
+A future day now says **"Not here yet. Plan a span below, or go back to today to start a timer."**,
+which points at the thing that is actually for it: the plan list is a few inches down the same
+column. Checked in both directions afterwards — Oct 17, 18 and 19 give the new sentence, Yesterday
+and Oct 13 still give the old one, and today gives neither because the timer controls are there.
+
+**What was already right, and worth noticing.** The week grid's footnote reads _"6% of these 5 days
+is written down"_ when the week is half over — counting the days that have happened rather than
+seven — and on a week entirely in the future it omits the line altogether. The percentage knew
+about the future before the sentence above it did.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
