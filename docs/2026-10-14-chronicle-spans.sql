@@ -10,7 +10,8 @@
 -- and not one word about the record**, which is a strange thing for the view whose whole subject
 -- is the things that take years.
 --
--- The note at Looking's call site says why, and it is right about what it says:
+-- The note at Looking's call site SAID why — quoted here as it stood before this change, because
+-- it has since been reworded to point forward at the answer rather than to read as a dead end:
 --
 --   "⚠️ AND NOT FOR Years, which has no window to add up. All-time totals are a different question
 --    and the range cap is 400 days, so pretending would mean quietly showing a year and calling it

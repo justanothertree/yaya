@@ -928,9 +928,11 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * month, a quarter and a year have no other view at all, which was the biggest hole in
            * the room: it recorded a life and could not show it back.
            *
-           * ⚠️ AND NOT FOR Years, which has no window to add up. All-time totals are a different
-           * question and the range cap is 400 days, so pretending would mean quietly showing a
-           * year and calling it everything.
+           * ⚠️ AND NOT FOR Years, which has no window to add up: all-time totals are a different
+           * question, and `chronicle_totals` caps a range at 400 days, so answering it with THIS
+           * component would mean quietly showing a year and calling it everything. Years asks that
+           * different question properly a few lines down — see `Lifetime`, which is why this note
+           * says "not for Years" rather than "nothing for Years".
            */}
           {/**
            * ⚠️ THE CALENDAR BEFORE THE BARS, and only for the month. The bars say WHAT the month
@@ -941,11 +943,11 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            */}
           {v.scope === 'month' && <MonthGrid on={on} beat={beat} />}
           {/**
-           * ⚠️ AND YEARS GETS ITS OWN, which the note above used to say it could not have. That
-           * note is right that `chronicle_totals` cannot answer it — it caps a range at 400 days —
-           * but that is a fact about one function rather than a reason to show nothing. Years was
-           * the only horizon with not one word about the record in it. `chronicle_spans` asks the
-           * different question: every year somebody has, each as its own window.
+           * ⚠️ AND YEARS GETS ITS OWN. Until this existed, Years was the only horizon with not one
+           * word about the record in it — its goals and nothing else, which is a strange silence
+           * for the view whose whole subject is the things that take years. `chronicle_spans` asks
+           * the question `chronicle_totals` cannot: every year somebody has, each as its own
+           * window, computed in the client because a year begins at local midnight.
            */}
           {v.scope === 'life' && <Lifetime beat={beat} />}
           {win && v.scope !== 'day' && v.scope !== 'life' ? (
