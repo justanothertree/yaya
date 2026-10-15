@@ -175,6 +175,24 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * keeps is a rule that lasts until the next caller.
    */
   const goalCounts: 'minutes' | 'amount' = srcAct?.metric ? countWhat : 'minutes'
+  /**
+   * What the room would suggest for the unit box as things stand — the word the placeholder shows.
+   *
+   * ⚠️ IT EXISTS TO TELL THE ROOM'S WORD FROM THE PERSON'S. `unitFor` says a typed word always
+   * wins, and it must: somebody counting an activity's minutes who calls them "pomodoros" means
+   * pomodoros. But the box is also FILLED from this suggestion on save, so a goal saved against
+   * Gym comes back with "reps" in it — and that word is the room's, not theirs. Moving such a goal
+   * to an activity counting pages left the row disagreeing with itself in one line:
+   * "FROM WRITING · PAGES … 0 / 60 reps".
+   *
+   * So when the source changes, a box still holding the OLD suggestion is emptied and refills from
+   * the new one, and a box holding anything else is left exactly alone.
+   */
+  const suggestedUnit = unitFor('', {
+    counts: goalCounts,
+    activity: srcAct,
+    cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
+  })
   /** how long this is guessed to take, as typed — minutes, blank for "no idea" */
   const [why, setWhy] = useState('')
   const [est, setEst] = useState('')
@@ -878,7 +896,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               {target.trim() !== '' && v.scope !== 'life' && acts.length > 0 && (
                 <label className="chron-choice">
                   <span className="sr-only">Counted from what?</span>
-                  <select value={src} onChange={(e) => setSrc(e.target.value)}>
+                  <select
+                    value={src}
+                    onChange={(e) => {
+                      /* ours to update, theirs to keep — see `suggestedUnit` */
+                      if (unit.trim() === suggestedUnit) setUnit('')
+                      setSrc(e.target.value)
+                    }}
+                  >
                     <option value="">I will count it myself</option>
                     {/**
                      * ⚠️ AN ARCHIVED ACTIVITY STAYS IN THE LIST WHILE IT IS THE ONE SELECTED, the
@@ -926,7 +951,12 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     <span className="sr-only">Count what?</span>
                     <select
                       value={countWhat}
-                      onChange={(e) => setCountWhat(e.target.value as 'minutes' | 'amount')}
+                      onChange={(e) => {
+                        /* the same question: "count the reps" instead of the time changes the
+                           word the room would suggest, so its own word follows and yours does not */
+                        if (unit.trim() === suggestedUnit) setUnit('')
+                        setCountWhat(e.target.value as 'minutes' | 'amount')
+                      }}
                     >
                       <option value="minutes">count the time</option>
                       <option value="amount">count the {picked.metric}</option>

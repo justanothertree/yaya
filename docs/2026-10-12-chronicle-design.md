@@ -4454,6 +4454,41 @@ number and a source has written down something they mean.
   seed's goal on the same activity.
 - A goal genuinely counting reps still does: `Sixty reps a day · FROM GYM · REPS · 60 / 60 reps`.
 
+## 6br · ✅ A goal that said reps and counted pages
+
+§6bq drove the goal form's CREATE path. The EDIT path loads a stored goal back into the same form,
+including its stored `unit` — and `unitFor` is explicit that **a typed word always wins**. So the
+same question as §6bp, one surface over: what happens to the word when the thing it describes
+changes underneath it.
+
+Made a goal counting Gym's reps, then edited it to point at Writing, which counts pages:
+
+> **Sixty reps a day · FROM WRITING · PAGES · 0 / 60 reps**
+
+The chip says pages. The meter says reps. One row, contradicting itself, and the number underneath
+is counting the one the chip names.
+
+**The fix had to not break the rule it was tripping over.** `unitFor` lets a typed word win because
+it must — somebody counting an activity's minutes who calls them "pomodoros" means pomodoros, and
+a room that corrects that is a room arguing with its owner. But `unitFor` is also what FILLS the
+box on save, so a goal saved against Gym comes back with "reps" in it, and that word is the room's,
+not the person's.
+
+So the rule is: **when the source changes, a box still holding the OLD suggestion is emptied and
+refills from the new one; a box holding anything else is left exactly alone.** The same applies to
+the count-the-time/count-the-reps chooser, which changes the suggestion without touching the source.
+
+Both halves driven, which is the whole of the verification:
+
+| goal                                           | unit box                              | after moving to Writing |
+| ---------------------------------------------- | ------------------------------------- | ----------------------- |
+| Sixty reps a day — "reps" is the room's word   | `reps` → cleared, placeholder `pages` | **0 / 60 pages**        |
+| Pomodoro drawing — "pomodoros" is the person's | `pomodoros` → kept                    | **0 / 4 pomodoros**     |
+
+One honest edge: somebody who types the very word the room would have suggested is indistinguishable
+from the room having suggested it, so their word follows too. The outcome is the right word for the
+new source either way, which is why it is left rather than pursued.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
