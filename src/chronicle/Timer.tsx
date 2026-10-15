@@ -435,9 +435,25 @@ export function Timer({
      * have had to change otherwise — so the UI pays one extra round trip on an edit rather than
      * the whole write path paying for a field most sessions do not have.
      */
-    if (!bad && metric) {
-      const n = Number(entAmount)
-      await setAmount(fixEnt, entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n)
+    if (!bad) {
+      const had = log.find((e) => e.id === fixEnt)?.amount ?? null
+      if (metric) {
+        const n = Number(entAmount)
+        await setAmount(fixEnt, entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n)
+      } else if (had != null) {
+        /**
+         * ⚠️ AND A SESSION MOVED ONTO SOMETHING THAT COUNTS NOTHING LOSES ITS NUMBER, rather
+         * than keeping one nothing can show. The box is gone by then, so skipping the write left
+         * the old amount in the row — invisible, and waiting: moving the session back onto an
+         * activity with a metric brought "60 reps" out again. Hidden state that reappears is
+         * worse than a cleared field, because nobody chose it and nobody can see it to undo it.
+         *
+         * ⚠️ ONLY WHEN THERE IS ONE TO CLEAR, so the ordinary edit of an activity that counts
+         * nothing still costs two round trips rather than three — the economy the note above is
+         * about.
+         */
+        await setAmount(fixEnt, null)
+      }
     }
     /* ⚠️ a third call on an edit, for the same reason the amount is a second one — see setQuality.
        Only when it CHANGED, so the common case of nudging a timestamp stays two round trips. */
@@ -982,7 +998,28 @@ export function Timer({
                      */}
                     <label className="chron-choice">
                       <span className="sr-only">What this was</span>
-                      <select value={entAct} onChange={(ev) => setEntAct(ev.target.value)}>
+                      <select
+                        value={entAct}
+                        onChange={(ev) => {
+                          /**
+                           * ⚠️ A QUANTITY BELONGS TO A METRIC, AND MOVING A SESSION CHANGES THE
+                           * METRIC UNDER IT. The box follows the activity SELECTED rather than the
+                           * one the session used to be — which is right — but the NUMBER in it
+                           * stayed put, so moving a 60-rep gym session onto Writing rewrote it as
+                           * "60 pages". Measured in the room: the placeholder flipped to "pages"
+                           * the instant the activity changed, so the form knew the unit had
+                           * changed and kept the number anyway.
+                           *
+                           * Sixty reps is not sixty pages. When the unit changes the number stops
+                           * meaning anything, so it goes, visibly, while somebody is looking at
+                           * it. Moving between two activities that count the SAME thing keeps it.
+                           */
+                          const was = byId.get(entAct)?.metric ?? null
+                          const now = byId.get(ev.target.value)?.metric ?? null
+                          if (was !== now) setEntAmount('')
+                          setEntAct(ev.target.value)
+                        }}
+                      >
                         {[...open, ...(a && a.archived ? [a] : [])].map((x) => (
                           <option key={x.id} value={x.id}>
                             {x.name}

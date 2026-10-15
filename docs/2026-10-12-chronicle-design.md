@@ -4365,6 +4365,53 @@ whose only possible answer is an error should not be lit. ✓ is disabled on a p
 started, titled "Not yet — this has not started" — the same lesson as the archived step in a
 routine, one surface over. 375: three rows, ticks 44×38, nothing over the list.
 
+## 6bp · ✅ Sixty reps became sixty pages
+
+Moving a session to another activity exists because pressing Start on the wrong one is the
+likeliest mistake a stopwatch allows. An amount exists because some activities count something —
+reps, pages, maps. Put together, they had a hole: **the number stayed while its unit changed.**
+
+Measured in the room. `Gym · 45m · 60 reps` opened in the editor, activity switched to Writing,
+nothing else touched, Save:
+
+> **Writing 45m 60 pages**
+
+The box's placeholder flipped from "reps" to "pages" the instant the activity changed — so the
+form knew the unit had changed and kept the number anyway.
+
+**And a second door, quieter.** The amount box follows the SELECTED activity, which is right, so
+moving onto something that counts nothing takes the box away. The save then skipped `setAmount`
+entirely, because it only ran `if (metric)`. The old number stayed in the row, invisible, and came
+back out the moment the session was moved onto an activity with a metric again. Hidden state that
+reappears is worse than a cleared field: nobody chose it and nobody can see it to undo it.
+
+Both have one root — a quantity belongs to a metric — and one fix. When the selected activity's
+metric differs from the one the box is currently under, the number goes, **visibly, while somebody
+is looking at it**. And when a session lands on an activity that counts nothing and it had an
+amount, that amount is cleared rather than left behind; only when there is one to clear, so the
+ordinary edit still costs two round trips rather than three.
+
+Four cases, the last two being the controls that stop this from being an over-correction:
+
+| move                                            | the number                         |
+| ----------------------------------------------- | ---------------------------------- |
+| Gym (reps) → Writing (pages)                    | cleared                            |
+| → Dishes (counts nothing), then back to Gym     | cleared, and does not come back    |
+| same activity: type 25, then edit only the note | 25, and still 25                   |
+| Writing (pages) → the difficult chapter (pages) | **kept** — same unit, same meaning |
+
+⚠️ **A THIRD DOOR IS OPEN AND IS NOT MINE TO SHUT.** Editing an ACTIVITY to change or remove its
+metric does the same thing from the other side: every amount already recorded against it keeps its
+number and loses its meaning, invisibly, until a new metric brings them back out under the wrong
+word. The repair would mean deleting quantities out of rows somebody recorded, which is
+irreversible and is Evan's call rather than mine — see CLAUDE.md §4. Named here rather than done.
+
+**And a note on getting a clean fixture.** Clearing localStorage to reset the preview store did not
+reset it — the store is module state — but it did remove `dev_preview_member`, so the room came
+back signed-out and the next reading was taken against a sign-in card. The store is reset by a real
+`location.reload()`; navigating to the same `#chronicle` URL is a hash change and reloads nothing,
+which is why the first "fresh" seed still had the previous test's row in it.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
