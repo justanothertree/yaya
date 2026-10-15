@@ -270,6 +270,16 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   Both times the honest-looking conclusion was "it must be an inline style" and both times it
   was a stylesheet rule four lines from the one I was reading. Check `.length`, or use
   `whoSets()` in `scripts/mobile-audit.js`, which does.
+- **THE SITE'S OWN NAV HAS `‹` AND `›`, so finding a stepper by its glyph finds the wrong button
+  and clicks it silently.** `[...document.querySelectorAll('button')].find(b => b.textContent
+.trim() === '‹')` matches `nav-arrow-l` long before it reaches the chronicle day stepper — the
+  click lands, nothing throws, and the day does not move. Twice in one session that produced a
+  reading taken against a day that had never changed, and the second time it looked like a real
+  finding: a sidebar "stuck" on today across three days, which was two nav clicks and a component
+  that is pinned to today on purpose. **Scope the query** — `document.querySelector('.chron-day
+button[aria-label="The day before"]')` — and before believing a stepped reading, assert the
+  label moved. Anything with an `aria-label` or a `title` should be found by that, never by its
+  glyph.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

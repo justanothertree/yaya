@@ -4792,6 +4792,34 @@ editor still offers it; the fold still lists it. **And the preview seed was demo
 forbidden state** — its running sitting was on the auto activity, which is how the overlap appeared
 at all. It runs on Drawing now.
 
+## 6ca · ✅ Two hunts that found nothing, and the selector that nearly invented one
+
+Recorded because both were checked and both were already right — and because the second nearly
+became a bug report.
+
+**Can the day's figures exceed a day?** Two sittings may overlap: the table has never forbidden
+recording a call during a work block, and the category chips really do sum both. `week.ts` got
+there first, in a comment on `covered`: _"IT CAN BE OVER 100 BEFORE THE CLAMP … clamped rather
+than refused, because '103% of your day' is a number that reads as a bug while '100%' reads as a
+full day."_ Manual overlap is the person's own choice; §6bz was a bug only because the SITE made
+one unasked. Nothing to do.
+
+**Is the rail stuck on today?** Stepping the day back to Mon, Oct 12, the log changed correctly —
+Drawing 50m, Gym 40m, Writing 30m — and the rail stayed byte-identical, still headed "TODAY" with
+today's figures. That reads exactly like a panel that forgot to re-read.
+
+It is not. `on = v.when()` is the VIEW's day, which on the Today tab is today; the stepper drives
+`seeing`, which belongs to the Timer. The rail is given `on`, is labelled "Today at a glance", and
+is pinned to today **on purpose** — the room's two halves follow different clocks, which is what
+"two halves" has meant since §1.
+
+⚠️ **AND THE FIRST THREE ATTEMPTS AT THAT MEASUREMENT WERE AGAINST A DAY THAT NEVER MOVED.** The
+site's own navigation carries `‹` and `›` buttons, so finding the stepper by its glyph matches
+`nav-arrow-l` first. The click lands, nothing throws, the day stays put — and the "evidence" was
+a rail that looked stuck beside a room that had not changed either. The same selector had already
+cost a reading earlier in the session. It is in CLAUDE.md now: scope the query, find a control by
+its `aria-label`, and assert the label moved before believing anything downstream of a step.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
