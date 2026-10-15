@@ -213,6 +213,45 @@ describe('the preview store keeps the contracts the server keeps', () => {
     expect(pvAddEntry(draw, h(1), h(26), null)).toEqual({ why: 'that is more than a day' })
   })
 
+  /**
+   * ⚠️ YOU CANNOT HAVE SPENT TIME ON A DAY YOU HAVE NOT LIVED. The room says so in words on a
+   * future day, and then had two doors that wrote one anyway — ⏱ Fill a gap, and ✓ on tomorrow's
+   * plan, which goes through pvPlanDid straight into pvAddEntry. Measured in the room before the
+   * fix: pressing ✓ on a 7:00–7:45 plan for tomorrow logged "Gym 45m" twenty-five hours ahead and
+   * counted it in the day's totals.
+   *
+   * ⚠️ THESE ASK ABOUT THE REAL CLOCK, not about the fixture's day, which is why they are written
+   * from `Date.now()`. The fixture is anchored to a fixed date in the past on purpose — were it
+   * ever moved to "today", every test above that adds a morning sitting would start failing in
+   * the morning and passing in the evening.
+   */
+  it('and refuses a sitting that has not happened yet', () => {
+    const from = new Date(Date.now() + 25 * 3_600_000).toISOString()
+    const to = new Date(Date.now() + 25.75 * 3_600_000).toISOString()
+    expect(pvAddEntry(draw, from, to, null)).toEqual({ why: 'that is in the future' })
+
+    const soon = new Date(Date.now() + 60_000).toISOString()
+    const sooner = new Date(Date.now() + 120_000).toISOString()
+    expect(pvAddEntry(draw, soon, sooner, null)).toEqual({ why: 'that is in the future' })
+  })
+
+  /**
+   * ⚠️ THE START, NOT THE END. A block you are in the middle of ends after now, and so does a
+   * sitting logged by somebody whose clock is two minutes fast; neither is time nobody has spent.
+   */
+  it('and still takes a block that began before now and runs a little past it', () => {
+    const from = new Date(Date.now() - 600_000).toISOString()
+    const to = new Date(Date.now() + 300_000).toISOString()
+    expect(pvAddEntry(draw, from, to, null)).toBe(null)
+  })
+
+  /** nothing already refused changed its answer: the day bound is still judged first */
+  it('and answers a future span that is also too long about its length', () => {
+    const from = new Date(Date.now() + 25 * 3_600_000).toISOString()
+    const to = new Date(Date.now() + 50 * 3_600_000).toISOString()
+    expect(pvAddEntry(draw, from, to, null)).toEqual({ why: 'that is more than a day' })
+  })
+
   /** the order is part of the contract: backwards AND too long is answered about backwards */
   it('and judges a backwards span before a long one', () => {
     expect(pvAddEntry(draw, h(99), h(1), null)).toEqual({

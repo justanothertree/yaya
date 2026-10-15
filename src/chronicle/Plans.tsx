@@ -320,6 +320,15 @@ export function Plans({
             <ul className="chron-plans">
               {rows.map((p) => {
                 const a = byId.get(p.activity)
+                /**
+                 * ⚠️ NOTHING IS "done" BEFORE IT HAS STARTED, and this row offered it anyway.
+                 * ✓ hands the plan's own times to chronicle_entry_add, so pressing it on
+                 * tomorrow's 7:00–7:45 wrote a 45-minute sitting twenty-five hours ahead and
+                 * counted it in the day's totals. The server refuses that now; this stops the
+                 * room offering a button whose only possible answer is an error — the same
+                 * lesson as the archived step in a routine.
+                 */
+                const notYet = Date.parse(p.start) > Date.now()
                 return (
                   <li key={p.id} className="chron-plan">
                     <span className="chron-plan-when">{spanClock(p.start, p.end ?? p.start)}</span>
@@ -338,12 +347,14 @@ export function Plans({
                     <span className="chron-plan-do">
                       <button
                         className="btn btn-ghost"
-                        disabled={busy}
-                        title="I did this — log it"
+                        disabled={busy || notYet}
+                        title={notYet ? 'Not yet — this has not started' : 'I did this — log it'}
                         onClick={() => void did(p)}
                       >
                         <span aria-hidden>✓</span>
-                        <span className="sr-only">Log this as done</span>
+                        <span className="sr-only">
+                          {notYet ? 'Not started yet' : 'Log this as done'}
+                        </span>
                       </button>
                       <button
                         className="btn btn-ghost"

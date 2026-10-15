@@ -705,6 +705,15 @@ export const pvAddEntry = (
   /* a sitting is a sitting and not a holiday — the server's bound is 24 hours */
   if (Date.parse(toISO) - Date.parse(fromISO) > 86_400_000)
     return { why: 'that is more than a day' }
+  /**
+   * ⚠️ AND NOT IN THE FUTURE — the start, not the end, the same check chronicle_running_fix has
+   * always made. Two doors wrote a sitting nobody had sat: ⏱ Fill a gap, and ✓ on tomorrow's
+   * plan, which goes through chronicle_plan_did straight into this function.
+   *
+   * ⚠️ LAST OF THE THREE, so that nothing already refused changes its answer — a span that is
+   * both in the future and longer than a day is still answered about its length.
+   */
+  if (Date.parse(fromISO) > Date.now()) return { why: 'that is in the future' }
   if (!db().acts.some((x) => x.id === activity)) return { why: 'no such activity' }
   db().ents.push({
     id: mint('pv-e'),
@@ -741,6 +750,9 @@ export const pvEditEntry = (
   if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that span ends before it starts' }
   if (Date.parse(toISO) - Date.parse(fromISO) > 86_400_000)
     return { why: 'that is more than a day' }
+  /* ⚠️ the same rule pvAddEntry keeps, because a rule only one of them keeps is one you get
+     around by adding a legal sitting and then editing it forward */
+  if (Date.parse(fromISO) > Date.now()) return { why: 'that is in the future' }
   /**
    * ⚠️ NULL LEAVES IT WHERE IT IS, and a named activity has to be one of yours — the same two
    * rules chronicle_entry_edit keeps. The second one matters more than it looks: the server

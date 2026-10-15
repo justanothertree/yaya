@@ -4329,6 +4329,42 @@ once with five chips. Widening a chip on it to repeat something the next line al
 real risk for a marginal gain. The chip's wording is right for every scope, incidentally: it reads
 `g.scope`, so a quarter goal says "quarters in a row" rather than taking the year view's word.
 
+## 6bo · ✅ ✓ on tomorrow's plan recorded time nobody had spent
+
+§6bg fixed the sentence a future day shows, and said why: the old one "invites somebody to record
+work they have not done". The sentence was fixed and the button was not.
+
+Plans is a surface nothing this week had driven, and it is the routine bug's sibling — a saved
+thing pointing at an activity, shown on a day you have not reached. `chronicle_plan_did` hands a
+plan's own times to `chronicle_entry_add`, which checked the span's direction and its length and
+nothing else. Measured in the room with the clock at 15 Oct 06:30, pressing ✓ on tomorrow's
+`7:00–7:45 · Gym`:
+
+> **Gym 45m SHORT 7:00 AM – 7:45 AM** · Free Time 45m · "1h 15m · 45m done"
+
+Forty-five minutes of gym, twenty-five hours ahead, counted in a day's totals. ⏱ Fill a gap is the
+same door by hand, which is why the check went into `chronicle_entry_add` rather than into either
+caller — and into `chronicle_entry_edit` too, since a rule only one write path keeps is one you get
+around by adding a legal sitting and editing it forward.
+
+**The start, not the end**, and the same check `chronicle_running_fix` has always made in the same
+words. A span whose end is slightly ahead is what logging a block you are in the middle of looks
+like, and what a clock two minutes fast produces. **And last of the three checks**, so every input
+refused before this is still refused with the same words — only inputs that were _accepted_ can
+newly be refused.
+
+⚠️ **THE POSITIVE CONTROL NEARLY DIDN'T HAPPEN, AND WOULD HAVE HIDDEN A DISASTER.** The first pass
+through the room after the fix showed every tick disabled on Today as well as Tomorrow, which reads
+exactly like proof the fix works. It was the clock: 06:34, with both of the day's plans at 10:00
+and 14:00, so all four were legitimately in the future. A guard with no positive control is a guard
+that might have turned the feature off. A plan made for 05:00 that morning is still tickable, and
+pressing it logged "Gym 30m" and moved the fold to "3h · 2h 11m done".
+
+**And the room no longer offers it.** The server refusing is correct and not sufficient: a button
+whose only possible answer is an error should not be lit. ✓ is disabled on a plan that has not
+started, titled "Not yet — this has not started" — the same lesson as the archived step in a
+routine, one surface over. 375: three rows, ticks 44×38, nothing over the list.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
