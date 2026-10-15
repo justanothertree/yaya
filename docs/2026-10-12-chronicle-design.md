@@ -4412,6 +4412,48 @@ back signed-out and the next reading was taken against a sign-in card. The store
 `location.reload()`; navigating to the same `#chronicle` URL is a hash change and reloads nothing,
 which is why the first "fresh" seed still had the previous test's row in it.
 
+## 6bq · ✅ A goal that could never move, made through the form
+
+Every goal examined this week came out of the seed. Nothing had ever gone through the goal editor,
+which is the room's other half and has more fields than any other form in it.
+
+The form asks what to count FROM, and then — only when the chosen activity names a metric — offers
+a second choice: count the time, or count the reps. Both are right. But they are **two controls**,
+and the second kept its answer when the first moved beneath it. Pick Gym, choose "count the reps",
+change the source to Dishes: the chooser vanishes, `countWhat` stays on `amount`, the save sends it.
+
+What that made, sitting in the same list as its own counter-example:
+
+| goal                                     | source      | reads               |
+| ---------------------------------------- | ----------- | ------------------- |
+| Read ten books _(made through the form)_ | FROM DISHES | **0 / 10 done**     |
+| Wash up every evening _(from the seed)_  | FROM DISHES | **12 / 10 minutes** |
+
+Same activity, same twelve minutes in the log two inches above, one stuck at zero for ever — it
+was measuring a quantity Dishes never records. The unit read "done" rather than "minutes", which
+is `unitFor` faithfully reporting the nonsense it was handed. **This is §6bd's shape, and the first
+instance anybody could create on purpose rather than inherit.**
+
+⚠️ **AND THE SERVER HAD TO BE READ BEFORE CALLING IT A PRODUCT BUG.** The comment beside
+`countWhat` says "the table refuses that pairing and the save function corrects it", which would
+have made this a double-fidelity problem instead. `chronicle_goal_save` does correct one case —
+`if v_counts = 'amount' and v_act is null` — and Dishes is not null. The correction had one half of
+the question. The preview was reproducing the server faithfully.
+
+Fixed in both places, because a rule the client alone keeps lasts until the next caller: the room
+**derives** what a goal counts from its source rather than remembering it, so a stale answer cannot
+reach a save, and the server's correction now asks both halves — is there an activity, and does it
+name a metric. Corrected rather than raised, like its sibling: somebody who has typed a title, a
+number and a source has written down something they mean.
+
+**Checked, including the control that stops it being the feature switched off:**
+
+- 0 of 1 goals on the account count an amount, so nothing stored is wrong — this is preventive.
+- Through the form: Gym + "count the reps" offers `reps`; moving the source to Dishes turns the
+  unit box from **"done"** to **"minutes"**; saved, it reads `12 / 10 minutes` and agrees with the
+  seed's goal on the same activity.
+- A goal genuinely counting reps still does: `Sixty reps a day · FROM GYM · REPS · 60 / 60 reps`.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

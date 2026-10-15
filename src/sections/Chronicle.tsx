@@ -153,6 +153,28 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * that pairing and the save function corrects it, and the picker below simply does not offer it.
    */
   const [countWhat, setCountWhat] = useState<'minutes' | 'amount'>('minutes')
+  /** the activity a goal is counted from, resolved once — null for a category or for neither */
+  const srcAct = useMemo(
+    () => (src.startsWith('a:') ? (acts.find((a) => a.id === src.slice(2)) ?? null) : null),
+    [src, acts],
+  )
+  /**
+   * ⚠️ WHAT THE GOAL ACTUALLY COUNTS, DERIVED RATHER THAN REMEMBERED — and this is the fix for a
+   * goal that could never move. The chooser above appears only when the source is one activity
+   * that names a metric, but it is a SEPARATE control from the source and it kept its answer when
+   * the source moved beneath it. Pick Gym, choose "count the reps", then change the source to
+   * Dishes: the chooser vanishes, `countWhat` stays on 'amount', and the save sent it.
+   *
+   * What that made was a goal counting a quantity its source never records. Driven in the room:
+   * "Read ten books · FROM DISHES · 0 / 10 done", two inches from "Wash up every evening · FROM
+   * DISHES · 12 / 10 minutes" — same activity, same twelve minutes, one of them stuck at zero for
+   * ever. The same shape as every other goal that read 0 with the minutes in the totals above it.
+   *
+   * Derived, the remembered answer is harmless: it only reaches a save when the source can
+   * actually produce one. chronicle_goal_save corrects it too, because a rule the client alone
+   * keeps is a rule that lasts until the next caller.
+   */
+  const goalCounts: 'minutes' | 'amount' = srcAct?.metric ? countWhat : 'minutes'
   /** how long this is guessed to take, as typed — minutes, blank for "no idea" */
   const [why, setWhy] = useState('')
   const [est, setEst] = useState('')
@@ -269,7 +291,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
          tick-box would tick itself the moment you did a minute of anything */
       activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
       cat: hasTarget && src.startsWith('c:') ? (src.slice(2) as Activity['cat']) : null,
-      counts: hasTarget && src.startsWith('a:') ? countWhat : 'minutes',
+      counts: hasTarget ? goalCounts : 'minutes',
       /* ⚠️ a blank or unreadable guess is null, not zero: "no idea" is a real answer and zero
          minutes of work is not — see Goal.est, and `weight`, which has to count the difference */
       est: (() => {
@@ -280,8 +302,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       /** see `unitFor` — a target always carries a unit, and the room usually knows which */
       unit: hasTarget
         ? unitFor(unit, {
-            counts: countWhat,
-            activity: src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null,
+            counts: goalCounts,
+            activity: srcAct,
             cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
           })
         : null,
@@ -840,8 +862,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 <input
                   value={unit}
                   placeholder={unitFor('', {
-                    counts: countWhat,
-                    activity: src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null,
+                    counts: goalCounts,
+                    activity: srcAct,
                     cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
                   })}
                   onChange={(e) => setUnit(e.target.value)}
@@ -898,7 +920,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                * with one answer.
                */}
               {(() => {
-                const picked = src.startsWith('a:') ? acts.find((a) => a.id === src.slice(2)) : null
+                const picked = srcAct
                 return picked?.metric ? (
                   <label className="chron-choice">
                     <span className="sr-only">Count what?</span>

@@ -564,7 +564,20 @@ export const pvSaveGoal = (g: NewGoal): { id: string } => {
     sort: g.sort ?? 0,
     activity: g.activity ?? null,
     cat: g.cat ?? null,
-    counts: g.counts ?? 'minutes',
+    /**
+     * ⚠️ AN AMOUNT NEEDS AN ACTIVITY THAT COUNTS ONE, which chronicle_goal_save corrects rather
+     * than refuses — a goal with a nonsense pairing is still a goal somebody is writing down, so
+     * it measures time instead. Both halves of the correction: no activity at all, and an
+     * activity that names no metric. The second was the one a goal could be saved through, and it
+     * made a goal that read 0 for ever against a source with minutes in it.
+     */
+    counts:
+      g.counts === 'amount' &&
+      db()
+        .acts.find((a) => a.id === g.activity)
+        ?.metric?.trim()
+        ? 'amount'
+        : 'minutes',
   })
   const i = db().goals.findIndex((x) => x.id === id)
   /* ⚠️ an edit keeps the progress and the tick, which live in their own columns and are not on

@@ -289,6 +289,30 @@ describe('the preview store keeps the contracts the server keeps', () => {
     expect(pvQuality(id, null)).toBe(true)
   })
 
+  /**
+   * ⚠️ A GOAL CANNOT COUNT SOMETHING ITS SOURCE DOES NOT RECORD. chronicle_goal_save corrects the
+   * pairing rather than refusing it, in both halves: an amount with no activity, and an amount
+   * against an activity that names no metric. The second is the one the room could reach — the
+   * "count the reps" chooser is a separate control from the source and kept its answer when the
+   * source moved beneath it, so a goal pointed at an activity with no metric was saved counting a
+   * quantity that activity never records, and read 0 for ever.
+   */
+  it('and corrects a goal that counts an amount its source cannot produce', () => {
+    /* Idle exists and names no metric at all */
+    const onIdle = goalOn({ target: 10, activity: idle, counts: 'amount' })
+    expect(pvGoals().find((g) => g.id === onIdle)?.counts).toBe('minutes')
+
+    /* and neither does "no source at all" */
+    const onNothing = goalOn({ target: 10, counts: 'amount' })
+    expect(pvGoals().find((g) => g.id === onNothing)?.counts).toBe('minutes')
+  })
+
+  /** the control, so this is a correction and not simply switching the feature off */
+  it('and leaves it alone when the activity really does count something', () => {
+    const onGym = goalOn({ target: 10, activity: gym, counts: 'amount' })
+    expect(pvGoals().find((g) => g.id === onGym)?.counts).toBe('amount')
+  })
+
   it('and a goal with no source at all is not answered', () => {
     const hand = goalOn({ target: 100, unit: 'points' })
     expect(pvTally(ask(hand))).toEqual({})
