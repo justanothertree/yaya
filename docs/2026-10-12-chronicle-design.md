@@ -4964,6 +4964,40 @@ against a figure typed in twice.
 The boundary is the whole of the off-by-one: the server refuses **more** than the cap, so exactly
 1,200 is one call and 1,201 is two. Both tests go red when the split is made at `size + 1`.
 
+## 6cf · ✅ The console, which nothing had read all week
+
+Dozens of drives through this room, and the browser console had never once been looked at. It is a
+channel, and an unread channel is the same shape as an unexercised state.
+
+Driven through every tab, both calendars, the folds and the day stepper, the room itself is quiet:
+no React key or dependency warnings, and **no Supabase request at all** — the preview double really
+is self-contained, which is worth knowing rather than assuming.
+
+Four things do appear, and three are dev-only noise: the Cloudflare analytics beacon failing CORS
+on localhost (it is configured for the real origin), and a fetch to `localhost:8080` refusing to
+connect. The fourth is not noise:
+
+```
+https://…supabase.co/rest/v1/rpc/set_my_profile_look   → 401
+```
+
+**A write, at the production database, on every dev page load.** `App.tsx` makes
+`isFinanceAuthed` true for `previewMember` alone, with no session, which opens the gate on the
+effect that mirrors local appearance choices up to the profile. That effect is carefully guarded
+against its FIRST run — its comment explains why, because publishing on mount once replaced
+somebody's profile look with a new browser's empty defaults "silently, having chosen nothing" —
+but a later change to theme, palette or backdrop publishes.
+
+It fails today only for want of a token. `dev_preview_member` is a localStorage flag set by hand,
+and the obvious time to set it is while signed in to look at a members-only room — at which point
+the write succeeds and overwrites a real profile look. **The harness can reintroduce the exact bug
+that effect was written to prevent.**
+
+Outside this room, so raised rather than changed. ⚠️ **And it nearly went unexamined**: a 401
+sitting among four CORS failures from an analytics beacon reads as more of the same. The thing
+that separated them was asking the page which off-site resources it had actually requested, rather
+than reading the console's prose.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
