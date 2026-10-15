@@ -690,7 +690,22 @@ export const pvAddEntry = (
   toISO: string,
   note: string | null,
 ): { why: string } | null => {
-  if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that ends before it starts' }
+  /**
+   * ⚠️ chronicle_entry_add'S THREE CHECKS, IN ITS ORDER AND ITS WORDS. The order is part of the
+   * contract: a span that is both backwards and four days long is answered about being backwards.
+   *
+   * ⚠️ AND NO ARCHIVED CHECK HERE, which looks like an inconsistency with pvStart and is not.
+   * `chronicle_entry_add` asks only `owner = auth.uid()`, while `chronicle_start` also asks
+   * `archived_at is null`. Writing down an hour you already spent on something you have since put
+   * away is recording history; only STARTING a new sitting on it is refused. Copying the stricter
+   * rule across would have invented a refusal the server does not make.
+   */
+  if (!toISO || !fromISO || Date.parse(toISO) <= Date.parse(fromISO))
+    return { why: 'that span ends before it starts' }
+  /* a sitting is a sitting and not a holiday — the server's bound is 24 hours */
+  if (Date.parse(toISO) - Date.parse(fromISO) > 86_400_000)
+    return { why: 'that is more than a day' }
+  if (!db().acts.some((x) => x.id === activity)) return { why: 'no such activity' }
   db().ents.push({
     id: mint('pv-e'),
     activity,
@@ -716,8 +731,16 @@ export const pvEditEntry = (
   activity?: string | null,
 ): { why: string } | null => {
   const e = db().ents.find((x) => x.id === id)
-  if (!e) return { why: 'that entry is gone' }
-  if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that ends before it starts' }
+  /**
+   * ⚠️ THE SPAN IS JUDGED BEFORE THE ENTRY IS LOOKED FOR, because that is the order
+   * chronicle_entry_edit judges them in — its `if not found` comes after the update, so a bad
+   * span against an id that is not there is answered about the SPAN. The double used to answer
+   * 'that entry is gone' first, and in its own words rather than the server's.
+   */
+  if (!fromISO || !toISO) return { why: 'both ends, please' }
+  if (Date.parse(toISO) <= Date.parse(fromISO)) return { why: 'that span ends before it starts' }
+  if (Date.parse(toISO) - Date.parse(fromISO) > 86_400_000)
+    return { why: 'that is more than a day' }
   /**
    * ⚠️ NULL LEAVES IT WHERE IT IS, and a named activity has to be one of yours — the same two
    * rules chronicle_entry_edit keeps. The second one matters more than it looks: the server
@@ -727,6 +750,7 @@ export const pvEditEntry = (
    */
   if (activity != null && !db().acts.some((a) => a.id === activity))
     return { why: 'that is not one of your activities' }
+  if (!e) return { why: 'no such entry' }
   /* ⚠️ null leaves the note alone, '' clears it — chronicle_entry_edit's rule, and the reason a
      caller that forgets this argument can no longer destroy what somebody wrote */
   Object.assign(e, {
@@ -770,7 +794,11 @@ export const pvAmount = (id: string, amount: number | null): boolean => {
   return !!e
 }
 
+/* ⚠️ 1 TO 5, as chronicle_entry_quality insists; null is "no opinion" and goes through. Nothing in
+   the room can send a 6, which is the reason to refuse one here rather than a reason not to: a
+   bound only the UI keeps is a bound that goes the day somebody builds a second way in. */
 export const pvQuality = (id: string, quality: number | null): boolean => {
+  if (quality != null && (quality < 1 || quality > 5)) return false
   const e = db().ents.find((x) => x.id === id)
   if (e) e.quality = quality
   return !!e

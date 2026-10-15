@@ -196,6 +196,60 @@ describe('the preview store keeps the contracts the server keeps', () => {
     pvStop(null)
   })
 
+  /**
+   * ⚠️ A SITTING IS A SITTING AND NOT A HOLIDAY. ⏱ Fill a gap is two free-form datetime boxes, so
+   * a span of days is a thing a person can type in half a second — and the double used to accept
+   * it. Driven in the pane before this was fixed, a three-day gap took the week from 4h 58m to
+   * 150h 43m and the room reported "148h 38m more than this", all of which the live site would
+   * have refused outright.
+   */
+  it('and refuses a sitting longer than a day, the way chronicle_entry_add does', () => {
+    /* exactly a day is a day — the bound is `> 24 hours`, not `>=` */
+    expect(pvAddEntry(draw, h(1), h(25), null)).toBe(null)
+    const aDayAndAMoment = new Date(Date.parse(h(1)) + 86_400_001).toISOString()
+    expect(pvAddEntry(draw, h(1), aDayAndAMoment, null)).toEqual({
+      why: 'that is more than a day',
+    })
+    expect(pvAddEntry(draw, h(1), h(26), null)).toEqual({ why: 'that is more than a day' })
+  })
+
+  /** the order is part of the contract: backwards AND too long is answered about backwards */
+  it('and judges a backwards span before a long one', () => {
+    expect(pvAddEntry(draw, h(99), h(1), null)).toEqual({
+      why: 'that span ends before it starts',
+    })
+  })
+
+  /**
+   * ⚠️ AND AN ARCHIVED ACTIVITY IS FINE HERE, which is the opposite of pvStart and is not an
+   * inconsistency. chronicle_entry_add asks only `owner = auth.uid()`; chronicle_start also asks
+   * `archived_at is null`. Writing down an hour you already spent on something you have since put
+   * away is recording history. Pinned because the obvious tidy-up is to make the two match.
+   */
+  it('and still lets you write down time against an activity you have put away', () => {
+    expect(pvArchive(draw, true)).toBe(true)
+    expect(pvAddEntry(draw, h(1), h(2), null)).toBe(null)
+    expect(pvStart(draw)).toEqual({ why: 'no such activity' })
+    expect(pvArchive(draw, false)).toBe(true)
+  })
+
+  it('and refuses an edit with only one end, and one that runs over a day', () => {
+    expect(pvAddEntry(draw, h(1), h(2), null)).toBe(null)
+    const id = pvEntries(h(0), h(24))[0].id
+    expect(pvEditEntry(id, '', h(2), null)).toEqual({ why: 'both ends, please' })
+    expect(pvEditEntry(id, h(1), h(26), null)).toEqual({ why: 'that is more than a day' })
+  })
+
+  /** null is "no opinion" and goes through; the room cannot send a 6 and the store refuses one */
+  it('and keeps a rating between 1 and 5', () => {
+    expect(pvAddEntry(draw, h(1), h(2), null)).toBe(null)
+    const id = pvEntries(h(0), h(24))[0].id
+    expect(pvQuality(id, 0)).toBe(false)
+    expect(pvQuality(id, 6)).toBe(false)
+    expect(pvQuality(id, 5)).toBe(true)
+    expect(pvQuality(id, null)).toBe(true)
+  })
+
   it('and a goal with no source at all is not answered', () => {
     const hand = goalOn({ target: 100, unit: 'points' })
     expect(pvTally(ask(hand))).toEqual({})
@@ -769,7 +823,9 @@ describe('moving a session to another activity', () => {
 
   it('still refuses a span that ends before it starts, whatever it is being moved to', () => {
     const id = added(gym, h(9), h(10))
-    expect(pvEditEntry(id, h(10), h(9), null, draw)).toEqual({ why: 'that ends before it starts' })
+    expect(pvEditEntry(id, h(10), h(9), null, draw)).toEqual({
+      why: 'that span ends before it starts',
+    })
     expect(pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.activity).toBe(gym)
   })
 

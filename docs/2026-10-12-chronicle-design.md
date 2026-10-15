@@ -4246,6 +4246,55 @@ Both tests were made to fail once: reinstating the two-state rule turns four of 
 removing the double's archived check turns the fidelity test red. 375 and 1440 checked — three
 steps, no overflow, nothing under 24px.
 
+## 6bm · ✅ Every guard the server keeps, against every guard the double keeps
+
+§6bl found that `pvStart` was missing the server's archived check, and that the missing check had
+hidden a real bug rather than invented one. One infidelity found by accident is a reason to look
+for the rest, so both sides were listed: every `raise exception` in all 25 `chronicle_*` functions,
+against every refusal the double can give.
+
+Most of the gaps are caps a preview session cannot reach — 200 activities, 500 goals, 5000 plans,
+40 routines — and simulating those would be inventing a fixture nobody will have. **One gap was
+reachable in half a second**, because ⏱ Fill a gap is two free-form datetime boxes:
+
+`chronicle_entry_add` refuses a span over 24 hours. The double refused only a backwards one. Driven
+in the room before the fix, a three-day gap was **accepted**: the week went from 4h 58m to
+**150h 43m**, and the comparison line read "148h 38m more than this". The live site would have
+refused it outright.
+
+⚠️ **The first attempt to show this measured nothing**, and said so loudly enough to be caught: the
+activity select was left unset, the client refused with "which activity was it?" before the double
+ever saw the span, and the week was unchanged. A clean result from a path that never reached the
+thing under test. Re-run with the activity chosen, it failed immediately.
+
+**What was aligned**, in the server's order and the server's words — the order is part of the
+contract, since a span that is both backwards and four days long is answered about being backwards:
+
+| function      | gained                                                                                              |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| `pvAddEntry`  | the 24-hour bound, the activity check, and `'that span ends before it starts'`                      |
+| `pvEditEntry` | `'both ends, please'`, the 24-hour bound, and `'no such entry'` **last**, where the server makes it |
+| `pvQuality`   | a rating is 1 to 5                                                                                  |
+
+⚠️ **AND ONE DELIBERATE DIFFERENCE, PINNED SO IT IS NOT TIDIED AWAY.** `chronicle_entry_add` asks
+only `owner = auth.uid()`; `chronicle_start` also asks `archived_at is null`. Writing down an hour
+you already spent on something you have since put away is recording history — only _starting_ a new
+sitting on it is refused. Copying the stricter rule across, which is the obvious tidy-up, would
+have invented a refusal the server does not make. There is a test asserting both halves.
+
+**A near-miss worth keeping.** The patch that made these edits asserted a single match per anchor,
+and one anchor matched **twice** — `pvFixRunning` makes the same "not one of your activities" check
+in the same words as `pvEditEntry`. The assert caught it; a bare search-and-replace would have
+edited the wrong function and left the right one alone.
+
+**And one test was wrong rather than the code.** The first boundary test asserted that `h(1)` to
+`h(25)` is refused. That is exactly twenty-four hours, and the bound is `> 24 hours`, not `>=`, so
+the code was right. It now asserts the boundary from both sides — exactly a day passes, a day and
+one millisecond does not.
+
+Driven afterwards: the three-day gap is refused with "that is more than a day", the form stays
+open, and a legal ninety-minute one is accepted and closes it. 1013 tests.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
