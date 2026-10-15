@@ -193,6 +193,55 @@ describe('which list a goal shows up in', () => {
     }
   })
 
+  /**
+   * ⚠️ THE SAME CLAIM, ACROSS EVERY SHAPE A MEMBER CAN ACTUALLY MAKE. The test above walks the six
+   * scopes with one shape each — anchored on the first day of the window. That is the shape the
+   * quarter bug happened to have, and a matrix with one cell per row is how the NEXT hole stays
+   * open: a repeating goal takes a different branch of `inScope` entirely (`repeats(g)` returns
+   * before the anchor is ever looked at), and an anchor on the LAST day of a window is the side of
+   * the range that is exclusive.
+   *
+   * Three shapes × six scopes, and each one must land in exactly one list the room renders.
+   */
+  it('and every shape of every scope lands in exactly one shown list', () => {
+    const on = '2026-10-12'
+    for (const scope of SCOPES) {
+      const w = windowOf(scope, on)
+      const shapes: Array<[string, Goal]> =
+        scope === 'life'
+          ? [
+              ['with no window at all', goal({ scope, anchor: null })],
+              ['repeating, which a lifetime cannot do', goal({ scope, anchor: null, every: 1 })],
+            ]
+          : [
+              ['anchored on the first day', goal({ scope, anchor: w!.from })],
+              ['anchored on the last day', goal({ scope, anchor: lastDay(w!) })],
+              ['repeating', goal({ scope, anchor: null, every: 1 })],
+            ]
+      for (const [what, g] of shapes) {
+        const shown = SHOWN_SCOPES.filter((s) => inScope(g, s, on))
+        expect(shown, `a ${scope} goal ${what}`).toEqual([homeFor(scope)])
+      }
+    }
+  })
+
+  /**
+   * ⚠️ AND THE DAY AFTER THE WINDOW IS A DIFFERENT WINDOW, which is the other half of an exclusive
+   * end: a goal anchored on the first day of the NEXT window must be in no list today, rather than
+   * leaking into this one. Asserted for every dated scope, because each has its own arithmetic.
+   */
+  it('and a goal anchored in the next window is in no list today', () => {
+    const on = '2026-10-12'
+    for (const scope of dated) {
+      const w = windowOf(scope, on)!
+      const g = goal({ scope, anchor: w.to })
+      expect(
+        SHOWN_SCOPES.filter((s) => inScope(g, s, on)),
+        `a ${scope} goal anchored on ${w.to}`,
+      ).toEqual([])
+    }
+  })
+
   it('and a one-off shows only in the window its anchor names', () => {
     const g = goal({ scope: 'day', anchor: '2026-10-13' })
     expect(inScope(g, 'day', '2026-10-13')).toBe(true)
@@ -488,6 +537,51 @@ describe('how many windows in a row', () => {
     /* each ask begins on the first of a month, and they walk backwards one month at a time */
     const firsts = asks.map((a) => new Date(a.from).getMonth())
     expect(firsts).toEqual([2, 1, 0, 11])
+    for (const a of asks) expect(new Date(a.from).getDate(), a.key).toBe(1)
+  })
+
+  /**
+   * ⚠️ THE SAME PROPERTY THE YEAR WINDOWS ARE ASKED FOR: the asks TILE. Each one ends exactly
+   * where the one before it begins, so a run of windows has no gap for a met target to fall into
+   * and no overlap for one to be counted twice by. Asserted rather than any particular boundary,
+   * and through the asks themselves rather than by recomputing windowBack's arithmetic.
+   *
+   * ⚠️ AND IT COVERS QUARTER, WHICH NOTHING COULD REACH UNTIL RECENTLY. A quarter goal was in no
+   * list at all until `homeFor` put it under the year, so its streak was unreachable code: no
+   * list, no row, no streak chip. Making it visible made this path live, and a path that becomes
+   * live is a path that has never been exercised.
+   */
+  it('and steps back without a gap or an overlap, in every scope that can have one', () => {
+    for (const scope of dated) {
+      const g = goal({
+        scope,
+        anchor: null,
+        every: 1,
+        target: 4,
+        unit: 'things',
+        activity: 'a1',
+      })
+      const asks = streakAsks([g], '2026-03-31', 4)
+      expect(asks.length, scope).toBe(5)
+      for (let i = 1; i < asks.length; i++) {
+        expect(asks[i].to, `${scope}, step ${i}`).toBe(asks[i - 1].from)
+      }
+    }
+  })
+
+  /** written from the calendar: back from Q1 2026 is Q4, Q3, Q2 of 2025, then Q1 2025 */
+  it('and a quarterly streak walks back three months at a time', () => {
+    const q = goal({
+      scope: 'quarter',
+      anchor: null,
+      every: 1,
+      target: 4,
+      unit: 'things',
+      activity: 'a1',
+    })
+    const asks = streakAsks([q], '2026-03-31', 4)
+    expect(asks.map((a) => new Date(a.from).getMonth())).toEqual([0, 9, 6, 3, 0])
+    expect(asks.map((a) => new Date(a.from).getFullYear())).toEqual([2026, 2025, 2025, 2025, 2025])
     for (const a of asks) expect(new Date(a.from).getDate(), a.key).toBe(1)
   })
 

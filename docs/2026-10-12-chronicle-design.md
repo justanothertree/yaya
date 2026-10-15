@@ -4295,6 +4295,40 @@ one millisecond does not.
 Driven afterwards: the three-day gap is refused with "that is more than a day", the form stays
 open, and a legal ninety-minute one is accepted and closes it. 1013 tests.
 
+## 6bn · ✅ The invariant a quarter goal broke, asserted across every shape
+
+§6bd found a goal that was in no list at all, and fixed it. The test written with that fix asserts
+the right claim — every goal lands in exactly one list the room can SHOW — but it walks one shape
+per scope: anchored on the first day of its window. That is the shape the quarter bug happened to
+have, and a matrix with one cell per row is how the next hole stays open, because the other shapes
+take different branches: `repeats(g)` returns before the anchor is looked at, and an anchor on the
+last day of a window sits against the end of the range that is exclusive.
+
+**Four tests, each made to fail once**, and none of them found a live bug — the invariant holds:
+
+- **Three shapes × six scopes.** First day, last day, repeating — each in exactly one shown list.
+- **The day after is a different window.** A goal anchored on `w.to` is in no list today, for every
+  dated scope. Perturbing `< w.to` to `<= w.to` turns this red while the old suite catches it only
+  for `day`, which is the coverage it adds.
+- **Streak windows tile.** Each ask ends exactly where the one before it begins, so a run has no
+  gap for a met target to fall into and no overlap to count one twice. Asserted through the asks
+  rather than by recomputing `windowBack`.
+- **A quarterly streak walks back three months**, written from the calendar: Q1 2026, then Q4, Q3,
+  Q2, Q1 of 2025. Changing the step from `3 * n` to `n` turns both streak tests red and nothing
+  else in the suite notices.
+
+⚠️ **THE STREAK OF A QUARTER GOAL WAS UNREACHABLE CODE UNTIL §6bd.** No list, no row, no chip — so
+the path had never run. Making a thing visible makes its neighbours live, and a path that becomes
+live is a path nobody has exercised. The existing streak test covered `month` only.
+
+**One thing deliberately not changed.** The streak chip renders `🔥 4` with "4 days in a row" only
+in a `title`, and CLAUDE.md is explicit that a tooltip does not exist on a phone. Measured at 375
+before deciding: the goal row already carries **"7 of the last 31 days reached"** in words
+immediately below the chip, so the idea is not title-only — and this is the row that overflowed
+once with five chips. Widening a chip on it to repeat something the next line already says is a
+real risk for a marginal gain. The chip's wording is right for every scope, incidentally: it reads
+`g.scope`, so a quarter goal says "quarters in a row" rather than taking the year view's word.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
