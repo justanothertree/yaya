@@ -4750,6 +4750,48 @@ reached through the room, and the first and third are already bounded — 8 KB o
 file's own 50,000-row ceiling. The middle one lands on the `gone` state that §6bl built for an
 archived step: shown, disabled, and not blocking the rest. Named here rather than fixed.
 
+## 6bz · ✅ The file flow driven at last, and what was sitting beside it
+
+⬇ Save a copy and ⬆ Put one back had been tested in SQL and in the double for a week and **never
+once through the UI**. Driven now, the whole flow is sound:
+
+|                                  |                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Save a copy                      | a 14 kB `application/json` blob, `chronicle-2026-10-15.json`, 7 activities · 20 entries · 11 goals · 1 routine · 4 plans |
+| that same file back              | **"Everything in that file was already here"**                                                                           |
+| a file with rows it has not seen | **"Added 2 — 1 sessions, 1 activities, 0 goals."**, and the row appears without a reload                                 |
+| not JSON                         | "That file could not be read"                                                                                            |
+| JSON, not ours                   | "Not a chronicle file" — capitalised from the server's lowercase                                                         |
+| a newer version                  | "That file is from a newer version"                                                                                      |
+| an empty chronicle file          | "There was nothing in that file"                                                                                         |
+
+⚠️ **AND ONE OF THOSE READINGS WAS NEARLY A FALSE BUG REPORT.** "JSON, not ours" first came back
+with **no message at all**, which reads exactly like a missing refusal. It was the measurement:
+four imports fired back to back, the toast element reused rather than replaced, and a
+`childList`-only `MutationObserver` sees nothing when only text changes. Watched with
+`characterData: true` and a gap to let the previous toast clear, the refusal is there. **A toast is
+transient and reused — observe the character data, and leave time between trials.**
+
+**The real finding was in the log beside it.** While reading the restored rows, two sittings on the
+auto activity overlapped: one running from 1:12, one written by the visit writer from 1:19 to 1:21.
+Free Time read **56m on a day holding 55** — the overlapping minute counted in both, because
+nothing dedupes two entries on one activity.
+
+The room already knew this was wrong. The Quick start row has carried the reason since it was
+built: _"a button that started a timer on it would be recording something the site is already
+recording, twice over"_ — and it filters auto activities out. **The dropdown beside it and ⏱ Fill a
+gap did not.** The rule held for the shortcut and for neither real way in.
+
+It is one named list now, `yours`, used by all three. The entry editor deliberately keeps them:
+moving a session OFF an auto activity has to stay possible, and a picker that cannot show its own
+current value is the lie about state §6-earlier is about. The Activities fold keeps them too, which
+is where Archive lives — and §6bv made that lever work.
+
+Verified after: start, quick and gap all offer the same five activities and no "Chronicle"; the
+editor still offers it; the fold still lists it. **And the preview seed was demonstrating the
+forbidden state** — its running sitting was on the auto activity, which is how the overlap appeared
+at all. It runs on Drawing now.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

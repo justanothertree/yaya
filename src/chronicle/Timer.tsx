@@ -253,6 +253,25 @@ export function Timer({
 
   const byId = useMemo(() => new Map((acts ?? []).map((a) => [a.id, a])), [acts])
   const open = useMemo(() => (acts ?? []).filter((a) => !a.archived), [acts])
+  /**
+   * The ones you can START or ADD TIME TO, which is not the same list.
+   *
+   * ⚠️ AN AUTO ACTIVITY IS NOT A THING YOU START. The room writes it itself — "Chronicle" means
+   * this room was open — so putting your own time on it records what the site is already
+   * recording, twice over. The Quick start row has said exactly that since it was built and
+   * filtered them out; the dropdown beside it and ⏱ Fill a gap did not, so the rule held for the
+   * shortcut and not for either real way in.
+   *
+   * ⚠️ AND IT DOUBLE COUNTS, which is the part that makes it more than untidy. Measured in the
+   * room: a running sitting on the auto activity from 1:12, a visit written against the same one
+   * from 1:19 to 1:21, and Free Time reading 56m where the day held 55 — the overlapping minute
+   * counted in both rows, because nothing dedupes two entries on one activity.
+   *
+   * ⚠️ THE ENTRY EDITOR KEEPS THEM, deliberately: moving a session OFF an auto activity has to
+   * stay possible, and a picker that cannot show its own current value is the lie about state
+   * that the archived-source note below is about.
+   */
+  const yours = useMemo(() => open.filter((a) => !a.auto), [open])
   const mins = useMemo(
     () => minutesByActivity(log, bounds.fromMs, bounds.toMs, Date.now()),
     [log, bounds.fromMs, bounds.toMs],
@@ -267,11 +286,10 @@ export function Timer({
    */
   const quick = useMemo(
     () =>
-      [...open]
-        .filter((a) => !a.auto)
+      [...yours]
         .sort((x, y) => (mins[y.id] ?? 0) - (mins[x.id] ?? 0) || x.name.localeCompare(y.name))
         .slice(0, 6),
-    [open, mins],
+    [yours, mins],
   )
   const cats = useMemo(
     () => minutesByCat(log, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
@@ -703,7 +721,7 @@ export function Timer({
               <select value={pick} onChange={(e) => setPick(e.target.value)}>
                 <option value="">Pick an activity…</option>
                 {CATS.map(([cat, label]) => {
-                  const inCat = open.filter((a) => a.cat === cat)
+                  const inCat = yours.filter((a) => a.cat === cat)
                   return inCat.length ? (
                     <optgroup key={cat} label={label}>
                       {inCat.map((a) => (
@@ -720,7 +738,7 @@ export function Timer({
               className="btn"
               disabled={!pick || busy}
               /* the sentence below is what a phone reads; this is for a pointer hovering it */
-              title={open.length ? undefined : 'Name an activity first'}
+              title={yours.length ? undefined : 'Name an activity first'}
               onClick={() => void go(pick)}
             >
               ▶ Start
@@ -894,7 +912,7 @@ export function Timer({
             <span className="sr-only">Which activity</span>
             <select value={gapAct} onChange={(e) => setGapAct(e.target.value)}>
               {(acts ?? [])
-                .filter((a) => !a.archived || a.id === gapAct)
+                .filter((a) => (!a.archived && !a.auto) || a.id === gapAct)
                 .map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}

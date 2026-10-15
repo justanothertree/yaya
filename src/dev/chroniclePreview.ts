@@ -215,10 +215,18 @@ function seed(): Store {
       span('pv-e17', 'pv-draw', 400, 10, 95, null, null, 4),
       span('pv-e18', 'pv-write', 430, 14, 140, 9, null, 3),
       span('pv-e19', 'pv-gym', 800, 7, 60, 40),
-      /* the running one — no end. The stopwatch has no other way to be seen in the pane. */
+      /**
+       * The running one — no end. The stopwatch has no other way to be seen in the pane.
+       *
+       * ⚠️ AND NOT ON THE AUTO ACTIVITY, which is where this used to sit. The room writes
+       * `pv-site` itself, so a hand-started sitting on it is the double count the Quick start
+       * row has always refused — and the fixture was demonstrating a state the room no longer
+       * allows. It showed, too: with a visit written inside the running sitting, Free Time read
+       * 56m on a day holding 55.
+       */
       {
         id: 'pv-run',
-        activity: 'pv-site',
+        activity: 'pv-draw',
         start: new Date(Date.now() - 7 * 60_000).toISOString(),
         end: null,
         note: null,
