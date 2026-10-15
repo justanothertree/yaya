@@ -4883,6 +4883,48 @@ crushed, and Add sits on the same line as the cadence box.
 editor's own row, the profile block (which needs a session), and anything behind the account that
 `previewMember` cannot reach.
 
+## 6cd · ✅ A tablet check in the pane is a mouse check
+
+§6cc swept seven states at 375 and found nothing. §6 of CLAUDE.md asks for **375, ~820 and 1440**,
+and every sweep this session had been 375 or 1440 — so the middle one was genuinely uncovered.
+
+It came back with four undersized controls that 375 did not have. **Three of them were an artifact
+of how I was measuring.** Only the pane's `mobile` preset emulates touch: at the `tablet` preset
+(768) and at a custom 820, `matchMedia('(pointer: coarse)')` is **false** and `maxTouchPoints` is
+**0**, so every `(pointer: coarse)` rule the site has is silently absent and the reading is of a
+small laptop window.
+
+The repo already knew, in a CSS comment on the visualiser's own fix: _"the pane cannot emulate a
+coarse pointer above 768 — injecting these declarations at 820 took the audit's undersized count
+from sixteen to four"_. That technique, generalised, is now in CLAUDE.md §6: walk the CSSOM, take
+every rule under a `pointer: coarse` media query, and apply it unconditionally. 27 blocks, ~4 kB.
+
+**And with a tablet's own rules applied, one failure survived.** The ⏱ Fill a gap activity picker
+is **21px tall**, under the 24px floor. The only rule that sizes it is
+
+```css
+@media (max-width: 640px) {
+  input…,
+  select,
+  textarea {
+    min-height: 40px;
+  }
+}
+```
+
+— **keyed on width, with no pointer alternative**. So a control that is 40px on a phone is 21px on
+a tablet held in the hand, and every sweep so far has passed it because the width query matches at 375. A width query is not a pointer.
+
+That selector is global rather than this room's, so it is raised rather than changed. The one-line
+fix was verified here first — adding the declaration at 820 took the select from 21px to 40px with
+`offEdge`, `clipped` and `spills` all still zero — but it touches every form control in every room,
+and the instrument and paint toolbars are the ones likely to object.
+
+⚠️ **The snippet now in CLAUDE.md was run from the file before committing**, because this is the
+third one this session that nearly shipped broken: a `'
+'` written through two layers of escaping
+landed as a real newline and cut the line in half. Doc snippets get run, not read.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

@@ -462,6 +462,37 @@ column.
 skip it for "just a button" — but buttons are what crowd a tile, overflow a toolbar and end up
 under a thumb. The block toolbar carries six of them on a cell that is 61px tall.
 
+**⚠️ AND A TABLET CHECK IN THE PANE IS A MOUSE CHECK.** Only the `mobile` preset emulates touch.
+Measured: at the `tablet` preset (768) and at a custom 820, `matchMedia('(pointer: coarse)')` is
+**false** and `maxTouchPoints` is **0** — so "check tablet (~820)" above tests a small laptop
+window, and every `(pointer: coarse)` rule the site has is silently absent. That cuts both ways:
+it invents failures that a real tablet would not have, and it hides the ones it would.
+
+To see what a tablet sees, collect those rules and apply them unconditionally:
+
+```js
+let css = ''
+for (const sheet of document.styleSheets) {
+  let rules
+  try {
+    rules = sheet.cssRules
+  } catch {
+    continue
+  }
+  /* a media rule, told by its own media list — a plain style rule has an empty cssRules */
+  for (const r of rules ?? [])
+    if (r.media?.mediaText && /pointer:\s*coarse/.test(r.media.mediaText))
+      for (const inner of r.cssRules) css += inner.cssText
+}
+document.head.appendChild(Object.assign(document.createElement('style'), { textContent: css }))
+```
+
+27 blocks, 4 kB of declarations. ⚠️ **AND IT FOUND SOMETHING THE 375 SWEEP STRUCTURALLY COULD
+NOT**: every `input`, `select` and `textarea` on the site takes its touch size from
+`@media (max-width: 640px)` alone, with no `(pointer: coarse)` alternative — so a control that is
+40px on a phone is **21px on a tablet held in the hand**, under the 24px floor. The 375 sweep
+passes it because the width query matches there. A width query is not a pointer.
+
 **Browsers this cannot reach.** The Browser pane is Chromium, so responsive behaviour and touch
 emulation are testable and **Firefox and Safari are not**. This project has already been bitten by
 a Firefox-specific audio trap — `667366c`, automation dated in the past — so anything touching Web
