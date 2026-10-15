@@ -71,6 +71,43 @@
 -- same sum twice. The segments scale against the BIGGEST year rather than the total, the rule every
 -- other bar in this room uses: against the total, six years of records would be six slivers.
 --
+-- ── CHECKED AGAIN, 15 OCT 2026: A SITTING THAT CROSSES THE BOUNDARY ─────────────────────────
+--
+-- The overlap sum above is the whole reason this function exists rather than a `group by` on the
+-- year a sitting started in, and nothing had ever asked it about a sitting that straddles one.
+--
+-- Read-only, in a rolled-back transaction, with windows placed INSIDE an existing 69-minute
+-- sitting rather than by inserting one into a real record:
+--
+--   two touching ten-minute windows     {"first ten": {"locked":10,"free":9}, "second ten": {"locked":10}}
+--   the twenty minutes they tile        {"the twenty": {"locked":20,"free":9}}
+--
+-- locked 10 + 10 = 20, free 9 + 0 = 9. The windows tile and so do the answers.
+--
+-- ⚠️ THE MEASUREMENT WAS CHOSEN TO DISCRIMINATE, which is the only kind worth running: both
+-- windows begin AFTER the sitting started, so attributing a sitting to the window containing its
+-- start would have answered 0 and 0, and counting it whole in every window it touches would have
+-- answered 69 and 69. Agreement with the client's own `yearsBetween` split (1h either side of New
+-- Year, checked in the room) is then two implementations agreeing rather than one repeated.
+--
+-- A category with nothing in a window is ABSENT from that window's object rather than zero —
+-- `second ten` has no `free` key — which is the `having … >= 1` filter, and matches what the
+-- client does with it.
+
+-- ── A NEIGHBOURING FACT, RECORDED BEFORE IT BECOMES A BUG ───────────────────────────────────
+--
+-- Every function that answers "how much time" was read for its join at the same time, because
+-- four of them answer it and a disagreement is a total that cannot be reconciled. They agree.
+--
+--   chronicle_entries.activity   on delete CASCADE   → an orphaned entry is impossible
+--   chronicle_goals.activity     on delete SET NULL  → a goal can lose its source
+--
+-- and `chronicle_tally` only answers goals `where (gl.activity is not null or gl.cat is not
+-- null)`. So deleting an activity would turn every goal pointed at it into one that is never
+-- answered — reading 0 with the minutes sitting in the totals above it, and nothing on screen to
+-- say why. ⚠️ NOTHING DELETES FROM chronicle_activities today; the only path is
+-- chronicle_activity_archive. This is a note for whoever adds the first delete button.
+
 -- ── THE FUNCTIONS ───────────────────────────────────────────────────────────────────────────
 
 create or replace function public.chronicle_since()

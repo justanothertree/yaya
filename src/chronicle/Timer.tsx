@@ -906,52 +906,69 @@ export function Timer({
                   <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
                 ) : null}
                 <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
-                <span className="chron-ent-span">{spanText(ms)}</span>
-                {/* ⚠️ the amount sits with the length because they are the same fact measured two
+                {/**
+                 * ⚠️ THE FACTS ARE ONE GROUP SO THAT ✎ AND ✕ CANNOT BE PUSHED OFF THE LINE. As
+                 * direct children of a wrapping row they competed with the buttons for it, and
+                 * the row lost by two pixels: measured at 375, `dot 9 + name 100 + 35m 25 +
+                 * good 30 + buttons 100 + five 8px gaps` is 304 against a 302px row, so the
+                 * buttons dropped to a line of their own under an empty space. The standing
+                 * comment on `.chron-ent` budgeted four gaps and no rating, which is why it read
+                 * as sufficient and was not.
+                 *
+                 * ⚠️ AND NO AMOUNT OF TUNING FIXES IT, which is why this is a group rather than
+                 * a smaller floor: a long sitting with a rough rating needs `9 + 50 + 38 + 100`
+                 * of rigid width before the name gets a pixel. Grouped, the row is four items —
+                 * dot, name, facts, buttons — the facts wrap among THEMSELVES, and the buttons
+                 * keep their place however many facts a sitting has.
+                 */}
+                <span className="chron-ent-facts">
+                  <span className="chron-ent-span">{spanText(ms)}</span>
+                  {/* ⚠️ the amount sits with the length because they are the same fact measured two
                     ways — "40m, 4 pages" is one session, and separating them would invite reading
                     the number as a second entry.
                     ⚠️ AND `amountIn` RATHER THAN `e.amount != null`, which showed it on both of
                     the days a session straddles. See amountIn — the minutes split at midnight and
                     the quantity does not. */}
-                {amt != null && a?.metric ? (
-                  <span className="chron-amount">
-                    {amt} {a.metric}
-                  </span>
-                ) : null}
-                {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
+                  {amt != null && a?.metric ? (
+                    <span className="chron-amount">
+                      {amt} {a.metric}
+                    </span>
+                  ) : null}
+                  {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
                     and a log is skimmed. The exact rating is kept where it is set — see moodWord,
                     whose test asserts this word and the month's buckets are the same rule. */}
-                {/**
-                 * ⚠️ ONLY WHEN IT FINISHED SHORT, never while it runs — see metSession, which
-                 * returns null rather than false for a sitting still going. A reproach on screen
-                 * for the first half of every session is the opposite of what this is for.
-                 */}
-                {metSession(e, a?.session ?? null, Date.now()) === false ? (
-                  <span
-                    className="chron-short"
-                    title={`Shorter than the ${a?.session}m you aim for`}
-                  >
-                    short
-                  </span>
-                ) : null}
-                {moodWord(e.quality) ? (
-                  <span className={'chron-mood is-' + moodWord(e.quality)}>
-                    {moodWord(e.quality)}
-                  </span>
-                ) : null}
-                {/* ⚠️ last of the facts, because it is the only one that can be a sentence — the
+                  {/**
+                   * ⚠️ ONLY WHEN IT FINISHED SHORT, never while it runs — see metSession, which
+                   * returns null rather than false for a sitting still going. A reproach on screen
+                   * for the first half of every session is the opposite of what this is for.
+                   */}
+                  {metSession(e, a?.session ?? null, Date.now()) === false ? (
+                    <span
+                      className="chron-short"
+                      title={`Shorter than the ${a?.session}m you aim for`}
+                    >
+                      short
+                    </span>
+                  ) : null}
+                  {moodWord(e.quality) ? (
+                    <span className={'chron-mood is-' + moodWord(e.quality)}>
+                      {moodWord(e.quality)}
+                    </span>
+                  ) : null}
+                  {/* ⚠️ last of the facts, because it is the only one that can be a sentence — the
                     others are a word or a number and keep their place in the row. A plan's note
                     has been shown beside its plan all along; this is the same thing for a
                     session, which had been written and never read. */}
-                {e.note ? <span className="muted chron-ent-note">{e.note}</span> : null}
-                <span className="muted chron-ent-when">
-                  {new Date(e.start).toLocaleTimeString(undefined, {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                  {e.end
-                    ? ` – ${new Date(e.end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
-                    : ' – now'}
+                  {e.note ? <span className="muted chron-ent-note">{e.note}</span> : null}
+                  <span className="muted chron-ent-when">
+                    {new Date(e.start).toLocaleTimeString(undefined, {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                    {e.end
+                      ? ` – ${new Date(e.end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+                      : ' – now'}
+                  </span>
                 </span>
                 {fixEnt === e.id && (
                   <span className="chron-fix">

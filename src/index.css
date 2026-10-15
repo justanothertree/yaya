@@ -16332,6 +16332,24 @@ a.cz-msg-author:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/**
+ * ⚠️ EVERY SMALL FACT ABOUT A SITTING, AS ONE ITEM. The row is a flex container that wraps, and
+ * before this the length, the amount, the "short" marker, the rating, the note and the clock time
+ * were each a child of it competing with ✎/✕ for the first line. Grouped, the row is four things
+ * — dot, name, facts, buttons — so the buttons cannot be pushed off whatever a sitting carries.
+ *
+ * ⚠️ `min-width: 0` IS SAFE HERE AND NOWHERE NEAR A NOWRAP LABEL. The warning in CLAUDE.md §6 is
+ * about a single run of text with no floor, which does not shrink, it vanishes. This box's
+ * children each keep their own `white-space: nowrap`, so shrinking it wraps them onto another
+ * line rather than crushing any of them to a column of punctuation.
+ */
+.chron-ent-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.5rem;
+  min-width: 0;
+}
 .chron-ent-span {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -16549,9 +16567,12 @@ a.cz-msg-author:focus-visible {
    * right under an empty space with nothing to attach them to. A log of four sittings had two
    * rows one line tall and two rows with orphaned buttons: not a list that looks designed.
    *
-   * Measured at 375: the row is 303px and the gap resolves to 8.5px, so
-   * `dot 9 + name + 25 + 30 + buttons 99 + four gaps 34` fits only while the name is under 106.
-   * At 100 the common row — a name, how long, and one chip — is one line with 13px to spare.
+   * ⚠️ AND THIS BUDGET WAS WRONG, which is worth keeping rather than quietly correcting: it
+   * counted four gaps and no rating. The real ordinary row — a coloured activity, a length and
+   * a word for how it went — is `dot 9 + name 100 + 25 + 30 + buttons 100 + five 8px gaps`,
+   * which is 304 against a 302px row, so ✎/✕ dropped to a line of their own. The floor below is
+   * no longer what keeps them there; `.chron-ent-facts` is, by making the facts one item. This
+   * stays because a 130px name column is still most of a phone row.
    *
    * ⚠️ IN PIXELS AND WITH A FLOOR, never `min-width: 0`: the root font-size here is fluid so a rem
    * is not a length, and a flexible name with no floor does not shrink, it vanishes — whatever is
@@ -16563,6 +16584,26 @@ a.cz-msg-author:focus-visible {
   .chron-ent-name {
     flex: 1 1 100px;
     min-width: 100px;
+  }
+  /**
+   * ⚠️ SIX PIXELS, AND IN PIXELS. A row of five items has five gaps, and at 0.5rem they were 40 of
+   * the 302 available — the margin the ordinary row was missing by. Measured at 375 with the log
+   * the seed produces: a coloured activity with a length and a rating went from 65px tall with
+   * ✎/✕ orphaned beneath it to one 38px line, and the four rows that already fitted kept their
+   * place with four more pixels of name each.
+   *
+   * ⚠️ `.chron-ent` ONLY, not the `.chron-acts li` it shares a base rule with: that row was
+   * measured for its own fix above and nothing here says its gap is wrong.
+   *
+   * The rich row — a metric AND a chip AND a rating — still wraps, as the note above says it
+   * must; what changed is that its facts now wrap as one group instead of the rating being left
+   * on a line of its own at the far left.
+   */
+  .chron-ent {
+    gap: 6px;
+  }
+  .chron-ent-facts {
+    gap: 0.2rem 6px;
   }
 }
 

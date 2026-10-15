@@ -4046,6 +4046,83 @@ is written down"_ when the week is half over — counting the days that have hap
 seven — and on a week entirely in the future it omits the line altogether. The percentage knew
 about the future before the sentence above it did.
 
+## 6bh · ✅ A sitting that crosses a boundary, through every panel and both implementations
+
+The arithmetic the whole room rests on — _"two hours long and belongs to two days, one hour
+each"_ — has had a unit test since the beginning and had never been driven through the interface.
+A sitting added with ⏱ Fill a gap from 23:00 to 01:00:
+
+| where              | what it said                      |
+| ------------------ | --------------------------------- |
+| today's log        | `Drawing 1h · 11:00 PM – 1:00 AM` |
+| yesterday's log    | the same entry, also `1h`         |
+| today's totals     | Locked In 35m → **1h 35m**        |
+| the week           | Drawing 2h 38m → **4h 38m**       |
+| the month calendar | Oct 14 `1h 42m`, Oct 15 `2h 40m`  |
+
+Shown on both days at an hour each, counted once at two hours in every aggregate above them.
+
+**And then the year boundary**, which is what `year.ts` claims and nothing had exercised. A sitting
+from 31 Dec 23:00 to 1 Jan 01:00 moved 2025 from 3h 55m to **4h 55m** and 2026 from 13h 29m to
+**14h 29m** — an hour each, total +2h, and 14h29 + 4h55 + 1h is the 20h 24m headline, added by hand
+rather than by trusting the same sum twice.
+
+⚠️ **That was the preview double, and `chronicle_spans` is a second implementation in SQL.** The
+two cannot share a bug but they can disagree, so the production function was asked the same
+question directly, read-only, in a rolled-back transaction: windows placed **inside** an existing
+69-minute sitting. Two touching ten-minute windows reported `locked 10` and `locked 10`, and the
+twenty-minute window they tile reported `locked 20`. A second sitting overlapping only the first
+window gave `free 9` and `free 9`, with no key at all in the second — the documented shape for a
+category with nothing in it.
+
+That measurement discriminates, which is the point of choosing it: attributing a sitting to the
+window it STARTED in would have given 0 for both ten-minute windows, since the sitting began five
+minutes before either of them. Double counting would have given 69 to each.
+
+**What the same sweep turned up that is not a bug yet.** Every "how much time" function was read
+for its join, because four of them answer the same question and a disagreement between them is a
+total nobody can reconcile. They agree, and orphaned entries are impossible anyway —
+`chronicle_entries.activity` is `on delete cascade`. But the row below it is
+`chronicle_goals.activity on delete set null`, and `chronicle_tally` only answers goals
+`where (gl.activity is not null or gl.cat is not null)`. So deleting an activity would quietly
+turn every goal pointed at it into a goal that is never answered — the `0 / 30` shape from §6bd,
+with nothing on screen to say why. **It cannot happen today**: nothing in the schema deletes from
+`chronicle_activities`, which is only ever archived. Recorded because the day something gains a
+delete button, this is waiting for it.
+
+## 6bi · ✅ The log row on a phone, and a budget that was wrong in a comment
+
+Going to look at the Years panel at 375 — new rows, and the shape that has twice produced an
+overflow — found the panel clean and the **log above it coming apart**. Six facts about a sitting
+and two buttons were all direct children of one wrapping row, and the ordinary row lost the line
+by two pixels: `dot 9 + name 100 + 35m 25 + good 30 + buttons 100` is 264, plus five 8px gaps is
+**304 against a 302px row**, so ✎ and ✕ dropped to a line of their own under an empty space.
+
+The standing comment on `.chron-ent` had an arithmetic budget in it that said this fitted. It
+counted **four gaps and no rating** — so it had been true of the row as it stood when it was
+written, and silently stopped being true when the rating was added. It is corrected in place rather
+than replaced, because a budget that was wrong is worth more as a warning than a budget that is
+right.
+
+Two changes, and the first is the one that matters:
+
+1. **The facts are one group now** (`.chron-ent-facts`). The row is four items — dot, name, facts,
+   buttons — so the facts wrap among themselves and no number of them can push the buttons off.
+2. **6px gaps on the phone row**, in pixels: the computed gap is 8.984px at desktop root size, so
+   `0.5rem` is not 8px and a budget written in rem would not survive a wider root.
+
+Measured at 375 before and after: the ordinary row went from **65px tall with orphaned buttons to
+one 38px line**, six of the seven rows in the seed are single lines, and the four that already
+fitted gained four pixels of name each. The rich row — a metric AND a chip AND a rating — still
+wraps, as the note has always said it must; what changed is that its facts wrap together instead
+of the rating being stranded alone at the far left. Desktop (1440) and tablet (820) are unchanged:
+every row one line, no overflow on the list, the card or the page.
+
+⚠️ **The audit did not find this and could not have.** `mobileAudit` reported the room clean, and
+it was right to: nothing overflowed, nothing was clipped, no target was under 24px. A row that
+wraps into two tidy halves is not an overflow — it is a layout that measures perfectly and reads
+as broken. The screenshot found it. See CLAUDE.md §6, _measure then look_.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
