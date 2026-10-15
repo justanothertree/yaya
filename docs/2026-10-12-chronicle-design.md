@@ -3985,6 +3985,13 @@ Fixed with the rule the plan form already had: an archived activity stays in the
 the one selected**. Checked both ways — editing the Drawing goal now offers and selects "Drawing";
 editing a goal pointing at Gym does not offer it at all.
 
+**And the other three pickers were checked rather than assumed**, by driving each with an archived
+activity selected: the entry editor appends it (`[...open, ...(a && a.archived ? [a] : [])]`), the
+Fill-a-gap form has `!a.archived || a.id === gapAct`, and the plan form has the same. One gap in
+four, now closed. The pickers that are only ever used to CHOOSE something new — the stopwatch's and
+the routine step's — filter archived activities out and should: there, the list is the offer rather
+than a report of state.
+
 ### I predicted a data loss and there was not one
 
 The shape looked exactly like §8's silent erasure — an editor that cannot represent the current
@@ -3996,6 +4003,27 @@ a no-change Save: `activity=pv-draw counts=minutes` before and after.
 Worth recording precisely because the prediction was wrong. The failure here is a misleading
 control, not a deletion — a smaller bug than the one being looked for, and reporting it as the
 bigger one would have been the easier story to tell.
+
+## 6bf · ✅ What a new member sees, across everything built this week
+
+One sweep of a blank account through all six views, asking of each panel added over the last few
+days: does it know there is nothing?
+
+Four of five did. The rail, the week grid and `Looking` are all gated on there being an activity —
+_"four zeros where one instruction belongs"_ — and `Lifetime`, built yesterday, says "Nothing
+recorded yet. Once there is, this is where the whole of it adds up."
+
+**The month calendar did not.** A new member opening This month met 35 cells with nothing in a
+single one of them, sitting between "Nothing here yet." above and "Nothing recorded this month yet."
+below — an empty grid framed by two sentences already saying so, on the one screen where the
+three-step instruction is what somebody actually needs. It is now gated the same way as its
+neighbours, and the sentence underneath stays: this hides a chart of nothing, not the fact that
+there is nothing.
+
+It was built the same day as the rail and the week grid and simply missed the rule they were given,
+which is the ordinary way a room becomes inconsistent — not a wrong decision, an unrepeated one.
+Checked both states: blank gives no calendar and keeps the sentence; seeded gives 35 cells and 10
+fills.
 
 ## 7 · What is deliberately not being ported
 

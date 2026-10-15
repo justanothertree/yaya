@@ -972,7 +972,17 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * above, at hour resolution, so a second one here would be the same days twice; a year
            * in day cells would be 365 specks.
            */}
-          {v.scope === 'month' && <MonthGrid on={on} beat={beat} />}
+          {/**
+           * ⚠️ AND NOT BEFORE THERE IS ANYTHING, the same rule as the rail and the week grid. A
+           * new member opening This month met a 35-cell calendar with nothing in a single one of
+           * them, sitting between "Nothing here yet." above it and "Nothing recorded this month
+           * yet." below — an empty grid framed by two sentences already saying so, on the one
+           * screen where the three-step instruction is what somebody actually needs.
+           *
+           * ⚠️ THE SENTENCE UNDERNEATH STAYS, which is the half that was always doing the work.
+           * This hides a chart of nothing, not the fact that there is nothing.
+           */}
+          {v.scope === 'month' && acts.length > 0 && <MonthGrid on={on} beat={beat} />}
           {/**
            * ⚠️ AND YEARS GETS ITS OWN. Until this existed, Years was the only horizon with not one
            * word about the record in it — its goals and nothing else, which is a strange silence
