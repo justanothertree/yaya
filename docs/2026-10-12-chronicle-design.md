@@ -3963,6 +3963,40 @@ Measured in the room afterwards: "Read ten books · THIS QUARTER" under This yea
 unfinished count moved from 1 to 2 — it had been counting the goal all along while showing it
 nowhere.
 
+## 6be · ✅ Archiving, checked across the room — and one control that lied
+
+Hunting the same shape as the invisible quarter goal: data that exists and a view that will not
+show it. Archiving is the obvious neighbour, because archiving is not deleting.
+
+**It is sound everywhere it matters.** Archived "Drawing" with 35m logged today: the day's log keeps
+the sitting, "Locked In 35m" keeps the minutes, the week grid keeps its blocks, the Looking bars
+still list it, and the derived goal still reads _from Drawing · 35 / 30 minutes_ with its streak. A
+routine step naming an archived activity is still enabled, and pressing it genuinely starts a
+sitting rather than being a dead button — which is the right way round: the routine is an explicit
+instruction, and the alternative is a control that looks live and does nothing.
+
+**The goal editor was not.** A goal pointing at an archived activity opened with its source picker
+reading **"I will count it myself"** — because the list filtered archived activities out, so no
+option matched `a:pv-draw` and the select rendered empty. Two inches above it, the goal's own row
+said FROM DRAWING. A control showing a different current value from the thing it edits is a lie
+about state, and it is the one somebody acts on.
+
+Fixed with the rule the plan form already had: an archived activity stays in the list **while it is
+the one selected**. Checked both ways — editing the Drawing goal now offers and selects "Drawing";
+editing a goal pointing at Gym does not offer it at all.
+
+### I predicted a data loss and there was not one
+
+The shape looked exactly like §8's silent erasure — an editor that cannot represent the current
+value, and a save that writes every column — so the expectation was that pressing Save with nothing
+changed would null the source. **It does not.** `src` is React state, set when the editor opens; a
+`<select>` whose value matches no option displays empty without changing it. Measured either side of
+a no-change Save: `activity=pv-draw counts=minutes` before and after.
+
+Worth recording precisely because the prediction was wrong. The failure here is a misleading
+control, not a deletion — a smaller bug than the one being looked for, and reporting it as the
+bigger one would have been the easier story to tell.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

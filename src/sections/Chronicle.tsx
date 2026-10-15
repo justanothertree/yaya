@@ -852,9 +852,23 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                   <span className="sr-only">Counted from what?</span>
                   <select value={src} onChange={(e) => setSrc(e.target.value)}>
                     <option value="">I will count it myself</option>
+                    {/**
+                     * ⚠️ AN ARCHIVED ACTIVITY STAYS IN THE LIST WHILE IT IS THE ONE SELECTED, the
+                     * same rule the plan form already uses. Without it the picker had no option
+                     * matching the goal's source, so it rendered blank — which reads as "I will
+                     * count it myself" — on a goal whose own row two inches away said FROM DRAWING.
+                     * A control that shows a different current value from the thing it edits is a
+                     * lie about state, and the one somebody acts on.
+                     *
+                     * ⚠️ THE DATA WAS NEVER AT RISK, which is worth saying because the shape looks
+                     * exactly like §8's silent erasure. `src` is React state set when the editor
+                     * opens; a `<select>` whose value matches no option displays empty without
+                     * changing it, so pressing Save kept `activity=pv-draw`. Measured before
+                     * fixing: before and after both `activity=pv-draw counts=minutes`.
+                     */}
                     <optgroup label="count my time on…">
                       {acts
-                        .filter((a) => !a.archived)
+                        .filter((a) => !a.archived || src === 'a:' + a.id)
                         .map((a) => (
                           <option key={a.id} value={'a:' + a.id}>
                             {a.name}
