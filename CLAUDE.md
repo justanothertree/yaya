@@ -390,6 +390,24 @@ wins and the one flexible thing pays the entire bill. Give the text a floor in *
 root size is fluid, so `rem` is not a length here), and take a screenshot before believing a
 layout fix.
 
+**`flex: 1` DOES NOT SHRINK AN INPUT, and the reason is worth knowing rather than re-deriving.** A
+flex child defaults to `min-width: auto`, and for an `<input>` that resolves to its `size`
+attribute's worth of characters — twenty by default, about **202px**. So `flex: 1` gives it room to
+grow and no permission to shrink, and a compose box in a narrow card simply runs off the end: the
+guestbook block was **144px past its own card** at a third width and 63px at a half, for as long as
+that block has had a small size. `minWidth: 0` is the whole fix, and it changes nothing where there
+is already room.
+
+The same `min-width: auto` default is why a **grid** row will not let its contents ellipse — a
+66-character goal title measured 437px inside a ~300px card — and the same floor rule applies to
+the repair: give the text a pixel floor one level down, or `min-width: 0` is "let it vanish".
+
+Two more instances are in the tree and **neither is demonstrated**: the chat compose input
+(`circuit/ui/Chat.tsx`) and the custom-tag box (`circuit/ui/MovieRate.tsx`). Both are `flex: 1` with
+no floor; both looked fine at 375 because their containers are full-width there, and I could not
+reach a narrow enough state to make either fail. Worth a look if those surfaces ever go into a
+column.
+
 **A new control counts as a UI change.** It is easy to remember the viewport pass for a layout and
 skip it for "just a button" — but buttons are what crowd a tile, overflow a toolbar and end up
 under a thumb. The block toolbar carries six of them on a cell that is 61px tall.
