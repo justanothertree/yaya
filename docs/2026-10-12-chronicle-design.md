@@ -4925,6 +4925,45 @@ third one this session that nearly shipped broken: a `'
 '` written through two layers of escaping
 landed as a real newline and cut the line in half. Doc snippets get run, not read.
 
+## 6ce · ✅ Every streak on the site disappears at thirty-nine goals
+
+The last two finds came from checking what the tooling structurally cannot see — a device class,
+then a pointer type. The same question asked of **data**: every test this session ran against the
+seed, which is seven activities, twenty entries and eleven goals. A real account after a year is
+not that, and one call scales with the goal count.
+
+`streakAsks` emits `STREAK_BACK + 1` windows — thirty-one — for every repeating derived goal.
+`chronicle_tally` refuses more than 1,200 asks. So:
+
+| repeating derived goals | asks      |             |
+| ----------------------- | --------- | ----------- |
+| 38                      | 1,178     | fine        |
+| **39**                  | **1,209** | **refused** |
+
+Confirmed against the live function: 1,200 accepted, 1,201 `refused: too many at once`.
+
+And `tally()` turned any refusal into `{}`. So at thirty-nine such goals **every streak on the
+site vanishes at once** — no flame beside any goal, every marks row empty, and nothing anywhere
+saying why. The goals table allows five hundred, so this is reachable by somebody simply using
+the room for a year.
+
+**Fixed by splitting the asks into calls the server will take**, in `tally()` so every caller gets
+it rather than only the streak path, and a failed batch is skipped rather than losing the rest —
+some streaks beat none.
+
+⚠️ **Batching does not make it cheaper and the note says so.** The cost is one index probe per ask
+either way — `docs/2026-10-13-chronicle-tally-cost.sql` measured 617ms for 310. What it buys is
+that the answer arrives at all, and the room does not await the streak call, so the second trip
+costs nobody a wait.
+
+⚠️ **And the comment beside it said the cap was 200.** It was raised to 1,200 when the function
+was rewritten and the sentence next to it was not — a number typed in prose, six times out of
+date. It is a named constant now, `ASKS_AT_ONCE`, which the test asserts against rather than
+against a figure typed in twice.
+
+The boundary is the whole of the off-by-one: the server refuses **more** than the cap, so exactly
+1,200 is one call and 1,201 is two. Both tests go red when the split is made at `size + 1`.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

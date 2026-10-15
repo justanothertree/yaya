@@ -413,6 +413,34 @@ export const tomorrow = (): string => plusDays(today(), 1)
  */
 export const STREAK_BACK = 30
 
+/**
+ * The most asks `chronicle_tally` will take in one call. It refuses MORE than this, so a batch of
+ * exactly this many is legal and one more is not — which is the off-by-one the test is for.
+ */
+export const ASKS_AT_ONCE = 1200
+
+/**
+ * The ask list split into calls the server will accept.
+ *
+ * ⚠️ IT EXISTS BECAUSE THE STREAK CALL OUTGROWS THE CAP, silently. `streakAsks` emits
+ * `STREAK_BACK + 1` windows for every repeating derived goal — thirty-one each — so thirty-eight
+ * such goals is 1,178 asks and thirty-nine is 1,209. Past that the server raised 'too many at
+ * once', `tally` turned the refusal into `{}`, and EVERY streak on the site vanished: no flame
+ * beside any goal, every marks row empty, and nothing anywhere saying why. The goals table allows
+ * five hundred, so this is reachable by somebody simply using the room.
+ *
+ * ⚠️ AND BATCHING DOES NOT MAKE IT CHEAPER, which is worth being honest about. The cost is one
+ * index probe per ask either way — see docs/2026-10-13-chronicle-tally-cost.sql, which measured
+ * 617ms for 310. What it buys is that the answer arrives at all, and the room does not await the
+ * streak call, so the second trip costs nobody a wait.
+ */
+export function inBatches<T>(xs: readonly T[], size = ASKS_AT_ONCE): T[][] {
+  if (size < 1) return xs.length ? [[...xs]] : []
+  const out: T[][] = []
+  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size))
+  return out
+}
+
 /** the same window, n of its own size earlier */
 function windowBack(scope: Scope, on: string, n: number): Window | null {
   if (scope === 'life') return null

@@ -35,6 +35,7 @@ import {
   pvSpans,
   pvVisit,
 } from '../dev/chroniclePreview'
+import { inBatches } from './goal'
 import type { Goal, Scope } from './goal'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
@@ -346,7 +347,15 @@ export async function dropEntry(id: string): Promise<boolean> {
  *
  * ⚠️ ONE CALL FOR ALL OF THEM, because a window's worth of goals is a handful and a round trip
  * each would make the room's load time a function of how much somebody is aiming at. The server
- * caps the batch at 200.
+ * caps the batch at `ASKS_AT_ONCE` — ⚠️ which this said was 200 and is 1,200; the number was
+ * raised when the function was rewritten and the sentence beside it was not. It is a named
+ * constant now rather than a figure typed in two places.
+ *
+ * ⚠️ AND MORE THAN ONE CALL WHEN THERE HAS TO BE. The streak fetch asks thirty-one windows per
+ * repeating derived goal, so thirty-nine of them is 1,209 asks: over the cap, refused, turned
+ * into `{}` here, and every streak on the site disappears with nothing saying why. Split into
+ * batches the server will take. A batch that fails is skipped rather than losing the rest —
+ * some streaks beat none.
  *
  * ⚠️ AND THE ASKS CARRY WINDOWS, NOT SOURCES. What to count comes off the goal's own row inside
  * the function — see its note. A caller that could name an activity could name somebody else's.
@@ -360,12 +369,14 @@ export async function tally(
 ): Promise<Record<string, number>> {
   if (!asks.length) return {}
   if (previewMember) return pvTally(asks)
-  const { data, error } = await getSupabaseClient().rpc('chronicle_tally', { p_asks: asks })
-  if (error || !data || typeof data !== 'object') return {}
   const out: Record<string, number> = {}
-  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-    /* ⚠️ numeric arrives as a string — see the note on num above */
-    out[k] = num(v as number | string | null)
+  for (const some of inBatches(asks)) {
+    const { data, error } = await getSupabaseClient().rpc('chronicle_tally', { p_asks: some })
+    if (error || !data || typeof data !== 'object') continue
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      /* ⚠️ numeric arrives as a string — see the note on num above */
+      out[k] = num(v as number | string | null)
+    }
   }
   return out
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ASKS_AT_ONCE,
+  inBatches,
   derived,
   finished,
   goalWindow,
@@ -452,6 +454,53 @@ describe('a goal that reads the record instead of waiting to be told', () => {
   it('and a lifetime goal with a source is not asked about, having no window', () => {
     const forever = goal({ scope: 'life', anchor: null, target: 100, unit: 'min', activity: 'a' })
     expect(tallyAsks([forever], '2026-10-14')).toEqual([])
+  })
+})
+
+describe('splitting the asks into calls the server will take', () => {
+  /**
+   * ⚠️ THE SERVER REFUSES **MORE** THAN THE CAP, so a batch of exactly it is legal and one more is
+   * not. That is the whole off-by-one, and asserting it against `ASKS_AT_ONCE` rather than against
+   * a number typed in here means the test still means something the day the cap moves.
+   */
+  it('fits exactly the cap into one call and one more into two', () => {
+    const ask = (n: number) => ({ key: 'k' + n, id: 'g', from: 'a', to: 'b' })
+    const at = Array.from({ length: ASKS_AT_ONCE }, (_, i) => ask(i))
+    expect(inBatches(at).length).toBe(1)
+    expect(inBatches([...at, ask(9999)]).length).toBe(2)
+    for (const b of inBatches([...at, ask(9999)]))
+      expect(b.length).toBeLessThanOrEqual(ASKS_AT_ONCE)
+  })
+
+  /**
+   * ⚠️ WRITTEN FROM THE SHAPE THAT BREAKS IT, not from the arithmetic. `streakAsks` emits one
+   * window per step back plus the one you are in, for every repeating derived goal — so the real
+   * question is "how many goals before the room loses every streak", and the answer was
+   * thirty-nine. Built through `streakAsks` itself so it cannot drift from what is actually sent.
+   */
+  it('and keeps the streak fetch of a heavy account inside the cap', () => {
+    const many = Array.from({ length: 60 }, (_, i) =>
+      goal({
+        id: 'g' + i,
+        scope: 'day',
+        anchor: null,
+        every: 1,
+        target: 30,
+        unit: 'min',
+        activity: 'a1',
+      }),
+    )
+    const asks = streakAsks(many, '2026-10-12')
+    expect(asks.length).toBeGreaterThan(ASKS_AT_ONCE)
+    const batches = inBatches(asks)
+    expect(batches.length).toBeGreaterThan(1)
+    for (const b of batches) expect(b.length).toBeLessThanOrEqual(ASKS_AT_ONCE)
+    /* nothing lost and nothing duplicated on the way through */
+    expect(batches.flat().map((a) => a.key)).toEqual(asks.map((a) => a.key))
+  })
+
+  it('and has nothing to say about an empty list', () => {
+    expect(inBatches([])).toEqual([])
   })
 })
 
