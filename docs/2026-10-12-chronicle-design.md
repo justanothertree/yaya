@@ -4657,6 +4657,40 @@ reason: these run inside a millisecond, so extending writes back the very value 
 window does the difference become a whole new row. Perturbation caught it both times; the test
 itself was green throughout.
 
+## 6bw · ✅ Counting the write paths, and a sentence I had written three times
+
+Three commits now said some version of _"every other way into this table refuses a span longer
+than a day"_. That is the kind of sentence worth checking rather than repeating, so the question
+was asked properly: **how many functions write to `chronicle_entries`?**
+
+**Ten.** Not four.
+
+|                        |                                                                             |
+| ---------------------- | --------------------------------------------------------------------------- |
+| told a span            | `chronicle_entry_add`, `chronicle_entry_edit`, `chronicle_import`           |
+| makes up its own       | `chronicle_visit`                                                           |
+| **measures one**       | `chronicle_start`, `chronicle_stop`                                         |
+| touches no times       | `chronicle_entry_amount`, `chronicle_entry_quality`, `chronicle_entry_drop` |
+| moves a start, guarded | `chronicle_running_fix`                                                     |
+
+⚠️ **AND THE SENTENCE WAS FALSE.** `chronicle_start` and `chronicle_stop` close a timer with
+`ended_at = clock_timestamp()` and keep no day rule at all. Measured: a timer left running thirty
+hours is closed at **30.0h**, exactly as it should be. A sitting the clock MEASURED is however long
+it ran; refusing it would throw away what somebody actually did. The bound belongs to spans
+somebody ASSERTS — typed into ⏱ Fill a gap, carried in by a file, or synthesised by the visit
+writer — and to nothing else.
+
+That distinction is the useful half of the finding, and it is now in CLAUDE.md with the
+enumeration query, because the next person to tidy this will reach for a CHECK constraint. They
+must not: closing a day-long timer would fail it, and `chronicle_start` closes the old sitting
+before opening a new one, so it would stop them starting anything at all.
+
+⚠️ **THE QUERY ALMOST WENT INTO THE STANDARD BROKEN.** Condensed from the one that worked, it lost
+`p.prokind = 'f'` — and `pg_get_functiondef` raises on an aggregate, so it errors on `array_agg`
+before reaching any chronicle function. CLAUDE.md §11 keeps queries rather than lists precisely
+because a list rots; a query that does not run is worse than the list it replaced. Run before
+committing, and it returns all ten.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

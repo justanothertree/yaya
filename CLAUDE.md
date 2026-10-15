@@ -155,6 +155,36 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   `id` where `readSomeone` reads `from`, it did not carry the room's boss the way the relay's
   `outNow` does, and it sent `presence` on a disconnect where the client only removes somebody
   on `over`. Read the server before believing the client is wrong.
+- **AND AN UNFAITHFUL DOUBLE HIDES BUGS AS WELL AS INVENTING THEM, which is the worse direction
+  because nothing looks wrong.** `pvStart` checked that an activity existed where
+  `chronicle_start` also checks `archived_at is null`. So the Routines list offered a ▶ on a step
+  whose activity had been archived, the pane started it happily, and the live site would have
+  answered "no such activity" about an activity named on the button's own face. The bug was found
+  by reading the server, not by driving the room — the room said it was fine. The other direction
+  cost time the same day: `pvSaveGoal` rebuilt a goal from `NewGoal`, which has no `shared` field,
+  so every edit unticked a goal from the profile while the real `chronicle_goal_save` never names
+  that column. One invented a loss, one concealed one. **When a guard exists on the server, copy
+  it to the double in the server's own words** — and when the double and the room agree that
+  something works, that is one source, not two.
+- **COUNT THE WRITE PATHS BEFORE CLAIMING A RULE HOLDS, and ask which of them ASSERT a value and
+  which MEASURE one.** "A sitting cannot start in the future" went into `chronicle_entry_add` and
+  `chronicle_entry_edit` with a note saying a rule only one path keeps is one you get around.
+  There were four more: `chronicle_import` kept neither span rule, and `chronicle_visit` — the
+  writer nobody presses — grew a single row for as long as a tab stayed visible, crossing a day
+  in one beat. Ten functions write to that table; the query is three lines and finds them all:
+  ```sql
+  select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prokind = 'f'   -- ⚠️ or pg_get_functiondef raises on array_agg
+    and pg_get_functiondef(p.oid) ~* '(insert into|update|delete from)\s+public\.chronicle_entries';
+  ```
+  ⚠️ **AND THE BOUND BELONGS ONLY TO THE ASSERTED ONES.** `chronicle_start` and `chronicle_stop`
+  close a timer with `ended_at = clock_timestamp()`, so a timer left running thirty hours IS a
+  thirty-hour sitting — measured, not claimed. Refusing it would throw away what somebody did,
+  and a CHECK constraint spelling the rule onto the table would make closing that timer fail —
+  which, since `chronicle_start` closes the old sitting before opening a new one, would stop them
+  starting anything at all. A tidy-looking constraint that locks the room. This was written down
+  three times as "every other way into this table refuses a span longer than a day" before the
+  enumeration showed two that cannot.
 - **`.park-field` is always rendered, so it does not mean you are in the park.** The field is
   the frame; only its contents are gated on `walking`. Two long measuring runs this session
   produced nothing because they were driving a park nobody had walked into. Check for

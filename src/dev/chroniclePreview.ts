@@ -895,7 +895,14 @@ export const pvVisit = (room: string, secs: number): void => {
    * Extending on a three-minute gap is what makes a visit a sitting rather than a thousand
    * scraps, and it had no ceiling: a tab left visible on a desk grows ONE row for as long as it
    * is open. Measured against the live function before the fix — 23h59m30s went to 24h00m30s in
-   * a single row. Every other way into this table refuses a span longer than a day.
+   * a single row.
+   *
+   * ⚠️ THE BOUND IS ON A SPAN SOMEBODY ASSERTS, NEVER ON ONE THE CLOCK MEASURED. Ten functions
+   * write to chronicle_entries, and the day rule belongs to the three that are TOLD a span —
+   * entry_add, entry_edit and import — plus this one, which synthesises its own. The two that
+   * MEASURE one cannot keep it and must not: chronicle_start and chronicle_stop close a timer
+   * with `ended_at = clock_timestamp()`, so a timer left running for thirty hours genuinely is a
+   * thirty-hour sitting, and refusing it would throw away what somebody actually did.
    */
   const recent = db()
     .ents.filter(

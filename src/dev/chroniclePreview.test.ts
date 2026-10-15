@@ -463,8 +463,12 @@ describe('a visit recorded without being asked for', () => {
    * ⚠️ EXTENDING HAD NO CEILING. The three-minute rule is what makes a visit a sitting rather
    * than a thousand scraps, and a tab left visible on a desk grew ONE row for as long as it was
    * open. Measured against the live function before the fix: 23h59m30s came out of the next beat
-   * at 24h00m30s, in a single row, and would have kept going. Every other way into this table
-   * refuses a span longer than a day — this was the fourth and kept no such rule.
+   * at 24h00m30s, in a single row, and would have kept going.
+   *
+   * ⚠️ THE BOUND IS ON AN ASSERTED SPAN, NOT A MEASURED ONE. It belongs to the paths that are
+   * told a span — entry_add, entry_edit, import — and to this one, which makes up its own. The
+   * two that measure a span, chronicle_start and chronicle_stop, cannot keep it: a timer left
+   * running thirty hours IS a thirty-hour sitting.
    */
   it('and begins a new sitting rather than extending one that has run a day', () => {
     /* ⚠️ aged through pvEditEntry rather than by poking the row: pvEntries hands back copies, so
