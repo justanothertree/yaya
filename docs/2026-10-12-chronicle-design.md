@@ -4537,19 +4537,19 @@ Four fixes in three ticks had one shape, so every chronicle column was asked the
 questions: **what gives this its meaning, and can that change without it?** Recorded so nobody
 repeats the sweep.
 
-| column                         | its meaning comes from             | verdict                                                                                                                                                  |
-| ------------------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entries.amount`               | the activity's `metric`            | §6bp — fixed when the entry moves; **the activity's own metric changing is still open and is Evan's call**, since the repair deletes recorded quantities |
-| `entries.quality`              | a fixed 1–5 scale                  | nothing can move under it                                                                                                                                |
-| `entries.note`                 | itself                             | —                                                                                                                                                        |
-| `goals.counts`                 | whether the source counts anything | §6bq — fixed in room and server                                                                                                                          |
-| `goals.unit`                   | what is being counted              | §6br — the room's word follows, a typed one stays                                                                                                        |
-| `goals.scope`                  | the list it is shown in            | §6bs — an edit keeps the goal's own                                                                                                                      |
-| `goals.anchor`, `repeat_every` | `scope`                            | held by the same fix                                                                                                                                     |
-| `goals.target`                 | `unit` / `counts`                  | **left alone deliberately** — it is always typed by the person and never auto-filled, so "a typed value wins" applies, as it does to the unit            |
-| `goals.progress`               | `unit`, for a hand-moved goal      | benign: giving a goal a source hides its progress rather than reinterpreting it, and removing the source brings the same number back                     |
-| `activities.session_mins`      | itself                             | the "SHORT" marker is judged live, not stored, so changing it re-judges rather than reinterprets                                                         |
-| `activities.cat`               | itself                             | a category goal's total moving when an activity changes category is the total being right                                                                |
+| column                         | its meaning comes from             | verdict                                                                                                                                                                       |
+| ------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entries.amount`               | the activity's `metric`            | §6bp — fixed when the entry moves; §6bu drove the other door, which now asks before it is taken. The repair itself is still Evan's call, since it deletes recorded quantities |
+| `entries.quality`              | a fixed 1–5 scale                  | nothing can move under it                                                                                                                                                     |
+| `entries.note`                 | itself                             | —                                                                                                                                                                             |
+| `goals.counts`                 | whether the source counts anything | §6bq — fixed in room and server                                                                                                                                               |
+| `goals.unit`                   | what is being counted              | §6br — the room's word follows, a typed one stays                                                                                                                             |
+| `goals.scope`                  | the list it is shown in            | §6bs — an edit keeps the goal's own                                                                                                                                           |
+| `goals.anchor`, `repeat_every` | `scope`                            | held by the same fix                                                                                                                                                          |
+| `goals.target`                 | `unit` / `counts`                  | **left alone deliberately** — it is always typed by the person and never auto-filled, so "a typed value wins" applies, as it does to the unit                                 |
+| `goals.progress`               | `unit`, for a hand-moved goal      | benign: giving a goal a source hides its progress rather than reinterpreting it, and removing the source brings the same number back                                          |
+| `activities.session_mins`      | itself                             | the "SHORT" marker is judged live, not stored, so changing it re-judges rather than reinterprets                                                                              |
+| `activities.cat`               | itself                             | a category goal's total moving when an activity changes category is the total being right                                                                                     |
 
 **And the sweep turned up something else: a third write path.** §6bo put "not in the future" into
 `chronicle_entry_add` and `chronicle_entry_edit`, reasoning that a rule only one write path keeps
@@ -4576,6 +4576,51 @@ Checked against the live function with a crafted four-entry file:
 | running, no end at all              | **in** — an open sitting has no length yet |
 
 `entries 2, skipped 2`, counted in the tally the person is shown, and rolled back.
+
+## 6bu · ✅ Renaming what an activity counts, and a guess that was wrong
+
+§6bt left one door open: an activity's own `metric` changing, under amounts already recorded
+against it. It was listed from reading rather than from driving, and driving it corrected the
+entry.
+
+**The guess was that clearing a metric would break goals pointed at it** — counts stuck on
+`amount` against an activity that counts nothing, the §6bq shape. It does not. Measured: clearing
+Gym's metric left "20,000 reps · 180 / 20000 reps" reading exactly as before, because clearing a
+metric does not touch the entries' amounts and the tally still sums them. What it does is stop the
+log DISPLAYING them — "Gym 45m 60 reps" becomes "Gym 45m" — since the room only shows an amount
+beside a metric. Hidden, not broken.
+
+**The door that does rewrite meaning is a swap**, one word for another, and it is worse than the
+entry side alone:
+
+|                    |                                                                 |
+| ------------------ | --------------------------------------------------------------- |
+| the log            | `Gym 45m` **`60 pages`** — sixty reps, relabelled               |
+| a goal counting it | `20,000 reps · FROM GYM · `**`PAGES`**`· 180 / 20000`**`reps`** |
+
+The goal's chip is read live off the activity; its unit is stored. One row, disagreeing with
+itself — §6br reached from the other side.
+
+**Repairing it still means deleting quantities out of sessions somebody recorded, so it is still
+not mine to do.** What is mine is to say so at the moment of choosing, which is the lesson the
+delete confirmation already carries in this room: a confirmation that understates what it does is
+worse than none.
+
+> Anything already recorded against Gym was counted in reps. Changing this to pages makes every
+> one of those numbers read as pages instead. Change it?
+
+⚠️ **ONLY WORD → DIFFERENT WORD.** Naming a metric for the first time cannot relabel anything
+recorded without one, and clearing hides rather than reinterprets. Both measured, not reasoned —
+which is also how the wrong guess above was caught.
+
+Four readings, with `window.confirm` stood in because the pane auto-dismisses it:
+
+|                          |                                                                 |
+| ------------------------ | --------------------------------------------------------------- |
+| reps → pages, declined   | asked once; log still `60 reps`; the editor kept what was typed |
+| reps → pages, accepted   | asked once; `· pages`, log `60 pages`                           |
+| none → "loads" on Dishes | **not asked**                                                   |
+| reps → cleared           | **not asked**; the amount stops showing, as it should           |
 
 ## 7 · What is deliberately not being ported
 
