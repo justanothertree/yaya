@@ -1255,9 +1255,20 @@ export function Timer({
                     ) : null}
                     {a.name}
                     <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
-                    {a.metric ? <span className="muted">· {a.metric}</span> : null}
+                    {/**
+                     * ⚠️ THE TWO OPTIONAL FACTS ARE MARKED, so a phone can drop them. The row
+                     * carries a name, a category, a metric, a sitting length, today's minutes and
+                     * an Archive button; at 375 the name button gets about 178px of that and was
+                     * wrapping to three ragged lines with "· 30m a sitting" spilling past its own
+                     * rounded background. Same answer as `.chron-plan-note` and `.chron-ent-when`:
+                     * the first things to go when a row will not fit a thumb are the ones the
+                     * editor shows anyway — and this button IS the editor's door.
+                     */}
+                    {a.metric ? <span className="muted chron-act-extra">· {a.metric}</span> : null}
                     {a.session ? (
-                      <span className="muted">· {spanText(a.session * 60_000)} a sitting</span>
+                      <span className="muted chron-act-extra">
+                        · {spanText(a.session * 60_000)} a sitting
+                      </span>
                     ) : null}
                     {a.auto ? <span className="chron-chip">on the site</span> : null}
                   </button>

@@ -16455,6 +16455,14 @@ a.cz-msg-author:focus-visible {
   .chron-plan-note {
     display: none;
   }
+  /* and the same for an activity's metric and sitting length: the row already carries a name, a
+     category, today's minutes and an Archive button, and both of these are in the editor that
+     this very button opens. Without it the name button wrapped to three lines and spilled past
+     its own background — `spills` in mobile-audit.js reported it at 8px, which is what sent me
+     to look. */
+  .chron-act-extra {
+    display: none;
+  }
   /**
    * ⚠️ A NARROWER NAME ON A PHONE, because 130px of a 303px row is not a name column, it is most
    * of the row — and what it cost was the ✎ and ✕ being pushed onto a line of their own, floating

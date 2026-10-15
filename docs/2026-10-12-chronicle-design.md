@@ -3797,6 +3797,33 @@ only has not because nothing in the seed is long enough — which is the lesson,
 The fixture carries the long title permanently now, the way it carries a long activity name, for
 the same reason: a fixture whose longest string is short tests the ellipsis on nothing.
 
+## 6az · ✅ The new rule's first catch, which was mine
+
+`spills` went into `scripts/mobile-audit.js` because three faults in one day shared a blind spot it
+could not see. Run across twelve rooms with every fold open, a healthy site reported exactly one
+thing: the Activities fold's name button, over by eight pixels.
+
+Eight pixels sounded like rounding. It was not. Going to look found the fold in a genuinely poor
+state at 375 — each row's button carries a name, a category, a metric AND a sitting length, gets
+about 178px of a 375 screen, and was wrapping to three ragged lines with "· 30m a sitting" drawn
+outside its own rounded background. **The number was small because an overflow is measured in
+pixels and a mess is not.**
+
+The answer is the one this room already uses twice — `.chron-plan-note` and `.chron-ent-when` both
+disappear below 700px because _"a note is the first thing to go when a planned row will not fit a
+thumb"_. The metric and the sitting length are now `.chron-act-extra` and go the same way, and they
+are the right two to lose: both are in the editor that this very button opens. Five of seven rows
+are a clean 36px single line now, where before they were three wrapped lines each; desktop keeps
+everything.
+
+**And one row stays slightly tall on purpose.** The auto activity's "on the site" chip wraps to
+three lines, which `white-space: nowrap` fixes — measured, it takes the row from 61px to 49px — but
+that makes the name button spill 28px instead. Hiding the chip would fix both and is the one thing
+not available: `record.ts` says that flag is _shown, not hidden_, because "Paint 4h" meaning the
+room was open is a different claim from having painted for four hours. So the chip wraps, the row
+is 61px against the others' 36px, and nothing overflows. A tall row is a worse look than a short
+one and a better answer than a quiet lie.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
