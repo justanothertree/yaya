@@ -194,6 +194,32 @@ export function goalWindow(g: Goal, on: string): Window | null {
 }
 
 /**
+ * The scopes the room has a view for.
+ *
+ * ⚠️ `quarter` IS DELIBERATELY ABSENT, answered by Evan: "not worth a tab". The scope itself
+ * stays — `chronicle_goals_scope_check` accepts it and `windowOf` computes it — because a file put
+ * back through ⬆ Put one back can contain a quarter goal, and refusing it on the way in would lose
+ * somebody's data rather than tidy it.
+ */
+export const SHOWN_SCOPES: readonly Scope[] = ['day', 'week', 'month', 'year', 'life']
+
+/**
+ * Which view a goal is listed under — its own scope, unless the room has no view for it.
+ *
+ * ⚠️ THIS EXISTS BECAUSE A GOAL WENT INVISIBLE. Removing the quarter tab left `quarter` a scope
+ * that the table accepts, the import restores, the profile block counts and **no view lists**: the
+ * seed's "Read ten books" was in `myGoals()` and in none of the six tabs, so it could not be seen,
+ * edited or deleted. The design doc worried about exactly this — "a goal somebody can create and
+ * never see again" — and concluded the scope had to stay, which was right; nobody then checked
+ * that a goal wearing it could still be found.
+ *
+ * ⚠️ THE YEAR, because that is the nearest cadence the room still has and a quarter is a slice
+ * of one. The goal keeps its own scope in the data and says so on its row; this only decides where
+ * it is listed, so it stays findable and can be edited into a scope with a view of its own.
+ */
+export const homeFor = (s: Scope): Scope => (SHOWN_SCOPES.includes(s) ? s : 'year')
+
+/**
  * Does this goal belong in the list for this scope, looked at from this day?
  *
  * ⚠️ MATCHED ON SCOPE AS WELL AS ON DATES, and that is what keeps the six lists readable. A
@@ -201,10 +227,14 @@ export function goalWindow(g: Goal, on: string): Window | null {
  * year — so a view shows what you are aiming at AT ITS OWN CADENCE, and each goal appears in
  * exactly one of them. Overlap alone would put every yearly goal in all six lists, which is the
  * difference between a planner and a wall of text.
+ *
+ * ⚠️ AND A GOAL WHOSE CADENCE HAS NO VIEW IS STILL IN EXACTLY ONE LIST — see `homeFor`. The
+ * window it is checked against is the VIEW's, so a quarter goal anchored in October is found by
+ * the year that contains it.
  */
 export function inScope(g: Goal, scope: Scope, on: string): boolean {
-  if (g.scope !== scope) return false
-  if (scope === 'life') return true
+  if (homeFor(g.scope) !== scope) return false
+  if (g.scope === 'life') return true
   if (repeats(g)) return true
   const w = windowOf(scope, on)
   return !!w && !!g.anchor && g.anchor >= w.from && g.anchor < w.to

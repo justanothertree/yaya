@@ -3923,6 +3923,46 @@ sum twice. Segments scale against the **biggest year** rather than the total, th
 bar in this room uses: against the total, six years of records would be six slivers. At 375 all
 three tracks measure 209px and start at the same x, and nothing spills.
 
+## 6bd · ✅ A goal in no list at all
+
+Removing the quarter tab was right — _"quater is not worth a tab"_ — and the reasoning for keeping
+the SCOPE was right too: the check constraint accepts it, `windowOf` computes it, and a file put
+back through ⬆ Put one back can contain a quarter goal, so refusing it on the way in would lose
+somebody's data rather than tidy it. The open item even said so, and called the import _"exactly
+one door into the state"_.
+
+What nobody checked is what a goal looks like once it is through that door. **It is invisible.**
+`inScope` matches on scope exactly — deliberately, so each goal appears in one list rather than six
+— and no view has scope `quarter`. The seed's "Read ten books" was in `myGoals()`, counted in the
+profile block's "9 still going", shareable onto a profile, and listed by **none of the six tabs**.
+Not seeable, not editable, not deletable.
+
+The design doc had worried about this exact outcome in those exact words — _"a goal somebody can
+create and never see again"_ — and then concluded the scope should stay, which was the right
+conclusion and not the whole job.
+
+**`homeFor` is the fix**: a goal whose cadence has no view is listed under the nearest one that
+exists, which for a quarter is the year that contains it. It keeps its own scope in the data, the
+window it is matched against is the VIEW's, and its row now carries a `this quarter` chip — because
+an unlabelled quarter goal among the year's would be a quiet lie about what it is, and the member
+needs to know in order to edit it into something the room does show.
+
+### The test that passed for as long as the bug existed
+
+There was already a test called _"appears at its own cadence and nowhere else"_. It asserted that a
+quarter goal appears in the `quarter` list. **That was true, and useless** — it compared against
+`SCOPES`, all six, when only five of them are lists anybody can open. It asked about `inScope` in
+the abstract rather than about a view, so it agreed with the bug for as long as the bug lasted.
+
+It compares against `SHOWN_SCOPES` now and expects `homeFor(scope)`. The new test asks the property
+rather than naming the two scopes: **every scope lands in exactly one list, and one the room can
+show** — which stays true if a seventh scope arrives or the quarter tab ever comes back. Perturbed
+by routing an orphan to itself again, four tests go red.
+
+Measured in the room afterwards: "Read ten books · THIS QUARTER" under This year, and that tab's
+unfinished count moved from 1 to 2 — it had been counting the goal all along while showing it
+nowhere.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
@@ -3944,7 +3984,8 @@ three tracks measure 209px and start at the same x, and nothing spills.
    imported through ⬆ Put one back can contain a quarter goal and a scope the table accepts with
    nothing able to render it is a goal somebody can create and never see again. That leaves exactly
    one door into the state, which is the narrowest the question can be left without a migration —
-   see the note at the top of `src/sections/Chronicle.tsx`.
+   see the note at the top of `src/sections/Chronicle.tsx`. **And a goal that walks through that
+   door is now visible**, which it was not: see §6bd.
 3. **Does a goal need a category** (`locked`/`free`/`life`) the way an activity does? It would make
    "what am I aiming at that is actually mine" askable. Left out as something easier to add than to
    remove.

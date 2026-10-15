@@ -15,6 +15,8 @@ import {
   STREAK_BACK,
   likeForLike,
   marksOf,
+  homeFor,
+  SHOWN_SCOPES,
   tallyAsks,
   unitFor,
   weight,
@@ -167,20 +169,27 @@ describe('the window a goal is judged over', () => {
 
 describe('which list a goal shows up in', () => {
   /**
-   * ⚠️ EXACTLY ONE OF THE SIX, which is the whole reason `inScope` matches on scope and not just
-   * on dates. A hundred points over a year is not a thing to do today, even though today is
-   * inside the year — overlap alone would put every yearly goal in all six lists, and six lists
-   * showing the same things is a wall of text rather than a planner.
+   * ⚠️ EXACTLY ONE LIST, which is the whole reason `inScope` matches on scope and not just on
+   * dates. A hundred points over a year is not a thing to do today, even though today is inside
+   * the year — overlap alone would put every yearly goal in all six lists, and six lists showing
+   * the same things is a wall of text rather than a planner.
+   *
+   * ⚠️ THIS USED TO SAY "AND NOWHERE ELSE" AND COMPARE AGAINST `SCOPES`, AND THAT IS HOW A GOAL
+   * WENT INVISIBLE. It asserted that a quarter goal appears in the quarter list — which was true,
+   * and useless, because there is no quarter VIEW: the list it named is one nothing renders. The
+   * test passed for as long as the bug existed, because it asked about `inScope` in the abstract
+   * instead of about a list somebody can open. It compares against `SHOWN_SCOPES` now, and the
+   * expectation is `homeFor(scope)` rather than `scope`.
    */
-  it('appears at its own cadence and nowhere else', () => {
+  it('appears in one list, and one the room can actually show', () => {
     const on = '2026-10-12'
     for (const scope of SCOPES) {
       const g =
         scope === 'life'
           ? goal({ scope, anchor: null })
           : goal({ scope, anchor: windowOf(scope, on)!.from })
-      const shown = SCOPES.filter((s) => inScope(g, s, on))
-      expect(shown, `a ${scope} goal`).toEqual([scope])
+      const shown = SHOWN_SCOPES.filter((s) => inScope(g, s, on))
+      expect(shown, `a ${scope} goal`).toEqual([homeFor(scope)])
     }
   })
 
@@ -811,5 +820,57 @@ describe("the word beside a target's number", () => {
     expect(unitFor('pomodoros', { counts: 'minutes', activity: reading })).toBe('pomodoros')
     expect(unitFor('  chapters  ', { counts: 'amount', activity: reading })).toBe('chapters')
     expect(unitFor('reps', { counts: 'minutes' })).toBe('reps')
+  })
+})
+
+/**
+ * ⚠️ THE BUG THIS IS FOR: a goal in no list at all. Removing the quarter tab left `quarter` a
+ * scope the table accepts, the import restores and the profile block counts — and that not one of
+ * the six views would list. The seed's "Read ten books" was in `myGoals()` and in none of the six
+ * tabs, so it could not be seen, edited or deleted.
+ *
+ * The property worth pinning is not "quarter goes to year". It is that EVERY scope lands in
+ * exactly one list, which is the thing that was broken and the thing that stays true when somebody
+ * adds a seventh scope or restores the quarter tab.
+ */
+describe('a goal is always in exactly one list', () => {
+  const EVERY: Scope[] = ['day', 'week', 'month', 'quarter', 'year', 'life']
+
+  it('lists every scope somewhere the room can show', () => {
+    for (const sc of EVERY) expect(SHOWN_SCOPES).toContain(homeFor(sc))
+  })
+
+  it('leaves a scope with a view of its own exactly where it is', () => {
+    for (const sc of SHOWN_SCOPES) expect(homeFor(sc)).toBe(sc)
+  })
+
+  /**
+   * ⚠️ ASKED OF EVERY SCOPE AND EVERY VIEW, rather than of quarter and year by name — a test
+   * naming the two would pass again the moment a different scope lost its tab.
+   */
+  it('puts each goal in one list and no more', () => {
+    const on = '2026-10-14'
+    for (const sc of EVERY) {
+      for (const shape of [
+        goal({ scope: sc, anchor: sc === 'life' ? null : on, every: null }),
+        goal({ scope: sc, anchor: null, every: sc === 'life' ? null : 1 }),
+      ]) {
+        const lists = SHOWN_SCOPES.filter((v) => inScope(shape, v, on))
+        expect({ scope: sc, repeats: shape.every != null, lists }).toEqual({
+          scope: sc,
+          repeats: shape.every != null,
+          lists: [homeFor(sc)],
+        })
+      }
+    }
+  })
+
+  /** the one that was invisible, named so the reason this test exists stays legible */
+  it('shows a quarter goal under the year that contains it', () => {
+    const q = goal({ scope: 'quarter', anchor: '2026-10-14', every: null })
+    expect(inScope(q, 'year', '2026-10-14')).toBe(true)
+    expect(inScope(q, 'month', '2026-10-14')).toBe(false)
+    /* and not in a year it does not fall in */
+    expect(inScope(q, 'year', '2025-10-14')).toBe(false)
   })
 })

@@ -9,6 +9,7 @@ import {
   lastDay,
   reached,
   repeats,
+  homeFor,
   tallyAsks,
   unitFor,
   weight,
@@ -564,6 +565,22 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         cadence and the room already knows it, so a chip saying only that a thing
                         repeats is a label that raises the question it should answer */}
                     {repeats(g) ? <span className="chron-chip">every {g.scope}</span> : null}
+                    {/**
+                     * ⚠️ A CADENCE THE ROOM HAS NO VIEW FOR SAYS SO. `homeFor` lists a quarter goal
+                     * under the year, because the year is the nearest cadence left and the
+                     * alternative — which is what happened — is a goal in no list at all. But an
+                     * unlabelled quarter goal sitting among the year's would be a quiet lie about
+                     * what it is, and the member needs to know in order to edit it into something
+                     * the room does show.
+                     */}
+                    {!repeats(g) && homeFor(g.scope) !== g.scope ? (
+                      <span
+                        className="chron-chip"
+                        title={`A ${g.scope} goal, listed here because the room has no ${g.scope} view`}
+                      >
+                        this {g.scope}
+                      </span>
+                    ) : null}
                     {/**
                      * ⚠️ FLAGGED ONLY WHEN IT IS FLAGGED. Ordinary is the overwhelming majority, and
                      * a chip reading "ordinary" on every row would be noise that makes the two that
