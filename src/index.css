@@ -16370,6 +16370,75 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/* ── the whole record, a year at a time — see chronicle/Lifetime.tsx ──────── */
+
+.chron-life {
+  margin: 0.8rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+.chron-life-none {
+  margin: 0.8rem 0 0;
+  font-size: 0.85rem;
+}
+.chron-life-top {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+}
+.chron-life-years {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.chron-life-years li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* ⚠️ a grid item defaults to min-width: auto, which is "never shrink below your content" — see
+     the note on .profile-chron-goals, where that cost a card 223px */
+  min-width: 0;
+  font-size: 0.85rem;
+}
+.chron-life-year {
+  flex: none;
+  width: 3.2em;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+/* the track grows, the segments inside it do not — the other way round draws the chart backwards */
+.chron-life-track {
+  flex: 1 1 auto;
+  min-width: 12px;
+  height: 8px;
+  display: flex;
+  border-radius: 100px;
+  overflow: hidden;
+  background: var(--border);
+}
+.chron-life-part {
+  display: block;
+  height: 100%;
+}
+.chron-life-part.is-locked {
+  background: var(--chron-locked);
+}
+.chron-life-part.is-free {
+  background: var(--chron-free);
+}
+.chron-life-part.is-life {
+  background: var(--chron-life);
+}
+/* ⚠️ a fixed column in PIXELS, so every track starts and ends at the same place — the root size
+   here is fluid, so a rem is not a length */
+.chron-life-mins {
+  flex: none;
+  width: 58px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── planned, against what the day held — see chronicle/Plans.tsx ─────────── */
 .chron-plans,
 .chron-against {

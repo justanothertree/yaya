@@ -31,6 +31,8 @@ import {
   pvTotals,
   pvMemberChronicle,
   pvShareGoal,
+  pvSince,
+  pvSpans,
   pvVisit,
 } from '../dev/chroniclePreview'
 import type { Goal, Scope } from './goal'
@@ -797,4 +799,35 @@ export async function memberChronicle(
   })
   if (error) return 'failed'
   return (data as MemberChronicle | null) ?? null
+}
+
+/**
+ * How far back the record goes, as milliseconds, or null for somebody who has recorded nothing.
+ *
+ * ⚠️ NULL RATHER THAN TODAY for an empty record, because "you have been at this since today"
+ * is a sentence about nothing, and the view it feeds needs to tell those two apart.
+ */
+export async function recordedSince(): Promise<number | null> {
+  if (previewMember) return pvSince()
+  const { data, error } = await getSupabaseClient().rpc('chronicle_since')
+  if (error || data == null) return null
+  const ms = Date.parse(String(data))
+  return Number.isFinite(ms) ? ms : null
+}
+
+/**
+ * Category totals for a batch of windows, keyed however the caller keyed them.
+ *
+ * ⚠️ THE WINDOWS COME FROM HERE, which is the point — see `yearsBetween` in year.ts. A year
+ * begins at local midnight and the server does not know the zone; an offset would be an hour wrong
+ * across a daylight-saving change. `chronicle_tally` is asked its questions the same way.
+ */
+export async function spanTotals(
+  asks: Array<{ key: string; from: string; to: string }>,
+): Promise<Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>> {
+  if (!asks.length) return {}
+  if (previewMember) return pvSpans(asks)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_spans', { p_asks: asks })
+  if (error || !data || typeof data !== 'object') return {}
+  return data as Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>
 }

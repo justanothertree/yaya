@@ -205,6 +205,16 @@ function seed(): Store {
       span('pv-e14', 'pv-write', 8, 14, 60, 5, null, 3),
       span('pv-e15', 'pv-gym', 7, 10, 50, 65),
       span('pv-e16', 'pv-dish', 8, 19, 20),
+      /**
+       * ⚠️ THREE SITTINGS FROM EARLIER YEARS, so the Years view has something to be a view OF.
+       * Everything else in this seed is inside the last ten days, which makes a lifetime of one
+       * year — and a one-row list cannot show whether the rows line up, whether the bar is scaled
+       * against the biggest year or the total, or what an empty year does. `daysAgo` is counted
+       * back from today, so these stay in the past whenever the seed is read.
+       */
+      span('pv-e17', 'pv-draw', 400, 10, 95, null, null, 4),
+      span('pv-e18', 'pv-write', 430, 14, 140, 9, null, 3),
+      span('pv-e19', 'pv-gym', 800, 7, 60, 40),
       /* the running one — no end. The stopwatch has no other way to be seen in the pane. */
       {
         id: 'pv-run',
@@ -1243,4 +1253,44 @@ export const pvMemberChronicle = (
     reached: db().goals.filter((g) => g.done).length,
     open: db().goals.filter((g) => !g.done).length,
   }
+}
+
+/** the earliest sitting in the seed, so the Years view has a real span to draw */
+export const pvSince = (): number | null => {
+  const ts = db().ents.map((e) => Date.parse(e.start))
+  return ts.length ? Math.min(...ts) : null
+}
+
+/**
+ * ⚠️ THE SAME OVERLAP THE SQL TAKES, clamped to each window and never negative — a double that
+ * attributed a sitting by where it STARTED would disagree with the server at exactly the boundary
+ * the windows exist to get right.
+ */
+export const pvSpans = (
+  asks: Array<{ key: string; from: string; to: string }>,
+): Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> => {
+  const catOf = new Map(db().acts.map((a) => [a.id, a.cat]))
+  const now = Date.now()
+  const out: Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> = {}
+  for (const a of asks) {
+    const f = Date.parse(a.from)
+    const t = Date.parse(a.to)
+    const mins: Partial<Record<'locked' | 'free' | 'life', number>> = {}
+    for (const e of db().ents) {
+      const cat = catOf.get(e.activity)
+      if (!cat) continue
+      const s0 = Date.parse(e.start)
+      const e0 = e.end == null ? now : Date.parse(e.end)
+      const over = Math.max(0, Math.min(e0, t) - Math.max(s0, f)) / 60_000
+      if (over <= 0) continue
+      mins[cat] = (mins[cat] ?? 0) + over
+    }
+    for (const k of Object.keys(mins) as Array<'locked' | 'free' | 'life'>) {
+      const v = Math.round(mins[k] ?? 0)
+      if (v >= 1) mins[k] = v
+      else delete mins[k]
+    }
+    out[a.key] = mins
+  }
+  return out
 }

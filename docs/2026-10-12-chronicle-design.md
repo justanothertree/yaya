@@ -3877,6 +3877,52 @@ on the site for as long as those blocks have had a small size, and no sweep foun
 sweep ran at the width the block happened to be in. The rule that can see inside a container is what
 made them visible; varying the prop is what made them happen.
 
+## 6bc · ✅ Years had nothing to say about the record
+
+Six horizon views; five of them say something about what you did. Today and Tomorrow have the day's
+own totals two inches up. Week, month and year each get `Looking`. **Years had its life-scope goals
+and not one word about the record** — which is odd for the view whose whole subject is the things
+that take years.
+
+The note at Looking's call site explained it, and is right about what it says: _"Years has no window
+to add up — the range cap is 400 days, so pretending would mean quietly showing a year and calling
+it everything."_ `chronicle_totals` really does raise above 400 days. But that is a fact about one
+function, not a reason to show nothing, and the same note calls all-time totals _"a different
+question"_ — which is a description of work to do.
+
+So the Years view now ends with the whole record, a year at a time: a total, when it began and how
+many days that is, then one row per year with its hours split into the three categories.
+
+### The windows are computed in the client, deliberately
+
+A year begins at local midnight and the server does not know the zone. The obvious shortcut is to
+pass a UTC offset and let Postgres bucket by it — and it is wrong twice a year, because the offset
+in force today is not the one that was in force on the 1st of January. So `chronicle_spans` takes
+the windows already built, the way `chronicle_tally` does and for the same reason.
+
+`year.ts` builds them with `new Date(y, 0, 1)`, local by construction, and **its test asserts the
+property rather than a boundary**: the windows TILE — each ends exactly where the next begins — so
+the sum over all of them is the whole record, with nothing dropped between two of them or counted
+by both. The same shape as `overlapMs`' own test. Perturbed two ways at once, an off-by-one that
+drops the earliest year and a gap between windows: five of eleven go red, including the tiling one.
+
+### What it showed, checked by hand
+
+With three sittings added to the seed in earlier years — everything else in it is inside ten days,
+which makes a lifetime of exactly one year and tests nothing:
+
+```
+16h 23m recorded in all · since August 5, 2024 · 801 days
+2026   11h 28m    locked 595px · free 164 · life 37
+2025    3h 55m    locked 272
+2024       1h     free 69
+```
+
+11h28 + 3h55 + 1h = 16h23, which is the headline — added up separately rather than trusting the same
+sum twice. Segments scale against the **biggest year** rather than the total, the rule every other
+bar in this room uses: against the total, six years of records would be six slivers. At 375 all
+three tracks measure 209px and start at the same x, and nothing spills.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

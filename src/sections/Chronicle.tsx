@@ -33,6 +33,7 @@ import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
+import { Lifetime } from '../chronicle/Lifetime'
 import { YourCopy } from '../chronicle/YourCopy'
 import { Toast } from '../circuit/ui/Toast'
 
@@ -939,6 +940,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * in day cells would be 365 specks.
            */}
           {v.scope === 'month' && <MonthGrid on={on} beat={beat} />}
+          {/**
+           * ⚠️ AND YEARS GETS ITS OWN, which the note above used to say it could not have. That
+           * note is right that `chronicle_totals` cannot answer it — it caps a range at 400 days —
+           * but that is a fact about one function rather than a reason to show nothing. Years was
+           * the only horizon with not one word about the record in it. `chronicle_spans` asks the
+           * different question: every year somebody has, each as its own window.
+           */}
+          {v.scope === 'life' && <Lifetime beat={beat} />}
           {win && v.scope !== 'day' && v.scope !== 'life' ? (
             <Looking win={win} label={v.label} scope={v.scope} on={on} beat={beat} />
           ) : null}
