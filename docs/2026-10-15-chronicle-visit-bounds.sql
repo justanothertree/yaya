@@ -1,0 +1,59 @@
+-- ✅ APPLIED — migration: chronicle_visit_bounds_and_archive
+--
+-- The room's own writer: a sitting with no ceiling, and an Archive that did nothing.
+--
+-- ── THE FOURTH WRITE PATH ───────────────────────────────────────────────────────────────────
+--
+-- chronicle_entry_add, chronicle_entry_edit and chronicle_import all refuse a span longer than a
+-- day. chronicle_visit is the fourth, and it is the one nobody presses: the room records time on
+-- the site by itself, extending the last sitting whenever the previous beat landed within three
+-- minutes. That is what makes a visit a sitting rather than a thousand scraps — and it had no
+-- ceiling at all. A tab left visible on a desk grows ONE row for as long as it is open.
+--
+-- Measured against the live function, in a rolled-back transaction:
+--
+--   before the next beat    23.9917 h    1 sitting
+--   after it                24.0083 h    1 sitting      ← longer than a day
+--
+-- ⚠️ THE FIRST ATTEMPT TO SHOW THIS PROVED LESS THAN IT LOOKED. The fixture began at 30 hours,
+-- so the reading showed a 30-hour row and an extension happening — but not the extension CROSSING
+-- the line, which was the claim. Re-run from 23h59m30s, it crosses in one beat.
+--
+-- Past a day it begins a fresh sitting now, which is also what somebody reading their own week
+-- would expect to see.
+--
+-- ── AND ARCHIVE DID NOTHING ─────────────────────────────────────────────────────────────────
+--
+-- Nobody creates this activity. The room makes it the first time somebody is seen in a module, so
+-- Archive is the only lever there is over it — and minutes kept arriving against something they
+-- had put away, every day, with no way to stop them.
+--
+-- ⚠️ THE LOOKUP STILL FINDS THE ARCHIVED ONE ON PURPOSE. Adding `archived_at is null` to it would
+-- be worse than leaving this alone: the row would not be found, the insert below would make a
+-- SECOND activity of the same name, and somebody who put one away would get a fresh one every
+-- time they opened the room. It is found, and then nothing is written. Bring it back and
+-- recording resumes.
+--
+-- ── WHAT WAS CHECKED ────────────────────────────────────────────────────────────────────────
+--
+--   a sitting past a day            2 sittings, longest 23.99h   ← left alone, a new one begun
+--   a sitting 20 minutes old        1 sitting, 20 min            ← the control: still coalesces
+--   archived, after a visit         0 sittings
+--   …and how many of that name      1                            ← no twin
+--   a module seen for the first time  1 sitting                  ← the control: still records
+--
+-- ── THE CHANGE ──────────────────────────────────────────────────────────────────────────────
+--
+--   select id, archived_at into v_act, v_arch ...        -- was: select id into v_act
+--   if v_act is not null and v_arch is not null then return; end if;
+--
+--   ... and on the lookup for the sitting to extend:
+--   and started_at > v_now - interval '24 hours'
+--
+-- The rest of chronicle_visit is unchanged.
+
+-- ── the standing check, after ───────────────────────────────────────────────────────────────
+-- select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+-- from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+-- where n.nspname = 'public' and p.proname = 'chronicle_visit';
+-- → false

@@ -869,6 +869,14 @@ export const pvVisit = (room: string, secs: number): void => {
   const span = Math.min(Math.max(Math.round(secs) || 0, 30), 600)
   const now = Date.now()
   let act = db().acts.find((a) => a.auto && a.name === name)
+  /**
+   * ⚠️ FOUND EVEN WHEN ARCHIVED, AND THEN NOTHING IS RECORDED. Looking past an archived one would
+   * make a SECOND activity of the same name on the next visit. And archiving is the only control
+   * anybody has over this activity — nobody created it, the room did — so it has to mean
+   * something: minutes used to keep arriving against something you had put away, every day, with
+   * no way to stop them. Bring it back and recording resumes.
+   */
+  if (act?.archived) return
   if (!act) {
     act = {
       id: mint('pv-a'),
@@ -882,8 +890,21 @@ export const pvVisit = (room: string, secs: number): void => {
     }
     db().acts.push(act)
   }
+  /**
+   * ⚠️ AND A SITTING THAT HAS RUN A DAY IS LEFT ALONE, so the next beat begins a fresh one.
+   * Extending on a three-minute gap is what makes a visit a sitting rather than a thousand
+   * scraps, and it had no ceiling: a tab left visible on a desk grows ONE row for as long as it
+   * is open. Measured against the live function before the fix — 23h59m30s went to 24h00m30s in
+   * a single row. Every other way into this table refuses a span longer than a day.
+   */
   const recent = db()
-    .ents.filter((e) => e.activity === act.id && e.end != null && now - Date.parse(e.end) < 180_000)
+    .ents.filter(
+      (e) =>
+        e.activity === act.id &&
+        e.end != null &&
+        now - Date.parse(e.end) < 180_000 &&
+        now - Date.parse(e.start) < 86_400_000,
+    )
     .sort((a, b) => Date.parse(b.end!) - Date.parse(a.end!))[0]
   if (recent) recent.end = new Date(now).toISOString()
   else

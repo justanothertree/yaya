@@ -4622,6 +4622,41 @@ Four readings, with `window.confirm` stood in because the pane auto-dismisses it
 | none → "loads" on Dishes | **not asked**                                                   |
 | reps → cleared           | **not asked**; the amount stops showing, as it should           |
 
+## 6bv · ✅ The writer nobody presses
+
+Three write paths into `chronicle_entries` refuse a span longer than a day. There is a fourth, and
+it is the one no one operates: `chronicle_visit`, which records time on the site by itself. It
+extends the last sitting whenever the previous beat landed within three minutes — what makes a
+visit a sitting rather than a thousand scraps — **with no ceiling at all**. A tab left visible on
+a desk grows one row for as long as it is open.
+
+|                      |                          |
+| -------------------- | ------------------------ |
+| before the next beat | 23.9917 h, 1 sitting     |
+| after it             | **24.0083 h**, 1 sitting |
+
+⚠️ **The first attempt to show that proved less than it looked.** The fixture began at 30 hours, so
+the reading showed a 30-hour row and an extension happening — not the extension _crossing the
+line_, which was the claim. Re-run from 23h59m30s it crosses in a single beat.
+
+**And Archive did nothing to it.** Nobody creates this activity; the room makes it the first time
+you are seen in a module, so Archive is the only lever over it — and minutes kept arriving against
+something you had put away, every day, with no way to stop them. The lookup still finds the
+archived row on purpose: filtering it out would make a _second_ activity of the same name on the
+next visit. It is found, and then nothing is written.
+
+Five readings, two of them controls: a sitting past a day is left alone and a new one begun
+(2 sittings, longest 23.99h); a 20-minute-old sitting still coalesces (1 sitting); an archived one
+records nothing and grows no twin; a module seen for the first time still records.
+
+⚠️ **AND THE TEST FOR THE ARCHIVE RULE WAS WRONG TWICE, both times passing.** Counting rows cannot
+tell the rule from its absence — without it the visit EXTENDS the recent sitting rather than adding
+one, so the count is identical either way. Asserting the end timestamp instead fails for a duller
+reason: these run inside a millisecond, so extending writes back the very value it already had and
+"it did not move" is true in both worlds. Only after ageing the sitting past the three-minute
+window does the difference become a whole new row. Perturbation caught it both times; the test
+itself was green throughout.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

@@ -459,6 +459,86 @@ describe('a visit recorded without being asked for', () => {
     expect(Date.parse(after[0].end!)).toBeGreaterThanOrEqual(Date.parse(after[0].start))
   })
 
+  /**
+   * ⚠️ EXTENDING HAD NO CEILING. The three-minute rule is what makes a visit a sitting rather
+   * than a thousand scraps, and a tab left visible on a desk grew ONE row for as long as it was
+   * open. Measured against the live function before the fix: 23h59m30s came out of the next beat
+   * at 24h00m30s, in a single row, and would have kept going. Every other way into this table
+   * refuses a span longer than a day — this was the fourth and kept no such rule.
+   */
+  it('and begins a new sitting rather than extending one that has run a day', () => {
+    /* ⚠️ aged through pvEditEntry rather than by poking the row: pvEntries hands back copies, so
+       mutating what it returns changes nothing and the test quietly measured the wrong store */
+    const wide = () => [
+      new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      new Date(Date.now() + 86_400_000).toISOString(),
+    ]
+    pvVisit('Paint', 120)
+    const act = pvActivities().find((a) => a.name === 'Paint')!
+    const mine = () =>
+      pvEntries(...(wide() as [string, string])).filter((x) => x.activity === act.id)
+    expect(mine().length).toBe(1)
+    /* begun a day and half a minute ago, last touched a moment ago — the span itself is still
+       under a day, so the edit is allowed; what disqualifies it from extending is its AGE */
+    expect(
+      pvEditEntry(
+        mine()[0].id,
+        new Date(Date.now() - 86_400_000 - 30_000).toISOString(),
+        new Date(Date.now() - 60_000).toISOString(),
+        null,
+      ),
+    ).toBe(null)
+    pvVisit('Paint', 120)
+    const after = mine()
+    expect(after.length).toBe(2)
+    for (const x of after)
+      expect(Date.parse(x.end!) - Date.parse(x.start)).toBeLessThanOrEqual(86_400_000)
+  })
+
+  /**
+   * ⚠️ NOBODY MADE THIS ACTIVITY — the room did, the first time they were seen in a module — so
+   * Archive is the only lever there is over it, and it did nothing. Minutes kept arriving against
+   * something somebody had put away. It must also not grow a twin: looking past an archived one
+   * would make a second activity of the same name on the very next visit.
+   */
+  it('and records nothing against one that has been put away, without making a second', () => {
+    const wide = (): [string, string] => [
+      new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      new Date(Date.now() + 86_400_000).toISOString(),
+    ]
+    pvVisit('Paint', 120)
+    const act = pvActivities().find((a) => a.name === 'Paint')!
+    const mine = () => pvEntries(...wide()).filter((x) => x.activity === act.id)
+    const age = (id: string) =>
+      pvEditEntry(
+        id,
+        new Date(Date.now() - 20 * 60_000).toISOString(),
+        new Date(Date.now() - 10 * 60_000).toISOString(),
+        null,
+      )
+
+    /**
+     * ⚠️ AGED PAST THE THREE-MINUTE WINDOW FIRST, AND THAT IS THE WHOLE TEST. Without it this
+     * cannot tell the rule from its absence: a visit inside the window EXTENDS the last sitting,
+     * the row count is unchanged either way, and these run inside a millisecond so the end is
+     * written back as the very value it already had — "it did not move" is true in both worlds.
+     * Perturbed twice before this was right. Aged out, the difference is a whole new sitting.
+     */
+    expect(age(mine()[0].id)).toBe(null)
+    const before = mine().length
+
+    expect(pvArchive(act.id, true)).toBe(true)
+    pvVisit('Paint', 120)
+    expect(mine().length).toBe(before)
+    /* and no twin: looking past an archived one would make a second of the same name */
+    expect(pvActivities().filter((a) => a.name === 'Paint').length).toBe(1)
+
+    /* bringing it back starts it recording again */
+    expect(pvArchive(act.id, false)).toBe(true)
+    pvVisit('Paint', 120)
+    expect(mine().length).toBe(before + 1)
+  })
+
   it('and a different room is a different activity', () => {
     pvVisit('Paint', 120)
     pvVisit('Instrument', 120)
