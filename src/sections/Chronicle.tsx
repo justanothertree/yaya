@@ -392,12 +392,18 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        *
        * ⚠️ TWO SENTENCES, AND THE LONG VERSION LIVES IN A COMMENT. The page gets the shortest true
        * thing; docs/2026-10-12-chronicle-design.md gets the reasoning.
+       *
+       * ⚠️ AND IT IS ONE OF A PAIR — the signed-out blurb above says the same thing to somebody
+       * who cannot see this. They drifted the day the Years view shipped: that commit added "and
+       * the things that take years" to the signed-out one and left this one ending at "this
+       * year", so the room that HAS the tab was the one not mentioning it. A horizon added here
+       * is two sentences to change, not one.
        */}
       <p className="muted chron-how">
         Two halves. <strong>The stopwatch</strong> below times what you are doing, against
         activities you name. <strong>The tabs</strong> under it hold what you are aiming at, at
-        whichever size you think about it — today, this week, this year. Point a numbered goal at an
-        activity and it fills itself in as you work.
+        whichever size you think about it — today, this week, this year, and the things that take
+        years. Point a numbered goal at an activity and it fills itself in as you work.
       </p>
 
       {/**

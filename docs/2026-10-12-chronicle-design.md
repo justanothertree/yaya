@@ -4123,6 +4123,39 @@ it was right to: nothing overflowed, nothing was clipped, no target was under 24
 wraps into two tidy halves is not an overflow — it is a layout that measures perfectly and reads
 as broken. The screenshot found it. See CLAUDE.md §6, _measure then look_.
 
+## 6bj · ✅ What chronicle actually ships, and the sentence that stopped being true
+
+Forty-odd commits this week, every one verified against `npm run dev`, which is not the program
+anybody runs. Two things were checked against the built bundle on :4173.
+
+**The dev harness is not in it.** `src/dev/chroniclePreview.ts` has grown all week — four more
+stand-ins, a long-named activity, three sittings in earlier years — and CLAUDE.md records that
+2.78 kB of invented fixture once shipped to real users on a module whose header said it tree-shook
+out. Greps for five strings only the harness contains (`Ring the dentist`, `pv-draw`,
+`pvMemberChronicle`, …) and for `previewMember`, `dev-profile`, `dev-park`: all absent.
+
+⚠️ **With a control, because a grep that finds nothing proves nothing.** `Fill a gap`,
+`Looking back`, `Not here yet`, `recorded in all` and `chronicle_spans` are all present in the same
+files by the same method — so the harness's absence is the bundle's doing, not the grep's.
+
+**The signed-out room, on an origin with no localStorage**: a two-sentence description, the note
+that it lives in the account rather than the browser, and a Sign in anchor. At 375: nothing over
+the card or the document, Sign in 82×40.
+
+**And that page is where the fault was.** Its blurb ends _"today, this week, this year, and the
+things that take years"_. The signed-IN room's blurb ended at _"this year"_ — so the room that has
+the Years tab was the one not mentioning it, while the page for people who cannot see it described
+it correctly. `git log -S` dates the split to `0449e50`, the Years work itself: that commit updated
+one of the pair and not the other. They say the same thing now, and the call site says it is a
+pair so the next horizon is two edits rather than one.
+
+**One more from the same panel.** `.chron-life-mins` was `flex: none; width: 58px` — enough for
+`14h 29m`, and a hard cap, so a longer figure wrapped and silently doubled the row. Measured by
+replacing the label by hand: `1095h 30m` took the row from 18px to 36, and three hours a day for a
+year reaches that. It is a `min-width` now with `white-space: nowrap`, so the short labels still
+align into a column and a long one takes what it needs from the track: 58 → 67 → 74 as the label
+grows, the track giving up 209 → 200 → 193, and the row staying **18px** throughout.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

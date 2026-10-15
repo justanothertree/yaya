@@ -16450,9 +16450,21 @@ a.cz-msg-author:focus-visible {
 }
 /* ⚠️ a fixed column in PIXELS, so every track starts and ends at the same place — the root size
    here is fluid, so a rem is not a length */
+/**
+ * ⚠️ A FLOOR, NOT A WIDTH. 58px holds "14h 29m" and right-aligns every year's figure into a
+ * column, which is the whole point of it — but as a fixed width it also WRAPPED anything longer,
+ * and the row quietly doubled in height. Measured at 375 with the label replaced by hand:
+ * "1095h 30m" took the row from 18px to 36. Three hours a day for a year reaches that, so it is
+ * a real year rather than a contrived one.
+ *
+ * As a minimum the short labels still line up and a long one takes the width it needs, which the
+ * track gives up — it is `flex: 1 1 auto` with a 12px floor, so there is always somewhere for the
+ * space to come from.
+ */
 .chron-life-mins {
-  flex: none;
-  width: 58px;
+  flex: 0 0 auto;
+  min-width: 58px;
+  white-space: nowrap;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
