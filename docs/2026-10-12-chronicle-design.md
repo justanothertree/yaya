@@ -4715,6 +4715,41 @@ above it. After the fix it imports as `minutes`, while both controls keep what t
 **Corrected rather than refused**, matching the save path: all three rows go back and none is
 counted as skipped, because the goal is still a goal somebody wrote down — it just measures time.
 
+## 6by · ✅ The sweep finished, and an asymmetry that is right
+
+The question — _which rules live in a function rather than a constraint, and does the second path
+keep them?_ — asked of all four chronicle tables. Two paid (§6bt entries, §6bx goals). The other
+two are clean, and one of them explains something that would otherwise read as an oversight.
+
+| table                  | the rule                                  | where it lives                               | the other paths         |
+| ---------------------- | ----------------------------------------- | -------------------------------------------- | ----------------------- |
+| `chronicle_plans`      | ends after it starts                      | **constraint**                               | covered                 |
+|                        | no longer than a day                      | **constraint** `chronicle_plan_within_a_day` | covered                 |
+| `chronicle_routines`   | 8 KB of steps                             | **constraint**                               | covered                 |
+|                        | at most forty steps                       | function                                     | import does not keep it |
+|                        | steps name your own activities            | function                                     | import does not keep it |
+| `chronicle_activities` | name, colour, cat, metric, session length | **constraints**                              | covered                 |
+|                        | at most two hundred                       | function                                     | import does not keep it |
+
+Driven rather than inferred: a file carrying a one-hour plan, a thirty-hour plan and a backwards
+one put **only the one-hour plan back**. The table refused the other two and the import counted
+them, which is exactly what its design says it will do.
+
+⚠️ **AND `chronicle_plans` HAS THE DAY RULE AS A CONSTRAINT WHILE `chronicle_entries` CANNOT.**
+That looks like an oversight on entries and is the opposite. A plan is always ASSERTED — somebody
+typed two times into a form — so a constraint is safe. An entry can be MEASURED: `chronicle_stop`
+closes a timer with `ended_at = clock_timestamp()`, so the same constraint on entries would make
+closing a day-long timer fail, and `chronicle_start` closes the old sitting before opening a new
+one, so it would stop somebody starting anything at all. The schema already embodies the
+distinction §6bw arrived at from the other direction. **Nobody should "fix" the gap on entries.**
+
+**The three function-only rules left open are bounds, not meanings**, and all three need a
+hand-edited file: a routine with more than forty steps, a routine step naming an activity you do
+not have, and more than two hundred activities. None changes what anything means, none can be
+reached through the room, and the first and third are already bounded — 8 KB of steps, and the
+file's own 50,000-row ceiling. The middle one lands on the `gone` state that §6bl built for an
+archived step: shown, disabled, and not blocking the rest. Named here rather than fixed.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

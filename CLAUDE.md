@@ -184,7 +184,17 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   which, since `chronicle_start` closes the old sitting before opening a new one, would stop them
   starting anything at all. A tidy-looking constraint that locks the room. This was written down
   three times as "every other way into this table refuses a span longer than a day" before the
-  enumeration showed two that cannot.
+  enumeration showed two that cannot. **The schema already says this**: `chronicle_plans` carries
+  the day rule as a CHECK and `chronicle_entries` does not, because a plan is always typed and an
+  entry can be timed. That gap is right, and reads exactly like one to close.
+- **The useful form of the question is per TABLE and about CONSTRAINTS, not about files.** Asked
+  of all four chronicle tables — _which rules live in a function rather than in a constraint, and
+  does the second path keep them?_ — two paid. `chronicle_entries` keeps its span rules in
+  functions, so ⬆ Put one back restored sittings nobody sat. `chronicle_goals` has
+  `counts = 'minutes' OR activity IS NOT NULL` as a CHECK, which is HALF the rule: the other half,
+  that the activity must name a metric, is a fact about a different row and cannot be a CHECK at
+  all, so a file restored goals that read 0 for ever. The tables whose rules are all constraints —
+  plans, and most of activities — were covered on every path without anybody doing anything.
 - **`.park-field` is always rendered, so it does not mean you are in the park.** The field is
   the frame; only its contents are gated on `walking`. Two long measuring runs this session
   produced nothing because they were driving a park nobody had walked into. Check for
