@@ -290,6 +290,15 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
 button[aria-label="The day before"]')` — and before believing a stepped reading, assert the
   label moved. Anything with an `aria-label` or a `title` should be found by that, never by its
   glyph.
+- **`read_page` PRINTS A NAME FROM `title` OR `aria-label` AND NOT FROM TEXT, so a blank there is
+  not a nameless control.** Two false reports in one sitting: four plan-row buttons showed as
+  `button [ref_39]` with no name, and the goal tick-boxes showed as `checkbox "on"`. Both were
+  fine. The buttons carry `<span class="sr-only">Change this plan</span>` — `.sr-only` here is the
+  clip technique, `display: block`, and contributes the name normally — and the checkboxes are
+  wrapped in a `<label>` holding the goal's title, which is where their name comes from; "on" is
+  the `value` attribute showing through. **Ask the DOM before believing the tree**: read
+  `innerHTML`, `title`, `aria-label`, and whether an input sits inside a label. The tree is a
+  rendering, and this one is lossy in exactly the direction that invents accessibility bugs.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

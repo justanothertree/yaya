@@ -5021,6 +5021,34 @@ a suspicious constant cannot tell your config from the deploy's.
 folds to false in production, the gate stays shut, and no write is attempted. The harness really
 is the cause.
 
+## 6ch · ✅ How the room reads to something that cannot see it
+
+The last unread channel. Fifty-odd controls in this room are a glyph — ✎ ✕ ○ ◉ ▶ ✓ − ＋ — and
+every check so far has measured them as pixels.
+
+**It holds up.** Every control has a real name, by one of four honest routes: `aria-label`
+("Change this session", "Rename Drawing, or change what kind it is", "Put Ring the dentist on your
+profile"), `title` ("I did this — log it"), sr-only text ("Drop this plan"), or a wrapping
+`<label>` for the tick-boxes. The week grid's day buttons carry the reading the grid already knew
+— "Monday, October 12 — 8% of the day recorded". The horizon strip is a real `role="tablist"`
+labelled "How far ahead", six `role="tab"` with accurate `aria-selected`. No meter is unnamed. The
+two `aria-live` regions are `off` on purpose: a wall clock and a running timer are the last things
+that should be announced every second.
+
+⚠️ **AND IT NEARLY PRODUCED TWO FALSE REPORTS.** `read_page` showed four plan-row buttons with no
+name at all, and the goal tick-boxes as `checkbox "on"`. Both readings are the tool's: it prints a
+name from `title` or `aria-label` and not from text content or a wrapping label, and falls back to
+an input's `value`. Asked of the DOM instead, the buttons hold `<span class="sr-only">Change this
+plan</span>` with `.sr-only` being the clip technique at `display: block`, and the checkboxes sit
+inside a label reading "Ring the dentist". **The tree is a rendering, and it is lossy in the
+direction that invents accessibility bugs.** In CLAUDE.md now.
+
+**One real gap, named rather than done.** The tablist has no `role="tabpanel"` and the tabs no
+`aria-controls`. The content the tabs switch is a run of siblings rather than one container, so
+completing the pattern means wrapping them — a structural change that the layout CSS may object
+to, and whose benefit I cannot verify without a screen reader. It is a completeness gap rather
+than a defect: the panel follows immediately in DOM order and reads in sequence.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
