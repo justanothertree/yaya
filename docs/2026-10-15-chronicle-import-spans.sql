@@ -1,0 +1,74 @@
+-- ✅ APPLIED — migration: chronicle_import_holds_the_span_rules
+--
+-- A file is the third write path, and it kept neither span rule.
+--
+-- ── HOW IT WAS FOUND ────────────────────────────────────────────────────────────────────────
+--
+-- 2026-10-15-chronicle-no-future-sittings.sql put "a sitting cannot start in the future" into
+-- chronicle_entry_add and chronicle_entry_edit, and said why both: "a rule only one write path
+-- keeps is one you get around by adding a legal sitting and then editing it forward."
+--
+-- There are three. `chronicle_import` inserts into chronicle_entries directly.
+--
+-- ── WHY THE EXISTING COMMENT IS NOT AN ARGUMENT AGAINST THIS ────────────────────────────────
+--
+-- chronicle_import deliberately does not restate validation, and says so:
+--
+--   "The alternative is restating those constraints as WHERE clauses up here, which is a second
+--    copy of the rules that drifts from the table the moment either changes. So the table stays
+--    the one authority, a row it refuses is counted, and the rest still go in."
+--
+-- That is correct, and it is about constraints the table HAS. `chronicle_entry_span` really does
+-- refuse a backwards sitting, and this loop really does let it. Neither of the two rules below is
+-- a constraint — they live in the two functions above.
+--
+-- ⚠️ AND NEITHER CAN BECOME ONE.
+--
+--   · "not in the future" needs clock_timestamp(), which is not immutable. Postgres will not
+--     accept it in a CHECK.
+--   · "no longer than a day" COULD be a CHECK, and must not be. chronicle_start and
+--     chronicle_stop close a forgotten timer with `ended_at = clock_timestamp()`. A timer left
+--     running over a weekend would then fail the constraint — and chronicle_start closes the old
+--     sitting before opening a new one, so the failure would stop somebody starting ANYTHING.
+--     A tidy-looking constraint that locks the room.
+--
+-- So the loop is the only place either can live. It already restates one rule the table cannot
+-- express — `a.owner = me` — so this is consistent with what the function does rather than with
+-- what its comment warns against.
+--
+-- ⚠️ A RUNNING ENTRY HAS NO END, so the duration test is NULL for one and `or` leaves the decision
+-- to the other two. An open sitting has no length yet and must still go back.
+--
+-- ── WHAT WAS CHECKED ────────────────────────────────────────────────────────────────────────
+--
+-- A crafted four-entry file, in a rolled-back transaction with a simulated session:
+--
+--   an ordinary sitting three hours ago      in
+--   seventy-two hours long                   refused
+--   starting twenty-five hours from now      refused
+--   running, no end at all                   in        ← the control
+--
+--   → {"entries": 2, "skipped": 2, …}
+--
+-- Counted as `refused`, like every other row this cannot put back, so the tally the person is
+-- shown stays true.
+--
+-- ── THE CHANGE ──────────────────────────────────────────────────────────────────────────────
+--
+-- Applied by reading the live definition, replacing the entries loop's guard, and executing the
+-- result — the migration raises rather than silently reinstalling if the anchor does not match.
+-- The rest of chronicle_import is untouched and every comment in it is preserved.
+
+--    if not exists (select 1 from public.chronicle_activities a
+--                    where a.id = (x->>'activity')::uuid and a.owner = me)
+--       or (x->>'ended_at')::timestamptz - (x->>'started_at')::timestamptz > interval '24 hours'
+--       or (x->>'started_at')::timestamptz > clock_timestamp() then
+--      refused := refused + 1;
+--    else
+--      insert into public.chronicle_entries ...
+
+-- ── the standing check, after ───────────────────────────────────────────────────────────────
+-- select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+-- from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+-- where n.nspname = 'public' and p.proname = 'chronicle_import';
+-- → false

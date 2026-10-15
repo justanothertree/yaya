@@ -4531,6 +4531,52 @@ chasing. Fixed and pinned.
 | A new goal made on the week tab | in the week list only — not year, not today                             |
 | Unticking "every day"           | one-off, streak chip gone, still in today's list, no leak into the week |
 
+## 6bt · ✅ The column sweep, and the third write path it found
+
+Four fixes in three ticks had one shape, so every chronicle column was asked the same two
+questions: **what gives this its meaning, and can that change without it?** Recorded so nobody
+repeats the sweep.
+
+| column                         | its meaning comes from             | verdict                                                                                                                                                  |
+| ------------------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entries.amount`               | the activity's `metric`            | §6bp — fixed when the entry moves; **the activity's own metric changing is still open and is Evan's call**, since the repair deletes recorded quantities |
+| `entries.quality`              | a fixed 1–5 scale                  | nothing can move under it                                                                                                                                |
+| `entries.note`                 | itself                             | —                                                                                                                                                        |
+| `goals.counts`                 | whether the source counts anything | §6bq — fixed in room and server                                                                                                                          |
+| `goals.unit`                   | what is being counted              | §6br — the room's word follows, a typed one stays                                                                                                        |
+| `goals.scope`                  | the list it is shown in            | §6bs — an edit keeps the goal's own                                                                                                                      |
+| `goals.anchor`, `repeat_every` | `scope`                            | held by the same fix                                                                                                                                     |
+| `goals.target`                 | `unit` / `counts`                  | **left alone deliberately** — it is always typed by the person and never auto-filled, so "a typed value wins" applies, as it does to the unit            |
+| `goals.progress`               | `unit`, for a hand-moved goal      | benign: giving a goal a source hides its progress rather than reinterpreting it, and removing the source brings the same number back                     |
+| `activities.session_mins`      | itself                             | the "SHORT" marker is judged live, not stored, so changing it re-judges rather than reinterprets                                                         |
+| `activities.cat`               | itself                             | a category goal's total moving when an activity changes category is the total being right                                                                |
+
+**And the sweep turned up something else: a third write path.** §6bo put "not in the future" into
+`chronicle_entry_add` and `chronicle_entry_edit`, reasoning that a rule only one write path keeps
+is one you get around. There are three. ⬆ Put one back inserts entries directly.
+
+`chronicle_import` does that deliberately — its own comment says restating the table's constraints
+as WHERE clauses is "a second copy of the rules that drifts", and lets the table refuse what it
+will. That is right for `ended_at > started_at`, which **is** a constraint. It is not an argument
+about these two, because neither is:
+
+⚠️ **AND NEITHER CAN BECOME ONE.** The future rule is not immutable, so Postgres will not take it.
+The 24-hour rule could be — and **must not be**: `chronicle_start` and `chronicle_stop` close a
+forgotten timer with `ended_at = clock_timestamp()`, so a timer left running over a weekend would
+fail that constraint and lock somebody out of starting anything at all. The loop is the only place
+either can live, and the loop already restates one non-constraint rule — `a.owner = me`.
+
+Checked against the live function with a crafted four-entry file:
+
+| row                                 |                                            |
+| ----------------------------------- | ------------------------------------------ |
+| an ordinary sitting three hours ago | in                                         |
+| seventy-two hours long              | refused                                    |
+| starting twenty-five hours from now | refused                                    |
+| running, no end at all              | **in** — an open sitting has no length yet |
+
+`entries 2, skipped 2`, counted in the tally the person is shown, and rolled back.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

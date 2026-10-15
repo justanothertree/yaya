@@ -652,6 +652,39 @@ describe('putting a file back', () => {
       0,
     )
 
+  /**
+   * ⚠️ A FILE IS THE THIRD WRITE PATH, and it kept neither of the two span rules the other two do.
+   * "No longer than a day" and "not in the future" are not table constraints — the future one
+   * cannot be immutable, and a 24-hour constraint would make closing a timer left running over a
+   * weekend fail and lock somebody out of starting anything. So chronicle_import restates them in
+   * its own loop, and so does this. Confirmed against the live function with a crafted file:
+   * four entries in, `entries 2, skipped 2`.
+   */
+  it('will not put back a sitting that is too long or has not happened', () => {
+    pvEmpty()
+    const act = pvSaveActivity('Drawing', 'locked', null).id
+    const hoursFromNow = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString()
+    const doc = {
+      kind: 'chronicle',
+      version: 1,
+      at: new Date().toISOString(),
+      entries: [
+        { id: 'e-ok', activity: act, started_at: hoursFromNow(-3), ended_at: hoursFromNow(-2) },
+        { id: 'e-long', activity: act, started_at: hoursFromNow(-72), ended_at: hoursFromNow(-1) },
+        { id: 'e-soon', activity: act, started_at: hoursFromNow(25), ended_at: hoursFromNow(26) },
+        /* a running sitting has no end and so has no length yet — it must still go back */
+        { id: 'e-open', activity: act, started_at: hoursFromNow(-0.3), ended_at: null },
+      ],
+    }
+    const out = pvImport(doc) as Record<string, number>
+    expect(out.entries).toBe(2)
+    expect(out.skipped).toBe(2)
+    const ids = pvEntries(hoursFromNow(-100), hoursFromNow(100)).map((e) => e.id)
+    expect(ids).toContain('e-ok')
+    expect(ids).not.toContain('e-long')
+    expect(ids).not.toContain('e-soon')
+  })
+
   it('refuses a file that is not one of ours', () => {
     expect(pvImport({ kind: 'songs', version: 1 })).toEqual({ why: 'not a chronicle file' })
     expect(pvImport({ version: 1 })).toEqual({ why: 'not a chronicle file' })

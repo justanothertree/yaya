@@ -1069,7 +1069,27 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
        a second sitting still running where exactly one is allowed */
     const backwards = start != null && end != null && Date.parse(end) <= Date.parse(start)
     const secondOpen = end == null && db().ents.some((x) => x.end == null)
-    if (!id || !act || !start || backwards || secondOpen || db().ents.some((x) => x.id === id)) {
+    /**
+     * ⚠️ AND THE TWO THE TABLE CANNOT HOLD. "No longer than a day" and "not in the future" live in
+     * chronicle_entry_add and chronicle_entry_edit rather than in a constraint — the future one
+     * cannot be immutable, and a 24-hour constraint would make chronicle_stop fail to close a
+     * timer somebody left running over a weekend. So a file was the third write path that kept
+     * neither, and chronicle_import restates them in its own loop. This matches it.
+     *
+     * ⚠️ A RUNNING ENTRY HAS NO END and so has no length yet, which is why `tooLong` asks for one.
+     */
+    const tooLong = start != null && end != null && Date.parse(end) - Date.parse(start) > 86_400_000
+    const notYet = start != null && Date.parse(start) > Date.now()
+    if (
+      !id ||
+      !act ||
+      !start ||
+      backwards ||
+      secondOpen ||
+      tooLong ||
+      notYet ||
+      db().ents.some((x) => x.id === id)
+    ) {
       out.skipped++
       continue
     }
