@@ -4998,6 +4998,29 @@ sitting among four CORS failures from an analytics beacon reads as more of the s
 that separated them was asking the page which off-site resources it had actually requested, rather
 than reading the console's prose.
 
+## 6cg · ✅ The built bundle's console, and a dev URL that was not one
+
+The other unread channel: the console of the thing that actually ships. Walked across home, games,
+chronicle and contact at `:4173`, the built bundle throws **nothing** — no app error anywhere.
+
+Two things do appear, and neither is the room's. The Cloudflare beacon fails CORS on localhost,
+as it does in dev, and would not on the real origin. And a refused connection to
+`http://localhost:8080`, which is in **five** built chunks.
+
+⚠️ **That looked exactly like a dev URL shipping to production, and is not.** `VITE_*` values are
+inlined at build time, `.env.local` on this machine says `ws://localhost:8080`, and the deployed
+build takes `VITE_WS_URL` from a repo secret — `.github/workflows/deploy.yml` passes it. So the
+bundle served at `:4173` is the real build carrying **this machine's** configuration.
+
+That is a third difference between `:4173` and what deploys, beside the two CLAUDE.md already
+lists, and it bounds every `:4173` reading taken this session: **sound about code, silent about
+anything env-dependent.** It is in the standard now, along with the warning that `grep dist/` for
+a suspicious constant cannot tell your config from the deploy's.
+
+**And the 401 from §6cf is absent here**, which is the other half of that finding: `previewMember`
+folds to false in production, the gate stays shut, and no write is attempted. The harness really
+is the cause.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

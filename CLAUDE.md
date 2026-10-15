@@ -142,6 +142,16 @@ what it just made stale — copy, empty states, the thing a neighbouring feature
   That second one is worth the trip by itself: it is the only way to see the empty states,
   and it is how the Games page turned out to be telling somebody with no creatures about two
   games when there were three.
+  **And a third, which bounds what any of it proves: `:4173` is the real build with YOUR
+  `.env.local` inlined.** Vite bakes `VITE_*` in at build time, so the bundle you serve there
+  carries your own values and the deployed one carries the repo's — `.github/workflows/deploy.yml`
+  passes `VITE_WS_URL: ${{ secrets.VITE_WS_URL }}`, while `.env.local` here says
+  `ws://localhost:8080`. Measured: five built chunks contain `localhost:8080`, and the pane logs a
+  refused connection to it on every load. That is this machine's config, not something shipping —
+  but it looks exactly like a dev URL leaking into production, and the grep that finds it in
+  `dist/` cannot tell the two apart. **So a `:4173` check is sound about code and says nothing
+  about anything env-dependent**, and `grep dist/` for a suspicious constant wants the deploy
+  workflow read before it is believed.
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has
