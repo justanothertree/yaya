@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   pvActivities,
   pvAddEntry,
+  pvArchive,
   pvEmpty,
   pvExport,
   pvImport,
@@ -175,6 +176,24 @@ describe('the preview store keeps the contracts the server keeps', () => {
     const id = pvTotals(dayStart(), dayEnd()).find((r) => r.activity === draw)?.activity
     expect(id).toBe(draw)
     expect(pvMoods(dayStart(), dayEnd())).toEqual({ none: 60 })
+  })
+
+  /**
+   * ⚠️ THE DOUBLE HID A REAL BUG BY BEING KIND. chronicle_start checks `archived_at is null` and
+   * this checked only that the id existed, so starting a put-away activity worked here and would
+   * have raised 'no such activity' on the live site — which is exactly what the Routines list was
+   * offering to do on a step whose activity had been archived. The message is the server's, and
+   * it is the same for "not yours" and "put away" so that it cannot be used to tell them apart.
+   */
+  it('and refuses to start an activity that has been put away', () => {
+    expect(pvStart(draw)).toBe(null)
+    pvStop(null)
+    expect(pvArchive(draw, true)).toBe(true)
+    expect(pvStart(draw)).toEqual({ why: 'no such activity' })
+    expect(pvStart('nobody-has-this')).toEqual({ why: 'no such activity' })
+    expect(pvArchive(draw, false)).toBe(true)
+    expect(pvStart(draw)).toBe(null)
+    pvStop(null)
   })
 
   it('and a goal with no source at all is not answered', () => {

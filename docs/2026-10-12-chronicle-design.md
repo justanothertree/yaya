@@ -4201,6 +4201,51 @@ object turns two tests red — the key equality and the round trip that fills ev
 third test was added to say the same thing. Reverted from a scratchpad copy; `git diff` clean,
 996 green.
 
+## 6bl · ✅ A routine could be stopped dead by archiving, and the double was hiding it
+
+Routines is the one chronicle feature this week never touched, and it is behind a closed
+`<details>` — so it renders, it is never looked at, and the account has none of them at all.
+
+**The rule it runs on.** There is no stored "where am I in the routine"; which step is next is
+derived from the minutes already in hand. A step is done when today's minutes against its activity
+reach its suggested length, or reach one minute when it suggests nothing.
+
+**What that rule could not express.** An archived activity cannot be started — `chronicle_start`
+checks `archived_at is null` — so it can never gain a minute and can never be done. With only two
+states, archived read as "not done yet": the step sat at the head of the queue for ever, the
+routine said **2 of 3** for the rest of its life, and the ▶ beside it was offered, enabled, titled
+"Start this". Pressed on the live site it would have answered **"no such activity"** about an
+activity named on the button's own face.
+
+**And the pane said it was fine**, because `pvStart` checked only that the id existed. Driving it
+here started a timer on an archived activity and showed no error at all. CLAUDE.md says an
+unfaithful double looks exactly like a product bug; this is the other direction, and it is worse —
+it looked exactly like no bug. The double now makes the server's check, with the server's words,
+and refuses "not yours" and "put away" identically so the refusal cannot tell them apart.
+
+**The rule moved to where it can be asked a question.** It was two expressions inlined in JSX — a
+`findIndex` for the arrow and a `filter().length` for the counter — which have to agree with each
+other and could only be checked by looking at a screen. `src/chronicle/routine.ts` is `readRoutine`,
+with four states instead of two, and eleven tests: the `>=` boundary at exactly the suggested
+length, the one-minute rule for a step that suggests nothing, steps done out of order, and an
+invariant sweep asserting the counter and the arrow can never disagree.
+
+Measured in the room, archiving the step the routine was up to:
+
+|          | before                           | after                                                                           |
+| -------- | -------------------------------- | ------------------------------------------------------------------------------- |
+| header   | `2 of 3`                         | `all done today`                                                                |
+| the step | `is-next`, enabled, "Start this" | `is-gone`, **disabled**, "Writing is archived — bring it back to use this step" |
+
+A routine made entirely of archived steps says "every step is archived" rather than congratulating
+you. The step stays visible and struck-out-looking rather than vanishing, because archiving an
+activity is not a reason to rewrite a list somebody saved — and `is-gone` is italic and dimmer
+rather than struck, since struck already means "you did this".
+
+Both tests were made to fail once: reinstating the two-state rule turns four of the eleven red, and
+removing the double's archived check turns the fidelity test red. 375 and 1440 checked — three
+steps, no overflow, nothing under 24px.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

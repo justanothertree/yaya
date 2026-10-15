@@ -658,9 +658,19 @@ export const pvStop = (note: string | null): { why: string } | null => {
 }
 
 /** ⚠️ closes whatever was running, like chronicle_start — one open entry is a table invariant */
+/**
+ * ⚠️ IT REFUSES AN ARCHIVED ACTIVITY, AND THE WORDS ARE THE SERVER'S. chronicle_start checks
+ * `archived_at is null` and raises 'no such activity' for both "not yours" and "put away", so
+ * that the refusal cannot be used to tell those apart.
+ *
+ * The double used to check only that the id existed, and that is not a small infidelity: the
+ * Routines list offered a ▶ on a step whose activity had been archived, which worked perfectly
+ * here and would have answered "no such activity" on the live site. An unfaithful double does not
+ * only invent bugs — it hides them, and this one hid a real one until the check was copied.
+ */
 export const pvStart = (activity: string): { why: string } | null => {
-  if (!db().acts.some((x) => x.id === activity))
-    return { why: 'that is not one of your activities' }
+  const a = db().acts.find((x) => x.id === activity)
+  if (!a || a.archived) return { why: 'no such activity' }
   pvStop(null)
   db().ents.push({
     id: mint('pv-e'),

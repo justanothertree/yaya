@@ -17080,6 +17080,16 @@ a.cz-msg-author:focus-visible {
   opacity: 0.55;
   text-decoration: line-through;
 }
+/**
+ * ⚠️ ARCHIVED IS DIMMER THAN DONE AND NOT STRUCK, because struck-through already means "you have
+ * done this" two rules up. A step whose activity you put away is neither done nor waiting: it is
+ * one you cannot do, so it reads as absent rather than as finished or as owed. The button is
+ * disabled, and its title says how to get it back.
+ */
+.chron-step.is-gone {
+  opacity: 0.4;
+  font-style: italic;
+}
 /* and the one you are up to is the only thing with a border, so the eye lands on it */
 .chron-step.is-next {
   border: 1px solid var(--accent);

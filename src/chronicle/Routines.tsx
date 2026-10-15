@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dropRoutine, myRoutines, saveRoutine, type Routine } from './cloud'
 import { spanText, type Activity } from './record'
+import { readRoutine } from './routine'
 
 /**
  * Routines — an ordered list of things you do together.
@@ -82,9 +83,17 @@ export function Routines({
    * A step counts as done when there are minutes against its activity today — and when it carries
    * a suggested length, when there are at least that many. So a routine resumes itself after a
    * reload, after a day, and on another device, without storing where you were.
+   *
+   * ⚠️ THE RULE ITSELF LIVES IN routine.ts, because it has a unit in it and an invariant between
+   * its two halves — the counter and the arrow have to agree — and inlined in JSX it could only
+   * be checked by looking at a screen. See readRoutine, whose tests are the reason an archived
+   * step no longer stops a routine dead.
    */
-  const upTo = (r: Routine): number =>
-    r.steps.findIndex((s) => (mins[s.activity] ?? 0) < (s.mins ?? 1))
+  const live = (id: string): boolean => {
+    const a = byId.get(id)
+    return !!a && !a.archived
+  }
+  const read = (r: Routine) => readRoutine(r.steps, mins, live)
 
   if (rows === null) {
     return (
@@ -103,10 +112,16 @@ export function Routines({
               <strong>{r.name}</strong>
               {/* ⚠️ how far down it you are, said plainly: a routine you are halfway through
                   looks identical to one you have not started unless somebody says so */}
+              {/* ⚠️ `total` COUNTS ONLY THE STEPS THAT CAN STILL BE DONE. A routine whose only
+                  unfinished step names an archived activity is finished, not stuck at "2 of 3"
+                  for ever — and one made entirely of archived steps says so instead of
+                  congratulating you. */}
               <span className="muted">
-                {upTo(r) < 0
-                  ? 'all done today'
-                  : `${r.steps.filter((s) => (mins[s.activity] ?? 0) >= (s.mins ?? 1)).length} of ${r.steps.length}`}
+                {(() => {
+                  const k = read(r)
+                  if (k.total === 0) return k.gone ? 'every step is archived' : 'no steps yet'
+                  return k.nextIndex < 0 ? 'all done today' : `${k.done} of ${k.total}`
+                })()}
               </span>
               <button
                 className="btn btn-ghost chron-x"
@@ -128,19 +143,30 @@ export function Routines({
                 {r.steps.map((s, i) => {
                   const a = byId.get(s.activity)
                   const did = mins[s.activity] ?? 0
-                  const done = did >= (s.mins ?? 1)
+                  const state = read(r).states[i]
+                  const gone = state === 'gone'
+                  const done = state === 'done'
                   return (
                     <button
                       key={s.activity + i}
                       className={
                         'btn btn-ghost chron-step' +
-                        (done ? ' is-done' : i === upTo(r) ? ' is-next' : '')
+                        (gone ? ' is-gone' : done ? ' is-done' : state === 'next' ? ' is-next' : '')
                       }
-                      disabled={busy}
+                      /* ⚠️ AN ARCHIVED STEP IS NOT OFFERED. chronicle_start refuses an activity
+                         with an archived_at, so this button used to answer "no such activity"
+                         about an activity named on its own face. */
+                      disabled={busy || gone}
                       onClick={() => onStart(s.activity)}
-                      title={done ? `Done today — ${spanText(did * 60_000)}` : 'Start this'}
+                      title={
+                        gone
+                          ? `${a?.name ?? 'This activity'} is archived — bring it back to use this step`
+                          : done
+                            ? `Done today — ${spanText(did * 60_000)}`
+                            : 'Start this'
+                      }
                     >
-                      {done ? '✓' : '▶'} {a?.name ?? 'a deleted activity'}
+                      {gone ? '—' : done ? '✓' : '▶'} {a?.name ?? 'a deleted activity'}
                       {s.mins ? <span className="muted"> {s.mins}m</span> : null}
                     </button>
                   )
