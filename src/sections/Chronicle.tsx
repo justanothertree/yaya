@@ -266,6 +266,25 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const v = VIEWS.find((x) => x.id === view) ?? VIEWS[0]
   const on = v.when()
   const win = windowOf(v.scope, on)
+  /**
+   * The goal being changed, when one is.
+   *
+   * ⚠️ A GOAL'S SCOPE IS ITS OWN, NOT THE VIEW'S. The save sent `scope: v.scope`, which is right
+   * for a new goal — the ＋ button says "Add to today" because you are looking at today — and
+   * silently wrong for an edit, because the two are not always the same list. A quarter goal is
+   * shown under the YEAR, by `homeFor`, so opening its editor in the only place it appears and
+   * pressing Save — changing nothing — rewrote it into a year goal. Measured: "Read ten books
+   * THIS QUARTER · 3 / 10 books" came back as "Read ten books · 3 / 10 books", and ten books a
+   * quarter had quietly become ten books a year.
+   *
+   * ⚠️ AND THAT IS A CONSEQUENCE OF MAKING QUARTER GOALS VISIBLE. Before `homeFor` they were in
+   * no list at all, so no editor could be opened on one and `v.scope` was always the goal's own
+   * scope. Fixing a thing into view gives it neighbours it never had.
+   */
+  const beingFixed = useMemo(
+    () => (fixing ? ((goals ?? []).find((g) => g.id === fixing) ?? null) : null),
+    [fixing, goals],
+  )
 
   /* ⚠️ memoised on the list and the view, because `inScope` runs per goal per render and the
      filter is the only work this component does that grows with somebody's history */
@@ -292,14 +311,23 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setBusy(true)
     const n = Number(target)
     const hasTarget = target.trim() !== '' && Number.isFinite(n) && n > 0
+    /* a new goal belongs to the list you are looking at; an existing one keeps what it is */
+    const saveScope = beingFixed?.scope ?? v.scope
     const r = await saveGoal({
       id: fixing ?? undefined,
       title: t,
-      scope: v.scope,
+      scope: saveScope,
       /* ⚠️ a repeat has no anchor and a one-off must have one — the check constraint enforces
-         exactly this pair, so the form cannot send a shape the table would refuse */
-      anchor: v.scope === 'life' || every ? null : (win?.from ?? null),
-      every: v.scope === 'life' ? null : every ? 1 : null,
+         exactly this pair, so the form cannot send a shape the table would refuse
+         ⚠️ AND AN EDIT KEEPS THE ANCHOR IT HAD. Taking `win.from` would move a one-off goal onto
+         whatever window is on screen, which for a quarter goal under the year is a different
+         window entirely. The fallback is only for the case that has no anchor to keep: a
+         repeating goal whose repeat has just been turned off, which needs one in its OWN scope. */
+      anchor:
+        saveScope === 'life' || every
+          ? null
+          : (beingFixed?.anchor ?? windowOf(saveScope, on)?.from ?? null),
+      every: saveScope === 'life' ? null : every ? 1 : null,
       target: hasTarget ? n : null,
       /* ⚠️ sent on every save, which is what makes the server's "null leaves it alone" something
          to rely on rather than depend on — see docs/2026-10-13-chronicle-silent-erasures.sql. An

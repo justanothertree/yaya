@@ -4489,6 +4489,48 @@ One honest edge: somebody who types the very word the room would have suggested 
 from the room having suggested it, so their word follows too. The outcome is the right word for the
 new source either way, which is why it is left rather than pursued.
 
+## 6bs · ✅ Ten books a quarter quietly became ten books a year
+
+Three fixes in two ticks had the same shape — a stored value whose meaning comes from another
+field that can change without it. Rather than wait to trip over the fourth, every chronicle column
+was asked the same question: **what gives this its meaning, and can that change underneath it?**
+
+One answer stood out. A goal's `scope` gives meaning to its `anchor`, its `repeat_every` and its
+`target` — "ten" means ten a quarter or ten a year depending on it — and **the form has no control
+for it at all**. The save sent `scope: v.scope`: the scope of the view you are looking at.
+
+For almost every goal that is the same thing, because a day goal only ever appears in the day
+list. **A quarter goal appears under the YEAR**, by `homeFor`. So:
+
+> before `Read ten books · THIS QUARTER · ◉ · 3 / 10 books`
+> open the editor in the only list it appears in, change nothing, press Save
+> after `Read ten books · 3 / 10 books`
+
+Ten books a quarter, silently rewritten as ten books a year. ⚠️ **And this was a consequence of
+making quarter goals visible** — §6bd. Before that they were in no list, so no editor could be
+opened on one and `v.scope` always happened to be the goal's own. Fixing a thing into view gives
+it neighbours it never had, and one of them was wrong.
+
+An edit now keeps the goal's own scope, and its own anchor: taking `win.from` would move a one-off
+onto whatever window is on screen. The fallback is only for the case with no anchor to keep — a
+repeating goal whose repeat has just been switched off, which needs one in its own scope.
+
+**The same Save lost a second thing, and that one was the harness.** The ◉ beside the goal came
+back as ○. `chronicle_goal_save`'s update names every column it writes and `shared` is not among
+them, so the server leaves it alone — sharing is `chronicle_goal_share`'s business. The double
+rebuilt the row from `NewGoal`, which has no such field, so every edit quietly unticked it. A loss the
+real site does not have, which is the worst kind of infidelity: it looks exactly like a bug worth
+chasing. Fixed and pinned.
+
+**Four readings, the last three being the controls:**
+
+|                                 |                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| Save changing nothing           | `THIS QUARTER · ◉ · 3 / 10 books` — identical before and after          |
+| Save changing the target        | `THIS QUARTER · ◉ · 3 / 12 books` — the change lands, the rest holds    |
+| A new goal made on the week tab | in the week list only — not year, not today                             |
+| Unticking "every day"           | one-off, streak chip gone, still in today's list, no leak into the week |
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

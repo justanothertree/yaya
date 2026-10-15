@@ -593,6 +593,13 @@ export const pvSaveGoal = (g: NewGoal): { id: string } => {
          at all, so every edit used to arrive here as null and overwrite it. chronicle_goal_save
          reads null as "leave it alone" now; '' still clears. */
       note: g.note === undefined || g.note === null ? db().goals[i].note : g.note.trim() || null,
+      /* ⚠️ AND WHETHER IT IS ON A PROFILE. chronicle_goal_save's update does not name the `shared`
+         column at all, so the server keeps it; this rebuilt the row from NewGoal, which has no
+         such field, so every edit here quietly unticked it. The ◉ beside a goal went back to ○
+         on a save that changed nothing — a loss the real site does not have, which is the worst
+         kind of infidelity because it looks exactly like a bug worth chasing. Sharing is turned
+         on and off by chronicle_goal_share alone. */
+      shared: db().goals[i].shared,
     }
   return { id }
 }

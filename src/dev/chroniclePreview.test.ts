@@ -3,6 +3,7 @@ import {
   pvActivities,
   pvAddEntry,
   pvArchive,
+  pvShareGoal,
   pvEmpty,
   pvExport,
   pvImport,
@@ -305,6 +306,21 @@ describe('the preview store keeps the contracts the server keeps', () => {
     /* and neither does "no source at all" */
     const onNothing = goalOn({ target: 10, counts: 'amount' })
     expect(pvGoals().find((g) => g.id === onNothing)?.counts).toBe('minutes')
+  })
+
+  /**
+   * ⚠️ AN EDIT DOES NOT UNTICK A GOAL FROM A PROFILE. chronicle_goal_save's update names every
+   * column it writes and `shared` is not among them, so the server leaves it where it is —
+   * sharing is turned on and off by chronicle_goal_share alone. The double rebuilt the row from
+   * NewGoal, which has no such field, so an edit that changed nothing turned ◉ back into ○.
+   */
+  it('and an edit leaves a shared goal shared', () => {
+    const id = goalOn({ target: 10, activity: gym })
+    expect(pvShareGoal(id, true)).toBe(true)
+    expect(pvGoals().find((g) => g.id === id)?.shared).toBe(true)
+    goalOn({ id, target: 11, activity: gym })
+    expect(pvGoals().find((g) => g.id === id)?.shared).toBe(true)
+    expect(pvGoals().find((g) => g.id === id)?.target).toBe(11)
   })
 
   /** the control, so this is a correction and not simply switching the feature off */
