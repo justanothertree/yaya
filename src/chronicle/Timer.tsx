@@ -377,6 +377,34 @@ export function Timer({
   const saveAct = async () => {
     const n = actName.trim()
     if (!fixAct || !n || busy) return
+    /**
+     * ⚠️ RENAMING WHAT AN ACTIVITY COUNTS RELABELS EVERY NUMBER ALREADY RECORDED AGAINST IT, and
+     * it does it silently. An entry's `amount` is a bare number; the word beside it is the
+     * activity's metric, read live. Change "reps" to "pages" and a 45-minute gym session that
+     * said "60 reps" says "60 pages", and a goal counting it reads "FROM GYM · PAGES · 180 /
+     * 20000 reps" — the chip and the meter disagreeing in one row.
+     *
+     * ⚠️ SO IT ASKS, RATHER THAN REPAIRING. Putting those numbers right means deleting
+     * quantities out of sessions somebody recorded, which is not a thing to do on their behalf —
+     * see the design doc, where it is left open deliberately. What IS right is to say what this
+     * will do at the moment somebody is choosing, which is the same lesson as the delete
+     * confirmation that used to understate what it removed.
+     *
+     * ⚠️ ONLY WORD → DIFFERENT WORD. Naming a metric for the first time cannot relabel anything
+     * that was recorded without one, and clearing a metric hides the numbers rather than
+     * reinterpreting them — measured, both. The one that rewrites meaning is the swap.
+     */
+    const was = (acts ?? []).find((a) => a.id === fixAct)?.metric?.trim() || ''
+    const now = actMetric.trim()
+    if (
+      was &&
+      now &&
+      was !== now &&
+      !window.confirm(
+        `Anything already recorded against ${n} was counted in ${was}. Changing this to ${now} makes every one of those numbers read as ${now} instead. Change it?`,
+      )
+    )
+      return
     setBusy(true)
     /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
        id since step 2 and nothing had ever passed one, which is why a category was permanent */
