@@ -240,6 +240,91 @@ export function inScope(g: Goal, scope: Scope, on: string): boolean {
   return !!w && !!g.anchor && g.anchor >= w.from && g.anchor < w.to
 }
 
+/**
+ * Whether a one-off goal's own window has closed with the goal unfinished.
+ *
+ * ⚠️ THIS EXISTS FOR THE SAME REASON `homeFor` DOES: a goal went invisible. Every view's day is a
+ * fixed function of now — `todayISO` or `tomorrowISO` — and `inScope` asks that a one-off's anchor
+ * sit inside the window being looked at, so the moment a window passes, the unfinished goals in it
+ * are in no list at all. There is no stepper on this half of the room, so they are not merely hard
+ * to find: nothing can reach them. "Ring the plumber", imported for yesterday and not done, was in
+ * `myGoals()` and on no screen — proven by exporting the file, which showed it present with
+ * `done: null` while all six tabs reported it absent. The quarter case needed a scope the room no
+ * longer offers; this one needs nothing but not finishing something, which time does for you.
+ *
+ * ⚠️ UNFINISHED IS NOT FAILED, and both still have to be reachable. The streak rule already says
+ * the window you are IN cannot break a streak — "today is unfinished, not failed" — and this is
+ * the other side of it, a window that has closed. For a goal you tick, late is still open: a date
+ * is a plan, and a plumber you meant to ring on Tuesday is still ringable on Wednesday. For a
+ * DERIVED one it is final, because `share` measures over the anchor's window and no future minute
+ * can land in a window that has ended — so it is listed in order to be seen and cleared, not
+ * finished.
+ *
+ * `today` is a parameter rather than a call, so this can be asked a question.
+ */
+export function windowPast(g: Goal, today: string): boolean {
+  /* a lifetime has no window to close, and a repeat's window is always the current one */
+  if (g.scope === 'life' || repeats(g)) return false
+  const w = goalWindow(g, today)
+  if (!w) return false
+  return today >= w.to
+}
+
+/**
+ * Whether a one-off goal's window has closed with it still unfinished.
+ *
+ * ⚠️ SPLIT FROM `windowPast` BECAUSE FINISHING ONE MADE IT VANISH. Folding both halves into one
+ * predicate meant the tick that cleared a late goal also removed the only row that could untick
+ * it — a done goal anchored to yesterday fails `inScope` for being outside the window and fails
+ * this for being done, so a mis-tick put it straight back out of reach. The room keeps a ticked
+ * goal on screen, struck through, everywhere else; this is how the late list can do the same.
+ */
+export function late(g: Goal, tally: Record<string, number> | undefined, today: string): boolean {
+  return windowPast(g, today) && !finished(g, tally, today)
+}
+
+/**
+ * Whether a late goal is listed in this view.
+ *
+ * ⚠️ IN THE VIEW LOOKING AT NOW, which is what keeps it out of Tomorrow. Today and Tomorrow are
+ * both scope `day`, so `homeFor` alone matches both and one late goal would appear twice — and
+ * Tomorrow is the one list where a thing you did not do yesterday has no business being, because
+ * that view's whole claim is that it is decided in advance. The test is the view's own window
+ * containing today, which Today, This week, This month and This year pass and Tomorrow does not.
+ *
+ * ⚠️ AND IT IS STILL EXACTLY ONE LIST. `late` and `inScope` are disjoint by construction — one
+ * wants the anchor's window closed and the other wants it to contain the day being viewed — so
+ * this adds a list to goals that had none rather than a second one to goals that had one.
+ *
+ * ⚠️ A ONE-OFF ANCHORED BEYOND TOMORROW IS IN NO LIST, named rather than fixed. The room cannot
+ * make one — the ＋ form takes its anchor from the window you are in — but ⬆ Put one back can,
+ * and "not yet" is a different claim from "late", so it wants a different answer than this one.
+ */
+export function pastIn(g: Goal, scope: Scope, on: string, today: string): boolean {
+  if (homeFor(g.scope) !== scope) return false
+  if (!windowPast(g, today)) return false
+  const w = windowOf(scope, on)
+  return !!w && today >= w.from && today < w.to
+}
+
+/**
+ * The same question with "and not finished" on the end — what the window strip counts.
+ *
+ * ⚠️ THE STRIP COUNTS WORK, NOT ROWS. A late goal you have just ticked is still on screen, by
+ * design, and must not still be in the number beside the tab: a badge is the room's claim about
+ * what is left to do, and one that counts a struck-through row is telling you to come back to
+ * something you have finished.
+ */
+export function lateIn(
+  g: Goal,
+  tally: Record<string, number> | undefined,
+  scope: Scope,
+  on: string,
+  today: string,
+): boolean {
+  return pastIn(g, scope, on, today) && !finished(g, tally, today)
+}
+
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
 

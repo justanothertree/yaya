@@ -15633,6 +15633,26 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   padding: 0.05rem 0.4rem;
 }
+/* ⚠️ IT OPTS OUT OF THE UPPERCASE, for the same reason `is-est` does: this chip carries a DATE,
+   and "WAS FOR WED, 14 OCT" shouts a proper noun at somebody about a thing they already feel bad
+   about. No colour either — the room keeps amber for a priority somebody chose themselves, and a
+   red invented here would be the only alarming thing on the page. The heading does the grouping;
+   this only says when. */
+.chron-chip.is-late {
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* the heading over the goals whose own window has closed — see `overdue` in Chronicle.tsx */
+.chron-before {
+  list-style: none;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
 .chron-x {
   min-width: 36px;
   min-height: 36px;

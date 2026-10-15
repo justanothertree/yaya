@@ -6,6 +6,10 @@ import {
   finished,
   goalWindow,
   inScope,
+  late,
+  lateIn,
+  pastIn,
+  windowPast,
   lastDay,
   reached,
   repeats,
@@ -20,6 +24,7 @@ import {
   homeFor,
   SHOWN_SCOPES,
   tallyAsks,
+  tallyKey,
   unitFor,
   weight,
   windowOf,
@@ -1015,5 +1020,204 @@ describe('a goal is always in exactly one list', () => {
     expect(inScope(q, 'month', '2026-10-14')).toBe(false)
     /* and not in a year it does not fall in */
     expect(inScope(q, 'year', '2025-10-14')).toBe(false)
+  })
+})
+
+/**
+ * ⚠️ THE BUG THIS NAMES WAS REACHED BY NOT FINISHING SOMETHING, which is the only ingredient it
+ * needs. Every view's day is `todayISO` or `tomorrowISO`, and `inScope` asks a one-off's anchor to
+ * sit inside the window being viewed — so an unfinished goal fell out of every list the moment its
+ * window passed, with no stepper anywhere on that half of the room to go back and fetch it.
+ *
+ * The dates here are the CLAIM rather than the arithmetic: 14 Oct is the day before 15 Oct, and
+ * 6 Oct is more than a week before it whatever day a week is taken to start on. Nothing below asks
+ * `windowOf` what it thinks, which is the difference between this and a second copy of the sums.
+ */
+describe('a one-off goal whose window has closed', () => {
+  const today = '2026-10-15'
+  const yesterday = '2026-10-14'
+  const tomorrow = '2026-10-16'
+
+  /** the room's six views, as the pairs they really are: a scope and the day it looks at */
+  const views: Array<[string, Scope, string]> = [
+    ['Today', 'day', today],
+    ['Tomorrow', 'day', tomorrow],
+    ['This week', 'week', today],
+    ['This month', 'month', today],
+    ['This year', 'year', today],
+    ['Years', 'life', today],
+  ]
+
+  /** everywhere a goal can be found, counting both lists a view draws */
+  const listedIn = (g: Goal, tally: Record<string, number> = {}) =>
+    views
+      .filter(([, scope, on]) => inScope(g, scope, on) || lateIn(g, tally, scope, on, today))
+      .map(([label]) => label)
+
+  it('is late when the day it names has gone and it was never ticked', () => {
+    expect(late(goal({ scope: 'day', anchor: yesterday }), {}, today)).toBe(true)
+  })
+
+  it('is not late while the day it names is the day you are in', () => {
+    expect(late(goal({ scope: 'day', anchor: today }), {}, today)).toBe(false)
+  })
+
+  it('is not late before it has even started', () => {
+    expect(late(goal({ scope: 'day', anchor: tomorrow }), {}, today)).toBe(false)
+  })
+
+  it('is not late once it is ticked, however long ago it was for', () => {
+    expect(late(goal({ scope: 'day', anchor: '2025-01-01', done: true }), {}, today)).toBe(false)
+  })
+
+  /** a lifetime has no window to close, and a repeat's window is always the one you are in */
+  it('is never said of a goal with no window of its own', () => {
+    expect(late(goal({ scope: 'life', anchor: null }), {}, today)).toBe(false)
+    expect(late(goal({ scope: 'day', anchor: null, every: 1 }), {}, today)).toBe(false)
+    expect(late(goal({ scope: 'week', anchor: null, every: 1 }), {}, today)).toBe(false)
+  })
+
+  /**
+   * ⚠️ A DERIVED GOAL IS JUDGED OVER ITS OWN WINDOW, which has ended — so the record settles it
+   * once and for all, and reaching the target inside it means there is nothing late about it. The
+   * key is built with `tallyKey` because the key is the transport's own identity for the question,
+   * not a claim this test is making about the world.
+   */
+  it('reads the record for a derived goal, over the window that has closed', () => {
+    const g = goal({ scope: 'day', anchor: yesterday, activity: 'a1', target: 30, unit: 'minutes' })
+    const k = tallyKey(g, today)!
+    expect(late(g, { [k]: 30 }, today)).toBe(false)
+    expect(late(g, { [k]: 12 }, today)).toBe(true)
+  })
+
+  it('is listed under Today, which is the view looking at now', () => {
+    expect(listedIn(goal({ scope: 'day', anchor: yesterday }))).toEqual(['Today'])
+  })
+
+  /**
+   * ⚠️ AND NEVER UNDER TOMORROW, which is the one list where it has no business being: both views
+   * are scope `day`, so matching on scope alone would put it in two places at once, and Tomorrow's
+   * whole claim is that it was decided in advance rather than inherited from a day that went wrong.
+   */
+  it('is kept out of Tomorrow, though Tomorrow is a day view too', () => {
+    expect(lateIn(goal({ scope: 'day', anchor: yesterday }), {}, 'day', tomorrow, today)).toBe(
+      false,
+    )
+  })
+
+  it('is listed at its own cadence — a week goal under This week, not under Today', () => {
+    expect(listedIn(goal({ scope: 'week', anchor: '2026-10-06' }))).toEqual(['This week'])
+  })
+
+  /** homeFor sends a quarter to the year, and a quarter that has ended is late there */
+  it('sends a goal with no view of its own to the view homeFor names', () => {
+    expect(listedIn(goal({ scope: 'quarter', anchor: '2026-08-15' }))).toEqual(['This year'])
+  })
+
+  /** the same date in a YEAR goal is not late at all — that window is still open */
+  it('does not call a goal late because part of its window is behind you', () => {
+    expect(late(goal({ scope: 'year', anchor: '2026-08-15' }), {}, today)).toBe(false)
+    expect(listedIn(goal({ scope: 'year', anchor: '2026-08-15' }))).toEqual(['This year'])
+  })
+
+  /**
+   * ⚠️ THE INVARIANT THE ROOM IS SUPPOSED TO KEEP, and the one that was broken: an UNFINISHED
+   * one-off goal is findable in exactly one view. Unfinished is the whole of the claim — a dated
+   * goal you have DONE rolling off once its window closes is the lifecycle working, and is
+   * asserted separately below. Every shape here is therefore undone on purpose. `homeFor` was written for this and closed one door into it; a
+   * window simply passing was the other. Asserted over both lists a view draws, so neither a
+   * missing list nor a duplicated one can pass it.
+   *
+   * ⚠️ A REPEAT IS THE DELIBERATE EXCEPTION, and this test asserted otherwise first and was
+   * wrong: a DAILY goal belongs in Today and in Tomorrow both, which is the whole of what a
+   * repeat means — `windowKey` exists because those are two different questions about the same
+   * goal. So the claim is "exactly one" for something anchored to a window and "at least one" for
+   * something that happens again.
+   */
+  it('leaves every unfinished goal findable in exactly one view', () => {
+    const shapes: Array<[string, Goal]> = [
+      ['a day goal for today', goal({ scope: 'day', anchor: today })],
+      ['a day goal for tomorrow', goal({ scope: 'day', anchor: tomorrow })],
+      ['a day goal for yesterday', goal({ scope: 'day', anchor: yesterday })],
+      ['a day goal from last year', goal({ scope: 'day', anchor: '2025-03-04' })],
+      ['a week goal for this week', goal({ scope: 'week', anchor: today })],
+      ['a week goal two weeks gone', goal({ scope: 'week', anchor: '2026-09-30' })],
+      ['a month goal for this month', goal({ scope: 'month', anchor: today })],
+      ['a month goal for August', goal({ scope: 'month', anchor: '2026-08-02' })],
+      ['a quarter goal for this quarter', goal({ scope: 'quarter', anchor: today })],
+      ['a quarter goal for the last one', goal({ scope: 'quarter', anchor: '2026-08-15' })],
+      ['a year goal for this year', goal({ scope: 'year', anchor: today })],
+      ['a year goal for last year', goal({ scope: 'year', anchor: '2025-05-05' })],
+      ['a lifetime goal', goal({ scope: 'life', anchor: null })],
+    ]
+    for (const [what, g] of shapes) {
+      expect(listedIn(g), what).toHaveLength(1)
+    }
+    /* a daily repeat is in Today AND Tomorrow, on purpose; a weekly one is in This week only */
+    expect(listedIn(goal({ scope: 'day', anchor: null, every: 1 }))).toEqual(['Today', 'Tomorrow'])
+    expect(listedIn(goal({ scope: 'week', anchor: null, every: 1 }))).toEqual(['This week'])
+  })
+
+  /** and the two lists a view draws can never both claim the same goal */
+  it('never puts one goal in both lists of a single view', () => {
+    for (const anchor of [today, yesterday, tomorrow, '2026-10-06', '2025-01-01']) {
+      for (const scope of SHOWN_SCOPES) {
+        const g = goal({
+          scope,
+          anchor: scope === 'life' ? null : anchor,
+        })
+        for (const on of [today, tomorrow]) {
+          expect(
+            inScope(g, scope, on) && lateIn(g, {}, scope, on, today),
+            `a ${scope} goal anchored ${anchor}, viewed on ${on}`,
+          ).toBe(false)
+        }
+      }
+    }
+  })
+
+  /**
+   * ⚠️ THE KNOWN HOLE, asserted so that it is a decision rather than an accident: a one-off
+   * anchored past tomorrow is in no list. The ＋ form cannot make one, because it takes its anchor
+   * from the window you are looking at — but ⬆ Put one back can, and "not yet" wants a different
+   * answer from "late", so it is named in the doc instead of being folded in here.
+   */
+  it('still cannot show a one-off anchored beyond tomorrow', () => {
+    expect(listedIn(goal({ scope: 'day', anchor: '2026-10-20' }))).toEqual([])
+  })
+
+  /**
+   * ⚠️ `windowPast` DOES NOT ASK WHETHER IT IS DONE, and that split is the fix for a bug this
+   * file's own invariant missed. Every shape in the test above is undone, so folding "and not
+   * finished" into one predicate passed it — while in the room, ticking a late goal deleted the
+   * only row that could untick it. The two questions are asked separately because the list wants
+   * one and the badge wants the other.
+   */
+  it('says a window has closed whether or not the goal in it was done', () => {
+    const open = goal({ scope: 'day', anchor: yesterday })
+    const ticked = goal({ scope: 'day', anchor: yesterday, done: true })
+    expect(windowPast(open, today)).toBe(true)
+    expect(windowPast(ticked, today)).toBe(true)
+    expect(late(open, {}, today)).toBe(true)
+    expect(late(ticked, {}, today)).toBe(false)
+  })
+
+  /**
+   * ⚠️ SO A TICKED LATE GOAL IS STILL PLACEABLE, which is what lets the room keep it on screen
+   * with a line through it instead of vanishing it under the cursor. `pastIn` finds it; `lateIn`,
+   * which the window strip counts, does not — a badge that counted a finished row would be
+   * telling somebody to come back to something they had just done.
+   */
+  it('can still place a ticked late goal, while leaving it out of the count', () => {
+    const ticked = goal({ scope: 'day', anchor: yesterday, done: true })
+    expect(pastIn(ticked, 'day', today, today)).toBe(true)
+    expect(lateIn(ticked, {}, 'day', today, today)).toBe(false)
+    /* and neither of them puts it in Tomorrow, done or not */
+    expect(pastIn(ticked, 'day', tomorrow, today)).toBe(false)
+  })
+
+  /** the lifecycle, asserted so it is a decision: done and the window gone means gone */
+  it('lets a goal you finished roll off once its window has closed', () => {
+    expect(listedIn(goal({ scope: 'day', anchor: yesterday, done: true }))).toEqual([])
   })
 })

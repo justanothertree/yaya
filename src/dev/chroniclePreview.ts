@@ -291,6 +291,35 @@ function seed(): Store {
         /* ⚠️ at(-1, …) is TOMORROW — the only goal the Tomorrow view can show by itself */
         anchor: localISO(at(-1, 12)),
       }),
+      /**
+       * ⚠️ THE STATE THE SEED COULD NOT PRODUCE, which is why nothing caught the bug it is for.
+       * Every other dated goal here is anchored to today or to tomorrow, so for six features the
+       * workbench had no goal whose window had CLOSED — and `inScope` drops one of those out of
+       * every list, with no stepper on the goals half to go back and find it. "Ring the plumber"
+       * was in `myGoals()` and on no screen; it took exporting the file to see it at all.
+       *
+       * ⚠️ TWO OF THEM, BECAUSE LATE MEANS TWO DIFFERENT THINGS. A tick-box is still open — a
+       * plumber you meant to ring on Tuesday is ringable on Wednesday, so the tick has to work.
+       * A DERIVED one is settled: `share` measures over the anchor's window and no future minute
+       * can land in a week that has ended, so it is listed to be seen and cleared, not finished.
+       */
+      goal({
+        id: 'pv-g12',
+        title: 'Ring the plumber',
+        scope: 'day',
+        /* at(+1) is YESTERDAY — the opposite sign from pv-g5 above, and the whole point */
+        anchor: localISO(at(1, 12)),
+      }),
+      goal({
+        id: 'pv-g13',
+        title: 'Ten hours locked in',
+        scope: 'week',
+        /* ten days back is a week that has ended whatever day a week is taken to start on */
+        anchor: localISO(at(10, 12)),
+        target: 600,
+        unit: 'minutes',
+        cat: 'locked',
+      }),
       goal({
         id: 'pv-g6',
         title: 'Five hours locked in',
