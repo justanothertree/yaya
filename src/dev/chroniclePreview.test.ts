@@ -744,6 +744,57 @@ describe('putting a file back', () => {
    * its own loop, and so does this. Confirmed against the live function with a crafted file:
    * four entries in, `entries 2, skipped 2`.
    */
+  /**
+   * ⚠️ THE SAME QUESTION ON A SECOND TABLE. `chronicle_goal_amount_needs_one_activity` says
+   * counts='amount' needs AN activity, and a CHECK cannot say that activity must name a metric —
+   * that half lives in chronicle_goal_save. A file is the second way in, so ⬆ Put one back could
+   * restore a goal counting a quantity its source never records: 0 for ever, with the minutes
+   * sitting in the totals above it. Confirmed against the live function before the fix.
+   *
+   * Corrected rather than refused, which is what the save path does with the same pairing — so
+   * all three rows go back, and one of them measures time instead.
+   */
+  it('corrects a restored goal that counts an amount its source cannot produce', () => {
+    pvEmpty()
+    const doc = {
+      kind: 'chronicle',
+      version: 1,
+      at: new Date().toISOString(),
+      activities: [
+        { id: 'a-none', name: 'NoMetric', cat: 'free', metric: null },
+        { id: 'a-reps', name: 'HasMetric', cat: 'free', metric: 'reps' },
+      ],
+      goals: [
+        {
+          id: 'g-cannot',
+          title: 'counts what it cannot',
+          scope: 'day',
+          repeat_every: 1,
+          target: 10,
+          unit: 'reps',
+          counts: 'amount',
+          activity: 'a-none',
+        },
+        {
+          id: 'g-can',
+          title: 'counts what it can',
+          scope: 'day',
+          repeat_every: 1,
+          target: 10,
+          unit: 'reps',
+          counts: 'amount',
+          activity: 'a-reps',
+        },
+      ],
+    }
+    const out = pvImport(doc) as Record<string, number>
+    expect(out.goals).toBe(2)
+    const by = (id: string) => pvGoals().find((g) => g.id === id)
+    expect(by('g-cannot')?.counts).toBe('minutes')
+    /* the control: an activity that really does count something keeps the choice */
+    expect(by('g-can')?.counts).toBe('amount')
+  })
+
   it('will not put back a sitting that is too long or has not happened', () => {
     pvEmpty()
     const act = pvSaveActivity('Drawing', 'locked', null).id

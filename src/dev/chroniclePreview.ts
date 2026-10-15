@@ -1158,7 +1158,24 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       cat: (g.cat === 'locked' || g.cat === 'free' || g.cat === 'life'
         ? g.cat
         : null) as Goal['cat'],
-      counts: g.counts === 'amount' ? 'amount' : 'minutes',
+      /**
+       * ⚠️ AN AMOUNT NEEDS AN ACTIVITY THAT COUNTS ONE, and the table knows only half of that.
+       * `chronicle_goal_amount_needs_one_activity` says counts='amount' needs AN activity; it
+       * cannot say the activity must name a metric, and that half lives in chronicle_goal_save.
+       * A file is the second way in and kept only the table's half, so ⬆ Put one back could
+       * restore a goal counting a quantity its source never records — one that reads 0 for ever
+       * with the minutes sitting in the totals above it.
+       *
+       * ⚠️ CORRECTED, NOT REFUSED, which is what the save path does with the same pairing: the
+       * goal is still a goal somebody wrote down, it just measures time instead.
+       */
+      counts:
+        g.counts === 'amount' &&
+        db()
+          .acts.find((a) => a.id === ours(g.activity))
+          ?.metric?.trim()
+          ? 'amount'
+          : 'minutes',
       est: g.est_mins == null ? null : numOr(g.est_mins, 0) || null,
       priority: (numOr(g.priority, 0) || 0) as Goal['priority'],
     })

@@ -67,6 +67,34 @@
 --    else
 --      insert into public.chronicle_entries ...
 
+-- ── AND THE SAME QUESTION ON A SECOND TABLE — migration: chronicle_import_goal_counts_needs_a_metric
+--
+-- The lesson above is per TABLE, not per file: a rule that lives in a function rather than in a
+-- constraint is a rule the second write path will not have. Asked of chronicle_goals, the answer
+-- was the same.
+--
+--   chronicle_goal_amount_needs_one_activity   CHECK (counts = 'minutes' OR activity IS NOT NULL)
+--
+-- That is half the rule. The other half — that the activity must NAME A METRIC — cannot be a
+-- CHECK at all, because it is a fact about a different row, so it lives in chronicle_goal_save.
+-- A file kept only the table's half.
+--
+-- Confirmed against the live function before the fix, with a crafted file:
+--
+--   counts what it cannot   counts=amount   source counts (none)   ← restored broken
+--   counts what it can      counts=amount   source counts reps
+--
+-- A goal counting a quantity its source never records reads 0 for ever, with the minutes sitting
+-- in the totals above it. After:
+--
+--   counts what it cannot   counts=minutes  ← corrected
+--   counts what it can      counts=amount   ← the control, untouched
+--   counts the time         counts=minutes  ← the control, untouched
+--
+-- ⚠️ CORRECTED, NOT REFUSED, matching chronicle_goal_save with the same pairing: the goal is
+-- still a goal somebody wrote down, it just measures time instead. All three rows go back and
+-- none is counted as skipped.
+
 -- ── the standing check, after ───────────────────────────────────────────────────────────────
 -- select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
 -- from pg_proc p join pg_namespace n on n.oid = p.pronamespace

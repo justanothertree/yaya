@@ -4691,6 +4691,30 @@ before reaching any chronicle function. CLAUDE.md §11 keeps queries rather than
 because a list rots; a query that does not run is worse than the list it replaced. Run before
 committing, and it returns all ten.
 
+## 6bx · ✅ The write-path question, asked of a second table
+
+§6bt and §6bw are about counting the ways into `chronicle_entries`. The useful generalisation is
+narrower than "count the paths": **a rule that lives in a function rather than in a constraint is
+a rule the second path will not have.** Asked of `chronicle_goals`, the answer was the same.
+
+The table says `counts = 'minutes' OR activity IS NOT NULL` — an amount needs _an_ activity. The
+other half, that the activity must **name a metric**, cannot be a CHECK at all: it is a fact about
+a different row. So it lives in `chronicle_goal_save`, and ⬆ Put one back kept only the table's
+half.
+
+Confirmed against the live function with a crafted file, before:
+
+| goal                  | counts   | its source counts |
+| --------------------- | -------- | ----------------- |
+| counts what it cannot | `amount` | **(none)**        |
+| counts what it can    | `amount` | reps              |
+
+The first is §6bq restored from a file — a goal reading 0 for ever with the minutes in the totals
+above it. After the fix it imports as `minutes`, while both controls keep what they had.
+
+**Corrected rather than refused**, matching the save path: all three rows go back and none is
+counted as skipped, because the goal is still a goal somebody wrote down — it just measures time.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.
