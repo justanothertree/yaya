@@ -35,6 +35,15 @@ export function Routines({
   const [fixing, setFixing] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftSteps, setDraftSteps] = useState<Array<{ activity: string; mins: number | null }>>([])
+  /**
+   * ⚠️ THE SERVER'S CEILING, SAID BEFORE IT IS HIT. `chronicle_routine_save` raises "that is more
+   * than forty steps", and nothing here stopped you reaching forty-one — so the room offered a
+   * ＋ Step whose only possible answer was an error, which is the same lesson as the archived
+   * step one component over and the not-yet-started plan in Plans.tsx. The draft survives the
+   * refusal, so this was never lost work; it was being told at Save what could have been said at
+   * the control.
+   */
+  const STEP_CEILING = 40
   const [pick, setPick] = useState('')
   const [stepMins, setStepMins] = useState('')
   const [say, setSay] = useState<string | null>(null)
@@ -271,7 +280,12 @@ export function Routines({
             </label>
             <button
               className="btn btn-ghost"
-              disabled={!pick}
+              disabled={!pick || draftSteps.length >= STEP_CEILING}
+              title={
+                draftSteps.length >= STEP_CEILING
+                  ? `Forty steps is the most a routine can hold — take one out to add another`
+                  : undefined
+              }
               onClick={() => {
                 const n = Number(stepMins)
                 setDraftSteps((d) => [
@@ -284,6 +298,11 @@ export function Routines({
             >
               ＋ Step
             </button>
+            {/* ⚠️ IN WORDS, NOT ONLY THE TITLE — a tooltip does not exist on a phone, and the
+                button going quiet with no explanation is the thing this is for */}
+            {draftSteps.length >= STEP_CEILING ? (
+              <span className="muted">Forty steps is the most a routine can hold.</span>
+            ) : null}
           </div>
         </div>
       ) : (

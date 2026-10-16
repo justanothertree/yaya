@@ -8,6 +8,7 @@ import {
   pvExport,
   pvImport,
   pvSaveRoutine,
+  pvRoutines,
   pvAmount,
   pvEditEntry,
   pvEntries,
@@ -348,6 +349,60 @@ describe('the preview store keeps the contracts the server keeps', () => {
       },
     ]
     expect(pvTally(two)).toEqual({ today: 60, yesterday: 0 })
+  })
+})
+
+/**
+ * ⚠️ FOUND BY LISTING THE SERVER'S GUARDS AND GREPPING THIS DOUBLE FOR EACH ONE. Every
+ * `raise exception` in the chronicle_* functions was extracted and looked for here; thirteen
+ * messages were missing, and these two are the ones a person can reach by hand — a routine is
+ * built one step at a time, so forty-one is a few more clicks rather than a contrived file.
+ *
+ * ⚠️ AND THE DOUBLE COULD NOT EVEN SAY NO. `saveRoutine` is typed `{ id } | { why }` and
+ * `pvSaveRoutine` returned `{ id }` alone, so the shape of a refusal did not exist here — the
+ * unfaithful-double trap in the direction that hides a bug rather than inventing one.
+ */
+describe('the ceilings a routine has', () => {
+  const stepsOf = (n: number) => Array.from({ length: n }, () => ({ activity: draw, mins: 10 }))
+
+  it('takes forty steps, which is what the server allows', () => {
+    const r = pvSaveRoutine('Morning', stepsOf(40))
+    expect('id' in r).toBe(true)
+  })
+
+  /** ⚠️ IN THE SERVER'S OWN WORDS, so the workbench says what the site would say */
+  it('refuses the forty-first, in the words chronicle_routine_save uses', () => {
+    const r = pvSaveRoutine('Morning', stepsOf(41))
+    expect(r).toEqual({ why: 'that is more than forty steps' })
+  })
+
+  /**
+   * ⚠️ COUNTED AS HANDED IN, NOT AS KEPT, and this test asserted the opposite until the server
+   * was read. `chronicle_routine_save` checks `jsonb_array_length(p_steps) > 40` BEFORE the join
+   * that drops a step naming somebody else's activity — so forty-one of which two are foreign is
+   * refused, even though only thirty-nine would have been stored. The order of those two checks
+   * is not something a sensible guess gets right, which is the whole argument for copying a
+   * guard out of the function rather than out of an idea of it.
+   */
+  it('counts the steps it was handed, foreign ones included', () => {
+    const mixed = [
+      ...stepsOf(39),
+      { activity: 'not-mine', mins: 5 },
+      { activity: 'nor-this', mins: 5 },
+    ]
+    expect(pvSaveRoutine('Morning', mixed)).toEqual({ why: 'that is more than forty steps' })
+    /* ⚠️ the control: the same list one shorter is forty handed in, and goes through */
+    expect('id' in pvSaveRoutine('Morning', mixed.slice(0, 40))).toBe(true)
+  })
+
+  it('refuses a forty-first routine, and lets an existing one still be edited', () => {
+    for (let i = 0; i < 40; i++) pvSaveRoutine('R' + i, [{ activity: draw, mins: 5 }])
+    const made = pvSaveRoutine('one too many', [{ activity: draw, mins: 5 }])
+    expect(made).toEqual({ why: 'that is forty routines — delete one' })
+    /* ⚠️ the control: at the ceiling, SAVING one that already exists is not creating one */
+    const all = pvRoutines()
+    const again = pvSaveRoutine('R0 renamed', [{ activity: draw, mins: 5 }], all[0].id)
+    expect('id' in again).toBe(true)
   })
 })
 

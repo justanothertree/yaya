@@ -1283,14 +1283,36 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
   return out
 }
 
+/**
+ * ⚠️ IT CAN REFUSE NOW, AND COULD NOT BEFORE. `saveRoutine` is typed `{ id } | { why }` and this
+ * returned `{ id }` only — so the double could not express a refusal the live function makes,
+ * which is the unfaithful-double trap in the direction that HIDES a bug: the workbench accepted
+ * a forty-first step and a forty-first routine, and the site answers both with an error.
+ *
+ * Found by listing every `raise exception` in the chronicle functions and grepping this file for
+ * each message. Thirteen were missing; these two are the ones a person can reach by hand.
+ */
 export const pvSaveRoutine = (
   name: string,
   steps: Array<{ activity: string; mins: number | null }>,
   id?: string,
-): { id: string } => {
+): { id: string } | { why: string } => {
   const made = id ?? mint('pv-r')
+  /**
+   * ⚠️ COUNTED AS HANDED IN, BEFORE THE FOREIGN STEPS GO — and this file had it the other way
+   * round for about ten minutes. `chronicle_routine_save` asks
+   * `jsonb_array_length(p_steps) > 40` as its THIRD line, before the join that drops a step
+   * naming somebody else's activity. So forty-one steps of which two are foreign is refused by
+   * the server and would have been accepted here. Reading the function rather than reasoning
+   * about it is the only thing that caught it; the order of two checks is not something a
+   * sensible guess gets right.
+   */
+  if (steps.length > 40) return { why: 'that is more than forty steps' }
   /* ⚠️ a step naming an activity that is not yours is dropped, as chronicle_routine_save does */
   const mine = steps.filter((s) => db().acts.some((x) => x.id === s.activity))
+  if (!db().routines.some((x) => x.id === made) && db().routines.length >= 40) {
+    return { why: 'that is forty routines — delete one' }
+  }
   const r = db().routines.find((x) => x.id === made)
   if (r) Object.assign(r, { name, steps: mine })
   else db().routines.push({ id: made, name, steps: mine })
