@@ -216,6 +216,16 @@ function seed(): Store {
       span('pv-e18', 'pv-write', 430, 14, 140, 9, null, 3),
       span('pv-e19', 'pv-gym', 800, 7, 60, 40),
       /**
+       * ⚠️ A SITTING THAT CROSSES MIDNIGHT, which `span` cannot make for TODAY: it clamps a
+       * daysAgo-of-0 entry to local midnight, so for as long as the fixture has existed no seeded
+       * session straddled a day. Three rules meet on this one row and none of them had a fixture
+       * to meet on — `overlapMs` splits the ninety minutes into 60 yesterday and 30 today,
+       * `amountIn` gives the four pages to yesterday alone because a quantity belongs to the
+       * session rather than to the clock, and `straddles` names the day at whichever end is not
+       * the day you are reading. Starting it the day BEFORE is what gets past the clamp.
+       */
+      span('pv-e20', 'pv-write', 1, 23, 90, 4, 'finished the chapter', 4),
+      /**
        * The running one — no end. The stopwatch has no other way to be seen in the pane.
        *
        * ⚠️ AND NOT ON THE AUTO ACTIVITY, which is where this used to sit. The room writes

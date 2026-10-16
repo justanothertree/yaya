@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   amountIn,
+  straddles,
   clockText,
   metSession,
   moodOf,
@@ -176,6 +177,71 @@ describe('a quantity, which does not split the way the minutes do', () => {
   it('and a running session still answers for the day it started', () => {
     const live = entry({ start: '2026-10-09T23:00:00.000Z', end: null, amount: 2 })
     expect(days.map((w) => amountIn(live, w.from, w.to))).toEqual([null, 2, null, null, null])
+  })
+
+  /**
+   * ⚠️ AND THE CLOCK TIMES ARE THE THIRD HALF OF THE SAME RULE. The minutes split and the
+   * quantity does not; the times said the whole sitting on both days, so each row read "1h"
+   * beside a two-hour range. Asserted over the days this session actually touches, because that
+   * is the only question the log ever asks: it is handed the rows for a day and renders them.
+   */
+  it('marks the end of the sitting that is in another day, on each day it touches', () => {
+    const touched = days.filter((w) => overlapMs(night, w.from, w.to, NOW) > 0)
+    expect(touched).toHaveLength(2)
+    /* the day it began: it started here, and it finished somewhere else */
+    expect(straddles(night, touched[0].from, touched[0].to, NOW)).toEqual({
+      before: false,
+      after: true,
+    })
+    /* the day it ended: it began somewhere else, and it finished here */
+    expect(straddles(night, touched[1].from, touched[1].to, NOW)).toEqual({
+      before: true,
+      after: false,
+    })
+  })
+
+  it('and marks neither end of a sitting that began and ended inside the day', () => {
+    const inside = entry({ start: '2026-10-09T09:00:00.000Z', end: '2026-10-09T10:30:00.000Z' })
+    const d = days[1]
+    expect(straddles(inside, d.from, d.to, NOW)).toEqual({ before: false, after: false })
+  })
+
+  /**
+   * ⚠️ THE BOUNDARY, WHICH IS THE WHOLE OF WHY THIS IS A FUNCTION. A sitting that ends exactly at
+   * midnight ends inside the day it belongs to — `overlapMs` gives it none of the next day, so
+   * marking it would name a day it never reached. The same at the other end: one that starts
+   * exactly at midnight starts here, not before.
+   */
+  it('counts a sitting that ends exactly at midnight as ending inside its own day', () => {
+    const d = days[1]
+    const toMidnight = entry({ start: '2026-10-09T22:00:00.000Z', end: '2026-10-10T00:00:00.000Z' })
+    expect(straddles(toMidnight, d.from, d.to, NOW).after).toBe(false)
+    const fromMidnight = entry({
+      start: '2026-10-09T00:00:00.000Z',
+      end: '2026-10-09T02:00:00.000Z',
+    })
+    expect(straddles(fromMidnight, d.from, d.to, NOW).before).toBe(false)
+  })
+
+  /** ⚠️ a timer left running overnight reaches to NOW, which is how the log can say so */
+  it('marks a running sitting that began on an earlier day', () => {
+    const live = entry({ start: '2026-10-09T23:00:00.000Z', end: null })
+    const next = days[2]
+    const now = at('2026-10-10T08:00:00.000Z')
+    expect(straddles(live, next.from, next.to, now)).toEqual({ before: true, after: false })
+  })
+
+  /**
+   * ⚠️ AND THIS IS THE ONE THAT ACTUALLY ASKS ABOUT `nowMs`. The case above asserts only
+   * `before`, which is decided by the START — so it passed unchanged when the running sitting's
+   * reach was perturbed to zero, and the parameter under test was never exercised by it. A
+   * sitting still going is only reaching PAST a day when you are reading an earlier one.
+   */
+  it('says a running sitting runs past the day you are reading, when it still has not stopped', () => {
+    const live = entry({ start: '2026-10-09T23:00:00.000Z', end: null })
+    const began = days[1]
+    const now = at('2026-10-10T08:00:00.000Z')
+    expect(straddles(live, began.from, began.to, now)).toEqual({ before: false, after: true })
   })
 
   it('and an unreadable start gives nothing rather than a number on the wrong day', () => {

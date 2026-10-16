@@ -206,6 +206,39 @@ export function amountIn(e: Entry, fromMs: number, toMs: number): number | null 
   return s >= fromMs && s < toMs ? e.amount : null
 }
 
+/**
+ * Which ends of a sitting fall outside the day being read.
+ *
+ * ⚠️ THE THIRD HALF OF THE RULE ABOVE. `overlapMs` splits the minutes at midnight and `amountIn`
+ * keeps the quantity on the day the session started — and the CLOCK TIMES were left saying the
+ * whole sitting on both days. Measured through ⏱ Fill a gap, 23:00 Wed to 01:00 Thu: today's log
+ * and yesterday's each read `1h · 11:00 PM – 1:00 AM`. The length is right on each day and the
+ * range is the whole two hours on both, so the row contradicts itself — and on today, 11:00 PM is
+ * a time that has not happened yet, in a room that refuses a future sitting on purpose.
+ *
+ * ⚠️ FLAGS RATHER THAN A FORMATTED STRING, so this can be asked a question. The words are
+ * `toLocaleTimeString`'s and belong to the component; what is testable is the decision, which has
+ * a UNIT in it — a boundary, and whether an end sitting exactly ON it counts as outside.
+ *
+ * ⚠️ `toMs` IS EXCLUSIVE, so a sitting that ends exactly at midnight ends inside the day it
+ * belongs to and is not marked. That matches `overlapMs`, which would otherwise credit it with a
+ * moment of the next day.
+ */
+export function straddles(
+  e: Span,
+  fromMs: number,
+  toMs: number,
+  nowMs: number,
+): { before: boolean; after: boolean } {
+  const s = Date.parse(e.start)
+  /* a running sitting reaches to now, which is how a timer left going overnight is marked */
+  const t = e.end ? Date.parse(e.end) : nowMs
+  return {
+    before: Number.isFinite(s) && s < fromMs,
+    after: Number.isFinite(t) && t > toMs,
+  }
+}
+
 /** Minutes per activity id inside a window — what a day's totals are made of. */
 export function minutesByActivity(
   entries: Entry[],

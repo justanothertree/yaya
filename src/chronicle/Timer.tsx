@@ -33,6 +33,7 @@ import {
   moodWord,
   MOODS,
   overlapMs,
+  straddles,
   spanText,
   type Activity,
   type Entry,
@@ -1022,14 +1023,28 @@ export function Timer({
                     has been shown beside its plan all along; this is the same thing for a
                     session, which had been written and never read. */}
                   {e.note ? <span className="muted chron-ent-note">{e.note}</span> : null}
+                  {/**
+                   * ⚠️ AN END OUTSIDE THIS DAY SAYS WHICH DAY IT IS IN. See `straddles`: the
+                   * minutes beside this are only the share that falls here, so a bare
+                   * "11:00 PM – 1:00 AM" next to "1h" is a row disagreeing with itself — and on
+                   * today it names a time that has not happened yet. The weekday is enough to
+                   * resolve it and short enough not to crowd a row that already carries five
+                   * facts.
+                   */}
                   <span className="muted chron-ent-when">
-                    {new Date(e.start).toLocaleTimeString(undefined, {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                    {e.end
-                      ? ` – ${new Date(e.end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
-                      : ' – now'}
+                    {(() => {
+                      const out = straddles(e, bounds.fromMs, bounds.toMs, Date.now())
+                      const day = (iso: string) =>
+                        new Date(iso).toLocaleDateString(undefined, { weekday: 'short' }) + ' '
+                      const clock = (iso: string) =>
+                        new Date(iso).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      const from = (out.before ? day(e.start) : '') + clock(e.start)
+                      if (!e.end) return from + ' – now'
+                      return from + ' – ' + (out.after ? day(e.end) : '') + clock(e.end)
+                    })()}
                   </span>
                 </span>
                 {fixEnt === e.id && (
