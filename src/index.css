@@ -15547,6 +15547,13 @@ a.cz-msg-author:focus-visible {
   margin: 0 0 0.7rem;
   padding: 0;
   display: grid;
+  /* ⚠️ `minmax(0, 1fr)`, the third instance of the same trap in this file — see `.chron-against`.
+     A title with no space in it has a min-content width of its whole self, and an automatic
+     column takes that as the column's width. Measured at 375 with a 120-character unbroken
+     title, which the table allows: the column resolved to 879px and the page scrolled sideways
+     by 528px, more than its own width. A 105-character title WITH spaces was fine, which is why
+     this survived the fix that gave the title its 150px floor. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.4rem;
 }
 .chron-goal {
@@ -15602,6 +15609,8 @@ a.cz-msg-author:focus-visible {
   gap: 0.5rem;
   flex: 1 1 150px;
   min-width: 150px;
+  /* the other of the two title paths — see the note on .chron-name */
+  overflow-wrap: anywhere;
   cursor: pointer;
   /* a whole row is the target, not the box in it */
   min-height: 36px;
@@ -15623,6 +15632,10 @@ a.cz-msg-author:focus-visible {
      tick-box ones read fine, which looks like a bug in the chips rather than in the title. */
   flex: 1 1 150px;
   min-width: 150px;
+  /* ⚠️ AND IT MAY BREAK MID-WORD, because the floor alone does not help a title with no spaces
+     in it: the column above can be told to shrink, but an unbreakable run still has to go
+     somewhere. Normal wrapping is tried first, so an ordinary title never breaks a word. */
+  overflow-wrap: anywhere;
 }
 .chron-chip {
   font-size: 0.7rem;
@@ -16330,6 +16343,11 @@ a.cz-msg-author:focus-visible {
   margin: 0.5rem 0 0;
   padding: 0;
   display: grid;
+  /* ⚠️ `minmax(0, 1fr)`, for the same reason as `.chron-against` — an automatic grid column grows
+     to its widest row and will not shrink, so one long activity name made every row in the list
+     that wide and pushed the page sideways. `.chron-ent-name` has carried the ellipsis and a
+     130px floor all along; the column above it was what never let either matter. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
 }
 /* ⚠️ THEY WRAP, AND THIS IS THE STANDING RULE FOR EVERY ROW IN THIS ROOM. A row here is a name
@@ -16513,6 +16531,19 @@ a.cz-msg-author:focus-visible {
   margin: 0.5rem 0 0;
   padding: 0;
   display: grid;
+  /**
+   * ⚠️ `minmax(0, 1fr)` RATHER THAN THE DEFAULT `auto`, which is what made the ellipsis on
+   * `.chron-vs-name` inert. A grid's automatic column grows to its MAX-CONTENT and will not
+   * shrink below it, so the column itself took the width of the longest activity name and every
+   * row stretched to match — the name's own `min-width: 0; overflow: hidden; text-overflow:
+   * ellipsis` had nothing to do, because it was never the thing being squeezed.
+   *
+   * Measured at 375 with a 59-character activity name, which the table allows up to 60: the
+   * column resolved to 553px inside a 303px list, and the page scrolled sideways by 30px. Every
+   * row read 553px wide, including the ones whose names are seven letters long. This is the same
+   * trap CLAUDE.md §6 records for a grid row that would not ellipse a 66-character goal title.
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
 }
 .chron-plan,
