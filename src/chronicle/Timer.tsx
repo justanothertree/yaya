@@ -483,11 +483,28 @@ export function Timer({
      * have had to change otherwise — so the UI pays one extra round trip on an edit rather than
      * the whole write path paying for a field most sessions do not have.
      */
+    /**
+     * ⚠️ THE SECOND AND THIRD CALLS CAN FAIL ON THEIR OWN, and this editor is the one place where
+     * that is not self-evident. `setAmount` and `setQuality` answer true or false, and both
+     * answers were dropped — so a span that saved while its amount did not closed the editor,
+     * which is a success signal, and the row came back carrying the old number. Everywhere else
+     * in this room a failed write leaves the thing visibly unchanged and says nothing, which at
+     * least does not claim to have worked.
+     *
+     * It is still a generic sentence, because a boolean carries no reason. Saying WHICH part did
+     * not take is the useful half: the span is saved either way, so nobody needs to type the
+     * timestamps again.
+     */
+    let partly: string | null = null
     if (!bad) {
       const had = log.find((e) => e.id === fixEnt)?.amount ?? null
       if (metric) {
         const n = Number(entAmount)
-        await setAmount(fixEnt, entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n)
+        const ok = await setAmount(
+          fixEnt,
+          entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n,
+        )
+        if (!ok) partly = 'Saved — but the amount did not change.'
       } else if (had != null) {
         /**
          * ⚠️ AND A SESSION MOVED ONTO SOMETHING THAT COUNTS NOTHING LOSES ITS NUMBER, rather
@@ -500,7 +517,7 @@ export function Timer({
          * nothing still costs two round trips rather than three — the economy the note above is
          * about.
          */
-        await setAmount(fixEnt, null)
+        if (!(await setAmount(fixEnt, null))) partly = 'Saved — but the amount did not change.'
       }
     }
     /* ⚠️ a third call on an edit, for the same reason the amount is a second one — see setQuality.
@@ -508,12 +525,16 @@ export function Timer({
     if (!bad) {
       const was = log.find((e) => e.id === fixEnt)?.quality ?? null
       const now = entMood === '' ? null : Number(entMood)
-      if (was !== now) await setQuality(fixEnt, now)
+      if (was !== now && !(await setQuality(fixEnt, now))) {
+        partly = 'Saved — but the rating did not change.'
+      }
     }
     setBusy(false)
     if (bad) return moan(bad.why)
     setFixEnt(null)
     await after()
+    /* after the reload, so the row beside the message already shows what did save */
+    if (partly) moan(partly)
   }
 
   /** what a datetime-local input wants: local time, no zone, to the minute */
