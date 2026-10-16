@@ -82,6 +82,17 @@ export const PLACES = [
    * would be a page of pretend goals teaching nobody anything. Signed out it says what the room
    * is for and stops, which is the whole reason it does not take a `demo` prop.
    */
+  /**
+   * ⚠️ ITS OWN PLACE, BESIDE CHRONICLE RATHER THAN INSIDE IT. The Chronicle is two halves and
+   * eight folds — right for sitting down with, wrong for standing on a platform with one hand.
+   * This is the one question you open a phone to ask, and the one answer you want to give: what
+   * am I doing, and now I am doing something else.
+   *
+   * ⚠️ MEMBERS ONLY, for the same reason Chronicle is: it is one person's own record of their own
+   * time, and there is nothing honest to show a visitor. Signed out it says what it is for and
+   * stops.
+   */
+  { id: 'now', label: 'Now', icon: '⏱', title: 'Now', nav: member },
   { id: 'chronicle', label: 'Chronicle', icon: '🗓', title: 'Chronicle', nav: member },
   {
     id: 'investments',

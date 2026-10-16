@@ -17449,3 +17449,117 @@ a.cz-msg-author:focus-visible {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Now — what you are doing, on a phone. See src/chronicle/Now.tsx ──────── */
+
+.now {
+  display: grid;
+  /* ⚠️ `minmax(0, 1fr)`, the lesson this file learned four times over: an automatic column takes
+     its widest row's max-content and will not shrink, and an activity name may be 60 characters */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+}
+
+/* what is running — the first thing on the screen, because it is the question you opened with */
+.now-on {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card, rgba(128, 128, 128, 0.06));
+}
+.now-on-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  /* a long name gives up its tail rather than the row — the floor keeps it from vanishing */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.now-clock {
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.now-stop {
+  grid-column: 2;
+  min-height: 44px;
+  padding-inline: 1rem;
+}
+.now-note {
+  grid-column: 1 / -1;
+}
+.now-note input {
+  width: 100%;
+  /* ⚠️ `min-width: 0` because an <input> defaults to its `size` attribute's worth of characters —
+     about 202px — which is room to grow and no permission to shrink. See CLAUDE.md §6. */
+  min-width: 0;
+  /* ⚠️ NO HEIGHT HERE, DELIBERATELY. This asked for 44px and got 40, because the site already
+     sizes every form control for a thumb — `input:not(...)` under
+     `(max-width: 640px), (pointer: coarse)`, which outranks `.now-note input` on specificity and
+     is the considered floor for every box on the site rather than this one's opinion. A one-off
+     that loses silently is worse than no one-off; consistency with the other rooms is the point.
+     The TILES are 56px, which is a button and not governed by that rule. */
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+}
+.now-idle {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+}
+.now-say {
+  margin: 0;
+  color: #f5a623;
+}
+
+/**
+ * The tiles.
+ *
+ * ⚠️ `auto-fit` WITH A FLOOR IN PIXELS, not a fixed column count: the root font-size on this site
+ * is fluid, so `rem` is not a length here, and a phone, a tablet and a desktop all want a
+ * different number of columns from the same rule.
+ */
+.now-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+.now-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* ⚠️ 56px rather than the 24px floor: this is the one control the room exists for, and it is
+     pressed with a thumb while walking. WCAG 2.5.8 is the outside bar, not the target. */
+  min-height: 56px;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  min-width: 0;
+}
+.now-tile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the one that is running — the only tile that shouts, so it can be found without reading */
+.now-tile.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 700;
+}
+.now-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
