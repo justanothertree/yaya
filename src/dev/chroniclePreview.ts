@@ -1,4 +1,5 @@
 import type { Goal, Scope } from '../chronicle/goal'
+import { SPANS_AT_ONCE } from '../chronicle/year'
 import { today as todayISO } from '../chronicle/goal'
 import {
   localMidnight,
@@ -1512,6 +1513,18 @@ export const pvSince = (): number | null => {
 export const pvSpans = (
   asks: Array<{ key: string; from: string; to: string }>,
 ): Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> => {
+  /**
+   * ⚠️ IT REFUSES THE SAME NUMBER THE SERVER REFUSES, and answering any number is how this
+   * hid a live bug: `spanTotals` sent `chronicle_spans` one window per year with no batching,
+   * and the server raises "too many at once" above 120. In the workbench the Years view worked
+   * perfectly, because this double happily answered two thousand asks; on the site the refusal
+   * was swallowed and the view drew every year empty.
+   *
+   * It throws rather than returning nothing, because with `spanTotals` batching correctly this
+   * can only fire if that batching is removed — so it is a tripwire for a regression, not a
+   * state the room can reach.
+   */
+  if (asks.length > SPANS_AT_ONCE) throw new Error('too many at once')
   const catOf = new Map(db().acts.map((a) => [a.id, a.cat]))
   const now = Date.now()
   const out: Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> = {}

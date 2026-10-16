@@ -36,6 +36,7 @@ import {
   pvVisit,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
+import { SPANS_AT_ONCE } from './year'
 import type { Goal, Scope } from './goal'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
@@ -837,8 +838,24 @@ export async function spanTotals(
   asks: Array<{ key: string; from: string; to: string }>,
 ): Promise<Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>> {
   if (!asks.length) return {}
-  if (previewMember) return pvSpans(asks)
-  const { data, error } = await getSupabaseClient().rpc('chronicle_spans', { p_asks: asks })
-  if (error || !data || typeof data !== 'object') return {}
-  return data as Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>
+  /**
+   * ⚠️ IN BATCHES, BECAUSE THE SERVER REFUSES MORE THAN `SPANS_AT_ONCE` — and this sent whatever
+   * it was handed. `chronicle_tally` has been batched since the streaks made it necessary; its
+   * sibling never was, and nothing noticed because the limit is 120 years. See SPANS_AT_ONCE for
+   * how one mistyped date reaches it, and why the symptom is a silent blank rather than an error.
+   *
+   * ⚠️ A FAILED BATCH IS SKIPPED, NOT FATAL, which is what `tally` does: a year whose figures did
+   * not arrive reads as a year with nothing in it, and that is better than the whole list going.
+   */
+  const out: Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> = {}
+  for (const some of inBatches(asks, SPANS_AT_ONCE)) {
+    if (previewMember) {
+      Object.assign(out, pvSpans(some))
+      continue
+    }
+    const { data, error } = await getSupabaseClient().rpc('chronicle_spans', { p_asks: some })
+    if (error || !data || typeof data !== 'object') continue
+    Object.assign(out, data as Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>)
+  }
+  return out
 }
