@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { entriesBetween, myActivities, noteRunning, startTimer, stopTimer } from './cloud'
 import { clockText, dayBounds, type Activity, type Entry } from './record'
+import { tilesFor } from './nowTiles'
 import { today as todayISO } from './goal'
 
 /**
@@ -28,8 +29,8 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const [say, setSay] = useState<string | null>(null)
-  /* the clock's own heartbeat — see the effect below */
-  const [, setBeat] = useState(0)
+  /* the clock's own heartbeat — see the effect below, and `tiles` */
+  const [beat, setBeat] = useState(0)
 
   const moan = (why: string) => {
     setSay(why)
@@ -105,22 +106,12 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
   /**
    * Every activity you could switch to, the ones you use most first.
    *
-   * ⚠️ ARCHIVED AND `auto` ARE BOTH OUT, for the two reasons the Chronicle's own list gives:
-   * `chronicle_start` refuses an archived activity, so a tile for one would be a tile that
-   * answers with an error, and an `auto` activity is written by the room rather than started by
-   * a person.
+   * ⚠️ THE RULE LIVES IN `tilesFor`, not here. It has a unit in it and three claims about what a
+   * tile is — archived out, auto out, most-used first — and none of them could be checked from a
+   * component. `beat` is in the dependencies so the running sitting's length keeps counting:
+   * reading the clock inside a memo that only watches the data froze it between loads.
    */
-  const tiles = useMemo(() => {
-    const live = (acts ?? []).filter((a) => !a.archived && !a.auto)
-    const mins = new Map<string, number>()
-    for (const e of log) {
-      const end = e.end ? Date.parse(e.end) : Date.now()
-      mins.set(e.activity, (mins.get(e.activity) ?? 0) + Math.max(0, end - Date.parse(e.start)))
-    }
-    return live.sort(
-      (x, y) => (mins.get(y.id) ?? 0) - (mins.get(x.id) ?? 0) || x.name.localeCompare(y.name),
-    )
-  }, [acts, log])
+  const tiles = useMemo(() => tilesFor(acts ?? [], log, Date.now()), [acts, log, beat])
 
   /**
    * ⚠️ THE NOTE GOES FIRST, ONTO THE SITTING IT WAS TYPED ABOUT. Switching is the whole point of
