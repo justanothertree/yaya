@@ -282,22 +282,23 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     /**
      * ⚠️ THE STREAKS ARE NOT AWAITED, and that is a measured decision rather than a style one.
      * A streak asks about THIRTY-ONE windows per repeating goal, so ten of them is 310 questions
-     * in one call — and `chronicle_tally` answers each by scanning the record separately. Timed
-     * against a year of a heavy user (2,196 sessions, 19 activities) that call takes **2.75
-     * seconds**; twenty asks take 186ms. See docs/2026-10-13-chronicle-tally-cost.sql.
+     * in one call. Timed against a year of a heavy user — 2,196 sessions over 19 activities —
+     * that call takes **617ms**, and twenty asks take 42ms.
      *
      * `load()` is what every write waits on — `after()` calls it when you tick a goal, stop a
-     * timer, edit a span. Awaiting the streaks inside it meant each of those sat for the whole
-     * 2.75s before the room settled, for a number that only decorates a chip. Letting it land on
-     * its own turns the cost into "the flames appear a moment later" instead of "the room is
-     * frozen after every tap".
+     * timer, edit a span. Awaiting the streaks inside it would put six tenths of a second in
+     * front of every one of those, for a number that only decorates a chip. Letting it land on
+     * its own turns the cost into "the flames appear a moment later" instead of "the room pauses
+     * after every tap".
      *
-     * ⚠️ IT STILL COSTS THE DATABASE THE SAME. This hides the latency from the person; it does not
-     * fix it. The fix is one pass in `chronicle_tally` rather than one scan per ask, the way
-     * `chronicle_spread` fixed `chronicle_totals` — not done here because a replacement that
-     * agreed with the old function on two targeted cases still disagreed on 94 of 310 at volume,
-     * and a half-verified rewrite of the function that computes somebody's streaks is not worth
-     * the speed. The evidence is in that file for whoever finishes it.
+     * ⚠️ THOSE FIGURES ARE THE ONES AFTER THE FIX, and this note used to say otherwise. The
+     * function answered each ask with its own scan of the record, which was **2.75 seconds** for
+     * the same 310; `chronicle_tally_one_pass` made it one pass on 13 Oct and this comment went
+     * on claiming the old number — "it still costs the database the same", with a pointer to the
+     * evidence "for whoever finishes it", two days after it was finished. The decision above is
+     * unchanged and the reason for it is not: 617ms in front of every tap is still worth moving
+     * out of the way, but it is a choice about feel rather than a workaround for a slow query.
+     * See docs/2026-10-13-chronicle-tally-cost.sql, which is now the record of how it was done.
      *
      * ⚠️ AND THE ANSWER IS DROPPED IF THE GOALS HAVE MOVED ON. Without that, a slow streak reply
      * can land after a later load has already replaced the goals, painting runs for rows that are

@@ -29,6 +29,17 @@ library lives "in this browser only" an hour after the library started syncing, 
 still rendered after its only block became one that draws nothing. After a change lands, look for
 what it just made stale — copy, empty states, the thing a neighbouring feature assumed.
 
+**A MEASURED NUMBER IN A COMMENT IS A CLAIM WITH A DATE ON IT, and what falsifies it usually lands
+in a different file.** `load()` in Chronicle.tsx explained, at length and with figures, that the
+streaks are not awaited because `chronicle_tally` "answers each by scanning the record separately"
+and takes **2.75 seconds** — ending "the evidence is in that file for whoever finishes it". It had
+been finished two days later: `chronicle_tally_one_pass` made it one pass and the same call takes
+**617ms**. The comment was not wrong when written and nothing in that file changed; the thing it
+described lived in the database. It nearly cost a whole tick re-doing the rewrite, which is exactly
+the waste §12 warns about from the other direction. **When a change makes a measured claim untrue,
+grep for the number** — and prefer writing down the decision and its reason over the figure that
+justified it once.
+
 **And it is often a NUMBER rather than a sentence, because every figure describing a list is a
 claim about what that list holds.** Teaching the goals strip to count the late ones left `weight`
 — the line inches below it — counting the old thing: Today's badge said 2, the line said "1 left",
@@ -412,7 +423,15 @@ Assume real users and sensitive data, because there are and it is.
 
 ## 5 · Cost and third-party services
 
-Currently: **26 MB of Supabase's 500 MB free tier**. `member_library` caps a person at 400 items /
+**32 MB of Supabase's 500 MB free tier** on 15 Oct 2026 — and that figure is here as an order of
+magnitude, not a fact to maintain. It said 26 MB until this was checked, which is the same rot §11
+describes; ask instead:
+
+```sql
+select pg_size_pretty(pg_database_size(current_database()));
+```
+
+The part that does NOT go stale is the reasoning: `member_library` caps a person at 400 items /
 20 MB, which is right for eight people and roughly 9× too generous at two hundred — revisit around
 fifty active libraries.
 
