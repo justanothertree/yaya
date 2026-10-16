@@ -1130,6 +1130,18 @@ export default function App() {
       const isTyping =
         tag === 'input' || tag === 'textarea' || (target as HTMLElement)?.isContentEditable
       if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
+      /**
+       * ⚠️ AND NOT IF SOMETHING HAS ALREADY ANSWERED IT. This listener is on WINDOW, so a
+       * component that handles an arrow key has to remember `stopPropagation` or the key does
+       * its own job AND walks the viewer off the page — measured on the chronicle window strip,
+       * where ArrowRight moved the tab and then left the room, four presses taking #chronicle →
+       * #investments → #account-settings → #games. Both handlers that existed before that did
+       * remember (see the pinned pointer in AudioVisualizer and the block arranger in
+       * ProfileBlocks, each with a comment about it), which is the tell that this is a trap to
+       * be remembered rather than one nobody can fall into. Asking here makes `preventDefault`
+       * alone enough, and changes nothing for a handler that already stops the event.
+       */
+      if (e.defaultPrevented) return
       const key = e.key
       // Arrow navigation across sections — but never while a game has control.
       // The game can live anywhere now (its page, or a pinned canvas window over any

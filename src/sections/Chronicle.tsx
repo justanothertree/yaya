@@ -251,6 +251,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const [kept, setKept] = useState<string[]>([])
 
+  /** the window strip, so an arrow key can move focus to the tab it selects */
+  const strip = useRef<HTMLDivElement>(null)
+
   /** which streak fetch is the current one — see the note in `load` about late answers */
   const runSeq = useRef(0)
 
@@ -381,6 +384,42 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     }
     return out
   }, [goals, got])
+
+  /**
+   * Arrow keys across the window strip.
+   *
+   * ⚠️ IT WRAPS, AND IT SELECTS AS IT MOVES. Both are what the pattern asks for with six cheap
+   * tabs: moving focus without selecting would leave the strip and the list below it disagreeing
+   * about which window you are in, which is the one thing this room must never do.
+   */
+  const moveTab = (e: React.KeyboardEvent, i: number) => {
+    const to =
+      e.key === 'ArrowRight'
+        ? i + 1
+        : e.key === 'ArrowLeft'
+          ? i - 1
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? VIEWS.length - 1
+              : null
+    if (to == null) return
+    e.preventDefault()
+    /**
+     * ⚠️ AND STOPPED, OR THE ARROW DOES BOTH THINGS. App.tsx keeps a `keydown` listener on
+     * WINDOW that walks the site's own sections with the arrow keys, and its only guards are
+     * "am I typing", the modifier keys and whether a game has control — it never asks whether
+     * the event was already handled. `preventDefault` does not reach it, because that stops the
+     * browser's default action and not another listener. Measured before this line existed:
+     * pressing ArrowRight on a focused tab moved the window strip AND left the room, walking
+     * #chronicle → #investments → #account-settings → #games in four presses.
+     */
+    e.stopPropagation()
+    const n = (to + VIEWS.length) % VIEWS.length
+    setView(VIEWS[n].id)
+    setAdding(false)
+    strip.current?.querySelectorAll<HTMLButtonElement>('button')[n]?.focus()
+  }
 
   const add = async () => {
     const t = title.trim()
@@ -594,13 +633,22 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
 
       {/* ⚠️ the counts are UNFINISHED work, not totals — a strip of totals tells you how much you
           have written down, which is not a thing anybody needs to know at a glance */}
-      <div className="chron-strip" role="tablist" aria-label="How far ahead">
-        {VIEWS.map((x) => (
+      <div className="chron-strip" role="tablist" aria-label="How far ahead" ref={strip}>
+        {VIEWS.map((x, i) => (
           <button
             key={x.id}
             role="tab"
             aria-selected={view === x.id}
+            /**
+             * ⚠️ ONE TAB STOP FOR THE WHOLE STRIP, which is the contract `role="tablist"` takes
+             * on. Six buttons meant six stops on the way past, and the arrow keys — the thing a
+             * tablist tells a screen reader to expect — did nothing at all. Declaring the role
+             * and not keeping it is worse than six plain buttons, because the announcement
+             * promises a behaviour that is not there.
+             */
+            tabIndex={view === x.id ? 0 : -1}
             className={'btn chron-tab' + (view === x.id ? ' is-on' : ' btn-ghost')}
+            onKeyDown={(e) => moveTab(e, i)}
             onClick={() => {
               setView(x.id)
               setAdding(false)
