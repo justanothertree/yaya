@@ -223,9 +223,16 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
             />
           </label>
         </div>
-      ) : (
+      ) : tiles.length > 0 ? (
         <p className="muted now-idle">Nothing running. Tap one to start.</p>
-      )}
+      ) : /**
+       * ⚠️ NOTHING TO TAP MEANS IT MUST NOT SAY "TAP ONE". With no activities yet the room read
+       * "Nothing running. Tap one to start." directly above "No activities yet — name one in
+       * Chronicle", which is two sentences disagreeing about whether there is anything to press.
+       * The second one is the useful half on that screen, and it says what to do; this one is
+       * for when there ARE tiles and none of them is running.
+       */
+      null}
 
       {say ? (
         <p className="now-say" role="status">
