@@ -586,14 +586,6 @@
     min-height: 34px;
   }
 
-  /* text fields were as short as 24px (the contact form). No field should be
-     shorter than a fingertip; min-height only ever grows them. */
-  input:not([type='checkbox']):not([type='radio']):not([type='range']),
-  select,
-  textarea {
-    min-height: 40px;
-  }
-
   /* Undo/redo are desktop power tools (there is no Ctrl+Z on a phone, and the Log carries
      its own Clear / Copy last). Keeping them here cost 88px of a 283px toolbar, which left
      the tab strip showing 2 of 6 tabs — it read as an accident rather than a scroller.
@@ -651,6 +643,44 @@
   }
   .cz-tab-chat .cz-chat {
     height: calc(100dvh - 96px - 84px);
+  }
+}
+
+/* ⚠️ EVERY FIELD ON THE SITE, AND A THUMB IS NOT A WIDTH — the same correction the slider and
+   visualiser blocks at the end of this file already carry, and the rule it was most expensive to
+   miss, because this one selector is every input, select and textarea in every room. Gated on
+   `max-width: 640px` alone, a tablet — touched, and wider than a phone — got none of it.
+
+   Measured at 820 across all thirteen rooms of a signed-in viewer: 37 of the 41 fields on screen
+   were under 40px, and 19 of those sat at 24-25px, which is the WCAG 2.5.8 floor itself rather
+   than merely snug. Account settings alone held sixteen of them, both password boxes and the
+   email field among them; the contact form's name field was 24 — the very field the note below
+   was written about. Strictly under the floor: the visualiser's preset name at 23, and, behind
+   its toggle where no sweep of an opening state can see it, #chronicle's ⏱ Fill a gap activity
+   picker at 21, with two 36px datetime fields beside it in the same row. That row is what sent
+   me looking.
+
+   ⚠️ IT IS THE ONE RULE THAT HAD TO LEAVE THE BLOCK ABOVE RATHER THAN WIDEN WITH IT. Everything
+   else up there is the Circuit's phone LAYOUT — a one-line log, a hidden subtitle, a swipeable
+   tab strip, a chat screen that owns the viewport — and a tablet should get none of that. Only
+   this rule is about the size of a fingertip, so only this rule is gated on the pointer. Moving
+   it out changes nothing below 640: at (0,3,1) it already beat the `.cz-slot-body input` and
+   `.cz-chat-form input` rules it now sits after, whatever order they are in.
+
+   ⚠️ Proven before it was changed, because the pane cannot emulate a coarse pointer above 768
+   (CLAUDE.md §6 has the snippet that collects these rules and applies them unconditionally).
+   Injecting this exact declaration at 820 emptied the under-40 list in all thirteen rooms while
+   `sideways`, `offEdge`, `clipped`, `insideOut` and `spills` stayed at zero in every one of them.
+   Only two pages moved at all: account settings grew 184px carrying its nineteen fields, and the
+   instrument 21px. Nothing here is anything but a min-height, so widening the gate can only grow
+   a control, never move a layout. */
+@media (max-width: 640px), (pointer: coarse) {
+  /* text fields were as short as 24px (the contact form). No field should be
+     shorter than a fingertip; min-height only ever grows them. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    min-height: 40px;
   }
 }
 
