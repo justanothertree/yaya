@@ -561,21 +561,48 @@ export default function App() {
    * publishes — which also means a plain reload on your usual machine stops writing a row that
    * already said the same thing.
    */
-  const lookMirrored = useRef(false)
+  /**
+   * ⚠️ AND NEVER WITHOUT A SESSION TO WRITE IT TO. `isFinanceAuthed` is not that question:
+   * previewMember turns it on with no token at all, so the dev member harness fired this at the
+   * production database on every page load and took a 401 back — noise in the console that sat
+   * next to the Cloudflare beacon's CORS failure, which is genuinely harmless, and so nearly got
+   * dismissed as more of the same. The uid is what the row would belong to, so the uid is the gate;
+   * it is also cleared the moment a dead token is confirmed, which the optimistic flag is not.
+   *
+   * ⚠️ AND THE FIRST-RUN GUARD WAS A REF, WHICH IS NOT A FIRST-RUN GUARD. A ref survives
+   * StrictMode's dev remount, so the second mount found it already set and published: measured as
+   * two runs of this effect with nothing changed between them, `already: false` then `already:
+   * true`, one write per load. The mount run carries no intention (above) — and neither does a
+   * remount, nor a reload, so what is remembered here is the LOOK rather than the fact of having
+   * run. Same uid and same look means there is nothing to say. A signed-in dev load would have
+   * published this browser's defaults over a real profile, which is the bug the note above
+   * describes; production builds do not double-mount, so the live site never had it.
+   */
+  const lookPublished = useRef<{ uid: string; look: string } | null>(null)
   useEffect(() => {
-    if (!isFinanceAuthed) return
-    if (!lookMirrored.current) {
-      lookMirrored.current = true
+    /* the harness writes nothing real, the way every chronicle writer guards itself — see
+       chronicle/cloud.ts, where the module that writes asks rather than each of its callers */
+    if (previewMember) return
+    const uid = uidRef.current
+    if (!isFinanceAuthed || !uid) return
+    const look = {
+      p_theme: theme,
+      p_palette: customPalette ? loadPalette() : null,
+      p_flair: sparksOn ? sparksStyle : null,
+      p_backdrop: background === 'none' ? null : background,
+    }
+    const sig = JSON.stringify(look)
+    /* a different person is a first run of their own, or signing in as somebody else on a shared
+       browser would publish the look the last one happened to be using */
+    if (lookPublished.current?.uid !== uid) {
+      lookPublished.current = { uid, look: sig }
       return
     }
+    if (lookPublished.current.look === sig) return
+    lookPublished.current = { uid, look: sig }
     const t = setTimeout(() => {
       void getSupabaseClient()
-        .rpc('set_my_profile_look', {
-          p_theme: theme,
-          p_palette: customPalette ? loadPalette() : null,
-          p_flair: sparksOn ? sparksStyle : null,
-          p_backdrop: background === 'none' ? null : background,
-        })
+        .rpc('set_my_profile_look', look)
         .then(() => {})
     }, 600) // dragging a colour picker shouldn't be one write per frame
     return () => clearTimeout(t)
