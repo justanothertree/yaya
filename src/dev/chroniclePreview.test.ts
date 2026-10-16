@@ -30,6 +30,19 @@ import type { NewGoal } from '../chronicle/cloud'
 import { localMidnight } from '../chronicle/record'
 
 /**
+ * The id of a save that was supposed to work.
+ *
+ * ⚠️ IT ASSERTS RATHER THAN CASTS. `pvSaveGoal` and `pvSaveActivity` can answer `{ why }` now, as
+ * their live counterparts always could, so reading an id off a result needs narrowing — and a
+ * cast would turn a refusal into `undefined` flowing quietly through the rest of the test. This
+ * throws on the line that did the saving, naming the reason.
+ */
+const idOf = (r: { id: string } | { why: string }): string => {
+  if ('why' in r) throw new Error('expected a save, got a refusal: ' + r.why)
+  return r.id
+}
+
+/**
  * The preview store against the contracts its server counterparts actually keep.
  *
  * ⚠️ A DEV-ONLY HARNESS IS WORTH TESTING WHEN IT IS A DOUBLE, and this one is: it answers every
@@ -59,22 +72,24 @@ let idle = ''
 
 beforeEach(() => {
   pvEmpty()
-  draw = pvSaveActivity('Drawing', 'locked', null).id
-  gym = pvSaveActivity('Gym', 'free', null, undefined, 'reps').id
+  draw = idOf(pvSaveActivity('Drawing', 'locked', null))
+  gym = idOf(pvSaveActivity('Gym', 'free', null, undefined, 'reps'))
   /* an activity that exists and has never been done — the case the server's LEFT JOIN is for */
-  idle = pvSaveActivity('Idle', 'free', null).id
+  idle = idOf(pvSaveActivity('Idle', 'free', null))
 })
 
 const goalOn = (over: Partial<NewGoal>): string =>
-  pvSaveGoal({
-    title: 'g',
-    scope: 'day',
-    anchor: DAY,
-    every: null,
-    unit: 'min',
-    target: null,
-    ...over,
-  }).id
+  idOf(
+    pvSaveGoal({
+      title: 'g',
+      scope: 'day',
+      anchor: DAY,
+      every: null,
+      unit: 'min',
+      target: null,
+      ...over,
+    }),
+  )
 
 const ask = (id: string, from = dayStart(), to = dayEnd()) => [{ key: 'k', id, from, to }]
 
@@ -362,6 +377,80 @@ describe('the preview store keeps the contracts the server keeps', () => {
  * `pvSaveRoutine` returned `{ id }` alone, so the shape of a refusal did not exist here — the
  * unfaithful-double trap in the direction that hides a bug rather than inventing one.
  */
+/**
+ * ⚠️ FOUND BY COMPARING RETURN TYPES, not by use. Every function in cloud.ts that can answer
+ * `{ why }` was listed against its double: eleven of them, and two could not express a refusal at
+ * all. That is the same structural gap that let a forty-first routine step look fine here, so it
+ * is closed the same way — the guards copied in the server's own words.
+ */
+describe('the ceilings an account has', () => {
+  it('refuses a two hundred and first activity, in the words the server uses', () => {
+    for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)
+    expect(pvSaveActivity('one too many', 'free', null)).toEqual({
+      why: 'that is 200 activities — archive one',
+    })
+  })
+
+  /** ⚠️ the control: at the ceiling, EDITING one that exists is not creating another */
+  it('and still lets an activity already there be renamed', () => {
+    for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)
+    const first = pvActivities()[0]
+    expect('id' in pvSaveActivity('renamed', 'free', null, first.id)).toBe(true)
+  })
+
+  /**
+   * ⚠️ AN ID THAT IS NOT THERE IS REFUSED, NOT CREATED. `chronicle_activity_save` updates
+   * `where id = p_id and owner = auth.uid()` and raises when nothing came back; this double
+   * created a row carrying the unknown id instead, which is the direction that hides a bug.
+   */
+  it('refuses an id it does not hold rather than inventing one', () => {
+    expect(pvSaveActivity('from nowhere', 'free', null, 'not-an-id')).toEqual({
+      why: 'no such activity',
+    })
+    expect(pvActivities().some((a) => a.id === 'not-an-id')).toBe(false)
+  })
+
+  it('refuses a five hundred and first goal', () => {
+    for (let i = 0; i < 500; i++)
+      pvSaveGoal({
+        title: 'g' + i,
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+      })
+    expect(
+      pvSaveGoal({
+        title: 'one too many',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+      }),
+    ).toEqual({
+      why: 'that is 500 goals — finish or delete one',
+    })
+  })
+
+  it('and refuses a goal id it does not hold', () => {
+    expect(
+      pvSaveGoal({
+        id: 'not-an-id',
+        title: 'g',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+      }),
+    ).toEqual({
+      why: 'no such goal',
+    })
+  })
+})
+
 describe('the ceilings a routine has', () => {
   const stepsOf = (n: number) => Array.from({ length: n }, () => ({ activity: draw, mins: 10 }))
 
@@ -409,7 +498,7 @@ describe('the ceilings a routine has', () => {
 describe('a rating written against a session', () => {
   beforeEach(() => {
     pvEmpty()
-    draw = pvSaveActivity('Drawing', 'locked', null).id
+    draw = idOf(pvSaveActivity('Drawing', 'locked', null))
   })
 
   /**
@@ -852,7 +941,7 @@ describe('putting a file back', () => {
 
   it('will not put back a sitting that is too long or has not happened', () => {
     pvEmpty()
-    const act = pvSaveActivity('Drawing', 'locked', null).id
+    const act = idOf(pvSaveActivity('Drawing', 'locked', null))
     const hoursFromNow = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString()
     const doc = {
       kind: 'chronicle',
@@ -1208,7 +1297,7 @@ describe('fields the room cannot write, and so used to erase', () => {
    * meaning to" both became NULL after a rename and a re-save.
    */
   it('keeps an activity colour through a rename that does not mention it', () => {
-    const id = pvSaveActivity('Reading', 'free', '#aabbcc').id
+    const id = idOf(pvSaveActivity('Reading', 'free', '#aabbcc'))
     expect(pvActivities().find((a) => a.id === id)?.colour).toBe('#aabbcc')
 
     pvSaveActivity('Reading in the evening', 'life', null, id)
@@ -1221,21 +1310,23 @@ describe('fields the room cannot write, and so used to erase', () => {
   })
 
   it('clears an activity colour when that is asked for', () => {
-    const id = pvSaveActivity('Reading', 'free', '#aabbcc').id
+    const id = idOf(pvSaveActivity('Reading', 'free', '#aabbcc'))
     pvSaveActivity('Reading', 'free', '', id)
     expect(pvActivities().find((a) => a.id === id)?.colour).toBe(null)
   })
 
   it('keeps a goal note through an edit that does not mention it', () => {
-    const id = pvSaveGoal({
-      title: 'Read more',
-      scope: 'day',
-      anchor: DAY,
-      every: null,
-      target: 30,
-      unit: 'mins',
-      note: 'because I keep meaning to',
-    }).id
+    const id = idOf(
+      pvSaveGoal({
+        title: 'Read more',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        target: 30,
+        unit: 'mins',
+        note: 'because I keep meaning to',
+      }),
+    )
 
     /* the shape the room actually sends: no note field at all */
     pvSaveGoal({
@@ -1255,15 +1346,17 @@ describe('fields the room cannot write, and so used to erase', () => {
   })
 
   it('clears a goal note when that is asked for', () => {
-    const id = pvSaveGoal({
-      title: 'Read more',
-      scope: 'day',
-      anchor: DAY,
-      every: null,
-      target: 30,
-      unit: 'mins',
-      note: 'because I keep meaning to',
-    }).id
+    const id = idOf(
+      pvSaveGoal({
+        title: 'Read more',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        target: 30,
+        unit: 'mins',
+        note: 'because I keep meaning to',
+      }),
+    )
     pvSaveGoal({
       id,
       title: 'Read more',

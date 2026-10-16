@@ -620,8 +620,14 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
 
 /* ── writes ─────────────────────────────────────────────────────────────────── */
 
-export const pvSaveGoal = (g: NewGoal): { id: string } => {
+export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   const id = g.id ?? mint('pv-g')
+  /* ⚠️ the same two the server keeps, in its own words — see the note on pvSaveActivity */
+  const already = db().goals.some((x) => x.id === id)
+  if (g.id && !already) return { why: 'no such goal' }
+  if (!already && db().goals.length >= ACCOUNT_GOALS) {
+    return { why: 'that is 500 goals — finish or delete one' }
+  }
   const made = goal({
     ...g,
     id,
@@ -688,6 +694,20 @@ export const pvDropGoal = (id: string): boolean => {
   return true
 }
 
+/**
+ * What an account may hold, as the server counts it.
+ *
+ * ⚠️ AT MODULE SCOPE, WHICH IS WHAT "NAMED ONCE" HAS TO MEAN. These were declared inside
+ * `pvImport`, so the import kept the ceilings and the two SAVE paths beside it could not even
+ * see them — a constant private to one function is two constants waiting to disagree.
+ *
+ * `chronicle_activity_save` raises at 200 and `chronicle_goal_save` at 500. Both are counts of
+ * OTHER ROWS, which is exactly why neither can be a CHECK constraint and why every write path
+ * has to be taught them separately.
+ */
+const ACCOUNT_ACTS = 200
+const ACCOUNT_GOALS = 500
+
 export const pvSaveActivity = (
   name: string,
   cat: Activity['cat'],
@@ -695,9 +715,25 @@ export const pvSaveActivity = (
   id?: string,
   metric?: string | null,
   session?: number | null,
-): { id: string } => {
+): { id: string } | { why: string } => {
   const made = id ?? mint('pv-a')
   const found = db().acts.find((x) => x.id === made)
+  /**
+   * ⚠️ IT CAN REFUSE NOW. `saveActivity` is typed `{ id } | { why }` and this returned `{ id }`
+   * alone, so the shape of a refusal did not exist here — the same gap that let a forty-first
+   * routine step look fine in the workbench. Found by comparing every cloud function that can
+   * answer `{ why }` against its double; two of eleven could not.
+   *
+   * ⚠️ AN ID THAT IS NOT YOURS IS REFUSED, NOT CREATED. `chronicle_activity_save` updates
+   * `where id = p_id and owner = auth.uid()` and raises when nothing came back; this created one
+   * carrying the unknown id instead. The room never sends an id it did not read, so nothing
+   * reached it — but a double that invents a row where the server refuses one is the direction
+   * that hides a bug.
+   */
+  if (id && !found) return { why: 'no such activity' }
+  if (!found && db().acts.length >= ACCOUNT_ACTS) {
+    return { why: 'that is 200 activities — archive one' }
+  }
   if (found)
     Object.assign(found, {
       name,
@@ -1117,8 +1153,6 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
    * `chronicle_goal_save` at 500, and both are counts of other rows, which is exactly why neither
    * can be a CHECK constraint and why the import had to be taught them separately.
    */
-  const ACCOUNT_ACTS = 200
-  const ACCOUNT_GOALS = 500
 
   const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
   const numOr = (v: unknown, fallback: number): number =>
