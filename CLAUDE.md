@@ -159,10 +159,20 @@ that render nothing at zero first**.
   workbenches go. `preview_start` with `yaya-prod` serves the real build on :4173. Two things
   are different there and both matter — **`#dev-park` does not exist**, so the park's
   production path is one I cannot reach at all without an account; and **:4173 is its own
-  origin**, so localStorage is empty and every room starts as a first-time visitor sees it.
-  That second one is worth the trip by itself: it is the only way to see the empty states,
-  and it is how the Games page turned out to be telling somebody with no creatures about two
-  games when there were three.
+  origin**, so what it remembers is separate from the dev server's.
+  That second one is how the Games page turned out to be telling somebody with no creatures
+  about two games when there were three.
+  **⚠️ BUT "ITS OWN ORIGIN" IS NOT "EMPTY", AND THIS NOTE SAID IT WAS.** The separate origin
+  starts blank and then STAYS, across every later `preview_start` — and the app seeds it on
+  the way in. Measured on 16 Oct: `localStorage` at :4173 held **40 keys** before anything was
+  touched, and clearing it and loading one page put **six** straight back (`ui_scale`,
+  `cursor_skin_v1`, `theme.custom.on`, `click_fx_style_v1`, `click_fx_v1`,
+  `voice.volume.v1`). One of the forty was `dev_preview_member`, set there by some earlier
+  session and still sitting in the port nobody thinks of as stateful.
+  So the first-visit property belongs to the FIRST VISIT, and that visit spends it. To see an
+  empty state, clear localStorage deliberately and reload — do not assume the port gives it to
+  you. (`import.meta.env.DEV` is false in that bundle regardless, so a stale
+  `dev_preview_member` there changes nothing; a stale THEME or scale very much does.)
   **And a third, which bounds what any of it proves: `:4173` is the real build with YOUR
   `.env.local` inlined.** Vite bakes `VITE_*` in at build time, so the bundle you serve there
   carries your own values and the deployed one carries the repo's — `.github/workflows/deploy.yml`
