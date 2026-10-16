@@ -531,8 +531,25 @@ export const pvEntries = (fromISO: string, toISO: string): Entry[] => {
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   const now = Date.now()
+  /**
+   * ⚠️ THE SERVER'S OWN TEST, NOT "OVERLAPS BY MORE THAN NOTHING". This read
+   * `overlapMs(...) > 0`, and a sitting started a moment ago overlaps its own day by about zero
+   * — so the entry you have JUST started was invisible until a millisecond passed.
+   * `chronicle_entries_between` asks `started_at < p_to and coalesce(ended_at, now) > p_from`,
+   * which returns it immediately.
+   *
+   * ⚠️ IT WENT FROM A FOOTNOTE TO A BUG WHEN THE Now ROOM ARRIVED. That room reloads the day the
+   * instant it starts something, so the workbench answered with a log that did not contain the
+   * running sitting and the screen said "Nothing running" about the thing it had just started.
+   * Nothing was wrong with the room; the double was answering a different question from the one
+   * the server answers.
+   */
   return db()
-    .ents.filter((e) => overlapMs(e, from, to, now) > 0)
+    .ents.filter((e) => {
+      const s = Date.parse(e.start)
+      const t = e.end == null ? now : Date.parse(e.end)
+      return s < to && t > from
+    })
     .map((e) => ({ ...e }))
 }
 
@@ -804,7 +821,25 @@ export const pvNoteRunning = (note: string): { why: string } | null => {
 export const pvStart = (activity: string): { why: string } | null => {
   const a = db().acts.find((x) => x.id === activity)
   if (!a || a.archived) return { why: 'no such activity' }
-  pvStop(null)
+  /**
+   * ⚠️ IT CLOSES THE OPEN SITTING ITSELF, AND DOES NOT TOUCH ITS NOTE. This called `pvStop(null)`,
+   * and the two server functions differ in exactly that place:
+   *
+   *   chronicle_stop   set ended_at = …, note = nullif(btrim(coalesce(p_note,'')),'')
+   *   chronicle_start  set ended_at = …                        ← and nothing else
+   *
+   * So starting something else KEEPS what you had written about the thing you were doing, and
+   * this double erased it. It cost an hour: the Now room writes the note onto the sitting before
+   * switching, precisely so a word typed on the way out is not lost, and the workbench threw it
+   * away every time — which reads exactly like the feature not working.
+   *
+   * The sub-second rule stays, because both functions have it: a mis-press leaves no trace.
+   */
+  const open = db().ents.find((e) => e.end == null)
+  if (open) {
+    if (Date.now() - Date.parse(open.start) < 1000) db().ents = db().ents.filter((e) => e !== open)
+    else open.end = new Date().toISOString()
+  }
   db().ents.push({
     id: mint('pv-e'),
     activity,

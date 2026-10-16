@@ -122,14 +122,48 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
     )
   }, [acts, log])
 
+  /**
+   * ⚠️ THE NOTE GOES FIRST, ONTO THE SITTING IT WAS TYPED ABOUT. Switching is the whole point of
+   * this room and the autosave waits 700ms, so the natural rhythm — write a word, tap the next
+   * thing — beat the timer and threw the word away. Measured before this existed: typed "the
+   * hands again, finally", tapped the next tile, and the closed sitting read
+   * "Drawing 7m 5:57 PM – 6:04 PM" with no note at all.
+   *
+   * ⚠️ A FAILED NOTE DOES NOT BLOCK THE SWITCH. Refusing to change what you are doing because a
+   * sentence would not save is the wrong way round — the sitting closes either way, so the note
+   * is gone either way, and the thing that matters is being TOLD rather than being stuck.
+   */
+  const flushNote = async () => {
+    if (!runId || note === saved.current) return
+    const bad = await noteRunning(note)
+    if (bad) moan(bad.why)
+    else saved.current = note
+  }
+
   const go = async (id: string) => {
     if (busy) return
     setBusy(true)
+    await flushNote()
     const bad = await startTimer(id)
     setBusy(false)
     if (bad) return moan(bad.why)
     await load()
   }
+
+  /**
+   * ⚠️ AND LEAVING THE ROOM FLUSHES IT TOO. Tapping Chronicle in the nav within the debounce lost
+   * the note exactly as switching did, and this is the one path that cannot report a failure —
+   * the component is going. Fire and forget beats certain loss.
+   */
+  const latest = useRef({ note: '', was: '', id: null as string | null })
+  latest.current = { note, was: saved.current, id: runId }
+  useEffect(
+    () => () => {
+      const l = latest.current
+      if (l.id && l.note !== l.was) void noteRunning(l.note)
+    },
+    [],
+  )
 
   const stop = async () => {
     if (busy) return

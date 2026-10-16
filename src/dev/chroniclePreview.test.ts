@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   pvActivities,
   pvAddEntry,
@@ -396,10 +396,20 @@ describe('saying what the session you are in is about', () => {
    * nothing — so the entry this describe is about is invisible to it for the first millisecond.
    * The export dumps the store itself, which is what makes these assertions deterministic.
    */
-  const openOne = () =>
-    (pvExport().entries as Array<{ end: string | null; note: string | null }>).find(
-      (e) => e.end == null,
-    )
+  /**
+   * ⚠️ `ended_at`, NOT `end`. The export mirrors the SERVER's column names — started_at,
+   * ended_at — while the in-memory rows use start/end, and `e.end == null` is true for every row
+   * in the export because `undefined == null`. These assertions passed by finding entries[0] and
+   * being right about it by luck; perturbation still caught the behaviours, but the reach was
+   * nonsense.
+   */
+  type Exported = { started_at: string; ended_at: string | null; note: string | null }
+  const rows = () => pvExport().entries as unknown as Exported[]
+  const openOne = () => rows().find((e) => e.ended_at === null)
+  const lastClosed = () =>
+    rows()
+      .filter((e) => e.ended_at !== null)
+      .pop()
 
   it('writes the note onto the open sitting, trimmed', () => {
     pvStart(draw)
@@ -418,6 +428,71 @@ describe('saying what the session you are in is about', () => {
   it('refuses when nothing is running, in the words the server uses', () => {
     pvStop(null)
     expect(pvNoteRunning('into the void')).toEqual({ why: 'nothing is running' })
+  })
+
+  /**
+   * ⚠️ STARTING SOMETHING ELSE KEEPS THE NOTE, and the double erased it. The two server functions
+   * differ in exactly one line — `chronicle_stop` writes the note, `chronicle_start` sets only
+   * `ended_at` — and `pvStart` reached the first by calling `pvStop(null)`. The Now room writes a
+   * note onto the sitting before switching precisely so a word typed on the way out survives, and
+   * the workbench threw it away every time, which reads exactly like the feature being broken.
+   */
+  /**
+   * ⚠️ THE SITTING NEEDS A REAL LENGTH, or a rule that is CORRECT defeats the test: both the
+   * server and this double delete an entry shorter than a second, so starting and switching in
+   * the same millisecond leaves nothing to assert about. The clock is moved rather than waited
+   * on.
+   */
+  const lasting = (ms: number, run: () => void) => {
+    const t0 = Date.now()
+    vi.useFakeTimers()
+    vi.setSystemTime(t0)
+    run()
+    vi.setSystemTime(t0 + ms)
+  }
+
+  /**
+   * ⚠️ A SITTING YOU HAVE JUST STARTED OVERLAPS ITS OWN DAY BY NOTHING, and `pvEntries` used to
+   * keep only what overlapped by MORE than nothing — so the entry was invisible until a
+   * millisecond passed. `chronicle_entries_between` asks `started_at < p_to and
+   * coalesce(ended_at, now) > p_from`, which returns it at once.
+   *
+   * ⚠️ THE CLOCK IS FROZEN ON PURPOSE. With a real clock a millisecond slips past between the
+   * start and the read, the overlap becomes positive, and the test passes against the bug — it
+   * would be green either way and prove nothing.
+   */
+  it('returns a sitting started this instant, which has no length yet', () => {
+    const t0 = Date.now()
+    vi.useFakeTimers()
+    vi.setSystemTime(t0)
+    pvStart(draw)
+    const got = pvEntries(
+      new Date(t0 - 3_600_000).toISOString(),
+      new Date(t0 + 3_600_000).toISOString(),
+    )
+    vi.useRealTimers()
+    expect(got.some((e) => e.end === null)).toBe(true)
+  })
+
+  it('keeps the note on the sitting that start closes', () => {
+    lasting(5000, () => {
+      pvStart(draw)
+      pvNoteRunning('the hands again, finally')
+    })
+    pvStart(gym)
+    vi.useRealTimers()
+    expect(lastClosed()?.note).toBe('the hands again, finally')
+  })
+
+  /** ⚠️ and STOP still writes it, because that one really does — null clears, as the server does */
+  it('and stop still writes the note it is handed', () => {
+    lasting(5000, () => {
+      pvStart(draw)
+      pvNoteRunning('mid-sitting')
+    })
+    pvStop('said at the end')
+    vi.useRealTimers()
+    expect(lastClosed()?.note).toBe('said at the end')
   })
 
   /** ⚠️ the control: it writes the note and does not end the sitting */
