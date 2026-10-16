@@ -29,6 +29,16 @@ library lives "in this browser only" an hour after the library started syncing, 
 still rendered after its only block became one that draws nothing. After a change lands, look for
 what it just made stale — copy, empty states, the thing a neighbouring feature assumed.
 
+**And it is often a NUMBER rather than a sentence, because every figure describing a list is a
+claim about what that list holds.** Teaching the goals strip to count the late ones left `weight`
+— the line inches below it — counting the old thing: Today's badge said 2, the line said "1 left",
+and two unfinished rows sat underneath. **The dangerous half is that a derived figure can fail by
+VANISHING.** That line hides itself at zero, deliberately, because "0 left" under a heading only
+states the obvious — so on This week it did not show a wrong number, it disappeared, and a tab with
+work in it said nothing about that work. A wrong number gets noticed; an absent line does not. So
+after widening what a view shows, **find every figure derived from the same list and check the ones
+that render nothing at zero first**.
+
 - **`npm run typecheck` is the only real typecheck.** The root `tsconfig.json` has `files: []` plus
   references, so `tsc --noEmit` checks **zero files** and passes on anything. `npm run typecheck`
   runs `tsc -b`.
