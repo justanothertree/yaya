@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { moodsBetween, totalsBetween, type Total } from './cloud'
-import { CATS, localMidnight, moodOf, spanText, type Moods } from './record'
+import { CATS, countText, localMidnight, moodOf, spanText, type Moods } from './record'
 import { likeForLike, type Scope, type Window } from './goal'
 
 /**
@@ -269,7 +269,7 @@ export function Looking({
                 usually the point and the hours are the cost of it */}
             {r.amount != null && r.metric ? (
               <span className="chron-amount">
-                {Math.round(r.amount * 100) / 100} {r.metric}
+                {countText(r.amount)} {r.metric}
               </span>
             ) : null}
           </li>

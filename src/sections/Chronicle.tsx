@@ -31,7 +31,7 @@ import {
   shareGoal,
   tally,
 } from '../chronicle/cloud'
-import { CATS, spanText, type Activity } from '../chronicle/record'
+import { CATS, countText, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
@@ -959,8 +959,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         <span className="chron-num">
                           {/* ⚠️ rounded for reading, and the raw value is never shown: minutes come
                             back as a fraction of a minute from the overlap sum, and "29.983 / 30"
-                            is a number that looks broken rather than nearly done */}
-                          {auto ? Math.round(have) : have} / {g.target} {g.unit}
+                            is a number that looks broken rather than nearly done.
+                            ⚠️ AND GROUPED, by countText — the seed's own "20,000 reps" read
+                            "180 / 20000 reps" here, the same number twice in two notations.
+                            `g.target!` is safe because `s != null` IS "target is a positive
+                            number" — see share(), which TypeScript cannot narrow through. */}
+                          {countText(auto ? Math.round(have) : have)} / {countText(g.target!)}{' '}
+                          {g.unit}
                         </span>
                         {/* ⚠️ NO PLUS AND MINUS ON A DERIVED GOAL. There is nothing to press — the
                           record is the number — and buttons that looked like they moved it would

@@ -15668,6 +15668,13 @@ a.cz-msg-author:focus-visible {
   align-items: center;
   gap: 0.45rem;
   margin-top: 0.4rem;
+  /* ⚠️ THE FIGURES DROP TO THEIR OWN LINE RATHER THAN PUSHING THE LIST. `.chron-bar` is flex: 1
+     with a 3rem floor and `.chron-num` could not wrap, so once the number outgrew what was left
+     the whole row grew with it — and the ROW still measured clean, because what it overflowed was
+     the list around it. Measured at 375 with the largest target the table allows: a goal of
+     1,000,000,000 with a sixteen-character unit took the document 73px sideways, and 29px of that
+     predates the grouped notation. */
+  flex-wrap: wrap;
 }
 .chron-bar {
   flex: 1;
@@ -15687,7 +15694,11 @@ a.cz-msg-author:focus-visible {
   font-family: var(--mono);
   font-size: 0.78rem;
   color: var(--muted);
-  white-space: nowrap;
+  /* ⚠️ `nowrap` WAS THE OTHER HALF OF IT. Wrapping is wanted only as the last resort — the row
+     above gives this a line of its own first, so an ordinary "180 / 20,000 reps" never breaks —
+     but a figure too wide even for a whole line has to break somewhere, and the alternative is
+     breaking the page instead. */
+  overflow-wrap: anywhere;
 }
 .chron-meter .btn {
   min-width: 36px;

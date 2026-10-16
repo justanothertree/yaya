@@ -34,6 +34,7 @@ import {
   MOODS,
   overlapMs,
   straddles,
+  countText,
   spanText,
   type Activity,
   type Entry,
@@ -994,7 +995,7 @@ export function Timer({
                     the quantity does not. */}
                   {amt != null && a?.metric ? (
                     <span className="chron-amount">
-                      {amt} {a.metric}
+                      {countText(amt)} {a.metric}
                     </span>
                   ) : null}
                   {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,

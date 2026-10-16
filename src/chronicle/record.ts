@@ -292,6 +292,29 @@ export function spanText(ms: number): string {
   return rest ? `${h}h ${rest}m` : `${h}h`
 }
 
+/**
+ * A quantity, written the way somebody would write it.
+ *
+ * ⚠️ IT EXISTS BECAUSE A ROW DISAGREED WITH ITSELF. The seed's year goal is titled "20,000 reps"
+ * — the member typed that comma, because that is how the number reads — and the meter two lines
+ * under it said "180 / 20000 reps". The same number, twice, inches apart, in two different
+ * notations. `toLocaleString` is already the house answer for this: Circuit and the finance
+ * panels both use it, and chronicle simply never did.
+ *
+ * ⚠️ TWO DECIMAL PLACES, which is a rule this room already had and had not named. `Looking` did
+ * `Math.round(r.amount * 100) / 100` by hand for the same reason the meter rounds its minutes —
+ * "29.983 / 30" is a number that looks broken rather than nearly done. Having it in one place
+ * means the log, the totals and a goal cannot drift into three different answers about one
+ * quantity. The platform's own default is three, which is a digit nobody asked for.
+ *
+ * ⚠️ AND IT FOLLOWS THE READER'S LOCALE, which is why the tests assert grouping rather than a
+ * comma: the separator is a space in France and a full stop in Germany, and a test that demanded
+ * "20,000" would be asserting the machine it ran on.
+ */
+export function countText(n: number): string {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
 /** The clock face for a running timer: h:mm:ss, which is the one place seconds belong. */
 export function clockText(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))

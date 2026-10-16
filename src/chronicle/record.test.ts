@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   amountIn,
+  countText,
   straddles,
   clockText,
   metSession,
@@ -716,5 +717,46 @@ describe('how far through a sitting is', () => {
 
   it('never reports negative time left', () => {
     for (const mins of [31, 60, 1440]) expect(sitting(mins, 30)!.left).toBe(0)
+  })
+})
+
+/**
+ * ⚠️ THE CLAIMS ARE ABOUT NOTATION, NOT ABOUT A COMMA. `toLocaleString` follows the reader's
+ * locale — the group separator is a space in France and a full stop in Germany — so a test
+ * demanding "20,000" would be asserting the machine it ran on rather than the rule. Each of these
+ * strips the punctuation and asks what is left, which is true everywhere.
+ */
+describe('a quantity, written the way somebody would write it', () => {
+  /** the one this exists for: the seed titles a goal "20,000 reps" and the meter said 20000 */
+  it('groups a four-figure count instead of running the digits together', () => {
+    const out = countText(20000)
+    expect(out).not.toBe('20000')
+    expect(out.replace(/\D/g, '')).toBe('20000')
+    expect(out.length).toBeGreaterThan('20000'.length)
+  })
+
+  it('leaves a small number exactly as it is', () => {
+    expect(countText(3)).toBe('3')
+    expect(countText(0)).toBe('0')
+    expect(countText(999)).toBe('999')
+  })
+
+  /** ⚠️ a fraction is a real answer — 2.5 km is a thing somebody records */
+  it('keeps a fraction somebody actually entered', () => {
+    expect(countText(2.5)).toMatch(/^2\D5$/)
+  })
+
+  /**
+   * ⚠️ TWO PLACES, NOT THE PLATFORM'S THREE. The same rule `Looking` kept by hand and the meter
+   * keeps for minutes: a number that trails off reads as broken rather than as nearly done.
+   */
+  it('cuts a long fraction to two places', () => {
+    const out = countText(1.23456)
+    expect(out.replace(/^\d+\D/, '')).toBe('23')
+  })
+
+  it('and groups and rounds at the same time', () => {
+    const out = countText(12345.678)
+    expect(out.replace(/\D/g, '')).toBe('1234568')
   })
 })
