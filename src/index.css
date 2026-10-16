@@ -17142,6 +17142,15 @@ a.cz-msg-author:focus-visible {
 /* ── routines: a list you tap down in order — see chronicle/Routines.tsx ────── */
 .chron-routines {
   display: grid;
+  /* ⚠️ `minmax(0, 1fr)` — the fourth of these, and the first found by looking rather than by
+     being bitten. An automatic grid column takes its widest row's max-content and will not
+     shrink: measured at 375 with a 59-character routine name, which the table allows up to 60,
+     the column resolved to 578px inside a 303px list and BOTH routines were drawn 578px wide,
+     including the one called "Morning".
+     ⚠️ AND ONLY `spills` SAW IT. `sideways` and `offEdge` read zero, because the fold this sits
+     in swallowed the overflow before it reached the viewport — which is the whole reason that
+     rule was added to the audit. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   margin-top: 0.4rem;
 }
@@ -17154,11 +17163,20 @@ a.cz-msg-author:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* ⚠️ IT WRAPS, which is the standing rule for every row in this room — see `.chron-ent`. The
+     column fix above stopped a long routine name widening the list, and without this the name
+     simply paid the whole bill instead: measured at 375, 92px of a 282px row for a name, which
+     is ten characters and an ellipsis. The counter and the two buttons drop to their own line
+     now rather than squeezing it. */
+  flex-wrap: wrap;
   min-height: 36px;
 }
 .chron-routine-top > strong {
-  flex: 1;
-  min-width: 0;
+  /* ⚠️ A FLOOR IN PIXELS, the same 130 `.chron-ent-name` uses and for the same reason: `min-width:
+     0` is not "let it shrink", it is "let it vanish", and the root size is fluid so `rem` is not a
+     length here. The ellipsis below is the last resort, not the plan. */
+  flex: 1 1 130px;
+  min-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
