@@ -789,6 +789,18 @@ export const pvStop = (note: string | null): { why: string } | null => {
  * here and would have answered "no such activity" on the live site. An unfaithful double does not
  * only invent bugs — it hides them, and this one hid a real one until the check was copied.
  */
+/**
+ * ⚠️ IT REFUSES WITH THE SERVER'S WORDS when nothing is open, because that is a state the room
+ * can reach: leave the Now screen on a phone, let a Stop land from another tab, come back and
+ * type. `chronicle_running_note` raises 'nothing is running'; so does this.
+ */
+export const pvNoteRunning = (note: string): { why: string } | null => {
+  const open = db().ents.find((e) => e.end == null)
+  if (!open) return { why: 'nothing is running' }
+  open.note = note.trim() || null
+  return null
+}
+
 export const pvStart = (activity: string): { why: string } | null => {
   const a = db().acts.find((x) => x.id === activity)
   if (!a || a.archived) return { why: 'no such activity' }

@@ -8,6 +8,7 @@ import {
   pvExport,
   pvImport,
   pvSaveRoutine,
+  pvNoteRunning,
   pvRoutines,
   pvAmount,
   pvEditEntry,
@@ -383,6 +384,50 @@ describe('the preview store keeps the contracts the server keeps', () => {
  * all. That is the same structural gap that let a forty-first routine step look fine here, so it
  * is closed the same way — the guards copied in the server's own words.
  */
+/**
+ * ⚠️ A SITTING COULD ONLY BE DESCRIBED ONCE IT WAS OVER until this existed. `fixRunning` can move
+ * a running sitting's start and change what it is, and its note says "typing one in is what Stop
+ * is for" — true of the END, and it had been taken to cover the note too.
+ */
+describe('saying what the session you are in is about', () => {
+  /**
+   * ⚠️ READ OUT OF THE STORE, NOT THROUGH `pvEntries`. A sitting started microseconds ago has an
+   * OVERLAP of about zero with any window, and `pvEntries` keeps only what overlaps by more than
+   * nothing — so the entry this describe is about is invisible to it for the first millisecond.
+   * The export dumps the store itself, which is what makes these assertions deterministic.
+   */
+  const openOne = () =>
+    (pvExport().entries as Array<{ end: string | null; note: string | null }>).find(
+      (e) => e.end == null,
+    )
+
+  it('writes the note onto the open sitting, trimmed', () => {
+    pvStart(draw)
+    expect(pvNoteRunning('  the chapter that will not end  ')).toBeNull()
+    expect(openOne()?.note).toBe('the chapter that will not end')
+  })
+
+  /** ⚠️ '' CLEARS, unlike every other note path in this room — see the note on the function */
+  it('clears it with an empty box rather than leaving it alone', () => {
+    pvStart(draw)
+    pvNoteRunning('something')
+    expect(pvNoteRunning('   ')).toBeNull()
+    expect(openOne()?.note).toBeNull()
+  })
+
+  it('refuses when nothing is running, in the words the server uses', () => {
+    pvStop(null)
+    expect(pvNoteRunning('into the void')).toEqual({ why: 'nothing is running' })
+  })
+
+  /** ⚠️ the control: it writes the note and does not end the sitting */
+  it('leaves the sitting running', () => {
+    pvStart(draw)
+    pvNoteRunning('still going')
+    expect(openOne()).toBeDefined()
+  })
+})
+
 describe('the ceilings an account has', () => {
   it('refuses a two hundred and first activity, in the words the server uses', () => {
     for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)

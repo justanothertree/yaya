@@ -34,6 +34,7 @@ import {
   pvSince,
   pvSpans,
   pvVisit,
+  pvNoteRunning,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
 import { SPANS_AT_ONCE } from './year'
@@ -736,6 +737,28 @@ export async function fixRunning(
     p_from: fromISO,
     p_activity: activity,
   })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Say what the session you are IN is about, without ending it.
+ *
+ * ⚠️ IT OVERTURNS THE NOTE ABOVE, deliberately and on request. `fixRunning` says "there is no way
+ * to set an end: the open entry is open because it has no end, and typing one in is what Stop is
+ * for" — true of the END, and taken to cover the NOTE too, so a sitting could only be described
+ * once it was over. The thing worth writing down is what you are doing WHILE you do it.
+ *
+ * ⚠️ ITS OWN FUNCTION rather than a third parameter on `fixRunning`, because `create or replace`
+ * cannot add one without minting an overload — the same reason `setAmount` and `setQuality` sit
+ * beside `editEntry` instead of inside it.
+ *
+ * ⚠️ AND '' CLEARS HERE, where null means "leave it alone" everywhere else in this room. It can
+ * mean that there because those callers write other columns in the same breath; this writes one
+ * column and nothing else, so calling it at all is the statement of intent.
+ */
+export async function noteRunning(note: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvNoteRunning(note)
+  const { error } = await getSupabaseClient().rpc('chronicle_running_note', { p_note: note })
   return error ? { why: error.message || 'that did not save' } : null
 }
 
