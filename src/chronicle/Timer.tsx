@@ -68,6 +68,15 @@ const niceDay = (iso: string) =>
   })
 
 /**
+ * The weekday alone — the shortest thing that names the OTHER day a sitting touched.
+ *
+ * ⚠️ `new Date` RATHER THAN `localMidnight`, which is what the rest of this room's day
+ * arithmetic uses. That one splits a `YYYY-MM-DD` on its hyphens; this is asked about a
+ * session's own start or end, which is an instant, and would hand it a day of `NaN`.
+ */
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: 'short' })
+
+/**
  * The wall clock, in its own component for one reason: it re-renders every second.
  *
  * ⚠️ IF IT LIVED IN `Timer` THE WHOLE ROOM WOULD REDRAW ONCE A SECOND — the day's log, the week
@@ -963,6 +972,10 @@ export function Timer({
             const a = byId.get(e.activity)
             const ms = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
             const amt = amountIn(e, bounds.fromMs, bounds.toMs)
+            /* ⚠️ ONE CALL, TWO RENDERINGS — the clock range below, and the marker that stands in
+               for it where the range is hidden. Both are the same question about the same row, so
+               a row cannot say it crossed midnight at one width and not at another. */
+            const out = straddles(e, bounds.fromMs, bounds.toMs, Date.now())
             return (
               <li key={e.id} className={'chron-ent' + (e.end == null ? ' is-live' : '')}>
                 {/* the same dot as the Activities list, where the day is actually read */}
@@ -998,6 +1011,35 @@ export function Timer({
                       {countText(amt)} {a.metric}
                     </span>
                   ) : null}
+                  {/**
+                   * ⚠️ THE SAME FACT AS THE WEEKDAY BELOW, FOR THE SCREEN THAT CANNOT SHOW IT.
+                   * `.chron-ent-when` is `display: none` under `max-width: 700px` or
+                   * `pointer: coarse` on purpose — a timestamp range is the first thing worth
+                   * dropping when a row will not fit a thumb — and it took the straddle marker
+                   * down with it. So a phone showed one sitting on two consecutive days with two
+                   * different lengths, the note on both, the quantity on one, and nothing at all
+                   * saying why. That fact is worth MORE there than the times it was bundled with:
+                   * it is the one that explains the apparent duplicate.
+                   *
+                   * ⚠️ TWO SPANS RATHER THAN ONE STRING. A sitting long enough to swallow a whole
+                   * day has both ends outside it, and "from Wed · into Fri" in a single
+                   * `white-space: nowrap` run is 19 characters the row cannot break — which is
+                   * the min-content that pushes a flex row past its own list. Separate, they wrap
+                   * between themselves and the row keeps its buttons.
+                   *
+                   * ⚠️ AND "still going" WHERE AN END WOULD GO, because a running sitting read on
+                   * an earlier day has no end to name a day with. It is `straddles`' own answer
+                   * — a timer still going reaches to now — said in the words the range uses for
+                   * it, which are " – now".
+                   */}
+                  {out.before ? (
+                    <span className="muted chron-ent-cross">from {shortDay(e.start)}</span>
+                  ) : null}
+                  {out.after ? (
+                    <span className="muted chron-ent-cross">
+                      {e.end ? `into ${shortDay(e.end)}` : 'still going'}
+                    </span>
+                  ) : null}
                   {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
                     and a log is skimmed. The exact rating is kept where it is set — see moodWord,
                     whose test asserts this word and the month's buckets are the same rule. */}
@@ -1031,12 +1073,14 @@ export function Timer({
                    * today it names a time that has not happened yet. The weekday is enough to
                    * resolve it and short enough not to crowd a row that already carries five
                    * facts.
+                   *
+                   * ⚠️ AND IT IS NOT THE ONLY PLACE THAT ASKS. This whole span is hidden on a
+                   * phone or a tablet, so `.chron-ent-cross` above carries the straddle on its
+                   * own there. Both read the one `out` the row computed.
                    */}
                   <span className="muted chron-ent-when">
                     {(() => {
-                      const out = straddles(e, bounds.fromMs, bounds.toMs, Date.now())
-                      const day = (iso: string) =>
-                        new Date(iso).toLocaleDateString(undefined, { weekday: 'short' }) + ' '
+                      const day = (iso: string) => shortDay(iso) + ' '
                       const clock = (iso: string) =>
                         new Date(iso).toLocaleTimeString(undefined, {
                           hour: 'numeric',

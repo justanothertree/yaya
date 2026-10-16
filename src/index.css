@@ -16414,6 +16414,24 @@ a.cz-msg-author:focus-visible {
   font-size: 0.76rem;
   white-space: nowrap;
 }
+/**
+ * ⚠️ WHAT IS LEFT OF THE RANGE ONCE THE RANGE IS GONE — see the rule below, and Timer.tsx. The
+ * clock times are dropped on a phone and the weekday that resolved them went too, which left one
+ * sitting showing on two days with two different lengths and nothing saying why.
+ *
+ * ⚠️ NO MONO AND NO CHIP. Mono is for the figures on this row and a border is what "short" wears;
+ * this is a phrase, so it is set like the rating beside it — a bordered "from Thu" would read as
+ * one more thing a sitting can be. `nowrap` because its two words mean nothing apart, and a row
+ * never carries more than two of them, which is why they can be separate elements at all.
+ *
+ * It is `none` by default rather than shown everywhere: on a pointer-fine screen above 700px the
+ * range itself already names the day, and saying it twice on one row is noise.
+ */
+.chron-ent-cross {
+  display: none;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
 /* the one that is still going says so, rather than looking like a finished span with no end */
 .chron-ent.is-live .chron-ent-span {
   color: var(--accent);
@@ -16440,6 +16458,19 @@ a.cz-msg-author:focus-visible {
   /* a timestamp range is the first thing worth dropping when a row will not fit a thumb */
   .chron-ent-when {
     display: none;
+  }
+  /* ⚠️ BUT NOT THE FACT THAT IT CROSSED MIDNIGHT, which was bundled with it and is the one thing
+     on the row that explains why the same sitting is on the day before as well. Two or three
+     words in place of a range: see `.chron-ent-cross` above.
+
+     ⚠️ AND IT COSTS A SECOND LINE ON A SLIM ROW, which is the price and not a defect. A phone row
+     has about eighty pixels for its facts once the dot, the name and the two buttons have taken
+     theirs, and a length plus a weekday is over that — so the facts wrap under the name and the
+     buttons centre beside them, exactly as they already do on a row carrying a metric and a
+     rating. A sitting that crossed midnight is the one row on the list with something extra to
+     say; every other row is untouched, because every other row renders nothing here. */
+  .chron-ent-cross {
+    display: inline;
   }
 }
 
