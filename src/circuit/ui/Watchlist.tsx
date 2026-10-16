@@ -45,6 +45,7 @@ import { getSupabaseClientOrNull } from '../../finance/client'
 import { peekPersistedUserId } from '../../finance/auth'
 import { PoolSheet } from './PoolSheet'
 import { voteId, type Pool, type WatchlistItem } from '../types'
+import { todayISO } from '../dates'
 
 type SortW = 'votes' | 'alpha' | 'rt'
 
@@ -320,7 +321,13 @@ export function Watchlist() {
       id: 'm' + (crypto.randomUUID?.() ?? String(Date.now())),
       title: w.title,
       kind: w.kind ?? 'movie',
-      date: new Date().toISOString().slice(0, 10),
+      /* ⚠️ the LOCAL date, never `toISOString().slice(0, 10)` — see the warning at the top of
+         dates.ts. That is UTC, and reads as tomorrow all evening for anybody behind it: measured
+         in America/New_York, 19:30 agreed and 20:30 said the 16th on the 15th. Worse here than in
+         a form, because this one is WRITTEN TO THE ROW — the wheel lands on a film at nine
+         o'clock, you press the button saying you watched it, and the board keeps it as watched
+         tomorrow. */
+      date: todayISO(),
       rt: allWatchlist.find((x) => x.id === w.id)?.rt,
       /* nobody has rated it yet — this is the row to hang a rating on, not a rating */
       ratings: {},
