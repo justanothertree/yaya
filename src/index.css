@@ -17084,6 +17084,28 @@ a.cz-msg-author:focus-visible {
 .chron-fix .btn {
   min-height: 36px;
 }
+/**
+ * ⚠️ A `<select>` IS AS WIDE AS ITS LONGEST OPTION, and every activity picker in this room is a
+ * list of names somebody chose. An activity name may be 60 characters — the table allows it —
+ * and one of those took the control to 445px: in ⏱ Fill a gap that is 142px past a 303px form
+ * and the PAGE scrolled sideways by 106, and in a routine's step picker 163px past its box.
+ *
+ * ⚠️ BOTH HALVES ARE NEEDED. `max-width` alone does nothing while the label around it has already
+ * grown to the option's width, because the percentage resolves against that label; `min-width: 0`
+ * alone leaves the select free to overflow it. Measured together: label and select 445px to
+ * 282px, the form's own overflow 163 to 0.
+ *
+ * No floor is wanted here, unusually: the cap IS the container, so the control can never be
+ * squeezed below the width of the form it sits in.
+ */
+.chron-add select,
+.chron-fix select {
+  max-width: 100%;
+}
+.chron-add label,
+.chron-fix label {
+  min-width: 0;
+}
 .chron-fix input[type='text'],
 .chron-fix input:not([type]) {
   min-width: 7rem;
