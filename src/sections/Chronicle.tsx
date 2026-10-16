@@ -709,6 +709,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                  one activity — an hour a day AND four pages a day — are otherwise identical on
                  screen while measuring completely different things */
               const fromWhat = auto && g.counts === 'amount' && act?.metric ? act.metric : null
+              /* an activity that has been archived; a category source cannot be, so `cat` is never
+                 gone and only a goal pointing at an activity can say this */
+              const srcGone = !!act?.archived
               return (
                 <Fragment key={g.id}>
                   {i === mine.length ? (
@@ -800,10 +803,31 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                       })()}
                       {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
                         moves on its own and does not say why reads as a bug rather than a feature */}
+                      {/**
+                       * ⚠️ AND IT SAYS WHEN THAT SOURCE IS ARCHIVED, which is the same lesson
+                       * `readRoutine` was written for one surface over: an archived activity can
+                       * never gain another minute, because `chronicle_start` refuses one with an
+                       * `archived_at`. So a derived goal pointing at one reads 0 / 30 for ever and
+                       * the room said nothing — the only clue was a number that had stopped
+                       * moving, which reads as a bug in the counting rather than a consequence of
+                       * something you did on purpose.
+                       *
+                       * ⚠️ IN THE TEXT, NOT ONLY THE TITLE. A tooltip does not exist on a phone,
+                       * and this is the whole explanation for the row; the title carries the
+                       * advice, the chip carries the fact.
+                       */}
                       {from ? (
-                        <span className="chron-chip is-auto">
+                        <span
+                          className={'chron-chip is-auto' + (srcGone ? ' is-gone' : '')}
+                          title={
+                            srcGone
+                              ? `${from} is archived — this cannot move again until you bring it back, or point the goal somewhere else`
+                              : undefined
+                          }
+                        >
                           from {from}
                           {fromWhat ? ' · ' + fromWhat : ''}
+                          {srcGone ? ' · archived' : ''}
                         </span>
                       ) : null}
                       {/* ⚠️ next to the delete rather than on the title, unlike the activity rows:

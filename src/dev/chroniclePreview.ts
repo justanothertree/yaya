@@ -303,6 +303,23 @@ function seed(): Store {
        * A DERIVED one is settled: `share` measures over the anchor's window and no future minute
        * can land in a week that has ended, so it is listed to be seen and cleared, not finished.
        */
+      /**
+       * ⚠️ THE SEED HAD AN ARCHIVED ACTIVITY AND NOTHING POINTING AT IT, so the state that matters
+       * did not exist. `pv-old` (Guitar) has been archived here from the start, and no goal was
+       * counted from it — which is the same gap as the one below: the fixture held the ingredient
+       * and never the dish. A derived goal on an archived activity can never gain another minute,
+       * because `chronicle_start` refuses one with an `archived_at`, so this reads 0 / 120 every
+       * week for ever and is the row the "· archived" chip exists for.
+       */
+      goal({
+        id: 'pv-g14',
+        title: 'Two hours of guitar',
+        scope: 'week',
+        every: 1,
+        target: 120,
+        unit: 'minutes',
+        activity: 'pv-old',
+      }),
       goal({
         id: 'pv-g12',
         title: 'Ring the plumber',

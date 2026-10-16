@@ -15638,6 +15638,12 @@ a.cz-msg-author:focus-visible {
    about. No colour either — the room keeps amber for a priority somebody chose themselves, and a
    red invented here would be the only alarming thing on the page. The heading does the grouping;
    this only says when. */
+/* a derived goal whose activity has been archived — it can never gain another minute, so the
+   chip that says where its number comes from says that the source has gone quiet */
+.chron-chip.is-auto.is-gone {
+  opacity: 0.65;
+  border-style: dashed;
+}
 .chron-chip.is-late {
   text-transform: none;
   letter-spacing: 0;
