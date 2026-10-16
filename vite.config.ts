@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite'
+/* ⚠️ `vitest/config` rather than `vite`, which is the same defineConfig with the `test` key
+   typed — see the note on `test.exclude` below. Everything else here is Vite's. */
+import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
@@ -6,6 +8,24 @@ export default defineConfig({
   plugins: [react()],
   // Custom domain deploy uses root path
   base: '/',
+  test: {
+    /**
+     * ⚠️ WORKTREES LIVE INSIDE THE REPO, AND VITEST WAS RUNNING ALL OF THEM. The desktop app
+     * puts a background task's checkout in `.claude/worktrees/<name>/`, which is gitignored but
+     * very much still on disk — and vitest's default `include` is `**` from the project root. On
+     * 16 Oct, with six background tasks open, `npm run test` reported **316 test files and 7,433
+     * tests** against a suite of 45 files and 1,060: seven copies of the same thing, one per
+     * worktree plus this checkout.
+     *
+     * That is not only seven times the wait. It means a run here passes or fails on code being
+     * written in another session — a half-finished edit in somebody else's worktree becomes a
+     * red suite in this one, about a file this checkout does not contain.
+     *
+     * The defaults are kept and `.claude` added, rather than replaced: the default list is what
+     * excludes node_modules and dist, and restating it by hand is how it drifts.
+     */
+    exclude: [...configDefaults.exclude, '.claude/**'],
+  },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(
       process.env.GITHUB_SHA?.slice(0, 7) || process.env.npm_package_version || '',

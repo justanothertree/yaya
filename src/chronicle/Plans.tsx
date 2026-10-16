@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dropPlan, planDid, plansBetween, savePlan } from './cloud'
-import { against, dayAgainst, planOpens, type Plan } from './plan'
-import { lane, nowAt, spanText, type Activity, type Entry } from './record'
+import { against, dayAgainst, planOpens, type Plan, saySpan } from './plan'
+import { lane, nowAt, spanText, straddles, type Activity, type Entry } from './record'
 
 /**
  * Planned — what you mean a day to be, beside what it was.
@@ -184,17 +184,17 @@ export function Plans({
    * plan the time IS the content. Saying "AM" twice about one morning was the cheapest 27px
    * in the row, and it reads better.
    */
-  const spanClock = (a: string, b: string): string => {
+  /**
+   * The words; the RULE about them is `saySpan` in plan.ts, where it can be asked a question.
+   * `toLocaleTimeString` answers differently per locale and per machine, so the formatting stays
+   * here and the decision about collapsing a meridiem does not.
+   */
+  const spanClock = (a: string, b: string, out?: { before: boolean; after: boolean }): string => {
     const t = (iso: string) =>
       new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-    const x = t(a)
-    const y = t(b)
-    /* the trailing run of LETTERS, which is the meridiem where there is one and nothing at all in
-       a 24-hour locale. Asking for letters rather than excluding separators is the point: Chrome
-       puts a narrow no-break space before AM/PM, and a class that had to exclude that character
-       either carries it literally — an eslint error, and invisible in a diff — or in an escape. */
-    const tail = y.match(/\p{L}+$/u)?.[0]
-    return tail && x.endsWith(tail) ? x.slice(0, -tail.length).trim() + '–' + y : x + '–' + y
+    const day = (iso: string) =>
+      new Date(iso).toLocaleDateString(undefined, { weekday: 'short' }) + ' '
+    return saySpan(t(a), t(b), out, (which) => day(which === 'from' ? a : b))
   }
 
   const form = (
@@ -331,7 +331,20 @@ export function Plans({
                 const notYet = Date.parse(p.start) > Date.now()
                 return (
                   <li key={p.id} className="chron-plan">
-                    <span className="chron-plan-when">{spanClock(p.start, p.end ?? p.start)}</span>
+                    <span className="chron-plan-when">
+                      {spanClock(
+                        p.start,
+                        p.end ?? p.start,
+                        /* the resolved end, so a plan with none is a point in this day rather
+                           than one `straddles` measures as running to now */
+                        straddles(
+                          { start: p.start, end: p.end ?? p.start },
+                          bounds.fromMs,
+                          bounds.toMs,
+                          Date.now(),
+                        ),
+                      )}
+                    </span>
                     <span className="chron-plan-name">
                       {a?.name ?? 'an activity since deleted'}
                     </span>
