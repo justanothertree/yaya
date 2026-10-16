@@ -117,6 +117,35 @@ about the 1st and a year goal was not about January 1st, so neither gets a weekd
 - `npm run typecheck`, `npm run lint` (0 errors), `npm run test` (1044), `npm run build`, and the
   built bundle grepped for the new seed strings: **not present**.
 
+## ⚠️ And then the line under the tabs disagreed with the tabs
+
+Shipping a cause and its consequence in one sitting, exactly as the standard says. The badge was
+taught to count late goals; `weight` — the "what this still asks of you" line, which sits inches
+below the tab strip — was not. Measured in the room immediately after:
+
+| view      | badge | weight line         | unfinished rows |
+| --------- | ----- | ------------------- | --------------- |
+| Today     | 2     | **"1 left"**        | 2               |
+| This week | 1     | **absent entirely** | 1               |
+
+Three figures about the same tab, and two of them wrong. The This week case is the worse one: with
+`left` at 0 the line suppresses itself on purpose — "0 left under a heading only ever states the
+obvious" — so a tab with work in it said nothing about that work at all.
+
+`weight` counts what the view LISTS now, which is both of its lists. Ten minutes you meant to spend
+yesterday still come out of today.
+
+⚠️ **It needed a `today` of its own, separate from `on`.** Tomorrow is the only view whose `on` is
+not today, and the only view that lists no late goals — so reusing `on` for both would have put
+yesterday's unfinished work into tomorrow's weight. That shortcut is the one I would have taken to
+avoid changing the signature; it is now a perturbation the tests catch.
+
+**The server was right all along.** `get_member_chronicle` selects shared goals filtered by nothing
+but `shared` — deliberately, because "a goal's window comes from `goalWindow` and the server has no
+copy of it" — and its `open` count is `done_at is null` across every goal the member has. So the
+profile block has been counting late goals as open since it was written. This change brings the
+room into line with what the account was already telling other people.
+
 ## The seed could not produce this state, which is why nothing caught it
 
 Every dated goal in `chroniclePreview` was anchored to today or to tomorrow — `at(-1, …)` is

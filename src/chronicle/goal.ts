@@ -543,9 +543,9 @@ function windowBack(scope: Scope, on: string, n: number): Window | null {
   return windowOf(scope, localISO(d))
 }
 
-/** What a window still asks of you: how many things, and how long they are guessed to take. */
+/** What a view still asks of you: how many things, and how long they are guessed to take. */
 export type Weight = {
-  /** unfinished goals in this window */
+  /** unfinished goals the view lists — its own window's, and the late ones under them */
   left: number
   /** the sum of the estimates among them, in minutes */
   mins: number
@@ -554,7 +554,7 @@ export type Weight = {
 }
 
 /**
- * How much is left in a window, and how much of that is actually known.
+ * How much a view still has in it, and how much of that is actually known.
  *
  * ⚠️ `mins` IS A FLOOR, AND `vague` IS WHY. An estimate is optional, so summing the ones that
  * exist and showing the total as "the day's work" understates it by however many were never
@@ -563,19 +563,35 @@ export type Weight = {
  * caller gets both numbers and has to say both; there is deliberately no single figure to show.
  *
  * ⚠️ AND IT COUNTS THE UNFINISHED ONLY, through `finished`, which is the same question the window
- * strip asks. A weight that included things already done would go up as the day went well.
+ * strip asks. A weight that included things already done would go up as the day went well — and
+ * a late goal you have just ticked is exactly that case: still on screen, struck through, and no
+ * longer work.
+ *
+ * ⚠️ `today` IS SEPARATE FROM `on` AND HAS TO BE. Tomorrow is the one view that lists no late
+ * goals, and it is the only view whose `on` is not today — so a version of this that reused `on`
+ * for both would put yesterday's unfinished work into tomorrow's weight. Asserted in the tests.
  */
 export function weight(
   goals: Goal[],
   tally: Record<string, number> | undefined,
   scope: Scope,
   on: string,
+  today: string,
 ): Weight {
   let left = 0
   let mins = 0
   let vague = 0
   for (const g of goals) {
-    if (!inScope(g, scope, on) || finished(g, tally, on)) continue
+    /**
+     * ⚠️ WHAT THE VIEW LISTS, WHICH IS BOTH OF ITS LISTS. This counted `inScope` alone for as
+     * long as that was everything a view drew, and the tick that added the late ones made this
+     * line disagree with the two figures either side of it: on Today the badge said 2, this said
+     * "1 left", and the list underneath showed two unfinished rows. On This week it vanished
+     * altogether — `left` fell to 0 and the line hides itself, so a tab with work in it said
+     * nothing about it at all. Ten minutes you meant to spend yesterday still come out of today.
+     */
+    const here = inScope(g, scope, on) || lateIn(g, tally, scope, on, today)
+    if (!here || finished(g, tally, on)) continue
     left++
     if (g.est != null && g.est > 0) mins += g.est
     else vague++

@@ -671,19 +671,20 @@ describe('what a window still asks of you', () => {
       {},
       'day',
       DAY,
+      DAY,
     )
     expect(w).toEqual({ left: 5, mins: 40, vague: 3 })
   })
 
   it('and a list nobody has guessed at is five things and no minutes, not an empty day', () => {
-    const w = weight([todo('a', null), todo('b', null)], {}, 'day', DAY)
+    const w = weight([todo('a', null), todo('b', null)], {}, 'day', DAY, DAY)
     expect(w).toEqual({ left: 2, mins: 0, vague: 2 })
   })
 
   /** ⚠️ the unfinished only, or the weight of a day would go UP as the day went well */
   it('and drops things as they are finished', () => {
     const list = [todo('a', 30), todo('b', 45, { done: true }), todo('c', 15)]
-    expect(weight(list, {}, 'day', DAY)).toEqual({ left: 2, mins: 45, vague: 0 })
+    expect(weight(list, {}, 'day', DAY, DAY)).toEqual({ left: 2, mins: 45, vague: 0 })
   })
 
   /**
@@ -704,12 +705,12 @@ describe('what a window still asks of you', () => {
       est: 30,
     })
     const ask = tallyAsks([drawing], DAY)[0]
-    expect(weight([drawing], { [ask.key]: 10 }, 'day', DAY)).toEqual({
+    expect(weight([drawing], { [ask.key]: 10 }, 'day', DAY, DAY)).toEqual({
       left: 1,
       mins: 30,
       vague: 0,
     })
-    expect(weight([drawing], { [ask.key]: 35 }, 'day', DAY)).toEqual({
+    expect(weight([drawing], { [ask.key]: 35 }, 'day', DAY, DAY)).toEqual({
       left: 0,
       mins: 0,
       vague: 0,
@@ -718,17 +719,45 @@ describe('what a window still asks of you', () => {
 
   it('and only this window — a yearly goal is not part of today', () => {
     const year = goal({ id: 'y', title: 'big', scope: 'year', anchor: '2026-01-01', est: 600 })
-    expect(weight([year], {}, 'day', DAY)).toEqual({ left: 0, mins: 0, vague: 0 })
-    expect(weight([year], {}, 'year', DAY)).toEqual({ left: 1, mins: 600, vague: 0 })
+    expect(weight([year], {}, 'day', DAY, DAY)).toEqual({ left: 0, mins: 0, vague: 0 })
+    expect(weight([year], {}, 'year', DAY, DAY)).toEqual({ left: 1, mins: 600, vague: 0 })
   })
 
   /** ⚠️ a nonsense estimate counts as no estimate, rather than as zero minutes of work */
   it('and treats a zero or negative guess as no guess at all', () => {
-    expect(weight([todo('a', 0), todo('b', -30)], {}, 'day', DAY)).toEqual({
+    expect(weight([todo('a', 0), todo('b', -30)], {}, 'day', DAY, DAY)).toEqual({
       left: 2,
       mins: 0,
       vague: 2,
     })
+  })
+
+  /**
+   * ⚠️ THE LATE ONES ARE PART OF THE ASK, and leaving them out made this line disagree with the
+   * two figures either side of it. Measured in the room: Today's badge said 2, this said "1
+   * left", and the list underneath showed two unfinished rows — and on This week `left` fell to
+   * 0, which hides the line entirely, so a tab with work in it said nothing about it. Ten minutes
+   * you meant to spend yesterday still come out of today.
+   */
+  it('counts a goal whose own window has closed, in the view that lists it', () => {
+    const late = todo('late', 10, { anchor: '2026-10-11' })
+    expect(weight([todo('a', 20), late], {}, 'day', DAY, DAY)).toEqual({
+      left: 2,
+      mins: 30,
+      vague: 0,
+    })
+  })
+
+  /** ⚠️ and never in Tomorrow's, which is the one view that does not list them */
+  it('leaves a late goal out of the weight of tomorrow', () => {
+    const late = todo('late', 10, { anchor: '2026-10-11' })
+    expect(weight([late], {}, 'day', '2026-10-13', DAY)).toEqual({ left: 0, mins: 0, vague: 0 })
+  })
+
+  /** a late goal you have just ticked is still on screen, and is no longer work */
+  it('stops counting a late goal the moment it is ticked', () => {
+    const late = todo('late', 10, { anchor: '2026-10-11', done: true })
+    expect(weight([late], {}, 'day', DAY, DAY)).toEqual({ left: 0, mins: 0, vague: 0 })
   })
 })
 

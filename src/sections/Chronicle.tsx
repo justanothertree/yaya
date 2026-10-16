@@ -641,7 +641,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * sentence below, and "0 left" under a heading is a line that only ever states the obvious.
        */}
       {(() => {
-        const w = weight(goals ?? [], got, v.scope, on)
+        const w = weight(goals ?? [], got, v.scope, on, todayISO())
         if (!w.left) return null
         const parts = [`${w.left} left`]
         if (w.mins > 0) parts.push(`about ${spanText(w.mins * 60_000)}`)
