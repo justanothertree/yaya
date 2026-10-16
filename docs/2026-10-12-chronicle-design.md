@@ -5084,3 +5084,39 @@ than a defect: the panel follows immediately in DOM order and reads in sequence.
    beat tidiness while chronicle is the newer of the two; worth moving to a neutral place if a
    third room ever needs it. The Sunday-week rule is likewise duplicated in `Feed.tsx`, and both
    copies now say so.
+
+## 6ci · ✅ The room with nothing in it, swept on 16 Oct — and nothing to fix
+
+Every other check in this file has been made against the seeded workbench. This one was made
+against `window.__chron.empty()`, which is what a member sees the first time they open the room,
+and which nothing had been pointed at before.
+
+**⚠️ THE COUNT COMES FIRST, because an empty-room sweep is the one most likely to be vacuous.**
+CLAUDE.md records a 375px pass reporting `0 undersized, 0 off-edge, 0 clipped` against a paragraph
+and two buttons. This one examined **56 elements and 18 controls** — sixteen buttons, a select and
+a file input — so the zeros below are worth something.
+
+What was checked, and what it says:
+
+|                            |                                                                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| the three-step instruction | renders, and its copy is still true — ＋ Activity is "up there" and ＋ Add to today is "below", in one column as well as two              |
+| the stopwatch              | `▶ Start` is **disabled**, titled "Name an activity first", AND explained in words underneath — the archived-step lesson already applied |
+| the gap and plan forms     | "Name an activity with ＋ Activity first", each saying what the control is for rather than only that it is unavailable                    |
+| the window strip           | six tabs, no counts, which is correct: there is no unfinished work to count                                                               |
+| the weight line            | absent, which is its own rule — "0 left" under a heading only states the obvious                                                          |
+| arithmetic                 | no `NaN`, no `0 / 0`, no bare percentage anywhere in the room                                                                             |
+| 375px                      | `sideways 0, tooSmall 0, offEdge 0, clipped 0, insideOut 0, spills 0, wordless 0`                                                         |
+
+**Two things were considered and deliberately left alone.**
+
+"Nothing here yet." still renders three lines under the three-step instruction, which is the
+sentence §6n set out to replace. Read as a person it is not a contradiction — step
+three says "add a goal below", the sentence agrees there are none, the button adds one — and the
+note on the MonthGrid in §6bf already settled the general question in the other direction:
+_"the sentence underneath stays, which is the half that was always doing the work."_ Removing it is a
+taste call about somebody's room, not a defect.
+
+⬇ Save a copy and ⬆ Put one back show to an account with nothing recorded. Exporting nothing is
+mild noise; **putting a file back is exactly what a returning member wants on an empty account**,
+and the two are one control.
