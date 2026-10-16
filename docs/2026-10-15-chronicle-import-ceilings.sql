@@ -1,0 +1,100 @@
+-- ✅ APPLIED — replaced in place (create or replace via pg_get_functiondef + anchored replace)
+--
+-- ⬆ Put one back ignored the two ceilings every other way in keeps.
+--
+-- ── HOW THIS WAS FOUND ──────────────────────────────────────────────────────────────────────
+--
+-- Not by looking at the import. By asking CLAUDE.md §4's question of each table in turn — *which
+-- rules live in a function rather than in a constraint, and does the second path keep them?* The
+-- answer separates cleanly:
+--
+--   chronicle_routines   steps are bounded by a CHECK (octet_length(steps::text) <= 8192)
+--                        → the import keeps it for free; a file with a 500-step routine is
+--                          refused by the table and counted, with nobody having done anything
+--
+--   chronicle_activities the 200 ceiling is in chronicle_activity_save and NOWHERE else
+--   chronicle_goals      the 500 ceiling is in chronicle_goal_save and NOWHERE else
+--
+-- Neither ceiling can BE a constraint: both count other rows, which a CHECK cannot do. That is
+-- precisely why each had exactly one enforcement point, and why a file was the way around it.
+--
+-- Proven before changing anything:
+--
+--   select position('200 activities' in pg_get_functiondef(oid)) ...  → 0
+--   select position('500 goals'       in pg_get_functiondef(oid)) ...  → 0
+--
+-- There IS an outer wall — `if total > 50000 then raise exception 'that file is too big…'` — but
+-- 50,000 is the sum across all five kinds, so a file holding ten thousand activities passes it
+-- comfortably while putting an account fifty times past a ceiling the room enforces on every
+-- other path.
+--
+-- ── REFUSED PER ROW, NOT PER FILE ───────────────────────────────────────────────────────────
+--
+-- This function's own convention, stated in its header: a row the table refuses is counted and
+-- the rest still go in. A ceiling is kept the same way. Failing the whole file would throw away
+-- the entries, routines and plans that were never the problem — and a restore is the one moment
+-- somebody is least able to afford that.
+--
+-- The count is taken ONCE before each loop and carried, rather than a `count(*)` per row, which
+-- would be quadratic on a large file — and a large file is exactly the case this is for.
+--
+-- ── WHAT WAS CHECKED ────────────────────────────────────────────────────────────────────────
+--
+-- Two rolled-back transactions with a simulated session, each with its positive control first,
+-- because a ceiling with no control is a ceiling that might have turned the feature off:
+--
+--   baseline activities                    8
+--   control — a 3-activity file            {activities: 3,   skipped: 0}   ← all three, as before
+--   after the control                      11
+--   a 205-activity file                    {activities: 189, skipped: 16}
+--   activities now                         200   ← exactly, and 11 + 189 = 200, 189 + 16 = 205
+--
+--   baseline goals                         1
+--   control — a 4-goal file                {goals: 4,   skipped: 0}        ← all four
+--   after the control                      5
+--   a 505-goal file                        {goals: 495, skipped: 10}
+--   goals now                              500   ← exactly, and 5 + 495 = 500, 495 + 10 = 505
+--
+-- Both arithmetics close on themselves in two directions, which is what makes them worth more
+-- than "it refused something".
+--
+-- The grants are unchanged, because `create or replace` keeps them — confirmed rather than
+-- assumed: anon false, authenticated true, security definer true.
+--
+-- ── AND THE DOUBLE WAS TAUGHT IT TOO ────────────────────────────────────────────────────────
+--
+-- `pvImport` in src/dev/chroniclePreview.ts had neither ceiling, which is the unfaithful-double
+-- trap in the direction that HIDES a bug rather than inventing one: the workbench would have
+-- shown two hundred and five activities going happily in. It now shares `ACCOUNT_ACTS` and
+-- `ACCOUNT_GOALS`, named once rather than typed in twice.
+--
+-- ── THE SHAPE OF THE PATCH ──────────────────────────────────────────────────────────────────
+--
+-- The function is ~300 lines of careful comments, so it was not retyped: `pg_get_functiondef`
+-- fetched it, five anchors were checked with `position(... ) = 0 → raise`, `replace()` applied,
+-- and the result `execute`d. An anchor that had drifted would have aborted before touching
+-- anything.
+
+-- the two guards, as they now read inside the loops:
+--
+--   if v_acts  >= 200 then refused := refused + 1; continue; end if;
+--   if v_goals >= 500 then refused := refused + 1; continue; end if;
+--
+-- with the running totals carried on success:
+--
+--   if found then n_act  := n_act  + 1; v_acts  := v_acts  + 1; else refused := refused + 1; end if;
+--   ...            n_goal := n_goal + 1; v_goals := v_goals + 1;
+
+-- ── the standing check, after ───────────────────────────────────────────────────────────────
+-- select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
+-- from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+-- where n.nspname = 'public' and p.prokind = 'f' and p.proname = 'chronicle_import';
+-- → anon false
+
+-- ── and the question this came from, worth re-running whenever a ceiling is added ───────────
+-- For each chronicle table: is every rule about it either a constraint, or kept by EVERY
+-- function that writes to it? The writers are enumerable:
+--
+-- select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+-- where n.nspname = 'public' and p.prokind = 'f'
+--   and pg_get_functiondef(p.oid) ~* '(insert into|update)\s+public\.chronicle_activities';

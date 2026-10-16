@@ -1109,6 +1109,16 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     plans: 0,
     skipped: 0,
   }
+  /**
+   * What an account may hold, as the server counts it.
+   *
+   * ⚠️ NAMED RATHER THAN TYPED IN TWICE. `chronicle_activity_save` raises at 200 and
+   * `chronicle_goal_save` at 500, and both are counts of other rows, which is exactly why neither
+   * can be a CHECK constraint and why the import had to be taught them separately.
+   */
+  const ACCOUNT_ACTS = 200
+  const ACCOUNT_GOALS = 500
+
   const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
   const numOr = (v: unknown, fallback: number): number =>
     typeof v === 'number' ? v : typeof v === 'string' && v !== '' ? Number(v) : fallback
@@ -1116,7 +1126,14 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
   /* activities first, so everything below can be checked against them */
   for (const a of list('activities')) {
     const id = str(a.id)
-    if (!id || db().acts.some((x) => x.id === id)) {
+    /**
+     * ⚠️ THE CEILINGS THE SERVER KEEPS, kept here too — see ACCOUNT_ACTS and ACCOUNT_GOALS.
+     * Neither is a CHECK, because both count other rows and a constraint cannot; so each lived
+     * in one save function and the import was the way round it. A double that lets a file in
+     * that the live room refuses is the "unfaithful double" trap in the direction that HIDES a
+     * bug: the workbench would have shown two hundred and five activities going in happily.
+     */
+    if (!id || db().acts.length >= ACCOUNT_ACTS || db().acts.some((x) => x.id === id)) {
       out.skipped++
       continue
     }
@@ -1199,7 +1216,12 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
 
   for (const g of list('goals')) {
     const id = str(g.id)
-    if (!id || db().goals.some((x) => x.id === id) || (g.activity != null && !ours(g.activity))) {
+    if (
+      !id ||
+      db().goals.length >= ACCOUNT_GOALS ||
+      db().goals.some((x) => x.id === id) ||
+      (g.activity != null && !ours(g.activity))
+    ) {
       out.skipped++
       continue
     }
