@@ -133,6 +133,17 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
 
   const go = async (id: string) => {
     if (busy) return
+    /**
+     * ⚠️ TAPPING WHAT IS ALREADY RUNNING DOES NOTHING, because `chronicle_start` would close the
+     * sitting and open a second one on the same activity — splitting one stretch into two for no
+     * reason. Measured before this line: the clock went from 7:09 back to 0:01. And it is the
+     * likeliest mis-tap in the room, because the running tile is the only one that stands out,
+     * so it is the one a thumb goes to when somebody means "yes, this".
+     *
+     * Doing nothing is the honest answer: you asked for what you already have, and the room is
+     * already saying so — the tile is marked and the clock is counting.
+     */
+    if (id === running?.activity) return
     setBusy(true)
     await flushNote()
     const bad = await startTimer(id)

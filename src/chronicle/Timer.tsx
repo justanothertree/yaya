@@ -293,6 +293,11 @@ export function Timer({
         .slice(0, 6),
     [yours, mins],
   )
+  /* what the row offers: the handful worth a button, minus whatever is running — see the row */
+  const switchable = useMemo(
+    () => quick.filter((a) => a.id !== running?.activity),
+    [quick, running?.activity],
+  )
   const cats = useMemo(
     () => minutesByCat(log, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
     [log, acts, bounds.fromMs, bounds.toMs],
@@ -848,10 +853,25 @@ export function Timer({
        * button that started a timer on it would be recording something the site is already
        * recording, twice over.
        */}
-      {!running && seeing === todayISO() && quick.length > 0 && (
+      {/**
+       * ⚠️ AND IT STAYS WHILE SOMETHING IS RUNNING, which it did not. `!running` sat here
+       * unexplained, almost certainly copied from the gap line directly above — where it means
+       * something, because "two hours unaccounted" is only a sentence when nothing is going on.
+       * Here it took the fastest way to change what you are doing and hid it at the exact moment
+       * you were doing something. Switching is the most repeated action in this room and it was
+       * left costing a dropdown and a button.
+       *
+       * `chronicle_start` closes the open sitting before opening the next, so one tap is the
+       * whole switch and the record stays continuous — the same call the Now room is built on.
+       *
+       * ⚠️ AND THE RUNNING ONE IS NOT IN THE ROW. Tapping it would close the sitting and open a
+       * second on the same activity, splitting one stretch in two — measured in the Now room as
+       * a clock going from 7:09 back to 0:01.
+       */}
+      {seeing === todayISO() && switchable.length > 0 && (
         <div className="chron-quick">
-          <span className="muted chron-quick-label">Quick start</span>
-          {quick.map((a) => (
+          <span className="muted chron-quick-label">{running ? 'Switch to' : 'Quick start'}</span>
+          {switchable.map((a) => (
             <button
               key={a.id}
               className="btn btn-ghost chron-chip-start"
