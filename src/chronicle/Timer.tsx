@@ -315,6 +315,19 @@ export function Timer({
 
   const go = async (id: string) => {
     if (busy || !id) return
+    /**
+     * ⚠️ STARTING WHAT IS ALREADY RUNNING DOES NOTHING. `chronicle_start` has no idea you meant
+     * "yes, this" — it closes the open sitting and opens a second one on the same activity, so
+     * one stretch becomes two. Measured through a routine step while that activity ran:
+     * "Drawing 7m 9:04–9:12" and "Drawing 2s 9:12–now" where there had been one sitting, the
+     * fragment duly marked SHORT because two seconds is under the target.
+     *
+     * ⚠️ HERE RATHER THAN AT THE THREE CALL SITES, because everything on this half of the room
+     * funnels through it: the picker's Start, the switch row, and the routine steps, which reach
+     * it through `onStart`. A routine step is the likeliest tap of the three — it wears a ✓ when
+     * the activity has had its minutes today, so it reads as a thing you confirm.
+     */
+    if (id === running?.activity) return
     setBusy(true)
     const bad = await startTimer(id)
     setBusy(false)
