@@ -330,6 +330,25 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   the `value` attribute showing through. **Ask the DOM before believing the tree**: read
   `innerHTML`, `title`, `aria-label`, and whether an input sits inside a label. The tree is a
   rendering, and this one is lossy in exactly the direction that invents accessibility bugs.
+- **A CLAMP IS NOT A FIX, AND IT HIDES THE BUG IT LOOKS LIKE IT SOLVES.** "% of the day recorded"
+  was the SUM of a day's sessions capped at 100, and the cap was deliberate — the comment beside it
+  said "103% of your day reads as a bug while 100% reads as a full day", which is right about the
+  symptom and wrong about the cause. Sessions may overlap, so the sum double-counts every shared
+  minute: an ordinary day of 9-to-5 work with a call inside it and music over the whole lot read
+  **70.8%** of a day holding **33.3%**, and the month grid turned that into **1,020 minutes
+  recorded** of a day that held 480. Capping it did not make it less wrong, it made it
+  unfalsifiable — four overlapping morning sittings reported **100% of the day** and a full
+  **1,440 minutes** with the entire afternoon blank, which is the most confident possible wrong
+  answer and the one shape nothing on screen can give away. **When a figure needs clamping, the
+  clamp is the evidence: ask what question it is answering.** Here, "how much of this is
+  accounted for" is a UNION and "how much did I do" is a SUM, and one line of code was being asked
+  both. The fix had nothing to clamp afterwards, because a union cannot exceed its window — which
+  is the tell that the right question had been found.
+- **And a unit RECONSTRUCTED from a percentage is a round trip that stops closing.** The same grid
+  got its "2h 19m recorded" label by multiplying its own percentage back out over `24 * 60`, which
+  is exact only while the denominator is also 1440. It is not: `dayBounds` is correctly **1380**
+  minutes on a spring-forward day and **1500** on a fall-back one, which is also why a constant
+  denominator was wrong twice a year on its own. Carry the number in the unit the label speaks.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

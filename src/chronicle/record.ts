@@ -169,17 +169,109 @@ export const CATS = [
  */
 export type Span = { start: string; end: string | null }
 
-export function overlapMs(e: Span, fromMs: number, toMs: number, nowMs: number): number {
+/**
+ * The stretch a span occupies inside a window, clipped to it — or null when it does not reach.
+ *
+ * ⚠️ IT EXISTS SO THE SUM AND THE UNION CANNOT DISAGREE. `overlapMs` asks how LONG a span is in
+ * here and `coveredMs` asks WHERE it is, and those were two copies of the same five lines — the
+ * midnight rule, the open-entry rule, the backwards-span rule and the two clamps. Three callers of
+ * one function beats three copies of one subtraction, which is the same argument `lane` is built
+ * on; here it is stronger, because the two answers are compared against each other in a test.
+ */
+function clip(e: Span, fromMs: number, toMs: number, nowMs: number): [number, number] | null {
   const a = Date.parse(e.start)
-  if (!Number.isFinite(a)) return 0
+  if (!Number.isFinite(a)) return null
   const raw = e.end == null ? nowMs : Date.parse(e.end)
   const b = Number.isFinite(raw) ? raw : nowMs
   /* ⚠️ a backwards span contributes nothing rather than a negative: the table refuses one, so
      this is about a row that arrived from somewhere else being unable to make a total smaller */
-  if (b <= a) return 0
+  if (b <= a) return null
   const lo = Math.max(a, fromMs)
   const hi = Math.min(b, toMs)
-  return hi > lo ? hi - lo : 0
+  return hi > lo ? [lo, hi] : null
+}
+
+export function overlapMs(e: Span, fromMs: number, toMs: number, nowMs: number): number {
+  const c = clip(e, fromMs, toMs, nowMs)
+  return c ? c[1] - c[0] : 0
+}
+
+/**
+ * How much of a window has ANY span on it, in milliseconds — the union, counting no minute twice.
+ *
+ * ⚠️ THIS IS A DIFFERENT QUESTION FROM THE SUM, AND THREE FIGURES ON THE SITE WERE ANSWERING IT
+ * WITH ONE. "% of the day recorded" was `blocks.reduce((n, b) => n + b.width, 0)`, clamped to 100 —
+ * so a day of 9-to-5 work with a one-hour call inside it and music over the whole lot read **70.8%
+ * of the day** about a day holding **33.3%**, and the month grid turned that into **1,020 minutes
+ * recorded** of a day that held 480. Four overlapping morning sittings read **100% of the day** and
+ * a full **1,440 minutes** while the entire afternoon was blank.
+ *
+ * ⚠️ AND THE CLAMP WAS THE WORST PART, not the saving grace. It was there on purpose — "103% of
+ * your day reads as a bug while 100% reads as a full day" — and that reasoning is right about the
+ * symptom and wrong about the cause: capping the number is what turned a visibly broken figure
+ * into a confidently wrong one. A union cannot exceed its window, so nothing needs clamping.
+ *
+ * ⚠️ OVERLAP IS ALLOWED AND MUST STAY ALLOWED. None of the ten functions that write to
+ * `chronicle_entries` tests for it, deliberately: a podcast while washing up is two activities over
+ * the same minutes, and a constraint forbidding that would be the tidy-looking rule that locks the
+ * room — CLAUDE.md §4 has the entries-table version of that story. The record is right; the
+ * sentence read off it was wrong.
+ *
+ * ⚠️ THE SUM IS STILL THE RIGHT ANSWER TO ITS OWN QUESTION. "Written down 9h" on a day covering
+ * eight hours is honest — you spent nine hours' worth of attention — so `Focused` and `Written
+ * down` stay sums. Only the figure with "of the day" after it is a union.
+ */
+export function coveredMs(
+  spans: readonly Span[],
+  fromMs: number,
+  toMs: number,
+  nowMs: number,
+): number {
+  const cuts: Array<[number, number]> = []
+  for (const s of spans) {
+    const c = clip(s, fromMs, toMs, nowMs)
+    if (c) cuts.push(c)
+  }
+  if (cuts.length === 0) return 0
+  /* ⚠️ sorted by START, which is what makes one pass enough: every later stretch either extends
+     the one being carried or begins a new one, and nothing already passed can be reopened */
+  cuts.sort((x, y) => x[0] - y[0])
+  let total = 0
+  let [lo, hi] = cuts[0]
+  for (let i = 1; i < cuts.length; i++) {
+    const [a, b] = cuts[i]
+    if (a > hi) {
+      total += hi - lo
+      lo = a
+      hi = b
+    } else if (b > hi) {
+      /* ⚠️ `b > hi` rather than plain assignment: a short stretch wholly inside a long one must
+         not shorten it. Two sittings 9–17 and 11–12 sort in that order, so the second is swallowed
+         whole — assigning unconditionally would have reported five hours of the eight. */
+      hi = b
+    }
+  }
+  return total + (hi - lo)
+}
+
+/**
+ * The same, as a share of the window, 0–100.
+ *
+ * ⚠️ THE WINDOW'S OWN WIDTH IS THE DENOMINATOR, never a constant. `score.ts` divided by
+ * `DAY_MINS = 24 * 60`, and a day is not always 1440 minutes: measured in New York,
+ * `dayBounds('2026-03-08')` is **1380** and `dayBounds('2026-11-01')` is **1500**. So a fully
+ * recorded spring-forward day read 95.8% and could never reach 100, and a fall-back day could
+ * exceed it — which the clamp then hid. Asking the window is both shorter and right.
+ */
+export function coveredPct(
+  spans: readonly Span[],
+  fromMs: number,
+  toMs: number,
+  nowMs: number,
+): number {
+  const width = toMs - fromMs
+  if (!(width > 0)) return 0
+  return (coveredMs(spans, fromMs, toMs, nowMs) / width) * 100
 }
 
 /**

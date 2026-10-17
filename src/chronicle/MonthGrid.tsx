@@ -83,7 +83,7 @@ export function MonthGrid({ on, beat }: { on: string; beat: number }) {
       <div className="chron-month-grid">
         {cells.map((c) => {
           const d = new Date(c.on + 'T12:00:00')
-          const mins = Math.round((c.covered / 100) * 24 * 60)
+          const mins = Math.round(c.mins)
           return (
             <span
               key={c.on}

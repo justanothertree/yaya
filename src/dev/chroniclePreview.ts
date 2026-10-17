@@ -195,6 +195,22 @@ function seed(): Store {
       span('pv-e9', 'pv-gym', 0, 7, 45, 60, null, 4),
       span('pv-e10', 'pv-gym', 3, 7, 40, 55),
       span('pv-e11', 'pv-dish', 0, 19, 12),
+      /**
+       * ⚠️ TWO SITTINGS OVER THE SAME MINUTES, which nothing in the seed had and which the room
+       * has always allowed — none of the ten functions that write to `chronicle_entries` tests for
+       * overlap, deliberately: a podcast while washing up is two activities at once.
+       *
+       * ⚠️ AND ITS ABSENCE HID A BUG FOR THE WHOLE OF THE WORKBENCH'S LIFE. "% of the day" was the
+       * SUM of the sessions rather than the union of them, so it double-counted every shared
+       * minute — but a seed with no overlap in it gives the sum and the union the same answer, so
+       * the rail, the week grid and the month grid all read correctly here while the live site had
+       * a day of work-plus-a-call-plus-music reading **70.8%** of a day holding **33.3%**.
+       *
+       * `pv-e21` sits wholly inside `pv-e1`, which is also the shape that tests the merge's own
+       * guard: the shorter one must not shorten the longer.
+       */
+      span('pv-e21', 'pv-site', 0, 10, 15, null, 'reading while drawing', null),
+      span('pv-e22', 'pv-dish', 0, 19, 20, null, null, null),
       /* ⚠️ a span that crosses midnight, because that is the one case where the two window rules
          disagree: the minutes split across both days and the amount does not. */
       span('pv-e12', 'pv-write', 4, 23, 90, 2),

@@ -1,4 +1,4 @@
-import { dayBounds, lane, nowAt, type Block, type Span } from './record'
+import { coveredPct, dayBounds, lane, nowAt, type Block, type Span } from './record'
 import { windowOf } from './goal'
 
 /**
@@ -27,11 +27,16 @@ export type Column = {
   /** how far down the column the clock is, 0–100, or null when this is not today */
   now: number | null
   /**
-   * How much of the day is accounted for at all, 0–100.
+   * How much of the day has any session on it at all, 0–100.
    *
-   * ⚠️ IT CAN BE OVER 100 BEFORE THE CLAMP, because two sessions may overlap — the table has never
-   * forbidden recording a call during a work block. Clamped rather than refused, because "103% of
-   * your day" is a number that reads as a bug while "100%" reads as a full day.
+   * ⚠️ THE UNION, NOT THE SUM OF THE BLOCKS, and this used to be the sum clamped to 100. Two
+   * sessions may overlap — the table has never forbidden recording a call during a work block —
+   * so adding the widths up double-counts the minutes they share: a 9-to-5 with a call inside it
+   * and music over the whole lot read **70.8%** of a day holding **33.3%**. The clamp was there to
+   * stop "103% of your day" reading as a bug, and it did that by turning a visibly broken figure
+   * into a confidently wrong one: four overlapping morning sittings reported a day **100%**
+   * recorded with its whole afternoon blank. `coveredMs` cannot exceed its window, so there is
+   * nothing left to clamp.
    */
   covered: number
 }
@@ -71,10 +76,7 @@ export function columns(
       toMs,
       blocks,
       now: nowAt(fromMs, toMs, nowMs),
-      covered: Math.min(
-        100,
-        blocks.reduce((n, b) => n + b.width, 0),
-      ),
+      covered: coveredPct(spans, fromMs, toMs, nowMs),
     }
   })
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { plansBetween, totalsBetween } from './cloud'
-import { dayBounds, spanText, type Activity } from './record'
+import { entriesBetween, plansBetween, totalsBetween } from './cloud'
+import { coveredPct, dayBounds, spanText, type Activity, type Entry } from './record'
 import { scoreOf } from './score'
 import type { Plan } from './plan'
 
@@ -24,22 +24,39 @@ import type { Plan } from './plan'
 export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick: number }) {
   const [rows, setRows] = useState<Array<{ cat: Activity['cat']; mins: number }>>([])
   const [ahead, setAhead] = useState<Plan[]>([])
+  /**
+   * ⚠️ THE ENTRIES AS WELL AS THE TOTALS, for the one figure the totals cannot answer. The note
+   * below is right that two queries for one day's record is two chances to disagree — but it is
+   * about how LONG something took, and "% of the day" is a different question: it asks which
+   * minutes are spoken for, which needs the two ends of each session rather than their lengths.
+   * The totals stay the source for Focused and Written down, so nothing can disagree about those.
+   *
+   * It costs no round trip: it joins the `Promise.all` that was already there.
+   */
+  const [log, setLog] = useState<Entry[]>([])
   const byId = useMemo(() => new Map(acts.map((a) => [a.id, a])), [acts])
 
   const load = useCallback(async () => {
     const { fromMs, toMs } = dayBounds(day)
     /**
-     * ⚠️ THE DAY'S TOTALS, NOT THE DAY'S ENTRIES. The sum is the server's own — the same one the
-     * room's bars and goals are drawn from — so the rail cannot disagree with the list beside it
-     * about how long something took. Two queries for one day's record is two chances to say
-     * different numbers on one screen.
+     * ⚠️ THE LENGTHS COME FROM THE TOTALS AND THE SHAPE FROM THE ENTRIES, which is one query each
+     * for two different questions rather than two answers to one. The sum is the server's own —
+     * the same one the room's bars and goals are drawn from — so the rail cannot disagree with the
+     * list beside it about how long something took, and that is what the totals are here for.
+     *
+     * ⚠️ BUT "% OF THE DAY" IS NOT A SUM, and the totals cannot answer it. It asks which MINUTES
+     * are spoken for, so it needs the two ends of each session: sessions may overlap, and adding
+     * their lengths up counts every shared minute twice — see `coveredMs` in record.ts for what
+     * that read on an ordinary day. Three parallel queries, one round trip.
      */
-    const [t, p] = await Promise.all([
+    const [t, p, l] = await Promise.all([
       totalsBetween(new Date(fromMs).toISOString(), new Date(toMs).toISOString()),
       /* what is still ahead: from now to the end of tomorrow, which is as far as a plan is useful */
       plansBetween(new Date().toISOString(), new Date(toMs + 86_400_000).toISOString()),
+      entriesBetween(new Date(fromMs).toISOString(), new Date(toMs).toISOString()),
     ])
     setRows(t.map((x) => ({ cat: x.cat, mins: x.mins })))
+    setLog(l)
     setAhead(p.filter((x) => Date.parse(x.start) > Date.now()).slice(0, 4))
   }, [day])
 
@@ -47,7 +64,10 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
     void load()
   }, [load, tick])
 
-  const s = useMemo(() => scoreOf(rows), [rows])
+  const s = useMemo(() => {
+    const { fromMs, toMs } = dayBounds(day)
+    return scoreOf(rows, coveredPct(log, fromMs, toMs, Date.now()))
+  }, [rows, log, day])
 
   return (
     <aside className="chron-rail" aria-label="Today at a glance">
