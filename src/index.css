@@ -17480,8 +17480,6 @@ a.cz-msg-author:focus-visible {
   font-weight: 700;
   /* a long name gives up its tail rather than the row — the floor keeps it from vanishing */
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .now-clock {
   font-family: var(--mono);
@@ -17545,11 +17543,37 @@ a.cz-msg-author:focus-visible {
   text-align: left;
   min-width: 0;
 }
-.now-tile-name {
+/**
+ * ⚠️ THE WHOLE NAME, BECAUSE A TRUNCATION IS NOT UNIQUE AND THE TABLE'S NAMES ARE.
+ * `chronicle_activities` carries UNIQUE (owner, name) and allows **60 characters**; these drew
+ * one ellipsed line, which at 159px is about **19**. Measured in the room: "Reading — The Brothers
+ * Karamazov, Dostoyevsky, part two" and "… part three" are two different activities, and both
+ * drew as **"Reading — The B"** — fifteen characters of fifty-five. The one room whose entire job
+ * is telling your activities apart could not tell those apart, and nothing on screen said so.
+ *
+ * ⚠️ AND THERE IS NO TOOLTIP TO FALL BACK ON. These buttons carry no `title`, and §6 says a
+ * title does not exist on a phone anyway — so the visible characters were all there was. The
+ * headline had it worse at 1.25rem bold: eighteen characters, and the same collision.
+ *
+ * ⚠️ A CLAMP AT TWO LINES WAS THE FIRST FIX AND IT ONLY MOVED THE CLIFF — 15 characters became
+ * 29, and the two names above still collided, because they differ at character 48. Measuring what
+ * removing the cap actually costs settled it, since the table's own 60 IS the bound:
+ *
+ *     "Drawing"                     (7)   56px      ← the floor, unchanged
+ *     the seed's longest name       (29)  56px      ← free
+ *     a long one                    (45)  85px
+ *     the table's limit             (60)  101px     ← the worst a legal name can do
+ *     60 characters with no spaces  (60)  85px      ← overflow-wrap earns its place here
+ *
+ * 101px is not a paragraph, it is a slightly taller button and a bigger thumb target, and only a
+ * name at the very limit pays it. No `overflow: hidden`: if a name ever did escape its tile the
+ * `spills` rule in scripts/mobile-audit.js would say so, where clipping it would not.
+ */
+.now-tile-name,
+.now-on-text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* so a single unbroken 60-character word breaks rather than widening the tile */
+  overflow-wrap: anywhere;
 }
 /* the one that is running — the only tile that shouts, so it can be found without reading */
 .now-tile.is-on {

@@ -209,7 +209,9 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
             {on?.colour ? (
               <span className="now-dot" style={{ background: on.colour }} aria-hidden />
             ) : null}
-            {on?.name ?? 'an activity since deleted'}
+            {/* ⚠️ ITS OWN ELEMENT so it can be clamped — `.now-on-name` is the flex row that
+                holds the dot beside it, and a line clamp needs a box of its own. */}
+            <span className="now-on-text">{on?.name ?? 'an activity since deleted'}</span>
           </span>
           <span className="now-clock">{clockText(since)}</span>
           <button className="btn now-stop" onClick={() => void stop()} disabled={busy}>
