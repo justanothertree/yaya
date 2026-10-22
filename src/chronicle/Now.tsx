@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { entriesBetween, myActivities, noteRunning, startTimer, stopTimer } from './cloud'
+import {
+  entriesBetween,
+  myActivities,
+  noteRunning,
+  saveActivity,
+  startTimer,
+  stopTimer,
+} from './cloud'
 import { clockText, dayBounds, type Activity, type Entry } from './record'
 import { tilesFor } from './nowTiles'
 import { today as todayISO } from './goal'
@@ -28,6 +35,8 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
   const [log, setLog] = useState<Entry[]>([])
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [fresh, setFresh] = useState('')
   const [say, setSay] = useState<string | null>(null)
   /* the clock's own heartbeat — see the effect below, and `tiles` */
   const [beat, setBeat] = useState(0)
@@ -153,6 +162,56 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
   }
 
   /**
+   * Name something that is not on the screen yet, and be doing it.
+   *
+   * ⚠️ NAMING IT AND STARTING IT ARE ONE ACTION HERE, which is the difference between this and
+   * the Chronicle's own add form. There, a new activity is pre-selected because "a new activity
+   * is almost always one you are about to do" — its words. On a platform that is not almost, it
+   * is the reason you are typing: nobody opens this room to curate a list.
+   *
+   * ⚠️ A NAME YOU ALREADY HAVE IS A MATCH, NOT A MISTAKE. `chronicle_activities` is
+   * UNIQUE (owner, name), so typing "Gym" when Gym exists is a refusal — and it is the single
+   * likeliest thing to type, because the activities you do often are the ones you remember the
+   * names of. Starting the one you have is what was meant, and it saves a round trip that could
+   * only fail.
+   *
+   * ⚠️ MATCHED WITHOUT CASE, which is deliberately more forgiving than the index. The server
+   * compares exactly, so "gym" beside "Gym" is two activities as far as it is concerned; on a
+   * phone that is autocapitalisation rather than intent. This only ever CHOOSES an existing
+   * activity, never creates or renames one, so the worst it can do is start a name that differs
+   * in case from the one typed — and the headline says which, immediately.
+   *
+   * ⚠️ ARCHIVED ONES ARE NOT MATCHED, because `chronicle_start` refuses them. Falling through to
+   * the server is right there: it answers "Gym is archived — bring it back in Chronicle", which
+   * is the only sentence that helps.
+   */
+  const addAndGo = async () => {
+    const name = fresh.trim()
+    if (!name || busy) return
+    setBusy(true)
+    await flushNote()
+    const had = (acts ?? []).find((a) => !a.archived && a.name.toLowerCase() === name.toLowerCase())
+    let id = had?.id ?? ''
+    if (!id) {
+      /* ⚠️ Free Time, matching the Chronicle's own default for a new activity rather than
+         guessing differently in one room — the category is a thing to set later, there, where
+         there is room to explain what the three of them mean. */
+      const made = await saveActivity(name, 'free', null, undefined, '', null)
+      if ('why' in made) {
+        setBusy(false)
+        return moan(made.why)
+      }
+      id = made.id
+    }
+    const bad = await startTimer(id)
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    setFresh('')
+    setAdding(false)
+    await load()
+  }
+
+  /**
    * ⚠️ AND LEAVING THE ROOM FLUSHES IT TOO. Tapping Chronicle in the nav within the debounce lost
    * the note exactly as switching did, and this is the one path that cannot report a failure —
    * the component is going. Fire and forget beats certain loss.
@@ -248,10 +307,11 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
         <p className="muted" aria-busy>
           Loading…
         </p>
-      ) : tiles.length === 0 ? (
-        <p className="muted">
-          No activities yet — name one in Chronicle and it appears here as a button.
-        </p>
+      ) : tiles.length === 0 && !adding ? (
+        /* ⚠️ IT NO LONGER SENDS A NEW MEMBER AWAY. This said "name one in Chronicle and it
+           appears here as a button", which was the only honest thing to say while this room
+           could not make one — and is now a detour past the button underneath it. */
+        <p className="muted">Nothing here yet. Name what you are doing and it starts.</p>
       ) : (
         <div className="now-grid">
           {tiles.map((a) => (
@@ -275,6 +335,55 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
           ))}
         </div>
       )}
+
+      {/**
+       * ⚠️ THE ADD IS A TILE, not a form above the grid, so it keeps the rhythm a thumb has
+       * already learnt — same row, same height, same place. Opening it swaps the tile for the
+       * field in situ rather than pushing the grid down the screen.
+       */}
+      {acts !== null &&
+        (adding ? (
+          <div className="now-new">
+            <label>
+              <span className="sr-only">What are you doing?</span>
+              <input
+                value={fresh}
+                onChange={(e) => setFresh(e.target.value)}
+                /* ⚠️ Enter submits, because the on-screen keyboard's own key is the nearest
+                   button to a thumb that is already typing — "go" is what it will read */
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void addAndGo()
+                  if (e.key === 'Escape') setAdding(false)
+                }}
+                placeholder="what are you doing?"
+                enterKeyHint="go"
+                autoFocus
+                maxLength={60}
+              />
+            </label>
+            <button
+              className="btn"
+              onClick={() => void addAndGo()}
+              disabled={busy || !fresh.trim()}
+            >
+              Start
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setAdding(false)
+                setFresh('')
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button className="btn btn-ghost now-add" onClick={() => setAdding(true)} disabled={busy}>
+            + Something else
+          </button>
+        ))}
     </div>
   )
 }

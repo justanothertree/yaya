@@ -774,6 +774,22 @@ export const pvSaveActivity = (
    * that hides a bug.
    */
   if (id && !found) return { why: 'no such activity' }
+  /**
+   * ⚠️ THE NAME CLASH, in chronicle_activity_save's own words. `chronicle_activities` is
+   * UNIQUE (owner, name) and the function now answers in sentences rather than letting the index
+   * do it — so the double has to, or the workbench creates a second "Gym" the live site refuses,
+   * which is the unfaithful-double direction that hides a bug.
+   *
+   * Matched exactly, like the index: the Now room's own case-insensitive shortcut is a client
+   * convenience that only ever picks an EXISTING activity, and is a different rule on purpose.
+   * `x.id !== made` is what lets an activity keep its own name through a rename.
+   */
+  const clash = db().acts.find((x) => x.name.trim() === name.trim() && x.id !== made)
+  if (clash) {
+    return clash.archived
+      ? { why: `${name.trim()} is archived — bring it back in Chronicle` }
+      : { why: `you already have one called ${name.trim()}` }
+  }
   if (!found && db().acts.length >= ACCOUNT_ACTS) {
     return { why: 'that is 200 activities — archive one' }
   }

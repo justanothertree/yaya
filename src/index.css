@@ -17575,6 +17575,42 @@ a.cz-msg-author:focus-visible {
   /* so a single unbroken 60-character word breaks rather than widening the tile */
   overflow-wrap: anywhere;
 }
+/**
+ * Naming something that is not on the screen yet.
+ *
+ * ⚠️ THE SAME 56px AS A TILE, because it sits in the same column a thumb is already aiming at and
+ * a shorter button there is a different target in the same place.
+ */
+.now-add {
+  width: 100%;
+  min-height: 56px;
+  margin-top: 0.6rem;
+  /* dashed, so it reads as a place to put something rather than a fifth activity */
+  border-style: dashed;
+}
+.now-new {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  align-items: center;
+}
+.now-new label {
+  flex: 1;
+  /**
+   * ⚠️ WITHOUT THIS THE FIELD RUNS OFF THE CARD, and the reason is worth not re-deriving: a flex
+   * child defaults to `min-width: auto`, which for an input resolves to its `size` attribute's
+   * worth of characters — twenty, about 202px. So `flex: 1` grants room to grow and no permission
+   * to shrink. CLAUDE.md §6 has the guestbook's version of this, 144px past its own card.
+   */
+  min-width: 0;
+}
+.now-new input {
+  width: 100%;
+}
+.now-new .btn {
+  flex: none;
+}
+
 /* the one that is running — the only tile that shouts, so it can be found without reading */
 .now-tile.is-on {
   border-color: var(--accent);
