@@ -6,6 +6,7 @@ import type { CircuitGroup, Movie } from '../types'
 import { REVIEW_KINDS, kindOf } from '../reviewKinds'
 import { defaultMovieGroup } from './movieMeta'
 import { Modal } from './Modal'
+import { todayISO } from '../dates'
 
 // A new movie must join a group everyone in the crew can see, or it's invisible to
 // members (RLS scopes by group membership). Default to wherever the collection already
@@ -29,8 +30,17 @@ export function AddMovie({
   // true once the visitor chooses to name their own category
   const [custom, setCustom] = useState(false)
   const [title, setTitle] = useState('')
-  // did-it-tonight is the overwhelming case — default today, still editable
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  /**
+   * did-it-tonight is the overwhelming case — default today, still editable.
+   *
+   * ⚠️ THE LOCAL DATE, NEVER `toISOString().slice(0, 10)`. That is UTC, and dates.ts carries a
+   * warning against it at the top of the file for this exact reason: in any zone behind UTC it
+   * returns TOMORROW from the evening onwards. Measured in America/New_York — at 19:30 both agree
+   * on the 15th, at 20:30 this said the 16th; in Los Angeles it is already wrong at 19:30. So the
+   * one case this default exists for was the case it got wrong: you did a thing tonight, and the
+   * form opened with tomorrow in the box.
+   */
+  const [date, setDate] = useState(() => todayISO())
   const [rt, setRt] = useState('')
   const k = kindOf(kind)
   const isMovie = kind === 'movie'
