@@ -24,11 +24,53 @@
 
 -- ── 1. WHO IS PLAYING WHOM ──────────────────────────────────────────────────────────────────
 -- EXPECT: two different usernames.
-select 'viewer' as part, username from public.profiles
- where coalesce(suspended,false)=false order by created_at limit 1
+--
+-- ⚠️ THE PARENTHESES ARE LOAD-BEARING. Postgres will not accept `order by`/`limit` inside a
+-- branch of a UNION without them, so the version that stood here from 2026-09-15 until
+-- 2026-10-16 was a syntax error, and section 1 had never run even once.
+(select 'viewer' as part, username from public.profiles
+  where coalesce(suspended,false)=false order by created_at limit 1)
 union all
-select 'subject', username from public.profiles
- where coalesce(suspended,false)=false order by created_at offset 1 limit 1;
+(select 'subject', username from public.profiles
+  where coalesce(suspended,false)=false order by created_at offset 1 limit 1);
+
+-- ── 1b. WHAT IS ACTUALLY AT STAKE ───────────────────────────────────────────────────────────
+-- ⚠️ READ THIS BEFORE BELIEVING SECTIONS 2 TO 4. Each of those is a question about the
+-- subject, and a question about a subject who holds nothing is one that passes by default.
+-- If `pii_fields` is 0, section 2 proves nothing. If `private` and `friends` are both 0,
+-- section 4 proves nothing — every block is public, so withholding none is correct.
+--
+-- EXPECT: pii_fields > 0, and at least one non-public block. Where it is 0, say so in the
+-- write-up rather than reporting a pass.
+with viewer as (
+  select user_id from public.profiles
+   where coalesce(suspended,false)=false order by created_at limit 1),
+subject as (
+  select p.user_id, p.username from public.profiles p
+   where coalesce(p.suspended,false)=false
+     and p.user_id <> (select user_id from viewer)
+   order by (p.phone is not null)::int + (p.address is not null)::int
+          + (p.birthday is not null)::int + (p.venmo is not null)::int
+          + (p.cashapp is not null)::int + (p.zelle is not null)::int desc,
+           (select count(*) from public.profile_blocks b where b.user_id = p.user_id) desc,
+           p.created_at
+   limit 1)
+select s.username as subject,
+       (select (p.phone is not null)::int + (p.address is not null)::int
+             + (p.birthday is not null)::int + (p.venmo is not null)::int
+             + (p.cashapp is not null)::int + (p.zelle is not null)::int
+          from public.profiles p where p.user_id = s.user_id) as pii_fields,
+       (select count(*) from public.profile_blocks b
+         where b.user_id = s.user_id and b.visibility = 'private') as private,
+       (select count(*) from public.profile_blocks b
+         where b.user_id = s.user_id and b.visibility = 'friends') as friends,
+       (select count(*) from public.profile_blocks b
+         where b.user_id = s.user_id and b.visibility = 'members') as members,
+       (select count(*) from public.profile_blocks b
+         where b.user_id = s.user_id and b.visibility = 'public') as public,
+       public.are_friends((select user_id from viewer), s.user_id) as viewer_is_their_friend
+  from subject s;
+
 
 
 -- ── 2. PII IS OWN-ROW-OR-ADMIN ──────────────────────────────────────────────────────────────
@@ -39,18 +81,44 @@ select 'subject', username from public.profiles
 --
 -- EXPECT: ZERO ROWS. A row means one member can read another's contact and payment details.
 begin;
+  -- ⚠️ BOTH IDS ARE RESOLVED HERE, BEFORE THE ROLE CHANGES, and that ordering is the whole
+  -- correctness of the block. Once the role is `authenticated`, RLS on `profiles` leaves the
+  -- viewer exactly ONE visible row — their own — so a subquery that looks the SUBJECT up by
+  -- name returns NULL without erroring, and the test below then asks its question about nobody.
+  -- Measured 2026-10-16: rows of `profiles` visible to a member = 1, and the subject lookup
+  -- came back NULL, which is what made sections 2 and 4 incapable of reporting a failure.
+  select set_config('sweep.viewer', (select user_id::text from public.profiles
+                                      where coalesce(suspended,false)=false
+                                      order by created_at limit 1), true);
+  -- ⚠️ AND THE SUBJECT IS PICKED FOR HAVING SOMETHING TO LOSE. "Second oldest" is a stable
+  -- rule that needs no ids pasted anywhere, which is why it was chosen — but on 2026-10-16 it
+  -- picked a subject with no PII and no private block, so section 2 asked a stranger to read
+  -- fields that were all NULL and section 4 asked them to read blocks that were all 'public'.
+  -- Both reported a pass about a question with nothing in it. So: most PII fields first, then
+  -- most blocks. Section 1b PRINTS the stake, because the pick can still come up toothless on
+  -- some future data and that has to be visible rather than silent.
+  select set_config('sweep.subject', (select p.user_id::text from public.profiles p
+                                       where coalesce(p.suspended,false)=false
+                                         and p.user_id <> current_setting('sweep.viewer')::uuid
+                                       order by (p.phone is not null)::int + (p.address is not null)::int
+                                               + (p.birthday is not null)::int + (p.venmo is not null)::int
+                                               + (p.cashapp is not null)::int + (p.zelle is not null)::int desc,
+                                                (select count(*) from public.profile_blocks b
+                                                  where b.user_id = p.user_id) desc,
+                                                p.created_at
+                                       limit 1), true);
+  -- a statement of its own: two set_config() calls in ONE select have no guaranteed order,
+  -- so reading sweep.subject in the same statement that sets it can read it unset.
+  select set_config('sweep.subject_name', (select p.username from public.profiles p
+                                       where p.user_id = current_setting('sweep.subject')::uuid), true);
   select set_config('request.jwt.claims',
-    json_build_object('sub', (select user_id from public.profiles
-                              where coalesce(suspended,false)=false
-                              order by created_at limit 1),
+    json_build_object('sub', current_setting('sweep.viewer'),
                       'role','authenticated')::text, true);
   set local role authenticated;
 
   select p.username, p.phone, p.address, p.birthday, p.venmo, p.cashapp, p.zelle
     from public.profiles p
-   where p.user_id = (select user_id from public.profiles
-                      where coalesce(suspended,false)=false
-                      order by created_at offset 1 limit 1)
+   where p.user_id = current_setting('sweep.subject')::uuid
      and (p.phone is not null or p.address is not null or p.birthday is not null
        or p.venmo is not null or p.cashapp is not null or p.zelle is not null);
 rollback;
@@ -63,40 +131,119 @@ rollback;
 -- EXPECT: public = true, members = true, private = FALSE.
 -- friends = true only if these two accounts are actually friends.
 begin;
+  -- ⚠️ BOTH IDS ARE RESOLVED HERE, BEFORE THE ROLE CHANGES, and that ordering is the whole
+  -- correctness of the block. Once the role is `authenticated`, RLS on `profiles` leaves the
+  -- viewer exactly ONE visible row — their own — so a subquery that looks the SUBJECT up by
+  -- name returns NULL without erroring, and the test below then asks its question about nobody.
+  -- Measured 2026-10-16: rows of `profiles` visible to a member = 1, and the subject lookup
+  -- came back NULL, which is what made sections 2 and 4 incapable of reporting a failure.
+  select set_config('sweep.viewer', (select user_id::text from public.profiles
+                                      where coalesce(suspended,false)=false
+                                      order by created_at limit 1), true);
+  -- ⚠️ AND THE SUBJECT IS PICKED FOR HAVING SOMETHING TO LOSE. "Second oldest" is a stable
+  -- rule that needs no ids pasted anywhere, which is why it was chosen — but on 2026-10-16 it
+  -- picked a subject with no PII and no private block, so section 2 asked a stranger to read
+  -- fields that were all NULL and section 4 asked them to read blocks that were all 'public'.
+  -- Both reported a pass about a question with nothing in it. So: most PII fields first, then
+  -- most blocks. Section 1b PRINTS the stake, because the pick can still come up toothless on
+  -- some future data and that has to be visible rather than silent.
+  select set_config('sweep.subject', (select p.user_id::text from public.profiles p
+                                       where coalesce(p.suspended,false)=false
+                                         and p.user_id <> current_setting('sweep.viewer')::uuid
+                                       order by (p.phone is not null)::int + (p.address is not null)::int
+                                               + (p.birthday is not null)::int + (p.venmo is not null)::int
+                                               + (p.cashapp is not null)::int + (p.zelle is not null)::int desc,
+                                                (select count(*) from public.profile_blocks b
+                                                  where b.user_id = p.user_id) desc,
+                                                p.created_at
+                                       limit 1), true);
+  -- a statement of its own: two set_config() calls in ONE select have no guaranteed order,
+  -- so reading sweep.subject in the same statement that sets it can read it unset.
+  select set_config('sweep.subject_name', (select p.username from public.profiles p
+                                       where p.user_id = current_setting('sweep.subject')::uuid), true);
   select set_config('request.jwt.claims',
-    json_build_object('sub', (select user_id from public.profiles
-                              where coalesce(suspended,false)=false
-                              order by created_at limit 1),
+    json_build_object('sub', current_setting('sweep.viewer'),
                       'role','authenticated')::text, true);
   set local role authenticated;
 
   select t as tier,
-         public.can_see((select user_id from public.profiles
-                         where coalesce(suspended,false)=false
-                         order by created_at offset 1 limit 1),
+         public.can_see(current_setting('sweep.subject')::uuid,
                         t::public.visibility_tier) as allowed
     from unnest(array['public','members','friends','private']) t;
 rollback;
 
 
 -- ── 4. EVERY BLOCK OF THEIRS, AND WHETHER THIS VIEWER PASSES IT ─────────────────────────────
--- EXPECT: allowed = false on every 'private' row, and on 'friends' rows unless they are friends.
+-- EXPECT: NO 'private' row appears at all, and no 'friends' row unless they really are
+-- friends (1b says which). Every row that DOES appear is one this viewer is allowed.
+-- ⚠️ The output has no 'allowed' column any more: the RPC answers by OMITTING what is
+-- withheld, so absence is the pass and a 'private' row showing up is the failure.
+--
+-- ⚠️ THROUGH THE RPC, NOT THE TABLE. This block used to select from `public.profile_blocks`
+-- directly, which worked only because `authenticated` still held a SELECT grant on it. The
+-- 2026-10-16 revoke that finished the house pattern turned that read into `permission denied`,
+-- so the block had to change — and the RPC is the more faithful question anyway, because
+-- `get_profile_blocks` is the only way the product ever reads a block. It applies `can_see`
+-- itself, so what it hands over IS the answer: a block that appears here is one this viewer
+-- may see, and one that is missing is one they may not.
 begin;
+  -- ⚠️ BOTH IDS ARE RESOLVED HERE, BEFORE THE ROLE CHANGES, and that ordering is the whole
+  -- correctness of the block. Once the role is `authenticated`, RLS on `profiles` leaves the
+  -- viewer exactly ONE visible row — their own — so a subquery that looks the SUBJECT up by
+  -- name returns NULL without erroring, and the test below then asks its question about nobody.
+  -- Measured 2026-10-16: rows of `profiles` visible to a member = 1, and the subject lookup
+  -- came back NULL, which is what made sections 2 and 4 incapable of reporting a failure.
+  select set_config('sweep.viewer', (select user_id::text from public.profiles
+                                      where coalesce(suspended,false)=false
+                                      order by created_at limit 1), true);
+  -- ⚠️ AND THE SUBJECT IS PICKED FOR HAVING SOMETHING TO LOSE. "Second oldest" is a stable
+  -- rule that needs no ids pasted anywhere, which is why it was chosen — but on 2026-10-16 it
+  -- picked a subject with no PII and no private block, so section 2 asked a stranger to read
+  -- fields that were all NULL and section 4 asked them to read blocks that were all 'public'.
+  -- Both reported a pass about a question with nothing in it. So: most PII fields first, then
+  -- most blocks. Section 1b PRINTS the stake, because the pick can still come up toothless on
+  -- some future data and that has to be visible rather than silent.
+  select set_config('sweep.subject', (select p.user_id::text from public.profiles p
+                                       where coalesce(p.suspended,false)=false
+                                         and p.user_id <> current_setting('sweep.viewer')::uuid
+                                       order by (p.phone is not null)::int + (p.address is not null)::int
+                                               + (p.birthday is not null)::int + (p.venmo is not null)::int
+                                               + (p.cashapp is not null)::int + (p.zelle is not null)::int desc,
+                                                (select count(*) from public.profile_blocks b
+                                                  where b.user_id = p.user_id) desc,
+                                                p.created_at
+                                       limit 1), true);
+  -- a statement of its own: two set_config() calls in ONE select have no guaranteed order,
+  -- so reading sweep.subject in the same statement that sets it can read it unset.
+  select set_config('sweep.subject_name', (select p.username from public.profiles p
+                                       where p.user_id = current_setting('sweep.subject')::uuid), true);
   select set_config('request.jwt.claims',
-    json_build_object('sub', (select user_id from public.profiles
-                              where coalesce(suspended,false)=false
-                              order by created_at limit 1),
+    json_build_object('sub', current_setting('sweep.viewer'),
                       'role','authenticated')::text, true);
   set local role authenticated;
 
-  select b.block_type, b.visibility,
-         public.can_see(b.user_id, b.visibility) as allowed
-    from public.profile_blocks b
-   where b.user_id = (select user_id from public.profiles
-                      where coalesce(suspended,false)=false
-                      order by created_at offset 1 limit 1)
-   order by b.position;
+  select b->>'block_type' as block_type, b->>'visibility' as visibility
+    from jsonb_array_elements(
+           public.get_profile_blocks(current_setting('sweep.subject_name'))) b
+   order by (b->>'position')::int;
 rollback;
+
+
+-- ── 4b. AND THE TABLE ITSELF IS UNREACHABLE ─────────────────────────────────────────────────
+-- The house pattern asserted rather than assumed. CLAUDE.md §3 says these tables are reached
+-- ONLY through definer RPCs, and until 2026-10-16 two of the three named there were ALSO
+-- granted directly to `anon` and `authenticated`. This is the line that notices the day one of
+-- them grows a grant again — which the schema's own default ACL does to any NEW table in
+-- `public` without anybody asking for it.
+--
+-- EXPECT: 'refused' on all four rows.
+select t as table_name, r as role_tried,
+       case when has_table_privilege(r, 'public.'||t, 'select')
+              or has_table_privilege(r, 'public.'||t, 'truncate')
+            then '⚠️ GRANTED' else 'refused' end as verdict
+  from unnest(array['profile_blocks','profile_notes']) t,
+       unnest(array['anon','authenticated']) r
+ order by 1, 2;
 
 
 -- ── 5. TWO STANDING AUDITS ──────────────────────────────────────────────────────────────────
