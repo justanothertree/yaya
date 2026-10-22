@@ -3620,6 +3620,27 @@ section[id] {
   margin: -0.5rem -0.6rem 0;
   padding: 0.5rem 0.6rem 0.35rem;
 }
+/**
+ * What the strip switches, as one element — so each tab has a panel to point at.
+ *
+ * ⚠️ IT HAS TO CARRY .viz-controls' OWN COLUMN. Wrapping the rows turned sixteen flex items into
+ * one, and every 0.5rem gap between the rows of a tab lived on the parent: same direction, same
+ * gap, so the heights measured above still hold.
+ *
+ * ⚠️ AND IT MUST NOT SHRINK. The tray is a fixed height that scrolls its overflow, and one flex
+ * item in a fixed-height column is the shape flexbox squashes to fit instead of overflowing —
+ * sixteen items each resisting at their own content height never had to answer that question.
+ *
+ * ⚠️ NOT A SCROLLER ITSELF, or the sticky tabs above stop working: they are sticky against
+ * .viz-controls, and a second scroll box below them would scroll underneath a strip that no
+ * longer moves with it.
+ */
+.viz-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
 /* in fullscreen the tray is translucent over the picture, so the tabs match it rather than
    punching an opaque rectangle through the only see-through panel on the site */
 .viz-stage[data-full] .viz-tabs {

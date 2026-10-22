@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import {
   applyLookNow,
   canApplyLook,
@@ -8,6 +8,7 @@ import {
   type Look,
 } from '../ui/looks'
 import { createPortal } from 'react-dom'
+import { moveTab } from '../ui/tabStrip'
 import { getSupabaseClient } from '../finance/client'
 import {
   memberChronicle,
@@ -696,18 +697,30 @@ export function ProfileBlocksView({
   const [openTab, setOpenTab] = useState<string | null>(null)
   const active = openTab != null && sections.includes(openTab) ? openTab : (sections[0] ?? '')
   const shown = sections.length ? live.filter((b) => blockTab(b) === active) : live
+  /* ⚠️ `useId` AND AN INDEX, not the section's name. The names come from whatever somebody typed
+     into their own page — a space, a quote or an emoji in one would be an id that cannot be
+     pointed at — and the editor renders a second real grid beside this one, so a written-in name
+     could exist twice on the page. */
+  const tabsId = useId()
+  const panelId = `${tabsId}-panel`
+  const activeAt = sections.indexOf(active)
 
   if (!live.length) return null
   return (
     <>
       {sections.length > 1 && (
         <div className="profile-tabs" role="tablist" aria-label="Sections of this page">
-          {sections.map((t) => (
+          {sections.map((t, i) => (
             <button
               key={t || '~unfiled'}
               role="tab"
+              id={`${tabsId}-${i}`}
               aria-selected={t === active}
+              aria-controls={panelId}
+              /* one tab stop for the strip, and the arrow keys it promises — see ui/tabStrip.ts */
+              tabIndex={t === active ? 0 : -1}
               className={'btn profile-tab' + (t === active ? ' is-on' : '')}
+              onKeyDown={(e) => moveTab(e, i, sections.length, (n) => setOpenTab(sections[n]))}
               onClick={() => setOpenTab(t)}
             >
               {/* an unfiled block's section has no name of its own — see blockTab */}
@@ -716,7 +729,22 @@ export function ProfileBlocksView({
           ))}
         </div>
       )}
-      <div className="profile-blocks-grid" {...pageStyleAttrs(page)}>
+      {/**
+       * ⚠️ THE GRID IS THE PANEL, and it is only a panel while there is a strip above it. One
+       * section is the overwhelming majority of pages and draws no tabs at all — a `tabpanel`
+       * with no tab anywhere on the page is the same broken half of the contract as a tab with
+       * no panel, pointing the other way.
+       *
+       * ⚠️ ONE ID FOR EVERY SECTION, because this element is reused rather than swapped: the
+       * blocks inside it change and the box does not, so the label follows the open tab.
+       */}
+      <div
+        className="profile-blocks-grid"
+        {...pageStyleAttrs(page)}
+        {...(sections.length > 1
+          ? { id: panelId, role: 'tabpanel', 'aria-labelledby': `${tabsId}-${activeAt}` }
+          : {})}
+      >
         {shown.map((b, i) => (
           /**
            * ⚠️ WRAPPED, exactly as the editor wraps. Blocks used to be the grid items themselves,

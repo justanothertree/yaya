@@ -1,5 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
+import { moveTab } from '../ui/tabStrip'
 import { PalettePicker } from '../theme/PalettePicker'
 import { FX_STYLE_OPTIONS } from '../ui/fxStyles'
 import { CURSOR_OPTIONS, type CursorSkin } from '../ui/cursorSkin'
@@ -69,6 +70,15 @@ export type AppearanceControls = {
 }
 
 type Tab = 'looks' | 'colour' | 'background' | 'click' | 'trail' | 'cursor'
+/**
+ * What makes one of the six bodies below the strip into the strip's panel.
+ *
+ * ⚠️ ONE PANEL, SIX CONTENTS, and it is passed rather than wrapped. Only the open tab's body is
+ * ever mounted and all six are the same `.appearance-body` box — which is the flex item that owns
+ * this dialog's scroll and its fixed frame, so a shared parent around them would move the
+ * scroller and the frame would go with it. The id goes on whichever body is mounted instead.
+ */
+type PanelAttrs = { id: string; role: 'tabpanel'; 'aria-labelledby': string }
 
 /** "Click" is not what you do on a phone, and the tab is the only place that word appears. */
 const tabsFor = (touch: boolean): Array<[Tab, string, string]> => [
@@ -274,7 +284,7 @@ function LookCard({
  * rows are the exception by construction, since they hold their own state, but each tab is
  * unmounted while it is not showing and so re-reads storage on the way back in.
  */
-function LooksTab({ c }: { c: AppearanceControls }) {
+function LooksTab({ c, panel }: { c: AppearanceControls; panel: PanelAttrs }) {
   const mine = useSyncExternalStore(subscribeLooks, myLooks, myLooks)
   const [name, setName] = useState('')
   const [said, setSaid] = useState('')
@@ -324,7 +334,7 @@ function LooksTab({ c }: { c: AppearanceControls }) {
   }
 
   return (
-    <div className="appearance-body">
+    <div className="appearance-body" {...panel}>
       <p className="muted appearance-note">
         A Look is every tab at once, under one name. Save what you have first and it is one press
         back.
@@ -412,6 +422,16 @@ export function AppearanceDialog({
      about something that is not there — say so rather than offering dead buttons */
   const touch = useTouchOnly()
   const c = controls
+  const tabs = tabsFor(touch)
+  /* ⚠️ `useId` rather than a written-in name. The dialog is a portal and only one is ever open,
+     so nothing here collides today — but the id costs a line and the next place that mounts this
+     is not something a name chosen here can know about. */
+  const tabsId = useId()
+  const panel: PanelAttrs = {
+    id: `${tabsId}-panel`,
+    role: 'tabpanel',
+    'aria-labelledby': `${tabsId}-${tabs.findIndex(([id]) => id === tab)}`,
+  }
 
   return createPortal(
     <div
@@ -431,13 +451,18 @@ export function AppearanceDialog({
           </button>
         </div>
 
-        <div className="appearance-tabs" role="tablist">
-          {tabsFor(touch).map(([id, icon, label]) => (
+        <div className="appearance-tabs" role="tablist" aria-label="Appearance sections">
+          {tabs.map(([id, icon, label], i) => (
             <button
               key={id}
               role="tab"
+              id={`${tabsId}-${i}`}
               aria-selected={tab === id}
+              aria-controls={panel.id}
+              /* one tab stop for the strip, and the arrow keys it promises — see ui/tabStrip.ts */
+              tabIndex={tab === id ? 0 : -1}
               className={'appearance-tab' + (tab === id ? ' is-on' : '')}
+              onKeyDown={(e) => moveTab(e, i, tabs.length, (n) => setTab(tabs[n][0]))}
               onClick={() => setTab(id)}
             >
               <span aria-hidden>{icon}</span> {label}
@@ -445,10 +470,10 @@ export function AppearanceDialog({
           ))}
         </div>
 
-        {tab === 'looks' && <LooksTab c={c} />}
+        {tab === 'looks' && <LooksTab c={c} panel={panel} />}
 
         {tab === 'colour' && (
-          <div className="appearance-body">
+          <div className="appearance-body" {...panel}>
             <div className="fx-style-row">
               {THEMES.map(([t, icon, label]) => (
                 <button
@@ -487,7 +512,7 @@ export function AppearanceDialog({
         )}
 
         {tab === 'background' && (
-          <div className="appearance-body">
+          <div className="appearance-body" {...panel}>
             <div className="fx-style-row">
               {BACKDROPS.map(([id, icon, label]) => (
                 <button
@@ -511,7 +536,7 @@ export function AppearanceDialog({
         )}
 
         {tab === 'click' && (
-          <div className="appearance-body">
+          <div className="appearance-body" {...panel}>
             <div className="fx-style-row">
               <button
                 className={'fx-style-btn' + (!c.sparksOn ? ' is-on' : '')}
@@ -549,7 +574,7 @@ export function AppearanceDialog({
         )}
 
         {tab === 'cursor' && (
-          <div className="appearance-body">
+          <div className="appearance-body" {...panel}>
             {touch && (
               <p className="muted appearance-note">
                 No pointer to skin on a touchscreen. Pick one anyway — it will be there on a
@@ -580,7 +605,7 @@ export function AppearanceDialog({
         )}
 
         {tab === 'trail' && (
-          <div className="appearance-body">
+          <div className="appearance-body" {...panel}>
             {touch && (
               <p className="muted appearance-note">
                 Off on a touchscreen — your finger is already there. Your choice waits for a

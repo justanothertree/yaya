@@ -2,7 +2,7 @@
 // Home, Projects, and Resume sections. Each project has a click-through slideshow
 // of slides (real screenshots when present, themed poster tiles otherwise) plus an
 // informational write-up. Résumé content folds in as About / Skills, with a PDF link.
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { site } from '../config/site'
 import { DEMOS_LEAD, GROUPS, TRY_THESE, type Invite } from '../site/tryThese'
 import { PLACES } from '../nav/places'
@@ -12,6 +12,7 @@ import { HomeSequencer } from '../site/HomeSequencer'
 import { HomeViz } from '../site/HomeViz'
 import { TileArt } from '../site/TileArt'
 import { IconGitHub, IconLinkedIn } from '../components/Icons'
+import { moveTab } from '../ui/tabStrip'
 import { projects, skills, SKILL_NOTES, type Project } from './work'
 import { HOME } from '../site/homeContent'
 import { HeroPlay } from '../site/HeroPlay'
@@ -129,6 +130,11 @@ function Hero() {
 function AboutMe() {
   const [open, setOpen] = useState(0)
   const thread = HOME.about.threads[open]
+  /* ⚠️ `useId`, not a written-in name: this page is one of the places a profile block can draw,
+     so a hand-picked id is one that can appear twice on a page and point a tab at the wrong
+     answer. React mints a fresh one per mount, which is the whole problem solved. */
+  const tabsId = useId()
+  const panelId = `${tabsId}-panel`
   return (
     <div className="card about-me">
       <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
@@ -140,7 +146,12 @@ function AboutMe() {
           <button
             key={t.q}
             role="tab"
+            id={`${tabsId}-${i}`}
             aria-selected={i === open}
+            aria-controls={panelId}
+            /* one tab stop for the strip, and the arrow keys it promises — see ui/tabStrip.ts */
+            tabIndex={i === open ? 0 : -1}
+            onKeyDown={(e) => moveTab(e, i, HOME.about.threads.length, setOpen)}
             /* ⚠️ Ghost when closed, solid when open — the OTHER way round it was unreadable.
                `.btn` is a solid accent button in this codebase, so three questions were three
                loud green chips and the open one was marked by a border colour nobody could pick
@@ -155,7 +166,17 @@ function AboutMe() {
       {/* ⚠️ Keyed on the question, so React replaces the answer rather than editing the old one
           in place — which is what lets it fade in and makes the switch legible instead of the text
           silently becoming different text. */}
-      <div className="about-a" key={thread.q}>
+      {/* ⚠️ ONE PANEL FOR THREE QUESTIONS, so its id is fixed and the label follows the open
+          tab. `key` replaces the element on every switch, which is what makes the answer fade in
+          rather than silently become different text — an id that moved with it would have to be
+          chased by three `aria-controls` for no gain. */}
+      <div
+        className="about-a"
+        key={thread.q}
+        id={panelId}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-${open}`}
+      >
         {thread.a.map((para, i) => (
           <p key={i} className="muted">
             {para}

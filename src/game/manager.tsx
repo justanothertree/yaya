@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Filter } from 'bad-words'
 import './game.css'
+import { moveTab } from '../ui/tabStrip'
 import { GameEngine } from './engine'
 import { GameRenderer } from './renderer'
 import { NetClient } from './net'
@@ -488,6 +489,20 @@ export function GameManager({
             ['settings', 'Settings'],
           ]
   const activeSideTab: SideTab = sideTabs.some(([k]) => k === sideTab) ? sideTab : sideTabs[0][0]
+  /**
+   * ⚠️ ONE PANEL, THREE CONTENTS, and the id goes on whichever body is mounted rather than on a
+   * parent around all three. `.snake-side-body` is the flex item that scrolls inside the aside,
+   * and `:not([data-open]) .snake-side-body` is what shuts the panel below 860px — a wrapper
+   * would take the first job and leave the second pointing at the wrong element.
+   *
+   * ⚠️ AND THE LABEL FOLLOWS `activeSideTab`, NOT `sideTab`. The stored tab outlives the list it
+   * was chosen from: leaving a lobby drops Players, and the line above falls back to the first
+   * tab that still exists. Labelling the panel from `sideTab` would name a tab that is no longer
+   * on the strip, which is the dangling reference this whole pass is about.
+   */
+  const sideTabsId = useId()
+  const sidePanelId = `${sideTabsId}-panel`
+  const activeSideAt = sideTabs.findIndex(([k]) => k === activeSideTab)
   const [spectate, setSpectate] = useState(false)
   const lastSpectateAnnounceRef = useRef<number>(0)
   const wsUrl = useMemo(() => {
@@ -3567,13 +3582,27 @@ export function GameManager({
           {showSide && (
             <aside className="snake-stage-side" data-open={sideOpen || undefined}>
               <div className="snake-side-head">
-                <div className="snake-side-tabs" role="tablist">
-                  {sideTabs.map(([k, label]) => (
+                <div className="snake-side-tabs" role="tablist" aria-label="Game panel">
+                  {sideTabs.map(([k, label], i) => (
                     <button
                       key={k}
                       className={'snake-side-tab' + (activeSideTab === k ? ' is-on' : '')}
                       role="tab"
+                      id={`${sideTabsId}-${i}`}
                       aria-selected={activeSideTab === k}
+                      aria-controls={sidePanelId}
+                      /* one tab stop for the strip, and the arrow keys it promises — see
+                         ui/tabStrip.ts. In solo there is one tab and the helper answers null, so
+                         the arrow goes back to walking the site's sections. */
+                      tabIndex={activeSideTab === k ? 0 : -1}
+                      onKeyDown={(e) =>
+                        moveTab(e, i, sideTabs.length, (n) => {
+                          /* the same two things clicking a different tab does — an arrow that
+                             selected a tab behind a shut panel would say Players and show none */
+                          setSideTab(sideTabs[n][0])
+                          setSideOpen(true)
+                        })
+                      }
                       /* The tab you are already on toggles the panel shut. In solo there is only
                          ever one tab, so this is what makes the bar itself the handle — tapping
                          Settings opens settings and tapping it again puts them away. */
@@ -3603,7 +3632,12 @@ export function GameManager({
               </div>
 
               {activeSideTab === 'players' && (
-                <div className="snake-side-body">
+                <div
+                  className="snake-side-body"
+                  id={sidePanelId}
+                  role="tabpanel"
+                  aria-labelledby={`${sideTabsId}-${activeSideAt}`}
+                >
                   {/* In race the scoreboard is the game — it's the shared truth everyone is
                     playing against, and it comes from the relay rather than from anyone's
                     local count. */}
@@ -3801,7 +3835,12 @@ export function GameManager({
               )}
 
               {activeSideTab === 'settings' && (
-                <div className="snake-side-body">
+                <div
+                  className="snake-side-body"
+                  id={sidePanelId}
+                  role="tabpanel"
+                  aria-labelledby={`${sideTabsId}-${activeSideAt}`}
+                >
                   {/* The game settings used to sit in the toolbar above everything, in a row
                     with the mode switch and the play button. That was fine for two settings
                     and would not have survived speed, win conditions and per-mode rules — a
@@ -4126,7 +4165,12 @@ export function GameManager({
                 </div>
               )}
               {activeSideTab === 'room' && (
-                <div className="snake-side-body">
+                <div
+                  className="snake-side-body"
+                  id={sidePanelId}
+                  role="tabpanel"
+                  aria-labelledby={`${sideTabsId}-${activeSideAt}`}
+                >
                   {/* The lobby. The `multiStep !== 'landing'` guard it used to carry is gone: the
                     panel around it already only exists past the landing step, and TypeScript
                     pointed out the comparison could no longer be false. */}
