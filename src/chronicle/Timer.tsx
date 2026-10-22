@@ -293,6 +293,11 @@ export function Timer({
         .slice(0, 6),
     [yours, mins],
   )
+  /* what the row offers: the handful worth a button, minus whatever is running — see the row */
+  const switchable = useMemo(
+    () => quick.filter((a) => a.id !== running?.activity),
+    [quick, running?.activity],
+  )
   const cats = useMemo(
     () => minutesByCat(log, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
     [log, acts, bounds.fromMs, bounds.toMs],
@@ -310,6 +315,19 @@ export function Timer({
 
   const go = async (id: string) => {
     if (busy || !id) return
+    /**
+     * ⚠️ STARTING WHAT IS ALREADY RUNNING DOES NOTHING. `chronicle_start` has no idea you meant
+     * "yes, this" — it closes the open sitting and opens a second one on the same activity, so
+     * one stretch becomes two. Measured through a routine step while that activity ran:
+     * "Drawing 7m 9:04–9:12" and "Drawing 2s 9:12–now" where there had been one sitting, the
+     * fragment duly marked SHORT because two seconds is under the target.
+     *
+     * ⚠️ HERE RATHER THAN AT THE THREE CALL SITES, because everything on this half of the room
+     * funnels through it: the picker's Start, the switch row, and the routine steps, which reach
+     * it through `onStart`. A routine step is the likeliest tap of the three — it wears a ✓ when
+     * the activity has had its minutes today, so it reads as a thing you confirm.
+     */
+    if (id === running?.activity) return
     setBusy(true)
     const bad = await startTimer(id)
     setBusy(false)
@@ -483,11 +501,28 @@ export function Timer({
      * have had to change otherwise — so the UI pays one extra round trip on an edit rather than
      * the whole write path paying for a field most sessions do not have.
      */
+    /**
+     * ⚠️ THE SECOND AND THIRD CALLS CAN FAIL ON THEIR OWN, and this editor is the one place where
+     * that is not self-evident. `setAmount` and `setQuality` answer true or false, and both
+     * answers were dropped — so a span that saved while its amount did not closed the editor,
+     * which is a success signal, and the row came back carrying the old number. Everywhere else
+     * in this room a failed write leaves the thing visibly unchanged and says nothing, which at
+     * least does not claim to have worked.
+     *
+     * It is still a generic sentence, because a boolean carries no reason. Saying WHICH part did
+     * not take is the useful half: the span is saved either way, so nobody needs to type the
+     * timestamps again.
+     */
+    let partly: string | null = null
     if (!bad) {
       const had = log.find((e) => e.id === fixEnt)?.amount ?? null
       if (metric) {
         const n = Number(entAmount)
-        await setAmount(fixEnt, entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n)
+        const ok = await setAmount(
+          fixEnt,
+          entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n,
+        )
+        if (!ok) partly = 'Saved — but the amount did not change.'
       } else if (had != null) {
         /**
          * ⚠️ AND A SESSION MOVED ONTO SOMETHING THAT COUNTS NOTHING LOSES ITS NUMBER, rather
@@ -500,7 +535,7 @@ export function Timer({
          * nothing still costs two round trips rather than three — the economy the note above is
          * about.
          */
-        await setAmount(fixEnt, null)
+        if (!(await setAmount(fixEnt, null))) partly = 'Saved — but the amount did not change.'
       }
     }
     /* ⚠️ a third call on an edit, for the same reason the amount is a second one — see setQuality.
@@ -508,12 +543,16 @@ export function Timer({
     if (!bad) {
       const was = log.find((e) => e.id === fixEnt)?.quality ?? null
       const now = entMood === '' ? null : Number(entMood)
-      if (was !== now) await setQuality(fixEnt, now)
+      if (was !== now && !(await setQuality(fixEnt, now))) {
+        partly = 'Saved — but the rating did not change.'
+      }
     }
     setBusy(false)
     if (bad) return moan(bad.why)
     setFixEnt(null)
     await after()
+    /* after the reload, so the row beside the message already shows what did save */
+    if (partly) moan(partly)
   }
 
   /** what a datetime-local input wants: local time, no zone, to the minute */
@@ -827,10 +866,25 @@ export function Timer({
        * button that started a timer on it would be recording something the site is already
        * recording, twice over.
        */}
-      {!running && seeing === todayISO() && quick.length > 0 && (
+      {/**
+       * ⚠️ AND IT STAYS WHILE SOMETHING IS RUNNING, which it did not. `!running` sat here
+       * unexplained, almost certainly copied from the gap line directly above — where it means
+       * something, because "two hours unaccounted" is only a sentence when nothing is going on.
+       * Here it took the fastest way to change what you are doing and hid it at the exact moment
+       * you were doing something. Switching is the most repeated action in this room and it was
+       * left costing a dropdown and a button.
+       *
+       * `chronicle_start` closes the open sitting before opening the next, so one tap is the
+       * whole switch and the record stays continuous — the same call the Now room is built on.
+       *
+       * ⚠️ AND THE RUNNING ONE IS NOT IN THE ROW. Tapping it would close the sitting and open a
+       * second on the same activity, splitting one stretch in two — measured in the Now room as
+       * a clock going from 7:09 back to 0:01.
+       */}
+      {seeing === todayISO() && switchable.length > 0 && (
         <div className="chron-quick">
-          <span className="muted chron-quick-label">Quick start</span>
-          {quick.map((a) => (
+          <span className="muted chron-quick-label">{running ? 'Switch to' : 'Quick start'}</span>
+          {switchable.map((a) => (
             <button
               key={a.id}
               className="btn btn-ghost chron-chip-start"

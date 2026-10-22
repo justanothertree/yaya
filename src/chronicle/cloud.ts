@@ -34,8 +34,10 @@ import {
   pvSince,
   pvSpans,
   pvVisit,
+  pvNoteRunning,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
+import { SPANS_AT_ONCE } from './year'
 import type { Goal, Scope } from './goal'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
@@ -175,7 +177,15 @@ export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: stri
     p_target: g.target,
     p_unit: g.unit,
     p_note: g.note ?? null,
-    p_sort: g.sort ?? 0,
+    /**
+     * ⚠️ NULL, NOT ZERO, AND THE DIFFERENCE IS A DELETE. `NewGoal` has no sort and the goal form
+     * never sets one, so this was `?? 0` on every save — and `chronicle_goal_save` said
+     * `sort = coalesce(p_sort, 0)`, which cannot tell "put it at zero" from "I am not talking
+     * about this". Both `chronicle_goals_mine` and `get_member_chronicle` order by sort, so an
+     * edit moved the goal in the room and on the profile. The server leaves it alone on null now;
+     * this is the half that has to stop saying something.
+     */
+    p_sort: g.sort ?? null,
     p_activity: g.activity ?? null,
     p_cat: g.cat ?? null,
     p_counts: g.counts ?? 'minutes',
@@ -739,6 +749,28 @@ export async function fixRunning(
 }
 
 /**
+ * Say what the session you are IN is about, without ending it.
+ *
+ * ⚠️ IT OVERTURNS THE NOTE ABOVE, deliberately and on request. `fixRunning` says "there is no way
+ * to set an end: the open entry is open because it has no end, and typing one in is what Stop is
+ * for" — true of the END, and taken to cover the NOTE too, so a sitting could only be described
+ * once it was over. The thing worth writing down is what you are doing WHILE you do it.
+ *
+ * ⚠️ ITS OWN FUNCTION rather than a third parameter on `fixRunning`, because `create or replace`
+ * cannot add one without minting an overload — the same reason `setAmount` and `setQuality` sit
+ * beside `editEntry` instead of inside it.
+ *
+ * ⚠️ AND '' CLEARS HERE, where null means "leave it alone" everywhere else in this room. It can
+ * mean that there because those callers write other columns in the same breath; this writes one
+ * column and nothing else, so calling it at all is the statement of intent.
+ */
+export async function noteRunning(note: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvNoteRunning(note)
+  const { error } = await getSupabaseClient().rpc('chronicle_running_note', { p_note: note })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
  * Somebody else's chronicle, as their profile block shows it.
  *
  * ⚠️ THE ONLY READ IN THIS FILE THAT IS NOT ABOUT YOU, which is why it is at the bottom with a
@@ -837,8 +869,24 @@ export async function spanTotals(
   asks: Array<{ key: string; from: string; to: string }>,
 ): Promise<Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>> {
   if (!asks.length) return {}
-  if (previewMember) return pvSpans(asks)
-  const { data, error } = await getSupabaseClient().rpc('chronicle_spans', { p_asks: asks })
-  if (error || !data || typeof data !== 'object') return {}
-  return data as Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>
+  /**
+   * ⚠️ IN BATCHES, BECAUSE THE SERVER REFUSES MORE THAN `SPANS_AT_ONCE` — and this sent whatever
+   * it was handed. `chronicle_tally` has been batched since the streaks made it necessary; its
+   * sibling never was, and nothing noticed because the limit is 120 years. See SPANS_AT_ONCE for
+   * how one mistyped date reaches it, and why the symptom is a silent blank rather than an error.
+   *
+   * ⚠️ A FAILED BATCH IS SKIPPED, NOT FATAL, which is what `tally` does: a year whose figures did
+   * not arrive reads as a year with nothing in it, and that is better than the whole list going.
+   */
+  const out: Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> = {}
+  for (const some of inBatches(asks, SPANS_AT_ONCE)) {
+    if (previewMember) {
+      Object.assign(out, pvSpans(some))
+      continue
+    }
+    const { data, error } = await getSupabaseClient().rpc('chronicle_spans', { p_asks: some })
+    if (error || !data || typeof data !== 'object') continue
+    Object.assign(out, data as Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>)
+  }
+  return out
 }

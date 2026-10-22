@@ -24,6 +24,42 @@ export type Plan = {
   note: string | null
 }
 
+/**
+ * A planned span, as short as it can be said.
+ *
+ * ⚠️ THE MERIDIEM ONCE, NOT TWICE — WITHIN ONE DAY. "7:00 AM–7:45 AM" is 112px of a 302px row
+ * before the activity or any of its three buttons get a say, and it overflowed the list by 45px.
+ * A plan row cannot answer that by hiding its time the way a log entry does, because for a plan
+ * the time IS the content, so saying "AM" once was the cheapest 27px in the row.
+ *
+ * ⚠️ AND NEVER ACROSS TWO. `chronicle_plans` allows a span of a full day, so 11:00 AM to 10:00 AM
+ * is legal — and collapsing that reads "11:00–10:00 AM", one morning running backwards. When an
+ * end falls outside the day being read, the weekday is named there instead and nothing is
+ * collapsed: see `straddles`, which answers which ends those are.
+ *
+ * ⚠️ IT TAKES THE WORDS AS ARGUMENTS so it can be asked a question. `toLocaleTimeString` answers
+ * differently per locale and per machine, and a rule about COLLAPSING is not a rule about what a
+ * clock face says — so the caller formats and this decides.
+ */
+export function saySpan(
+  from: string,
+  to: string,
+  out: { before: boolean; after: boolean } = { before: false, after: false },
+  dayOf: (which: 'from' | 'to') => string = () => '',
+): string {
+  if (out.before || out.after) {
+    return (out.before ? dayOf('from') : '') + from + '–' + (out.after ? dayOf('to') : '') + to
+  }
+  /* the trailing run of LETTERS, which is the meridiem where there is one and nothing at all in a
+     24-hour locale. Asking for letters rather than excluding separators is the point: Chrome puts
+     a narrow no-break space before AM/PM, and a class that had to exclude that character either
+     carries it literally — an eslint error, and invisible in a diff — or in an escape. */
+  const tail = to.match(/\p{L}+$/u)?.[0]
+  return tail && from.endsWith(tail)
+    ? from.slice(0, -tail.length).trim() + '–' + to
+    : from + '–' + to
+}
+
 /** One activity's day: how much was meant, how much happened. */
 export type Against = {
   activity: string

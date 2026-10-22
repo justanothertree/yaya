@@ -17,10 +17,13 @@ import {
   nowAt,
   minutesByActivity,
   minutesByCat,
+  coveredMs,
+  coveredPct,
   overlapMs,
   spanText,
   type Activity,
   type Entry,
+  type Span,
 } from './record'
 
 const at = (iso: string) => new Date(iso).getTime()
@@ -758,5 +761,247 @@ describe('a quantity, written the way somebody would write it', () => {
   it('and groups and rounds at the same time', () => {
     const out = countText(12345.678)
     expect(out.replace(/\D/g, '')).toBe('1234568')
+  })
+})
+
+describe('how much of a window has anything on it', () => {
+  const MIN = 60_000
+  const HOUR = 3_600_000
+  const DAY_START = Date.parse('2026-03-10T00:00:00Z')
+  const DAY_END = DAY_START + 24 * HOUR
+  const AFTER = DAY_END + HOUR
+  const hh = (h: number, m = 0) => new Date(DAY_START + h * HOUR + m * MIN).toISOString()
+  const span = (from: number, to: number | null): Span => ({
+    start: hh(from),
+    end: to == null ? null : hh(to),
+  })
+
+  /**
+   * ⚠️ THE INDEPENDENT PATH, and the only reason the rest of this block is worth anything.
+   *
+   * It walks the window a minute at a time and asks each minute whether ANY span is over it — a
+   * question with no sorting, no merging and no subtraction in it. `coveredMs` answers the same
+   * question by clipping, sorting and merging. The two share the clock and nothing else, which is
+   * what CLAUDE.md means by measuring through a path that shares no arithmetic: a test built from
+   * the same sum as the code confirms the mistake, and the sum being replaced here was
+   * `blocks.reduce((n, b) => n + b.width, 0)` — which a "test" could have agreed with exactly.
+   */
+  const byTheMinute = (spans: Span[], fromMs: number, toMs: number, nowMs: number): number => {
+    let on = 0
+    for (let t = fromMs; t < toMs; t += MIN) {
+      const mid = t + MIN / 2
+      const any = spans.some((s) => {
+        const a = Date.parse(s.start)
+        const b = s.end == null ? nowMs : Date.parse(s.end)
+        return b > a && a <= mid && mid < b
+      })
+      if (any) on += MIN
+    }
+    return on
+  }
+
+  /**
+   * The random days both sweeps below are built from — one generator, so the only thing that
+   * differs between them is whether the ends land on a whole minute.
+   */
+  const roller = (start: number) => {
+    let seed = start
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+    const snap = (t: number, whole: boolean) => (whole ? Math.round(t / MIN) * MIN : Math.round(t))
+    return {
+      /* ⚠️ the clock is snapped too when the day is: a tenth of these sessions are still
+         RUNNING, so they are measured to this, and a fractional clock makes a fractional answer
+         that the minute walk cannot match however the spans themselves are shaped */
+      clock: (whole: boolean) => snap(DAY_START + rnd() * 24 * HOUR, whole),
+      day: (whole: boolean): Span[] => {
+        const out: Span[] = []
+        for (let i = 0; i < 1 + Math.floor(rnd() * 7); i++) {
+          /* deliberately allowed to start before the window and end after it */
+          const a = snap(DAY_START - 3 * HOUR + rnd() * 30 * HOUR, whole)
+          const len = snap(rnd() * 10 * HOUR, whole)
+          out.push({
+            start: new Date(a).toISOString(),
+            end: rnd() < 0.1 ? null : new Date(a + len).toISOString(),
+          })
+        }
+        return out
+      },
+    }
+  }
+
+  it('is the length of one session when there is only one', () => {
+    expect(coveredMs([span(9, 17)], DAY_START, DAY_END, AFTER)).toBe(8 * HOUR)
+  })
+
+  it('is nothing at all on an empty window', () => {
+    expect(coveredMs([], DAY_START, DAY_END, AFTER)).toBe(0)
+    expect(coveredPct([], DAY_START, DAY_END, AFTER)).toBe(0)
+  })
+
+  /**
+   * ⚠️ THE DAY THE OLD FIGURE GOT WRONG, kept as a case because it is an ordinary one rather than
+   * a contrived one: a nine-to-five with a call in the middle of it and music over the whole lot.
+   * The sum said 70.8% of the day. The day holds eight hours of it.
+   */
+  it('counts a minute once however many sessions are over it', () => {
+    const day = [span(9, 17), span(11, 12), span(9, 17)]
+    expect(coveredMs(day, DAY_START, DAY_END, AFTER)).toBe(8 * HOUR)
+    expect(coveredPct(day, DAY_START, DAY_END, AFTER)).toBeCloseTo((8 / 24) * 100, 9)
+  })
+
+  /**
+   * ⚠️ THE ONE THAT PROVES THE `b > hi` GUARD. 9–17 then 11–12 sort in that order, so the short
+   * one is examined while the long one is being carried — assigning the end unconditionally would
+   * shorten eight hours to two and report a figure SMALLER than the single session alone.
+   */
+  it('is not shortened by a session wholly inside another', () => {
+    expect(coveredMs([span(9, 17), span(11, 12)], DAY_START, DAY_END, AFTER)).toBe(8 * HOUR)
+    /* and the same pair the other way round, which is the order that never needed the guard */
+    expect(coveredMs([span(11, 12), span(9, 17)], DAY_START, DAY_END, AFTER)).toBe(8 * HOUR)
+  })
+
+  it('joins two sessions that touch, and keeps a gap that is really there', () => {
+    expect(coveredMs([span(9, 12), span(12, 15)], DAY_START, DAY_END, AFTER)).toBe(6 * HOUR)
+    expect(coveredMs([span(9, 12), span(13, 15)], DAY_START, DAY_END, AFTER)).toBe(5 * HOUR)
+  })
+
+  /**
+   * ⚠️ FOUR OVERLAPPING MORNING SITTINGS, which is the case the clamp turned from visibly broken
+   * into confidently wrong: the sum reached 133%, the clamp made it exactly 100, and the month
+   * grid printed "1,440 min recorded" about a day whose whole afternoon was empty.
+   */
+  it('cannot fill a day from a morning', () => {
+    const morning = [span(0, 8), span(0, 8), span(0, 8), span(0, 8)]
+    expect(coveredMs(morning, DAY_START, DAY_END, AFTER)).toBe(8 * HOUR)
+    expect(coveredPct(morning, DAY_START, DAY_END, AFTER)).toBeCloseTo((8 / 24) * 100, 9)
+  })
+
+  /**
+   * ⚠️ THE INVARIANT THE CLAMP WAS STANDING IN FOR. A union of stretches inside a window cannot
+   * be longer than the window, for any set of spans at all — so there is nothing left to clamp,
+   * and this says so over random data rather than over the three shapes above.
+   */
+  it('never exceeds the window it is measured over, over 400 random days', () => {
+    const rolls = roller(20261016)
+    for (let round = 0; round < 400; round++) {
+      /**
+       * ⚠️ SNAPPED TO THE MINUTE, AND THE FIRST RUN SAID WHY. Unsnapped, the walk reported
+       * 6,480,000ms against 6,500,609 — a disagreement of 20,609, which is under one minute. That
+       * is the WALK's limit and not the function's: it counts a minute if something is over the
+       * middle of it, so a session ending twenty seconds into a minute cannot be measured by it.
+       *
+       * The cross-check is the valuable half of this sweep, so the data is shaped to let it be
+       * exact rather than the comparison loosened to a tolerance — a tolerance of one minute per
+       * boundary would have hidden a real error of the same size. Sub-minute ends are still swept
+       * below, against the bound, which needs no second opinion to check.
+       */
+      const spans = rolls.day(true)
+      const nowMs = rolls.clock(true)
+      const got = coveredMs(spans, DAY_START, DAY_END, nowMs)
+      expect(got).toBeGreaterThanOrEqual(0)
+      expect(got).toBeLessThanOrEqual(DAY_END - DAY_START)
+      expect(coveredPct(spans, DAY_START, DAY_END, nowMs)).toBeLessThanOrEqual(100)
+      /* ⚠️ and against the independent walk — the claim this whole block rests on */
+      expect(got).toBe(byTheMinute(spans, DAY_START, DAY_END, nowMs))
+    }
+  })
+
+  /**
+   * ⚠️ THE SAME SWEEP WITH SUB-MINUTE ENDS, asking only what can be asked without a second
+   * opinion: a union of stretches inside a window is between nothing and the whole window, and is
+   * never longer than the sum of the parts. Those hold at any precision.
+   */
+  it('stays inside its window and under the sum at any precision, over 400 more', () => {
+    const rolls = roller(777000777)
+    for (let round = 0; round < 400; round++) {
+      const spans = rolls.day(false)
+      const nowMs = rolls.clock(false)
+      const got = coveredMs(spans, DAY_START, DAY_END, nowMs)
+      const sum = spans.reduce((n, x) => n + overlapMs(x, DAY_START, DAY_END, nowMs), 0)
+      expect(got).toBeGreaterThanOrEqual(0)
+      expect(got).toBeLessThanOrEqual(DAY_END - DAY_START)
+      expect(got).toBeLessThanOrEqual(sum)
+      /* and a single span is worth exactly its own overlap, whatever the precision */
+      for (const one of spans) {
+        expect(coveredMs([one], DAY_START, DAY_END, nowMs)).toBe(
+          overlapMs(one, DAY_START, DAY_END, nowMs),
+        )
+      }
+    }
+  })
+
+  /**
+   * ⚠️ THE UNION AND THE SUM, SIDE BY SIDE. They are the two questions this module now answers,
+   * and the relation between them is the whole point: the union is never larger, and they agree
+   * exactly when nothing overlaps. That second half is what stops the merge quietly swallowing
+   * time that was never shared — a union that was always smaller would pass the first half alone.
+   */
+  it('is never more than the sum, and is exactly the sum when nothing overlaps', () => {
+    const apart = [span(1, 2), span(5, 7), span(9, 10), span(20, 23)]
+    const sum = apart.reduce((n, s) => n + overlapMs(s, DAY_START, DAY_END, AFTER), 0)
+    expect(coveredMs(apart, DAY_START, DAY_END, AFTER)).toBe(sum)
+
+    const shared = [...apart, span(6, 21)]
+    const sum2 = shared.reduce((n, s) => n + overlapMs(s, DAY_START, DAY_END, AFTER), 0)
+    expect(coveredMs(shared, DAY_START, DAY_END, AFTER)).toBeLessThan(sum2)
+    expect(coveredMs(shared, DAY_START, DAY_END, AFTER)).toBe(
+      byTheMinute(shared, DAY_START, DAY_END, AFTER),
+    )
+  })
+
+  /**
+   * ⚠️ MIDNIGHT, MEASURED THE WAY `overlapMs` IS — the sum of a span's coverage over windows that
+   * tile a range is its length inside that range. A session from 23:00 to 01:00 is an hour of each
+   * day, and the union has to keep that or the week grid's columns would stop adding up.
+   */
+  it('splits a session across midnight exactly as the sum does', () => {
+    const across: Span = { start: hh(23), end: hh(25) }
+    const a = coveredMs([across], DAY_START, DAY_END, AFTER)
+    const b = coveredMs([across], DAY_END, DAY_END + 24 * HOUR, AFTER)
+    expect(a).toBe(HOUR)
+    expect(b).toBe(HOUR)
+    expect(a + b).toBe(2 * HOUR)
+  })
+
+  it('measures a running session to the clock and no further', () => {
+    const live = [span(9, null)]
+    const nowMs = DAY_START + 11 * HOUR
+    expect(coveredMs(live, DAY_START, DAY_END, nowMs)).toBe(2 * HOUR)
+    /* and a second session finishing after the clock is still worth its whole self */
+    expect(coveredMs([...live, span(13, 14)], DAY_START, DAY_END, nowMs)).toBe(3 * HOUR)
+  })
+
+  it('ignores a backwards session rather than subtracting it', () => {
+    expect(coveredMs([{ start: hh(17), end: hh(9) }], DAY_START, DAY_END, AFTER)).toBe(0)
+    expect(coveredMs([span(9, 10), { start: hh(17), end: hh(9) }], DAY_START, DAY_END, AFTER)).toBe(
+      HOUR,
+    )
+  })
+
+  it('ignores a session whose dates will not parse', () => {
+    expect(coveredMs([{ start: 'not a date', end: hh(9) }], DAY_START, DAY_END, AFTER)).toBe(0)
+  })
+
+  /**
+   * ⚠️ A DAY IS NOT ALWAYS 1440 MINUTES, which is the second thing the old figure got wrong:
+   * `score.ts` divided by `DAY_MINS = 24 * 60`. `dayBounds` is already right — measured in New
+   * York, 2026-03-08 is 1380 minutes and 2026-11-01 is 1500 — so taking the denominator from the
+   * window makes a fully recorded short day read 100 rather than 95.8.
+   */
+  it('fills a short day to exactly full, and a long one too', () => {
+    for (const on of ['2026-03-08', '2026-11-01', '2026-03-10']) {
+      const b = dayBounds(on)
+      const all: Span = {
+        start: new Date(b.fromMs).toISOString(),
+        end: new Date(b.toMs).toISOString(),
+      }
+      expect(coveredMs([all], b.fromMs, b.toMs, b.toMs + HOUR)).toBe(b.toMs - b.fromMs)
+      expect(coveredPct([all], b.fromMs, b.toMs, b.toMs + HOUR)).toBe(100)
+    }
+  })
+
+  it('has no opinion about a window with no width', () => {
+    expect(coveredPct([span(9, 17)], DAY_START, DAY_START, AFTER)).toBe(0)
+    expect(coveredMs([span(9, 17)], DAY_START, DAY_START, AFTER)).toBe(0)
   })
 })

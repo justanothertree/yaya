@@ -5084,3 +5084,132 @@ than a defect: the panel follows immediately in DOM order and reads in sequence.
    beat tidiness while chronicle is the newer of the two; worth moving to a neutral place if a
    third room ever needs it. The Sunday-week rule is likewise duplicated in `Feed.tsx`, and both
    copies now say so.
+
+## 6ci · ✅ The room with nothing in it, swept on 16 Oct — and nothing to fix
+
+Every other check in this file has been made against the seeded workbench. This one was made
+against `window.__chron.empty()`, which is what a member sees the first time they open the room,
+and which nothing had been pointed at before.
+
+**⚠️ THE COUNT COMES FIRST, because an empty-room sweep is the one most likely to be vacuous.**
+CLAUDE.md records a 375px pass reporting `0 undersized, 0 off-edge, 0 clipped` against a paragraph
+and two buttons. This one examined **56 elements and 18 controls** — sixteen buttons, a select and
+a file input — so the zeros below are worth something.
+
+What was checked, and what it says:
+
+|                            |                                                                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| the three-step instruction | renders, and its copy is still true — ＋ Activity is "up there" and ＋ Add to today is "below", in one column as well as two              |
+| the stopwatch              | `▶ Start` is **disabled**, titled "Name an activity first", AND explained in words underneath — the archived-step lesson already applied |
+| the gap and plan forms     | "Name an activity with ＋ Activity first", each saying what the control is for rather than only that it is unavailable                    |
+| the window strip           | six tabs, no counts, which is correct: there is no unfinished work to count                                                               |
+| the weight line            | absent, which is its own rule — "0 left" under a heading only states the obvious                                                          |
+| arithmetic                 | no `NaN`, no `0 / 0`, no bare percentage anywhere in the room                                                                             |
+| 375px                      | `sideways 0, tooSmall 0, offEdge 0, clipped 0, insideOut 0, spills 0, wordless 0`                                                         |
+
+**Two things were considered and deliberately left alone.**
+
+"Nothing here yet." still renders three lines under the three-step instruction, which is the
+sentence §6n set out to replace. Read as a person it is not a contradiction — step
+three says "add a goal below", the sentence agrees there are none, the button adds one — and the
+note on the MonthGrid in §6bf already settled the general question in the other direction:
+_"the sentence underneath stays, which is the half that was always doing the work."_ Removing it is a
+taste call about somebody's room, not a defect.
+
+⬇ Save a copy and ⬆ Put one back show to an account with nothing recorded. Exporting nothing is
+mild noise; **putting a file back is exactly what a returning member wants on an empty account**,
+and the two are one control.
+
+## 6cj · ✅ Now — a second room, for the phone
+
+Asked for in one sentence: _"for mobile I imagined something as easy and simple with limited UI
+that allows me to as fast as possible update what I'm doing now on the go. I want to be the master
+of time."_
+
+**⚠️ THE SERVER HAD SUPPORTED IT ALL ALONG, AND THE ROOM HID IT.** `chronicle_start` closes the
+open sitting, deletes a mis-press under a second, and opens the next — one call, record
+continuous. The Chronicle's own Quick start row is wrapped in `!running`, so the fastest way to
+change what you are doing **vanished at the exact moment you were doing something**, leaving a
+select and a button several taps down a long page. The thing done most was the slowest thing in
+the room.
+
+### What was decided, and by whom
+
+Two questions were genuinely open, so they were asked rather than guessed:
+
+|                                    | chosen                                                                                                                           |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| a fix to the row, or its own room? | **its own room** — the Chronicle is two halves and eight folds, right for sitting down with, wrong for standing on a platform    |
+| what else earns a place?           | **a note on the current sitting**, and nothing else. Today's totals and a "what's next" line were both offered and both declined |
+
+So the room holds four things: what is running, for how long, what it is about, and every activity
+as a button. One tap IS the switch — no confirm, no picker — which the server makes safe, because
+a sitting under a second leaves no trace to tidy up.
+
+### The note needed a function that did not exist
+
+`chronicle_running_fix` can move a running sitting's start and change which activity it is, and
+its note says _"there is no way to set an end: the open entry is open because it has no end, and
+typing one in is what Stop is for."_ Exactly right about the END, and it had been taken to cover
+the NOTE as well — so a sitting could only be described once it was over.
+
+`chronicle_running_note` overturns that, deliberately, and says so in both places. Its own
+function because `create or replace` cannot add a parameter without minting an overload, the same
+reason `chronicle_entry_amount` and `chronicle_entry_quality` sit beside `chronicle_entry_edit`.
+See docs/2026-10-16-chronicle-running-note.sql, including why `''` clears here when null means
+"leave it alone" everywhere else.
+
+### ⚠️ Three bugs, all on the path nothing had tested
+
+Type a word, tap the next thing. That is the room's own rhythm and it had no test.
+
+1. **The room threw the note away.** The autosave waits 700ms and `stop()` carried the box, but
+   `go()` called startTimer directly — so the switch beat the timer. Flushed before switching now,
+   and on leaving the room, which lost it the same way. A failed flush does not block the switch:
+   the sitting closes either way, so refusing would add being stuck to being sorry.
+2. **`pvEntries` could not see a sitting it had just started**, because it kept only what
+   overlapped a window by MORE than nothing. The room reloads the day the instant it starts
+   something, so the workbench said "Nothing running" about the thing it had just started.
+3. **`pvStart` erased the note** by closing the sitting with `pvStop(null)` — and the two server
+   functions differ in exactly one line: `chronicle_stop` writes the note, `chronicle_start` sets
+   only `ended_at`. The room's fix was right from the first attempt and the double ate the result,
+   which reads precisely like the feature not working.
+
+**Two of the three were in the double, and both pointed at the room.** That is the unfaithful-double
+trap in its most expensive form: not inventing a bug and not hiding one, but making a correct fix
+look broken.
+
+### What the numbers could not tell me
+
+Every figure in the 375 audit read zero while the screen was a **wall of solid green** — the tiles
+carried `btn` rather than `btn btn-ghost`, so all five shouted and the one actually running could
+not be picked out. Nothing was the wrong SIZE, which is all the audit asks. The screenshot found
+it; the sweep never could.
+
+And the empty state told a new member to **"Tap one to start"** directly above "No activities yet",
+which is the copy version of lighting a button whose only answer is an error.
+
+### One of my own styles lost, and that was right
+
+The note box asked for a 44px floor and measured 40, because `input:not(…)` under
+`(max-width: 640px), (pointer: coarse)` outranks `.now-note input` on specificity — a considered,
+site-wide touch floor landed the same morning. The one-off was removed rather than escalated: a
+local opinion that loses silently is worse than none, and consistency with every other box on the
+site is the point. The TILES are 56px, which is a button and not governed by that rule.
+
+### Where it lives
+
+One entry in `src/nav/places.ts` — _"a room is added here and appears everywhere, or is not added
+and appears nowhere"_ — so it reached the phone nav, the launcher, the arrow-key order and the
+titles without six edits. Members only, like Chronicle, and for the same reason: there is nothing
+honest to show a visitor about one person's own time.
+
+`tilesFor` in `nowTiles.ts` holds the one rule the room has — archived out, auto out, most-used
+first, the running sitting counting to now — because a rule with a unit in it does not belong in a
+`useMemo`. Nine tests, four perturbations, three caught; the fourth could not be made to fail and
+both it and the guard it described were deleted.
+
+**Visit tracking needed nothing.** Adding the room to PLACES gave it `useVisits` automatically, and
+Now is the first room built for GLANCES rather than dwelling — but the thirty-second floor, on the
+client and again on the server, means a tap-and-leave writes nothing at all.

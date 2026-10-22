@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { against, dayAgainst, planOpens, type Plan } from './plan'
+import { against, dayAgainst, planOpens, saySpan, type Plan } from './plan'
 import { dayBounds, type Entry } from './record'
 
 const at = (iso: string) => new Date(iso).getTime()
@@ -159,5 +159,61 @@ describe('where a new plan opens', () => {
     const o = planOpens([], tomorrow.fromMs, tomorrow.toMs, local.fromMs + 14 * HOUR)
     expect(o.fromMs).toBe(tomorrow.fromMs + 9 * HOUR)
     expect(o.toMs - o.fromMs).toBe(HOUR)
+  })
+})
+
+/**
+ * ⚠️ THE WORDS ARE THE CALLER'S AND THE RULE IS THIS FUNCTION'S, which is why these pass clock
+ * faces in as plain strings. `toLocaleTimeString` says something different in every locale, and
+ * "may this meridiem be said once" is not a question about what a clock face looks like.
+ */
+describe('a planned span, as short as it can be said', () => {
+  const sameDay = { before: false, after: false }
+
+  it('says the meridiem once when both ends share it', () => {
+    expect(saySpan('7:00 AM', '7:45 AM', sameDay)).toBe('7:00–7:45 AM')
+  })
+
+  it('and twice when they do not, because dropping one would move the hour', () => {
+    expect(saySpan('11:30 AM', '1:00 PM', sameDay)).toBe('11:30 AM–1:00 PM')
+  })
+
+  /** a 24-hour locale has no meridiem to collapse, and must not lose a digit to the attempt */
+  it('leaves a 24-hour clock alone', () => {
+    expect(saySpan('07:00', '07:45', sameDay)).toBe('07:00–07:45')
+    expect(saySpan('23:00', '01:00', sameDay)).toBe('23:00–01:00')
+  })
+
+  /**
+   * ⚠️ THE ONE THIS WAS LIFTED OUT FOR. `chronicle_plans` allows a span of a full day, so 11:00
+   * AM to 10:00 AM the next morning is legal — and collapsing that reads "11:00–10:00 AM", one
+   * morning running backwards. When an end is in another day it is NAMED, and nothing collapses.
+   */
+  it('never collapses a span whose ends are in different days', () => {
+    const out = saySpan('11:00 AM', '10:00 AM', { before: false, after: true }, () => 'Sat ')
+    expect(out).toBe('11:00 AM–Sat 10:00 AM')
+    expect(out).not.toContain('11:00–10:00 AM')
+  })
+
+  it('names the day at whichever end is not the day being read', () => {
+    const dayOf = (w: 'from' | 'to') => (w === 'from' ? 'Fri ' : 'Sat ')
+    expect(saySpan('11:00 PM', '1:00 AM', { before: false, after: true }, dayOf)).toBe(
+      '11:00 PM–Sat 1:00 AM',
+    )
+    expect(saySpan('11:00 PM', '1:00 AM', { before: true, after: false }, dayOf)).toBe(
+      'Fri 11:00 PM–1:00 AM',
+    )
+  })
+
+  /** both ends outside is a sitting read from a day in the middle of it — rare, and legible */
+  it('names both ends when neither is the day being read', () => {
+    const dayOf = (w: 'from' | 'to') => (w === 'from' ? 'Thu ' : 'Sat ')
+    expect(saySpan('11:00 PM', '1:00 AM', { before: true, after: true }, dayOf)).toBe(
+      'Thu 11:00 PM–Sat 1:00 AM',
+    )
+  })
+
+  it('defaults to the same day, so an ordinary call reads as it always did', () => {
+    expect(saySpan('7:00 AM', '7:45 AM')).toBe('7:00–7:45 AM')
   })
 })

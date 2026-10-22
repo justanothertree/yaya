@@ -30,12 +30,22 @@ export type Score = {
    * recorded would otherwise headline "0% Locked In", which is equally a verdict on an empty day.
    */
   share: number | null
-  /** logged as a share of a whole day, 0–100 */
+  /**
+   * How much of the day has any session on it, 0–100.
+   *
+   * ⚠️ IT IS HANDED IN RATHER THAN WORKED OUT HERE, and that is the shape of the bug it fixes.
+   * This was `Math.min(100, (logged / DAY_MINS) * 100)` — the sum of the minutes over a constant
+   * — and a sum is the wrong question twice over. Sessions may overlap, so the numerator
+   * double-counted every minute two of them shared; and a day is not always 1440 minutes, so on a
+   * spring-forward day the denominator was wrong too (New York, 2026-03-08: **1380**). The right
+   * answer is a union over the window's own width, which `coveredPct` in record.ts computes — and
+   * it needs the SPANS, which a `{cat, mins}` row does not carry. So the caller measures it.
+   *
+   * ⚠️ A REQUIRED PARAMETER, not an optional one with a fallback to the old sum. A default here
+   * would be a second answer to the same question, silently taken by whichever caller forgot.
+   */
   covered: number
 }
-
-/** a day, in minutes — the denominator for "how much of it is written down" */
-export const DAY_MINS = 24 * 60
 
 /**
  * ⚠️ NULL RATHER THAN NaN ON AN EMPTY DAY, which is the whole reason this is a function and not an
@@ -43,11 +53,12 @@ export const DAY_MINS = 24 * 60
  * `NaN%` on the first screen a new member sees is worse than any number could be. It is null and
  * not 0 for the reason on `share` above: zero is a verdict, and an empty day has not earned one.
  *
- * ⚠️ AND `covered` IS CLAMPED for the reason the week grid's is: two sessions may overlap, because
- * the table has never forbidden recording a call during a work block, so an unclamped day can read
- * "137% written down" — a number that looks like a fault rather than a full day.
+ * ⚠️ AND `covered` IS CARRIED, NOT COMPUTED — see the field's own note above. Everything else
+ * here is a sum and is right as one: "Written down 9h" on a day covering eight hours is honest,
+ * because that is how much attention the day took. Only the figure with "of the day" after it has
+ * to be a union.
  */
-export function scoreOf(rows: readonly Counted[]): Score {
+export function scoreOf(rows: readonly Counted[], covered: number): Score {
   let logged = 0
   let focused = 0
   for (const r of rows) {
@@ -59,6 +70,6 @@ export function scoreOf(rows: readonly Counted[]): Score {
     logged,
     focused,
     share: logged >= 1 ? (focused / logged) * 100 : null,
-    covered: Math.min(100, (logged / DAY_MINS) * 100),
+    covered,
   }
 }

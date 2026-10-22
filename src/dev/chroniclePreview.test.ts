@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   pvActivities,
   pvAddEntry,
@@ -8,6 +8,8 @@ import {
   pvExport,
   pvImport,
   pvSaveRoutine,
+  pvNoteRunning,
+  pvRoutines,
   pvAmount,
   pvEditEntry,
   pvEntries,
@@ -27,6 +29,19 @@ import {
 } from './chroniclePreview'
 import type { NewGoal } from '../chronicle/cloud'
 import { localMidnight } from '../chronicle/record'
+
+/**
+ * The id of a save that was supposed to work.
+ *
+ * ⚠️ IT ASSERTS RATHER THAN CASTS. `pvSaveGoal` and `pvSaveActivity` can answer `{ why }` now, as
+ * their live counterparts always could, so reading an id off a result needs narrowing — and a
+ * cast would turn a refusal into `undefined` flowing quietly through the rest of the test. This
+ * throws on the line that did the saving, naming the reason.
+ */
+const idOf = (r: { id: string } | { why: string }): string => {
+  if ('why' in r) throw new Error('expected a save, got a refusal: ' + r.why)
+  return r.id
+}
 
 /**
  * The preview store against the contracts its server counterparts actually keep.
@@ -58,22 +73,24 @@ let idle = ''
 
 beforeEach(() => {
   pvEmpty()
-  draw = pvSaveActivity('Drawing', 'locked', null).id
-  gym = pvSaveActivity('Gym', 'free', null, undefined, 'reps').id
+  draw = idOf(pvSaveActivity('Drawing', 'locked', null))
+  gym = idOf(pvSaveActivity('Gym', 'free', null, undefined, 'reps'))
   /* an activity that exists and has never been done — the case the server's LEFT JOIN is for */
-  idle = pvSaveActivity('Idle', 'free', null).id
+  idle = idOf(pvSaveActivity('Idle', 'free', null))
 })
 
 const goalOn = (over: Partial<NewGoal>): string =>
-  pvSaveGoal({
-    title: 'g',
-    scope: 'day',
-    anchor: DAY,
-    every: null,
-    unit: 'min',
-    target: null,
-    ...over,
-  }).id
+  idOf(
+    pvSaveGoal({
+      title: 'g',
+      scope: 'day',
+      anchor: DAY,
+      every: null,
+      unit: 'min',
+      target: null,
+      ...over,
+    }),
+  )
 
 const ask = (id: string, from = dayStart(), to = dayEnd()) => [{ key: 'k', id, from, to }]
 
@@ -351,10 +368,257 @@ describe('the preview store keeps the contracts the server keeps', () => {
   })
 })
 
+/**
+ * ⚠️ FOUND BY LISTING THE SERVER'S GUARDS AND GREPPING THIS DOUBLE FOR EACH ONE. Every
+ * `raise exception` in the chronicle_* functions was extracted and looked for here; thirteen
+ * messages were missing, and these two are the ones a person can reach by hand — a routine is
+ * built one step at a time, so forty-one is a few more clicks rather than a contrived file.
+ *
+ * ⚠️ AND THE DOUBLE COULD NOT EVEN SAY NO. `saveRoutine` is typed `{ id } | { why }` and
+ * `pvSaveRoutine` returned `{ id }` alone, so the shape of a refusal did not exist here — the
+ * unfaithful-double trap in the direction that hides a bug rather than inventing one.
+ */
+/**
+ * ⚠️ FOUND BY COMPARING RETURN TYPES, not by use. Every function in cloud.ts that can answer
+ * `{ why }` was listed against its double: eleven of them, and two could not express a refusal at
+ * all. That is the same structural gap that let a forty-first routine step look fine here, so it
+ * is closed the same way — the guards copied in the server's own words.
+ */
+/**
+ * ⚠️ A SITTING COULD ONLY BE DESCRIBED ONCE IT WAS OVER until this existed. `fixRunning` can move
+ * a running sitting's start and change what it is, and its note says "typing one in is what Stop
+ * is for" — true of the END, and it had been taken to cover the note too.
+ */
+describe('saying what the session you are in is about', () => {
+  /**
+   * ⚠️ READ OUT OF THE STORE, NOT THROUGH `pvEntries`. A sitting started microseconds ago has an
+   * OVERLAP of about zero with any window, and `pvEntries` keeps only what overlaps by more than
+   * nothing — so the entry this describe is about is invisible to it for the first millisecond.
+   * The export dumps the store itself, which is what makes these assertions deterministic.
+   */
+  /**
+   * ⚠️ `ended_at`, NOT `end`. The export mirrors the SERVER's column names — started_at,
+   * ended_at — while the in-memory rows use start/end, and `e.end == null` is true for every row
+   * in the export because `undefined == null`. These assertions passed by finding entries[0] and
+   * being right about it by luck; perturbation still caught the behaviours, but the reach was
+   * nonsense.
+   */
+  type Exported = { started_at: string; ended_at: string | null; note: string | null }
+  const rows = () => pvExport().entries as unknown as Exported[]
+  const openOne = () => rows().find((e) => e.ended_at === null)
+  const lastClosed = () =>
+    rows()
+      .filter((e) => e.ended_at !== null)
+      .pop()
+
+  it('writes the note onto the open sitting, trimmed', () => {
+    pvStart(draw)
+    expect(pvNoteRunning('  the chapter that will not end  ')).toBeNull()
+    expect(openOne()?.note).toBe('the chapter that will not end')
+  })
+
+  /** ⚠️ '' CLEARS, unlike every other note path in this room — see the note on the function */
+  it('clears it with an empty box rather than leaving it alone', () => {
+    pvStart(draw)
+    pvNoteRunning('something')
+    expect(pvNoteRunning('   ')).toBeNull()
+    expect(openOne()?.note).toBeNull()
+  })
+
+  it('refuses when nothing is running, in the words the server uses', () => {
+    pvStop(null)
+    expect(pvNoteRunning('into the void')).toEqual({ why: 'nothing is running' })
+  })
+
+  /**
+   * ⚠️ STARTING SOMETHING ELSE KEEPS THE NOTE, and the double erased it. The two server functions
+   * differ in exactly one line — `chronicle_stop` writes the note, `chronicle_start` sets only
+   * `ended_at` — and `pvStart` reached the first by calling `pvStop(null)`. The Now room writes a
+   * note onto the sitting before switching precisely so a word typed on the way out survives, and
+   * the workbench threw it away every time, which reads exactly like the feature being broken.
+   */
+  /**
+   * ⚠️ THE SITTING NEEDS A REAL LENGTH, or a rule that is CORRECT defeats the test: both the
+   * server and this double delete an entry shorter than a second, so starting and switching in
+   * the same millisecond leaves nothing to assert about. The clock is moved rather than waited
+   * on.
+   */
+  const lasting = (ms: number, run: () => void) => {
+    const t0 = Date.now()
+    vi.useFakeTimers()
+    vi.setSystemTime(t0)
+    run()
+    vi.setSystemTime(t0 + ms)
+  }
+
+  /**
+   * ⚠️ A SITTING YOU HAVE JUST STARTED OVERLAPS ITS OWN DAY BY NOTHING, and `pvEntries` used to
+   * keep only what overlapped by MORE than nothing — so the entry was invisible until a
+   * millisecond passed. `chronicle_entries_between` asks `started_at < p_to and
+   * coalesce(ended_at, now) > p_from`, which returns it at once.
+   *
+   * ⚠️ THE CLOCK IS FROZEN ON PURPOSE. With a real clock a millisecond slips past between the
+   * start and the read, the overlap becomes positive, and the test passes against the bug — it
+   * would be green either way and prove nothing.
+   */
+  it('returns a sitting started this instant, which has no length yet', () => {
+    const t0 = Date.now()
+    vi.useFakeTimers()
+    vi.setSystemTime(t0)
+    pvStart(draw)
+    const got = pvEntries(
+      new Date(t0 - 3_600_000).toISOString(),
+      new Date(t0 + 3_600_000).toISOString(),
+    )
+    vi.useRealTimers()
+    expect(got.some((e) => e.end === null)).toBe(true)
+  })
+
+  it('keeps the note on the sitting that start closes', () => {
+    lasting(5000, () => {
+      pvStart(draw)
+      pvNoteRunning('the hands again, finally')
+    })
+    pvStart(gym)
+    vi.useRealTimers()
+    expect(lastClosed()?.note).toBe('the hands again, finally')
+  })
+
+  /** ⚠️ and STOP still writes it, because that one really does — null clears, as the server does */
+  it('and stop still writes the note it is handed', () => {
+    lasting(5000, () => {
+      pvStart(draw)
+      pvNoteRunning('mid-sitting')
+    })
+    pvStop('said at the end')
+    vi.useRealTimers()
+    expect(lastClosed()?.note).toBe('said at the end')
+  })
+
+  /** ⚠️ the control: it writes the note and does not end the sitting */
+  it('leaves the sitting running', () => {
+    pvStart(draw)
+    pvNoteRunning('still going')
+    expect(openOne()).toBeDefined()
+  })
+})
+
+describe('the ceilings an account has', () => {
+  it('refuses a two hundred and first activity, in the words the server uses', () => {
+    for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)
+    expect(pvSaveActivity('one too many', 'free', null)).toEqual({
+      why: 'that is 200 activities — archive one',
+    })
+  })
+
+  /** ⚠️ the control: at the ceiling, EDITING one that exists is not creating another */
+  it('and still lets an activity already there be renamed', () => {
+    for (let i = 0; i < 200; i++) pvSaveActivity('A' + i, 'free', null)
+    const first = pvActivities()[0]
+    expect('id' in pvSaveActivity('renamed', 'free', null, first.id)).toBe(true)
+  })
+
+  /**
+   * ⚠️ AN ID THAT IS NOT THERE IS REFUSED, NOT CREATED. `chronicle_activity_save` updates
+   * `where id = p_id and owner = auth.uid()` and raises when nothing came back; this double
+   * created a row carrying the unknown id instead, which is the direction that hides a bug.
+   */
+  it('refuses an id it does not hold rather than inventing one', () => {
+    expect(pvSaveActivity('from nowhere', 'free', null, 'not-an-id')).toEqual({
+      why: 'no such activity',
+    })
+    expect(pvActivities().some((a) => a.id === 'not-an-id')).toBe(false)
+  })
+
+  it('refuses a five hundred and first goal', () => {
+    for (let i = 0; i < 500; i++)
+      pvSaveGoal({
+        title: 'g' + i,
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+      })
+    expect(
+      pvSaveGoal({
+        title: 'one too many',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+      }),
+    ).toEqual({
+      why: 'that is 500 goals — finish or delete one',
+    })
+  })
+
+  it('and refuses a goal id it does not hold', () => {
+    expect(
+      pvSaveGoal({
+        id: 'not-an-id',
+        title: 'g',
+        scope: 'life',
+        anchor: null,
+        every: null,
+        target: null,
+        unit: null,
+      }),
+    ).toEqual({
+      why: 'no such goal',
+    })
+  })
+})
+
+describe('the ceilings a routine has', () => {
+  const stepsOf = (n: number) => Array.from({ length: n }, () => ({ activity: draw, mins: 10 }))
+
+  it('takes forty steps, which is what the server allows', () => {
+    const r = pvSaveRoutine('Morning', stepsOf(40))
+    expect('id' in r).toBe(true)
+  })
+
+  /** ⚠️ IN THE SERVER'S OWN WORDS, so the workbench says what the site would say */
+  it('refuses the forty-first, in the words chronicle_routine_save uses', () => {
+    const r = pvSaveRoutine('Morning', stepsOf(41))
+    expect(r).toEqual({ why: 'that is more than forty steps' })
+  })
+
+  /**
+   * ⚠️ COUNTED AS HANDED IN, NOT AS KEPT, and this test asserted the opposite until the server
+   * was read. `chronicle_routine_save` checks `jsonb_array_length(p_steps) > 40` BEFORE the join
+   * that drops a step naming somebody else's activity — so forty-one of which two are foreign is
+   * refused, even though only thirty-nine would have been stored. The order of those two checks
+   * is not something a sensible guess gets right, which is the whole argument for copying a
+   * guard out of the function rather than out of an idea of it.
+   */
+  it('counts the steps it was handed, foreign ones included', () => {
+    const mixed = [
+      ...stepsOf(39),
+      { activity: 'not-mine', mins: 5 },
+      { activity: 'nor-this', mins: 5 },
+    ]
+    expect(pvSaveRoutine('Morning', mixed)).toEqual({ why: 'that is more than forty steps' })
+    /* ⚠️ the control: the same list one shorter is forty handed in, and goes through */
+    expect('id' in pvSaveRoutine('Morning', mixed.slice(0, 40))).toBe(true)
+  })
+
+  it('refuses a forty-first routine, and lets an existing one still be edited', () => {
+    for (let i = 0; i < 40; i++) pvSaveRoutine('R' + i, [{ activity: draw, mins: 5 }])
+    const made = pvSaveRoutine('one too many', [{ activity: draw, mins: 5 }])
+    expect(made).toEqual({ why: 'that is forty routines — delete one' })
+    /* ⚠️ the control: at the ceiling, SAVING one that already exists is not creating one */
+    const all = pvRoutines()
+    const again = pvSaveRoutine('R0 renamed', [{ activity: draw, mins: 5 }], all[0].id)
+    expect('id' in again).toBe(true)
+  })
+})
+
 describe('a rating written against a session', () => {
   beforeEach(() => {
     pvEmpty()
-    draw = pvSaveActivity('Drawing', 'locked', null).id
+    draw = idOf(pvSaveActivity('Drawing', 'locked', null))
   })
 
   /**
@@ -797,7 +1061,7 @@ describe('putting a file back', () => {
 
   it('will not put back a sitting that is too long or has not happened', () => {
     pvEmpty()
-    const act = pvSaveActivity('Drawing', 'locked', null).id
+    const act = idOf(pvSaveActivity('Drawing', 'locked', null))
     const hoursFromNow = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString()
     const doc = {
       kind: 'chronicle',
@@ -1153,7 +1417,7 @@ describe('fields the room cannot write, and so used to erase', () => {
    * meaning to" both became NULL after a rename and a re-save.
    */
   it('keeps an activity colour through a rename that does not mention it', () => {
-    const id = pvSaveActivity('Reading', 'free', '#aabbcc').id
+    const id = idOf(pvSaveActivity('Reading', 'free', '#aabbcc'))
     expect(pvActivities().find((a) => a.id === id)?.colour).toBe('#aabbcc')
 
     pvSaveActivity('Reading in the evening', 'life', null, id)
@@ -1166,21 +1430,23 @@ describe('fields the room cannot write, and so used to erase', () => {
   })
 
   it('clears an activity colour when that is asked for', () => {
-    const id = pvSaveActivity('Reading', 'free', '#aabbcc').id
+    const id = idOf(pvSaveActivity('Reading', 'free', '#aabbcc'))
     pvSaveActivity('Reading', 'free', '', id)
     expect(pvActivities().find((a) => a.id === id)?.colour).toBe(null)
   })
 
   it('keeps a goal note through an edit that does not mention it', () => {
-    const id = pvSaveGoal({
-      title: 'Read more',
-      scope: 'day',
-      anchor: DAY,
-      every: null,
-      target: 30,
-      unit: 'mins',
-      note: 'because I keep meaning to',
-    }).id
+    const id = idOf(
+      pvSaveGoal({
+        title: 'Read more',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        target: 30,
+        unit: 'mins',
+        note: 'because I keep meaning to',
+      }),
+    )
 
     /* the shape the room actually sends: no note field at all */
     pvSaveGoal({
@@ -1200,15 +1466,17 @@ describe('fields the room cannot write, and so used to erase', () => {
   })
 
   it('clears a goal note when that is asked for', () => {
-    const id = pvSaveGoal({
-      title: 'Read more',
-      scope: 'day',
-      anchor: DAY,
-      every: null,
-      target: 30,
-      unit: 'mins',
-      note: 'because I keep meaning to',
-    }).id
+    const id = idOf(
+      pvSaveGoal({
+        title: 'Read more',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        target: 30,
+        unit: 'mins',
+        note: 'because I keep meaning to',
+      }),
+    )
     pvSaveGoal({
       id,
       title: 'Read more',

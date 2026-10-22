@@ -159,10 +159,20 @@ that render nothing at zero first**.
   workbenches go. `preview_start` with `yaya-prod` serves the real build on :4173. Two things
   are different there and both matter — **`#dev-park` does not exist**, so the park's
   production path is one I cannot reach at all without an account; and **:4173 is its own
-  origin**, so localStorage is empty and every room starts as a first-time visitor sees it.
-  That second one is worth the trip by itself: it is the only way to see the empty states,
-  and it is how the Games page turned out to be telling somebody with no creatures about two
-  games when there were three.
+  origin**, so what it remembers is separate from the dev server's.
+  That second one is how the Games page turned out to be telling somebody with no creatures
+  about two games when there were three.
+  **⚠️ BUT "ITS OWN ORIGIN" IS NOT "EMPTY", AND THIS NOTE SAID IT WAS.** The separate origin
+  starts blank and then STAYS, across every later `preview_start` — and the app seeds it on
+  the way in. Measured on 16 Oct: `localStorage` at :4173 held **40 keys** before anything was
+  touched, and clearing it and loading one page put **six** straight back (`ui_scale`,
+  `cursor_skin_v1`, `theme.custom.on`, `click_fx_style_v1`, `click_fx_v1`,
+  `voice.volume.v1`). One of the forty was `dev_preview_member`, set there by some earlier
+  session and still sitting in the port nobody thinks of as stateful.
+  So the first-visit property belongs to the FIRST VISIT, and that visit spends it. To see an
+  empty state, clear localStorage deliberately and reload — do not assume the port gives it to
+  you. (`import.meta.env.DEV` is false in that bundle regardless, so a stale
+  `dev_preview_member` there changes nothing; a stale THEME or scale very much does.)
   **And a third, which bounds what any of it proves: `:4173` is the real build with YOUR
   `.env.local` inlined.** Vite bakes `VITE_*` in at build time, so the bundle you serve there
   carries your own values and the deployed one carries the repo's — `.github/workflows/deploy.yml`
@@ -320,6 +330,25 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   the `value` attribute showing through. **Ask the DOM before believing the tree**: read
   `innerHTML`, `title`, `aria-label`, and whether an input sits inside a label. The tree is a
   rendering, and this one is lossy in exactly the direction that invents accessibility bugs.
+- **A CLAMP IS NOT A FIX, AND IT HIDES THE BUG IT LOOKS LIKE IT SOLVES.** "% of the day recorded"
+  was the SUM of a day's sessions capped at 100, and the cap was deliberate — the comment beside it
+  said "103% of your day reads as a bug while 100% reads as a full day", which is right about the
+  symptom and wrong about the cause. Sessions may overlap, so the sum double-counts every shared
+  minute: an ordinary day of 9-to-5 work with a call inside it and music over the whole lot read
+  **70.8%** of a day holding **33.3%**, and the month grid turned that into **1,020 minutes
+  recorded** of a day that held 480. Capping it did not make it less wrong, it made it
+  unfalsifiable — four overlapping morning sittings reported **100% of the day** and a full
+  **1,440 minutes** with the entire afternoon blank, which is the most confident possible wrong
+  answer and the one shape nothing on screen can give away. **When a figure needs clamping, the
+  clamp is the evidence: ask what question it is answering.** Here, "how much of this is
+  accounted for" is a UNION and "how much did I do" is a SUM, and one line of code was being asked
+  both. The fix had nothing to clamp afterwards, because a union cannot exceed its window — which
+  is the tell that the right question had been found.
+- **And a unit RECONSTRUCTED from a percentage is a round trip that stops closing.** The same grid
+  got its "2h 19m recorded" label by multiplying its own percentage back out over `24 * 60`, which
+  is exact only while the denominator is also 1440. It is not: `dayBounds` is correctly **1380**
+  minutes on a spring-forward day and **1500** on a fall-back one, which is also why a constant
+  denominator was wrong twice a year on its own. Carry the number in the unit the label speaks.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

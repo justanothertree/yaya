@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { monthCells, monthOf } from './month'
-import { localMidnight } from './record'
+import { dayBounds, localMidnight } from './record'
 
 const at = (iso: string, h: number) =>
   new Date(localMidnight(iso).getTime() + h * 3_600_000).toISOString()
@@ -135,6 +135,70 @@ describe('how full each day of the month was', () => {
       nowMs,
     )
     expect(cells.find((c) => c.on === OCT)!.covered).toBe(100)
+  })
+
+  /**
+   * ⚠️ THE FIGURE IS A UNION, NOT THE SUM OF THE SESSIONS, and this grid is where that mattered
+   * most: it turns the percentage back into minutes for the cell's own label, so a day of 9-to-5
+   * work with a call inside it and music over the whole lot read "1,020 min recorded" about eight
+   * hours. Nothing in this fixture reaches noon, so no cap is involved — the sum would be 50% of
+   * the day and the day holds a third of it.
+   */
+  it('counts a minute once, however many sessions are over it', () => {
+    const cells = monthCells(
+      monthOf(OCT),
+      [
+        { activity: 'a1', start: at(OCT, 0), end: at(OCT, 8) },
+        { activity: 'a2', start: at(OCT, 2), end: at(OCT, 4) },
+        { activity: 'a3', start: at(OCT, 0), end: at(OCT, 8) },
+      ],
+      nowMs,
+    )
+    const cell = cells.find((c) => c.on === OCT)!
+    expect(cell.covered).toBeCloseTo((8 / 24) * 100, 6)
+    /* and the minutes the cell prints from it, which is the number somebody reads */
+    expect(Math.round(cell.mins)).toBe(8 * 60)
+  })
+
+  /**
+   * ⚠️ THE MINUTES AND THE PERCENTAGE ARE TWO READINGS OF ONE DAY, and on a day that is not 24
+   * hours long they stop agreeing if either is reconstructed from the other. The grid used to get
+   * its label by multiplying the percentage back out over a hard-coded 1440; the percentage is
+   * taken over the window's own width, and `dayBounds` is correctly 1380 minutes on the morning
+   * the clocks go forward. So the trip was exact only on an ordinary day.
+   *
+   * This asserts the pair against the DAY rather than against each other: a session covering the
+   * whole of a short day is 100% of it AND is the day's real length in minutes.
+   */
+  it('says the same thing in minutes and in percent on a day that is not 24 hours', () => {
+    for (const on of ['2026-03-08', '2026-11-01', '2026-10-12']) {
+      const b = dayBounds(on)
+      const cells = monthCells(
+        [{ on, day: Number(on.slice(8)), inMonth: true }],
+        [
+          {
+            activity: 'a1',
+            start: new Date(b.fromMs).toISOString(),
+            end: new Date(b.toMs).toISOString(),
+          },
+        ],
+        b.toMs + 3_600_000,
+      )
+      const cell = cells[0]
+      expect(cell.covered).toBe(100)
+      expect(cell.mins).toBe((b.toMs - b.fromMs) / 60_000)
+      /**
+       * ⚠️ AND THE OLD ROUND TRIP, ASSERTED CONDITIONALLY, because whether it was wrong depends on
+       * the zone the suite happens to run in. Multiplying the percentage back out over 24 * 60
+       * answers 1440 on every day of the year; where the zone shifts its clocks, that is the wrong
+       * number for a day the grid is labelling, and the shape of the mistake is visible here
+       * rather than only in a comment. In UTC — where CI runs — there is nothing to catch, so the
+       * assertion says exactly that.
+       */
+      const oldWay = Math.round((cell.covered / 100) * 24 * 60)
+      if (cell.mins === 1440) expect(oldWay).toBe(cell.mins)
+      else expect(oldWay).not.toBe(cell.mins)
+    }
   })
 
   it('splits a session across midnight between the two days it touches', () => {

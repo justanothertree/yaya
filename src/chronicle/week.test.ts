@@ -102,12 +102,33 @@ describe('a day laid out down a column', () => {
 
   /**
    * ⚠️ OVERLAPPING SESSIONS ARE ALLOWED and must not produce "137% of your day". The table has
-   * never forbidden recording a call during a work block, so the clamp is the honest answer rather
-   * than a refusal.
+   * never forbidden recording a call during a work block — a podcast while washing up is two
+   * activities over the same minutes — so the figure is a UNION of the sessions and not the sum of
+   * their widths. It used to be the sum, clamped to 100.
+   *
+   * ⚠️ AND THIS FIXTURE ALONE CANNOT TELL A UNION FROM A CLAMP, which is why the one below it
+   * exists. A day with a 0–24 session in it is 100% covered either way, so this case passed
+   * unchanged through the whole of the clamp's life and would pass again if the clamp came back.
    */
   it('never claims more than a whole day', () => {
     const [col] = columns([DAY], [span(DAY, 0, 24), span(DAY, 9, 17), span(DAY, 10, 12)], nowMs)
     expect(col.covered).toBe(100)
+  })
+
+  /**
+   * ⚠️ THE CASE THAT SEPARATES THEM, and the one the site was getting wrong. Nothing here reaches
+   * past one in the afternoon, so no clamp is involved at all: the sum of these four widths is
+   * 79.2% of the day and the day holds 29.2% of it. A grid drawn from the sum paints a day as
+   * two-thirds spoken for when two-thirds of it has not happened yet.
+   */
+  it('counts a minute once, however many sessions are over it', () => {
+    const [col] = columns(
+      [DAY],
+      [span(DAY, 6, 13), span(DAY, 9, 10), span(DAY, 9, 17), span(DAY, 0, 2)],
+      nowMs,
+    )
+    /* 00:00-02:00 and 06:00-17:00 — two hours and eleven, of twenty-four */
+    expect(col.covered).toBeCloseTo((13 / 24) * 100, 6)
   })
 })
 

@@ -1,6 +1,22 @@
 import { localISO } from '../circuit/dates'
 
 /**
+ * How many year-windows `chronicle_spans` will answer about in one call.
+ *
+ * ⚠️ THE SERVER'S OWN NUMBER, and the client had none. `chronicle_spans` raises "too many at
+ * once" above 120 — "a hundred and twenty years is more than anybody will ask for", which is
+ * true of years somebody LIVED and not of years a date can name. `yearsBetween` emits one window
+ * per calendar year from the first thing recorded, unbounded, and `spanTotals` sent the lot; the
+ * refusal was then swallowed into `{}` and the Years view drew every year with nothing in it.
+ * Silently, and for ever, because the figure it needs is the one it cannot get.
+ *
+ * One mistyped year reaches it: `chronicle_entry_add` bounds a span's length and refuses the
+ * future, and deliberately has no lower bound — so "0025-10-16" in ⏱ Fill a gap is accepted, and
+ * two thousand windows are asked for the next time the Years view loads.
+ */
+export const SPANS_AT_ONCE = 120
+
+/**
  * The years somebody has recorded in, as windows the server can be asked about.
  *
  * ⚠️ THE WINDOWS ARE COMPUTED HERE AND SENT, rather than derived on the server, and that is the

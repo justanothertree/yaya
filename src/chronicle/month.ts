@@ -1,5 +1,5 @@
 import { windowOf } from './goal'
-import { dayBounds, lane, type Span } from './record'
+import { coveredMs, coveredPct, dayBounds, type Span } from './record'
 
 /**
  * A month as the grid a calendar draws: whole weeks, Sunday first, with the days either side of
@@ -25,6 +25,17 @@ export type Cell = {
   inMonth: boolean
   /** how much of the day is accounted for, 0-100 */
   covered: number
+  /**
+   * The same thing in MINUTES, which is the unit the cell's own label speaks.
+   *
+   * ⚠️ IT IS CARRIED RATHER THAN RECONSTRUCTED FROM THE PERCENTAGE. The grid used to say
+   * `Math.round((c.covered / 100) * 24 * 60)` — a round trip out of minutes into a share of a day
+   * and back, through a hard-coded 1440. That was exact only while the denominator was also 1440;
+   * `coveredPct` divides by the window's OWN width, and `dayBounds` is correctly 1380 minutes on
+   * a spring-forward day, so the trip stopped closing twice a year. A label measured in minutes
+   * should be handed minutes.
+   */
+  mins: number
 }
 
 const iso = (d: Date): string => {
@@ -61,9 +72,11 @@ export function monthOf(on: string): Array<{ on: string; day: number; inMonth: b
 /**
  * Fill those days in from the record.
  *
- * ⚠️ `lane` AGAIN, for the third time — the day strip, the week grid and now this. All three ask
- * "how much of this window does this span cover", and the one that gets it wrong at midnight gets
- * it wrong everywhere. Three callers of one tested function beats three copies of one subtraction.
+ * ⚠️ IT ASKS `coveredPct`, WHICH IS A UNION — see the note on it in record.ts. This used to lay
+ * the day out with `lane` and add the block widths up, which double-counts every minute two
+ * sessions share: this grid turns the figure back into minutes ("1,020 min recorded" of a day that
+ * held 480), so the inflation arrived as time nobody had lived. The day strip and the week grid
+ * still use `lane`, because they draw the blocks; this one only ever needed the total.
  */
 export function monthCells(
   days: Array<{ on: string; day: number; inMonth: boolean }>,
@@ -72,13 +85,10 @@ export function monthCells(
 ): Cell[] {
   return days.map((d) => {
     const { fromMs, toMs } = dayBounds(d.on)
-    const blocks = lane(spans, fromMs, toMs, nowMs)
     return {
       ...d,
-      covered: Math.min(
-        100,
-        blocks.reduce((n, b) => n + b.width, 0),
-      ),
+      covered: coveredPct(spans, fromMs, toMs, nowMs),
+      mins: coveredMs(spans, fromMs, toMs, nowMs) / 60_000,
     }
   })
 }

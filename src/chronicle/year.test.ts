@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { daysCovered, firstDay, yearsBetween } from './year'
+import { inBatches } from './goal'
+import { daysCovered, firstDay, SPANS_AT_ONCE, yearsBetween } from './year'
 
 /** local midnight on a date, written the way the module writes its own boundaries */
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime()
@@ -91,5 +92,52 @@ describe('how long a record has been going', () => {
 
   it('counts across a year end', () => {
     expect(daysCovered(at(2025, 12, 30), at(2026, 1, 2))).toBe(4)
+  })
+})
+
+/**
+ * ⚠️ THE NUMBER OF YEARS IS NOT BOUNDED AND THE SERVER'S PATIENCE IS. `chronicle_spans` raises
+ * "too many at once" above 120, and `spanTotals` sent it whatever `yearsBetween` produced — the
+ * refusal was swallowed into `{}` and the Years view drew every year empty, silently. These
+ * assert the pairing rather than either half: however many years a record covers, every batch
+ * the client sends is one the server will answer.
+ */
+describe('asking about more years than the server will take at once', () => {
+  const NOW = new Date(2026, 5, 1).getTime()
+  /**
+   * ⚠️ `setFullYear`, NOT THE CONSTRUCTOR. `new Date(25, 0, 2)` is 1925 — the two-digit-year rule
+   * maps 0 to 99 onto 1900 — so the first version of this asked about 102 years and quietly
+   * failed to exceed the limit it was written to exceed. The test caught it; the constructor
+   * would have made the whole describe vacuous.
+   */
+  const yearsFrom = (y: number) => {
+    const d = new Date(2000, 0, 2)
+    d.setFullYear(y)
+    return yearsBetween(d.getTime(), NOW)
+  }
+
+  it('produces one window per calendar year, with no ceiling of its own', () => {
+    expect(yearsFrom(2020)).toHaveLength(7)
+    /* ⚠️ a mistyped year is the way in: chronicle_entry_add has no lower bound, on purpose */
+    expect(yearsFrom(25).length).toBeGreaterThan(SPANS_AT_ONCE)
+  })
+
+  /** ⚠️ the claim the fix rests on: no batch is one the server would refuse */
+  it('splits into batches the server will answer, however far back it goes', () => {
+    for (const first of [2026, 2020, 1990, 1900, 25]) {
+      const asks = yearsFrom(first)
+      const lots = inBatches(asks, SPANS_AT_ONCE)
+      for (const some of lots) {
+        expect(some.length, `a batch from ${first}`).toBeLessThanOrEqual(SPANS_AT_ONCE)
+        expect(some.length).toBeGreaterThan(0)
+      }
+      /* ⚠️ and nothing is lost or asked twice, which is what merging the answers depends on */
+      expect(lots.flat()).toHaveLength(asks.length)
+      expect(new Set(lots.flat().map((a) => a.key)).size).toBe(asks.length)
+    }
+  })
+
+  it('still sends one batch for an ordinary record, rather than paying for the guard', () => {
+    expect(inBatches(yearsFrom(2020), SPANS_AT_ONCE)).toHaveLength(1)
   })
 })

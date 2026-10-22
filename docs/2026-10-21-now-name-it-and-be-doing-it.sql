@@ -1,0 +1,133 @@
+-- ✅ APPLIED — migration `chronicle_activity_name_clash_in_words`
+--
+-- The Now room can name a new activity, and a name you already have stopped being an error page.
+--
+-- ── WHAT WAS ASKED ──────────────────────────────────────────────────────────────────────────
+--
+-- "the now button should be able to add something instead of just selecting existing things"
+--
+-- ── NAMING IT AND STARTING IT ARE ONE ACTION ────────────────────────────────────────────────
+--
+-- The Chronicle's own add form already ends with `setPick(r.id)` under the note "a new activity
+-- is almost always one you are about to do, so it is pre-selected rather than leaving somebody
+-- to find it in a list they just added to". On a platform that is not *almost*: it is the reason
+-- you are typing. Nobody opens this room to curate a list. So the Now room's add creates the
+-- activity and starts it in one go, and there is no picker afterwards.
+--
+-- The category is 'free', matching the Chronicle's own default for a new activity rather than
+-- guessing differently in one room. Which of the three it really is, is a thing to set later and
+-- there, where there is room to explain what they mean.
+--
+-- ── THE REFUSAL THIS FEATURE WALKS STRAIGHT INTO ────────────────────────────────────────────
+--
+-- `chronicle_activities` is UNIQUE (owner, name), and `chronicle_activity_save` had no check for
+-- it — so a second "Gym" came back as whatever Postgres said, and `saveActivity` hands
+-- `error.message` to the screen verbatim. Measured, before:
+--
+--   second save with the same name            duplicate key value violates unique constraint
+--                                             "chronicle_activities_owner_name_key"
+--   same name while the old one is archived    ...the identical message
+--
+-- That is a reasonable thing to find in a log and not a thing to hand somebody standing on a
+-- platform. It also stops being a rare case the moment this feature exists: the activities you
+-- do often are the ones whose names you remember, so typing one you already have is the single
+-- likeliest thing to type.
+--
+-- And the two clashes are different situations wearing one sentence. "You already have one
+-- called Gym" is a confusing thing to be told about a Gym that is not in your list, because it
+-- has been archived — and the control that undoes that says "Bring back", so the message does.
+--
+-- ── THE FIX, IN TWO PLACES THAT DO DIFFERENT JOBS ───────────────────────────────────────────
+--
+--   SERVER   one lookup above the insert/update branch, so it covers renaming onto an existing
+--            name as well as creating a duplicate. `id <> p_id` is what lets an activity keep
+--            its own name through a rename.
+--
+--              you already have one called %
+--              % is archived — bring it back in Chronicle
+--
+--   CLIENT   the Now room does not ask at all when it does not have to. A typed name that
+--            matches a live activity just STARTS that one — that is what was meant, and it
+--            saves a round trip whose only possible outcome is a refusal.
+--
+-- The client's match is case-insensitive and the server's is exact, deliberately. On a phone,
+-- "gym" beside "Gym" is autocapitalisation rather than intent. That shortcut only ever CHOOSES
+-- an existing activity — it never creates or renames one — so the worst it can do is start a
+-- name differing in case from the one typed, which the headline shows immediately. Archived ones
+-- are not matched, because `chronicle_start` refuses them; falling through to the server is
+-- right, since the server has the only sentence that helps.
+--
+-- ── WHAT WAS CHECKED ────────────────────────────────────────────────────────────────────────
+--
+-- In SQL, in a rolled-back transaction with a simulated session — five cases, two of them
+-- controls, because a uniqueness guard that refuses too much is worse than one that refuses too
+-- little:
+--
+--   new, name already live          you already have one called Dup probe
+--   rename onto a live name         you already have one called Dup probe
+--   CONTROL · keeps its own name    allowed, as it must be          ← the id <> p_id guard
+--   new, name is archived           Dup probe is archived — bring it back in Chronicle
+--   CONTROL · a free name           allowed, as it must be
+--
+-- Grants after, confirmed rather than assumed: anon false, authenticated true, security definer
+-- true — and the `metric = case when p_metric is null then metric` rule from this morning's
+-- migration survived the rebuild, which was checked rather than hoped for, since this patch
+-- reconstructs the function from `pg_get_functiondef`.
+--
+-- In the Browser pane at 375 with the mobile preset (the only one that emulates touch), driving
+-- the room's own controls:
+--
+--   a genuinely new name      typed "Waiting for the 7:14" → running at 0:01, and a tile
+--   a name you have, miscased typed "gym" → Gym runs, tile list byte-identical, no moan
+--   an archived name          typed "Guitar" → "Guitar is archived — bring it back in
+--                             Chronicle", nothing created, Gym still running, and the form
+--                             stays open so the typed name is not thrown away
+--
+--   mobileAudit, form open    sideways 0, tooSmall 0, offEdge 0, clipped 0, spills 0, wordless 0
+--   mobileAudit, form closed  the same
+--   the add button            327x56 — a tile's height, because it sits in the column a thumb
+--                             has already learnt
+--
+-- ── AND THE EMPTY ROOM, WHICH IS THE WHOLE POINT OF THE CHANGE ──────────────────────────────
+--
+-- It used to say "No activities yet — name one in Chronicle and it appears here as a button",
+-- which was the only honest sentence available while this room could not make one. With the
+-- add button underneath it, that became a detour past the thing that does the job. It now reads:
+--
+--   Nothing here yet. Name what you are doing and it starts.
+--   + Something else
+--
+-- Two sentences that agree with each other and a button that does what the first one promises.
+--
+-- Reached by archiving all eight seeded activities through the room's own Archive buttons —
+-- free, because the preview store is in memory and a reload reseeds it (checked: only
+-- `dev_preview_member` is in localStorage). From that empty room, typing a name and pressing
+-- ENTER — the key a thumb actually presses, not the button — produced "Walking to the station",
+-- running at 0:01, as the only tile.
+--
+-- ── THE DOUBLE ──────────────────────────────────────────────────────────────────────────────
+--
+-- `pvSaveActivity` had no clash check either, so the workbench would have cheerfully created a
+-- second "Gym" the live site refuses — the unfaithful-double direction that hides a bug. It now
+-- carries both sentences in the server's own words, matched EXACTLY like the index, with a note
+-- saying the Now room's case-insensitive shortcut is a different rule on purpose.
+--
+-- ── WHAT THIS DELIBERATELY DID NOT DO ───────────────────────────────────────────────────────
+--
+-- The case clash is not closed at the database. "gym" and "Gym" are still two activities as far
+-- as the index is concerned; a case-insensitive unique index could fail to build against rows
+-- that already exist and is a decision about the whole table rather than about this room. The
+-- client's shortcut makes it unlikely to arise from the Now room, which is where it would.
+--
+-- Nothing was added to the Now room beyond the name: no category, no metric, no session aim.
+-- Those are four more controls on a screen whose entire argument is that it has four things on
+-- it, and all of them are already in Chronicle on the activity that was just created.
+
+-- ── the standing check ──────────────────────────────────────────────────────────────────────
+-- Does any chronicle function still let a raw constraint name reach a person?
+--
+-- select p.proname
+-- from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+-- where n.nspname = 'public' and p.prokind = 'f' and p.proname like 'chronicle%'
+--   and pg_get_functiondef(p.oid) ~* '(insert into|update)\s+public\.chronicle_activities'
+--   and pg_get_functiondef(p.oid) !~* 'you already have one called';

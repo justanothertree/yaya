@@ -586,14 +586,6 @@
     min-height: 34px;
   }
 
-  /* text fields were as short as 24px (the contact form). No field should be
-     shorter than a fingertip; min-height only ever grows them. */
-  input:not([type='checkbox']):not([type='radio']):not([type='range']),
-  select,
-  textarea {
-    min-height: 40px;
-  }
-
   /* Undo/redo are desktop power tools (there is no Ctrl+Z on a phone, and the Log carries
      its own Clear / Copy last). Keeping them here cost 88px of a 283px toolbar, which left
      the tab strip showing 2 of 6 tabs — it read as an accident rather than a scroller.
@@ -651,6 +643,44 @@
   }
   .cz-tab-chat .cz-chat {
     height: calc(100dvh - 96px - 84px);
+  }
+}
+
+/* ⚠️ EVERY FIELD ON THE SITE, AND A THUMB IS NOT A WIDTH — the same correction the slider and
+   visualiser blocks at the end of this file already carry, and the rule it was most expensive to
+   miss, because this one selector is every input, select and textarea in every room. Gated on
+   `max-width: 640px` alone, a tablet — touched, and wider than a phone — got none of it.
+
+   Measured at 820 across all thirteen rooms of a signed-in viewer: 37 of the 41 fields on screen
+   were under 40px, and 19 of those sat at 24-25px, which is the WCAG 2.5.8 floor itself rather
+   than merely snug. Account settings alone held sixteen of them, both password boxes and the
+   email field among them; the contact form's name field was 24 — the very field the note below
+   was written about. Strictly under the floor: the visualiser's preset name at 23, and, behind
+   its toggle where no sweep of an opening state can see it, #chronicle's ⏱ Fill a gap activity
+   picker at 21, with two 36px datetime fields beside it in the same row. That row is what sent
+   me looking.
+
+   ⚠️ IT IS THE ONE RULE THAT HAD TO LEAVE THE BLOCK ABOVE RATHER THAN WIDEN WITH IT. Everything
+   else up there is the Circuit's phone LAYOUT — a one-line log, a hidden subtitle, a swipeable
+   tab strip, a chat screen that owns the viewport — and a tablet should get none of that. Only
+   this rule is about the size of a fingertip, so only this rule is gated on the pointer. Moving
+   it out changes nothing below 640: at (0,3,1) it already beat the `.cz-slot-body input` and
+   `.cz-chat-form input` rules it now sits after, whatever order they are in.
+
+   ⚠️ Proven before it was changed, because the pane cannot emulate a coarse pointer above 768
+   (CLAUDE.md §6 has the snippet that collects these rules and applies them unconditionally).
+   Injecting this exact declaration at 820 emptied the under-40 list in all thirteen rooms while
+   `sideways`, `offEdge`, `clipped`, `insideOut` and `spills` stayed at zero in every one of them.
+   Only two pages moved at all: account settings grew 184px carrying its nineteen fields, and the
+   instrument 21px. Nothing here is anything but a min-height, so widening the gate can only grow
+   a control, never move a layout. */
+@media (max-width: 640px), (pointer: coarse) {
+  /* text fields were as short as 24px (the contact form). No field should be
+     shorter than a fingertip; min-height only ever grows them. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    min-height: 40px;
   }
 }
 
@@ -16345,8 +16375,9 @@ a.cz-msg-author:focus-visible {
   display: grid;
   /* ⚠️ `minmax(0, 1fr)`, for the same reason as `.chron-against` — an automatic grid column grows
      to its widest row and will not shrink, so one long activity name made every row in the list
-     that wide and pushed the page sideways. `.chron-ent-name` has carried the ellipsis and a
-     130px floor all along; the column above it was what never let either matter. */
+     that wide and pushed the page sideways. `.chron-ent-name` has carried a 130px floor all
+     along; the column above it was what never let it matter. (It carried an ellipsis too, until
+     that turned out to be hiding two thirds of a legal activity name — it wraps now.) */
   grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
 }
@@ -16378,14 +16409,27 @@ a.cz-msg-author:focus-visible {
  * included: 0 of 7 matched. Removing it is provably a no-op, and it was about to be copied into
  * the phone rule below, which is how a dead selector becomes two.
  */
+/**
+ * ⚠️ THE WHOLE NAME, BECAUSE A TRUNCATION IS NOT UNIQUE AND THE TABLE'S NAMES ARE.
+ * `chronicle_activities` carries UNIQUE (owner, name) and allows 60 characters; this showed
+ * **15** of them at 375 — "Reading — The Brothers Karamazov, Dostoyevsky, part two" and
+ * "… part three" both drew as "Reading — The B". Nothing on the row carries a `title`, and §6
+ * says a title does not exist on a phone anyway, so those characters were all there was.
+ *
+ * ⚠️ SAFE TO WRAP BECAUSE THE ROW ALREADY DOES. `.chron-ent` is a wrapping flex container with
+ * four groups in it — dot, name, facts, buttons — so a taller name makes a taller row and
+ * pushes nothing off the end. That is not true of every name on this page: see
+ * `.chron-bar-label`, which is left alone and says why.
+ *
+ * ⚠️ AND THE 130px FLOOR STAYS. §6's rule: `min-width: 0` is not "let it shrink", it is "let it
+ * vanish" — whatever in the row is rigid wins and the one flexible thing pays the whole bill.
+ * The two declarations this replaces were the same selector written twice.
+ */
 .chron-ent-name {
   flex: 1 1 130px;
   min-width: 130px;
-}
-.chron-ent-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* so a single unbroken 60-character word breaks rather than widening the row */
+  overflow-wrap: anywhere;
 }
 /**
  * ⚠️ EVERY SMALL FACT ABOUT A SITTING, AS ONE ITEM. The row is a flex container that wraps, and
@@ -16578,19 +16622,21 @@ a.cz-msg-author:focus-visible {
    looking rather than measuring. With min-width 0 the three buttons kept the line and "Drawing"
    was ellipsed to "Dr…", which is not a name. The row already wraps; it just had nothing to make
    it. A plan name is short by nature, so this floor is lower than the goal row's 150px. */
+/* ⚠️ the same as .chron-ent-name, and for the same reason — this showed 27 of 55. The row
+   wraps by design (see the note below it), so a two-line name costs a taller row and nothing
+   else. The 110px floor stays for the reason the log row's 130px does. */
 .chron-plan-name {
   flex: 1 1 110px;
   min-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+/* ⚠️ 17 of 55 before this. `.chron-vs` is a flex row with a min-height rather than a height,
+   so it grows; the floor is new, because `flex: 1` with `min-width: 0` beside two rigid
+   numbers is the exact shape §6 measured being crushed to a 3px column. */
 .chron-vs-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 110px;
+  min-width: 110px;
+  overflow-wrap: anywhere;
 }
 .chron-plan-note {
   min-width: 0;
@@ -16995,6 +17041,17 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ a fixed share of the row for the name, so the bars all start at the same place — ragged bar
    starts make two activities of similar length look different at a glance, which is the one thing
    a bar chart is for */
+/**
+ * ⚠️ THIS ONE KEEPS ITS ELLIPSIS, AND IT IS THE WORST OF THEM — 11 characters of 55 at 375. It
+ * is left alone on purpose, because it is the one name on the page that is not in a list row.
+ * It sits in `.chron-bar-name`, a `flex: 0 0 9rem` column whose fixed width is what makes the
+ * bars beside it start at the same place and therefore be comparable at a glance. A wrapping
+ * label would give the rows ragged heights and the chart its own kind of lie.
+ *
+ * Fixing it is a layout DECISION rather than a rule change — a wider label column at the cost of
+ * shorter bars, or the name above its bar so every row is two lines — and either changes how the
+ * chart reads. Named here rather than guessed at.
+ */
 .chron-bar-label {
   min-width: 0;
   overflow: hidden;
@@ -17054,6 +17111,28 @@ a.cz-msg-author:focus-visible {
 .chron-fix .btn {
   min-height: 36px;
 }
+/**
+ * ⚠️ A `<select>` IS AS WIDE AS ITS LONGEST OPTION, and every activity picker in this room is a
+ * list of names somebody chose. An activity name may be 60 characters — the table allows it —
+ * and one of those took the control to 445px: in ⏱ Fill a gap that is 142px past a 303px form
+ * and the PAGE scrolled sideways by 106, and in a routine's step picker 163px past its box.
+ *
+ * ⚠️ BOTH HALVES ARE NEEDED. `max-width` alone does nothing while the label around it has already
+ * grown to the option's width, because the percentage resolves against that label; `min-width: 0`
+ * alone leaves the select free to overflow it. Measured together: label and select 445px to
+ * 282px, the form's own overflow 163 to 0.
+ *
+ * No floor is wanted here, unusually: the cap IS the container, so the control can never be
+ * squeezed below the width of the form it sits in.
+ */
+.chron-add select,
+.chron-fix select {
+  max-width: 100%;
+}
+.chron-add label,
+.chron-fix label {
+  min-width: 0;
+}
 .chron-fix input[type='text'],
 .chron-fix input:not([type]) {
   min-width: 7rem;
@@ -17112,6 +17191,15 @@ a.cz-msg-author:focus-visible {
 /* ── routines: a list you tap down in order — see chronicle/Routines.tsx ────── */
 .chron-routines {
   display: grid;
+  /* ⚠️ `minmax(0, 1fr)` — the fourth of these, and the first found by looking rather than by
+     being bitten. An automatic grid column takes its widest row's max-content and will not
+     shrink: measured at 375 with a 59-character routine name, which the table allows up to 60,
+     the column resolved to 578px inside a 303px list and BOTH routines were drawn 578px wide,
+     including the one called "Morning".
+     ⚠️ AND ONLY `spills` SAW IT. `sideways` and `offEdge` read zero, because the fold this sits
+     in swallowed the overflow before it reached the viewport — which is the whole reason that
+     rule was added to the audit. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   margin-top: 0.4rem;
 }
@@ -17124,14 +17212,27 @@ a.cz-msg-author:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* ⚠️ IT WRAPS, which is the standing rule for every row in this room — see `.chron-ent`. The
+     column fix above stopped a long routine name widening the list, and without this the name
+     simply paid the whole bill instead: measured at 375, 92px of a 282px row for a name, which
+     is ten characters and an ellipsis. The counter and the two buttons drop to their own line
+     now rather than squeezing it. */
+  flex-wrap: wrap;
   min-height: 36px;
 }
 .chron-routine-top > strong {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* ⚠️ A FLOOR IN PIXELS, the same 130 `.chron-ent-name` uses and for the same reason: `min-width:
+     0` is not "let it shrink", it is "let it vanish", and the root size is fluid so `rem` is not a
+     length here.
+     ⚠️ AND THE NAME WRAPS NOW RATHER THAN ELLIPSING, which is the rest of the fix the four list
+     rows got. `chronicle_routines` is UNIQUE (owner, name) with a 60-character limit, exactly
+     like activities — and the note above this row already measured what that came to here: "92px
+     of a 282px row for a name, which is ten characters and an ellipsis". Ten of sixty, and two
+     routines sharing a first word were one routine on screen. The row wraps by design, so a
+     taller name costs a taller row and nothing else. */
+  flex: 1 1 130px;
+  min-width: 130px;
+  overflow-wrap: anywhere;
 }
 .chron-steps {
   display: flex;
@@ -17177,12 +17278,13 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   font-size: 0.88rem;
 }
+/* ⚠️ not measured on screen — the routine draft editor was not reachable in the workbench this
+   pass — but it is the same markup problem as the three above and `.chron-draft li` is a flex
+   row with a min-height, so it grows the same way. Floored like the others. */
 .chron-draft-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 110px;
+  min-width: 110px;
+  overflow-wrap: anywhere;
 }
 
 /* a session's or a window's metric total, beside the time it took */
@@ -17378,4 +17480,178 @@ a.cz-msg-author:focus-visible {
   width: 52px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Now — what you are doing, on a phone. See src/chronicle/Now.tsx ──────── */
+
+.now {
+  display: grid;
+  /* ⚠️ `minmax(0, 1fr)`, the lesson this file learned four times over: an automatic column takes
+     its widest row's max-content and will not shrink, and an activity name may be 60 characters */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+}
+
+/* what is running — the first thing on the screen, because it is the question you opened with */
+.now-on {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card, rgba(128, 128, 128, 0.06));
+}
+.now-on-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  /* a long name gives up its tail rather than the row — the floor keeps it from vanishing */
+  overflow: hidden;
+}
+.now-clock {
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.now-stop {
+  grid-column: 2;
+  min-height: 44px;
+  padding-inline: 1rem;
+}
+.now-note {
+  grid-column: 1 / -1;
+}
+.now-note input {
+  width: 100%;
+  /* ⚠️ `min-width: 0` because an <input> defaults to its `size` attribute's worth of characters —
+     about 202px — which is room to grow and no permission to shrink. See CLAUDE.md §6. */
+  min-width: 0;
+  /* ⚠️ NO HEIGHT HERE, DELIBERATELY. This asked for 44px and got 40, because the site already
+     sizes every form control for a thumb — `input:not(...)` under
+     `(max-width: 640px), (pointer: coarse)`, which outranks `.now-note input` on specificity and
+     is the considered floor for every box on the site rather than this one's opinion. A one-off
+     that loses silently is worse than no one-off; consistency with the other rooms is the point.
+     The TILES are 56px, which is a button and not governed by that rule. */
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+}
+.now-idle {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+}
+.now-say {
+  margin: 0;
+  color: #f5a623;
+}
+
+/**
+ * The tiles.
+ *
+ * ⚠️ `auto-fit` WITH A FLOOR IN PIXELS, not a fixed column count: the root font-size on this site
+ * is fluid, so `rem` is not a length here, and a phone, a tablet and a desktop all want a
+ * different number of columns from the same rule.
+ */
+.now-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+.now-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* ⚠️ 56px rather than the 24px floor: this is the one control the room exists for, and it is
+     pressed with a thumb while walking. WCAG 2.5.8 is the outside bar, not the target. */
+  min-height: 56px;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  min-width: 0;
+}
+/**
+ * ⚠️ THE WHOLE NAME, BECAUSE A TRUNCATION IS NOT UNIQUE AND THE TABLE'S NAMES ARE.
+ * `chronicle_activities` carries UNIQUE (owner, name) and allows **60 characters**; these drew
+ * one ellipsed line, which at 159px is about **19**. Measured in the room: "Reading — The Brothers
+ * Karamazov, Dostoyevsky, part two" and "… part three" are two different activities, and both
+ * drew as **"Reading — The B"** — fifteen characters of fifty-five. The one room whose entire job
+ * is telling your activities apart could not tell those apart, and nothing on screen said so.
+ *
+ * ⚠️ AND THERE IS NO TOOLTIP TO FALL BACK ON. These buttons carry no `title`, and §6 says a
+ * title does not exist on a phone anyway — so the visible characters were all there was. The
+ * headline had it worse at 1.25rem bold: eighteen characters, and the same collision.
+ *
+ * ⚠️ A CLAMP AT TWO LINES WAS THE FIRST FIX AND IT ONLY MOVED THE CLIFF — 15 characters became
+ * 29, and the two names above still collided, because they differ at character 48. Measuring what
+ * removing the cap actually costs settled it, since the table's own 60 IS the bound:
+ *
+ *     "Drawing"                     (7)   56px      ← the floor, unchanged
+ *     the seed's longest name       (29)  56px      ← free
+ *     a long one                    (45)  85px
+ *     the table's limit             (60)  101px     ← the worst a legal name can do
+ *     60 characters with no spaces  (60)  85px      ← overflow-wrap earns its place here
+ *
+ * 101px is not a paragraph, it is a slightly taller button and a bigger thumb target, and only a
+ * name at the very limit pays it. No `overflow: hidden`: if a name ever did escape its tile the
+ * `spills` rule in scripts/mobile-audit.js would say so, where clipping it would not.
+ */
+.now-tile-name,
+.now-on-text {
+  min-width: 0;
+  /* so a single unbroken 60-character word breaks rather than widening the tile */
+  overflow-wrap: anywhere;
+}
+/**
+ * Naming something that is not on the screen yet.
+ *
+ * ⚠️ THE SAME 56px AS A TILE, because it sits in the same column a thumb is already aiming at and
+ * a shorter button there is a different target in the same place.
+ */
+.now-add {
+  width: 100%;
+  min-height: 56px;
+  margin-top: 0.6rem;
+  /* dashed, so it reads as a place to put something rather than a fifth activity */
+  border-style: dashed;
+}
+.now-new {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  align-items: center;
+}
+.now-new label {
+  flex: 1;
+  /**
+   * ⚠️ WITHOUT THIS THE FIELD RUNS OFF THE CARD, and the reason is worth not re-deriving: a flex
+   * child defaults to `min-width: auto`, which for an input resolves to its `size` attribute's
+   * worth of characters — twenty, about 202px. So `flex: 1` grants room to grow and no permission
+   * to shrink. CLAUDE.md §6 has the guestbook's version of this, 144px past its own card.
+   */
+  min-width: 0;
+}
+.now-new input {
+  width: 100%;
+}
+.now-new .btn {
+  flex: none;
+}
+
+/* the one that is running — the only tile that shouts, so it can be found without reading */
+.now-tile.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 700;
+}
+.now-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
 }

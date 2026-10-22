@@ -1,4 +1,5 @@
 import type { Goal, Scope } from '../chronicle/goal'
+import { SPANS_AT_ONCE } from '../chronicle/year'
 import { today as todayISO } from '../chronicle/goal'
 import {
   localMidnight,
@@ -194,6 +195,22 @@ function seed(): Store {
       span('pv-e9', 'pv-gym', 0, 7, 45, 60, null, 4),
       span('pv-e10', 'pv-gym', 3, 7, 40, 55),
       span('pv-e11', 'pv-dish', 0, 19, 12),
+      /**
+       * ⚠️ TWO SITTINGS OVER THE SAME MINUTES, which nothing in the seed had and which the room
+       * has always allowed — none of the ten functions that write to `chronicle_entries` tests for
+       * overlap, deliberately: a podcast while washing up is two activities at once.
+       *
+       * ⚠️ AND ITS ABSENCE HID A BUG FOR THE WHOLE OF THE WORKBENCH'S LIFE. "% of the day" was the
+       * SUM of the sessions rather than the union of them, so it double-counted every shared
+       * minute — but a seed with no overlap in it gives the sum and the union the same answer, so
+       * the rail, the week grid and the month grid all read correctly here while the live site had
+       * a day of work-plus-a-call-plus-music reading **70.8%** of a day holding **33.3%**.
+       *
+       * `pv-e21` sits wholly inside `pv-e1`, which is also the shape that tests the merge's own
+       * guard: the shorter one must not shorten the longer.
+       */
+      span('pv-e21', 'pv-site', 0, 10, 15, null, 'reading while drawing', null),
+      span('pv-e22', 'pv-dish', 0, 19, 20, null, null, null),
       /* ⚠️ a span that crosses midnight, because that is the one case where the two window rules
          disagree: the minutes split across both days and the amount does not. */
       span('pv-e12', 'pv-write', 4, 23, 90, 2),
@@ -516,7 +533,13 @@ const mint = (p: string): string => `${p}-new-${next++}`
  * duly rendered second — which looks exactly like the priority ordering not working, and it was
  * working: it had been proven in SQL minutes earlier. A double that gets the order wrong is the
  * "unfaithful double" trap, and this is the third time reading the server first has been the
- * answer.  is a stable sort, so insertion order stands in for created_at.
+ * answer.
+ *
+ * ⚠️ TWO KEYS AND NOT THE SERVER'S THREE, deliberately. `chronicle_goals_mine` orders by
+ * `priority desc, sort, created_at`; `Array.prototype.sort` is stable, so goals that tie on the
+ * first two keep the order they were inserted in — and the seed inserts them oldest-first, which
+ * is what stands in for `created_at`. Adding a third comparator here would need a column the
+ * preview's `Goal` does not carry, to re-derive an order it already has.
  */
 export const pvGoals = (): Goal[] =>
   db()
@@ -530,8 +553,25 @@ export const pvEntries = (fromISO: string, toISO: string): Entry[] => {
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   const now = Date.now()
+  /**
+   * ⚠️ THE SERVER'S OWN TEST, NOT "OVERLAPS BY MORE THAN NOTHING". This read
+   * `overlapMs(...) > 0`, and a sitting started a moment ago overlaps its own day by about zero
+   * — so the entry you have JUST started was invisible until a millisecond passed.
+   * `chronicle_entries_between` asks `started_at < p_to and coalesce(ended_at, now) > p_from`,
+   * which returns it immediately.
+   *
+   * ⚠️ IT WENT FROM A FOOTNOTE TO A BUG WHEN THE Now ROOM ARRIVED. That room reloads the day the
+   * instant it starts something, so the workbench answered with a log that did not contain the
+   * running sitting and the screen said "Nothing running" about the thing it had just started.
+   * Nothing was wrong with the room; the double was answering a different question from the one
+   * the server answers.
+   */
   return db()
-    .ents.filter((e) => overlapMs(e, from, to, now) > 0)
+    .ents.filter((e) => {
+      const s = Date.parse(e.start)
+      const t = e.end == null ? now : Date.parse(e.end)
+      return s < to && t > from
+    })
     .map((e) => ({ ...e }))
 }
 
@@ -619,13 +659,23 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
 
 /* ── writes ─────────────────────────────────────────────────────────────────── */
 
-export const pvSaveGoal = (g: NewGoal): { id: string } => {
+export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   const id = g.id ?? mint('pv-g')
+  /* ⚠️ the same two the server keeps, in its own words — see the note on pvSaveActivity */
+  const was = db().goals.find((x) => x.id === id)
+  const already = !!was
+  if (g.id && !already) return { why: 'no such goal' }
+  if (!already && db().goals.length >= ACCOUNT_GOALS) {
+    return { why: 'that is 500 goals — finish or delete one' }
+  }
   const made = goal({
     ...g,
     id,
     note: g.note ?? null,
-    sort: g.sort ?? 0,
+    /* ⚠️ null leaves the sort alone — chronicle_goal_save's rule, `coalesce(p_sort, sort)`. This
+       said `?? 0` to match the old server, which reset a goal's place on every edit. The seed's
+       goals carry sorts 1-3 deliberately, so the workbench is where that was visible at all. */
+    sort: g.sort ?? was?.sort ?? 0,
     activity: g.activity ?? null,
     cat: g.cat ?? null,
     /**
@@ -687,6 +737,20 @@ export const pvDropGoal = (id: string): boolean => {
   return true
 }
 
+/**
+ * What an account may hold, as the server counts it.
+ *
+ * ⚠️ AT MODULE SCOPE, WHICH IS WHAT "NAMED ONCE" HAS TO MEAN. These were declared inside
+ * `pvImport`, so the import kept the ceilings and the two SAVE paths beside it could not even
+ * see them — a constant private to one function is two constants waiting to disagree.
+ *
+ * `chronicle_activity_save` raises at 200 and `chronicle_goal_save` at 500. Both are counts of
+ * OTHER ROWS, which is exactly why neither can be a CHECK constraint and why every write path
+ * has to be taught them separately.
+ */
+const ACCOUNT_ACTS = 200
+const ACCOUNT_GOALS = 500
+
 export const pvSaveActivity = (
   name: string,
   cat: Activity['cat'],
@@ -694,9 +758,41 @@ export const pvSaveActivity = (
   id?: string,
   metric?: string | null,
   session?: number | null,
-): { id: string } => {
+): { id: string } | { why: string } => {
   const made = id ?? mint('pv-a')
   const found = db().acts.find((x) => x.id === made)
+  /**
+   * ⚠️ IT CAN REFUSE NOW. `saveActivity` is typed `{ id } | { why }` and this returned `{ id }`
+   * alone, so the shape of a refusal did not exist here — the same gap that let a forty-first
+   * routine step look fine in the workbench. Found by comparing every cloud function that can
+   * answer `{ why }` against its double; two of eleven could not.
+   *
+   * ⚠️ AN ID THAT IS NOT YOURS IS REFUSED, NOT CREATED. `chronicle_activity_save` updates
+   * `where id = p_id and owner = auth.uid()` and raises when nothing came back; this created one
+   * carrying the unknown id instead. The room never sends an id it did not read, so nothing
+   * reached it — but a double that invents a row where the server refuses one is the direction
+   * that hides a bug.
+   */
+  if (id && !found) return { why: 'no such activity' }
+  /**
+   * ⚠️ THE NAME CLASH, in chronicle_activity_save's own words. `chronicle_activities` is
+   * UNIQUE (owner, name) and the function now answers in sentences rather than letting the index
+   * do it — so the double has to, or the workbench creates a second "Gym" the live site refuses,
+   * which is the unfaithful-double direction that hides a bug.
+   *
+   * Matched exactly, like the index: the Now room's own case-insensitive shortcut is a client
+   * convenience that only ever picks an EXISTING activity, and is a different rule on purpose.
+   * `x.id !== made` is what lets an activity keep its own name through a rename.
+   */
+  const clash = db().acts.find((x) => x.name.trim() === name.trim() && x.id !== made)
+  if (clash) {
+    return clash.archived
+      ? { why: `${name.trim()} is archived — bring it back in Chronicle` }
+      : { why: `you already have one called ${name.trim()}` }
+  }
+  if (!found && db().acts.length >= ACCOUNT_ACTS) {
+    return { why: 'that is 200 activities — archive one' }
+  }
   if (found)
     Object.assign(found, {
       name,
@@ -705,7 +801,13 @@ export const pvSaveActivity = (
          passes null here on every rename because it has no colour picker, so reading null as
          "clear it" meant a rename deleted whatever a restored file had put there. */
       colour: colour === null ? found.colour : colour.trim() || null,
-      metric: metric || null,
+      /* ⚠️ and the same rule for the metric, which sat under that comment disagreeing with it:
+         `metric = case when p_metric is null then metric else … end`. The room always sends a
+         string here, so this is the shape a future caller would fall into, not a live loss. */
+      metric: metric == null ? found.metric : metric.trim() || null,
+      /* ⚠️ THE SESSION IS DELIBERATELY NOT THAT RULE. null is its only way to say "clear", because
+         the box is a number and `asMins('')` answers null — see the doc for why changing it needs
+         the client to move first. The server agrees: `when p_session is null then null`. */
       session: session || null,
     })
   else
@@ -752,10 +854,40 @@ export const pvStop = (note: string | null): { why: string } | null => {
  * here and would have answered "no such activity" on the live site. An unfaithful double does not
  * only invent bugs — it hides them, and this one hid a real one until the check was copied.
  */
+/**
+ * ⚠️ IT REFUSES WITH THE SERVER'S WORDS when nothing is open, because that is a state the room
+ * can reach: leave the Now screen on a phone, let a Stop land from another tab, come back and
+ * type. `chronicle_running_note` raises 'nothing is running'; so does this.
+ */
+export const pvNoteRunning = (note: string): { why: string } | null => {
+  const open = db().ents.find((e) => e.end == null)
+  if (!open) return { why: 'nothing is running' }
+  open.note = note.trim() || null
+  return null
+}
+
 export const pvStart = (activity: string): { why: string } | null => {
   const a = db().acts.find((x) => x.id === activity)
   if (!a || a.archived) return { why: 'no such activity' }
-  pvStop(null)
+  /**
+   * ⚠️ IT CLOSES THE OPEN SITTING ITSELF, AND DOES NOT TOUCH ITS NOTE. This called `pvStop(null)`,
+   * and the two server functions differ in exactly that place:
+   *
+   *   chronicle_stop   set ended_at = …, note = nullif(btrim(coalesce(p_note,'')),'')
+   *   chronicle_start  set ended_at = …                        ← and nothing else
+   *
+   * So starting something else KEEPS what you had written about the thing you were doing, and
+   * this double erased it. It cost an hour: the Now room writes the note onto the sitting before
+   * switching, precisely so a word typed on the way out is not lost, and the workbench threw it
+   * away every time — which reads exactly like the feature not working.
+   *
+   * The sub-second rule stays, because both functions have it: a mis-press leaves no trace.
+   */
+  const open = db().ents.find((e) => e.end == null)
+  if (open) {
+    if (Date.now() - Date.parse(open.start) < 1000) db().ents = db().ents.filter((e) => e !== open)
+    else open.end = new Date().toISOString()
+  }
   db().ents.push({
     id: mint('pv-e'),
     activity,
@@ -1116,8 +1248,6 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
    * `chronicle_goal_save` at 500, and both are counts of other rows, which is exactly why neither
    * can be a CHECK constraint and why the import had to be taught them separately.
    */
-  const ACCOUNT_ACTS = 200
-  const ACCOUNT_GOALS = 500
 
   const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
   const numOr = (v: unknown, fallback: number): number =>
@@ -1283,14 +1413,36 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
   return out
 }
 
+/**
+ * ⚠️ IT CAN REFUSE NOW, AND COULD NOT BEFORE. `saveRoutine` is typed `{ id } | { why }` and this
+ * returned `{ id }` only — so the double could not express a refusal the live function makes,
+ * which is the unfaithful-double trap in the direction that HIDES a bug: the workbench accepted
+ * a forty-first step and a forty-first routine, and the site answers both with an error.
+ *
+ * Found by listing every `raise exception` in the chronicle functions and grepping this file for
+ * each message. Thirteen were missing; these two are the ones a person can reach by hand.
+ */
 export const pvSaveRoutine = (
   name: string,
   steps: Array<{ activity: string; mins: number | null }>,
   id?: string,
-): { id: string } => {
+): { id: string } | { why: string } => {
   const made = id ?? mint('pv-r')
+  /**
+   * ⚠️ COUNTED AS HANDED IN, BEFORE THE FOREIGN STEPS GO — and this file had it the other way
+   * round for about ten minutes. `chronicle_routine_save` asks
+   * `jsonb_array_length(p_steps) > 40` as its THIRD line, before the join that drops a step
+   * naming somebody else's activity. So forty-one steps of which two are foreign is refused by
+   * the server and would have been accepted here. Reading the function rather than reasoning
+   * about it is the only thing that caught it; the order of two checks is not something a
+   * sensible guess gets right.
+   */
+  if (steps.length > 40) return { why: 'that is more than forty steps' }
   /* ⚠️ a step naming an activity that is not yours is dropped, as chronicle_routine_save does */
   const mine = steps.filter((s) => db().acts.some((x) => x.id === s.activity))
+  if (!db().routines.some((x) => x.id === made) && db().routines.length >= 40) {
+    return { why: 'that is forty routines — delete one' }
+  }
   const r = db().routines.find((x) => x.id === made)
   if (r) Object.assign(r, { name, steps: mine })
   else db().routines.push({ id: made, name, steps: mine })
@@ -1490,6 +1642,18 @@ export const pvSince = (): number | null => {
 export const pvSpans = (
   asks: Array<{ key: string; from: string; to: string }>,
 ): Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> => {
+  /**
+   * ⚠️ IT REFUSES THE SAME NUMBER THE SERVER REFUSES, and answering any number is how this
+   * hid a live bug: `spanTotals` sent `chronicle_spans` one window per year with no batching,
+   * and the server raises "too many at once" above 120. In the workbench the Years view worked
+   * perfectly, because this double happily answered two thousand asks; on the site the refusal
+   * was swallowed and the view drew every year empty.
+   *
+   * It throws rather than returning nothing, because with `spanTotals` batching correctly this
+   * can only fire if that batching is removed — so it is a tripwire for a regression, not a
+   * state the room can reach.
+   */
+  if (asks.length > SPANS_AT_ONCE) throw new Error('too many at once')
   const catOf = new Map(db().acts.map((a) => [a.id, a.cat]))
   const now = Date.now()
   const out: Record<string, Partial<Record<'locked' | 'free' | 'life', number>>> = {}
