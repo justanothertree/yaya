@@ -17223,12 +17223,16 @@ a.cz-msg-author:focus-visible {
 .chron-routine-top > strong {
   /* ⚠️ A FLOOR IN PIXELS, the same 130 `.chron-ent-name` uses and for the same reason: `min-width:
      0` is not "let it shrink", it is "let it vanish", and the root size is fluid so `rem` is not a
-     length here. The ellipsis below is the last resort, not the plan. */
+     length here.
+     ⚠️ AND THE NAME WRAPS NOW RATHER THAN ELLIPSING, which is the rest of the fix the four list
+     rows got. `chronicle_routines` is UNIQUE (owner, name) with a 60-character limit, exactly
+     like activities — and the note above this row already measured what that came to here: "92px
+     of a 282px row for a name, which is ten characters and an ellipsis". Ten of sixty, and two
+     routines sharing a first word were one routine on screen. The row wraps by design, so a
+     taller name costs a taller row and nothing else. */
   flex: 1 1 130px;
   min-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .chron-steps {
   display: flex;

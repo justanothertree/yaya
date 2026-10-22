@@ -95,8 +95,13 @@ cannot be told apart.
 ## Still open
 
 - `.chron-bar-label`, above — a layout decision about the chart.
-- `.chron-routine-top > strong` carries the same `nowrap` + `ellipsis` on a routine's name. Same
-  bug class, different entity, and not measured this pass.
+- ~~`.chron-routine-top > strong`~~ — **done in the same sitting.** `chronicle_routines` carries
+  the identical pair, `UNIQUE (owner, name)` and a 60-character limit, and the comment above that
+  row had already measured the damage without anyone connecting it: _"92px of a 282px row for a
+  name, which is ten characters and an ellipsis"_. Ten of sixty. Its row wraps by design too, so
+  it took the same one-line change. Verified at 375 with a 60-character name in it: whole name
+  shown, row 65px to 103px, both buttons still on the row at 47x38 and 45x38, and the sweep clean
+  with the long name in place.
 - The case clash is still not closed at the database: "gym" and "Gym" remain two activities as far
   as `UNIQUE (owner, name)` is concerned.
 
