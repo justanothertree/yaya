@@ -119,8 +119,16 @@ export function Now({ authed = false }: { authed?: boolean } = {}) {
    * tile is — archived out, auto out, most-used first — and none of them could be checked from a
    * component. `beat` is in the dependencies so the running sitting's length keeps counting:
    * reading the clock inside a memo that only watches the data froze it between loads.
+   *
+   * ⚠️ AND THE DAY IS WORKED OUT HERE, EVERY TIME, rather than held. `todayISO()` inside a memo
+   * with a fixed dependency list is a value that is right until midnight and then quietly is not
+   * — and this room is the one somebody leaves open. It is two `Date` constructions a second
+   * while something runs, and nothing at all while nothing does.
    */
-  const tiles = useMemo(() => tilesFor(acts ?? [], log, Date.now()), [acts, log, beat])
+  const tiles = useMemo(() => {
+    const day = dayBounds(todayISO())
+    return tilesFor(acts ?? [], log, day.fromMs, day.toMs, Date.now())
+  }, [acts, log, beat])
 
   /**
    * ⚠️ THE NOTE GOES FIRST, ONTO THE SITTING IT WAS TYPED ABOUT. Switching is the whole point of

@@ -1,4 +1,4 @@
-import type { Activity } from './record'
+import { overlapMs, type Activity } from './record'
 
 /** just enough of a sitting to weigh it — see `tilesFor` */
 export type Sat = { activity: string; start: string; end: string | null }
@@ -15,9 +15,27 @@ export type Sat = { activity: string; start: string; end: string | null }
  * so the running sitting's length froze between loads and the order drifted from the truth it is
  * supposed to reflect.
  */
+/**
+ * ⚠️ IT TAKES THE WINDOW, because "today" was a claim this function could not keep. It summed
+ * `to - from` for every sitting it was handed and called the result minutes today — true only
+ * while the caller's log happened to hold exactly today, and `entriesBetween` deliberately
+ * returns a sitting that STRADDLES midnight. `record.ts` is explicit that such a sitting is "two
+ * hours long and belongs to two days — one hour each"; this counted both hours against today.
+ *
+ * Measured, before: a night shift of 23:00→07:00 holds seven hours of today, and a 09:00→16:30
+ * sitting holds seven and a half — so the second belongs first. It was ranked second, because
+ * eight is more than seven and a half.
+ *
+ * ⚠️ AND IT BORROWS `overlapMs` RATHER THAN CLAMPING ITSELF, which is the same argument `lane`,
+ * `against` and `coveredMs` are all built on: the day strip, the grids, the totals and this list
+ * must not be able to disagree about what a sitting is worth in a window, and the only way to
+ * guarantee that is for them to be the same arithmetic asked again.
+ */
 export function tilesFor(
   acts: readonly Activity[],
   log: readonly Sat[],
+  fromMs: number,
+  toMs: number,
   nowMs: number,
 ): Activity[] {
   /**
@@ -29,15 +47,13 @@ export function tilesFor(
    */
   const live = acts.filter((a) => !a.archived && !a.auto)
 
+  /* ⚠️ a sitting with no end is the one you are IN, and `overlapMs` measures it to `nowMs` and
+     no further — which is what keeps the thing you are doing near the front of the list rather
+     than wherever it was this morning. An unparseable date is worth nothing there, not NaN. */
   const mins = new Map<string, number>()
   for (const e of log) {
-    const from = Date.parse(e.start)
-    if (!Number.isFinite(from)) continue
-    /* ⚠️ a sitting with no end is the one you are IN, and it reaches to now — which is what keeps
-       the thing you are doing near the front of the list rather than wherever it was this morning */
-    const to = e.end ? Date.parse(e.end) : nowMs
-    if (!Number.isFinite(to)) continue
-    mins.set(e.activity, (mins.get(e.activity) ?? 0) + Math.max(0, to - from))
+    const ms = overlapMs(e, fromMs, toMs, nowMs)
+    if (ms > 0) mins.set(e.activity, (mins.get(e.activity) ?? 0) + ms)
   }
 
   /**
