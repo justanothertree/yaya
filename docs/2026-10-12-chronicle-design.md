@@ -2880,6 +2880,37 @@ the bug it was added for: _"six hundred milliseconds after signing in, the look 
 replaced by 'dark, no palette, no flair, no backdrop', silently, having chosen nothing."_ An honest
 negative result: the three instances were chronicle's own.
 
+⚠️ **AND THE GUARD WAS READ RATHER THAN RUN, WHICH IS NOT THE SAME CHECK** (16 Oct). The sweep
+above asked the right question of the right function and then accepted the guard's own comment as
+evidence that only a change publishes. It was firing on every dev page load. `lookMirrored` was a
+**ref**, and a ref survives StrictMode's dev remount — so the second mount found it already set and
+went straight to the write. Measured as two runs of the effect with nothing changed between them,
+`already: false` then `already: true`, one `set_my_profile_look` per load at t≈1.0s.
+
+What made it visible at all was the member harness: `previewMember` turns `isFinanceAuthed` on with
+no token, so the call went out unauthenticated and came back **401** — in the console next to the
+Cloudflare beacon's CORS failure, which is genuinely harmless, and so nearly got dismissed as more
+of the same. Nothing was ever written from there, because the function is granted to `authenticated`
+only (`docs/2026-09-04-anon-surface-trim.sql`). The write that did land was the signed-in dev load:
+`.env.local` points `npm run dev` at the production project, so loading localhost while signed in
+published that browser's defaults over a real profile — the bug the quoted comment is about, from a
+direction the comment did not cover. A production build does not double-mount, so the live site
+never had it.
+
+Fixed by changing what is remembered and what opens the gate. The guard holds the **look** rather
+than the fact of having run (`lookPublished`, keyed by uid, so a remount and a reload both compute
+the same payload and say nothing, and signing in as somebody else is a first run of its own), and
+the gate is `uidRef.current` — the uid the row would belong to — rather than the optimistic
+`isFinanceAuthed`, which can be true with a dead token or no token at all. The effect also carries
+a `previewMember` guard now, the way every writer in `chronicle/cloud.ts` does: the module that
+writes asks, rather than each of its callers.
+
+Verified in the pane with the harness on and no session: one request before, none after, on the
+identical measurement — and, with the uid forced so the new check is actually reached, the effect
+still runs twice and still writes nothing, while a real theme change publishes exactly once. The
+other four direct RPCs in `App.tsx` are reads, and both effects holding them already return early
+on `previewMember`.
+
 ## 6af · ✅ The one screen every member sees exactly once
 
 Six ticks of additions later, the room was read end to end in the state nobody had looked at since:
