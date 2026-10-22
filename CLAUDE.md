@@ -55,6 +55,17 @@ that render nothing at zero first**.
   runs `tsc -b`.
 - `npm run lint`, then `npm run build`. The pre-push hook runs the build, so a broken tree cannot
   reach the remote — but finding out at push time is finding out late.
+- **AND A TOOL THAT WALKS THE PROJECT ROOT WALKS THE WORKTREES TOO — ALL OF THEM.** vite.config.ts
+  has a long note about vitest running seven copies of the suite because the desktop app puts a
+  background task's checkout in `.claude/worktrees/<name>/`, which is gitignored and very much
+  still on disk. **eslint had the identical blind spot and nobody had told it**: `npm run lint` is
+  `eslint .` from the root. Measured on 22 Oct with six worktrees open — `npm run lint` said
+  **86 problems**, `npx eslint src` said **13**. Seventy-three belonged to other checkouts, so the
+  "0 errors, 85 warnings" quoted on commit after commit was a figure about seven repositories.
+  Fixed by `globalIgnores(['dist', '.claude'])`. **The warning COUNT was the harmless half** — the
+  real risk is that an error in somebody else's half-finished worktree fails the gate here, about a
+  file this checkout does not contain. When a new tool is added that scans from the root, ask it
+  the same question before trusting a number it prints.
 - **`npm run test` is vitest over the PURE modules, and it exists because the code was already
   shaped for it.** strike.ts, cast.ts, walk.ts, play.ts, zone.ts, mapDoc.ts and solid.ts all say
   in their own comments that they are pure so they can be asked a question without a browser —
