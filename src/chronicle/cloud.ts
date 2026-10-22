@@ -177,7 +177,15 @@ export async function saveGoal(g: NewGoal): Promise<{ id: string } | { why: stri
     p_target: g.target,
     p_unit: g.unit,
     p_note: g.note ?? null,
-    p_sort: g.sort ?? 0,
+    /**
+     * ⚠️ NULL, NOT ZERO, AND THE DIFFERENCE IS A DELETE. `NewGoal` has no sort and the goal form
+     * never sets one, so this was `?? 0` on every save — and `chronicle_goal_save` said
+     * `sort = coalesce(p_sort, 0)`, which cannot tell "put it at zero" from "I am not talking
+     * about this". Both `chronicle_goals_mine` and `get_member_chronicle` order by sort, so an
+     * edit moved the goal in the room and on the profile. The server leaves it alone on null now;
+     * this is the half that has to stop saying something.
+     */
+    p_sort: g.sort ?? null,
     p_activity: g.activity ?? null,
     p_cat: g.cat ?? null,
     p_counts: g.counts ?? 'minutes',

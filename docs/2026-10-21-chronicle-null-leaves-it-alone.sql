@@ -1,0 +1,165 @@
+-- ✅ APPLIED — migration `chronicle_null_leaves_it_alone`
+--
+-- A goal's place in its own list was reset by every edit, and a metric sat under a comment
+-- promising it would not be.
+--
+-- ── HOW THIS WAS FOUND ──────────────────────────────────────────────────────────────────────
+--
+-- Not by reading the functions. By asking CLAUDE.md §8's question mechanically — *which columns
+-- does each writer SET, and which of those reads a null as erasure?* — over every chronicle
+-- function at once:
+--
+--   with f as (select p.proname, pg_get_functiondef(p.oid) as src from pg_proc p
+--                join pg_namespace n on n.oid = p.pronamespace
+--               where n.nspname = 'public' and p.prokind = 'f' and p.proname like 'chronicle%')
+--   select ... where f.src ~ ('(?n)^\s*(' || c.col || ')\s*=\s*')
+--
+-- Which separates cleanly into protected and not:
+--
+--   PROTECTED   chronicle_entry_edit  note     = case when p_note is null then note else ... end
+--               chronicle_entry_edit  activity = coalesce(p_activity, activity)
+--               chronicle_running_fix activity = coalesce(p_activity, activity)
+--               chronicle_activity_save colour = case when p_colour is null then colour ... end
+--
+--   NOT         chronicle_activity_save metric       = v_metric
+--               chronicle_activity_save session_mins = v_session
+--               chronicle_goal_save     sort         = coalesce(p_sort, 0)
+--               chronicle_goal_save     note, target, cat, est_mins, unit, counts, priority
+--
+-- The baseline below is the whole finding in one row. `chronicle_activity_save` called with all
+-- three nullable fields null:
+--
+--   act edit, all three null      →   -/-/#112233
+--                                     ^   ^  ^
+--                                     |   |  colour SURVIVED — its own rule, two lines up
+--                                     metric and session_mins, wiped by the same null
+--                                     on the same UPDATE statement
+--
+-- The colour's comment reads "⚠️ NULL LEAVES THE COLOUR ALONE; '' CLEARS IT. The same rule as a
+-- session's note" — and the two assignments underneath it did not follow it.
+--
+-- ── THE ONE THAT WAS ACTUALLY LIVE: chronicle_goals.sort ────────────────────────────────────
+--
+-- `chronicle_goal_save` said `sort = coalesce(p_sort, 0)`, so NEITHER 0 nor null could mean
+-- "leave it alone" — there was no way for a caller to decline to have an opinion. And the one
+-- caller never has one: `NewGoal` has no `sort`, the goal form never sets it, and `cloud.ts` sent
+-- `p_sort: g.sort ?? 0` on every save.
+--
+-- That matters because sort is load-bearing in two places, both of which somebody reads:
+--
+--   chronicle_goals_mine    order by g.priority desc,  g.sort,  g.created_at   ← the room
+--   get_member_chronicle    order by gl.priority desc, gl.sort, gl.title       ← a public profile
+--
+-- Proven in a rolled-back transaction with a simulated session, reading back through the RPC
+-- because the table is deny-all with no grants (which is the house pattern working):
+--
+--   1 · saved with sort 7                     sort 7
+--   2 · edited, nothing changed on the form   sort 0    ← the erasure
+--   3 · same edit sending null sort           sort 0    ← and null could not save it either
+--
+-- Step 3 is the part that made this a server fix rather than a client one. `coalesce(p_sort, 0)`
+-- reads as a sensible default and is actually "there is no way to say nothing".
+--
+-- ── WHY IT HAD NEVER BEEN SEEN ──────────────────────────────────────────────────────────────
+--
+-- Because nothing can give a goal a non-zero sort yet. There is no reorder control, so every
+-- goal in production is at 0 and resetting it to 0 changes nothing. This is exactly the dormancy
+-- §8 describes — "erasing a column that is always already null is a no-op, so the bug sits
+-- dormant until something else gives the column a value" — and the precedent is one table over:
+-- `chronicle_import` gave activities a colour, and the next rename deleted it.
+--
+-- `chronicle_export` already writes sort into the backup file and `chronicle_import` already
+-- restores it, so the second path that wakes this one is built and waiting.
+--
+-- ── WHAT WAS DELIBERATELY NOT CHANGED, AND WHY ──────────────────────────────────────────────
+--
+-- `session_mins` keeps reading null as "clear", because null is its ONLY way to say that. The
+-- box is a number and `asMins('')` in Timer.tsx answers null for an empty one, so a server-only
+-- change to "null leaves it alone" would take away the ability to clear a session aim — for
+-- every bundle already open, until the person reloaded. The server does already map `<= 0` to
+-- null, so the coordinated version is available whenever it is wanted: client sends 0 to clear,
+-- null to decline. It is not wanted today, because nothing is broken: both callers of
+-- `saveActivity` send the form's own value, and the edit form restores it (Timer.tsx:1432).
+--
+-- `metric` could be changed server-side alone and was, because the client ALWAYS sends a string
+-- there — `actMetric` is an input's value, '' when empty — so null never occurs on that path.
+-- Clearing with '' is untouched. That is the whole difference between the two.
+--
+-- The other unprotected columns on `chronicle_goal_save` (note, target, cat, est_mins, unit,
+-- counts, priority) are left as they are: the single caller restores every one of them when you
+-- press Change (Chronicle.tsx:897-907), so each is complete. `sort` was the one it did not,
+-- which is why it was the one that broke.
+--
+-- ── WHAT CHANGED ────────────────────────────────────────────────────────────────────────────
+--
+--   chronicle_goal_save      sort   = coalesce(p_sort, 0)  →  coalesce(p_sort, sort)
+--                            (the INSERT keeps coalesce(p_sort, 0) — a new row has nothing to
+--                             leave alone, and the anchor check asserted both occurrences first)
+--
+--   chronicle_activity_save  metric = v_metric
+--                                   →  case when p_metric is null then metric else v_metric end
+--
+--   cloud.ts                 p_sort: g.sort ?? 0  →  g.sort ?? null
+--
+-- Patched in place via pg_get_functiondef + anchored replace, with `raise` on a missed anchor and
+-- a count assertion that there were exactly two `coalesce(p_sort,0)` before touching either.
+--
+-- ── WHAT WAS CHECKED ────────────────────────────────────────────────────────────────────────
+--
+-- A behavioural baseline before and after, eight calls covering insert, every-field-set,
+-- every-field-null and empty-string-clears. The diff is exactly two cells:
+--
+--                                   before            after
+--   goal insert sort=7              7/pri 1           7/pri 1
+--   goal edit p_sort=0              0                 0          ← 0 is still an explicit zero
+--   goal edit p_sort=null           0                 7          ← fixed
+--   goal edit p_sort=4              4                 4
+--   act insert                      pages/45/#112233  same
+--   act edit, all three null        -/-/#112233       pages/-/#112233   ← metric survives
+--   act edit, all three set         reps/20/#445566   same
+--   act edit, empty-string clears   -/-/-             -/-/-      ← clearing still works
+--
+-- Grants after, confirmed rather than assumed (create or replace keeps them):
+--   chronicle_goal_save      anon false, authenticated true, security definer true
+--   chronicle_activity_save  anon false, authenticated true, security definer true
+--
+-- ── AND ON SCREEN, WHICH IS WHERE IT WAS MADE TO FAIL ───────────────────────────────────────
+--
+-- The preview seed gives three day-scope goals sorts of 1, 2 and 3, so the workbench is the only
+-- place this is visible at all. "Water the plants" (sort 2) and "Wash up every evening" (sort 3)
+-- both sit at priority 0, so their order is decided purely by sort.
+--
+-- Pressing ✎ on the second and then Save, changing nothing:
+--
+--   with the fix          … Water the plants, Wash up every evening …   unchanged
+--   perturbed back        … Wash up every evening, Water the plants …   moved
+--
+-- The double was perturbed from a scratchpad copy and restored from it, never with git checkout.
+--
+-- ── THE DOUBLE ──────────────────────────────────────────────────────────────────────────────
+--
+-- `pvSaveGoal` and `pvSaveActivity` carried the same two mistakes, which is what made the
+-- workbench demonstration possible and is also why it had been invisible: a faithful double
+-- reproduces the bug. Both now say the rule in the server's own words, and `pvSaveActivity`
+-- carries a note saying the session is deliberately NOT that rule, so the next reader does not
+-- "fix" it into a regression.
+--
+-- One thing was reverted rather than kept: a third sort key was added to `pvGoals` to match
+-- `chronicle_goals_mine`'s `created_at`, and the comment four lines above it already explained
+-- why two is right — Array.prototype.sort is stable, so goals tying on the first two keep their
+-- insertion order, which is what stands in for created_at in the seed. §8's "read the comments
+-- before overturning a decision", caught by the comment itself. That sentence had lost its
+-- subject at some point ("answer.  is a stable sort") and now says what it meant.
+
+-- ── the standing check, re-runnable ─────────────────────────────────────────────────────────
+-- Which chronicle columns can a caller decline to have an opinion about?
+--
+-- with f as (
+--   select p.proname, pg_get_functiondef(p.oid) as src
+--   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--   where n.nspname = 'public' and p.prokind = 'f' and p.proname like 'chronicle%'
+-- )
+-- select proname,
+--        (src ~* 'case when p_\w+ is null then') as has_leave_alone,
+--        (src ~* 'coalesce\(p_\w+,\s*\w+\)')     as has_coalesce_to_column
+-- from f where src ~* 'update\s+public\.chronicle' order by 1;

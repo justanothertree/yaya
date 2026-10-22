@@ -533,7 +533,13 @@ const mint = (p: string): string => `${p}-new-${next++}`
  * duly rendered second — which looks exactly like the priority ordering not working, and it was
  * working: it had been proven in SQL minutes earlier. A double that gets the order wrong is the
  * "unfaithful double" trap, and this is the third time reading the server first has been the
- * answer.  is a stable sort, so insertion order stands in for created_at.
+ * answer.
+ *
+ * ⚠️ TWO KEYS AND NOT THE SERVER'S THREE, deliberately. `chronicle_goals_mine` orders by
+ * `priority desc, sort, created_at`; `Array.prototype.sort` is stable, so goals that tie on the
+ * first two keep the order they were inserted in — and the seed inserts them oldest-first, which
+ * is what stands in for `created_at`. Adding a third comparator here would need a column the
+ * preview's `Goal` does not carry, to re-derive an order it already has.
  */
 export const pvGoals = (): Goal[] =>
   db()
@@ -656,7 +662,8 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
 export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   const id = g.id ?? mint('pv-g')
   /* ⚠️ the same two the server keeps, in its own words — see the note on pvSaveActivity */
-  const already = db().goals.some((x) => x.id === id)
+  const was = db().goals.find((x) => x.id === id)
+  const already = !!was
   if (g.id && !already) return { why: 'no such goal' }
   if (!already && db().goals.length >= ACCOUNT_GOALS) {
     return { why: 'that is 500 goals — finish or delete one' }
@@ -665,7 +672,10 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
     ...g,
     id,
     note: g.note ?? null,
-    sort: g.sort ?? 0,
+    /* ⚠️ null leaves the sort alone — chronicle_goal_save's rule, `coalesce(p_sort, sort)`. This
+       said `?? 0` to match the old server, which reset a goal's place on every edit. The seed's
+       goals carry sorts 1-3 deliberately, so the workbench is where that was visible at all. */
+    sort: g.sort ?? was?.sort ?? 0,
     activity: g.activity ?? null,
     cat: g.cat ?? null,
     /**
@@ -775,7 +785,13 @@ export const pvSaveActivity = (
          passes null here on every rename because it has no colour picker, so reading null as
          "clear it" meant a rename deleted whatever a restored file had put there. */
       colour: colour === null ? found.colour : colour.trim() || null,
-      metric: metric || null,
+      /* ⚠️ and the same rule for the metric, which sat under that comment disagreeing with it:
+         `metric = case when p_metric is null then metric else … end`. The room always sends a
+         string here, so this is the shape a future caller would fall into, not a live loss. */
+      metric: metric == null ? found.metric : metric.trim() || null,
+      /* ⚠️ THE SESSION IS DELIBERATELY NOT THAT RULE. null is its only way to say "clear", because
+         the box is a number and `asMins('')` answers null — see the doc for why changing it needs
+         the client to move first. The server agrees: `when p_session is null then null`. */
       session: session || null,
     })
   else
