@@ -1,4 +1,6 @@
 import { getSupabaseClient } from '../finance/client'
+import { previewMember } from '../dev/previewMember'
+import { pvDescribe, pvDrop, pvKeep, pvPictures } from '../dev/picturePreview'
 import { FULL_BYTES, FULL_EDGE, THUMB_BYTES, THUMB_EDGE, fitWithin, nextQuality } from './shrink'
 
 /**
@@ -32,6 +34,15 @@ export type Kept = {
 export type Squeezed = { blob: Blob; w: number; h: number; quality: number }
 
 const MIME = 'image/webp'
+
+/**
+ * ⚠️ THE SERVER'S OWN CEILINGS, NAMED HERE SO THE ROOM CAN SAY THEM. `picture_claim` is where
+ * they are enforced and these are a copy — which is a thing to be uneasy about, so: they are
+ * only ever used to DRAW a figure ("4.2 MB of 50 MB"), never to decide anything. A copy that
+ * drifts makes a label wrong; it cannot make a refusal wrong, because the refusal is not here.
+ */
+export const PICTURES_EACH = 500
+export const PICTURE_BYTES_ALL = 52_428_800
 
 /**
  * Draw a picture at a size and encode it, walking the quality down until it fits.
@@ -115,6 +126,7 @@ export async function keepPicture(
   thumb: Squeezed,
   alt: string,
 ): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvKeep(full, thumb, alt)
   const supabase = getSupabaseClient()
   const { data, error } = await supabase.functions.invoke('pictures', {
     body: {
@@ -144,6 +156,7 @@ export async function keepPicture(
 }
 
 export async function myPictures(): Promise<Kept[]> {
+  if (previewMember) return pvPictures()
   const { data, error } = await getSupabaseClient().functions.invoke('pictures', {
     body: { op: 'view' },
   })
@@ -152,6 +165,7 @@ export async function myPictures(): Promise<Kept[]> {
 }
 
 export async function dropPicture(id: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvDrop(id)
   const { error } = await getSupabaseClient().functions.invoke('pictures', {
     body: { op: 'remove', id },
   })
@@ -160,6 +174,7 @@ export async function dropPicture(id: string): Promise<{ why: string } | null> {
 }
 
 export async function describePicture(id: string, alt: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvDescribe(id, alt)
   const { error } = await getSupabaseClient().rpc('picture_alt', { p_id: id, p_alt: alt })
   return error ? { why: error.message || 'that did not save' } : null
 }

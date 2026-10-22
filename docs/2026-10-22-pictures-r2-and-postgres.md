@@ -139,11 +139,81 @@ budget and has to terminate, since each round is a real encode on a phone.
   from `functions.invoke` as "Edge Function returned a non-2xx status code", so every ceiling
   written to be read by a person would arrive as that one useless sentence unless the body is read.
 
+## The room — built
+
+`src/pictures/Pictures.tsx`, nav entry `pictures`, members only like its neighbours.
+
+**The dial is the room.** Everything else is a list and a button; the thing worth building is the
+moment a picture gets smaller in front of you and says by how much. Driven in the pane against a
+real 3000×2000 PNG of 1.7 MB:
+
+| quality | result                   |
+| ------- | ------------------------ |
+| 100     | 788 KB · 2.2× smaller    |
+| 80      | 264 KB · 6.5× smaller    |
+| 55      | 206 KB · 8.3× smaller    |
+| 30      | **164 KB · 10× smaller** |
+
+All at 1600×1067. The whole pure path ran for real — `fitWithin` → canvas → `toBlob` →
+`nextQuality`.
+
+It re-encodes on a **250ms debounce**, because each notch is a real `toBlob` on a full-size
+canvas: dragging the slider is forty encodes if nothing waits. And every preview is an object URL
+that is **revoked** when the next one replaces it — a slider dragged across its range otherwise
+holds dozens of full-size images alive until the tab closes, and nothing looks wrong until a phone
+runs out of memory.
+
+### What the sweep found, and it was the point of the room
+
+At 375 with the `mobile` preset, with the squeeze panel open: **`tooSmall: 1`** — a control at
+**327×16**, under the 24px WCAG 2.5.8 floor.
+
+It was the quality slider. A bare `<input type="range">` lays out about 16px high, and its hit
+area is its own box. So the whole argument for this room is that squeezing should be a dial a
+person _holds_, and the dial was the one thing on the screen too small to hold. §6 says a new
+control counts as a UI change; a slider is where that bites hardest, because nothing about it
+looks wrong.
+
+Now 327×44 with a 24px thumb, and the sweep reads **sideways 0, tooSmall 0, offEdge 0, clipped 0,
+insideOut 0, spills 0, wordless 0** in both states. Plus a screenshot, because restyling a range
+input's track and thumb is exactly the change whose numbers can go clean while the control
+disappears.
+
+### The double
+
+`src/dev/picturePreview.ts` stands in for the **storage and nothing else** — squeezing is real
+browser code and works in the workbench, so only the PUT is replaced. Its ceilings are the
+server's, in the server's own words, because a double more permissive than the thing it doubles is
+the direction that hides a bug.
+
+Seeded with four pictures including **a panorama** (1600×300) and **a 95-character description**,
+because a grid of near-squares with tidy labels tells you nothing about a grid.
+
+Verified end to end in the pane: kept a picture (4 → 5 thumbnails, alt on the image and drawn,
+usage `5 of 500 · 1.1 MB of 50.0 MB`), and deleted one (`Delete the kitchen table,
+mid-afternoon` → 883 KB to 703 KB).
+
+## And one more refusal made readable
+
+`picture_claim` left the per-row ceilings to the table, so an over-size picture answered
+`new row for relation "member_pictures" violates check constraint "member_pictures_bytes_sane"` —
+which the edge function passes straight through, because it passes refusals through on purpose so
+the readable ones stay readable. The same shape as the activity name clash fixed earlier the same
+day. Now:
+
+```
+over 2MB          that one is over 2 MB even squeezed — try a lower quality
+thumbnail too big that one would not make a thumbnail
+empty picture     that picture came to nothing
+no size           that picture has no size
+CONTROL           an ordinary one is still allowed
+```
+
+The constraints stay as the backstop — they are what makes the rule true for any path that ever
+writes there. These are only the wording.
+
 ## Still to build
 
-- The room: a file picker, the quality dial with live byte count, a grid of thumbnails.
-- A `previewMember` stand-in, or the room renders empty in the workbench and an audit of nothing
-  passes — §2 is explicit about this.
 - Attaching a picture to a chronicle sitting, a circuit review, or a rating. `member_pictures` is
   deliberately not chronicle-shaped: the picture owns itself and the thing that uses it points at
   it, so one picture can hang off any of them without a polymorphic column.

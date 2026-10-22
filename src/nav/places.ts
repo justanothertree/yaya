@@ -94,6 +94,11 @@ export const PLACES = [
    */
   { id: 'now', label: 'Now', icon: '⏱', title: 'Now', nav: member },
   { id: 'chronicle', label: 'Chronicle', icon: '🗓', title: 'Chronicle', nav: member },
+  /**
+   * ⚠️ MEMBERS ONLY, like its neighbours, and for a plainer reason than theirs: these are a
+   * person's own photographs. There is no visitor version of that worth building.
+   */
+  { id: 'pictures', label: 'Pictures', icon: '🖼', title: 'Pictures', nav: member },
   {
     id: 'investments',
     label: 'Investments',

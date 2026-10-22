@@ -17707,3 +17707,165 @@ a.cz-msg-author:focus-visible {
   border-radius: 50%;
   flex: none;
 }
+
+/* ── Pictures ──────────────────────────────────────────────────────────────────────────────── */
+
+.pics-pick {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 1.6;
+}
+.pics-say {
+  margin: 0.6rem 0 0;
+  color: var(--warn, #e8590c);
+  font-size: 0.9rem;
+}
+
+/**
+ * ⚠️ THE PREVIEW AND THE DIAL SIT SIDE BY SIDE WHERE THERE IS ROOM AND STACK WHERE THERE IS NOT.
+ * 420px rather than the site's 700px fold, because this pair needs two usable columns rather than
+ * a page's worth: below it the preview would be a stamp beside a squashed slider.
+ */
+.pics-try {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+@media (min-width: 42rem) {
+  .pics-try {
+    /* minmax(0, …) for the reason every grid in this file has it: an automatic column grows to
+       its widest content and will not shrink, and the content here is an image */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    align-items: start;
+  }
+}
+.pics-preview,
+.pics-preview.is-empty {
+  width: 100%;
+  /* ⚠️ a fixed box with the picture CONTAINED, so the layout does not jump between encodes as a
+     slider moves — a preview that resizes while you drag is the thing you are trying to judge */
+  height: 220px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(128, 128, 128, 0.1);
+}
+.pics-dial {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.pics-dial > label {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+/**
+ * ⚠️ 44px TALL, AND A RANGE INPUT NEEDS TELLING. Its hit area is its own box, and a bare
+ * `<input type="range">` lays out about **16px** high — measured here at 327x16, under the 24px
+ * WCAG 2.5.8 floor and flagged by scripts/mobile-audit.js the first time this room was swept.
+ *
+ * That it was THIS control is the part worth remembering: the whole argument for the room is that
+ * squeezing should be a dial a person holds, and the dial was the one thing on the screen too
+ * small to hold. A new control counts as a UI change — §6 says so about buttons, and a slider is
+ * the case where it bites hardest, because nothing about it looks wrong.
+ *
+ * The track stays thin and the box is what grows, so it reads the same and catches a thumb.
+ */
+.pics-dial input[type='range'] {
+  width: 100%;
+  height: 44px;
+  background: transparent;
+}
+/* and the grab itself, which is its own box again — the default is around 13px across */
+.pics-dial input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent, #2f9e44);
+  border: none;
+  margin-top: -10px;
+}
+.pics-dial input[type='range']::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent, #2f9e44);
+  border: none;
+}
+.pics-dial input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.35);
+}
+.pics-dial input[type='range']::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.35);
+}
+.pics-size {
+  margin: 0;
+  font-size: 1.05rem;
+  /* ⚠️ tabular figures, because this number changes under a moving thumb and proportional digits
+     make it jitter sideways while somebody is reading it */
+  font-variant-numeric: tabular-nums;
+}
+.pics-size[aria-busy='true'] {
+  opacity: 0.55;
+}
+.pics-alt input {
+  width: 100%;
+}
+.pics-alt {
+  min-width: 0;
+}
+.pics-do {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pics-grid {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  /* auto-fill rather than auto-fit: with one picture, auto-fit stretches it across the whole row
+     and a single photograph becomes a banner */
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+.pics-one {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.pics-thumb {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: rgba(128, 128, 128, 0.1);
+  display: block;
+}
+.pics-facts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  min-width: 0;
+}
+.pics-said {
+  font-size: 0.78rem;
+  color: var(--muted, #888);
+  /* the whole description, for the reason every name in the chronicle wraps now: a truncation is
+     not unique, and this is the only thing telling two pictures apart */
+  overflow-wrap: anywhere;
+}
+.pics-used {
+  margin-top: 0.8rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
