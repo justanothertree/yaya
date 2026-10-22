@@ -5080,6 +5080,13 @@ completing the pattern means wrapping them — a structural change that the layo
 to, and whose benefit I cannot verify without a screen reader. It is a completeness gap rather
 than a defect: the panel follows immediately in DOM order and reads in sequence.
 
+✅ **CLOSED 2026-10-22, and across all six strips rather than here alone** — see
+`docs/2026-10-22-aria-tabs.md`. The layout did not object: `.chron` is a plain block card, so the
+wrapper's margins collapse through it, and the room measured pixel-identical wrapped and
+unwrapped. The screen-reader caveat stands and is the honest half of the note; what was checkable
+here — that every `aria-controls` resolves to a real `tabpanel` whose `aria-labelledby` points
+back at the selected tab, through every tab, under real key presses — was measured.
+
 ## 7 · What is deliberately not being ported
 
 - **Money.** Decision 2 above.

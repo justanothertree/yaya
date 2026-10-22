@@ -2,11 +2,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react'
+import { moveTab } from '../ui/tabStrip'
 import {
   TAPS,
   hasTap,
@@ -512,6 +514,12 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
   /* the swatches change job while the tour runs — one flag, read in three places */
   const touring = morph > 0
   const [tab, setTab] = useState<VizTab>(() => readStored(TAB_KEY, TAB_IDS, 'modes'))
+  /* ⚠️ `useId`, not a written-in name: this component draws in three places — its own section, a
+     pinned canvas window and a profile block — and two of those can be on screen at once, which
+     is two panels answering to one id and a tab pointing at whichever came first. */
+  const tabsId = useId()
+  const panelId = `${tabsId}-panel`
+  const tabAt = VIZ_TABS.findIndex(([id]) => id === tab)
   const [full, setFull] = useState(false)
 
   /**
@@ -2377,13 +2385,19 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
              * a rectangle of the picture you had gone fullscreen to look at. One section at a
              * time keeps every control reachable in a strip instead of a wall.
              */}
-            <div className="viz-tabs" role="tablist">
-              {VIZ_TABS.map(([id, icon, label]) => (
+            <div className="viz-tabs" role="tablist" aria-label="Controls">
+              {VIZ_TABS.map(([id, icon, label], i) => (
                 <button
                   key={id}
                   role="tab"
+                  id={`${tabsId}-${i}`}
                   aria-selected={tab === id}
+                  aria-controls={panelId}
+                  /* one tab stop for the strip, and the arrow keys it promises — see
+                     ui/tabStrip.ts */
+                  tabIndex={tab === id ? 0 : -1}
                   className={'viz-tab' + (tab === id ? ' is-on' : '')}
+                  onKeyDown={(e) => moveTab(e, i, VIZ_TABS.length, (n) => setTab(VIZ_TABS[n][0]))}
                   onClick={() => setTab(id)}
                 >
                   <span aria-hidden>{icon}</span> {label}
@@ -2457,795 +2471,824 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
                 {lookSaid}
               </p>
             )}
-            {tab === 'modes' && (
-              <div className="viz-modes" role="group" aria-label="Visual style">
-                {VISUALS.map(([id, icon, label]) => (
-                  <button
-                    key={id}
-                    className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
-                    aria-pressed={mode === id}
-                    onClick={() => pickMode(id)}
-                  >
-                    <span aria-hidden>{icon}</span>
-                    <span className="fx-style-label">{label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
             {/**
-             * ⚠️ Right under the grid and only when Your art is chosen, because these settings
-             * are meaningless for the other thirty modes and hiding them elsewhere would mean
-             * picking a mode that draws a "pick a drawing" message with no drawing picker in
-             * sight. A mode that needs an argument should ask for it where it was chosen.
+             * ⚠️ ONE PANEL AROUND THE WHOLE RUN, which is the only shape this tray can take.
+             * Four tabs' worth of rows are interleaved in source order rather than gathered per
+             * tab — Sound's controls sit either side of Motion's and Look's — so there is no
+             * contiguous element per tab to put the role on, and the ids have to be unique.
+             *
+             * ⚠️ AND THREE OF THE THINGS INSIDE IT BELONG TO NO TAB: the party row, which exists
+             * only inside a call, and the feedback and no-microphone warnings, which are
+             * deliberately unconditional because they are about what is happening right now. They
+             * already drew among the tab content and they still do. Gathering each tab's rows
+             * together would be the tidier answer and it moves controls on screen, which is a
+             * different change from giving the strip a panel.
              */}
-            {tab === 'modes' && mode === 'art' && (
-              <div className="viz-row viz-art" role="group" aria-label="Your art">
-                {art.length === 0 ? (
-                  <span className="muted">
-                    Nothing in your gallery yet — draw something in Paint and press Keep.
-                  </span>
-                ) : (
-                  <>
-                    <span className="muted">Drawing</span>
-                    <select
-                      className="viz-art-pick"
-                      value={artId}
-                      onChange={(e) => setArtId(e.target.value)}
-                      aria-label="Which drawing"
+            <div
+              className="viz-panel"
+              id={panelId}
+              role="tabpanel"
+              aria-labelledby={`${tabsId}-${tabAt}`}
+            >
+              {tab === 'modes' && (
+                <div className="viz-modes" role="group" aria-label="Visual style">
+                  {VISUALS.map(([id, icon, label]) => (
+                    <button
+                      key={id}
+                      className={'fx-style-btn' + (mode === id ? ' is-on' : '')}
+                      aria-pressed={mode === id}
+                      onClick={() => pickMode(id)}
                     >
-                      <option value="">Choose one…</option>
-                      {art.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                    {ART_STYLES.map(([id, label]) => (
-                      <button
-                        key={id}
-                        className={'btn' + (artStyle === id ? ' is-on' : '')}
-                        aria-pressed={artStyle === id}
-                        onClick={() => setArtStyle(id)}
+                      <span aria-hidden>{icon}</span>
+                      <span className="fx-style-label">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/**
+               * ⚠️ Right under the grid and only when Your art is chosen, because these settings
+               * are meaningless for the other thirty modes and hiding them elsewhere would mean
+               * picking a mode that draws a "pick a drawing" message with no drawing picker in
+               * sight. A mode that needs an argument should ask for it where it was chosen.
+               */}
+              {tab === 'modes' && mode === 'art' && (
+                <div className="viz-row viz-art" role="group" aria-label="Your art">
+                  {art.length === 0 ? (
+                    <span className="muted">
+                      Nothing in your gallery yet — draw something in Paint and press Keep.
+                    </span>
+                  ) : (
+                    <>
+                      <span className="muted">Drawing</span>
+                      <select
+                        className="viz-art-pick"
+                        value={artId}
+                        onChange={(e) => setArtId(e.target.value)}
+                        aria-label="Which drawing"
                       >
-                        {label}
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-            {tab === 'sound' && (
-              <div className="viz-row" role="group" aria-label="Sound source">
-                {/* Everything at once, and the default. Most of the time the honest answer to
+                        <option value="">Choose one…</option>
+                        {art.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                      {ART_STYLES.map(([id, label]) => (
+                        <button
+                          key={id}
+                          className={'btn' + (artStyle === id ? ' is-on' : '')}
+                          aria-pressed={artStyle === id}
+                          onClick={() => setArtStyle(id)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+              {tab === 'sound' && (
+                <div className="viz-row" role="group" aria-label="Sound source">
+                  {/* Everything at once, and the default. Most of the time the honest answer to
                     "what should this watch" is "whatever is making noise", and singling out one
                     source is the special case rather than the norm. */}
-                <button
-                  className={'fx-style-btn viz-src' + (src === ALL ? ' is-on' : '')}
-                  aria-pressed={src === ALL}
-                  onClick={() => setSrc(ALL)}
-                  title={
-                    liveSet.length
-                      ? `Mixing ${liveSet.length} live source${liveSet.length > 1 ? 's' : ''}`
-                      : 'Nothing playing yet'
-                  }
-                >
-                  <span className={'viz-dot' + (liveSet.length ? ' is-live' : '')} aria-hidden />
-                  <span className="fx-style-label">
-                    All{liveSet.length > 1 ? ` (${liveSet.length})` : ''}
-                  </span>
-                </button>
-                {PICK_TAPS.map((t) => {
-                  const mic = t.id === 'mic'
-                  const on = mic ? micLive : liveSet.includes(t.id)
-                  const chosen = mic ? isMic(src) : src === t.id
-                  return (
-                    <button
-                      key={t.id}
-                      className={'fx-style-btn viz-src' + (chosen ? ' is-on' : '')}
-                      aria-pressed={chosen}
-                      disabled={mic && micBusy}
-                      onClick={() => {
-                        setSrc(t.id)
-                        // picking the microphone is what turns the microphone on
-                        if (mic && !on) void askForMic()
-                      }}
-                      title={
-                        mic
-                          ? on
-                            ? 'Live now'
-                            : 'Turn your microphone on and watch it'
-                          : on
-                            ? 'Live now'
-                            : 'Nothing playing'
-                      }
-                    >
-                      <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
-                      <span className="fx-style-label">{mic && micBusy ? 'Asking…' : t.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {/* Where a track comes from. Both routes end at the same tap, so every mode and every
-              tool works on music with no further plumbing. */}
-            {tab === 'sound' && (
-              <div className="viz-row viz-row-wide">
-                <input
-                  ref={filePick}
-                  type="file"
-                  accept="audio/*"
-                  hidden
-                  onChange={(e) => {
-                    void openFile(e.target.files?.[0])
-                    // cleared so choosing the SAME file twice still fires a change event
-                    e.target.value = ''
-                  }}
-                />
-                <button className="btn" onClick={() => filePick.current?.click()}>
-                  🎵 Open a track
-                </button>
-                {track && (
-                  <>
-                    <span className="muted viz-track" title={track}>
-                      {track}
-                    </span>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        stopMusic()
-                        setTrack('')
-                      }}
-                    >
-                      ⏹ Stop
-                    </button>
-                  </>
-                )}
-                <button
-                  className="btn"
-                  aria-pressed={sharing}
-                  onClick={async () => {
-                    if (sharing) {
-                      stopShared()
-                      setSharing(false)
-                      return
-                    }
-                    setSrcErr(null)
-                    const err = await shareTabAudio()
-                    if (err) {
-                      setSrcErr(err)
-                      return
-                    }
-                    if (sharedOn()) {
-                      setSharing(true)
-                      setSrc('shared')
-                    }
-                  }}
-                  title="Watch what another tab is playing — Spotify, YouTube, anything"
-                >
-                  {sharing ? '⏹ Stop tab audio' : '🖥️ Tab audio'}
-                </button>
-              </div>
-            )}
-            {tab === 'sound' && srcErr && <p className="muted viz-note viz-warn">{srcErr}</p>}
-            {/* ⚠️ These are OUTPUT levels and nothing else — see mixer.ts. They sit after the
-              analyser branch, so turning the music down to a comfortable level does not shrink
-              the picture, which is what a naive gain in the wrong place would do. */}
-            {tab === 'sound' && (
-              <div className="viz-row viz-row-wide">
-                <VolumeRow c="music" label="🎵 Music" />
-                {micOn && hearing && <VolumeRow c="monitor" label="🎧 Yourself" />}
-              </div>
-            )}
-            {tab === 'motion' && (
-              <div className="viz-row viz-row-wide">
-                <label className="appearance-slider">
-                  <span className="muted">Sensitivity</span>
-                  <input
-                    type="range"
-                    min={0.5}
-                    max={4}
-                    step={0.1}
-                    value={gain}
-                    onChange={(e) => setGain(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
-                </label>
-                {/**
-                 * ⚠️ Trails is the one shared tool that does not apply to every mode, so it says
-                 * so rather than sitting there doing nothing.
-                 *
-                 * A mode that owns its own buffer (Rain scrolls its history sideways) cannot
-                 * have the buffer partly erased under it — the erase IS the trail, and doing it
-                 * would eat the picture. Leaving the slider live and inert is the worst version:
-                 * you drag it, nothing happens, and you conclude the feature is broken instead
-                 * of that it does not apply here.
-                 */}
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
+                  <button
+                    className={'fx-style-btn viz-src' + (src === ALL ? ' is-on' : '')}
+                    aria-pressed={src === ALL}
+                    onClick={() => setSrc(ALL)}
                     title={
-                      ownsItsBuffer(mode)
-                        ? 'This mode keeps its own history, so trails do not apply to it'
-                        : 'How much of each frame lingers'
+                      liveSet.length
+                        ? `Mixing ${liveSet.length} live source${liveSet.length > 1 ? 's' : ''}`
+                        : 'Nothing playing yet'
                     }
                   >
-                    Trails
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={0.97}
-                    step={0.01}
-                    value={trail}
-                    disabled={ownsItsBuffer(mode)}
-                    onChange={(e) => setTrail(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">
-                    {ownsItsBuffer(mode) ? 'n/a' : `${Math.round(trail * 100)}%`}
-                  </span>
-                </label>
-              </div>
-            )}
-            {/* Sixteen modes drawing two colours look more alike than they are — the eye reads
-                the hue before the shape. A ramp changes all of them at once. */}
-            {tab === 'look' && (
-              <div className="viz-row viz-row-wide">
-                {/* ⚠️ THE LABEL SAYS WHICH JOB THESE ARE DOING. The swatches pick your palette
-                    normally and pick the tour's members while Morph is on — one control, one
-                    meaning at a time — so the row has to say which, or it is a grid that silently
-                    changed what it does. */}
-                <span className="muted viz-tool-label">{touring ? 'In the tour' : 'Colour'}</span>
-                <div className={'viz-palettes' + (touring ? ' is-touring' : '')}>
-                  {PALETTES.map((p) => {
-                    /* Theme has no colours of its own, so it cannot be blended with anything — it
-                       is simply not a stop on a tour. See MORPH_LIST. */
-                    const tourable = p.stops.length > 1
-                    const inTour = !morphPick.length || morphPick.includes(p.id)
-                    const on = touring ? tourable && inTour : palette === p.id
+                    <span className={'viz-dot' + (liveSet.length ? ' is-live' : '')} aria-hidden />
+                    <span className="fx-style-label">
+                      All{liveSet.length > 1 ? ` (${liveSet.length})` : ''}
+                    </span>
+                  </button>
+                  {PICK_TAPS.map((t) => {
+                    const mic = t.id === 'mic'
+                    const on = mic ? micLive : liveSet.includes(t.id)
+                    const chosen = mic ? isMic(src) : src === t.id
                     return (
                       <button
-                        key={p.id}
-                        className={'viz-swatch' + (on ? ' is-on' : '')}
-                        aria-pressed={on}
-                        disabled={touring && !tourable}
-                        onClick={() =>
-                          touring
-                            ? setMorphPick((prev) => {
-                                /* ⚠️ an empty list means ALL, so the first removal has to write the
-                                 list out in full rather than starting from nothing — otherwise
-                                 turning one off would turn every other one off with it */
-                                const base = prev.length
-                                  ? prev
-                                  : PALETTES.filter((q) => q.stops.length > 1).map((q) => q.id)
-                                return base.includes(p.id)
-                                  ? base.filter((q) => q !== p.id)
-                                  : [...base, p.id]
-                              })
-                            : setPalette(p.id)
-                        }
+                        key={t.id}
+                        className={'fx-style-btn viz-src' + (chosen ? ' is-on' : '')}
+                        aria-pressed={chosen}
+                        disabled={mic && micBusy}
+                        onClick={() => {
+                          setSrc(t.id)
+                          // picking the microphone is what turns the microphone on
+                          if (mic && !on) void askForMic()
+                        }}
                         title={
-                          touring
-                            ? tourable
-                              ? `${p.label} — ${inTour ? 'in the tour, press to drop it' : 'press to add it'}`
-                              : `${p.label} borrows your own colours, so it cannot be part of a tour`
-                            : p.label
-                        }
-                        style={
-                          p.stops.length
-                            ? {
-                                background: `linear-gradient(90deg, ${p.stops
-                                  .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
-                                  .join(',')})`,
-                              }
-                            : // Theme has no colours of its own, so its swatch shows yours
-                              {
-                                background:
-                                  'linear-gradient(90deg, var(--accent), var(--accent-2))',
-                              }
+                          mic
+                            ? on
+                              ? 'Live now'
+                              : 'Turn your microphone on and watch it'
+                            : on
+                              ? 'Live now'
+                              : 'Nothing playing'
                         }
                       >
-                        <span className="viz-swatch-label">{p.label}</span>
+                        <span className={'viz-dot' + (on ? ' is-live' : '')} aria-hidden />
+                        <span className="fx-style-label">
+                          {mic && micBusy ? 'Asking…' : t.label}
+                        </span>
                       </button>
                     )
                   })}
                 </div>
-              </div>
-            )}
-            {tab === 'motion' && (
-              <div className="viz-row viz-row-wide">
-                <label className="appearance-slider">
-                  <span className="muted" title="Or spin the wheel over the picture">
-                    Zoom
-                  </span>
+              )}
+              {/* Where a track comes from. Both routes end at the same tap, so every mode and every
+              tool works on music with no further plumbing. */}
+              {tab === 'sound' && (
+                <div className="viz-row viz-row-wide">
                   <input
-                    type="range"
-                    min={0.3}
-                    max={3}
-                    step={0.01}
-                    value={zoom}
-                    onChange={(e) => setZoom(Number(e.target.value))}
+                    ref={filePick}
+                    type="file"
+                    accept="audio/*"
+                    hidden
+                    onChange={(e) => {
+                      void openFile(e.target.files?.[0])
+                      // cleared so choosing the SAME file twice still fires a change event
+                      e.target.value = ''
+                    }}
                   />
-                  <span className="appearance-slider-val">{zoom.toFixed(2)}×</span>
-                </label>
-                <label className="appearance-slider">
-                  <span className="muted" title="The picture is knocked sideways on the beat">
-                    Shake
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={shake}
-                    onChange={(e) => setShake(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{Math.round(shake * 100)}</span>
-                </label>
-                <label className="appearance-slider">
-                  <span className="muted" title="Colour fringes, as if the lens could not agree">
-                    Split
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={split}
-                    onChange={(e) => setSplit(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{Math.round(split * 100)}</span>
-                </label>
-                <label className="appearance-slider">
-                  <span className="muted" title="Copies of the frame receding behind it">
-                    Depth
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={depth}
-                    onChange={(e) => setDepth(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{Math.round(depth * 100)}</span>
-                </label>
-                {/* ⚠️ Signed, with zero in the middle, so the off position is where a slider
+                  <button className="btn" onClick={() => filePick.current?.click()}>
+                    🎵 Open a track
+                  </button>
+                  {track && (
+                    <>
+                      <span className="muted viz-track" title={track}>
+                        {track}
+                      </span>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          stopMusic()
+                          setTrack('')
+                        }}
+                      >
+                        ⏹ Stop
+                      </button>
+                    </>
+                  )}
+                  <button
+                    className="btn"
+                    aria-pressed={sharing}
+                    onClick={async () => {
+                      if (sharing) {
+                        stopShared()
+                        setSharing(false)
+                        return
+                      }
+                      setSrcErr(null)
+                      const err = await shareTabAudio()
+                      if (err) {
+                        setSrcErr(err)
+                        return
+                      }
+                      if (sharedOn()) {
+                        setSharing(true)
+                        setSrc('shared')
+                      }
+                    }}
+                    title="Watch what another tab is playing — Spotify, YouTube, anything"
+                  >
+                    {sharing ? '⏹ Stop tab audio' : '🖥️ Tab audio'}
+                  </button>
+                </div>
+              )}
+              {tab === 'sound' && srcErr && <p className="muted viz-note viz-warn">{srcErr}</p>}
+              {/* ⚠️ These are OUTPUT levels and nothing else — see mixer.ts. They sit after the
+              analyser branch, so turning the music down to a comfortable level does not shrink
+              the picture, which is what a naive gain in the wrong place would do. */}
+              {tab === 'sound' && (
+                <div className="viz-row viz-row-wide">
+                  <VolumeRow c="music" label="🎵 Music" />
+                  {micOn && hearing && <VolumeRow c="monitor" label="🎧 Yourself" />}
+                </div>
+              )}
+              {tab === 'motion' && (
+                <div className="viz-row viz-row-wide">
+                  <label className="appearance-slider">
+                    <span className="muted">Sensitivity</span>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={4}
+                      step={0.1}
+                      value={gain}
+                      onChange={(e) => setGain(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{gain.toFixed(1)}×</span>
+                  </label>
+                  {/**
+                   * ⚠️ Trails is the one shared tool that does not apply to every mode, so it says
+                   * so rather than sitting there doing nothing.
+                   *
+                   * A mode that owns its own buffer (Rain scrolls its history sideways) cannot
+                   * have the buffer partly erased under it — the erase IS the trail, and doing it
+                   * would eat the picture. Leaving the slider live and inert is the worst version:
+                   * you drag it, nothing happens, and you conclude the feature is broken instead
+                   * of that it does not apply here.
+                   */}
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title={
+                        ownsItsBuffer(mode)
+                          ? 'This mode keeps its own history, so trails do not apply to it'
+                          : 'How much of each frame lingers'
+                      }
+                    >
+                      Trails
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.97}
+                      step={0.01}
+                      value={trail}
+                      disabled={ownsItsBuffer(mode)}
+                      onChange={(e) => setTrail(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">
+                      {ownsItsBuffer(mode) ? 'n/a' : `${Math.round(trail * 100)}%`}
+                    </span>
+                  </label>
+                </div>
+              )}
+              {/* Sixteen modes drawing two colours look more alike than they are — the eye reads
+                the hue before the shape. A ramp changes all of them at once. */}
+              {tab === 'look' && (
+                <div className="viz-row viz-row-wide">
+                  {/* ⚠️ THE LABEL SAYS WHICH JOB THESE ARE DOING. The swatches pick your palette
+                    normally and pick the tour's members while Morph is on — one control, one
+                    meaning at a time — so the row has to say which, or it is a grid that silently
+                    changed what it does. */}
+                  <span className="muted viz-tool-label">{touring ? 'In the tour' : 'Colour'}</span>
+                  <div className={'viz-palettes' + (touring ? ' is-touring' : '')}>
+                    {PALETTES.map((p) => {
+                      /* Theme has no colours of its own, so it cannot be blended with anything — it
+                       is simply not a stop on a tour. See MORPH_LIST. */
+                      const tourable = p.stops.length > 1
+                      const inTour = !morphPick.length || morphPick.includes(p.id)
+                      const on = touring ? tourable && inTour : palette === p.id
+                      return (
+                        <button
+                          key={p.id}
+                          className={'viz-swatch' + (on ? ' is-on' : '')}
+                          aria-pressed={on}
+                          disabled={touring && !tourable}
+                          onClick={() =>
+                            touring
+                              ? setMorphPick((prev) => {
+                                  /* ⚠️ an empty list means ALL, so the first removal has to write the
+                                 list out in full rather than starting from nothing — otherwise
+                                 turning one off would turn every other one off with it */
+                                  const base = prev.length
+                                    ? prev
+                                    : PALETTES.filter((q) => q.stops.length > 1).map((q) => q.id)
+                                  return base.includes(p.id)
+                                    ? base.filter((q) => q !== p.id)
+                                    : [...base, p.id]
+                                })
+                              : setPalette(p.id)
+                          }
+                          title={
+                            touring
+                              ? tourable
+                                ? `${p.label} — ${inTour ? 'in the tour, press to drop it' : 'press to add it'}`
+                                : `${p.label} borrows your own colours, so it cannot be part of a tour`
+                              : p.label
+                          }
+                          style={
+                            p.stops.length
+                              ? {
+                                  background: `linear-gradient(90deg, ${p.stops
+                                    .map((c) => `rgb(${c[0]},${c[1]},${c[2]})`)
+                                    .join(',')})`,
+                                }
+                              : // Theme has no colours of its own, so its swatch shows yours
+                                {
+                                  background:
+                                    'linear-gradient(90deg, var(--accent), var(--accent-2))',
+                                }
+                          }
+                        >
+                          <span className="viz-swatch-label">{p.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {tab === 'motion' && (
+                <div className="viz-row viz-row-wide">
+                  <label className="appearance-slider">
+                    <span className="muted" title="Or spin the wheel over the picture">
+                      Zoom
+                    </span>
+                    <input
+                      type="range"
+                      min={0.3}
+                      max={3}
+                      step={0.01}
+                      value={zoom}
+                      onChange={(e) => setZoom(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{zoom.toFixed(2)}×</span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span className="muted" title="The picture is knocked sideways on the beat">
+                      Shake
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={shake}
+                      onChange={(e) => setShake(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{Math.round(shake * 100)}</span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span className="muted" title="Colour fringes, as if the lens could not agree">
+                      Split
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={split}
+                      onChange={(e) => setSplit(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{Math.round(split * 100)}</span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span className="muted" title="Copies of the frame receding behind it">
+                      Depth
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={depth}
+                      onChange={(e) => setDepth(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{Math.round(depth * 100)}</span>
+                  </label>
+                  {/* ⚠️ Signed, with zero in the middle, so the off position is where a slider
                     naturally rests rather than at one end — and so it can turn either way. A
                     double-click puts it back to still, because finding exact zero by dragging a
                     continuous slider is fiddly. */}
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
-                    title="Turn the drawing as it plays. Double-click to stop."
-                  >
-                    Spin
-                  </span>
-                  <input
-                    className="viz-spin"
-                    type="range"
-                    min={-1}
-                    max={1}
-                    step={0.01}
-                    value={spin}
-                    /**
-                     * ⚠️ IT CATCHES AT THE MIDDLE. Still is the one setting on this slider you
-                     * reach for deliberately and the only one you cannot see yourself hit — the
-                     * picture keeps turning at 0.01 and there is no way to tell that from 0 by
-                     * looking. A double-click reset was there and it is not the same thing: it
-                     * asks you to know the trick, and it cannot help while you are already
-                     * dragging. Anything inside a twentieth of the range snaps home, which is
-                     * far too small to get in the way of choosing a slow spin.
-                     */
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      /* ⚠️ 0.12, not 0.05. A twentieth of the travel is about three pixels on
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title="Turn the drawing as it plays. Double-click to stop."
+                    >
+                      Spin
+                    </span>
+                    <input
+                      className="viz-spin"
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={spin}
+                      /**
+                       * ⚠️ IT CATCHES AT THE MIDDLE. Still is the one setting on this slider you
+                       * reach for deliberately and the only one you cannot see yourself hit — the
+                       * picture keeps turning at 0.01 and there is no way to tell that from 0 by
+                       * looking. A double-click reset was there and it is not the same thing: it
+                       * asks you to know the trick, and it cannot help while you are already
+                       * dragging. Anything inside a twentieth of the range snaps home, which is
+                       * far too small to get in the way of choosing a slow spin.
+                       */
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        /* ⚠️ 0.12, not 0.05. A twentieth of the travel is about three pixels on
                          this slider — a catch you have to already know about to find. Somebody
                          testing simply could not work out how to stop it. Six per cent a side is
                          findable by dragging and still leaves the whole slow end usable, because
                          the curve above puts the gentle spins well inside the first third. */
-                      setSpin(Math.abs(v) < 0.12 ? 0 : v)
-                    }}
-                    onDoubleClick={() => setSpin(0)}
-                  />
-                  {/* ⚠️ The readout IS the stop button, rather than a new control beside it: the
+                        setSpin(Math.abs(v) < 0.12 ? 0 : v)
+                      }}
+                      onDoubleClick={() => setSpin(0)}
+                    />
+                    {/* ⚠️ The readout IS the stop button, rather than a new control beside it: the
                       one thing people needed was a way to stop that they could SEE, and the
                       number was already the thing their eye was on. Double-click still works and
                       the detent still catches — this is the version you do not have to be told
                       about. preventDefault so the label does not forward the click to the range
                       and nudge the value on the way past. */}
-                  <button
-                    type="button"
-                    className="appearance-slider-val viz-spin-stop"
-                    title={spin === 0 ? 'Not spinning' : 'Stop spinning'}
-                    disabled={spin === 0}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setSpin(0)
-                    }}
-                  >
-                    {spin === 0
-                      ? 'still'
-                      : `${spin > 0 ? '↻' : '↺'} ${Math.round(Math.abs(spin) * 100)}`}
-                  </button>
-                </label>
-              </div>
-            )}
-            {/* The pointer driven by arithmetic instead of a hand — for watching rather than
-                playing. Yours takes over the moment it is over the picture. */}
-            {/**
-             * ⚠️ ONE ROW rather than a toggle beside every slider. Five dials times a switch and
-             * a speed each is ten more controls in a panel that already needed tabs to fit — and
-             * they would nearly all be set the same. One speed, and chips saying which dials it
-             * moves, is the same expressiveness in a fifth of the space.
-             */}
-            {tab === 'motion' && (
-              <div className="viz-row viz-row-wide">
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
-                    title="Let the chosen dials drift up and down on their own"
-                  >
-                    Sway
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={sway}
-                    onChange={(e) => setSway(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">
-                    {sway === 0 ? 'off' : Math.round(sway * 100)}
-                  </span>
-                </label>
-                <span className="viz-sway-keys" role="group" aria-label="Which dials sway">
-                  {SWAY_DIALS.map(([id, label]) => (
                     <button
-                      key={id}
-                      className={'btn' + (swayOn.includes(id) ? ' is-on' : ' btn-ghost')}
-                      aria-pressed={swayOn.includes(id)}
-                      disabled={sway === 0}
-                      title={`Let ${label} drift on its own`}
-                      onClick={() =>
-                        setSwayOn((prev) =>
-                          prev.includes(id) ? prev.filter((k) => k !== id) : [...prev, id],
-                        )
-                      }
+                      type="button"
+                      className="appearance-slider-val viz-spin-stop"
+                      title={spin === 0 ? 'Not spinning' : 'Stop spinning'}
+                      disabled={spin === 0}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setSpin(0)
+                      }}
                     >
-                      {label}
+                      {spin === 0
+                        ? 'still'
+                        : `${spin > 0 ? '↻' : '↺'} ${Math.round(Math.abs(spin) * 100)}`}
                     </button>
-                  ))}
-                </span>
-              </div>
-            )}
-            {tab === 'motion' && (
-              <div className="viz-row viz-row-wide">
-                <span className="muted viz-tool-label">Motion</span>
-                <select
-                  className="viz-select"
-                  value={path}
-                  onChange={(e) => setPath(e.target.value as PathId)}
-                >
-                  {PATHS.map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                {path !== 'off' && (
+                  </label>
+                </div>
+              )}
+              {/* The pointer driven by arithmetic instead of a hand — for watching rather than
+                playing. Yours takes over the moment it is over the picture. */}
+              {/**
+               * ⚠️ ONE ROW rather than a toggle beside every slider. Five dials times a switch and
+               * a speed each is ten more controls in a panel that already needed tabs to fit — and
+               * they would nearly all be set the same. One speed, and chips saying which dials it
+               * moves, is the same expressiveness in a fifth of the space.
+               */}
+              {tab === 'motion' && (
+                <div className="viz-row viz-row-wide">
                   <label className="appearance-slider">
-                    <span className="muted">Speed</span>
+                    <span
+                      className="muted"
+                      title="Let the chosen dials drift up and down on their own"
+                    >
+                      Sway
+                    </span>
                     <input
                       type="range"
-                      min={0.02}
+                      min={0}
                       max={1}
                       step={0.01}
-                      value={pathSpeed}
-                      onChange={(e) => setPathSpeed(Number(e.target.value))}
+                      value={sway}
+                      onChange={(e) => setSway(Number(e.target.value))}
                     />
-                    <span className="appearance-slider-val">{pathSpeed.toFixed(2)}</span>
+                    <span className="appearance-slider-val">
+                      {sway === 0 ? 'off' : Math.round(sway * 100)}
+                    </span>
                   </label>
-                )}
-                {/* ⚠️ Placed in the MIDDLE, not wherever the pointer happens to be. A pin that
+                  <span className="viz-sway-keys" role="group" aria-label="Which dials sway">
+                    {SWAY_DIALS.map(([id, label]) => (
+                      <button
+                        key={id}
+                        className={'btn' + (swayOn.includes(id) ? ' is-on' : ' btn-ghost')}
+                        aria-pressed={swayOn.includes(id)}
+                        disabled={sway === 0}
+                        title={`Let ${label} drift on its own`}
+                        onClick={() =>
+                          setSwayOn((prev) =>
+                            prev.includes(id) ? prev.filter((k) => k !== id) : [...prev, id],
+                          )
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+              )}
+              {tab === 'motion' && (
+                <div className="viz-row viz-row-wide">
+                  <span className="muted viz-tool-label">Motion</span>
+                  <select
+                    className="viz-select"
+                    value={path}
+                    onChange={(e) => setPath(e.target.value as PathId)}
+                  >
+                    {PATHS.map(([id, label]) => (
+                      <option key={id} value={id}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  {path !== 'off' && (
+                    <label className="appearance-slider">
+                      <span className="muted">Speed</span>
+                      <input
+                        type="range"
+                        min={0.02}
+                        max={1}
+                        step={0.01}
+                        value={pathSpeed}
+                        onChange={(e) => setPathSpeed(Number(e.target.value))}
+                      />
+                      <span className="appearance-slider-val">{pathSpeed.toFixed(2)}</span>
+                    </label>
+                  )}
+                  {/* ⚠️ Placed in the MIDDLE, not wherever the pointer happens to be. A pin that
                     appeared under the cursor would land on the button you just pressed, and the
                     first thing you would have to do is drag it off the controls. */}
-                <button
-                  className={'btn' + (anchor ? ' is-on' : '')}
-                  aria-pressed={!!anchor}
-                  onClick={() => setAnchor((a) => (a ? null : { x: 0.5, y: 0.5 }))}
-                  title={
-                    anchor
-                      ? 'Remove the pin and let the motion take over again'
-                      : 'Pin the pointer somewhere on the picture and leave it there'
-                  }
-                >
-                  📍 {anchor ? 'Unpin' : 'Pin'}
-                </button>
-                {/* ⚠️ Only offered while something is pinned, and it never removes the pin.
+                  <button
+                    className={'btn' + (anchor ? ' is-on' : '')}
+                    aria-pressed={!!anchor}
+                    onClick={() => setAnchor((a) => (a ? null : { x: 0.5, y: 0.5 }))}
+                    title={
+                      anchor
+                        ? 'Remove the pin and let the motion take over again'
+                        : 'Pin the pointer somewhere on the picture and leave it there'
+                    }
+                  >
+                    📍 {anchor ? 'Unpin' : 'Pin'}
+                  </button>
+                  {/* ⚠️ Only offered while something is pinned, and it never removes the pin.
                     Hidden, the ring cannot be dragged or double-clicked — so this button is the
                     way back, which is why it lives here beside Unpin rather than on the ring it
                     is hiding. */}
-                {anchor && (
+                  {anchor && (
+                    <button
+                      className={'btn' + (showAnchor ? '' : ' is-on')}
+                      aria-pressed={!showAnchor}
+                      onClick={() => setShowAnchor((v) => !v)}
+                      title={
+                        showAnchor
+                          ? 'Keep the pin working but stop drawing the ring over the picture'
+                          : 'Show the ring again so you can move the pin'
+                      }
+                    >
+                      {showAnchor ? '🙈 Hide the ring' : '👁 Show the ring'}
+                    </button>
+                  )}
+                </div>
+              )}
+              {/**
+               * Watching it together.
+               *
+               * Only rendered inside a call, because that is the only place the party exists —
+               * a button whose entire explanation is "start a call first" is a button that
+               * should not be there yet.
+               */}
+              {party.available && (
+                <div className="viz-row viz-row-wide viz-party">
                   <button
-                    className={'btn' + (showAnchor ? '' : ' is-on')}
-                    aria-pressed={!showAnchor}
-                    onClick={() => setShowAnchor((v) => !v)}
+                    className={'btn' + (party.sharing ? ' is-on' : '')}
+                    aria-pressed={party.sharing}
+                    onClick={() => (party.sharing ? party.stopSharing() : party.share())}
                     title={
-                      showAnchor
-                        ? 'Keep the pin working but stop drawing the ring over the picture'
-                        : 'Show the ring again so you can move the pin'
+                      party.sharing
+                        ? 'Stop offering your visualiser to the call'
+                        : 'Let the call watch your visualiser — your settings, their audio'
                     }
                   >
-                    {showAnchor ? '🙈 Hide the ring' : '👁 Show the ring'}
+                    {party.sharing ? '◉ Sharing' : '◎ Share this'}
                   </button>
-                )}
-              </div>
-            )}
-            {/**
-             * Watching it together.
-             *
-             * Only rendered inside a call, because that is the only place the party exists —
-             * a button whose entire explanation is "start a call first" is a button that
-             * should not be there yet.
-             */}
-            {party.available && (
-              <div className="viz-row viz-row-wide viz-party">
-                <button
-                  className={'btn' + (party.sharing ? ' is-on' : '')}
-                  aria-pressed={party.sharing}
-                  onClick={() => (party.sharing ? party.stopSharing() : party.share())}
-                  title={
-                    party.sharing
-                      ? 'Stop offering your visualiser to the call'
-                      : 'Let the call watch your visualiser — your settings, their audio'
-                  }
-                >
-                  {party.sharing ? '◉ Sharing' : '◎ Share this'}
-                </button>
 
-                {party.following ? (
-                  <button
-                    className="btn is-on"
-                    onClick={party.stopFollowing}
-                    title="Go back to your own settings"
-                  >
-                    ✓ Following {party.followingName}
-                  </button>
-                ) : (
-                  party.offers.map((o) => (
+                  {party.following ? (
                     <button
-                      key={o.by}
-                      className="btn"
-                      onClick={() => party.follow(o.by)}
-                      title={`Watch ${o.name}'s visualiser — their settings, your sound`}
+                      className="btn is-on"
+                      onClick={party.stopFollowing}
+                      title="Go back to your own settings"
                     >
-                      Join {o.name}
+                      ✓ Following {party.followingName}
                     </button>
-                  ))
-                )}
+                  ) : (
+                    party.offers.map((o) => (
+                      <button
+                        key={o.by}
+                        className="btn"
+                        onClick={() => party.follow(o.by)}
+                        title={`Watch ${o.name}'s visualiser — their settings, your sound`}
+                      >
+                        Join {o.name}
+                      </button>
+                    ))
+                  )}
 
-                {party.following && (
-                  <span className="muted viz-party-note">Touch any control to take it back.</span>
-                )}
-              </div>
-            )}
+                  {party.following && (
+                    <span className="muted viz-party-note">Touch any control to take it back.</span>
+                  )}
+                </div>
+              )}
 
-            {/* Three tools that act on the finished frame, so all sixteen modes get them at
+              {/* Three tools that act on the finished frame, so all sixteen modes get them at
                 once — the same reason the ramp was worth more than another mode. */}
-            {tab === 'look' && (
-              <div className="viz-row viz-row-wide">
-                {renderQ < 1 && (
-                  <span className="muted viz-quality" role="status">
-                    Drawing at {Math.round(renderQ * 100)}% resolution to hold the frame rate — it
-                    goes back on its own when there is room.
-                  </span>
-                )}
-                {/* ⚠️ before Bloom deliberately: this is the one that costs nothing, so it
+              {tab === 'look' && (
+                <div className="viz-row viz-row-wide">
+                  {renderQ < 1 && (
+                    <span className="muted viz-quality" role="status">
+                      Drawing at {Math.round(renderQ * 100)}% resolution to hold the frame rate — it
+                      goes back on its own when there is room.
+                    </span>
+                  )}
+                  {/* ⚠️ before Bloom deliberately: this is the one that costs nothing, so it
                     should be the one you try first when the picture looks dark */}
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
-                    title="Lifts the dark end of the palette — costs nothing, unlike Bloom"
-                  >
-                    Brightness
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={0.6}
-                    step={0.01}
-                    value={bright}
-                    onChange={(e) => setBright(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{Math.round((bright / 0.6) * 100)}</span>
-                </label>
-                <label className="appearance-slider">
-                  <span className="muted" title="Bright areas spill light into what is around them">
-                    Bloom
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={bloom}
-                    onChange={(e) => setBloom(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{Math.round(bloom * 100)}</span>
-                </label>
-                <label className="appearance-slider">
-                  <span className="muted" title="The whole picture leans in on every beat">
-                    Punch
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={punch}
-                    onChange={(e) => setPunch(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">{Math.round(punch * 100)}</span>
-                </label>
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
-                    title="The frame drawn back into itself — tunnels and spirals"
-                  >
-                    Echo
-                  </span>
-                  {/* ⚠️ Off on modes that own their buffer, exactly as Trail is — feeding a
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title="Lifts the dark end of the palette — costs nothing, unlike Bloom"
+                    >
+                      Brightness
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.6}
+                      step={0.01}
+                      value={bright}
+                      onChange={(e) => setBright(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">
+                      {Math.round((bright / 0.6) * 100)}
+                    </span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title="Bright areas spill light into what is around them"
+                    >
+                      Bloom
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={bloom}
+                      onChange={(e) => setBloom(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{Math.round(bloom * 100)}</span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span className="muted" title="The whole picture leans in on every beat">
+                      Punch
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={punch}
+                      onChange={(e) => setPunch(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">{Math.round(punch * 100)}</span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title="The frame drawn back into itself — tunnels and spirals"
+                    >
+                      Echo
+                    </span>
+                    {/* ⚠️ Off on modes that own their buffer, exactly as Trail is — feeding a
                       scrolling record back into itself only saturates it. See the frame loop. */}
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={echo}
-                    disabled={ownsItsBuffer(mode) || noHistory}
-                    title={noHistory && !ownsItsBuffer(mode) ? needsTrail : undefined}
-                    onChange={(e) => setEcho(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">
-                    {ownsItsBuffer(mode) ? 'n/a' : noHistory ? 'Trails' : Math.round(echo * 100)}
-                  </span>
-                </label>
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
-                    title="Drift through the palettes — Ember into Ocean into Neon, from the one you picked"
-                  >
-                    Morph
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={morph}
-                    onChange={(e) => setMorph(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">
-                    {morph > 0 ? morphNow || '…' : 'off'}
-                  </span>
-                </label>
-                <label className="appearance-slider">
-                  <span
-                    className="muted"
-                    title="The frame held where it was drawn — paints over instead of drifting off"
-                  >
-                    Stamp
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={stamp}
-                    disabled={ownsItsBuffer(mode) || noHistory}
-                    title={noHistory && !ownsItsBuffer(mode) ? needsTrail : undefined}
-                    onChange={(e) => setStamp(Number(e.target.value))}
-                  />
-                  <span className="appearance-slider-val">
-                    {ownsItsBuffer(mode) ? 'n/a' : noHistory ? 'Trails' : Math.round(stamp * 100)}
-                  </span>
-                </label>
-              </div>
-            )}
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={echo}
+                      disabled={ownsItsBuffer(mode) || noHistory}
+                      title={noHistory && !ownsItsBuffer(mode) ? needsTrail : undefined}
+                      onChange={(e) => setEcho(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">
+                      {ownsItsBuffer(mode) ? 'n/a' : noHistory ? 'Trails' : Math.round(echo * 100)}
+                    </span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title="Drift through the palettes — Ember into Ocean into Neon, from the one you picked"
+                    >
+                      Morph
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={morph}
+                      onChange={(e) => setMorph(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">
+                      {morph > 0 ? morphNow || '…' : 'off'}
+                    </span>
+                  </label>
+                  <label className="appearance-slider">
+                    <span
+                      className="muted"
+                      title="The frame held where it was drawn — paints over instead of drifting off"
+                    >
+                      Stamp
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={stamp}
+                      disabled={ownsItsBuffer(mode) || noHistory}
+                      title={noHistory && !ownsItsBuffer(mode) ? needsTrail : undefined}
+                      onChange={(e) => setStamp(Number(e.target.value))}
+                    />
+                    <span className="appearance-slider-val">
+                      {ownsItsBuffer(mode) ? 'n/a' : noHistory ? 'Trails' : Math.round(stamp * 100)}
+                    </span>
+                  </label>
+                </div>
+              )}
 
-            {/* ⚠️ Mirror is a LOOK control and lives with Colour. It shared a row with the mic
+              {/* ⚠️ Mirror is a LOOK control and lives with Colour. It shared a row with the mic
                 buttons purely because they were added on the same day, and the tab split
                 inherited that accident — so the kaleidoscope ended up filed under Sound. */}
-            {tab === 'look' && (
-              <div className="viz-row viz-row-wide">
-                <span className="muted viz-tool-label">Mirror</span>
-                <div className="viz-mirrors">
-                  {MIRRORS.map(([n, label]) => (
-                    <button
-                      key={n}
-                      className={'btn' + (mirror === n ? ' is-on' : ' btn-ghost')}
-                      aria-pressed={mirror === n}
-                      data-active={mirror === n || undefined}
-                      onClick={() => setMirror(n)}
-                      title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              {tab === 'look' && (
+                <div className="viz-row viz-row-wide">
+                  <span className="muted viz-tool-label">Mirror</span>
+                  <div className="viz-mirrors">
+                    {MIRRORS.map(([n, label]) => (
+                      <button
+                        key={n}
+                        className={'btn' + (mirror === n ? ' is-on' : ' btn-ghost')}
+                        aria-pressed={mirror === n}
+                        data-active={mirror === n || undefined}
+                        onClick={() => setMirror(n)}
+                        title={n === 1 ? 'No symmetry' : `${n}-fold kaleidoscope`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {tab === 'sound' && (
-              <div className="viz-row viz-row-wide">
-                {/* ⚠️ ONLY WHILE IT IS ON. Turning the mic on is the My mic chip's job now, so
+              {tab === 'sound' && (
+                <div className="viz-row viz-row-wide">
+                  {/* ⚠️ ONLY WHILE IT IS ON. Turning the mic on is the My mic chip's job now, so
                     what is left here are the two things you can only want once it IS on — and a
                     row that is empty until then is a row nobody has to read. Stopping it stays a
                     real button rather than a second press of the chip: this page is holding your
                     microphone open, and the way to close it should not be something to discover. */}
-                {micOn && (
+                  {micOn && (
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        stopLocalMic()
+                        setMicOn(false)
+                        setHearing(false)
+                        setMicDenied(false)
+                      }}
+                      title="Close the microphone this page opened"
+                    >
+                      ⏹ Stop mic
+                    </button>
+                  )}
+
+                  {micOn && (
+                    <button
+                      className="btn"
+                      aria-pressed={hearing}
+                      onClick={() => {
+                        const next = !hearing
+                        setMonitor(next)
+                        setHearing(next)
+                      }}
+                      title={
+                        hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'
+                      }
+                    >
+                      {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
+                    </button>
+                  )}
+
                   <button
                     className="btn"
                     onClick={() => {
-                      stopLocalMic()
-                      setMicOn(false)
-                      setHearing(false)
-                      setMicDenied(false)
+                      setSrc('ring')
+                      playCallSound('ring')
                     }}
-                    title="Close the microphone this page opened"
                   >
-                    ⏹ Stop mic
+                    🔔 Ringtone
                   </button>
-                )}
-
-                {micOn && (
-                  <button
-                    className="btn"
-                    aria-pressed={hearing}
-                    onClick={() => {
-                      const next = !hearing
-                      setMonitor(next)
-                      setHearing(next)
-                    }}
-                    title={hearing ? 'Stop playing your mic back' : 'Play your mic back to hear it'}
-                  >
-                    {hearing ? '🔇 Stop listening' : '🎧 Hear myself'}
-                  </button>
-                )}
-
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setSrc('ring')
-                    playCallSound('ring')
-                  }}
-                >
-                  🔔 Ringtone
-                </button>
-              </div>
-            )}
-            {hearing && (
-              <p className="muted viz-note viz-warn">
-                ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
-              </p>
-            )}
-            {micDenied && (
-              <p className="muted viz-note">
-                No microphone — the browser said no, or there isn’t one. Nothing was recorded either
-                way.
-              </p>
-            )}
-            {/* ⚠️ On the Sound tab only. It is a promise about the microphone and dropped
+                </div>
+              )}
+              {hearing && (
+                <p className="muted viz-note viz-warn">
+                  ⚠️ Headphones — on speakers your mic will hear itself and start to howl.
+                </p>
+              )}
+              {micDenied && (
+                <p className="muted viz-note">
+                  No microphone — the browser said no, or there isn’t one. Nothing was recorded
+                  either way.
+                </p>
+              )}
+              {/* ⚠️ On the Sound tab only. It is a promise about the microphone and dropped
                 files, so it belongs beside those controls — and repeating it under Modes and Look
                 cost every tab a couple of lines of height for a sentence that did not apply
                 there. The feedback warning above stays unconditional, because that one is about
                 what is happening right now. */}
-            {tab === 'sound' && (
-              <p className="muted viz-note">
-                Nothing is recorded or uploaded. A dropped file plays from your own disk.
-              </p>
-            )}
+              {tab === 'sound' && (
+                <p className="muted viz-note">
+                  Nothing is recorded or uploaded. A dropped file plays from your own disk.
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
