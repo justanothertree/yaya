@@ -381,6 +381,18 @@ Assume real users and sensitive data, because there are and it is.
   ```
 - **Don't grant what cannot be used.** A function that refuses `anon` on its own first line but is
   still callable by `anon` is an entry somebody must reason about at every review.
+- **"RLS makes that grant inert" IS A PER-PRIVILEGE CLAIM, and one privilege is not covered.**
+  `profile_blocks` and `profile_notes` sat at RLS-on / zero-policies / **13 grants** for a month
+  under the reasoning that deny-all makes the grant harmless — which was verified by asking as
+  `anon` and reading zero rows, a check on `SELECT`. Measured on a scratch table with RLS on and
+  zero policies: `INSERT` refused, `DELETE` allowed but **0 rows**, and **`TRUNCATE` succeeded and
+  emptied the table**. There is no TRUNCATE policy type, so RLS never applies to it; what stood
+  between `anon` and an empty table was PostgREST having no verb that emits one — the API's
+  surface, not a privilege check. **Enumerate the privileges and ask it of each.**
+- **And nobody granted those 13 — the schema's default ACL did.** `pg_default_acl` on `public`
+  hands `arwdDxtm` to `anon` and `authenticated` on **every new table**, so deny-all is something
+  each table has to be given, never something it starts with. A revoke is a correction, not a fix:
+  ask the standing query in `docs/rpc-inventory.md` rather than trusting a table's age.
 - **Two different tiers are not one decision.** A block's visibility tier and a page being
   published are separate switches; so are a page and its activity feed. "Anyone" honestly meant
   "any member" for as long as only members could load a profile, and everybody who ever chose it

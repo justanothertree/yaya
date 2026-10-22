@@ -246,24 +246,60 @@ where n.nspname='public' and c.relkind='r'
 order by c.relname;
 ```
 
-On 2026-10-15 all five chronicle tables and `member_library` read `true, 0, 0`.
+On 2026-10-15 all five chronicle tables and `member_library` read `true, 0, 0`, and
+`profile_blocks` and `profile_notes` read `true, 0, 13`. On **2026-10-16 all eight read
+`true, 0, 0`** — migration `profile_blocks_and_notes_deny_all_grants`, reasoning in
+`docs/2026-10-16-two-tables-join-the-house-pattern.sql`. CLAUDE.md §3's sentence naming all three
+as the house pattern is now true of all three.
 
-⚠️ **`profile_blocks` and `profile_notes` read `true, 0, 13`.** CLAUDE.md names all three as the
-house pattern — "RLS on, zero policies, no grants — deny-all" — and two of them carry thirteen
-grants each. Driven in a rolled-back transaction to find out which mechanism is doing the work:
+⚠️ **The 13 were never granted by anybody — they are the schema's default ACL**, which hands
+`arwdDxtm` to `anon` and `authenticated` on every table created in `public`:
 
-| as              | `select * from profile_blocks`                           |
-| --------------- | -------------------------------------------------------- |
-| `anon`          | **refused** — permission denied for table profile_blocks |
-| `authenticated` | **0 rows** — not refused                                 |
+```sql
+select pg_get_userbyid(d.defaclrole) as granted_by, d.defaclacl::text as acl
+from pg_default_acl d left join pg_namespace n on n.oid = d.defaclnamespace
+where n.nspname = 'public' and d.defaclobjtype = 'r';
+```
 
-So a signed-in member really does hold `select`, and what protects the rows is RLS returning
-nothing, not the absence of a grant. **That is not a hole today**: zero rows is zero rows, and
-every reader goes through a definer RPC anyway. It is the thing Rule 1's own sentence warns about
-one level up — _don't grant what cannot be used_ — because the grant is inert only for as long as
-the table has no policy, and the day somebody adds one for any reason it becomes live without
-anybody deciding that.
+So this is a correction rather than a fix: the **next** table added to `public` arrives with the
+same 13, and the house pattern has to be re-asserted by hand each time. Section 4b of the
+member-to-member sweep is the line that notices.
 
-`member_library` shows the pattern is reachable: same job, same protection, `0` grants. Left as it
-is rather than revoked, because these are profile tables rather than this room's, and a revoke on
-live tables is Evan's call — raised separately.
+⚠️ **AND THE REASON THE GRANT LOOKED HARMLESS WAS WRONG ABOUT ONE PRIVILEGE.** The argument for
+leaving it — zero policies is deny-all, so the grant is inert — was tested by asking as `anon` and
+reading zero rows, which is a check on SELECT. It does not hold for all seven. Measured on a
+scratch table with RLS on, zero policies and three rows, granted what `anon` held here:
+
+| privilege  | what RLS did                                          |
+| ---------- | ----------------------------------------------------- |
+| `INSERT`   | refused — new row violates row-level security         |
+| `DELETE`   | allowed, affected **0 rows** — grant achieved nothing |
+| `TRUNCATE` | **SUCCEEDED, table emptied — RLS never applied**      |
+
+There is no TRUNCATE policy type, so a TRUNCATE grant is not neutralised by a deny-all table.
+This was not exploitable — PostgREST has no verb that emits TRUNCATE, so the barrier was the
+API's surface rather than a privilege check — but it is not what a reviewer would have assumed
+was doing the work. **When reasoning that RLS makes a grant inert, ask it per privilege.**
+
+The standing version of the question, which needs no list kept up to date — every row is a table
+whose grant is inert only for as long as it has no policy:
+
+```sql
+select c.relname,
+  (select count(*) from information_schema.role_table_grants g
+    where g.table_schema='public' and g.table_name=c.relname and g.grantee='anon') as anon,
+  (select count(*) from information_schema.role_table_grants g
+    where g.table_schema='public' and g.table_name=c.relname and g.grantee='authenticated') as authed,
+  has_table_privilege('anon', c.oid, 'truncate') as anon_truncate
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname='public' and c.relkind='r' and c.relrowsecurity
+  and (select count(*) from pg_policy p where p.polrelid = c.oid) = 0
+  and (select count(*) from information_schema.role_table_grants g
+        where g.table_schema='public' and g.table_name=c.relname
+          and g.grantee in ('anon','authenticated')) > 0
+order by c.relname;
+```
+
+On 2026-10-16 that returns three rows: `invites` (authenticated only, recorded as deliberate in
+`docs/2026-09-15-public-activity-and-unused-grants.sql`), and `profile_rooms` and
+`profile_room_invites`, both of which still hold `anon` TRUNCATE. Named rather than changed.
