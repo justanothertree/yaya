@@ -16375,8 +16375,9 @@ a.cz-msg-author:focus-visible {
   display: grid;
   /* ⚠️ `minmax(0, 1fr)`, for the same reason as `.chron-against` — an automatic grid column grows
      to its widest row and will not shrink, so one long activity name made every row in the list
-     that wide and pushed the page sideways. `.chron-ent-name` has carried the ellipsis and a
-     130px floor all along; the column above it was what never let either matter. */
+     that wide and pushed the page sideways. `.chron-ent-name` has carried a 130px floor all
+     along; the column above it was what never let it matter. (It carried an ellipsis too, until
+     that turned out to be hiding two thirds of a legal activity name — it wraps now.) */
   grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
 }
@@ -16408,14 +16409,27 @@ a.cz-msg-author:focus-visible {
  * included: 0 of 7 matched. Removing it is provably a no-op, and it was about to be copied into
  * the phone rule below, which is how a dead selector becomes two.
  */
+/**
+ * ⚠️ THE WHOLE NAME, BECAUSE A TRUNCATION IS NOT UNIQUE AND THE TABLE'S NAMES ARE.
+ * `chronicle_activities` carries UNIQUE (owner, name) and allows 60 characters; this showed
+ * **15** of them at 375 — "Reading — The Brothers Karamazov, Dostoyevsky, part two" and
+ * "… part three" both drew as "Reading — The B". Nothing on the row carries a `title`, and §6
+ * says a title does not exist on a phone anyway, so those characters were all there was.
+ *
+ * ⚠️ SAFE TO WRAP BECAUSE THE ROW ALREADY DOES. `.chron-ent` is a wrapping flex container with
+ * four groups in it — dot, name, facts, buttons — so a taller name makes a taller row and
+ * pushes nothing off the end. That is not true of every name on this page: see
+ * `.chron-bar-label`, which is left alone and says why.
+ *
+ * ⚠️ AND THE 130px FLOOR STAYS. §6's rule: `min-width: 0` is not "let it shrink", it is "let it
+ * vanish" — whatever in the row is rigid wins and the one flexible thing pays the whole bill.
+ * The two declarations this replaces were the same selector written twice.
+ */
 .chron-ent-name {
   flex: 1 1 130px;
   min-width: 130px;
-}
-.chron-ent-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* so a single unbroken 60-character word breaks rather than widening the row */
+  overflow-wrap: anywhere;
 }
 /**
  * ⚠️ EVERY SMALL FACT ABOUT A SITTING, AS ONE ITEM. The row is a flex container that wraps, and
@@ -16608,19 +16622,21 @@ a.cz-msg-author:focus-visible {
    looking rather than measuring. With min-width 0 the three buttons kept the line and "Drawing"
    was ellipsed to "Dr…", which is not a name. The row already wraps; it just had nothing to make
    it. A plan name is short by nature, so this floor is lower than the goal row's 150px. */
+/* ⚠️ the same as .chron-ent-name, and for the same reason — this showed 27 of 55. The row
+   wraps by design (see the note below it), so a two-line name costs a taller row and nothing
+   else. The 110px floor stays for the reason the log row's 130px does. */
 .chron-plan-name {
   flex: 1 1 110px;
   min-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+/* ⚠️ 17 of 55 before this. `.chron-vs` is a flex row with a min-height rather than a height,
+   so it grows; the floor is new, because `flex: 1` with `min-width: 0` beside two rigid
+   numbers is the exact shape §6 measured being crushed to a 3px column. */
 .chron-vs-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 110px;
+  min-width: 110px;
+  overflow-wrap: anywhere;
 }
 .chron-plan-note {
   min-width: 0;
@@ -17025,6 +17041,17 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ a fixed share of the row for the name, so the bars all start at the same place — ragged bar
    starts make two activities of similar length look different at a glance, which is the one thing
    a bar chart is for */
+/**
+ * ⚠️ THIS ONE KEEPS ITS ELLIPSIS, AND IT IS THE WORST OF THEM — 11 characters of 55 at 375. It
+ * is left alone on purpose, because it is the one name on the page that is not in a list row.
+ * It sits in `.chron-bar-name`, a `flex: 0 0 9rem` column whose fixed width is what makes the
+ * bars beside it start at the same place and therefore be comparable at a glance. A wrapping
+ * label would give the rows ragged heights and the chart its own kind of lie.
+ *
+ * Fixing it is a layout DECISION rather than a rule change — a wider label column at the cost of
+ * shorter bars, or the name above its bar so every row is two lines — and either changes how the
+ * chart reads. Named here rather than guessed at.
+ */
 .chron-bar-label {
   min-width: 0;
   overflow: hidden;
@@ -17247,12 +17274,13 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   font-size: 0.88rem;
 }
+/* ⚠️ not measured on screen — the routine draft editor was not reachable in the workbench this
+   pass — but it is the same markup problem as the three above and `.chron-draft li` is a flex
+   row with a min-height, so it grows the same way. Floored like the others. */
 .chron-draft-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 110px;
+  min-width: 110px;
+  overflow-wrap: anywhere;
 }
 
 /* a session's or a window's metric total, beside the time it took */
