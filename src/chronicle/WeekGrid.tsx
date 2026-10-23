@@ -124,7 +124,16 @@ export function WeekGrid({
                         const r = ev.currentTarget.getBoundingClientRect()
                         if (!(r.height > 0)) return
                         const pct = ((ev.clientY - r.top) / r.height) * 100
-                        const hit = blockAt(c.blocks, pct)
+                        /**
+                         * ⚠️ THE TOLERANCE IS IN PIXELS, CONVERTED, BECAUSE A PERCENT OF A DAY IS
+                         * NOT A FINGER. It was `blockAt`'s default of 1% — about fourteen minutes,
+                         * which sounds generous and is **2.4px** on a 240px lane. So the forgiving
+                         * near-miss forgave almost nothing and the blocks stayed "very thin and
+                         * short to click". A finger is roughly 10mm; 14px of lane is the honest
+                         * version of that, and expressed this way it stays right at any height
+                         * the grid is ever drawn at.
+                         */
+                        const hit = blockAt(c.blocks, pct, (14 / r.height) * 100)
                         if (hit?.id && onOpen) return onOpen(c.on, hit.id)
                         if (!hit && onEmpty)
                           onEmpty(c.on, Math.max(0, Math.min(23, Math.floor((pct / 100) * 24))))

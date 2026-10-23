@@ -22,7 +22,19 @@ import { exportMine, importMine } from './cloud'
  * about an import is losing what is already there, so the sentence under it says the opposite
  * out loud rather than putting a dialog in the way.
  */
-export function YourCopy({ onPutBack }: { onPutBack: () => void }) {
+/**
+ * ⚠️ IT LIVES ON THE ACCOUNT PAGE NOW, NOT IN CHRONICLE. Reported plainly: "i dont really see a
+ * point in these controls they are also a bit confusing". They were a permanent fixture at the
+ * bottom of a room people open to press Start — a backup is a thing you think about twice a
+ * year, beside the other backup, not something to scroll past every day. Account already held
+ * the library's copy and a line saying the chronicle's lived elsewhere; now they are together
+ * and that line is gone with the split it described.
+ *
+ * ⚠️ `onPutBack` IS OPTIONAL BECAUSE THERE IS NOTHING TO REFRESH THERE. In the room it bumped
+ * the beat so both halves refetched; on Account the chronicle is not on screen, and the room
+ * fetches on mount when you next open it.
+ */
+export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
   const [busy, setBusy] = useState<'out' | 'in' | null>(null)
   const file = useRef<HTMLInputElement>(null)
 
@@ -84,7 +96,7 @@ export function YourCopy({ onPutBack }: { onPutBack: () => void }) {
        * the file came back byte-identical, and the page still said there was nothing here. The
        * room reads once on mount and after its own edits; an import is an edit it did not make.
        */
-      if (added) onPutBack()
+      if (added) onPutBack?.()
     } catch {
       showToast('That file could not be read')
     } finally {

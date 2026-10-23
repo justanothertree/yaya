@@ -234,6 +234,21 @@ export function Timer({
   const [fixEnt, setFixEnt] = useState<string | null>(null)
   const [entAct, setEntAct] = useState('')
   const [entNote, setEntNote] = useState('')
+  /**
+   * What the session really held, to the second.
+   *
+   * ⚠️ A `datetime-local` INPUT IS MINUTE-RESOLUTION AND THE RECORD IS NOT. `forInput` drops the
+   * seconds to fill the box, so opening the editor on a 33-second sitting showed 3:43 PM in both
+   * ends and `0m` between them — while the row above it read `33s`. Pressing Save would then
+   * write both ends at :00 and destroy the 33 seconds, and every longer session loses up to 59
+   * of them the same way, quietly, on an edit that changed nothing else.
+   *
+   * ⚠️ SO AN UNTOUCHED END SENDS WHAT IT ALWAYS HELD. The input is compared against what it was
+   * seeded with; equal means nobody typed in it, and the original ISO goes back unchanged. Only
+   * an end somebody actually moved is re-read from the box, where minute resolution is what they
+   * chose and the truncation is theirs.
+   */
+  const entWas = useRef<{ from: string; to: string | null } | null>(null)
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -738,7 +753,9 @@ export function Timer({
     const running = log.find((e) => e.id === fixEnt)?.end == null
     if (running) {
       setBusy(true)
-      const no = await fixRunning(new Date(entFrom).toISOString(), entAct || null)
+      const w = entWas.current
+      const kept = w != null && forInput(w.from) === entFrom
+      const no = await fixRunning(kept ? w!.from : new Date(entFrom).toISOString(), entAct || null)
       setBusy(false)
       if (no) return moan(no.why)
       setFixEnt(null)
@@ -756,11 +773,15 @@ export function Timer({
      */
     const mins = minsBetweenLocal(entFrom, entTo)
     if (mins !== null && mins < 0) return moan('that ends before it starts')
+    /* see `entWas`: an end nobody moved keeps its seconds */
+    const was = entWas.current
+    const sameFrom = was != null && forInput(was.from) === entFrom
+    const sameTo = was?.to != null && forInput(was.to) === entTo
     setBusy(true)
     const bad = await editEntry(
       fixEnt,
-      new Date(entFrom).toISOString(),
-      new Date(entTo).toISOString(),
+      sameFrom ? was!.from : new Date(entFrom).toISOString(),
+      sameTo ? was!.to! : new Date(entTo).toISOString(),
       /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
          read null as "clear it" — so opening a session's editor and pressing Save, changing
          nothing, destroyed whatever you had written about it. The server now reads null as "leave
@@ -1575,7 +1596,7 @@ export function Timer({
                      */}
                     <div className="chron-when">
                       <span className="chron-when-row">
-                        <span className="chron-when-label">Started</span>
+                        <span className="chron-when-label">From</span>
                         <strong className="chron-when-at">{clockOfLocal(entFrom)}</strong>
                         <span className="chron-nudges">
                           {NUDGES.map((n) => (
@@ -1594,7 +1615,7 @@ export function Timer({
                           thing to type into a box beside a clock that is still counting */}
                       {e.end && (
                         <span className="chron-when-row">
-                          <span className="chron-when-label">Ended</span>
+                          <span className="chron-when-label">To</span>
                           <strong className="chron-when-at">{clockOfLocal(entTo)}</strong>
                           <span className="chron-nudges">
                             {NUDGES.map((n) => (
@@ -1621,11 +1642,26 @@ export function Timer({
                         (() => {
                           const mins = minsBetweenLocal(entFrom, entTo)
                           if (mins === null) return null
-                          return mins < 0 ? (
-                            <span className="chron-when-len is-wrong">ends before it starts</span>
-                          ) : (
-                            <span className="chron-when-len">{spanText(mins * 60_000)}</span>
-                          )
+                          if (mins < 0)
+                            return (
+                              <span className="chron-when-len is-wrong">ends before it starts</span>
+                            )
+                          /**
+                           * ⚠️ THE REAL SPAN WHILE NOTHING HAS BEEN TOUCHED. The boxes are
+                           * minute-resolution, so a 33-second sitting reads 0m in them — and the
+                           * row two inches above says 33s. Two numbers for one session, and the
+                           * smaller one is the one that looks like a bug. Untouched, this says
+                           * what the record holds; moved, it says what the boxes now mean.
+                           */
+                          const w = entWas.current
+                          const untouched =
+                            w?.to != null &&
+                            forInput(w.from) === entFrom &&
+                            forInput(w.to) === entTo
+                          const ms = untouched
+                            ? Date.parse(w!.to!) - Date.parse(w!.from)
+                            : mins * 60_000
+                          return <span className="chron-when-len">{spanText(ms)}</span>
                         })()}
                       <details className="chron-exact">
                         <summary>exact times</summary>
@@ -1732,6 +1768,7 @@ export function Timer({
                       setFixEnt(fixEnt === e.id ? null : e.id)
                       setEntAct(e.activity)
                       setEntNote(e.note ?? '')
+                      entWas.current = { from: e.start, to: e.end }
                       setEntFrom(forInput(e.start))
                       setEntTo(e.end ? forInput(e.end) : '')
                       setEntAmount(e.amount == null ? '' : String(e.amount))
@@ -1806,6 +1843,7 @@ export function Timer({
             setFixEnt(id)
             const e = weekLog.find((x) => x.id === id)
             if (e) {
+              entWas.current = { from: e.start, to: e.end }
               setEntAct(e.activity)
               setEntFrom(forInput(e.start))
               setEntTo(e.end ? forInput(e.end) : '')

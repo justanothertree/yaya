@@ -15729,6 +15729,16 @@ a.cz-msg-author:focus-visible {
 .chron-week-lane.is-tappable .chron-week-block {
   pointer-events: none;
 }
+/**
+ * ⚠️ AND THE LANE ITSELF GETS TALLER, because tolerance cannot rescue a grid that is too short
+ * to aim at. At 240px a whole day is 10px an hour, so a half-hour sitting is five pixels and two
+ * sittings an hour apart are ten — inside one fingertip of each other. Reported as "very thin
+ * and short to click", which is two complaints: thin is the block, short is the lane, and only
+ * one of them is fixable by being generous about near-misses.
+ */
+.chron-week-lane {
+  min-height: 320px;
+}
 
 /**
  * ⚠️ THE RESET STAYS THOUGH THE BUTTONS ARE GONE, because `.chron-week-block` is also used for
@@ -15776,27 +15786,36 @@ a.cz-msg-author:focus-visible {
 }
 .chron-when-label {
   /* a fixed column so "Started" and "Ended" line their clock faces up under each other */
-  flex: 0 0 3.6rem;
+  flex: 0 0 2.4rem;
   font-size: 0.78rem;
   color: var(--muted);
 }
 .chron-when-at {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 5.2rem;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
 /**
- * ⚠️ THE FOUR HANDLES TAKE A LINE OF THEIR OWN, because at 375 they do not fit beside the label
- * and the clock face — measured, the row broke after `+5` and left `+15` orphaned on the next
- * line, which reads as a layout fault rather than as a set of four. `flex-basis: 100%` makes the
- * break deliberate: label and time on one line, the handles under them, always the same shape.
+ * ⚠️ THE HANDLES SIT BESIDE THE TIME, NOT UNDER IT. They had a line of their own, which doubled
+ * the height of a form that is already a quantity, a rating, a note and two buttons — "i
+ * wouldnt consider this much verticle space being taken for an acitivity edit with permanent
+ * interval minute buttons as sexy/easy". Two rows became four, on every open editor, at every
+ * width including the desktop where they fitted all along.
+ *
+ * ⚠️ 38px RATHER THAN 44, AND THE LABELS ARE "From" AND "To". The WCAG floor is 24 and these sit
+ * in a row, so the spacing exception does not apply and 24 is the real bar; 38 clears it with
+ * room to spare and buys the pixels that keep four handles, a label and a clock face on one line.
+ *
+ * ⚠️ THE FIRST TRY AT THIS STILL WRAPPED, AND THE ESTIMATE IS WHY. 40px handles and "Started"
+ * came to 313px — measured, against a row that is **303px**, not the 343 I had guessed from the
+ * card's width. The editor sits inside a log row with padding of its own, so the card was the
+ * wrong thing to measure. Asked the row instead: 36 + 83 + 164 ≈ 283, which fits.
  */
 .chron-nudges {
-  flex: 1 0 100%;
   display: flex;
-  gap: 0.3rem;
-  padding-left: 3.9rem;
+  gap: 0.25rem;
+  margin-left: auto;
 }
 /**
  * ⚠️ THE SAME 44px TRAP, A SECOND TIME, AND THE COMMENT HERE CLAIMED IT HAD BEEN CHECKED. It had
@@ -15811,15 +15830,16 @@ a.cz-msg-author:focus-visible {
  * write "checked" in a comment on the strength of having thought about it.
  */
 .chron-fix .chron-when .chron-nudge {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 0.3rem;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0 0.2rem;
+  font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
 .chron-when-len {
   font-size: 0.82rem;
   color: var(--muted);
-  padding-left: 3.9rem;
+  padding-left: 2.4rem;
 }
 /* ⚠️ a refusal, not a decoration: the form can be in a state that must not be saved, and the
    only thing worse than refusing is saving a session that ends before it starts */
@@ -15833,7 +15853,7 @@ a.cz-msg-author:focus-visible {
   min-height: 24px;
   display: flex;
   align-items: center;
-  padding-left: 3.9rem;
+  padding-left: 2.4rem;
 }
 .chron-exact[open] {
   display: grid;
@@ -15991,30 +16011,6 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   background: rgba(0, 0, 0, 0.22);
 }
-/**
- * The "what is this?" fold.
- *
- * ⚠️ THE HANDLE HAS TO BE SMALL. Shut, this is a line of furniture at the top of the room that
- * nobody wants after their first visit; open, it is the paragraph it always was. So the summary
- * is muted and sized like a label rather than a heading — the thing it must not do is look like
- * something you have to deal with.
- */
-.chron-how > summary {
-  cursor: pointer;
-  font-size: 0.78rem;
-  color: var(--muted);
-  /* WCAG 2.5.8 — it sits alone on its line, so the spacing exception applies and 24 is the bar */
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-}
-.chron-how > p {
-  margin: 0.4rem 0 0;
-}
-.chron-how[open] {
-  margin-bottom: 0.7rem;
-}
-
 .chron-blurb {
   margin: 0 0 0.7rem;
   font-size: 0.86rem;
@@ -17474,12 +17470,8 @@ a.cz-msg-author:focus-visible {
   max-width: 13rem;
 }
 
-/* the room's one line of explanation, and the three steps it shows while empty */
-.chron-how {
-  margin: 0 0 0.7rem;
-  font-size: 0.88rem;
-  max-width: 60ch;
-}
+/* the three steps the room shows while it is empty — the paragraph that used to sit above them
+   is gone, because the halves strip says the same thing on three buttons */
 .chron-first {
   margin: 0 0 0.8rem;
   padding-left: 1.3rem;

@@ -16,6 +16,7 @@ import { site } from '../config/site'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import type { VisibilityTier } from '../circuit/types'
 import { showToast } from '../circuit/toast'
+import { YourCopy } from '../chronicle/YourCopy'
 import { Toast } from '../circuit/ui/Toast'
 import {
   backupName,
@@ -902,8 +903,11 @@ function BackupCard() {
        * a copy, which this file knows nothing about. A promise that has quietly narrowed is worse
        * than no promise: somebody takes one file and believes they have everything.
        */}
+      {/* ⚠️ this said "it has its own copy, in the Chronicle room" — true until the chronicle's
+          copy moved here, directly below. A pointer to somewhere a thing no longer is, is worse
+          than no pointer: it sends somebody looking and they come back believing there is none. */}
       <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
-        Your chronicle is not in this file. It has its own copy, in the Chronicle room.
+        Your chronicle is not in this file — it has its own, below.
       </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn" type="button" onClick={download} disabled={!total}>
@@ -1270,6 +1274,9 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
           <CircuitsCard />
           <PublishCard />
           <BackupCard />
+          {/* the chronicle's own copy, beside the library's — see the note on YourCopy for why
+              it is here rather than at the bottom of a room people open to press Start */}
+          <YourCopy />
 
           {/* Account & security */}
           <form className="card" onSubmit={handleSaveEmail} style={{ display: 'grid', gap: 10 }}>
