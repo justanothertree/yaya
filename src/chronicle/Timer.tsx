@@ -110,8 +110,22 @@ export function Timer({
   day,
   beat,
   onChange,
+  show,
 }: {
   day: string
+  /**
+   * Which half of the room is on screen. This component renders six separate things, and all six
+   * at once is most of what made Chronicle unreadable: **73 controls on one screen**, answering
+   * nine different questions. The room is 38 and 37 now, and the note on `half` in
+   * sections/Chronicle.tsx says why that figure is not the 86 I first wrote down.
+   *
+   * ⚠️ THE STOPWATCH IS IN NEITHER HALF. Everything from the running clock down to the gap form
+   * renders whatever `show` says, because a session you forgot to stop must not be able to hide
+   * behind a tab — the same reason the timer sits above the horizon strip rather than inside it.
+   * What `show` gates is the DAY (its stepper, totals, log, plans, routines and activity list)
+   * against the AIMS half, which lives in the room above.
+   */
+  show: 'day' | 'aims'
   /**
    * Bumped by the room when something OUTSIDE this half changed the record — today only a
    * put-back, which rewrites everything at once.
@@ -140,6 +154,17 @@ export function Timer({
    */
   const [seeing, setSeeing] = useState(day)
   useEffect(() => setSeeing(day), [day])
+  /**
+   * ⚠️ THE DAY BEING READ BELONGS TO THE DAY HALF, and the stopwatch above it does not travel
+   * with it. Two controls in the permanent header — the switch row and the "you have an unlogged
+   * gap" prompt — gate on `seeing === todayISO()`, correctly, because switching into something is
+   * a thing you do now and not a thing you do to last Tuesday. So a day stepped back here and
+   * then left behind would quietly empty the header of two controls that have nothing to do with
+   * the day being read, and nothing on screen would say why. Leaving this half puts it on today.
+   */
+  useEffect(() => {
+    if (show !== 'day') setSeeing(todayISO())
+  }, [show])
   const [acts, setActs] = useState<Activity[] | null>(null)
   const [log, setLog] = useState<Entry[]>([])
   const [pick, setPick] = useState('')
@@ -663,41 +688,43 @@ export function Timer({
        * where the word should be makes you work out whether it is the word. Every other day gets
        * its date, which is the only thing that identifies it.
        */}
-      <div className="chron-day">
-        <button
-          className="btn btn-ghost"
-          onClick={() => setSeeing(dayStep(seeing, -1))}
-          aria-label="The day before"
-          title="The day before"
-        >
-          ‹
-        </button>
-        <strong>
-          {seeing === todayISO()
-            ? 'Today'
-            : seeing === dayStep(todayISO(), 1)
-              ? 'Tomorrow'
-              : seeing === dayStep(todayISO(), -1)
-                ? 'Yesterday'
-                : niceDay(seeing)}
-        </strong>
-        <button
-          className="btn btn-ghost"
-          onClick={() => setSeeing(dayStep(seeing, 1))}
-          aria-label="The day after"
-          title="The day after"
-        >
-          ›
-        </button>
-        {seeing !== todayISO() && (
-          <button className="btn btn-ghost" onClick={() => setSeeing(todayISO())}>
-            back to today
+      {show === 'day' && (
+        <div className="chron-day">
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSeeing(dayStep(seeing, -1))}
+            aria-label="The day before"
+            title="The day before"
+          >
+            ‹
           </button>
-        )}
-        {/* ⚠️ only on today: a wall clock beside a day you are reading back is the time somewhere
+          <strong>
+            {seeing === todayISO()
+              ? 'Today'
+              : seeing === dayStep(todayISO(), 1)
+                ? 'Tomorrow'
+                : seeing === dayStep(todayISO(), -1)
+                  ? 'Yesterday'
+                  : niceDay(seeing)}
+          </strong>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSeeing(dayStep(seeing, 1))}
+            aria-label="The day after"
+            title="The day after"
+          >
+            ›
+          </button>
+          {seeing !== todayISO() && (
+            <button className="btn btn-ghost" onClick={() => setSeeing(todayISO())}>
+              back to today
+            </button>
+          )}
+          {/* ⚠️ only on today: a wall clock beside a day you are reading back is the time somewhere
             else, and the one thing the header must be unambiguous about is which day it means */}
-        {seeing === todayISO() && <WallClock />}
-      </div>
+          {seeing === todayISO() && <WallClock />}
+        </div>
+      )}
       <div className="chron-timer">
         {running ? (
           <>
@@ -1008,7 +1035,7 @@ export function Timer({
 
       {/* ⚠️ the three categories, which is the reading the whole thing exists for — and zero is
           shown as nothing rather than as "0m", because a day with no upkeep in it is not news */}
-      {Object.keys(cats).length > 0 && (
+      {show === 'day' && Object.keys(cats).length > 0 && (
         <p className="chron-cats">
           {CATS.map(([c, label]) =>
             cats[c] ? (
@@ -1020,7 +1047,7 @@ export function Timer({
         </p>
       )}
 
-      {log.length > 0 && (
+      {show === 'day' && log.length > 0 && (
         <ul className="chron-log">
           {log.map((e) => {
             const a = byId.get(e.activity)
@@ -1348,11 +1375,11 @@ export function Timer({
        * worth seeing. An empty week for somebody with no activities cannot be anything else: an
        * entry needs an activity to point at, so there is provably nothing being hidden.
        */}
-      {acts !== null && acts.length > 0 && (
+      {show === 'day' && acts !== null && acts.length > 0 && (
         <WeekGrid on={seeing} log={weekLog} acts={acts} onPick={setSeeing} />
       )}
 
-      {acts !== null && (
+      {show === 'day' && acts !== null && (
         <Plans acts={acts} log={log} bounds={bounds} onChange={after} busy={busy} />
       )}
 
@@ -1365,7 +1392,7 @@ export function Timer({
        * look done, and the room already has the number: a second query for it would be a second
        * answer to how long you spent on something today.
        */}
-      {seeing === todayISO() && (
+      {show === 'day' && seeing === todayISO() && (
         <details className="chron-tidy">
           <summary>Routines</summary>
           <Routines acts={acts ?? []} mins={mins} onStart={(id) => void go(id)} busy={busy} />
@@ -1373,7 +1400,7 @@ export function Timer({
       )}
       {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
-      {open.length > 0 && (
+      {show === 'day' && open.length > 0 && (
         <details className="chron-tidy">
           <summary>Activities</summary>
           <ul className="chron-acts">

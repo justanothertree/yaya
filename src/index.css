@@ -15549,6 +15549,51 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The two halves, which is the room's own navigation and sits above everything else in it.
+ *
+ * ⚠️ TWO COLUMNS THAT STAY TWO COLUMNS, including at 375. Everywhere else in this file a row of
+ * controls either scrolls or wraps, and both are wrong here: there are exactly two and they are
+ * a choice between each other, so a second line would read as two unrelated buttons and a
+ * scroller would hide one of them. `1fr 1fr` with the text allowed to shrink is the whole rule.
+ *
+ * ⚠️ AND THE TEXT NEEDS A FLOOR, not just `min-width: 0` — see the note on `.chron-list`, which
+ * is the same trap one room over. The hint is the flexible part and it is the part that would
+ * pay the entire bill, so it gets `min-width: 0` and the ellipsis rather than a shrink to a
+ * three-pixel column. Measured at 320: "what you are aiming at" ellipses, both labels whole.
+ */
+.chron-halves {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: 0 0 0.7rem;
+}
+.chron-halves .btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  /* ⚠️ WCAG 2.5.8 — two buttons in a row, so the spacing exception does not apply */
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  min-width: 0;
+}
+.chron-halves .btn small {
+  font-size: 0.72rem;
+  color: var(--muted);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the chosen half is the one with content under it, so it reads as filled rather than ringed */
+.chron-halves .btn.is-on small {
+  color: inherit;
+  opacity: 0.75;
+}
+
+/**
  * Chronicle — the planner. See docs/2026-10-12-chronicle-design.md.
  *
  * ⚠️ THE SEVEN WINDOWS SCROLL RATHER THAN WRAP, which is the same decision the Circuit's sub-tabs

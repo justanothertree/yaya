@@ -59,12 +59,35 @@ const COMFY = 44
 /** What counts as a control. Named once because groupSays has to ask the same question. */
 const CONTROLS = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button]'
 
+/**
+ * ⚠️ A RECT IS NOT A VISIBILITY TEST, AND A CLOSED `<details>` IS THE PROOF. This asked four
+ * questions — `display`, `visibility`, `offsetParent`, and a non-zero box — and a control inside
+ * a collapsed fold answers all four the way a visible one does. Measured in chronicle, which has
+ * three folds: **27 controls admitted, 0 of them on screen.** Each reported `offsetParent` set, a
+ * 39×44 box, and `content-visibility: visible` on its own parent, because the hiding happens on
+ * the UA's `::details-content` pseudo-element and `getComputedStyle(el.parentElement)` cannot
+ * see a pseudo-element. There is no property on any real ancestor to read.
+ *
+ * `checkVisibility()` knows about it, so that is the question now. It cuts both ways, as these
+ * always do: the sweep was flagging tap targets nobody can reach, and it was also measuring a
+ * collapsed box and calling it fine, so a control that is correct closed and broken open read as
+ * correct. Nothing is lost by the fix — open the fold and they are measured properly, which is
+ * the only state in which the measurement means anything.
+ */
 const shown = (el) => {
   const cs = getComputedStyle(el)
   if (cs.display === 'none' || cs.visibility === 'hidden') return false
   if (!el.offsetParent && cs.position !== 'fixed') return false
   /* deliberately clipped for screen readers — not a layout fault */
   if (el.closest('.sr-only, .skip-link')) return false
+  if (
+    !el.checkVisibility({
+      contentVisibilityAuto: true,
+      opacityProperty: true,
+      visibilityProperty: true,
+    })
+  )
+    return false
   const r = el.getBoundingClientRect()
   return r.width > 0 && r.height > 0
 }
