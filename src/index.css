@@ -15684,6 +15684,27 @@ a.cz-msg-author:focus-visible {
   margin-top: 0.4rem;
   font-size: 0.82rem;
 }
+/**
+ * The line that stands in for the site's own rows.
+ *
+ * ⚠️ QUIET, BECAUSE IT IS NOT NEWS. It sits between the category totals and the day's real rows,
+ * and the whole point of it is that eleven rows of telemetry stop competing with four rows of a
+ * life — so it must not become a twelfth thing shouting. Full width and left-aligned so it reads
+ * as a heading for what is folded under it rather than as an action.
+ */
+.chron-site-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-height: 36px;
+  margin-bottom: 0.3rem;
+}
+.chron-only-site {
+  margin: 0 0 0.6rem;
+  font-size: 0.84rem;
+}
+
 /* the tick that decides whether any of the above can exist */
 .chron-share {
   display: flex;

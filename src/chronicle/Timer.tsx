@@ -209,6 +209,9 @@ export function Timer({
   /** how long a sitting of it ought to be, in minutes — blank for no opinion */
   const [actSession, setActSession] = useState('')
   const [actShared, setActShared] = useState(false)
+  /* ⚠️ false, and it resets on every load rather than being remembered: the site's own minutes
+     are a thing you look up, not a thing you read every day */
+  const [seeSite, setSeeSite] = useState(false)
   /** the amount being typed against a span, keyed by entry id */
   const [entAmount, setEntAmount] = useState('')
   /** how the span being edited went, '' for unrated — see Entry.quality */
@@ -339,6 +342,29 @@ export function Timer({
     () => quick.filter((a) => a.id !== running?.activity),
     [quick, running?.activity],
   )
+  /**
+   * The day's rows, split into what you did and what the site noticed.
+   *
+   * ⚠️ AN `auto` ACTIVITY IS THE SITE RECORDING ITSELF, and on an ordinary day it is most of the
+   * log. Counted on one real Thursday: **fifteen rows, eleven of them auto** — Pictures three
+   * times, Chronicle four, Ratings twice, Home and Now once each, several of them under a
+   * minute. The four rows that were a day — two naps, a game and a meal — were spread between
+   * them. Reported, accurately, as "its so much".
+   *
+   * ⚠️ FOLDED, NOT DROPPED, AND NOT STOPPED AT THE SOURCE. The minutes are real and they already
+   * feed the totals and the grids above, so hiding them from the log while they count elsewhere
+   * would make two figures on one screen disagree. And `chronicle_visit` is deliberately one row
+   * per visit — see the note in CLAUDE.md about it growing a single row across a day boundary —
+   * so merging them at the source is a change to the record rather than to the reading of it.
+   * This is a reading: the rows are all still there, one tap away, editable where they were.
+   */
+  const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
+  const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
+  const onSiteMs = useMemo(
+    () => onSite.reduce((n, e) => n + overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()), 0),
+    [onSite, bounds.fromMs, bounds.toMs],
+  )
+
   const cats = useMemo(
     () => minutesByCat(log, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
     [log, acts, bounds.fromMs, bounds.toMs],
@@ -1130,9 +1156,38 @@ export function Timer({
         </p>
       )}
 
-      {show === 'day' && log.length > 0 && (
+      {show === 'day' && onSite.length > 0 && (
+        /**
+         * ⚠️ IT SAYS WHAT IS BEHIND IT, in rows and in minutes, because a fold whose label is
+         * just "more" is one nobody opens and nobody trusts. The minutes are the honest part:
+         * they are already inside the category totals two inches above, so the line has to
+         * account for them rather than let them vanish from the reading.
+         */
+        <button
+          className="btn btn-ghost chron-site-toggle"
+          aria-expanded={seeSite}
+          onClick={() => setSeeSite((v) => !v)}
+        >
+          {seeSite ? '▾' : '▸'} {countText(onSite.length)} on the site · {spanText(onSiteMs)}
+        </button>
+      )}
+
+      {/**
+       * ⚠️ A DAY CAN BE ALL SITE AND NOTHING ELSE, which is a state this list did not have until
+       * the fold existed: `log.length > 0` was once enough to guarantee a row. On a day you only
+       * browsed, the ul rendered empty under a toggle — a heading, a button, and a silence. So
+       * the condition is what will actually be DRAWN, and the sentence below says which of the
+       * two reasons the list is empty for.
+       */}
+      {show === 'day' && didMyself.length === 0 && onSite.length > 0 && !seeSite && (
+        <p className="muted chron-only-site">
+          Nothing but the site itself today — it is all in the line above.
+        </p>
+      )}
+
+      {show === 'day' && (seeSite ? log : didMyself).length > 0 && (
         <ul className="chron-log">
-          {log.map((e) => {
+          {(seeSite ? log : didMyself).map((e) => {
             const a = byId.get(e.activity)
             const ms = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
             const amt = amountIn(e, bounds.fromMs, bounds.toMs)
