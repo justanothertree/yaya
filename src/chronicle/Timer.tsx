@@ -407,9 +407,30 @@ export function Timer({
     [onSite, bounds.fromMs, bounds.toMs],
   )
 
+  /**
+   * The three category totals — and they count what you DID, not what the site noticed.
+   *
+   * ⚠️ `didMyself`, NOT `log`, AND THAT CHANGED A NUMBER THAT WAS WRONG. An `auto` activity is
+   * the site recording itself, and it was landing in Free Time with everything else. Measured on
+   * the real account over fourteen days: Free Time held **524 minutes from you across 5 rows and
+   * 197 minutes from the site across 57** — so better than a quarter of the figure people judge
+   * their week by was "I had a tab open", and nine rows in ten were not decisions.
+   *
+   * ⚠️ AND LEAVING IT IN HAD BECOME A CONTRADICTION ON ONE SCREEN. The day log already folds
+   * those rows out and accounts for them on a line of its own — "1 on the site · 15m" — sitting
+   * directly beneath a chip reading "Free Time 1h" that silently contained them. Two figures,
+   * one screen, no way to tell that one was inside the other. The fold made the overlap visible;
+   * this removes it. Site time is not hidden, it is just counted once, in the line that names it.
+   *
+   * ⚠️ THE MONTH GRID AND THE RAIL STILL INCLUDE IT, deliberately. "How much of this day is
+   * accounted for" is a question about COVERAGE and site time genuinely covers the day; "what did
+   * I spend it on" is a question about CHOICES and site time is not one. Different questions are
+   * allowed different answers — what is not allowed is one question with two answers on the same
+   * screen, which is what this just fixed.
+   */
   const cats = useMemo(
-    () => minutesByCat(log, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
-    [log, acts, bounds.fromMs, bounds.toMs],
+    () => minutesByCat(didMyself, acts ?? [], bounds.fromMs, bounds.toMs, Date.now()),
+    [didMyself, acts, bounds.fromMs, bounds.toMs],
   )
 
   /* ⚠️ `useCallback` so an effect can depend on it honestly. The autosave below has to be able
@@ -1033,37 +1054,7 @@ export function Timer({
               ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
               : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
           </span>
-        ) : (
-          <>
-            <label className="chron-pickrow">
-              <span className="sr-only">What are you doing?</span>
-              <select value={pick} onChange={(e) => setPick(e.target.value)}>
-                <option value="">Pick an activity…</option>
-                {CATS.map(([cat, label]) => {
-                  const inCat = yours.filter((a) => a.cat === cat)
-                  return inCat.length ? (
-                    <optgroup key={cat} label={label}>
-                      {inCat.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null
-                })}
-              </select>
-            </label>
-            <button
-              className="btn"
-              disabled={!pick || busy}
-              /* the sentence below is what a phone reads; this is for a pointer hovering it */
-              title={yours.length ? undefined : 'Name an activity first'}
-              onClick={() => void go(pick)}
-            >
-              ▶ Start
-            </button>
-          </>
-        )}
+        ) : null}
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
@@ -1159,6 +1150,7 @@ export function Timer({
        * second on the same activity, splitting one stretch in two — measured in the Now room as
        * a clock going from 7:09 back to 0:01.
        */}
+
       {seeing === todayISO() && switchable.length > 0 && (
         <div className="chron-quick">
           <span className="muted chron-quick-label">{running ? 'Switch to' : 'Quick start'}</span>
@@ -1180,6 +1172,44 @@ export function Timer({
               {a.name}
             </button>
           ))}
+        </div>
+      )}
+
+      {/**
+       * ⚠️ THE SLOW ROAD, AND IT SITS BELOW THE FAST ONE NOW. This select and its Start button
+       * used to be the first thing in the timer row, with the one-tap chips underneath — so the
+       * control that costs three taps and a scroll through a grouped list was above the control
+       * that costs one, and the better path was the one you had to look past. Measured at 375
+       * before the move: the first chip began **419px** down an 812px screen.
+       *
+       * ⚠️ IT STAYS, BECAUSE THE CHIPS ARE ONLY THE TOP SIX. `quick` is ranked by what you have
+       * done today and capped at six — see `tilesFor` — so anything outside that, and everything
+       * at all on a day you have not started yet, is reachable only here. A shortcut that is the
+       * ONLY way in is not a shortcut.
+       */}
+      {!running && seeing === todayISO() && yours.length > 0 && (
+        <div className="chron-else">
+          <label className="chron-pickrow">
+            <span className="sr-only">What are you doing?</span>
+            <select value={pick} onChange={(e) => setPick(e.target.value)}>
+              <option value="">Something else…</option>
+              {CATS.map(([cat, label]) => {
+                const inCat = yours.filter((a) => a.cat === cat)
+                return inCat.length ? (
+                  <optgroup key={cat} label={label}>
+                    {inCat.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null
+              })}
+            </select>
+          </label>
+          <button className="btn btn-ghost" disabled={!pick || busy} onClick={() => void go(pick)}>
+            ▶ Start
+          </button>
         </div>
       )}
 

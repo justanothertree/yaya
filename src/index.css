@@ -15706,6 +15706,39 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The slow road: pick anything, and start it.
+ *
+ * ⚠️ IT HAS TO READ AS SECONDARY, because it sits under a row of one-tap chips that do the same
+ * job faster. A full-width select over a full-accent Start button is two loud controls arguing
+ * with the five quiet ones above them — so this is one line, the select takes the space, and the
+ * button is ghost. The chips are the road; this is the turning you take when your destination
+ * is not on it.
+ */
+.chron-else {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+.chron-else .chron-pickrow {
+  /* ⚠️ `min-width: 0` — a flex child defaults to `min-width: auto`, and for a select that is its
+     widest option. See the §6 note in CLAUDE.md: without this a long activity name pushes the
+     Start button off the end of the card. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.chron-else select {
+  width: 100%;
+}
+/* ⚠️ `btn-ghost` IS APPLIED IN THE JSX, NOT FORGED HERE. The first attempt set a transparent
+   background and a `currentColor` ring, and on a dark card with a dark-green `currentColor` the
+   button came out all but invisible — a control you cannot see is worse than a loud one. The
+   house already has a quiet button; this only has to stop it stretching. */
+.chron-else .btn {
+  flex: 0 0 auto;
+}
+
+/**
  * A moment in the log — something that happened rather than took time.
  *
  * ⚠️ IT MUST NOT LOOK LIKE A SITTING. A row in this list otherwise means "you spent this long on
@@ -15822,6 +15855,30 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   background: rgba(0, 0, 0, 0.22);
 }
+/**
+ * The "what is this?" fold.
+ *
+ * ⚠️ THE HANDLE HAS TO BE SMALL. Shut, this is a line of furniture at the top of the room that
+ * nobody wants after their first visit; open, it is the paragraph it always was. So the summary
+ * is muted and sized like a label rather than a heading — the thing it must not do is look like
+ * something you have to deal with.
+ */
+.chron-how > summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--muted);
+  /* WCAG 2.5.8 — it sits alone on its line, so the spacing exception applies and 24 is the bar */
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+.chron-how > p {
+  margin: 0.4rem 0 0;
+}
+.chron-how[open] {
+  margin-bottom: 0.7rem;
+}
+
 .chron-blurb {
   margin: 0 0 0.7rem;
   font-size: 0.86rem;

@@ -189,6 +189,29 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * use. A room that opens on its goals makes you take a step before you can start working.
    */
   const [half, setHalf] = useState<Half>('day')
+  /**
+   * Whether the blurb has been read and shut. See the note on the `<details>` below.
+   *
+   * ⚠️ READ ONCE AT MOUNT AND THEN OWNED HERE. Reading localStorage on every render would make
+   * the open state fight the toggle; and the try/catch is not decoration — a private window or
+   * blocked site data throws on access, and an exception here would take the whole room with it.
+   */
+  const [learned, setLearned] = useState(() => {
+    try {
+      return localStorage.getItem('chron.how.read') === '1'
+    } catch {
+      return false
+    }
+  })
+  const rememberHow = (open: boolean) => {
+    setLearned(!open)
+    try {
+      if (open) localStorage.removeItem('chron.how.read')
+      else localStorage.setItem('chron.how.read', '1')
+    } catch {
+      /* a browser that will not remember it is a browser that shows a paragraph twice */
+    }
+  }
   const [adding, setAdding] = useState(false)
   /**
    * The goal the form is editing, or null when it is adding a new one.
@@ -611,12 +634,37 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * they sit — and "the tabs under it" had stopped being true the moment the horizon strip
        * moved inside Aims. The signed-out one claims no layout, so it still reads correctly.
        */}
-      <p className="muted chron-how">
-        <strong>Day</strong> is the stopwatch and what you have done. <strong>Aims</strong> is what
-        you are aiming at, at whichever size you think about it — today, this week, this year, and
-        the things that take years. Point a numbered goal at an activity and it fills itself in as
-        you work.
-      </p>
+      {/**
+       * ⚠️ A LESSON IS PAID FOR ONCE; THIS WAS CHARGING RENT. Fifty words and 92px at the top of
+       * every single visit, for a thing you need on your first and never again — and the cost is
+       * not the pixels, it is what they push down. Measured at 375 before this: the clock began
+       * **327px** into an 812px screen, and with nothing running the first one-tap start was at
+       * **419px**. Better than a third of a phone spent on an explanation, above the control the
+       * room exists for.
+       *
+       * ⚠️ IT FOLDS RATHER THAN GOING, because a room still has to be able to say what it is —
+       * the blurb was written after "i am not sure how most of it works yet", which is as clear
+       * a signal as a room can give. Open on a first visit, shut for ever after, and the handle
+       * keeps the word "What is this?" so it reads as an offer rather than as debris.
+       *
+       * ⚠️ AND IT REMEMBERS PER BROWSER, NOT PER ACCOUNT. localStorage is exactly right for this:
+       * it is a convenience, it is allowed to be forgotten, and the failure mode of losing it is
+       * seeing a helpful paragraph again. Wrapped because a private window throws on access.
+       */}
+      <details
+        className="chron-how"
+        open={!learned}
+        onToggle={(e) => rememberHow(e.currentTarget.open)}
+      >
+        <summary>What is this?</summary>
+        <p className="muted">
+          <strong>Day</strong> is the stopwatch and what you have done. <strong>Aims</strong> is
+          what you are aiming at, at whichever size you think about it — today, this week, this
+          year, and the things that take years. Point a numbered goal at an activity and it fills
+          itself in as you work. <strong>Friends</strong> shows what the people you have added have
+          been up to, if they have chosen to share it.
+        </p>
+      </details>
 
       {/**
        * ⚠️ THE TIMER COMES FIRST, which is what this comment claimed while the element sat below
