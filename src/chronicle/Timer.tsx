@@ -1790,7 +1790,44 @@ export function Timer({
        * entry needs an activity to point at, so there is provably nothing being hidden.
        */}
       {show === 'day' && acts !== null && acts.length > 0 && (
-        <WeekGrid on={seeing} log={weekLog} acts={acts} onPick={setSeeing} />
+        <WeekGrid
+          on={seeing}
+          log={weekLog}
+          acts={acts}
+          onPick={setSeeing}
+          /**
+           * ⚠️ TAPPING A BLOCK IS "GO AND LOOK AT THAT", which is two things and has to be both:
+           * the day under it and the session's own editor. Picking the day alone would leave you
+           * scanning a log for the row you had just pointed at, which is the work the tap was
+           * supposed to save.
+           */
+          onOpen={(day, id) => {
+            setSeeing(day)
+            setFixEnt(id)
+            const e = weekLog.find((x) => x.id === id)
+            if (e) {
+              setEntAct(e.activity)
+              setEntFrom(forInput(e.start))
+              setEntTo(e.end ? forInput(e.end) : '')
+              setEntAmount(e.amount == null ? '' : String(e.amount))
+              setEntMood(e.quality == null ? '' : String(e.quality))
+              setEntNote(e.note ?? '')
+            }
+          }}
+          /**
+           * ⚠️ AND TAPPING A BARE PATCH IS "I DID SOMETHING THEN", which is ⏱ Fill a gap with its
+           * hour already filled in. The form is the same one the button opens — this only saves
+           * typing a time you have just pointed at.
+           */
+          onEmpty={(day, hour) => {
+            setSeeing(day)
+            const p = (n: number) => String(n).padStart(2, '0')
+            setGap(true)
+            setGapFrom(`${day}T${p(hour)}:00`)
+            setGapTo(`${day}T${p(Math.min(23, hour + 1))}:00`)
+            setGapAct(pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '')
+          }}
+        />
       )}
 
       {show === 'day' && acts !== null && (

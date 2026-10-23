@@ -64,7 +64,7 @@ export function weekOf(on: string): string[] {
  */
 export function columns(
   days: string[],
-  spans: Array<Span & { activity: string }>,
+  spans: Array<Span & { activity: string; id?: string }>,
   nowMs: number,
 ): Column[] {
   return days.map((on) => {

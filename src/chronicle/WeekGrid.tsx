@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { columns, hours, weekOf } from './week'
-import { spanText, type Activity, type Entry } from './record'
+import { blockAt, spanText, type Activity, type Entry } from './record'
 import { todayISO } from '../circuit/dates'
 
 /**
@@ -25,6 +25,8 @@ export function WeekGrid({
   log,
   acts,
   onPick,
+  onOpen,
+  onEmpty,
 }: {
   /** any day in the week to draw */
   on: string
@@ -33,6 +35,18 @@ export function WeekGrid({
   acts: Activity[]
   /** focus a day: the room's own date picker, driven from the grid */
   onPick: (day: string) => void
+  /**
+   * Open a session from its block.
+   *
+   * ⚠️ THE GRID WAS A PICTURE AND NOTHING ELSE. Seven columns of coloured marks, each naming its
+   * session in a `title` — which is a tooltip, and a phone has none. So the only way to find out
+   * what a block was, or to fix it, was to pick its day and then count rows in the log until you
+   * found the one at that hour. Reported as wanting the times to be easier to click; they were
+   * not clickable at all.
+   */
+  onOpen?: (day: string, entry: string) => void
+  /** tap a bare patch of a day: somewhere nothing was recorded, at roughly that hour */
+  onEmpty?: (day: string, hour: number) => void
 }) {
   const days = useMemo(() => weekOf(on), [on])
   const byId = useMemo(() => new Map(acts.map((a) => [a.id, a])), [acts])
@@ -90,7 +104,34 @@ export function WeekGrid({
                 <span className="chron-week-num">{d.getDate()}</span>
               </button>
 
-              <div className="chron-week-lane">
+              <div
+                className={'chron-week-lane' + (onOpen || onEmpty ? ' is-tappable' : '')}
+                /**
+                 * ⚠️ THE EMPTY SPACE IS THE CONTROL HERE, which is why this is a handler on the
+                 * lane rather than a grid of hour buttons: twenty-four targets per column times
+                 * seven columns is 168 controls in the accessibility tree for one gesture. The
+                 * blocks inside it are real buttons and stop the event, so a tap only reaches
+                 * this when it landed on nothing.
+                 *
+                 * ⚠️ AND IT IS NOT KEYBOARD-REACHABLE ON PURPOSE. A div you can click is a trap
+                 * if it is the ONLY way to do the thing — this is a shortcut to ⏱ Fill a gap,
+                 * which is a real button a few inches above with a real form behind it. The day
+                 * header is the keyboard route into a day and it always was.
+                 */
+                onClick={
+                  onOpen || onEmpty
+                    ? (ev) => {
+                        const r = ev.currentTarget.getBoundingClientRect()
+                        if (!(r.height > 0)) return
+                        const pct = ((ev.clientY - r.top) / r.height) * 100
+                        const hit = blockAt(c.blocks, pct)
+                        if (hit?.id && onOpen) return onOpen(c.on, hit.id)
+                        if (!hit && onEmpty)
+                          onEmpty(c.on, Math.max(0, Math.min(23, Math.floor((pct / 100) * 24))))
+                      }
+                    : undefined
+                }
+              >
                 {rows.map((h) => (
                   <i key={h.hour} className="chron-week-line" style={{ top: `${h.top}%` }} />
                 ))}

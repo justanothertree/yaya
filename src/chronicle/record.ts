@@ -602,7 +602,22 @@ export function gapSince(
 }
 
 /** Where one span sits on a day, as percentages of that day's width. */
-export type Block = { activity: string; left: number; width: number; cut: boolean }
+export type Block = {
+  activity: string
+  left: number
+  width: number
+  cut: boolean
+  /**
+   * Which session this block IS, when the caller knows.
+   *
+   * ⚠️ OPTIONAL, BECAUSE NOT EVERY CALLER HAS ONE. `lane` lays out anything with a start and an
+   * end — a plan has no entry id and the day strip draws those too — so this carries through when
+   * it is there and is absent when it is not. It exists so a block can be a door: the week grid
+   * had seven columns of coloured marks that named a session in a `title` and a tooltip does not
+   * exist on a phone, so the only way to find out what one was, was to count rows in the log.
+   */
+  id?: string
+}
 
 /**
  * A day laid out as a strip: one block per span, positioned across the window.
@@ -622,7 +637,7 @@ export type Block = { activity: string; left: number; width: number; cut: boolea
  * left on the next, and without the flag both look like sessions that happened to end at midnight.
  */
 export function lane(
-  spans: Array<Span & { activity: string }>,
+  spans: Array<Span & { activity: string; id?: string }>,
   fromMs: number,
   toMs: number,
   nowMs: number,
@@ -638,6 +653,7 @@ export function lane(
     const lo = Math.max(began, fromMs)
     out.push({
       activity: s.activity,
+      id: s.id,
       left: ((lo - fromMs) / width) * 100,
       width: (ms / width) * 100,
       cut: began < fromMs || (Number.isFinite(ended) ? ended : nowMs) > toMs,
@@ -718,4 +734,36 @@ export function clockOfLocal(value: string): string {
   const d = readLocal(value)
   if (!d) return '—'
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
+/**
+ * Which block a tap at `pct` down a lane meant, or null for "none of them".
+ *
+ * ⚠️ THE LANE DOES THE HIT TESTING BECAUSE THE BLOCKS CANNOT. Making each block a button is the
+ * obvious move and it is wrong on a phone: a block's height IS its duration, so a half-hour
+ * sitting in a 24-hour column is about six pixels. Measured in the week grid at 375 — fifteen
+ * controls between 30×5 and 30×10, every one of them under the 24px floor, and no amount of
+ * styling can fix a target whose size is the data. One handler on the lane has no such problem.
+ *
+ * ⚠️ `near` IS IN PERCENT OF THE DAY AND IT IS WHAT MAKES THIS USABLE. An exact containment test
+ * is the same six pixels wearing a different hat. A tolerance of about a percent is fifteen
+ * minutes of a day — roughly a finger — so a tap just above or below a thin block still finds it.
+ *
+ * ⚠️ AND THE NEAREST WINS, NOT THE FIRST. Blocks can touch or overlap, and with a tolerance two
+ * can be in range at once; taking the first would make the answer depend on the order the day
+ * was fetched in, which is not a thing a person can see or predict.
+ */
+export function blockAt(blocks: readonly Block[], pct: number, near = 1): Block | null {
+  let best: Block | null = null
+  let bestGap = Infinity
+  for (const b of blocks) {
+    const top = b.left
+    const bottom = b.left + b.width
+    const gap = pct < top ? top - pct : pct > bottom ? pct - bottom : 0
+    if (gap <= near && gap < bestGap) {
+      best = b
+      bestGap = gap
+    }
+  }
+  return best
 }

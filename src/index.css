@@ -15706,6 +15706,53 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The week grid's lane is a door now — and the blocks inside it are not.
+ *
+ * ⚠️ MAKING EACH BLOCK A BUTTON WAS THE OBVIOUS MOVE AND IT WAS WRONG. A block's height IS its
+ * duration, so a half-hour sitting in a 24-hour column is about six pixels. Built that way and
+ * measured at 375, the audit named **fifteen controls between 30×5 and 30×10**, every one under
+ * the 24px floor — and no styling fixes a target whose size is the data. So the lane takes the
+ * tap and `blockAt` decides what was meant, with about a finger's worth of tolerance.
+ *
+ * ⚠️ THE BLOCKS KEEP `pointer-events: none` SO THE TOLERANCE IS NOT A LIE. Left clickable they
+ * would swallow taps that land on them, and the forgiving near-miss would only work in the gaps
+ * between — which is exactly backwards.
+ *
+ * ⚠️ AND THE KEYBOARD ROUTE IS ELSEWHERE, deliberately. A div you can click is a trap when it is
+ * the only way in; this is a shortcut. The day header is a real button with the day and its
+ * coverage in its label, and every session has a 44px ✎ in the log below. WCAG 2.5.8's
+ * equivalent-control exception is what this rests on, not an exemption.
+ */
+.chron-week-lane.is-tappable {
+  cursor: pointer;
+}
+.chron-week-lane.is-tappable .chron-week-block {
+  pointer-events: none;
+}
+
+/**
+ * ⚠️ THE RESET STAYS THOUGH THE BUTTONS ARE GONE, because `.chron-week-block` is also used for
+ * the day strip and a stray UA style on an absolutely-positioned percentage-sized mark moves it.
+ * Measured when these were briefly buttons: each gained 2px of border and shifted. These are three-pixel marks at their
+ * smallest — the lane floors them at 1.2% so a ten-minute sitting is still visible — so a border,
+ * a shadow or a hover lift would be most of the mark. A pointer cursor and a brightening on
+ * hover is the whole affordance, and on a phone there is no hover at all, which is why the
+ * accessible name now says "open it" rather than relying on a `title` nobody can reach.
+ *
+ * ⚠️ AND IT RESETS WHAT A BUTTON BRINGS WITH IT. `button` carries a UA border, padding, font and
+ * background; these are absolutely positioned marks sized in percentages, and any of those would
+ * move them. Measured before the reset: every block gained 2px of border and shifted.
+ */
+.chron-week-block {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/**
  * Editing when a session happened.
  *
  * ⚠️ IT READS AS A PANEL NOW, NOT A WRAPPING ROW. The editor was eight controls in one flex wrap

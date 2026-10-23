@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  blockAt,
+  type Block,
   clockOfLocal,
   readLocal,
   writeLocal,
@@ -1078,5 +1080,63 @@ describe('nudging a datetime-local value', () => {
   it('measures a backwards span as negative', () => {
     expect(minsBetweenLocal('2026-10-23T14:30', '2026-10-23T14:00')).toBe(-30)
     expect(minsBetweenLocal('2026-10-23T09:00', '2026-10-23T09:45')).toBe(45)
+  })
+})
+
+describe('finding the block a tap meant', () => {
+  const b = (id: string, left: number, width: number): Block => ({
+    id,
+    activity: 'a',
+    left,
+    width,
+    cut: false,
+  })
+  /* 9am–10am and 2pm–2.30pm, as percentages of a day */
+  const day = [b('morning', 37.5, 4.17), b('afternoon', 58.33, 2.08)]
+
+  it('finds the one the tap landed inside', () => {
+    expect(blockAt(day, 39)?.id).toBe('morning')
+    expect(blockAt(day, 59)?.id).toBe('afternoon')
+  })
+
+  it('finds nothing in an empty stretch', () => {
+    expect(blockAt(day, 10)).toBeNull()
+    expect(blockAt(day, 50)).toBeNull()
+    expect(blockAt(day, 95)).toBeNull()
+  })
+
+  /**
+   * ⚠️ THE TOLERANCE IS THE WHOLE POINT. A half-hour block is 2% of a day, which at 240px is
+   * five pixels — an exact containment test is a target nobody can hit. A percent either side is
+   * about a quarter of an hour, which is roughly a fingertip.
+   */
+  it('forgives a tap just outside a thin block', () => {
+    expect(blockAt(day, 37.0)?.id).toBe('morning')
+    expect(blockAt(day, 42.3)?.id).toBe('morning')
+    expect(blockAt(day, 35.5)).toBeNull()
+  })
+
+  /**
+   * ⚠️ NEAREST, NOT FIRST, and the fixture is deliberately in the wrong order so that returning
+   * `blocks[0]` cannot pass. With a tolerance two blocks can be in range at once, and taking
+   * whichever came back from the server first makes the answer unpredictable to the person
+   * tapping.
+   */
+  it('takes the nearer of two in range, whatever order they arrive in', () => {
+    /* ⚠️ BOTH MUST BE IN RANGE AT ONCE OR THIS ASSERTS NOTHING. A first draft put them 2.5%
+       apart, so the tolerance only ever admitted one and the test passed just as happily with
+       `best === null` — "take the first" — in place of the distance comparison. The gap in the
+       middle is 0.5%, so a tap in it is within 1% of both and only the nearer may win. */
+    const pair = [b('below', 49.6, 1), b('above', 48, 1)]
+    expect(blockAt(pair, 49.1)?.id).toBe('above') //  0.1 from above, 0.5 from below
+    expect(blockAt(pair, 49.2)?.id).toBe('above') //  0.2 from above, 0.4 from below
+    expect(blockAt(pair, 49.45)?.id).toBe('below') // 0.45 from above, 0.15 from below
+    /* and reversing the array must not change either answer */
+    expect(blockAt([...pair].reverse(), 49.1)?.id).toBe('above')
+    expect(blockAt([...pair].reverse(), 49.45)?.id).toBe('below')
+  })
+
+  it('has nothing to find in an empty day', () => {
+    expect(blockAt([], 50)).toBeNull()
   })
 })
