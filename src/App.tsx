@@ -928,8 +928,30 @@ export default function App() {
      * after that, so a second sweep would only re-ask a question already answered.
      */
     let stopWatch: (() => void) | null = null
+    /**
+     * ⚠️ THE GUARD HAS TO BE SET BEFORE THE FIRST await, AND IT WAS SET AFTER THE LAST ONE.
+     * This read `if (stopWatch) return`, and `stopWatch` is only assigned once the dynamic
+     * import AND the whole sync have finished. Both callers below fire within milliseconds of
+     * each other — `readLiveSession` resolving, and `onAuthStateChange` for the initial session
+     * and again after a token refresh — so all of them read null, all of them passed, and the
+     * library synced three times on every page load.
+     *
+     * ⚠️ IT WAS COSTING MEGABYTES, WHICH IS THE PART THAT MATTERS. `library_list` returns every
+     * row's whole body: measured on the largest account, **2,187,984 bytes** a call. Three calls
+     * is about **6.5 MB of Supabase egress per page load** — and egress on the free plan is
+     * metered across the WHOLE organisation and restricts the project rather than billing it, so
+     * this was the most expensive thing on the site by a wide margin. It is also why the same
+     * refusal appeared three times in the console, and the likeliest reason an occasional
+     * `library_list` came back 500: three 2 MB queries at once on a free-tier instance.
+     *
+     * A boolean set synchronously is the whole fix. It is deliberately not reset on failure —
+     * the effect tears down and re-runs on sign-out, which is the moment a fresh attempt is
+     * actually warranted.
+     */
+    let startedSync = false
     const startLibrarySync = () => {
-      if (stopWatch) return
+      if (startedSync) return
+      startedSync = true
       void import('./library/cloud')
         .then(async (m) => {
           /**
