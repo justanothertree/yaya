@@ -400,6 +400,7 @@ export function Timer({
     if (id === running?.activity) return
     setBusy(true)
     await flushNote()
+    await flushReps()
     const bad = await startTimer(id)
     setBusy(false)
     if (bad) return moan(bad.why)
@@ -430,6 +431,26 @@ export function Timer({
    * sitting from the one the box was filled for.
    */
   const runId = running?.id ?? null
+  /**
+   * The count on the sitting you are in, tapped up as you go.
+   *
+   * ⚠️ IT IS THE `amount` COLUMN AND THE EXISTING RPC, not a new table. A workout asked for as
+   * "a now activity that has simple ui buttons to easily tap add reps" is a sitting with a
+   * quantity on it, which an entry has already had since step 2 — the only thing missing was a
+   * way to put a number there without typing it. `chronicle_entry_amount` takes any entry of
+   * yours by id and never asks whether it has ended, so the running one was always allowed.
+   *
+   * ⚠️ LOCAL IS THE TRUTH WHILE YOU TAP, AND THE WRITE IS ABSOLUTE. A tap has to land on the
+   * screen now — a set that is thirty reps in is not a set you want to wait for a round trip on
+   * — so the count moves here and flushes on a beat. The flush SETS the total rather than adding
+   * a delta, which makes it idempotent: a flush that lands twice, or out of order, still leaves
+   * the number this screen is showing, where `amount = amount + n` would double a rep for every
+   * retry.
+   */
+  const [reps, setReps] = useState<number | null>(null)
+  const repsSaved = useRef<number | null>(null)
+  const liveReps = useRef<number | null>(null)
+  liveReps.current = running?.amount ?? null
   const noteSaved = useRef('')
   const liveNote = useRef<string | null>(null)
   liveNote.current = running?.note ?? null
@@ -437,6 +458,10 @@ export function Timer({
     const had = liveNote.current ?? ''
     setStopNote(had)
     noteSaved.current = had
+    /* the count belongs to the sitting exactly as the note does — see the note on re-seeding */
+    const was = liveReps.current
+    setReps(was)
+    repsSaved.current = was
   }, [runId])
 
   /**
@@ -460,6 +485,14 @@ export function Timer({
     return () => window.clearTimeout(t)
   }, [stopNote, runId, moan])
 
+  /* tapped fast, written slowly: one round trip a beat after the last tap rather than one each */
+  useEffect(() => {
+    if (!runId || reps === repsSaved.current) return
+    const t = window.setTimeout(() => void flushReps(), 600)
+    return () => window.clearTimeout(t)
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [reps, runId])
+
   /**
    * ⚠️ THE NOTE GOES FIRST, ONTO THE SITTING IT WAS TYPED ABOUT. The autosave waits 700ms, so
    * the natural rhythm — write a word, tap the next thing — beats the timer and throws the word
@@ -469,6 +502,18 @@ export function Timer({
    * sentence would not save is the wrong way round: the sitting closes either way, so the note
    * is gone either way, and what matters is being told rather than being stuck.
    */
+  /**
+   * ⚠️ THE SAME SHAPE AS `flushNote` AND FOR THE SAME REASON — a switch closes the sitting, and
+   * a count still sitting in React state when that happens is a count nobody logged. It is
+   * called from `go` and from `halt`, so neither way out of a sitting can drop one.
+   */
+  const flushReps = async () => {
+    if (!runId || reps === repsSaved.current) return
+    const want = reps
+    if (await setAmount(runId, want)) repsSaved.current = want
+    else moan('those reps did not save')
+  }
+
   const flushNote = async () => {
     if (!runId || stopNote === noteSaved.current) return
     const bad = await noteRunning(stopNote)
@@ -491,6 +536,9 @@ export function Timer({
     const was = running
     const target = was ? (byId.get(was.activity)?.session ?? null) : null
     const ran = was ? overlapMs(was, -Infinity, Infinity, Date.now()) : 0
+    /* ⚠️ BEFORE the stop, not after: `after()` refetches the day and the local count would be
+       overwritten by the row that does not have it yet */
+    await flushReps()
     const bad = await stopTimer(stopNote.trim() || null)
     setBusy(false)
     if (bad) return moan(bad.why)
@@ -866,6 +914,49 @@ export function Timer({
                     {far.over ? `${aim}m done` : `${Math.ceil(far.left)}m left of ${aim}m`}
                   </span>
                 </span>
+              )
+            })()}
+            {/**
+             * ⚠️ ONLY WHEN THE ACTIVITY COUNTS SOMETHING. A metric is what makes a quantity mean
+             * anything — "24" against Drawing is a number with no unit, where "24 reps" against
+             * Gym is the set you just did. The activity editor is where a metric is named, so
+             * the row appears for the activities you have said count something and for no other.
+             *
+             * ⚠️ AND THE STEPS ARE +1 / +5 / +10 RATHER THAN A NUMBER FIELD. The whole request
+             * was "simple ui buttons to easily tap add reps" — a keyboard between sets is the
+             * thing being replaced, not the thing to offer. The one ✕ undoes a mis-tap, which is
+             * the only other thing a thumb needs here.
+             */}
+            {(() => {
+              const metric = running ? (byId.get(running.activity)?.metric ?? null) : null
+              if (!metric) return null
+              const at = reps ?? 0
+              const bump = (by: number) => setReps(Math.max(0, Math.round(at + by)))
+              return (
+                <div className="chron-tally">
+                  <span className="chron-tally-at">
+                    <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
+                  </span>
+                  {[1, 5, 10].map((n) => (
+                    <button
+                      key={n}
+                      className="btn btn-ghost chron-tally-up"
+                      onClick={() => bump(n)}
+                      disabled={busy}
+                    >
+                      +{n}
+                    </button>
+                  ))}
+                  <button
+                    className="btn btn-ghost chron-tally-down"
+                    onClick={() => bump(-1)}
+                    disabled={busy || at === 0}
+                    aria-label={`One fewer ${metric}`}
+                    title={`One fewer ${metric}`}
+                  >
+                    −1
+                  </button>
+                </div>
               )
             })()}
             <label className="chron-note">

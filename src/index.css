@@ -15705,6 +15705,46 @@ a.cz-msg-author:focus-visible {
   font-size: 0.84rem;
 }
 
+/**
+ * Tap to count, while the clock runs.
+ *
+ * ⚠️ WRAPS RATHER THAN SCROLLS, unlike the horizon strip two rooms over — there are only ever
+ * five controls here and they are the ones a thumb goes to between sets, so a second line is
+ * better than a row that hides one of them off the edge.
+ *
+ * ⚠️ 44px, NOT 24. The WCAG floor is the outside bar; this is a control somebody taps thirty
+ * times in a row with their hands shaking, which is the case the comfortable size is for.
+ *
+ * ⚠️ AND IT HAS TO OUT-SPECIFY `.chron-timer .btn`, WHICH IS WHY THE SELECTOR IS LONG. Written
+ * as `.chron-tally-up { min-height: 44px }` it lost silently: `.chron-timer .btn` is (0,2,0)
+ * against a single class's (0,1,0), so the rule applied and the buttons came out **37px** while
+ * the comment above said 44. Nothing failed — 37 clears the 24px audit floor comfortably, so the
+ * sweep stayed green about a number that was wrong. Found with `whoSets()` from
+ * scripts/mobile-audit.js, which prints every rule that sets a property and what each asked for;
+ * guessing would have said "a padding somewhere".
+ */
+.chron-tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+.chron-tally-at {
+  flex: 1 1 auto;
+  min-width: 4.5rem;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+}
+.chron-timer .chron-tally .btn {
+  min-width: 52px;
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.chron-tally-down {
+  margin-left: auto;
+}
+
 /* the tick that decides whether any of the above can exist */
 .chron-share {
   display: flex;
