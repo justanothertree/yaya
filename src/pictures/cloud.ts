@@ -143,12 +143,31 @@ export async function keepPicture(
   const mint = data as Minted
   if (!mint?.id) return { why: 'that did not go up' }
 
-  const put = async (url: string, body: Blob) => {
-    const res = await fetch(url, { method: 'PUT', body, headers: { 'Content-Type': MIME } })
-    return res.ok
+  /**
+   * ⚠️ `fetch` REJECTS ON A CORS FAILURE — it does not hand back a response to look at. Without
+   * this `catch` the rejection travelled out of `keepPicture`, past the `setBusy(false)` in the
+   * room's own handler, and left Keep it disabled for ever: a greyed button, no message, and
+   * nothing in the room admitting anything had happened. An await that throws skips every line
+   * after it, and one of those lines is usually the one that clears the flag.
+   *
+   * ⚠️ AND THE TWO FAILURES ARE NAMED APART, because they have different fixes and only one of
+   * them is anybody's fault. A rejection means the request never completed — nearly always the
+   * bucket's CORS policy, since this is a cross-origin PUT. A status means R2 answered and said
+   * no: 403 is the token lacking write on that bucket, or the bucket name not matching.
+   */
+  const put = async (url: string, body: Blob): Promise<string | null> => {
+    try {
+      const res = await fetch(url, { method: 'PUT', body, headers: { 'Content-Type': MIME } })
+      return res.ok
+        ? null
+        : `the store refused it (${res.status}) — check the token and bucket name`
+    } catch {
+      return 'the store could not be reached — check the bucket CORS policy'
+    }
   }
   const [a, b] = await Promise.all([put(mint.put, full.blob), put(mint.putThumb, thumb.blob)])
-  if (!a || !b) return { why: 'the picture did not reach the store — try again' }
+  const refused = a ?? b
+  if (refused) return { why: refused }
 
   const { error: badReady } = await supabase.rpc('picture_ready', { p_id: mint.id })
   if (badReady) return { why: badReady.message || 'that did not go up' }

@@ -69,7 +69,10 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
     setWorking(true)
     const t = window.setTimeout(() => {
       void (async () => {
-        const out = await prepare(file, quality)
+        /* and here too: a squeeze that throws would leave the dial reading "squeezing…" for ever */
+        const out = await prepare(file, quality).catch((e) => ({
+          why: e instanceof Error ? e.message : 'that file did not look like a picture',
+        }))
         if (dead) return
         setWorking(false)
         if ('why' in out) {
@@ -87,11 +90,24 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
     }
   }, [file, quality])
 
+  /**
+   * ⚠️ `finally`, BECAUSE A THROW SKIPS THE LINE THAT UNGREYS THE BUTTON. This was a bare
+   * `setBusy(true)` … `await` … `setBusy(false)`, and the await could reject — a cross-origin
+   * `fetch` does exactly that. One rejection left the room with Keep it disabled permanently and
+   * no message, which is worse than an error: an error says something went wrong, and a greyed
+   * button says nothing at all while looking like a considered state.
+   */
   const keep = async () => {
     if (!ready || busy) return
     setBusy(true)
-    const out = await keepPicture(ready.full, ready.thumb, alt)
-    setBusy(false)
+    let out: { id: string } | { why: string }
+    try {
+      out = await keepPicture(ready.full, ready.thumb, alt)
+    } catch (e) {
+      out = { why: e instanceof Error ? e.message : 'that did not go up' }
+    } finally {
+      setBusy(false)
+    }
     if ('why' in out) return moan(out.why)
     setFile(null)
     setReady(null)
@@ -105,9 +121,16 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
     /* ⚠️ `confirm` is auto-dismissed in the Browser pane — see CLAUDE.md — so this is deliberately
        not behind one. Deleting a picture you can see the thumbnail of is a small, obvious act; the
        dangerous version would be deleting several at once, which this cannot do. */
+    /* the same guard as `keep` above, for the same reason */
     setBusy(true)
-    const bad = await dropPicture(p.id)
-    setBusy(false)
+    let bad: { why: string } | null
+    try {
+      bad = await dropPicture(p.id)
+    } catch (e) {
+      bad = { why: e instanceof Error ? e.message : 'that did not go' }
+    } finally {
+      setBusy(false)
+    }
     if (bad) return moan(bad.why)
     await load()
   }
