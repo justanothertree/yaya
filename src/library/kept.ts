@@ -81,3 +81,53 @@ export const bodyBytes = (body: unknown): number =>
 
 /** Will the account take this? Ask before keeping, so a room can say which wall it hit. */
 export const fitsAccount = (body: unknown): boolean => bodyBytes(body) <= ACCOUNT_ITEM_BYTES
+
+/** One thing on the account, named but not yet fetched. */
+export type Slot = { kind: string; name: string }
+
+/**
+ * The one name for one thing, shared by the browser and the server.
+ *
+ * ⚠️ TRIMMED AND LOWERCASED, and `library_bodies` matches with `lower(btrim(name))` for exactly
+ * this reason. If the two disagreed about what one thing is called, a body asked for by name
+ * would quietly not come back, and the sync would decide the item was missing and push a copy
+ * over the top of it.
+ */
+export const slotKey = (kind: string, name: string): string =>
+  `${kind}:${name.trim().toLowerCase()}`
+
+/**
+ * Which of the account's things this browser must actually fetch the body of.
+ *
+ * ⚠️ THIS IS THE WHOLE SAVING, AND IT IS A QUESTION ABOUT NAMES. `library_list` returned every
+ * body on every page load — 2,187,984 bytes on the largest account — and the browser threw
+ * nearly all of it away, because for five of the six kinds the test is "do I already have a thing
+ * by this name", which the NAME answers. Only what is MISSING needs its contents.
+ *
+ * ⚠️ A MERGED KIND ALWAYS NEEDS ITS BODY, which is the exception that makes the rest safe. For a
+ * park record both copies are real and the other machine's might be the quicker one, so "I have
+ * one of those already" settles nothing and the two have to be compared. Add-only kinds — a song,
+ * a drawing — are the opposite: having one by that name IS the answer.
+ *
+ * It takes `merges` rather than importing it, so the rule about which kinds those are stays in
+ * library/cloud.ts next to the sync it governs, and this stays a thing a test can call.
+ */
+export function bodiesWanted(
+  remote: readonly Slot[],
+  hereKeys: ReadonlySet<string>,
+  merges: (kind: string) => boolean,
+): Slot[] {
+  const out: Slot[] = []
+  const asked = new Set<string>()
+  for (const r of remote) {
+    const key = slotKey(r.kind, r.name)
+    /* ⚠️ deduplicated: two rows can collide on this key — the server stores a name as typed, so
+       "Dawn" and "dawn" are two rows and one slot — and asking twice would fetch twice */
+    if (asked.has(key)) continue
+    if (merges(r.kind) || !hereKeys.has(key)) {
+      asked.add(key)
+      out.push({ kind: r.kind, name: r.name })
+    }
+  }
+  return out
+}

@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../finance/client'
+import { bodiesWanted, slotKey } from './kept'
 import { library, saveToLibrary, subscribeLibrary } from '../audio/library'
 import { packSong, readSong } from '../audio/songFile'
 import { gallery, saveArt, subscribeGallery } from '../draw/gallery'
@@ -88,7 +89,9 @@ function localRows(): Row[] {
   return out
 }
 
-const slot = (kind: string, name: string) => `${kind}:${name.trim().toLowerCase()}`
+/* ⚠️ the shared one — the server matches with `lower(btrim(name))` and a test asserts the pair
+   agree about what one thing is called. See library/kept.ts. */
+const slot = slotKey
 
 /**
  * Put a server row into the local store it belongs to.
@@ -166,8 +169,25 @@ export type SyncResult = {
  * first sign-in on a new machine pushes an empty library's worth of nothing and then pulls, which
  * is the same result by a longer road but looks alarming in the logs.
  */
+/**
+ * ⚠️ AN INDEX FIRST, AND THEN ONLY THE BODIES THIS BROWSER IS MISSING. This used to call
+ * `library_list`, which returns every row's whole body, on every page load — **2,187,984 bytes**
+ * on the largest account — and then threw nearly all of it away. For five of the six kinds the
+ * test is "do I already have a thing by this name", and the NAME answers that; the bodies were
+ * being shipped to settle a question they are not needed for.
+ *
+ * Measured against the same account: the index is **6,285 bytes** and the one merged body is
+ * **569**, so a returning browser moves about **6.8 kB instead of 2.19 MB**. Supabase meters
+ * egress across the whole organisation and restricts the project rather than billing it when the
+ * allowance goes, so this was the largest line on that meter by a wide margin.
+ *
+ * ⚠️ WHICH BODIES IS `bodiesWanted`, and it lives in kept.ts where a test can ask it. It has
+ * the one exception in it that makes the rest safe: a merged kind is always fetched, because for
+ * a park record both copies are real and "I have one of those" settles nothing.
+ */
 export async function syncLibrary(): Promise<SyncResult> {
-  const { data, error } = await getSupabaseClient().rpc('library_list')
+  const supabase = getSupabaseClient()
+  const { data: index, error } = await supabase.rpc('library_index')
   /* ⚠️ THE REASON TRAVELS. This returned `null`, and App.tsx did not look at the result at all,
      so a failing list was invisible from the room and from the console alike — the only trace was
      a bare 500 in the network tab with nothing saying what had not happened because of it. */
@@ -180,13 +200,44 @@ export async function syncLibrary(): Promise<SyncResult> {
       why: error.message || 'could not read the account library',
     }
 
-  const remote: Row[] = (Array.isArray(data) ? data : [])
+  const named = (Array.isArray(index) ? index : [])
+    .map((v) => v as { kind?: unknown; name?: unknown })
+    .filter((v): v is { kind: Kind; name: string } => isKind(v.kind) && typeof v.name === 'string')
+
+  /* what is here already decides what is worth asking for */
+  const hereKeys = new Set(localRows().map((r) => slot(r.kind, r.name)))
+  const want = bodiesWanted(named, hereKeys, (k) => merges(k as Kind))
+
+  let bodies: unknown = []
+  if (want.length) {
+    const got = await supabase.rpc('library_bodies', { p_slots: want })
+    if (got.error)
+      return {
+        pulled: 0,
+        pushed: 0,
+        failed: 0,
+        refused: [],
+        why: got.error.message || 'could not read the account library',
+      }
+    bodies = got.data
+  }
+
+  const remote: Row[] = (Array.isArray(bodies) ? bodies : [])
     .map((v) => v as { kind?: unknown; name?: unknown; body?: unknown })
     .filter((v): v is Row => isKind(v.kind) && typeof v.name === 'string' && !!v.body)
 
+  /**
+   * ⚠️ THE PUSH HALF NEEDS THE NAMES, NOT THE BODIES, and that is why this is two sets. It
+   * asks "does the account already have a thing in this slot" to decide whether to send ours —
+   * which the index answers for everything, including rows whose bodies were never fetched. Using
+   * `remote` for that would have pushed a copy of every item this browser already had, over the
+   * top of the identical one already there: the exact opposite of the saving.
+   */
+  const theirKeys = new Set(named.map((r) => slot(r.kind, r.name)))
+
   const out: SyncResult = { pulled: 0, pushed: 0, failed: 0, refused: [] }
 
-  const here = new Set(localRows().map((r) => slot(r.kind, r.name)))
+  const here = hereKeys
   for (const r of remote) {
     /* ⚠️ A merged kind is never skipped for being present. "I already have one" is the whole
        test for a song and is no answer at all for a record — theirs may be the quicker time. */
@@ -201,11 +252,13 @@ export async function syncLibrary(): Promise<SyncResult> {
      back exactly the version we just improved on. */
   const theirs = new Map(remote.map((r) => [slot(r.kind, r.name), r]))
   for (const r of localRows()) {
+    /* ⚠️ asked of the INDEX, so a body we never fetched still counts as present — see above */
+    const theyHaveIt = theirKeys.has(slot(r.kind, r.name))
     const had = theirs.get(slot(r.kind, r.name))
-    if (had) {
+    if (theyHaveIt) {
       if (!merges(r.kind)) continue
       /* the merge has run, so ours is theirs-or-better; only send it if it is actually better */
-      if (JSON.stringify(had.body) === JSON.stringify(r.body)) continue
+      if (had && JSON.stringify(had.body) === JSON.stringify(r.body)) continue
     }
     const bad = await put(r)
     if (!bad) out.pushed++

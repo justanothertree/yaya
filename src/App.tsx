@@ -936,13 +936,16 @@ export default function App() {
      * and again after a token refresh — so all of them read null, all of them passed, and the
      * library synced three times on every page load.
      *
-     * ⚠️ IT WAS COSTING MEGABYTES, WHICH IS THE PART THAT MATTERS. `library_list` returns every
-     * row's whole body: measured on the largest account, **2,187,984 bytes** a call. Three calls
-     * is about **6.5 MB of Supabase egress per page load** — and egress on the free plan is
-     * metered across the WHOLE organisation and restricts the project rather than billing it, so
-     * this was the most expensive thing on the site by a wide margin. It is also why the same
-     * refusal appeared three times in the console, and the likeliest reason an occasional
-     * `library_list` came back 500: three 2 MB queries at once on a free-tier instance.
+     * ⚠️ IT WAS COSTING MEGABYTES WHEN THIS WAS WRITTEN, and the figure has since moved — which
+     * is why the DECISION is recorded here rather than the number that justified it. At the time
+     * `syncLibrary` called `library_list`, which returns every row's whole body: **2,187,984
+     * bytes** a call on the largest account, so three calls was about 6.5 MB of Supabase egress
+     * per page load. It was also why the same refusal appeared three times in the console, and
+     * the likeliest reason an occasional `library_list` came back 500.
+     *
+     * The sync asks for an index now and fetches only missing bodies — about 6.8 kB for a
+     * returning browser — so the saving here is far smaller than it was. Syncing once is still
+     * right: a page load has one library, and two sweeps of it answer the same question twice.
      *
      * A boolean set synchronously is the whole fix. It is deliberately not reset on failure —
      * the effect tears down and re-runs on sign-out, which is the moment a fresh attempt is
