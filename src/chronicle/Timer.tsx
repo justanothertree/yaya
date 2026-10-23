@@ -24,6 +24,7 @@ import { Routines } from './Routines'
 import { tilesFor } from './nowTiles'
 import {
   CATS,
+  clockOfLocal,
   clockText,
   COLOURS,
   dayBounds,
@@ -31,10 +32,12 @@ import {
   sitting,
   localMidnight,
   minutesByActivity,
+  minsBetweenLocal,
   minutesByCat,
   amountIn,
   metSession,
   moodWord,
+  nudgeLocal,
   MOODS,
   overlapMs,
   straddles,
@@ -56,6 +59,16 @@ import {
  * server owns; nothing is accumulated here, so a tab that was asleep for an hour is right the
  * moment it wakes rather than an hour behind.
  */
+/**
+ * How far a handle moves an end of a session.
+ *
+ * ⚠️ FOUR, SYMMETRICAL, AND IN MINUTES PEOPLE THINK IN. Five is "I started a bit late"; fifteen
+ * is "I forgot to press Stop for a quarter of an hour". Anything finer than five is a job for
+ * the exact form underneath, and anything coarser than fifteen is faster by repeating a tap than
+ * by having a third size on the row.
+ */
+const NUDGES = [-15, -5, 5, 15] as const
+
 /** a day either side, by local calendar arithmetic rather than by adding hours */
 const dayStep = (iso: string, by: number): string => {
   const d = localMidnight(iso)
@@ -733,6 +746,16 @@ export function Timer({
       return
     }
     if (!entTo) return
+    /**
+     * ⚠️ REFUSED HERE, NOT ONLY GREYED. The Save button is disabled while the span is backwards,
+     * which is the part a person sees — but a disabled button is a hint rather than a rule, and
+     * this is the only place that knows the rule. `chronicle_entry_edit` would take the row and
+     * the day would then hold a session that ends before it starts: `overlapMs` clamps it to
+     * zero, so it would sit in the log reading "0m" and contribute nothing to any total, which
+     * is a corrupt row that looks like an empty one.
+     */
+    const mins = minsBetweenLocal(entFrom, entTo)
+    if (mins !== null && mins < 0) return moan('that ends before it starts')
     setBusy(true)
     const bad = await editEntry(
       fixEnt,
@@ -1536,27 +1559,96 @@ export function Timer({
                         ))}
                       </select>
                     </label>
-                    <label className="chron-gap">
-                      <span className="sr-only">Started</span>
-                      <input
-                        type="datetime-local"
-                        value={entFrom}
-                        onChange={(ev) => setEntFrom(ev.target.value)}
-                      />
-                    </label>
-                    {/* ⚠️ no end, no amount, no rating and no note while it is still going:
-                        the end is Stop's to write, and the other three are things you say about a
-                        session once you know how it went */}
-                    {e.end && (
-                      <label className="chron-gap">
-                        <span className="sr-only">Ended</span>
-                        <input
-                          type="datetime-local"
-                          value={entTo}
-                          onChange={(ev) => setEntTo(ev.target.value)}
-                        />
-                      </label>
-                    )}
+                    {/**
+                     * ⚠️ A TIME EDIT IS ALMOST ALWAYS RELATIVE, AND THE FORM WAS ONLY ABSOLUTE.
+                     * Two bare `datetime-local` inputs are the widest, ugliest controls in the
+                     * room — "mm/dd/yyyy --:-- --" on a phone — and they ask the hardest version
+                     * of the question. Nobody edits a session because it started at the wrong
+                     * DATE; they edit it because they forgot to press Stop, or started it five
+                     * minutes late. So the common case is the one on screen: the clock face as
+                     * text, and handles that move it.
+                     *
+                     * ⚠️ THE ABSOLUTE FORM IS STILL THERE, behind "exact times", because the rare
+                     * case is real — a session typed in for yesterday, a date that is genuinely
+                     * wrong — and a shortcut that is the only way in is not a shortcut. Same
+                     * argument as "Something else…" under the quick-start chips.
+                     */}
+                    <div className="chron-when">
+                      <span className="chron-when-row">
+                        <span className="chron-when-label">Started</span>
+                        <strong className="chron-when-at">{clockOfLocal(entFrom)}</strong>
+                        <span className="chron-nudges">
+                          {NUDGES.map((n) => (
+                            <button
+                              key={n}
+                              className="btn btn-ghost chron-nudge"
+                              onClick={() => setEntFrom(nudgeLocal(entFrom, n))}
+                              aria-label={`Start ${n < 0 ? `${-n} minutes earlier` : `${n} minutes later`}`}
+                            >
+                              {n > 0 ? `+${n}` : n}
+                            </button>
+                          ))}
+                        </span>
+                      </span>
+                      {/* ⚠️ no end while it is still going: the end is Stop's to write, not a
+                          thing to type into a box beside a clock that is still counting */}
+                      {e.end && (
+                        <span className="chron-when-row">
+                          <span className="chron-when-label">Ended</span>
+                          <strong className="chron-when-at">{clockOfLocal(entTo)}</strong>
+                          <span className="chron-nudges">
+                            {NUDGES.map((n) => (
+                              <button
+                                key={n}
+                                className="btn btn-ghost chron-nudge"
+                                onClick={() => setEntTo(nudgeLocal(entTo, n))}
+                                aria-label={`End ${n < 0 ? `${-n} minutes earlier` : `${n} minutes later`}`}
+                              >
+                                {n > 0 ? `+${n}` : n}
+                              </button>
+                            ))}
+                          </span>
+                        </span>
+                      )}
+                      {/**
+                       * ⚠️ THE LENGTH, LIVE, BECAUSE IT IS WHAT THE EDIT IS ACTUALLY ABOUT. Two
+                       * clock faces make you do the subtraction; this is the number you came to
+                       * change. A backwards span says so in words rather than showing a cheerful
+                       * zero — `minsBetweenLocal` deliberately does not clamp, so that the form
+                       * can refuse rather than quietly save something impossible.
+                       */}
+                      {e.end &&
+                        (() => {
+                          const mins = minsBetweenLocal(entFrom, entTo)
+                          if (mins === null) return null
+                          return mins < 0 ? (
+                            <span className="chron-when-len is-wrong">ends before it starts</span>
+                          ) : (
+                            <span className="chron-when-len">{spanText(mins * 60_000)}</span>
+                          )
+                        })()}
+                      <details className="chron-exact">
+                        <summary>exact times</summary>
+                        <label className="chron-gap">
+                          <span className="sr-only">Started</span>
+                          <input
+                            type="datetime-local"
+                            value={entFrom}
+                            onChange={(ev) => setEntFrom(ev.target.value)}
+                          />
+                        </label>
+                        {e.end && (
+                          <label className="chron-gap">
+                            <span className="sr-only">Ended</span>
+                            <input
+                              type="datetime-local"
+                              value={entTo}
+                              onChange={(ev) => setEntTo(ev.target.value)}
+                            />
+                          </label>
+                        )}
+                      </details>
+                    </div>
                     {/* ⚠️ only for an activity that has a metric: a box asking for a number with
                         no unit is a box nobody can answer — and it follows the activity SELECTED
                         above rather than the one the session used to be, so moving a session onto
@@ -1611,7 +1703,7 @@ export function Timer({
                     )}
                     <button
                       className="btn"
-                      disabled={busy}
+                      disabled={busy || (minsBetweenLocal(entFrom, entTo) ?? 0) < 0}
                       onClick={() => void saveEnt(byId.get(entAct)?.metric)}
                     >
                       Save

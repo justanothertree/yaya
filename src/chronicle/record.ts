@@ -658,3 +658,64 @@ export function nowAt(fromMs: number, toMs: number, nowMs: number): number | nul
   if (nowMs < fromMs || nowMs > toMs) return null
   return ((nowMs - fromMs) / (toMs - fromMs)) * 100
 }
+
+/* ── a datetime-local value, which is a STRING and not a moment ─────────────────────────────── */
+
+/**
+ * Read `YYYY-MM-DDTHH:mm` as local wall-clock time.
+ *
+ * ⚠️ PARSED BY HAND RATHER THAN BY `new Date(s)`. The spec says a date-TIME form without an
+ * offset is local and a date-ONLY form is UTC, which is a distinction nobody remembers and the
+ * difference is a whole timezone — so a value that loses its time part would silently jump. The
+ * fields are right there; reading them is three lines and cannot drift.
+ */
+export function readLocal(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value)
+  if (!m) return null
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), 0, 0)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** write a moment back as `YYYY-MM-DDTHH:mm`, which is what a datetime-local input wants */
+export function writeLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/**
+ * Move a datetime-local value by whole minutes.
+ *
+ * ⚠️ IT MOVES ALONG THE TIMELINE, AND THE DST CASE IS THE ONE THAT MATTERS: on a spring-forward
+ * day 1:30 + 60 has to land at 3:30, because 2:30 never happens. Measured in America/New_York on
+ * 2026-03-08 — both this and `setMinutes(getMinutes() + n)` answer 03:30, so the field version is
+ * NOT wrong here and an earlier draft of this comment said it was. The trap CLAUDE.md records is
+ * `setDate` before `setHours`, which is a different thing: setting a date field while the hour
+ * field is also moving. Epoch arithmetic is kept because it has no field normalisation to reason
+ * about at all, not because the alternative is broken.
+ */
+export function nudgeLocal(value: string, byMins: number): string {
+  const d = readLocal(value)
+  if (!d) return value
+  return writeLocal(new Date(d.getTime() + byMins * 60_000))
+}
+
+/**
+ * How long a span of two datetime-local values is, in minutes — or null if either is unreadable.
+ *
+ * ⚠️ IT MAY BE NEGATIVE AND IT IS NOT CLAMPED. An end before a start is a thing somebody can type
+ * on the way to typing something else, and the editor wants to SAY so rather than show a cheerful
+ * zero; clamping here would take that away from it.
+ */
+export function minsBetweenLocal(from: string, to: string): number | null {
+  const a = readLocal(from)
+  const b = readLocal(to)
+  if (!a || !b) return null
+  return Math.round((b.getTime() - a.getTime()) / 60_000)
+}
+
+/** a datetime-local value as the clock face a person reads */
+export function clockOfLocal(value: string): string {
+  const d = readLocal(value)
+  if (!d) return '—'
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}

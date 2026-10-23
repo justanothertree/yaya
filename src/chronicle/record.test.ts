@@ -1,26 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import {
-  amountIn,
-  countText,
-  straddles,
-  clockText,
-  metSession,
-  moodOf,
-  moodWord,
-  MOODS,
+  clockOfLocal,
+  readLocal,
+  writeLocal,
   COLOURS,
-  dayBounds,
-  gapSince,
-  sitting,
-  lane,
-  localMidnight,
-  nowAt,
-  minutesByActivity,
-  minutesByCat,
+  MOODS,
+  amountIn,
+  clockText,
+  countText,
   coveredMs,
   coveredPct,
+  dayBounds,
+  gapSince,
+  lane,
+  localMidnight,
+  metSession,
+  minsBetweenLocal,
+  minutesByActivity,
+  minutesByCat,
+  moodOf,
+  moodWord,
+  nowAt,
+  nudgeLocal,
   overlapMs,
+  sitting,
   spanText,
+  straddles,
   type Activity,
   type Entry,
   type Span,
@@ -1006,5 +1011,72 @@ describe('how much of a window has anything on it', () => {
   it('has no opinion about a window with no width', () => {
     expect(coveredPct([span(9, 17)], DAY_START, DAY_START, AFTER)).toBe(0)
     expect(coveredMs([span(9, 17)], DAY_START, DAY_START, AFTER)).toBe(0)
+  })
+})
+
+describe('nudging a datetime-local value', () => {
+  it('moves by whole minutes and keeps the shape an input wants', () => {
+    expect(nudgeLocal('2026-10-23T14:30', 15)).toBe('2026-10-23T14:45')
+    expect(nudgeLocal('2026-10-23T14:30', -45)).toBe('2026-10-23T13:45')
+  })
+
+  it('carries across an hour, a day and a month', () => {
+    expect(nudgeLocal('2026-10-23T23:50', 20)).toBe('2026-10-24T00:10')
+    expect(nudgeLocal('2026-10-01T00:05', -10)).toBe('2026-09-30T23:55')
+  })
+
+  /**
+   * ⚠️ THE HOUR THAT DOES NOT EXIST. On a US spring-forward 01:30 + 60 minutes is 03:30, because
+   * 02:30 never happens, and this pins that behaviour.
+   *
+   * ⚠️ IT DOES NOT DISCRIMINATE BETWEEN THE TWO IMPLEMENTATIONS, and saying so is the point.
+   * Perturbed to `setMinutes(getMinutes() + n)` it stays green — measured in America/New_York,
+   * where both answer 03:30 — so this is a test of the BEHAVIOUR and not of the technique. An
+   * earlier comment on `nudgeLocal` claimed the field version was broken; it is not, and the
+   * perturbation is what said so rather than any amount of reading.
+   *
+   * Written against the runner's own zone so it means something wherever it runs: on a machine
+   * with no spring-forward it collapses to "an hour later is an hour later", which is still
+   * true and still worth asserting.
+   */
+  it('lands on the right side of a spring-forward', () => {
+    const before = new Date(2026, 2, 8, 1, 30)
+    const after = new Date(before.getTime() + 60 * 60_000)
+    expect(nudgeLocal('2026-03-08T01:30', 60)).toBe(
+      `2026-03-08T${String(after.getHours()).padStart(2, '0')}:${String(after.getMinutes()).padStart(2, '0')}`,
+    )
+    /* and the span is a real hour either way, which is the property that actually matters */
+    expect(minsBetweenLocal('2026-03-08T01:30', nudgeLocal('2026-03-08T01:30', 60))).toBe(60)
+  })
+
+  /** the face the editor shows instead of two `datetime-local` boxes */
+  it('reads a value back as a clock face, and says so when it cannot', () => {
+    expect(clockOfLocal('2026-10-23T14:05')).toBe(
+      new Date(2026, 9, 23, 14, 5).toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    )
+    expect(clockOfLocal('')).toBe('—')
+    expect(clockOfLocal('nope')).toBe('—')
+  })
+
+  /** ⚠️ a round trip, because the input hands back exactly what it was given and must survive it */
+  it('writes back what it read', () => {
+    for (const v of ['2026-01-01T00:00', '2026-12-31T23:59', '2026-06-15T09:07']) {
+      expect(writeLocal(readLocal(v)!)).toBe(v)
+    }
+  })
+
+  it('leaves nonsense alone rather than inventing a date', () => {
+    expect(nudgeLocal('', 10)).toBe('')
+    expect(nudgeLocal('not a date', 10)).toBe('not a date')
+    expect(minsBetweenLocal('2026-10-23T14:30', '')).toBeNull()
+  })
+
+  /** ⚠️ not clamped — an end before a start is a thing to SAY, not to hide behind a zero */
+  it('measures a backwards span as negative', () => {
+    expect(minsBetweenLocal('2026-10-23T14:30', '2026-10-23T14:00')).toBe(-30)
+    expect(minsBetweenLocal('2026-10-23T09:00', '2026-10-23T09:45')).toBe(45)
   })
 })

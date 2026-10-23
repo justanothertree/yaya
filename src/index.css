@@ -15706,6 +15706,95 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * Editing when a session happened.
+ *
+ * ⚠️ IT READS AS A PANEL NOW, NOT A WRAPPING ROW. The editor was eight controls in one flex wrap
+ * with every label `sr-only` — an activity select, two `datetime-local` boxes, a quantity, a
+ * rating, a note, Save and Cancel — so the only way to tell what any of it did was to recognise
+ * the shape of the control. Reported as "very control dense". The time half is the part that
+ * carried most of that weight and the part a person actually came to change, so it gets rows
+ * with words on them and the raw inputs go behind a fold.
+ */
+.chron-when {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.4rem 0;
+}
+.chron-when-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.chron-when-label {
+  /* a fixed column so "Started" and "Ended" line their clock faces up under each other */
+  flex: 0 0 3.6rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.chron-when-at {
+  flex: 1 1 auto;
+  min-width: 5.2rem;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+/**
+ * ⚠️ THE FOUR HANDLES TAKE A LINE OF THEIR OWN, because at 375 they do not fit beside the label
+ * and the clock face — measured, the row broke after `+5` and left `+15` orphaned on the next
+ * line, which reads as a layout fault rather than as a set of four. `flex-basis: 100%` makes the
+ * break deliberate: label and time on one line, the handles under them, always the same shape.
+ */
+.chron-nudges {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 0.3rem;
+  padding-left: 3.9rem;
+}
+/**
+ * ⚠️ THE SAME 44px TRAP, A SECOND TIME, AND THE COMMENT HERE CLAIMED IT HAD BEEN CHECKED. It had
+ * not. The tally buttons lost to `.chron-timer .btn` on specificity; these lost to
+ * `.chron-fix .btn`, which is the SAME specificity (0,2,0) and simply declared later — so the
+ * rule was right, the selector was right, and source order decided it. Measured: 36px under a
+ * comment saying 44, exactly as before, and again nothing failed because 36 clears the 24px
+ * audit floor.
+ *
+ * The lesson is not about selectors. A tap-target size written as a bare class inside a room
+ * that already styles `.btn` is a guess until `whoSets()` says otherwise — so ask it, and do not
+ * write "checked" in a comment on the strength of having thought about it.
+ */
+.chron-fix .chron-when .chron-nudge {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+.chron-when-len {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding-left: 3.9rem;
+}
+/* ⚠️ a refusal, not a decoration: the form can be in a state that must not be saved, and the
+   only thing worse than refusing is saving a session that ends before it starts */
+.chron-when-len.is-wrong {
+  color: var(--warn, #f0b429);
+}
+.chron-exact > summary {
+  cursor: pointer;
+  font-size: 0.76rem;
+  color: var(--muted);
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  padding-left: 3.9rem;
+}
+.chron-exact[open] {
+  display: grid;
+  gap: 0.3rem;
+  padding-top: 0.3rem;
+}
+
+/**
  * The slow road: pick anything, and start it.
  *
  * ⚠️ IT HAS TO READ AS SECONDARY, because it sits under a row of one-tap chips that do the same
