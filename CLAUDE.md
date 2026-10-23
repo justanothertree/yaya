@@ -404,6 +404,23 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   with a fold was about more than the room. It cuts both ways, as these always do: it flagged tap
   targets nobody can reach, and it measured a collapsed box and called it fine, so a control that
   is correct closed and broken open read as correct. Fixed there; ask it of any new sweep.
+- **⚠️ BUT `checkVisibility()` TAKES NO OPTIONS HERE, AND THE RULE ABOVE SHIPPED WITH THREE.**
+  The correction arrived one commit later and is sharper than the original. Passing
+  `contentVisibilityAuto`, `opacityProperty` and `visibilityProperty` looks like being stricter,
+  and two of them are strict about things this app does on purpose — above all that **every room
+  is wrapped in `.reveal`, whose computed `opacity` is 0 in the Browser pane**, because the
+  entrance animation never advances there. So `opacityProperty: true` answers false for every
+  control on the site. `shown()` admitted nothing and `mobileAudit` reported **a flawless zero of
+  everything, for three rooms running**, against a screenshot that plainly showed the controls —
+  the most confident possible wrong answer, in the checker whose whole doctrine is that a clean
+  number is not a clean room. Plain `checkVisibility()` is what is wanted: `display: none` and
+  `content-visibility: hidden`, which is the closed-fold case, and nothing else. Measured on one
+  button: plain `true`, `{opacityProperty:true}` **false**, `{visibilityProperty:true}` true.
+- **SO MAKE A CHECKER SPEAK BEFORE BELIEVING A ZERO FROM IT.** Both of the above were caught by
+  the same move, and it costs one call: inject the fault the sweep is for and watch it name it.
+  A 16×16 control in a row and a 600px child in a 120px box, appended to the live room, give
+  `tooSmall: 3` and `spills: 4` with each named by size — and both return to `0` when removed.
+  A sweep that has not been made to fail this session is a sweep reporting that it ran.
 - **AND A COUNT USED AS A JUSTIFICATION IS A MEASURED NUMBER — §2 applies to it before it is
   written down, not after.** The figure above went into two comments and a commit message as the
   reason for a restructure while it was still the DOM count. Nothing downstream would have
