@@ -360,6 +360,23 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   is exact only while the denominator is also 1440. It is not: `dayBounds` is correctly **1380**
   minutes on a spring-forward day and **1500** on a fall-back one, which is also why a constant
   denominator was wrong twice a year on its own. Carry the number in the unit the label speaks.
+- **AN ERROR RESPONSE CARRIES NO CORS HEADERS, SO THE BROWSER REPORTS CORS INSTEAD OF THE STATUS.**
+  The worst disguise met so far, and it cost a day. A picture upload failed with "No
+  'Access-Control-Allow-Origin' header is present on the requested resource", which names a
+  configuration nobody had got wrong: the bucket's CORS policy was fine. R2 had answered the PUT
+  **400**, and a 400 from S3-compatible storage does not carry the CORS headers its 200 would — so
+  the browser, unable to show a cross-origin response it was not permitted to read, reported the
+  missing header rather than the status underneath. **The CORS message was about the RESPONSE TO
+  the real error.** The real error was that `R2_ACCESS_KEY_ID` had a trailing newline from a
+  copy-paste, visible only as `%0A` inside `X-Amz-Credential` in the signed URL, so every
+  signature was built from a malformed credential.
+  **So when a browser says CORS, read the STATUS first** — the Network tab has it even when the
+  console does not — and when a credential is involved, look at what was actually signed with.
+  Secrets are trimmed on the way in now, because no credential has meaningful surrounding
+  whitespace and nothing anywhere displays the character that was there.
+  **And the same shape has a sibling worth naming: a diagnosis that is right about the symptom and
+  wrong about the cause survives, because the fix is never attempted.** The reachability check
+  added to find this reported "could not reach R2 at all" — true, and about nothing.
 - **A PREFLIGHT THAT DOES NOT CARRY `Access-Control-Request-Headers` TESTS HALF OF CORS, and the
   half it skips is the half that breaks.** The `pictures` edge function was checked with
   `curl -X OPTIONS -H 'Origin: https://evancook.dev' -H 'Access-Control-Request-Method: POST'`,
