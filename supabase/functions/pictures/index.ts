@@ -155,6 +155,58 @@ Deno.serve(async (req) => {
     return json({ error: 'that was not json' }, 400, origin)
   }
 
+  /**
+   * ── is R2 reachable from HERE ──────────────────────────────────────────────────────────────
+   *
+   * ⚠️ A SERVER-SIDE REQUEST IS NOT SUBJECT TO CORS, which is the whole reason this op exists.
+   * When a browser's PUT fails there are three candidates — the bucket's CORS policy, the token's
+   * permissions, and the bucket name — and from the browser they are indistinguishable, because a
+   * CORS failure yields a rejected promise with no status in it. Asked from here, R2 answers
+   * properly and the status separates all three:
+   *
+   *   200  the bucket is there and the token can read it → the browser's problem is CORS
+   *   403  the token is wrong, or lacks Object Read & Write on this bucket
+   *   404  the bucket name does not match R2_BUCKET
+   *
+   * ⚠️ IT REPORTS NO CREDENTIAL AND NO ACCOUNT ID. The bucket NAME is already something the
+   * caller chose and told us; the status is a number. Nothing here widens what a signed-in member
+   * can learn about the project beyond "storage is or is not configured correctly", which they
+   * are about to learn anyway from whether their picture uploads.
+   */
+  if (body.op === 'check') {
+    try {
+      const res = await kit.client.fetch(kit.base, { method: 'HEAD' })
+      return json(
+        {
+          reachable: res.ok,
+          status: res.status,
+          bucket: kit.bucket,
+          meaning:
+            res.status === 200
+              ? 'R2 answers this function, so an upload failing in the browser is the bucket CORS policy'
+              : res.status === 403
+                ? 'the token is wrong or lacks Object Read & Write on this bucket'
+                : res.status === 404
+                  ? 'no bucket of that name — R2_BUCKET does not match'
+                  : 'R2 answered with something unexpected',
+        },
+        200,
+        origin,
+      )
+    } catch (e) {
+      return json(
+        {
+          reachable: false,
+          status: 0,
+          meaning: 'could not reach R2 at all from the function',
+          detail: String(e),
+        },
+        200,
+        origin,
+      )
+    }
+  }
+
   /* ── a new picture: Postgres reserves the row and the keys, this signs the two uploads ── */
   if (body.op === 'upload') {
     const { data, error } = await supabase.rpc('picture_claim', {

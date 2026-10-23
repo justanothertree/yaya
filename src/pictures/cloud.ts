@@ -167,11 +167,42 @@ export async function keepPicture(
   }
   const [a, b] = await Promise.all([put(mint.put, full.blob), put(mint.putThumb, thumb.blob)])
   const refused = a ?? b
-  if (refused) return { why: refused }
+  if (refused) {
+    /**
+     * ⚠️ IT ASKS THE SERVER WHETHER R2 IS REACHABLE, because from here the three candidates are
+     * indistinguishable. A browser's cross-origin PUT that fails CORS rejects with no status in
+     * it, which looks identical to a network drop and says nothing about the token or the bucket
+     * name. The function is not subject to CORS, so one round trip turns a guess into an answer —
+     * and it only happens on the failing path, so an upload that works pays nothing for it.
+     */
+    const seen = await askWhy()
+    return { why: seen ? `${refused}. ${seen}` : refused }
+  }
 
   const { error: badReady } = await supabase.rpc('picture_ready', { p_id: mint.id })
   if (badReady) return { why: badReady.message || 'that did not go up' }
   return { id: mint.id }
+}
+
+/**
+ * What the server can see of R2, asked only when a browser upload has already failed.
+ *
+ * ⚠️ IT NEVER THROWS AND NEVER BLOCKS THE REAL MESSAGE. This runs inside a failure path; a
+ * diagnosis that itself fails must leave the original sentence standing rather than replace it
+ * with one about the diagnosis.
+ */
+async function askWhy(): Promise<string | null> {
+  if (previewMember) return null
+  try {
+    const { data, error } = await getSupabaseClient().functions.invoke('pictures', {
+      body: { op: 'check' },
+    })
+    if (error) return null
+    const out = data as { meaning?: string; status?: number } | null
+    return out?.meaning ? `R2 answered the server with ${out.status}: ${out.meaning}` : null
+  } catch {
+    return null
+  }
 }
 
 export async function myPictures(): Promise<Kept[]> {
