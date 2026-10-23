@@ -47,3 +47,6 @@ src/circuit/seed.ts
 
 # local Claude Code tooling (launch config, task locks) — not part of the site
 .claude/
+
+# the Supabase CLI writes its own scratch here — a version string, not source
+supabase/.temp/
