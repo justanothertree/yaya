@@ -168,3 +168,14 @@ export const pvDescribe = (id: string, alt: string): { why: string } | null => {
   p.alt = alt.trim() || null
   return null
 }
+
+/**
+ * ⚠️ THE SAME ARITHMETIC THE SERVER DOES, which is deliberately not what the list adds up to:
+ * every row rather than the ready ones, and thumbnails counted alongside the pictures. The
+ * harness keeps no unready claims, so the two agree here — but the double has to do the same
+ * SUM, or the room reads one number in the workbench and another on the live site.
+ */
+export const pvUsed = (): { count: number; ready: number; bytes: number } => {
+  const all = db()
+  return { count: all.length, ready: all.length, bytes: all.reduce((n, p) => n + p.bytes, 0) }
+}

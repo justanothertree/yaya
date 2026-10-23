@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
-import { pvDescribe, pvDrop, pvKeep, pvPictures } from '../dev/picturePreview'
+import { pvDescribe, pvDrop, pvKeep, pvPictures, pvUsed } from '../dev/picturePreview'
 import { FULL_BYTES, FULL_EDGE, THUMB_BYTES, THUMB_EDGE, fitWithin, nextQuality } from './shrink'
 
 /**
@@ -205,13 +205,20 @@ async function askWhy(): Promise<string | null> {
   }
 }
 
-export async function myPictures(): Promise<Kept[]> {
-  if (previewMember) return pvPictures()
+/** what the ceiling has spoken for, which is not what the list adds up to — see the server */
+export type Used = { count: number; ready: number; bytes: number }
+
+export async function myPictures(): Promise<{ pictures: Kept[]; used: Used | null }> {
+  if (previewMember) {
+    const pictures = pvPictures()
+    return { pictures, used: pvUsed() }
+  }
   const { data, error } = await getSupabaseClient().functions.invoke('pictures', {
     body: { op: 'view' },
   })
-  if (error) return []
-  return ((data as { pictures?: Kept[] })?.pictures ?? []) as Kept[]
+  if (error) return { pictures: [], used: null }
+  const out = data as { pictures?: Kept[]; used?: Used } | null
+  return { pictures: out?.pictures ?? [], used: out?.used ?? null }
 }
 
 export async function dropPicture(id: string): Promise<{ why: string } | null> {

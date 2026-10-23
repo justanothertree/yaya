@@ -291,7 +291,18 @@ Deno.serve(async (req) => {
           thumbUrl: await signFor(kit, p.thumb_key, 'GET', GET_FOR),
         })),
     )
-    return json({ pictures: out }, 200, origin)
+    /**
+     * ⚠️ THE USAGE COMES FROM THE SERVER, not from adding up the list above. They are different
+     * numbers and the room was showing the wrong one: the list holds only READY pictures and only
+     * their full-size bytes, while the ceiling counts every row — unready claims included — and
+     * their thumbnails too. Measured on the owner's account right after the first working upload,
+     * the room said 942 KB where the ceiling had 5,724,752 spoken for. A figure shown against a
+     * limit must be the figure the limit is applied to.
+     *
+     * It is one more RPC on the server's side of the wire and no extra round trip for the browser.
+     */
+    const { data: used } = await supabase.rpc('pictures_used')
+    return json({ pictures: out, used }, 200, origin)
   }
 
   /* ── removing: the row goes first, because its answer is what names the objects ── */

@@ -8,6 +8,7 @@ import {
   prepare,
   type Kept,
   type Squeezed,
+  type Used,
 } from './cloud'
 import { sayBytes, savedBy } from './shrink'
 
@@ -25,6 +26,9 @@ import { sayBytes, savedBy } from './shrink'
  */
 export function Pictures({ authed = false }: { authed?: boolean } = {}) {
   const [kept, setKept] = useState<Kept[] | null>(null)
+  const [used, setUsed] = useState<Used | null>(null)
+  /* which picture is open full size, if any */
+  const [open, setOpen] = useState<Kept | null>(null)
   const [file, setFile] = useState<File | null>(null)
   const [quality, setQuality] = useState(0.8)
   const [ready, setReady] = useState<{ full: Squeezed; thumb: Squeezed } | null>(null)
@@ -40,7 +44,9 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
 
   const load = useCallback(async () => {
     if (!authed) return
-    setKept(await myPictures())
+    const got = await myPictures()
+    setKept(got.pictures)
+    setUsed(got.used)
   }, [authed])
 
   useEffect(() => {
@@ -97,6 +103,15 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
    * no message, which is worse than an error: an error says something went wrong, and a greyed
    * button says nothing at all while looking like a considered state.
    */
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   const keep = async () => {
     if (!ready || busy) return
     setBusy(true)
@@ -145,8 +160,6 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
       </div>
     )
   }
-
-  const used = (kept ?? []).reduce((n, p) => n + p.bytes, 0)
 
   return (
     <div className="pics">
@@ -265,16 +278,34 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
                 {/* ⚠️ the THUMBNAIL, never the full picture. A grid of twenty full-size images is
                     the single biggest thing anybody gets wrong here — roughly ten times the
                     bytes, for pictures drawn two inches wide. */}
-                <img
-                  className="pics-thumb"
-                  src={p.thumbUrl}
-                  alt={p.alt ?? ''}
-                  width={p.w}
-                  height={p.h}
-                  loading="lazy"
-                />
+                {/**
+                 * ⚠️ A BUTTON, BECAUSE THE PICTURE HAD NO WAY OF BEING SEEN. The grid draws a
+                 * 155x140 thumbnail with `object-fit: cover`, so a portrait photograph — which
+                 * is most photographs — was shown as a cropped landscape strip and there was
+                 * nothing to press. Measured in the room: `thumbIsInteractive: NO`.
+                 */}
+                <button
+                  className="pics-open"
+                  onClick={() => setOpen(p)}
+                  aria-label={p.alt ? `Look at ${p.alt}` : 'Look at this picture'}
+                >
+                  <img
+                    className="pics-thumb"
+                    src={p.thumbUrl}
+                    alt={p.alt ?? ''}
+                    width={p.w}
+                    height={p.h}
+                    loading="lazy"
+                  />
+                </button>
                 <span className="pics-facts">
-                  <span className="muted">{sayBytes(p.bytes)}</span>
+                  {/* ⚠️ THE SIZE AND THE SHAPE TOGETHER. Bytes alone cannot be judged — "922 KB"
+                      says nothing about whether the squeeze worked without the dimensions beside
+                      it, and the same photograph at two quality settings is 19 KB and 922 KB at
+                      the identical 1024x1280. The pair is the thing that reads. */}
+                  <span className="muted">
+                    {sayBytes(p.bytes)} · {p.w}×{p.h}
+                  </span>
                   <button
                     className="btn btn-ghost chron-x"
                     onClick={() => void drop(p)}
@@ -292,11 +323,58 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
               </li>
             ))}
           </ul>
+          {/**
+           * ⚠️ THE SERVER'S FIGURE, NOT THE LIST'S. This added up the `bytes` of the pictures on
+           * screen, which is a different number from the one the ceiling is applied to: the list
+           * holds only READY pictures and only their full-size bytes, while `picture_claim` counts
+           * every row — unready claims from failed uploads included — and their thumbnails too.
+           * Measured on the owner's account: the room said 942 KB where the ceiling had 5,724,752
+           * spoken for, across five phantoms. A figure shown against a limit has to be the figure
+           * the limit uses, or a refusal arrives at a number the screen calls fine.
+           */}
           <p className="muted pics-used">
-            {kept.length} of {PICTURES_EACH} · {sayBytes(used)} of {sayBytes(PICTURE_BYTES_ALL)}
+            {used ? used.count : kept.length} of {PICTURES_EACH} · {sayBytes(used ? used.bytes : 0)}{' '}
+            of {sayBytes(PICTURE_BYTES_ALL)}
+            {used && used.count > used.ready ? (
+              <span className="muted">
+                {' '}
+                · {used.count - used.ready} half-finished{' '}
+                {used.count - used.ready === 1 ? 'upload is' : 'uploads are'} still holding room,
+                and clear within the hour
+              </span>
+            ) : null}
           </p>
         </>
       )}
+
+      {/**
+       * ⚠️ THE WHOLE PICTURE, WHICH THE ROOM COULD NOT SHOW AT ALL. `contain` rather than
+       * `cover` here, the opposite of the grid: a thumbnail is a label and may be cropped to
+       * stay tidy, but the thing you opened is the thing you want to see all of.
+       *
+       * ⚠️ IT IS THE FULL-SIZE URL, so this is also the only place the squeeze can be JUDGED —
+       * the grid shows a 320px thumbnail, which looks fine at any quality.
+       */}
+      {open ? (
+        <div
+          className="pics-look"
+          role="dialog"
+          aria-modal="true"
+          aria-label={open.alt ?? 'a picture'}
+          onClick={() => setOpen(null)}
+        >
+          <img src={open.url} alt={open.alt ?? ''} />
+          <p className="pics-look-say">
+            {sayBytes(open.bytes)} · {open.w}×{open.h}
+            {open.alt ? ` · ${open.alt}` : ''}
+          </p>
+          {/* ⚠️ a real button as well as the backdrop: tapping away is a convention people who
+              know it use, and a thing nobody else can discover */}
+          <button className="btn pics-shut" onClick={() => setOpen(null)}>
+            Close
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

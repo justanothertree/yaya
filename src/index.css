@@ -17869,3 +17869,67 @@ a.cz-msg-author:focus-visible {
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
 }
+
+/**
+ * ⚠️ THE TILE IS A BUTTON NOW, so it has to stop looking like one. A bare <button> brings a
+ * border, a background and a focus ring that would box every thumbnail in chrome the grid does
+ * not want — but the ring is the thing a keyboard needs, so it is removed and given back on
+ * :focus-visible rather than dropped.
+ */
+.pics-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: 10px;
+}
+.pics-open:focus-visible {
+  outline: 2px solid var(--accent, #2f9e44);
+  outline-offset: 2px;
+}
+
+/**
+ * ⚠️ `contain`, THE OPPOSITE OF THE GRID, and deliberately. A thumbnail is a label and may be
+ * cropped to keep the grid tidy; the picture you opened is the one you want all of — and most
+ * photographs are portrait, which `cover` turns into a landscape strip.
+ */
+.pics-look {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  /* ⚠️ `auto` ON ALL THREE, never `1fr` on the first. A `1fr` track GROWS to fill the
+     viewport, which pins the picture to the top and the caption to the bottom with a hole
+     between them — and makes `align-content: center` mean nothing, because there is no free
+     space left to centre. Content-sized rows let the three sit together in the middle. */
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  align-content: center;
+  gap: 0.6rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.88);
+  /* a tap anywhere closes it, so the whole backdrop is the target */
+  cursor: zoom-out;
+}
+.pics-look img {
+  max-width: 100%;
+  /* ⚠️ a LENGTH rather than a percentage: a percentage height inside a grid row resolves against
+     a track that is itself sized by the content, which is circular and collapses the image */
+  max-height: 72vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.pics-look-say {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.pics-shut {
+  /* its own cursor, because the backdrop's zoom-out would otherwise be inherited onto a button */
+  cursor: pointer;
+  min-height: 44px;
+}
