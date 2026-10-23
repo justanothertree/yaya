@@ -34,6 +34,7 @@ import {
   pvSince,
   pvSpans,
   pvVisit,
+  pvFriendsLog,
   pvNoteRunning,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
@@ -253,6 +254,9 @@ export async function myActivities(): Promise<Activity[]> {
     cat: a.cat,
     colour: a.colour ?? null,
     archived: !!a.archived,
+    /* a bundle talking to a server from before the column existed gets nothing here, and
+       `false` is the right reading of that silence — see the goals' `shared` above */
+    shared: !!a.shared,
     auto: !!a.auto,
     metric: a.metric ?? null,
     session: a.session == null ? null : num(a.session as number | string | null) || null,
@@ -266,8 +270,15 @@ export async function saveActivity(
   id?: string,
   metric?: string | null,
   session?: number | null,
+  /**
+   * ⚠️ UNDEFINED MEANS "I AM NOT TALKING ABOUT THIS", and it reaches the server as null, where
+   * `shared = coalesce(p_shared, shared)` leaves the flag alone. The add form does not offer the
+   * tick — a brand new activity is private and the row's default says so — so it must be able to
+   * stay quiet without un-sharing anything. CLAUDE.md §8.
+   */
+  shared?: boolean,
 ): Promise<{ id: string } | { why: string }> {
-  if (previewMember) return pvSaveActivity(name, cat, colour, id, metric, session)
+  if (previewMember) return pvSaveActivity(name, cat, colour, id, metric, session, shared)
   const { data, error } = await getSupabaseClient().rpc('chronicle_activity_save', {
     p_id: id ?? null,
     p_name: name,
@@ -275,6 +286,7 @@ export async function saveActivity(
     p_colour: colour,
     p_metric: metric ?? null,
     p_session: session ?? null,
+    p_shared: shared ?? null,
   })
   if (error) return { why: error.message || 'that did not save' }
   const made = data == null ? '' : String(data)
@@ -889,4 +901,71 @@ export async function spanTotals(
     Object.assign(out, data as Record<string, Partial<Record<'locked' | 'free' | 'life', number>>>)
   }
   return out
+}
+
+/**
+ * One sitting of somebody else's, as it crosses to a friend.
+ *
+ * ⚠️ WHAT IS ABSENT IS THE PART WORTH READING. There is no `note` and no `quality`, and neither
+ * is an oversight: the profile card draws a list of what it never shows, that list is built from
+ * the same flags that draw the card so it cannot go stale, and "your notes" is in it. A timeline
+ * carrying notes would make that card a liar. A rating is a feeling about a sitting rather than a
+ * fact about it, so it goes with the note. What crosses is what, when, how long, and how much.
+ */
+export type FriendSitting = {
+  /** their username, which is the handle a profile is reached by */
+  who: string
+  /** what to call them on screen — their first name if they gave one */
+  name: string
+  activity: string
+  cat: 'locked' | 'free' | 'life'
+  colour: string | null
+  start: string
+  end: string
+  amount: number | null
+  metric: string | null
+}
+
+/**
+ * What your friends have been doing, newest first.
+ *
+ * ⚠️ THREE SWITCHES DECIDE THIS AND NONE OF THEM IS A PARAMETER. The owner needs a chronicle
+ * block on their profile, that block must ask for a timeline, and the activity itself must be
+ * ticked — all read in SQL. The window below is a convenience and never a boundary, which is the
+ * same split `get_member_chronicle` makes between its `days` and its `live`.
+ *
+ * ⚠️ FRIENDS, FIXED, AND NOT THE BLOCK'S OWN TIER. A chronicle block may be set to 'members', and
+ * that choice was made about hours and a top five. This is every sitting with its clock times,
+ * which is strictly more, so the wider tier does not carry — CLAUDE.md §3. There is no argument
+ * here that could widen it.
+ *
+ * ⚠️ AND CLOSED SITTINGS ONLY, which is correctness rather than caution: "what I'm doing right
+ * now" is already its own opt-in, and a timeline including the open sitting would hand that over
+ * through a switch that says nothing about it.
+ */
+export async function friendsLog(fromISO: string, toISO: string): Promise<FriendSitting[]> {
+  if (previewMember) return pvFriendsLog(fromISO, toISO)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_friends_log', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (
+    (data as Array<Record<string, unknown>>)
+      .map((r) => ({
+        who: String(r.who ?? ''),
+        name: String(r.name ?? r.who ?? ''),
+        activity: String(r.activity ?? ''),
+        cat: (r.cat === 'locked' || r.cat === 'life' ? r.cat : 'free') as FriendSitting['cat'],
+        colour: typeof r.colour === 'string' ? r.colour : null,
+        start: String(r.started_at ?? ''),
+        end: String(r.ended_at ?? ''),
+        amount: r.amount == null ? null : Number(r.amount),
+        metric: typeof r.metric === 'string' ? r.metric : null,
+      }))
+      /* ⚠️ a row with no end cannot be drawn on a timeline and should not exist — the function
+       filters them — so this is a belt the server already wears, kept because the one thing it
+       guards is the separate "right now" opt-in */
+      .filter((r) => r.start !== '' && r.end !== '')
+  )
 }

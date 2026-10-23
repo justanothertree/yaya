@@ -143,6 +143,7 @@ function seed(): Store {
     cat,
     colour: null,
     archived: false,
+    shared: false,
     auto: false,
     metric: null,
     session: null,
@@ -758,6 +759,7 @@ export const pvSaveActivity = (
   id?: string,
   metric?: string | null,
   session?: number | null,
+  shared?: boolean,
 ): { id: string } | { why: string } => {
   const made = id ?? mint('pv-a')
   const found = db().acts.find((x) => x.id === made)
@@ -806,6 +808,10 @@ export const pvSaveActivity = (
          `metric = case when p_metric is null then metric else … end`. The room always sends a
          string here, so this is the shape a future caller would fall into, not a live loss. */
       metric: metric == null ? found.metric : metric.trim() || null,
+      /* ⚠️ the server's own words: `shared = coalesce(p_shared, shared)`. A caller that does not
+         mention it is not asking for anything, and an older bundle does not mention it — so a
+         double that read undefined as false would invent a loss the live site does not have. */
+      shared: shared === undefined ? found.shared : shared,
       /* ⚠️ THE SESSION IS DELIBERATELY NOT THAT RULE. null is its only way to say "clear", because
          the box is a number and `asMins('')` answers null — see the doc for why changing it needs
          the client to move first. The server agrees: `when p_session is null then null`. */
@@ -818,6 +824,7 @@ export const pvSaveActivity = (
       cat,
       colour,
       archived: false,
+      shared: false,
       auto: false,
       metric: metric || null,
       session: session || null,
@@ -1080,6 +1087,7 @@ export const pvVisit = (room: string, secs: number): void => {
       id: mint('pv-a'),
       name,
       cat: 'free',
+      shared: false,
       colour: null,
       archived: false,
       auto: true,
@@ -1152,6 +1160,7 @@ export const pvExport = (): Record<string, unknown> => ({
       auto: a.auto,
       metric: a.metric,
       session_mins: a.session,
+      shared: a.shared,
     })),
   entries: [...db().ents]
     .sort((x, y) => Date.parse(x.start) - Date.parse(y.start) || x.id.localeCompare(y.id))
@@ -1274,6 +1283,9 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       name: String(a.name ?? ''),
       cat: (a.cat === 'locked' || a.cat === 'life' ? a.cat : 'free') as Activity['cat'],
       colour: str(a.colour),
+      /* ⚠️ a file from before this column existed describes a PRIVATE activity, so silence
+         reads as false — the same reading chronicle_import gives it on the server */
+      shared: a.shared === true,
       archived: a.archived_at != null,
       auto: a.auto === true,
       metric: str(a.metric),
@@ -1680,4 +1692,127 @@ export const pvSpans = (
     out[a.key] = mins
   }
   return out
+}
+
+// ── friends' timeline ────────────────────────────────────────────────────────────────────────
+// Invented people doing invented things, like everything else in this file. It exists because
+// the real one cannot be reached here at all: chronicle_friends_log needs a session, two accounts
+// and an accepted friendship, and `previewMember` has none of the three. Without this the Friends
+// half renders its empty state and only its empty state — which, per the note at the top of this
+// file, is a room that passes every check there is.
+//
+// ⚠️ IT KEEPS THE SERVER'S RULES RATHER THAN ITS OWN. No row carries a note or a rating and every
+// row has an end, because those are the two promises the live function makes; a double that
+// handed over a note would make the workbench disagree with the site about what sharing MEANS,
+// which is the unfaithful-double direction that hides a bug rather than inventing one.
+// ⚠️ EVERY HOUR HERE IS EARLY IN THE DAY ON PURPOSE. Both this and the live function stop at
+// `now` — a sitting cannot have finished in the future — so a fixture hour of 19 simply vanishes
+// from the workbench for most of a working day, which reads as a bug in the filter rather than as
+// the filter doing its job. Measured: six rows seeded, five rendered, at ten past one.
+const FRIEND_LOG: ReadonlyArray<{
+  who: string
+  name: string
+  activity: string
+  cat: 'locked' | 'free' | 'life'
+  colour: string | null
+  daysAgo: number
+  hour: number
+  mins: number
+  amount: number | null
+  metric: string | null
+}> = [
+  {
+    who: 'wren',
+    name: 'Wren',
+    activity: 'Running',
+    cat: 'life',
+    colour: '#4ade80',
+    daysAgo: 0,
+    hour: 7,
+    mins: 42,
+    amount: 6.1,
+    metric: 'km',
+  },
+  {
+    who: 'wren',
+    name: 'Wren',
+    activity: 'Thesis',
+    cat: 'locked',
+    colour: '#60a5fa',
+    daysAgo: 0,
+    hour: 10,
+    mins: 95,
+    amount: 3,
+    metric: 'pages',
+  },
+  {
+    who: 'mo',
+    name: 'Mo',
+    activity: 'Pottery',
+    cat: 'free',
+    colour: '#f472b6',
+    daysAgo: 0,
+    hour: 6,
+    mins: 70,
+    amount: null,
+    metric: null,
+  },
+  {
+    who: 'wren',
+    name: 'Wren',
+    activity: 'Thesis',
+    cat: 'locked',
+    colour: '#60a5fa',
+    daysAgo: 1,
+    hour: 9,
+    mins: 140,
+    amount: 5,
+    metric: 'pages',
+  },
+  {
+    who: 'mo',
+    name: 'Mo',
+    activity: 'Running',
+    cat: 'life',
+    colour: '#4ade80',
+    daysAgo: 1,
+    hour: 18,
+    mins: 28,
+    amount: 4,
+    metric: 'km',
+  },
+  {
+    who: 'wren',
+    name: 'Wren',
+    activity: 'Pottery',
+    cat: 'free',
+    colour: '#f472b6',
+    daysAgo: 3,
+    hour: 14,
+    mins: 55,
+    amount: null,
+    metric: null,
+  },
+]
+
+/** the shape `friendsLog` returns — kept here rather than imported, so cloud.ts owns the type */
+export const pvFriendsLog = (fromISO: string, toISO: string) => {
+  const from = Date.parse(fromISO)
+  const to = Date.parse(toISO)
+  return FRIEND_LOG.map((r) => {
+    const a = at(r.daysAgo, r.hour)
+    return {
+      who: r.who,
+      name: r.name,
+      activity: r.activity,
+      cat: r.cat,
+      colour: r.colour,
+      start: a.toISOString(),
+      end: new Date(a.getTime() + r.mins * 60_000).toISOString(),
+      amount: r.amount,
+      metric: r.metric,
+    }
+  })
+    .filter((r) => Date.parse(r.start) < to && Date.parse(r.end) > from)
+    .sort((x, y) => Date.parse(y.start) - Date.parse(x.start) || x.who.localeCompare(y.who))
 }

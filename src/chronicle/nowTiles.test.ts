@@ -7,6 +7,7 @@ import { localISO } from '../circuit/dates'
 const act = (over: Partial<Activity> & { id: string; name: string }): Activity => ({
   cat: 'free',
   colour: null,
+  shared: false,
   archived: false,
   auto: false,
   metric: null,

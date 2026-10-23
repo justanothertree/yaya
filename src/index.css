@@ -15563,7 +15563,7 @@ a.cz-msg-author:focus-visible {
  */
 .chron-halves {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.4rem;
   margin: 0 0 0.7rem;
 }
@@ -15591,6 +15591,106 @@ a.cz-msg-author:focus-visible {
 .chron-halves .btn.is-on small {
   color: inherit;
   opacity: 0.75;
+}
+/**
+ * ⚠️ THE HINTS GO BEFORE THE LABELS DO. Three columns at 375 is about 109px each, and
+ * "what they have been up to" in that space is not a short line, it is an ellipsis with two
+ * words in front of it — which tells you less than nothing and costs a row of height to do it.
+ * The labels are the part that has to survive, so the explaining text is what gets dropped.
+ * Measured: with the hints shown at 375 the longest ellipses after "what th", and the buttons
+ * stay 44px tall either way.
+ */
+@media (max-width: 34rem) {
+  .chron-halves .btn {
+    align-items: center;
+    text-align: center;
+  }
+  .chron-halves .btn small {
+    display: none;
+  }
+}
+
+/* ── a friend's timeline ─────────────────────────────────────────────────── */
+.chron-friends-day h3 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+.chron-friends-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+/**
+ * ⚠️ `minmax(0, …)` ON THE TWO TEXT COLUMNS, which is the trap this file has now met five times
+ * — see `.chron-list`. A name or an activity with no space in it has a min-content width of its
+ * whole self, and an automatic column takes that as the column's width. Both get a pixel floor
+ * rather than a bare `min-width: 0`, because "let it shrink" without one is "let it vanish".
+ */
+.chron-friend-row {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 0.8fr) minmax(5rem, 1.4fr) auto;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid transparent;
+}
+.chron-friend-row.is-locked {
+  border-left-color: #60a5fa;
+}
+.chron-friend-row.is-free {
+  border-left-color: #f472b6;
+}
+.chron-friend-row.is-life {
+  border-left-color: #4ade80;
+}
+.chron-friend-who {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-friend-what {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-friend-len {
+  font-family: var(--mono);
+  text-align: right;
+  white-space: nowrap;
+}
+/* the amount and the clock sit under the row rather than squeezing it — on a phone the three
+   columns above are already as narrow as they can be without the names going */
+.chron-friend-amt,
+.chron-friend-when {
+  grid-column: 2 / -1;
+  font-size: 0.76rem;
+}
+.chron-friend-amt {
+  grid-column: 1 / 2;
+  text-align: right;
+}
+.chron-friends-none p + p {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+}
+/* the tick that decides whether any of the above can exist */
+.chron-share {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  font-size: 0.84rem;
 }
 
 /**

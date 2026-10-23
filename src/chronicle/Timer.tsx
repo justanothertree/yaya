@@ -127,7 +127,7 @@ export function Timer({
    * What `show` gates is the DAY (its stepper, totals, log, plans, routines and activity list)
    * against the AIMS half, which lives in the room above.
    */
-  show: 'day' | 'aims'
+  show: 'day' | 'aims' | 'friends'
   /**
    * Bumped by the room when something OUTSIDE this half changed the record — today only a
    * put-back, which rewrites everything at once.
@@ -208,6 +208,7 @@ export function Timer({
   const [actMetric, setActMetric] = useState('')
   /** how long a sitting of it ought to be, in minutes — blank for no opinion */
   const [actSession, setActSession] = useState('')
+  const [actShared, setActShared] = useState(false)
   /** the amount being typed against a span, keyed by entry id */
   const [entAmount, setEntAmount] = useState('')
   /** how the span being edited went, '' for unrated — see Entry.quality */
@@ -556,7 +557,15 @@ export function Timer({
        id since step 2 and nothing had ever passed one, which is why a category was permanent */
     /* ⚠️ '' rather than null when there is no colour: null means "leave it alone" on the way in —
        see chronicle_activity_save — so clearing one has to be asked for. */
-    const r = await saveActivity(n, actCat, actColour ?? '', fixAct, actMetric, asMins(actSession))
+    const r = await saveActivity(
+      n,
+      actCat,
+      actColour ?? '',
+      fixAct,
+      actMetric,
+      asMins(actSession),
+      actShared,
+    )
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setFixAct(null)
@@ -1543,6 +1552,27 @@ export function Timer({
                       onChange={(e) => setActSession(e.target.value)}
                     />
                   </label>
+                  {/**
+                   * ⚠️ THE ONE CONTROL IN THIS ROOM THAT SHOWS SOMETHING TO SOMEBODY ELSE, so it
+                   * says who rather than just "share". "Shared" alone would be answered with
+                   * "with whom?" and the answer is not guessable: friends, never members, never
+                   * the web — see docs/2026-10-23-chronicle-friends-timeline.sql for why a
+                   * sitting-by-sitting record does not inherit the wider tiers the profile card
+                   * may be set to.
+                   *
+                   * ⚠️ AND IT IS PER ACTIVITY BECAUSE THAT IS THE DECISION PEOPLE ACTUALLY MAKE.
+                   * Nobody wants to rule on each sitting; everybody can say whether Gym is
+                   * anybody's business. The line under it is drawn from `shared` itself rather
+                   * than written once, so it cannot drift from what the tick does.
+                   */}
+                  <label className="chron-share">
+                    <input
+                      type="checkbox"
+                      checked={actShared}
+                      onChange={(e) => setActShared(e.target.checked)}
+                    />
+                    <span>Friends can see this</span>
+                  </label>
                   <button
                     className="btn"
                     disabled={!actName.trim() || busy}
@@ -1575,6 +1605,7 @@ export function Timer({
                       setActColour(a.colour)
                       setActMetric(a.metric ?? '')
                       setActSession(a.session == null ? '' : String(a.session))
+                      setActShared(a.shared)
                     }}
                     title={`Rename ${a.name}, or change what kind it is`}
                   >

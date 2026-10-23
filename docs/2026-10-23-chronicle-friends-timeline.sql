@@ -1,0 +1,102 @@
+-- ✅ APPLIED — migrations `chronicle_activity_shared` and `chronicle_friends_log`, 23 Oct 2026
+--
+-- A friend can see what you have been doing, sitting by sitting. Asked for as "i feed to view
+-- friends chronicles", and the audience was settled in one word: "friends only".
+--
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- WHAT WAS ALREADY HERE, AND WHY THIS EXTENDS IT RATHER THAN SITTING BESIDE IT
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- get_member_chronicle already shows a chronicle to other people. Its gate is a profile_blocks
+-- row of type 'chronicle' carrying a visibility tier, with two opt-ins in its config -- `live`
+-- ("what I am doing right now") and `goals` -- and, for goals, a second switch per goal
+-- (chronicle_goals.shared). What it hands over is AGGREGATES: minutes by category, a top five,
+-- and optionally the one running now. Never a sitting. Never a note.
+--
+-- Two decisions in the client already point the same way as "friends only": a chronicle block
+-- DEFAULTS to the friends tier (ProfileBlocks.tsx), and it is the one block type that cannot be
+-- set to 'public' at all. So this is not a new instinct, it is the existing one written down.
+--
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- 1 · THE SHARING UNIT IS THE ACTIVITY  (chronicle_activities.shared, default false)
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- Not the sitting. A sitting is made by pressing a button, and nobody will tick a box each time;
+-- an activity is a named thing you already curate in the room. So "friends can see my Gym" is
+-- ONE decision that holds for every Gym sitting there will ever be -- and "they never learn
+-- Therapy exists" is the same decision, left alone.
+--
+-- It copies chronicle_goals.shared in name, type and default, because it is the same idea one
+-- table over and a second spelling of it would be a thing to look up.
+--
+-- THREE FUNCTIONS NAME EVERY ACTIVITY COLUMN BY HAND, so a new one is invisible to all three
+-- until it is added: chronicle_activities_mine, chronicle_export and chronicle_import. The
+-- export/import pair is the dangerous half -- a backup taken today and restored tomorrow would
+-- have silently un-shared everything, which is CLAUDE.md §2's round trip that stops closing.
+-- The enumeration that found them is the standing query, asked of the TABLE:
+--
+--   select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname='public' and p.prokind='f'
+--      and pg_get_functiondef(p.oid) ~* 'public\.chronicle_activities';
+--
+-- Four writers, and the other two are fine by construction: chronicle_activity_archive touches
+-- only archived_at, and chronicle_visit INSERTS its auto activity, so the default applies.
+--
+-- NULL LEAVES IT ALONE (shared = coalesce(p_shared, shared)) and that guard is about BUNDLES,
+-- not about this room: a browser that loaded the site an hour ago calls chronicle_activity_save
+-- without p_shared, and that silence must not un-share anything. CLAUDE.md §8.
+--
+--   ⚠️ session_mins DELIBERATELY KEEPS NO SUCH GUARD, and the distinction is the useful part.
+--   The guard belongs to a field a caller may not MENTION -- colour and metric were omitted by
+--   the room for months, which is how that rule was learned. session_mins is always on screen in
+--   the activity editor, so blank there genuinely means "no aim", and coalescing it would make
+--   clearing a session aim impossible. Guard the unmentioned, not the merely absent.
+--
+--   ⚠️ AND THE PERTURBATION TAUGHT SOMETHING. Rebuilt without the coalesce, inside a rolled-back
+--   transaction, an old-bundle save did not quietly un-share -- it RAISED, "null value in column
+--   shared violates not-null constraint", because the column is NOT NULL DEFAULT false. So for
+--   this column the §8 silent delete is converted into a loud broken save. Better than silent,
+--   still broken: an old bundle could not rename an activity at all.
+--
+-- Proved in a simulated session, rolled back: starts false; sharing sets it; an old-bundle save
+-- that omits p_shared leaves it TRUE; chronicle_export carries it; an explicit false clears it.
+--
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- 2 · THE TIMELINE  (chronicle_friends_log)
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- THREE SWITCHES, THE SHAPE THE SHARED GOALS ALREADY USE. A visible chronicle block; that block
+-- asking for a timeline (config->>'timeline'); and the activity itself ticked. None of the three
+-- alone shows anything, so neither a forgotten block nor a forgotten activity can publish a day.
+--
+-- ⚠️ FRIENDS IS FIXED, AND IT IS NOT THE BLOCK'S OWN TIER. get_member_chronicle gates on
+-- can_see(target, block.visibility), which a member may have set to 'members'. That choice was
+-- made about what THAT card shows -- hours and a top five -- and this is strictly more: every
+-- sitting, named, with its clock times. CLAUDE.md §3: two different tiers are not one decision,
+-- and everybody who ever chose 'members' chose it under the older, smaller meaning. So the wider
+-- tiers do not carry here, and there is no parameter that could make them.
+--
+-- ⚠️ CLOSED SITTINGS ONLY, WHICH IS CORRECTNESS RATHER THAN CAUTION. "What I'm doing right now"
+-- is ALREADY its own opt-in on the block. A timeline that included the open sitting would hand
+-- over exactly that, to people who were never asked, through a switch that says nothing about
+-- it. `e.ended_at is not null` is what keeps the two opt-ins meaning what they say.
+--
+-- ⚠️ NO NOTE AND NO QUALITY. The block editor draws a "never shows" list, and that list is built
+-- from the same flags that draw the card -- deliberately, because the hand-written version went
+-- stale the same day it was written. "your notes" is in it. A timeline carrying notes would make
+-- that card a liar about itself. Quality is a feeling about a sitting rather than a fact about
+-- it, so it goes with the note. What crosses: what you did, when, for how long, and how much.
+--
+-- The window is clamped to 31 days and 400 rows -- a convenience, never a boundary.
+--
+-- GATES PROVED, each by perturbation, in one rolled-back transaction (two real members made
+-- friends, a block given the opt-in, one activity ticked):
+--
+--   all three switches on ................ 2 rows   ← so the zeros below are not vacuous
+--   activity not ticked .................. 0
+--   block does not ask for a timeline .... 0
+--   not friends .......................... 0
+--   open sittings leaked ................. 0
+--   rows carrying 'note' or 'quality' .... 0
+--
+-- anon holds execute on neither function; both are revoked from public, anon and granted to
+-- authenticated. The five chronicle tables were checked while here and are properly deny-all --
+-- RLS on, zero policies, and grants to postgres and service_role only, never anon or
+-- authenticated, so the §3 TRUNCATE hole is not open on any of them.

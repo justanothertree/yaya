@@ -60,6 +60,21 @@ const COMFY = 44
 const CONTROLS = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button]'
 
 /**
+ * ⚠️ AND `checkVisibility()` TAKES NO OPTIONS HERE, WHICH COST A COMMIT TO LEARN. The first
+ * version of this fix passed all three — `contentVisibilityAuto`, `opacityProperty`,
+ * `visibilityProperty` — on the reasoning that more checks are stricter. They are, and two of
+ * them are strict about something this app does on purpose: **every room is wrapped in
+ * `.reveal`, whose computed `opacity` is 0 in the Browser pane**, because the entrance animation
+ * never advances there. So `opacityProperty: true` answered false for every control on the site,
+ * `shown()` admitted nothing, and the sweep reported a flawless **zero of everything** for three
+ * rooms in a row. The most confident possible wrong answer, and the exact failure this file
+ * exists to prevent — measured against a screenshot that plainly showed the controls.
+ *
+ * Plain `checkVisibility()` is what is wanted and it was all along: it accounts for `display:
+ * none` and `content-visibility: hidden` — which is the closed-fold case below — and nothing
+ * else. `display` and `visibility` are already asked above by hand, and `opacity` deliberately
+ * is not, because a thing at `opacity: 0` still occupies its box and can still be tapped.
+ *
  * ⚠️ A RECT IS NOT A VISIBILITY TEST, AND A CLOSED `<details>` IS THE PROOF. This asked four
  * questions — `display`, `visibility`, `offsetParent`, and a non-zero box — and a control inside
  * a collapsed fold answers all four the way a visible one does. Measured in chronicle, which has
@@ -80,14 +95,8 @@ const shown = (el) => {
   if (!el.offsetParent && cs.position !== 'fixed') return false
   /* deliberately clipped for screen readers — not a layout fault */
   if (el.closest('.sr-only, .skip-link')) return false
-  if (
-    !el.checkVisibility({
-      contentVisibilityAuto: true,
-      opacityProperty: true,
-      visibilityProperty: true,
-    })
-  )
-    return false
+  /* ⚠️ NO OPTIONS, AND EVERY ONE OF THEM IS A TRAP HERE — see the note above. */
+  if (!el.checkVisibility()) return false
   const r = el.getBoundingClientRect()
   return r.width > 0 && r.height > 0
 }

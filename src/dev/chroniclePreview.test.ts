@@ -340,6 +340,27 @@ describe('the preview store keeps the contracts the server keeps', () => {
     expect(pvGoals().find((g) => g.id === id)?.target).toBe(11)
   })
 
+  /**
+   * ⚠️ THE SAME RULE ONE TABLE OVER, AND IT IS ABOUT BUNDLES. chronicle_activity_save says
+   * `shared = coalesce(p_shared, shared)`, so a caller that does not MENTION the flag is not
+   * asking for anything — and a browser that loaded the site before the tick existed calls it
+   * exactly that way. A double reading `undefined` as `false` would invent a loss the live site
+   * does not have, which is the direction CLAUDE.md §2 says is the harder one to notice.
+   */
+  it('and a save that never mentions sharing leaves an activity shared', () => {
+    const a = pvActivities().find((x) => x.id === gym)!
+    expect(pvSaveActivity(a.name, a.cat, null, gym, a.metric, a.session, true)).toEqual({ id: gym })
+    expect(pvActivities().find((x) => x.id === gym)?.shared).toBe(true)
+
+    /* an older bundle: six arguments, no opinion about sharing */
+    pvSaveActivity(a.name, a.cat, null, gym, a.metric, a.session)
+    expect(pvActivities().find((x) => x.id === gym)?.shared).toBe(true)
+
+    /* and an explicit false still clears it, or the flag would be a one-way door */
+    pvSaveActivity(a.name, a.cat, null, gym, a.metric, a.session, false)
+    expect(pvActivities().find((x) => x.id === gym)?.shared).toBe(false)
+  })
+
   /** the control, so this is a correction and not simply switching the feature off */
   it('and leaves it alone when the activity really does count something', () => {
     const onGym = goalOn({ target: 10, activity: gym, counts: 'amount' })
@@ -864,6 +885,7 @@ describe('the file you can take away', () => {
       'auto',
       'metric',
       'session_mins',
+      'shared',
     ],
     entries: [
       'id',
@@ -1201,6 +1223,7 @@ describe('putting a file back', () => {
           auto: true,
           metric: 'pages',
           session_mins: 25,
+          shared: true,
         },
       ],
       entries: [

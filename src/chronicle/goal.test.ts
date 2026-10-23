@@ -950,6 +950,7 @@ const reading: Activity = {
   id: 'a-read',
   name: 'Reading',
   cat: 'free',
+  shared: true,
   colour: '#c2763a',
   archived: false,
   auto: false,

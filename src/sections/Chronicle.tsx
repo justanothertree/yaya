@@ -34,6 +34,7 @@ import {
 } from '../chronicle/cloud'
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
+import { Friends } from '../chronicle/Friends'
 import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
@@ -72,16 +73,25 @@ type View = { id: string; label: string; scope: Scope; when: () => string; blurb
  * row keeps its scope, and putting the tab back is this entry.
  */
 /**
- * The two questions the room answers, which used to be answered at once.
+ * ⚠️ THREE NOW, AND THE THIRD IS SOMEBODY ELSE'S. Day and Aims are both about you; Friends is a
+ * window onto other people's records, which is why it is a place of its own rather than a strip
+ * inside the Day. Nothing of theirs appears without three separate opt-ins on their side — see
+ * docs/2026-10-23-chronicle-friends-timeline.sql.
+ */
+type Half = 'day' | 'aims' | 'friends'
+
+/**
+ * The questions the room answers, which used to be answered at once.
  *
  * ⚠️ THE HINT IS THE HALF OF THIS THAT EARNS ITS PLACE. "Day" and "Aims" are two words I chose,
  * and the room's own blurb had to explain what "two halves" meant because the halves were not
  * labelled — so the label gets the short word and the line under it gets the question, in the
  * words somebody would use asking it.
  */
-const HALVES: Array<['day' | 'aims', string, string]> = [
+const HALVES: Array<[Half, string, string]> = [
   ['day', 'Day', 'what you are doing'],
   ['aims', 'Aims', 'what you are aiming at'],
+  ['friends', 'Friends', 'what they have been up to'],
 ]
 
 const VIEWS: View[] = [
@@ -178,7 +188,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * ⚠️ AND THE DAY HALF IS THE DEFAULT, because the stopwatch is what people open this room to
    * use. A room that opens on its goals makes you take a step before you can start working.
    */
-  const [half, setHalf] = useState<'day' | 'aims'>('day')
+  const [half, setHalf] = useState<Half>('day')
   const [adding, setAdding] = useState(false)
   /**
    * The goal the form is editing, or null when it is adding a new one.
@@ -682,6 +692,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * filter rather than a second navigation. Splitting them would leave a horizon chooser on
        * screen with nothing on screen for it to choose between.
        */}
+      {half === 'friends' && <Friends authed={authed} />}
+
       {half === 'aims' && (
         <>
           <div className="chron-strip" role="tablist" aria-label="How far ahead">

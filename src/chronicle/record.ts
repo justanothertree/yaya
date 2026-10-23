@@ -97,6 +97,21 @@ export type Activity = {
    */
   metric: string | null
   /**
+   * Whether friends may see this activity's sittings on their timeline. False for everything
+   * until its owner says otherwise.
+   *
+   * ⚠️ THE ACTIVITY IS THE SHARING UNIT, NOT THE SITTING, and that is the decision this column
+   * exists to make cheap. A sitting is created by pressing a button and nobody will tick a box
+   * each time; an activity is a named thing you already curate. So "friends can see my Gym" is
+   * one decision that holds for every Gym sitting there will ever be — and "and they never learn
+   * Therapy exists" is the same decision, left alone.
+   *
+   * ⚠️ IT IS ONE OF THREE SWITCHES and shows nothing by itself. The chronicle block on the
+   * profile must exist and must ask for a timeline, and the viewer must be a friend. See
+   * docs/2026-10-23-chronicle-friends-timeline.sql.
+   */
+  shared: boolean
+  /**
    * How long a single sitting ought to be, in minutes — or null, which is most of them.
    *
    * ⚠️ THIS IS NOT A GOAL POINTING AT THE ACTIVITY, and the difference is the whole point. A goal

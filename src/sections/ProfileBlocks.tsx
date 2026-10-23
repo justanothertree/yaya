@@ -2066,6 +2066,35 @@ function BlockFields({
             </p>
           )}
           {/**
+           * ⚠️ THE THIRD SWITCH, AND THE ONE THAT HANDS OVER THE MOST. The totals above say how
+           * you spent a week; this says what you did and when you did it, session by session.
+           * Same shape as the goals switch — it shows nothing on its own, because each activity
+           * is ticked separately in Chronicle — and for the same reason: neither a forgotten
+           * block nor a forgotten activity should be able to publish a day by itself.
+           *
+           * ⚠️ AND IT IS FRIENDS ONLY, WHICH IS NARROWER THAN THIS CARD MAY BE. The card can be
+           * set to Members; the timeline is not, ever, and no setting here widens it. A
+           * sitting-by-sitting record is strictly more than the hours this card was built to
+           * show, and CLAUDE.md §3 is that two different tiers are not one decision — anybody
+           * who chose Members chose it under the older, smaller meaning. The line below says so
+           * whenever the tick is on, rather than only when the two disagree, because a promise
+           * that appears conditionally is one people will not have read.
+           */}
+          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={block.config.timeline === true}
+              onChange={(e) => setCfg({ timeline: e.target.checked })}
+            />
+            <span>Show my timeline</span>
+          </label>
+          {block.config.timeline === true && (
+            <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+              Friends only, whoever else can see this card. Tick the activities in Chronicle —
+              nothing shows until you do, and the ones you leave alone stay invisible.
+            </p>
+          )}
+          {/**
            * ⚠️ WHAT IT DOES NOT SHOW IS THE PART WORTH SAYING. Somebody deciding whether to put
            * this on their page is deciding how much of themselves to hand over, and "hours" and
            * "what I am trying to fix about myself" are very different answers.
@@ -2083,15 +2112,22 @@ function BlockFields({
            */}
           {(() => {
             const wantsGoals = block.config.goals === true
+            const wantsLine = block.config.timeline === true
             const shows = [
               'your hours',
               'what you spent them on',
               block.config.live === true && 'the one running now',
               wantsGoals && 'the goals you pick in Chronicle',
+              wantsLine && 'each session on the activities you tick, to friends',
             ].filter((x): x is string => typeof x === 'string')
-            const never = [!wantsGoals && 'the names of your goals', 'your notes'].filter(
-              (x): x is string => typeof x === 'string',
-            )
+            const never = [
+              !wantsGoals && 'the names of your goals',
+              /* ⚠️ the timeline's own absence belongs in the SAME pair of lists, or this
+                 paragraph goes stale the moment somebody reads it with a timeline underneath —
+                 which is the exact drift the note above was written after */
+              !wantsLine && 'when you did any of it',
+              'your notes',
+            ].filter((x): x is string => typeof x === 'string')
             /* ⚠️ `or` for the second list: "never A and B" reads as permission to show one of
                them, which is the opposite of what it promises */
             const list = (xs: string[], join: string) =>
