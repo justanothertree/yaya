@@ -15706,6 +15706,37 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * A moment in the log — something that happened rather than took time.
+ *
+ * ⚠️ IT MUST NOT LOOK LIKE A SITTING. A row in this list otherwise means "you spent this long on
+ * that", and a rating spent nothing; reading one as a duration is the single misunderstanding
+ * this row has to prevent. So no length, no clock range, no ✎ ✕ — a star, a title, a score and
+ * the time it happened, on a quieter background than the rows either side of it.
+ */
+.chron-moment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 0.88rem;
+}
+.chron-moment-what {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.chron-moment-score {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.chron-moment-when {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+/**
  * Tap to count, while the clock runs.
  *
  * ⚠️ WRAPS RATHER THAN SCROLLS, unlike the horizon strip two rooms over — there are only ever

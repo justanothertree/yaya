@@ -9,10 +9,12 @@ import {
   setQuality,
   entriesBetween,
   myActivities,
+  myMoments,
   noteRunning,
   saveActivity,
   startTimer,
   stopTimer,
+  type Moment,
 } from './cloud'
 import { today as todayISO } from './goal'
 import { Plans } from './Plans'
@@ -358,8 +360,48 @@ export function Timer({
    * so merging them at the source is a change to the record rather than to the reading of it.
    * This is a reading: the rows are all still there, one tap away, editable where they were.
    */
+  /**
+   * Moments: the things that happened rather than took time.
+   *
+   * ⚠️ THEY ARE FETCHED, NOT DERIVED, and they are never entries. A rating is an instant — see
+   * the note on `Moment` in cloud.ts — so it cannot be given an `ended_at` without inventing a
+   * duration that the totals, the grids and every minutes goal would then count. It rides in the
+   * log beside the sittings and nowhere else.
+   */
+  const [moments, setMoments] = useState<Moment[]>([])
+  useEffect(() => {
+    let dead = false
+    void (async () => {
+      const got = await myMoments(
+        new Date(bounds.fromMs).toISOString(),
+        new Date(bounds.toMs).toISOString(),
+      )
+      if (!dead) setMoments(got)
+    })()
+    return () => {
+      dead = true
+    }
+  }, [bounds.fromMs, bounds.toMs, beat])
+
   const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
   const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
+  /**
+   * The log as one stream, newest first.
+   *
+   * ⚠️ A SITTING IS PLACED BY WHEN IT STARTED, which is the order the list already used and the
+   * one that reads correctly: a three-hour nap belongs where it began, not where it ended, or a
+   * long sitting would jump over everything that happened inside it.
+   */
+  const stream = useMemo(() => {
+    const rows: Array<
+      { at: number } & ({ kind: 'sat'; e: Entry } | { kind: 'moment'; m: Moment })
+    > = []
+    for (const e of seeSite ? log : didMyself)
+      rows.push({ at: Date.parse(e.start), kind: 'sat', e })
+    for (const m of moments) rows.push({ at: Date.parse(m.at), kind: 'moment', m })
+    return rows.sort((x, y) => y.at - x.at)
+  }, [log, didMyself, moments, seeSite])
+
   const onSiteMs = useMemo(
     () => onSite.reduce((n, e) => n + overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()), 0),
     [onSite, bounds.fromMs, bounds.toMs],
@@ -1270,15 +1312,36 @@ export function Timer({
        * the condition is what will actually be DRAWN, and the sentence below says which of the
        * two reasons the list is empty for.
        */}
-      {show === 'day' && didMyself.length === 0 && onSite.length > 0 && !seeSite && (
+      {show === 'day' && stream.length === 0 && onSite.length > 0 && !seeSite && (
         <p className="muted chron-only-site">
           Nothing but the site itself today — it is all in the line above.
         </p>
       )}
 
-      {show === 'day' && (seeSite ? log : didMyself).length > 0 && (
+      {show === 'day' && stream.length > 0 && (
         <ul className="chron-log">
-          {(seeSite ? log : didMyself).map((e) => {
+          {stream.map((row) => {
+            if (row.kind === 'moment') {
+              const m = row.m
+              return (
+                <li key={`m-${m.at}-${m.title}`} className="chron-moment">
+                  <span className="chron-moment-what">
+                    <span aria-hidden>★</span> Rated <strong>{m.title}</strong>
+                    {m.about ? <span className="muted"> · {m.about}</span> : null}
+                  </span>
+                  {m.score != null ? (
+                    <span className="chron-moment-score">{countText(m.score)}</span>
+                  ) : null}
+                  <span className="muted chron-moment-when">
+                    {new Date(m.at).toLocaleTimeString(undefined, {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </li>
+              )
+            }
+            const e = row.e
             const a = byId.get(e.activity)
             const ms = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
             const amt = amountIn(e, bounds.fromMs, bounds.toMs)

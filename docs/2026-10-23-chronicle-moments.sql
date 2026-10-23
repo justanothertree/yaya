@@ -1,0 +1,38 @@
+-- ✅ APPLIED — migration `chronicle_moments`, 23 Oct 2026
+--
+-- "when you make a rating it puts it on your timeline".
+--
+-- ⚠️ A MOMENT IS NOT AN ENTRY, AND THE WHOLE DESIGN IS THAT DISTINCTION. A chronicle entry is a
+-- SPAN: it has a start, an end, and a length that feeds the category totals, the week and month
+-- grids, the lifetime figures and every goal that counts minutes. Rating a film is an INSTANT.
+-- There is no honest `ended_at` for it, and giving it one — even a one-minute one — would put a
+-- fabricated duration into all four of those readings, where nothing on screen could ever reveal
+-- it. So moments ride alongside the log and are never written to chronicle_entries.
+--
+-- That is also why this is a separate function rather than a column on the day's query: the two
+-- lists answer different questions and only one of them is allowed to add up.
+--
+-- ⚠️ YOURS ONLY, SCOPED BY HAND, AND THAT IS THE WHOLE CHECK. circuit_ratings keeps its rules in
+-- RLS — five policies — and a SECURITY DEFINER function does not consult them. So `user_id =
+-- auth.uid()` in the body is not a belt over a brace; it is the brace. There is deliberately no
+-- parameter for whose moments to fetch, and the function never returns a user_id.
+--
+-- Proved in a rolled-back transaction, against the account with the most ratings:
+--
+--   rows in circuit_ratings for them ... 145
+--   returned to them ................... 145   ← so the zero below is not vacuous
+--   returned to a stranger .............   0
+--   any row carrying user_id ........... no
+--
+-- ⚠️ `updated_at` IS THE ONLY TIMESTAMP THE TABLE HAS, and it means when the rating last changed.
+-- For a new one that is when it was made; for an edited one it is when it was edited, so a rating
+-- revised a month later moves to the day it was revised. That is what a column of that name can
+-- support and it is worth knowing rather than discovering. If "when you first rated it" is ever
+-- wanted, it is a new column and a migration, not a different read of this one.
+--
+-- The title comes from circuit_movies, which is a real table rather than part of the circuit blob
+-- — so this stays a server read and chronicle never imports the circuit store. That matters for
+-- the bundle: Circuit is lazily loaded, and a client-side join would have pulled it into the
+-- chronicle chunk for everybody who opens the room.
+--
+-- Window clamped to a year and 200 rows. A convenience, never a boundary.

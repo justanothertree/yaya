@@ -35,6 +35,7 @@ import {
   pvSpans,
   pvVisit,
   pvFriendsLog,
+  pvMoments,
   pvNoteRunning,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
@@ -968,4 +969,49 @@ export async function friendsLog(fromISO: string, toISO: string): Promise<Friend
        guards is the separate "right now" opt-in */
       .filter((r) => r.start !== '' && r.end !== '')
   )
+}
+
+/**
+ * Something that happened at an instant rather than over a span.
+ *
+ * ⚠️ A MOMENT IS NOT AN ENTRY, AND THAT IS THE WHOLE POINT. An entry is a span — it has a start,
+ * an end, and a length that feeds the totals, the grids and every goal counting minutes. Rating a
+ * film is an instant; there is no honest `ended_at` for it, and inventing one would put a made-up
+ * duration into all four of those. So a moment rides alongside the log and is never written to
+ * chronicle_entries.
+ */
+export type Moment = {
+  kind: 'rating'
+  /** when it happened, ISO */
+  at: string
+  title: string
+  /** out of 100, as the circuit stores it */
+  score: number | null
+  /** what sort of thing it was — "film", "game", and so on */
+  about: string | null
+}
+
+/**
+ * The moments in a window, newest first.
+ *
+ * ⚠️ YOURS ONLY, AND THERE IS NO PARAMETER THAT COULD SAY OTHERWISE. `chronicle_moments` scopes
+ * by `auth.uid()` in SQL — which it has to do by hand, because circuit_ratings keeps its rules in
+ * RLS policies and a SECURITY DEFINER function does not consult them.
+ */
+export async function myMoments(fromISO: string, toISO: string): Promise<Moment[]> {
+  if (previewMember) return pvMoments(fromISO, toISO)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_moments', {
+    p_from: fromISO,
+    p_to: toISO,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>)
+    .map((r) => ({
+      kind: 'rating' as const,
+      at: String(r.at ?? ''),
+      title: String(r.title ?? ''),
+      score: r.score == null ? null : Number(r.score),
+      about: typeof r.about === 'string' ? r.about : null,
+    }))
+    .filter((r) => r.at !== '')
 }

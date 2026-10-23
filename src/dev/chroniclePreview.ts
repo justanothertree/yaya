@@ -1816,3 +1816,35 @@ export const pvFriendsLog = (fromISO: string, toISO: string) => {
     .filter((r) => Date.parse(r.start) < to && Date.parse(r.end) > from)
     .sort((x, y) => Date.parse(y.start) - Date.parse(x.start) || x.who.localeCompare(y.who))
 }
+
+// ── moments ──────────────────────────────────────────────────────────────────────────────────
+// Invented ratings, like everything else here. The live `chronicle_moments` reads circuit_ratings
+// joined to circuit_movies, both of which need a session, so without this the Day half would show
+// a log and never a moment — and a room with nothing in it passes every check there is.
+const MOMENTS: ReadonlyArray<{
+  hoursAgo: number
+  title: string
+  score: number
+  about: string
+}> = [
+  { hoursAgo: 3, title: 'The Quiet Shore', score: 82, about: 'film' },
+  { hoursAgo: 7, title: 'Mistfall Hunter', score: 94, about: 'game' },
+  { hoursAgo: 28, title: 'Paper Lanterns', score: 61, about: 'film' },
+]
+
+export const pvMoments = (fromISO: string, toISO: string) => {
+  const from = Date.parse(fromISO)
+  const to = Date.parse(toISO)
+  return MOMENTS.map((m) => ({
+    kind: 'rating' as const,
+    at: new Date(Date.now() - m.hoursAgo * 3_600_000).toISOString(),
+    title: m.title,
+    score: m.score,
+    about: m.about,
+  }))
+    .filter((m) => {
+      const t = Date.parse(m.at)
+      return t >= from && t < to
+    })
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
