@@ -932,7 +932,21 @@ export default function App() {
       if (stopWatch) return
       void import('./library/cloud')
         .then(async (m) => {
-          await m.syncLibrary()
+          /**
+           * ⚠️ THE RESULT IS READ NOW. This was a bare `await m.syncLibrary()`, and the function
+           * returned null on failure, so a library that would not sync did so in total silence —
+           * a 500 in the network tab with nothing anywhere saying what had not happened. The
+           * console is the honest place for it: this runs once per sign-in, long after any button
+           * was pressed, so there is no screen it belongs on and no action to offer.
+           */
+          const sync = await m.syncLibrary()
+          if (sync.why) console.warn('[library] nothing synced: ' + sync.why)
+          else if (sync.refused.length) {
+            console.warn(
+              '[library] the account would not take ' + sync.refused.length + ' of your items:',
+              sync.refused.map((r) => `${r.kind} "${r.name}" — ${r.why}`),
+            )
+          }
           stopWatch = m.watchLibrary()
         })
         .catch(() => {

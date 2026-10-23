@@ -1,4 +1,4 @@
-import { keptAt } from '../library/kept'
+import { fitsAccount, keptAt } from '../library/kept'
 /**
  * Saved visualiser arrangements, by name.
  *
@@ -17,7 +17,6 @@ import { keptAt } from '../library/kept'
 const KEY = 'viz_presets_v1'
 const MAX = 40
 /** Room for a good few dozen arrangements; one is a hundred bytes or so. */
-const MAX_BYTES = 60_000
 
 export type VizPreset = {
   id: string
@@ -84,7 +83,18 @@ function write(list: VizPreset[]): VizPreset[] {
 export function savePreset(name: string, s: Record<string, unknown>): VizPreset[] {
   const clean = name.trim().slice(0, 40)
   if (!clean) return readPresets()
-  if (JSON.stringify(s).length > MAX_BYTES) return readPresets()
+  /**
+   * ⚠️ THE SERVER'S CEILING, IN THE SERVER'S UNIT. This was `JSON.stringify(s).length > 60_000`,
+   * which is wrong twice over — and both are the shape CLAUDE.md §4 records costing the gallery a
+   * silent half-save. `.length` counts UTF-16 code units while `octet_length` on the server counts
+   * UTF-8 bytes, so 60,000 units of CJK text is about 180,000 bytes: through here, refused there.
+   * And 60,000 was this store's own budget rather than the account's 131,072, which is a different
+   * question about a different place.
+   *
+   * A preset is a few hundred bytes in practice, so this has probably never fired. That is the
+   * point — a ceiling nobody reaches is one nobody notices is wrong.
+   */
+  if (!fitsAccount(s)) return readPresets()
   const list = readPresets()
   const at = list.findIndex((p) => p.name.toLowerCase() === clean.toLowerCase())
   const entry: VizPreset = {

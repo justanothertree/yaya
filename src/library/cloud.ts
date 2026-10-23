@@ -125,18 +125,39 @@ function adoptLocally(r: Row): boolean {
   return s ? !!saveToLibrary(r.kind, s) : false
 }
 
-async function put(r: Row) {
+/**
+ * ⚠️ A REFUSAL IS NOT A CRASH, BUT IT IS NOT NOTHING EITHER. The server caps size and count, and
+ * the honest outcome of hitting one is that this item stays local — which is exactly where it was
+ * a moment ago, so nothing is lost and nothing should be thrown.
+ *
+ * ⚠️ WHAT WAS WRONG WAS RETURNING A BOOLEAN. `library_put` raises sentences — "that one is too
+ * big to keep", "your library is full — delete something first" — and `!error` threw every one of
+ * them away. A `400` in the console with no item named and no reason given is all anybody got,
+ * and the item in question never syncs again on any machine, for ever, in silence. The caller
+ * cannot say which picture is not on your account if this does not tell it.
+ */
+async function put(r: Row): Promise<{ why: string } | null> {
   const { error } = await getSupabaseClient().rpc('library_put', {
     p_kind: r.kind,
     p_name: r.name,
     p_body: r.body,
   })
-  /* ⚠️ A refusal is not a crash. The server caps size and count, and the honest outcome of
-     hitting one is that this item stays local — which is exactly where it was a moment ago. */
-  return !error
+  return error ? { why: error.message || 'the account would not take it' } : null
 }
 
-export type SyncResult = { pulled: number; pushed: number; failed: number }
+/**
+ * ⚠️ `refused` NAMES THE ITEMS, which is the half this used to drop. A count of failures tells
+ * you something is wrong and not which thing, and the things that fail here fail PERMANENTLY —
+ * an item over the ceiling is refused on this sync and on every sync after it.
+ */
+export type SyncResult = {
+  pulled: number
+  pushed: number
+  failed: number
+  refused: Array<{ kind: Kind; name: string; why: string }>
+  /** set when the LIST failed, in which case nothing below it ran */
+  why?: string
+}
 
 /**
  * Bring the two level, once.
@@ -145,15 +166,25 @@ export type SyncResult = { pulled: number; pushed: number; failed: number }
  * first sign-in on a new machine pushes an empty library's worth of nothing and then pulls, which
  * is the same result by a longer road but looks alarming in the logs.
  */
-export async function syncLibrary(): Promise<SyncResult | null> {
+export async function syncLibrary(): Promise<SyncResult> {
   const { data, error } = await getSupabaseClient().rpc('library_list')
-  if (error) return null
+  /* ⚠️ THE REASON TRAVELS. This returned `null`, and App.tsx did not look at the result at all,
+     so a failing list was invisible from the room and from the console alike — the only trace was
+     a bare 500 in the network tab with nothing saying what had not happened because of it. */
+  if (error)
+    return {
+      pulled: 0,
+      pushed: 0,
+      failed: 0,
+      refused: [],
+      why: error.message || 'could not read the account library',
+    }
 
   const remote: Row[] = (Array.isArray(data) ? data : [])
     .map((v) => v as { kind?: unknown; name?: unknown; body?: unknown })
     .filter((v): v is Row => isKind(v.kind) && typeof v.name === 'string' && !!v.body)
 
-  const out: SyncResult = { pulled: 0, pushed: 0, failed: 0 }
+  const out: SyncResult = { pulled: 0, pushed: 0, failed: 0, refused: [] }
 
   const here = new Set(localRows().map((r) => slot(r.kind, r.name)))
   for (const r of remote) {
@@ -176,8 +207,12 @@ export async function syncLibrary(): Promise<SyncResult | null> {
       /* the merge has run, so ours is theirs-or-better; only send it if it is actually better */
       if (JSON.stringify(had.body) === JSON.stringify(r.body)) continue
     }
-    if (await put(r)) out.pushed++
-    else out.failed++
+    const bad = await put(r)
+    if (!bad) out.pushed++
+    else {
+      out.failed++
+      out.refused.push({ kind: r.kind, name: r.name, why: bad.why })
+    }
   }
   return out
 }
@@ -206,7 +241,13 @@ export function watchLibrary(): () => void {
         const now = new Map(localRows().map((r) => [slot(r.kind, r.name), r]))
         for (const [k, r] of now) {
           const was = last.get(k)
-          if (!was || JSON.stringify(was.body) !== JSON.stringify(r.body)) await put(r)
+          if (!was || JSON.stringify(was.body) !== JSON.stringify(r.body)) {
+            /* ⚠️ the watcher cannot show anything — it fires long after any button was pressed —
+               but it can say so where the refusal is at least findable, which is more than the
+               boolean it replaced did */
+            const bad = await put(r)
+            if (bad) console.warn(`[library] ${r.kind} "${r.name}" was not kept: ${bad.why}`)
+          }
         }
         for (const [k, r] of last) {
           if (now.has(k)) continue
