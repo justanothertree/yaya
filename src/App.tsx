@@ -9,7 +9,6 @@ import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
 import { Chronicle } from './sections/Chronicle'
-import { Now } from './chronicle/Now'
 import { Pictures } from './pictures/Pictures'
 import { useVisits } from './chronicle/useVisits'
 import { site } from './config/site'
@@ -1555,8 +1554,6 @@ export default function App() {
         return <Ratings authed={isFinanceAuthed || previewMember} />
       case 'people':
         return <People authed={isFinanceAuthed || previewMember} />
-      case 'now':
-        return <Now authed={isFinanceAuthed || previewMember} />
       case 'pictures':
         return <Pictures authed={isFinanceAuthed || previewMember} />
       case 'chronicle':
@@ -2201,11 +2198,6 @@ export default function App() {
               >
                 <People authed={isFinanceAuthed || previewMember} />
               </Suspense>
-            </section>
-          )}
-          {!sharedCanvasShowing && active === 'now' && (
-            <section id="now" className="card reveal">
-              <Now authed={isFinanceAuthed || previewMember} />
             </section>
           )}
           {!sharedCanvasShowing && active === 'pictures' && (

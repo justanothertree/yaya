@@ -28,7 +28,7 @@ const sat = (activity: string, fromMins: number, toMins: number | null): Sat => 
   end: toMins === null ? null : ago(toMins),
 })
 
-describe('the buttons the Now room offers', () => {
+describe('the buttons the switch row offers', () => {
   const draw = act({ id: 'd', name: 'Drawing' })
   const gym = act({ id: 'g', name: 'Gym' })
   const dishes = act({ id: 'h', name: 'Dishes' })

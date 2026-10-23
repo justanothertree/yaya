@@ -9,6 +9,7 @@ import {
   setQuality,
   entriesBetween,
   myActivities,
+  noteRunning,
   saveActivity,
   startTimer,
   stopTimer,
@@ -18,6 +19,7 @@ import { Plans } from './Plans'
 import { WeekGrid } from './WeekGrid'
 import { weekOf } from './week'
 import { Routines } from './Routines'
+import { tilesFor } from './nowTiles'
 import {
   CATS,
   clockText,
@@ -319,13 +321,17 @@ export function Timer({
    * habits rather than the order you happened to create things in, and the first button is
    * usually the right one. Six, because a seventh wraps the row on a phone and a row of buttons
    * that wraps has stopped reading as a shortcut.
+   *
+   * ⚠️ AND THE RANKING IS `tilesFor` RATHER THAN A SECOND COPY OF IT. This row and the Now
+   * room's tiles were the same three rules written twice — drop archived and `auto`, weigh each
+   * activity by what it holds in the window, sort by that and then by name — and when Now moved
+   * in here one of the two had to go. The one that went is the one with no test: `tilesFor` is
+   * pure and `nowTiles.test.ts` asks it the midnight-straddle question, which a `useMemo` in a
+   * component cannot be asked at all. The cap stays here because it is about this row's width.
    */
   const quick = useMemo(
-    () =>
-      [...yours]
-        .sort((x, y) => (mins[y.id] ?? 0) - (mins[x.id] ?? 0) || x.name.localeCompare(y.name))
-        .slice(0, 6),
-    [yours, mins],
+    () => tilesFor(acts ?? [], log, bounds.fromMs, bounds.toMs, Date.now()).slice(0, 6),
+    [acts, log, bounds.fromMs, bounds.toMs],
   )
   /* what the row offers: the handful worth a button, minus whatever is running — see the row */
   const switchable = useMemo(
@@ -337,10 +343,13 @@ export function Timer({
     [log, acts, bounds.fromMs, bounds.toMs],
   )
 
-  const moan = (why: string) => {
+  /* ⚠️ `useCallback` so an effect can depend on it honestly. The autosave below has to be able
+     to complain, and a plain function redefined every render either goes in the dep array and
+     restarts the 700ms timer on every keystroke, or is left out and the lint rule is silenced. */
+  const moan = useCallback((why: string) => {
     setSay(why)
     window.setTimeout(() => setSay(null), 6000)
-  }
+  }, [])
 
   const after = async () => {
     await load()
@@ -363,6 +372,7 @@ export function Timer({
      */
     if (id === running?.activity) return
     setBusy(true)
+    await flushNote()
     const bad = await startTimer(id)
     setBusy(false)
     if (bad) return moan(bad.why)
@@ -373,6 +383,70 @@ export function Timer({
   const asMins = (typed: string): number | null => {
     const n = Number(typed)
     return typed.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
+  }
+
+  /**
+   * The note, which belongs to the sitting it was typed about and used to follow you off it.
+   *
+   * ⚠️ THIS CAME FROM THE NOW ROOM, and it is the reason folding that room in here was not just
+   * a matter of deleting a file. Now wrote the note onto the open sitting while you typed; this
+   * half held it in React state and wrote it at Stop, so the two rooms disagreed about what a
+   * half-typed sentence was. Measured here before this existed: with Gym running, typed "the
+   * hands again, finally", tapped the Drawing chip — and the box still held the words, now
+   * attached to Drawing. Not merely lost: moved onto the wrong sitting, silently, with the text
+   * still on screen to make it look fine. Now's own comment records the same measurement from
+   * the other side, which is how it was found.
+   *
+   * ⚠️ RE-SEEDED ON THE SITTING'S ID, NOT ON ITS NOTE. Keying this on `running?.note` too — which
+   * is what Now did — means our own autosave echoes back through a reload and overwrites whatever
+   * has been typed since. The id is the question actually being asked: is this a different
+   * sitting from the one the box was filled for.
+   */
+  const runId = running?.id ?? null
+  const noteSaved = useRef('')
+  const liveNote = useRef<string | null>(null)
+  liveNote.current = running?.note ?? null
+  useEffect(() => {
+    const had = liveNote.current ?? ''
+    setStopNote(had)
+    noteSaved.current = had
+  }, [runId])
+
+  /**
+   * ⚠️ SAVED WHILE YOU TYPE, because the alternative is a Save button beside a Stop button and
+   * the room already asks enough of a thumb. `chronicle_running_note` writes one column on the
+   * open sitting and does not end it.
+   *
+   * ⚠️ AND A FAILURE IS SAID OUT LOUD. An autosave that quietly does nothing is the worst of the
+   * failure shapes in this project — the box would show the sentence exactly as you left it
+   * while the account held something else.
+   */
+  useEffect(() => {
+    if (!runId || stopNote === noteSaved.current) return
+    const t = window.setTimeout(() => {
+      void (async () => {
+        const bad = await noteRunning(stopNote)
+        if (bad) moan(bad.why)
+        else noteSaved.current = stopNote
+      })()
+    }, 700)
+    return () => window.clearTimeout(t)
+  }, [stopNote, runId, moan])
+
+  /**
+   * ⚠️ THE NOTE GOES FIRST, ONTO THE SITTING IT WAS TYPED ABOUT. The autosave waits 700ms, so
+   * the natural rhythm — write a word, tap the next thing — beats the timer and throws the word
+   * away.
+   *
+   * ⚠️ A FAILED NOTE DOES NOT BLOCK THE SWITCH. Refusing to change what you are doing because a
+   * sentence would not save is the wrong way round: the sitting closes either way, so the note
+   * is gone either way, and what matters is being told rather than being stuck.
+   */
+  const flushNote = async () => {
+    if (!runId || stopNote === noteSaved.current) return
+    const bad = await noteRunning(stopNote)
+    if (bad) moan(bad.why)
+    else noteSaved.current = stopNote
   }
 
   const halt = async () => {

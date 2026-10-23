@@ -83,16 +83,13 @@ export const PLACES = [
    * is for and stops, which is the whole reason it does not take a `demo` prop.
    */
   /**
-   * ⚠️ ITS OWN PLACE, BESIDE CHRONICLE RATHER THAN INSIDE IT. The Chronicle is two halves and
-   * eight folds — right for sitting down with, wrong for standing on a platform with one hand.
-   * This is the one question you open a phone to ask, and the one answer you want to give: what
-   * am I doing, and now I am doing something else.
-   *
-   * ⚠️ MEMBERS ONLY, for the same reason Chronicle is: it is one person's own record of their own
-   * time, and there is nothing honest to show a visitor. Signed out it says what it is for and
-   * stops.
+   * ⚠️ `now` WAS A PLACE HERE AND IS AN ALIAS NOW — see SECTION_ALIASES below. It was built
+   * beside Chronicle because Chronicle was "two halves and eight folds, right for sitting down
+   * with, wrong for standing on a platform with one hand", and both halves of that reasoning
+   * have since stopped being true. The switch row it was built to replace is no longer wrapped
+   * in `!running`, so switching while running works where it is; and Chronicle's Day half is
+   * now 38 controls rather than 73, which is the phone problem it was answering.
    */
-  { id: 'now', label: 'Now', icon: '⏱', title: 'Now', nav: member },
   { id: 'chronicle', label: 'Chronicle', icon: '🗓', title: 'Chronicle', nav: member },
   /**
    * ⚠️ MEMBERS ONLY, like its neighbours, and for a plainer reason than theirs: these are a
@@ -198,6 +195,13 @@ export const navFor = (v: Viewer): readonly Place[] => PLACES.filter((p) => p.na
  */
 export const SECTION_ALIASES: Record<string, Section> = {
   snake: 'games',
+  /**
+   * ⚠️ IT WAS A TAB IN THE NAV FOR WEEKS, which is the whole argument for this line. Asked for
+   * as "the now page to not be on its own but in chronicle" — so the room went, and the word
+   * cannot, because it is in people's history and it is a word somebody would type from memory.
+   * It lands on Chronicle, whose Day half is what it was.
+   */
+  now: 'chronicle',
   pets: 'games',
   minions: 'games',
   /**

@@ -391,6 +391,33 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   `Access-Control-Request-Headers` over listing them: a list cannot be right for a client library
   that adds one later, and a header-name allow list was never the security boundary anyway — the
   origin list is the gate and the JWT is the lock.
+- **`getBoundingClientRect()` IS NOT A VISIBILITY TEST, AND A CLOSED `<details>` IS THE PROOF.**
+  Counting what is on a screen looks like `querySelectorAll('button, input, …').length`, and in a
+  room with folds that is a count of the DOM. Worse, the obvious repair does not work: a control
+  inside a collapsed fold reports `display: block`, `visibility: visible`, an `offsetParent`, and
+  a **39×44** box. Chrome hides it on the UA's `::details-content` pseudo-element, which
+  `getComputedStyle` of any real ancestor cannot see, so there is no property to read.
+  `checkVisibility({ contentVisibilityAuto: true, … })` is the only one that knows. Measured in
+  chronicle: **66 in the DOM, 38 on screen**, the gap being three folds. `scripts/mobile-audit.js`
+  had the identical blind spot — its `shown()` asked those same four questions and admitted **27
+  controls inside closed folds, 0 of them visible** — so every figure it ever printed about a room
+  with a fold was about more than the room. It cuts both ways, as these always do: it flagged tap
+  targets nobody can reach, and it measured a collapsed box and called it fine, so a control that
+  is correct closed and broken open read as correct. Fixed there; ask it of any new sweep.
+- **AND A COUNT USED AS A JUSTIFICATION IS A MEASURED NUMBER — §2 applies to it before it is
+  written down, not after.** The figure above went into two comments and a commit message as the
+  reason for a restructure while it was still the DOM count. Nothing downstream would have
+  contradicted it; a wrong number that argues for a change you were going to make anyway is the
+  one nothing falsifies.
+- **THE VITE DEV SERVER CAN HOLD A STALE IMPORT STAMP, AND NEITHER A RELOAD NOR A CACHE-BUSTING
+  QUERY CLEARS IT.** Distinct from the HMR traps below, which are about the BROWSER's module
+  cache: here the served source of `App.tsx` itself still contained
+  `/src/dev/chroniclePreview.ts?t=1792776071408`, so the page died on `does not provide an export
+named 'pvActivities'` — an export plainly present on disk, with `npm run typecheck`, `npm run
+test` and `npm run build` all green. A reload fetched the same stale source, and so did
+  `?r=1`. Only stopping and restarting the dev server fixed it. **A pane error that contradicts a
+  green build is a question about the server, not about the code** — restart it before spending
+  any time on the diagnosis it is suggesting.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

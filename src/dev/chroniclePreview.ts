@@ -780,8 +780,9 @@ export const pvSaveActivity = (
    * do it — so the double has to, or the workbench creates a second "Gym" the live site refuses,
    * which is the unfaithful-double direction that hides a bug.
    *
-   * Matched exactly, like the index: the Now room's own case-insensitive shortcut is a client
-   * convenience that only ever picks an EXISTING activity, and is a different rule on purpose.
+   * Matched exactly, like the index: the case-insensitive shortcut that the Now room had (and
+   * that moved into Chronicle with it) is a client convenience which only ever picks an EXISTING
+   * activity, and is a different rule on purpose.
    * `x.id !== made` is what lets an activity keep its own name through a rename.
    */
   const clash = db().acts.find((x) => x.name.trim() === name.trim() && x.id !== made)
@@ -877,9 +878,10 @@ export const pvStart = (activity: string): { why: string } | null => {
    *   chronicle_start  set ended_at = …                        ← and nothing else
    *
    * So starting something else KEEPS what you had written about the thing you were doing, and
-   * this double erased it. It cost an hour: the Now room writes the note onto the sitting before
+   * this double erased it. It cost an hour: the room writes the note onto the sitting before
    * switching, precisely so a word typed on the way out is not lost, and the workbench threw it
-   * away every time — which reads exactly like the feature not working.
+   * away every time — which reads exactly like the feature not working. (That writer was the Now
+   * room when this was written; it is `flushNote` in Timer.tsx now, and the rule is unchanged.)
    *
    * The sub-second rule stays, because both functions have it: a mis-press leaves no trace.
    */

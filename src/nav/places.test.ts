@@ -131,6 +131,19 @@ describe('old links still land', () => {
     }
   })
 
+  /**
+   * ⚠️ NAMED, THOUGH THE LOOP ABOVE ALREADY WALKS IT, and the difference is the regression that
+   * matters. The loop checks that every alias which EXISTS resolves; delete the `now:` line and
+   * it passes, because there is nothing left to walk. Now was a tab in the nav for weeks before
+   * it folded into Chronicle's Day half, so the word is in people's history and in any link
+   * already sent — and a word that quietly stops being a door is the failure this file was
+   * written after.
+   */
+  it('still lands #now on Chronicle, which is where the room went', () => {
+    expect(sectionOf('#now')).toBe('chronicle')
+    expect(ALL_SECTIONS).not.toContain('now')
+  })
+
   it('keeps the query a challenge link carries', () => {
     expect(sectionOf('#snake?room=abc')).toBe('games')
   })

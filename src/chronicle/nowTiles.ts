@@ -1,12 +1,21 @@
 import { overlapMs, type Activity } from './record'
 
+/*
+ * ⚠️ THE FILE IS STILL CALLED nowTiles BECAUSE THE ROOM IT WAS NAMED FOR IS GONE. The Now room
+ * folded into Chronicle's Day half, and `tilesFor` came with it — it is the switch row's ranking
+ * now, and the only copy of it, because Timer.tsx had grown a second one inline. The name is left
+ * alone on purpose: it is what the tests, the docs and the commit that explains the midnight-
+ * straddle fix all say, and renaming it would cost all of that to save a word.
+ */
+
 /** just enough of a sitting to weigh it — see `tilesFor` */
 export type Sat = { activity: string; start: string; end: string | null }
 
 /**
  * The activities to offer as buttons, in the order they are worth offering.
  *
- * ⚠️ IT IS PURE SO IT CAN BE ASKED A QUESTION. This lived inside `Now.tsx` as a `useMemo`, which
+ * ⚠️ IT IS PURE SO IT CAN BE ASKED A QUESTION. This lived inside the Now room as a `useMemo`,
+ * which
  * is where this project keeps saying logic should not live: it has a UNIT in it — minutes — and
  * three claims about what a tile IS, none of which could be checked without a browser.
  *
