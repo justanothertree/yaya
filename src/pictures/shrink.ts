@@ -34,6 +34,37 @@ export const THUMB_BYTES = 262_144
 export const FLOOR_QUALITY = 0.3
 
 /**
+ * The highest quality worth offering, and it is NOT 1.
+ *
+ * ⚠️ WEBP QUALITY 1.0 IS A DIFFERENT MODE, NOT THE TOP OF THE DIAL. Chrome's encoder switches to
+ * near-lossless at exactly 1, and the step is a cliff rather than the last notch of a curve.
+ * Measured on 1600×1067 of photographic noise:
+ *
+ *     q 0.85 → 0.79 MB      q 0.95 → 1.19 MB
+ *     q 0.90 → 0.94 MB      q 0.99 → 1.38 MB
+ *     q 0.92 → 1.02 MB      q 1.00 → 3.83 MB      ← 2.8× across one hundredth
+ *
+ * ⚠️ AND THE DIAL USED TO END THERE, WHICH INVERTED IT. The slider ran 30–100 in steps of 5, so
+ * the top notch asked for exactly 1.0; 3.83 MB blows the 2 MB ceiling, `nextQuality` walks it
+ * down, and the proportional guess — which assumes bytes fall linearly with quality and here
+ * they do not remotely — lands at **0.51**. So dragging to maximum produced a visibly worse
+ * picture than the notch below it, and the one gesture everybody makes first was the second-worst
+ * setting on the control. Measured end to end through `squeeze`: asked 1.0, got 0.51 and 521 KB;
+ * asked 0.95, got 0.95 and 1.25 MB.
+ *
+ * The cap is the fix rather than a cleverer `nextQuality`, because the walk-down is only ever
+ * catastrophic from the cliff — stepping down from 0.95 the proportional guess is a sane 0.76 —
+ * and because a dial should not offer a setting that means something else.
+ */
+export const MAX_QUALITY = 0.95
+
+/** Hold a quality inside the band the dial actually offers. */
+export function clampQuality(q: number): number {
+  if (!Number.isFinite(q)) return MAX_QUALITY
+  return Math.min(MAX_QUALITY, Math.max(FLOOR_QUALITY, q))
+}
+
+/**
  * Fit a picture inside a square of `edge`, keeping its shape.
  *
  * ⚠️ IT NEVER SCALES UP. A 200px drawing asked to fit 1600 stays 200: enlarging it would spend

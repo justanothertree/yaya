@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   FLOOR_QUALITY,
   FULL_BYTES,
+  MAX_QUALITY,
+  THUMB_BYTES,
+  clampQuality,
   fitWithin,
   nextQuality,
   savedBy,
   sayBytes,
-  THUMB_BYTES,
 } from './shrink'
 
 describe('fitting a picture inside an edge', () => {
@@ -161,5 +163,47 @@ describe('saying it in words', () => {
     expect(savedBy(210_000, 200_000)).toBe(null)
     expect(savedBy(100, 200)).toBe(null)
     expect(savedBy(0, 200)).toBe(null)
+  })
+})
+
+describe('the band the dial offers', () => {
+  /**
+   * ⚠️ THE TOP OF THE DIAL IS 0.95 AND NOT 1, AND THIS IS THE ONE RULE THAT MATTERS. WebP quality
+   * 1.0 is a different encoder mode, not the last notch of a curve — measured at 3.83 MB against
+   * 1.19 MB at 0.95 on the same 1600×1067 image — so asking for it blows the ceiling, triggers
+   * the walk-down, and lands at 0.51. The dial's top notch was the second-worst setting on it.
+   */
+  it('never offers a quality the encoder treats as a different mode', () => {
+    expect(MAX_QUALITY).toBeLessThan(1)
+    expect(clampQuality(1)).toBe(MAX_QUALITY)
+    expect(clampQuality(0.99)).toBe(MAX_QUALITY)
+  })
+
+  it('holds a quality inside the band, from either end', () => {
+    expect(clampQuality(0)).toBe(FLOOR_QUALITY)
+    expect(clampQuality(-5)).toBe(FLOOR_QUALITY)
+    expect(clampQuality(0.6)).toBe(0.6)
+    expect(clampQuality(MAX_QUALITY)).toBe(MAX_QUALITY)
+    expect(clampQuality(FLOOR_QUALITY)).toBe(FLOOR_QUALITY)
+  })
+
+  /** NaN is what an empty number input gives you, and it must not become a 3.83 MB upload */
+  it('reads nonsense as the top of the band rather than as 1', () => {
+    expect(clampQuality(Number.NaN)).toBe(MAX_QUALITY)
+    expect(clampQuality(Number.POSITIVE_INFINITY)).toBe(MAX_QUALITY)
+  })
+
+  /**
+   * ⚠️ THE WALK-DOWN IS ONLY EVER CATASTROPHIC FROM THE CLIFF, which is why the cap is the fix
+   * rather than a cleverer `nextQuality`. Stepping down from the capped top, the proportional
+   * guess is a sane neighbour; stepping down from 1.0 it was less than half.
+   */
+  it('steps down gently from the capped top, where it did not from 1.0', () => {
+    /* the measured cliff: 3.83 MB at q 1.0 against a 2 MB ceiling */
+    expect(nextQuality(4_019_718, FULL_BYTES, 1)).toBeLessThan(0.6)
+    /* and from the cap, a plausible photograph over the ceiling */
+    const fromCap = nextQuality(2_600_000, FULL_BYTES, MAX_QUALITY)
+    expect(fromCap).not.toBeNull()
+    expect(fromCap!).toBeGreaterThan(0.7)
   })
 })

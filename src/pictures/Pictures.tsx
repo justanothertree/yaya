@@ -10,7 +10,7 @@ import {
   type Squeezed,
   type Used,
 } from './cloud'
-import { sayBytes, savedBy } from './shrink'
+import { FLOOR_QUALITY, MAX_QUALITY, sayBytes, savedBy } from './shrink'
 
 /**
  * Pictures: choose one, decide how hard to squeeze it, keep it.
@@ -203,8 +203,8 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
               <span>How hard to squeeze</span>
               <input
                 type="range"
-                min={30}
-                max={100}
+                min={FLOOR_QUALITY * 100}
+                max={MAX_QUALITY * 100}
                 step={5}
                 value={Math.round(quality * 100)}
                 onChange={(e) => setQuality(Number(e.target.value) / 100)}

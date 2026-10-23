@@ -1,7 +1,15 @@
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
 import { pvDescribe, pvDrop, pvKeep, pvPictures, pvUsed } from '../dev/picturePreview'
-import { FULL_BYTES, FULL_EDGE, THUMB_BYTES, THUMB_EDGE, fitWithin, nextQuality } from './shrink'
+import {
+  FULL_BYTES,
+  FULL_EDGE,
+  THUMB_BYTES,
+  THUMB_EDGE,
+  clampQuality,
+  fitWithin,
+  nextQuality,
+} from './shrink'
 
 /**
  * Keeping a picture: squeeze it here, ask Postgres, put the bytes in R2.
@@ -83,7 +91,10 @@ export async function squeeze(
   ctx.drawImage(bitmap, 0, 0, size.w, size.h)
   bitmap.close()
 
-  let q = startQuality
+  /* ⚠️ CLAMPED HERE AND NOT ONLY IN THE ROOM. The cliff at WebP 1.0 is a property of the
+     encoder, so every caller has to be held off it — and once pictures are something other
+     surfaces reach for, "the room clamps it" stops being true. See MAX_QUALITY. */
+  let q = clampQuality(startQuality)
   for (;;) {
     const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, MIME, q))
     if (!blob) return null
