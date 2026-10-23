@@ -21,6 +21,7 @@ import { Plans } from './Plans'
 import { WeekGrid } from './WeekGrid'
 import { weekOf } from './week'
 import { Routines } from './Routines'
+import { Modal } from '../circuit/ui/Modal'
 import { tilesFor } from './nowTiles'
 import {
   CATS,
@@ -1539,216 +1540,6 @@ export function Timer({
                     })()}
                   </span>
                 </span>
-                {fixEnt === e.id && (
-                  <span className="chron-fix">
-                    {/**
-                     * ⚠️ WHAT IT WAS COMES BEFORE WHEN IT WAS, which is the order the mistake
-                     * happens in: you notice you timed the wrong thing, not that you timed the
-                     * wrong hour. The list is the activities you have open, plus this session's
-                     * own if it has since been archived — otherwise the control could not show
-                     * its own current value, and opening the editor would silently propose
-                     * moving the session somewhere else.
-                     */}
-                    <label className="chron-choice">
-                      <span className="sr-only">What this was</span>
-                      <select
-                        value={entAct}
-                        onChange={(ev) => {
-                          /**
-                           * ⚠️ A QUANTITY BELONGS TO A METRIC, AND MOVING A SESSION CHANGES THE
-                           * METRIC UNDER IT. The box follows the activity SELECTED rather than the
-                           * one the session used to be — which is right — but the NUMBER in it
-                           * stayed put, so moving a 60-rep gym session onto Writing rewrote it as
-                           * "60 pages". Measured in the room: the placeholder flipped to "pages"
-                           * the instant the activity changed, so the form knew the unit had
-                           * changed and kept the number anyway.
-                           *
-                           * Sixty reps is not sixty pages. When the unit changes the number stops
-                           * meaning anything, so it goes, visibly, while somebody is looking at
-                           * it. Moving between two activities that count the SAME thing keeps it.
-                           */
-                          const was = byId.get(entAct)?.metric ?? null
-                          const now = byId.get(ev.target.value)?.metric ?? null
-                          if (was !== now) setEntAmount('')
-                          setEntAct(ev.target.value)
-                        }}
-                      >
-                        {[...open, ...(a && a.archived ? [a] : [])].map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {/**
-                     * ⚠️ A TIME EDIT IS ALMOST ALWAYS RELATIVE, AND THE FORM WAS ONLY ABSOLUTE.
-                     * Two bare `datetime-local` inputs are the widest, ugliest controls in the
-                     * room — "mm/dd/yyyy --:-- --" on a phone — and they ask the hardest version
-                     * of the question. Nobody edits a session because it started at the wrong
-                     * DATE; they edit it because they forgot to press Stop, or started it five
-                     * minutes late. So the common case is the one on screen: the clock face as
-                     * text, and handles that move it.
-                     *
-                     * ⚠️ THE ABSOLUTE FORM IS STILL THERE, behind "exact times", because the rare
-                     * case is real — a session typed in for yesterday, a date that is genuinely
-                     * wrong — and a shortcut that is the only way in is not a shortcut. Same
-                     * argument as "Something else…" under the quick-start chips.
-                     */}
-                    <div className="chron-when">
-                      <span className="chron-when-row">
-                        <span className="chron-when-label">From</span>
-                        <strong className="chron-when-at">{clockOfLocal(entFrom)}</strong>
-                        <span className="chron-nudges">
-                          {NUDGES.map((n) => (
-                            <button
-                              key={n}
-                              className="btn btn-ghost chron-nudge"
-                              onClick={() => setEntFrom(nudgeLocal(entFrom, n))}
-                              aria-label={`Start ${n < 0 ? `${-n} minutes earlier` : `${n} minutes later`}`}
-                            >
-                              {n > 0 ? `+${n}` : n}
-                            </button>
-                          ))}
-                        </span>
-                      </span>
-                      {/* ⚠️ no end while it is still going: the end is Stop's to write, not a
-                          thing to type into a box beside a clock that is still counting */}
-                      {e.end && (
-                        <span className="chron-when-row">
-                          <span className="chron-when-label">To</span>
-                          <strong className="chron-when-at">{clockOfLocal(entTo)}</strong>
-                          <span className="chron-nudges">
-                            {NUDGES.map((n) => (
-                              <button
-                                key={n}
-                                className="btn btn-ghost chron-nudge"
-                                onClick={() => setEntTo(nudgeLocal(entTo, n))}
-                                aria-label={`End ${n < 0 ? `${-n} minutes earlier` : `${n} minutes later`}`}
-                              >
-                                {n > 0 ? `+${n}` : n}
-                              </button>
-                            ))}
-                          </span>
-                        </span>
-                      )}
-                      {/**
-                       * ⚠️ THE LENGTH, LIVE, BECAUSE IT IS WHAT THE EDIT IS ACTUALLY ABOUT. Two
-                       * clock faces make you do the subtraction; this is the number you came to
-                       * change. A backwards span says so in words rather than showing a cheerful
-                       * zero — `minsBetweenLocal` deliberately does not clamp, so that the form
-                       * can refuse rather than quietly save something impossible.
-                       */}
-                      {e.end &&
-                        (() => {
-                          const mins = minsBetweenLocal(entFrom, entTo)
-                          if (mins === null) return null
-                          if (mins < 0)
-                            return (
-                              <span className="chron-when-len is-wrong">ends before it starts</span>
-                            )
-                          /**
-                           * ⚠️ THE REAL SPAN WHILE NOTHING HAS BEEN TOUCHED. The boxes are
-                           * minute-resolution, so a 33-second sitting reads 0m in them — and the
-                           * row two inches above says 33s. Two numbers for one session, and the
-                           * smaller one is the one that looks like a bug. Untouched, this says
-                           * what the record holds; moved, it says what the boxes now mean.
-                           */
-                          const w = entWas.current
-                          const untouched =
-                            w?.to != null &&
-                            forInput(w.from) === entFrom &&
-                            forInput(w.to) === entTo
-                          const ms = untouched
-                            ? Date.parse(w!.to!) - Date.parse(w!.from)
-                            : mins * 60_000
-                          return <span className="chron-when-len">{spanText(ms)}</span>
-                        })()}
-                      <details className="chron-exact">
-                        <summary>exact times</summary>
-                        <label className="chron-gap">
-                          <span className="sr-only">Started</span>
-                          <input
-                            type="datetime-local"
-                            value={entFrom}
-                            onChange={(ev) => setEntFrom(ev.target.value)}
-                          />
-                        </label>
-                        {e.end && (
-                          <label className="chron-gap">
-                            <span className="sr-only">Ended</span>
-                            <input
-                              type="datetime-local"
-                              value={entTo}
-                              onChange={(ev) => setEntTo(ev.target.value)}
-                            />
-                          </label>
-                        )}
-                      </details>
-                    </div>
-                    {/* ⚠️ only for an activity that has a metric: a box asking for a number with
-                        no unit is a box nobody can answer — and it follows the activity SELECTED
-                        above rather than the one the session used to be, so moving a session onto
-                        something that counts nothing takes the box away with it */}
-                    {e.end && byId.get(entAct)?.metric && (
-                      <label className="chron-qty">
-                        <span className="sr-only">How many {byId.get(entAct)?.metric}</span>
-                        <input
-                          value={entAmount}
-                          inputMode="decimal"
-                          placeholder={byId.get(entAct)?.metric ?? ''}
-                          onChange={(ev) => setEntAmount(ev.target.value)}
-                        />
-                      </label>
-                    )}
-                    {/**
-                     * ⚠️ ONE CONTROL, NOT FIVE BUTTONS. A row of stars is five targets on a line
-                     * that already carries two datetimes and a number, and the room has just been
-                     * through what crowding does to it. A select is one tap to open and one to
-                     * choose, and it can say the WORD beside the number — "4 good" rather than a
-                     * rank nobody has a legend for.
-                     */}
-                    {e.end && (
-                      <label className="chron-choice">
-                        <span className="sr-only">How did it go?</span>
-                        <select value={entMood} onChange={(ev) => setEntMood(ev.target.value)}>
-                          <option value="">not rated</option>
-                          {MOODS.map(([n, word]) => (
-                            <option key={n} value={String(n)}>
-                              {n} {word}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                    {/**
-                     * ⚠️ THE NOTE WAS WRITE-ONLY UNTIL NOW. There has been a box for one at Stop
-                     * since the room was built, and nothing on the page ever showed it back — a
-                     * plan's note is rendered beside the plan, a session's was not. So it could be
-                     * written, never read, and then quietly destroyed by the first edit. It is
-                     * shown in the row above, and editable here.
-                     */}
-                    {e.end && (
-                      <label className="chron-note-fix">
-                        <span className="sr-only">A note about this session</span>
-                        <input
-                          value={entNote}
-                          placeholder="a note, if you like"
-                          onChange={(ev) => setEntNote(ev.target.value)}
-                        />
-                      </label>
-                    )}
-                    <button
-                      className="btn"
-                      disabled={busy || (minsBetweenLocal(entFrom, entTo) ?? 0) < 0}
-                      onClick={() => void saveEnt(byId.get(entAct)?.metric)}
-                    >
-                      Save
-                    </button>
-                    <button className="btn btn-ghost" onClick={() => setFixEnt(null)}>
-                      Cancel
-                    </button>
-                  </span>
-                )}
                 {/* ⚠️ THE BUTTONS ARE A GROUP, like the plan row's. As loose siblings of a
                     wrapping row they split across lines — one row dropped its ✕ alone onto the
                     next line while another wrapped part way through its facts, which reads as a
@@ -1779,20 +1570,211 @@ export function Timer({
                   >
                     ✎
                   </button>
-                  <button
-                    className="btn btn-ghost chron-x"
-                    onClick={() => void forget(e)}
-                    aria-label="Delete this span"
-                    title="Delete this span"
-                  >
-                    ✕
-                  </button>
+                  {/* ⚠️ THE ✕ IS GONE FROM THE ROW AND LIVES IN THE DIALOG. Two controls on every
+                      row of a long list, one of which destroys a session, is most of what made the
+                      log feel dense — and the dangerous one sat 4px from the harmless one at the
+                      end of a 44px pair. Deleting is now a step inside the editor, beside the
+                      thing being deleted and away from Save, which is the arrangement the HTML
+                      version of this app uses. One tap further; one fewer thing to mis-tap. */}
                 </span>
               </li>
             )
           })}
         </ul>
       )}
+
+      {/**
+       * Editing a session, in a room of its own.
+       *
+       * ⚠️ IT WAS AN INLINE ROW AND THAT WAS THE WRONG SHAPE, not merely the wrong size. Eight
+       * controls squeezed into a log row with every label `sr-only` — "very control dense" — and
+       * two attempts at making it shorter only traded one cramped arrangement for another. The
+       * HTML version this module is a port of solved it long ago and I had never looked: it edits
+       * in a centred modal, every field under a small-caps label, start and end side by side, the
+       * rating as buttons, and Delete inside the dialog rather than as a ✕ in the row. Room is
+       * what a form needs, and a list row is the one place that cannot give it.
+       *
+       * ⚠️ AND THE SHARED `Modal` ALREADY HANDLES THE HARD PARTS — Escape, the portal, and focus
+       * on open without stealing it back on every keystroke. See the long note in
+       * circuit/ui/Modal.tsx about what that last one cost to get right; a second implementation
+       * here would have been a second place for all of it to be wrong.
+       */}
+      {(() => {
+        const e = log.find((x) => x.id === fixEnt)
+        if (!e) return null
+        const a = byId.get(e.activity)
+        const metric = byId.get(entAct)?.metric
+        const len = minsBetweenLocal(entFrom, entTo)
+        const was = entWas.current
+        const untouched =
+          was?.to != null && forInput(was.from) === entFrom && forInput(was.to) === entTo
+        const ms = untouched ? Date.parse(was.to!) - Date.parse(was.from) : (len ?? 0) * 60_000
+        const when = (label: string, value: string, set: (v: string) => void) => (
+          <div className="chron-field">
+            <label>{label}</label>
+            <div className="chron-when-row">
+              <strong className="chron-when-at">{clockOfLocal(value)}</strong>
+              <span className="chron-nudges">
+                {NUDGES.map((n) => (
+                  <button
+                    key={n}
+                    className="btn btn-ghost chron-nudge"
+                    onClick={() => set(nudgeLocal(value, n))}
+                    aria-label={`${label} ${n < 0 ? `${-n} minutes earlier` : `${n} minutes later`}`}
+                  >
+                    {n > 0 ? `+${n}` : n}
+                  </button>
+                ))}
+              </span>
+            </div>
+          </div>
+        )
+        return (
+          <Modal
+            title={`Edit ${a?.name ?? 'this session'}`}
+            onClose={() => setFixEnt(null)}
+            footer={
+              <div className="chron-modal-do">
+                {/* ⚠️ DELETE LIVES HERE, AWAY FROM SAVE — the arrangement the HTML version uses,
+                    and the reason a log row no longer needs a ✕ of its own beside its ✎ */}
+                <button className="btn btn-ghost chron-danger" onClick={() => void forget(e)}>
+                  🗑 Delete
+                </button>
+                <span className="chron-modal-right">
+                  <button className="btn btn-ghost" onClick={() => setFixEnt(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn"
+                    disabled={busy || (len ?? 0) < 0}
+                    onClick={() => void saveEnt(metric)}
+                  >
+                    Save
+                  </button>
+                </span>
+              </div>
+            }
+          >
+            <div className="chron-field">
+              <label htmlFor="ent-act">What it was</label>
+              <select
+                id="ent-act"
+                value={entAct}
+                onChange={(ev) => {
+                  /* ⚠️ a quantity belongs to a metric, and moving a session changes the metric
+                     under it — sixty reps is not sixty pages, so the number goes when the unit
+                     does, visibly, while somebody is looking at it */
+                  const before = byId.get(entAct)?.metric ?? null
+                  const after = byId.get(ev.target.value)?.metric ?? null
+                  if (before !== after) setEntAmount('')
+                  setEntAct(ev.target.value)
+                }}
+              >
+                {[...open, ...(a && a.archived ? [a] : [])].map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="chron-frow">
+              {when('From', entFrom, setEntFrom)}
+              {e.end ? when('To', entTo, setEntTo) : null}
+            </div>
+
+            {e.end && len !== null ? (
+              len < 0 ? (
+                <p className="chron-when-len is-wrong">That ends before it starts.</p>
+              ) : (
+                <p className="chron-when-len">{spanText(ms)}</p>
+              )
+            ) : null}
+
+            {e.end && (
+              <details className="chron-exact">
+                <summary>exact times</summary>
+                <div className="chron-frow">
+                  <div className="chron-field">
+                    <label htmlFor="ent-xf">Start</label>
+                    <input
+                      id="ent-xf"
+                      type="datetime-local"
+                      value={entFrom}
+                      onChange={(ev) => setEntFrom(ev.target.value)}
+                    />
+                  </div>
+                  <div className="chron-field">
+                    <label htmlFor="ent-xt">End</label>
+                    <input
+                      id="ent-xt"
+                      type="datetime-local"
+                      value={entTo}
+                      onChange={(ev) => setEntTo(ev.target.value)}
+                    />
+                  </div>
+                </div>
+              </details>
+            )}
+
+            {e.end && metric && (
+              <div className="chron-field">
+                <label htmlFor="ent-amt">How many {metric}</label>
+                <input
+                  id="ent-amt"
+                  value={entAmount}
+                  inputMode="decimal"
+                  placeholder={metric}
+                  onChange={(ev) => setEntAmount(ev.target.value)}
+                />
+              </div>
+            )}
+
+            {/**
+             * ⚠️ BUTTONS RATHER THAN A SELECT, which is the other thing the HTML version has
+             * always done — 👍 Great / 😐 OK / 👎 Rough, one tap rather than opening a list. The
+             * scale here is five and stays five, because that is what every rating already
+             * stored means; what changes is only how you choose one.
+             *
+             * ⚠️ AND TAPPING THE CHOSEN ONE CLEARS IT, so "not rated" needs no sixth button. The
+             * state it returns to is the one it started in, which is the only thing an undo here
+             * could sensibly mean.
+             */}
+            {e.end && (
+              <div className="chron-field">
+                <label>How did it go? (optional)</label>
+                <div className="chron-pickmoods">
+                  {MOODS.map(([n, word]) => (
+                    <button
+                      key={n}
+                      className={
+                        'chron-pickmood is-' + word + (entMood === String(n) ? ' is-on' : '')
+                      }
+                      aria-pressed={entMood === String(n)}
+                      onClick={() => setEntMood(entMood === String(n) ? '' : String(n))}
+                    >
+                      {word}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {e.end && (
+              <div className="chron-field">
+                <label htmlFor="ent-note">Notes</label>
+                <textarea
+                  id="ent-note"
+                  rows={2}
+                  value={entNote}
+                  placeholder="a note, if you like"
+                  onChange={(ev) => setEntNote(ev.target.value)}
+                />
+              </div>
+            )}
+          </Modal>
+        )
+      })()}
 
       {!log.length && <p className="muted">Nothing recorded for this day yet.</p>}
 

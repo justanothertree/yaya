@@ -15763,6 +15763,119 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * A labelled field, and a row of them — lifted from the HTML version of this app.
+ *
+ * ⚠️ THE LABEL ABOVE THE CONTROL IS THE WHOLE IDEA, and it is what the inline editor never had:
+ * every one of its labels was `sr-only`, so the only way to tell what a control did was to
+ * recognise its shape. Small, uppercase, muted and ON ITS OWN LINE costs about 14px and removes
+ * the guessing. The original's rule is `font-size:11px; text-transform:uppercase;
+ * letter-spacing:.5px` and there is no reason to improve on it.
+ *
+ * ⚠️ AND `min-width: 95px` IS WHAT MAKES THE ROW WRAP HONESTLY. A `.chron-frow` is a flex row of
+ * fields that each want half of it; below about 200px two cannot both be readable, so they
+ * stack — rather than shrinking to a pair of slivers, which is the `min-width: 0` trap this file
+ * has met five times.
+ */
+.chron-field {
+  margin-bottom: 0.6rem;
+  min-width: 0;
+}
+.chron-field > label {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chron-field input,
+.chron-field select,
+.chron-field textarea {
+  width: 100%;
+}
+.chron-field textarea {
+  resize: vertical;
+}
+.chron-frow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.chron-frow > .chron-field {
+  flex: 1 1 auto;
+  min-width: 95px;
+}
+
+/**
+ * How it went, as buttons.
+ *
+ * ⚠️ A SELECT ASKS YOU TO OPEN SOMETHING TO SAY ONE WORD. The HTML version has always used
+ * tinted pills — 👍 Great / 😐 OK / 👎 Rough — and one tap beats a list every time. Five here
+ * rather than three, because five is what every rating already in the record means; only the
+ * choosing changes.
+ */
+/* ⚠️ `chron-pickmood`, NOT `chron-mood` — THAT NAME WAS ALREADY TAKEN. `.chron-mood` is the word
+   a finished row shows in the log, with its own colours and an italic on `rough`, so the first
+   draft of these buttons inherited all of it: three pills arrived pre-coloured and one of them
+   was italic, from rules nobody here wrote. Found with whoSets(), which named
+   `.chron-mood.is-good → var(--accent)` in one call. The hues below deliberately MATCH that
+   scale, because the picker and the label are the same five words and must not disagree. */
+.chron-pickmoods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.chron-pickmood {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 0.6rem;
+  border-radius: 100px;
+  border: 1px solid color-mix(in oklab, currentColor, transparent 72%);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.chron-pickmood.is-on {
+  background: color-mix(in oklab, currentColor, transparent 84%);
+  border-color: currentColor;
+  font-weight: 600;
+}
+.chron-pickmood.is-rough {
+  color: #f87171;
+}
+.chron-pickmood.is-poor {
+  color: #fb923c;
+}
+.chron-pickmood.is-fine {
+  color: #a3a3b2;
+}
+.chron-pickmood.is-good {
+  color: #4ade80;
+}
+.chron-pickmood.is-flying {
+  color: #34d399;
+}
+
+/* Delete sits away from Save, which is the point of putting it in the footer at all */
+.chron-modal-do {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+.chron-modal-right {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.chron-danger {
+  color: #f87171;
+}
+
+/**
  * Editing when a session happened.
  *
  * ⚠️ IT READS AS A PANEL NOW, NOT A WRAPPING ROW. The editor was eight controls in one flex wrap
@@ -15817,6 +15930,10 @@ a.cz-msg-author:focus-visible {
   gap: 0.25rem;
   margin-left: auto;
 }
+/* inside the dialog the label sits above, so the clock face leads its own row */
+.chron-field .chron-when-row {
+  gap: 0.4rem;
+}
 /**
  * ⚠️ THE SAME 44px TRAP, A SECOND TIME, AND THE COMMENT HERE CLAIMED IT HAD BEEN CHECKED. It had
  * not. The tally buttons lost to `.chron-timer .btn` on specificity; these lost to
@@ -15839,7 +15956,7 @@ a.cz-msg-author:focus-visible {
 .chron-when-len {
   font-size: 0.82rem;
   color: var(--muted);
-  padding-left: 2.4rem;
+  padding-left: 0;
 }
 /* ⚠️ a refusal, not a decoration: the form can be in a state that must not be saved, and the
    only thing worse than refusing is saving a session that ends before it starts */
@@ -15853,7 +15970,7 @@ a.cz-msg-author:focus-visible {
   min-height: 24px;
   display: flex;
   align-items: center;
-  padding-left: 2.4rem;
+  padding-left: 0;
 }
 .chron-exact[open] {
   display: grid;
