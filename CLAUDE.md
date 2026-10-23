@@ -360,6 +360,20 @@ button[aria-label="The day before"]')` — and before believing a stepped readin
   is exact only while the denominator is also 1440. It is not: `dayBounds` is correctly **1380**
   minutes on a spring-forward day and **1500** on a fall-back one, which is also why a constant
   denominator was wrong twice a year on its own. Carry the number in the unit the label speaks.
+- **A PREFLIGHT THAT DOES NOT CARRY `Access-Control-Request-Headers` TESTS HALF OF CORS, and the
+  half it skips is the half that breaks.** The `pictures` edge function was checked with
+  `curl -X OPTIONS -H 'Origin: https://evancook.dev' -H 'Access-Control-Request-Method: POST'`,
+  came back **204** with the right origin echoed, and that was written down as "CORS works despite
+  verify_jwt being on". It proved the ORIGIN was allowed. The server answers that part
+  unconditionally, so the question that mattered was never put to it: the function returned a FIXED
+  `Access-Control-Allow-Headers: authorization, content-type`, and `supabase.functions.invoke`
+  also sends `apikey` and `x-client-info`. A browser requires EVERY requested header to appear in
+  that list, so the preflight failed and the POST was never sent — surfacing as **"Failed to send a
+  request to the Edge Function"**, which names no header, no origin and no status, and reads like
+  the function is down. Send the headers the real client sends, and prefer ECHOING
+  `Access-Control-Request-Headers` over listing them: a list cannot be right for a client library
+  that adds one later, and a header-name allow list was never the security boundary anyway — the
+  origin list is the gate and the JWT is the lock.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between

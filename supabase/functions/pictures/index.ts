@@ -38,11 +38,31 @@ const ALLOWED = [
   'http://localhost:4173',
 ]
 
-const corsFor = (origin: string | null): Record<string, string> => ({
+/**
+ * ⚠️ THE ALLOWED HEADERS ARE ECHOED, NOT LISTED, AND A FIXED LIST IS WHY THIS DID NOT WORK.
+ * This said `'authorization, content-type'` — which is what the browser's own `fetch` would ask
+ * for, and not what `supabase.functions.invoke` asks for. supabase-js also sends `apikey` and
+ * `x-client-info`, the browser requires EVERY requested header to appear in the allow list, and a
+ * preflight that misses one fails the whole request before the POST is ever sent. The room's error
+ * was "Failed to send a request to the Edge Function", which names no header and no origin.
+ *
+ * ⚠️ AND THE CHECK THAT MISSED IT LOOKED LIKE A PASS. A preflight sent with only
+ * `Access-Control-Request-Method: POST` came back 204 with the right origin, and that was read as
+ * "CORS works". It proved the ORIGIN was allowed and never asked about headers — the server
+ * answers that part unconditionally, so the one question that mattered was never put to it. A
+ * preflight test has to carry `Access-Control-Request-Headers`, with the headers the real client
+ * sends, or it is testing half of CORS.
+ *
+ * Echoing is the robust form: it cannot drift when a client library adds a header, and it widens
+ * nothing that matters — the ORIGIN list is the gate, and the JWT behind it is the lock. An allow
+ * list of header NAMES was never a security boundary.
+ */
+const corsFor = (origin: string | null, asked?: string | null): Record<string, string> => ({
   'Access-Control-Allow-Origin': origin && ALLOWED.includes(origin) ? origin : ALLOWED[0],
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Headers': asked || 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  Vary: 'Origin',
+  'Access-Control-Max-Age': '3600',
+  Vary: 'Origin, Access-Control-Request-Headers',
 })
 
 const json = (body: unknown, status: number, origin: string | null) =>
@@ -107,7 +127,12 @@ const signFor = async (
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsFor(origin) })
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: corsFor(origin, req.headers.get('Access-Control-Request-Headers')),
+    })
+  }
   if (req.method !== 'POST') return json({ error: 'post something' }, 405, origin)
 
   const auth = req.headers.get('Authorization')
