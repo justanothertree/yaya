@@ -91,14 +91,48 @@ type Mine = {
   created_at: string
 }
 
+/**
+ * ⚠️ EVERY SECRET IS TRIMMED, BECAUSE ONE OF THEM ARRIVED WITH A NEWLINE ON IT AND COST A DAY.
+ * `R2_ACCESS_KEY_ID` was set with a trailing newline character — the sort of thing a copy-paste
+ * adds and nothing anywhere displays. What it produced was not an error about a credential:
+ *
+ *   browser   the signature is built from the key, so the presigned URL carried
+ *             `X-Amz-Credential=…ebd3%0A%2F20261023%2F…` and R2 answered **400**. An R2 error
+ *             response carries no CORS headers, so the browser reported "No
+ *             'Access-Control-Allow-Origin' header is present" — a CORS message for something
+ *             that was never a CORS problem, which sent the diagnosis off for a day.
+ *
+ *   server    the reachability check threw rather than returning a status, so it reported 0,
+ *             "could not reach R2 at all" — true, and about the wrong cause. The obvious
+ *             explanation is that a newline is illegal in an HTTP header value and Deno refuses
+ *             to build the request; that is NOT verified. Chrome was asked the same question
+ *             directly and built such a header without complaint, so the two runtimes differ or
+ *             the cause is something else. The browser half above IS verified — the credential
+ *             was reproduced character for character from the `%0A` in the signed URL.
+ *
+ * No R2 credential has meaningful leading or trailing whitespace, so trimming cannot discard
+ * anything real and removes the whole class. `whitespaceSeen` is what makes it SAY so, because a
+ * value that silently starts working is one nobody learns from.
+ */
 const r2 = () => {
-  const account = Deno.env.get('R2_ACCOUNT_ID')
-  const bucket = Deno.env.get('R2_BUCKET')
-  const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID')
-  const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY')
+  const raw = {
+    R2_ACCOUNT_ID: Deno.env.get('R2_ACCOUNT_ID'),
+    R2_BUCKET: Deno.env.get('R2_BUCKET'),
+    R2_ACCESS_KEY_ID: Deno.env.get('R2_ACCESS_KEY_ID'),
+    R2_SECRET_ACCESS_KEY: Deno.env.get('R2_SECRET_ACCESS_KEY'),
+  }
+  const account = raw.R2_ACCOUNT_ID?.trim()
+  const bucket = raw.R2_BUCKET?.trim()
+  const accessKeyId = raw.R2_ACCESS_KEY_ID?.trim()
+  const secretAccessKey = raw.R2_SECRET_ACCESS_KEY?.trim()
   if (!account || !bucket || !accessKeyId || !secretAccessKey) return null
+  /* which secrets had whitespace, by NAME only — never a value, not even a trimmed one */
+  const whitespaceSeen = Object.entries(raw)
+    .filter(([, v]) => typeof v === 'string' && v !== v.trim())
+    .map(([k]) => k)
   return {
     bucket,
+    whitespaceSeen,
     base: `https://${account}.r2.cloudflarestorage.com/${bucket}`,
     /* region 'auto' is R2's own: it is one bucket in one place and SigV4 still wants the field */
     client: new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region: 'auto' }),
@@ -181,6 +215,7 @@ Deno.serve(async (req) => {
           reachable: res.ok,
           status: res.status,
           bucket: kit.bucket,
+          whitespaceSeen: kit.whitespaceSeen,
           meaning:
             res.status === 200
               ? 'R2 answers this function, so an upload failing in the browser is the bucket CORS policy'
@@ -198,7 +233,11 @@ Deno.serve(async (req) => {
         {
           reachable: false,
           status: 0,
-          meaning: 'could not reach R2 at all from the function',
+          whitespaceSeen: kit.whitespaceSeen,
+          meaning:
+            kit.whitespaceSeen.length > 0
+              ? `could not reach R2 — these secrets have stray whitespace: ${kit.whitespaceSeen.join(', ')}`
+              : 'could not reach R2 at all from the function',
           detail: String(e),
         },
         200,
