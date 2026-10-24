@@ -15763,6 +15763,35 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * Live, or logging something past — two pills over one picker.
+ *
+ * ⚠️ THEY ARE A CHOICE BETWEEN EACH OTHER, so they sit together and share a width, the same rule
+ * the halves strip at the top of the room follows. What they change is what the chips underneath
+ * MEAN, which is why they have to be directly above them and not beside ＋ Activity.
+ */
+.chron-modes {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0 0 0.4rem;
+}
+.chron-modes .btn {
+  flex: 0 0 auto;
+  min-height: 36px;
+  font-size: 0.82rem;
+}
+/* the two ends of a past span, under the picker that says what it was */
+.chron-span {
+  margin: 0.2rem 0 0.5rem;
+}
+.chron-span-go {
+  display: flex;
+  align-items: flex-end;
+}
+.chron-span-go .btn {
+  min-height: 38px;
+}
+
+/**
  * The journal on a sitting.
  *
  * ⚠️ EACH ENTRY KEEPS ITS OWN MOMENT, and that is what makes it a journal rather than a bigger

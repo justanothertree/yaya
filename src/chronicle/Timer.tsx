@@ -1120,34 +1120,10 @@ export function Timer({
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
-        {/**
-         * ⚠️ NOTHING TO FILL A GAP WITH UNTIL AN ACTIVITY EXISTS. On a fresh account this opened a
-         * form with an empty picker and an "Add it" that could never enable — a dead form that
-         * explains nothing, on the one screen where somebody has the least idea what to do. Start
-         * beside it has always been disabled for the same reason; this was not, and the first
-         * walk through the room as a new member is what found it.
-         */}
-        <button
-          className="btn btn-ghost"
-          disabled={!(acts ?? []).some((a) => !a.archived)}
-          title={(acts ?? []).some((a) => !a.archived) ? undefined : 'Name an activity first'}
-          onClick={() => {
-            const next = !gap
-            setGap(next)
-            if (next) {
-              const o = gapOpens()
-              setGapFrom(o.from)
-              setGapTo(o.to)
-              /* ⚠️ the top picker's choice when there is one, and what you are doing otherwise —
-                 but never blank, because a select nobody notices is the dead end all over again */
-              setGapAct(
-                pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '',
-              )
-            }
-          }}
-        >
-          ⏱ Fill a gap
-        </button>
+        {/* ⚠️ "⏱ Fill a gap" IS THE `Log past` PILL NOW. It opened a second form with its own
+            copy of the activity list, so the room asked which activity in two places; the pills
+            change what the one picker does instead. The hour it used to fill in is filled in by
+            the pill — see `gapOpens`. */}
       </div>
 
       {/**
@@ -1213,15 +1189,58 @@ export function Timer({
        * a clock going from 7:09 back to 0:01.
        */}
 
+      {/**
+       * ⚠️ ONE FORM WITH TWO MODES, WHICH IS THE HTML ORIGINAL'S ARRANGEMENT AND IT IS BETTER
+       * THAN TWO BUTTONS. "⏱ Fill a gap" opened a separate form carrying its own copy of the
+       * activity list — so the room asked "which activity" in two places three inches apart, and
+       * which one you answered depended on which button you had pressed. The pills change what
+       * the ONE picker below them does: start it now, or say when it was.
+       *
+       * ⚠️ AND SWITCHING TO `Log past` FILLS IN THE LAST HOUR, because a gap you are recording is
+       * nearly always the one just behind you. `gapOpens` already knew that; it was only ever
+       * reached from a button somebody had to find first.
+       */}
+      {show === 'day' && seeing === todayISO() && !running && yours.length > 0 && (
+        <div className="chron-modes">
+          <button
+            className={'btn' + (gap ? ' btn-ghost' : ' is-on')}
+            aria-pressed={!gap}
+            onClick={() => setGap(false)}
+          >
+            Live
+          </button>
+          <button
+            className={'btn' + (gap ? ' is-on' : ' btn-ghost')}
+            aria-pressed={gap}
+            onClick={() => {
+              const o = gapOpens()
+              setGapFrom(o.from)
+              setGapTo(o.to)
+              setGapAct(pick || (acts ?? []).find((a) => !a.archived && !a.auto)?.id || '')
+              setGap(true)
+            }}
+          >
+            Log past
+          </button>
+        </div>
+      )}
+
       {seeing === todayISO() && switchable.length > 0 && (
         <div className="chron-quick">
-          <span className="muted chron-quick-label">{running ? 'Switch to' : 'Quick start'}</span>
+          <span className="muted chron-quick-label">
+            {running ? 'Switch to' : gap ? 'What was it' : 'Quick start'}
+          </span>
           {switchable.map((a) => (
             <button
               key={a.id}
-              className="btn btn-ghost chron-chip-start"
+              /* ⚠️ the same chip, two meanings — and it has to SHOW which, or picking one while
+                 logging past looks like it did nothing at all */
+              className={
+                'btn btn-ghost chron-chip-start' + (gap && gapAct === a.id ? ' is-on' : '')
+              }
+              aria-pressed={gap ? gapAct === a.id : undefined}
               disabled={busy}
-              onClick={() => void go(a.id)}
+              onClick={() => (gap ? setGapAct(a.id) : void go(a.id))}
             >
               {/* ⚠️ the dot rather than ▶, where the activity has a colour: the triangle says
                   "this starts something", which the row's own label already says, and the colour
@@ -1253,7 +1272,10 @@ export function Timer({
         <div className="chron-else">
           <label className="chron-pickrow">
             <span className="sr-only">What are you doing?</span>
-            <select value={pick} onChange={(e) => setPick(e.target.value)}>
+            <select
+              value={gap ? gapAct : pick}
+              onChange={(e) => (gap ? setGapAct(e.target.value) : setPick(e.target.value))}
+            >
               <option value="">Something else…</option>
               {CATS.map(([cat, label]) => {
                 const inCat = yours.filter((a) => a.cat === cat)
@@ -1269,9 +1291,15 @@ export function Timer({
               })}
             </select>
           </label>
-          <button className="btn btn-ghost" disabled={!pick || busy} onClick={() => void go(pick)}>
-            ▶ Start
-          </button>
+          {!gap && (
+            <button
+              className="btn btn-ghost"
+              disabled={!pick || busy}
+              onClick={() => void go(pick)}
+            >
+              ▶ Start
+            </button>
+          )}
         </div>
       )}
 
@@ -1332,38 +1360,39 @@ export function Timer({
         </div>
       )}
 
+      {/**
+       * ⚠️ THE SAME PICKER FEEDS BOTH, which is what the pills are for. This form used to carry
+       * its own activity select — a second list of the same activities, three inches below the
+       * one the chips already are — because ⏱ Fill a gap opened a form rather than changing a
+       * mode. Two ways to answer "which activity" on one screen is two places for the answer to
+       * differ. Now the chips and "Something else…" above choose it in either mode, and this is
+       * only ever the two ends of a span.
+       */}
       {gap && (
-        <div className="chron-add">
-          <label className="chron-gap">
-            <span className="sr-only">Which activity</span>
-            <select value={gapAct} onChange={(e) => setGapAct(e.target.value)}>
-              {(acts ?? [])
-                .filter((a) => (!a.archived && !a.auto) || a.id === gapAct)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="chron-gap">
-            <span className="sr-only">From when</span>
+        <div className="chron-span chron-frow">
+          <div className="chron-field">
+            <label htmlFor="gap-from">From when</label>
             <input
+              id="gap-from"
               type="datetime-local"
               value={gapFrom}
               onChange={(e) => setGapFrom(e.target.value)}
             />
-          </label>
-          <label className="chron-gap">
-            <span className="sr-only">Until when</span>
-            <input type="datetime-local" value={gapTo} onChange={(e) => setGapTo(e.target.value)} />
-          </label>
-          <button className="btn" disabled={busy || !gapAct} onClick={() => void fillGap()}>
-            Add it
-          </button>
-          <button className="btn btn-ghost" onClick={() => setGap(false)}>
-            Cancel
-          </button>
+          </div>
+          <div className="chron-field">
+            <label htmlFor="gap-to">Until when</label>
+            <input
+              id="gap-to"
+              type="datetime-local"
+              value={gapTo}
+              onChange={(e) => setGapTo(e.target.value)}
+            />
+          </div>
+          <div className="chron-field chron-span-go">
+            <button className="btn" disabled={busy || !gapAct} onClick={() => void fillGap()}>
+              {gapAct ? `Log ${byId.get(gapAct)?.name ?? 'it'}` : 'Pick one above'}
+            </button>
+          </div>
         </div>
       )}
 
