@@ -15730,14 +15730,24 @@ a.cz-msg-author:focus-visible {
   pointer-events: none;
 }
 /**
- * ⚠️ AND THE LANE ITSELF GETS TALLER, because tolerance cannot rescue a grid that is too short
- * to aim at. At 240px a whole day is 10px an hour, so a half-hour sitting is five pixels and two
- * sittings an hour apart are ten — inside one fingertip of each other. Reported as "very thin
- * and short to click", which is two complaints: thin is the block, short is the lane, and only
- * one of them is fixable by being generous about near-misses.
+ * ⚠️ THE LANE IS THE WEEK, SO IT GETS THE ROOM. 240px was ten pixels an hour; 320 was thirteen,
+ * which was still "i dont like how small the ui is for the week" — and measured, four of the
+ * twenty-four hour labels physically OVERLAPPED at that height. A day is the unit this grid is
+ * drawn in and a sitting is usually under an hour, so an hour has to be worth looking at.
+ *
+ * ⚠️ AND IT GROWS WHERE THERE IS ROOM. On a phone the grid shares a column with everything else
+ * and 420px (17.5px an hour) is as much as it can fairly take; past 700px the room goes
+ * two-column and the week can have 620 (26px an hour), which is where it stops being a sparkline
+ * and starts being a calendar. The HTML version gives it about half a window, and that is why
+ * its week reads at a glance and this one did not.
  */
 .chron-week-lane {
-  min-height: 320px;
+  min-height: 420px;
+}
+@media (min-width: 700px) {
+  .chron-week-lane {
+    min-height: 620px;
+  }
 }
 
 /**
@@ -16716,22 +16726,27 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
- * ⚠️ TWENTY-FOUR LABELS IN 320px IS 13px A ROW, so they are small and most of them are faint.
+ * ⚠️ SIZED IN PIXELS, NOT `rem`, AND THAT IS THE WHOLE BUG. These were `0.52rem`, chosen against
+ * a 16px root — and the root here is FLUID and measured **17.97px**, so the label came out
+ * 10.8px tall in a 13.3px row and **four of the twenty-four overlapped**. CLAUDE.md §6 says rem
+ * is not a reliable unit for anything measured in pixels, and a label whose job is to fit
+ * between two lines is measured in pixels by definition.
+ *
  * All twenty-four are there because counting thirds of a gap to find ten o'clock is arithmetic a
  * chart should not ask for; only midnight, six, noon and six are bright, because those are what
- * anybody actually navigates by and twenty-four equal labels is its own kind of unreadable.
+ * anybody navigates by and twenty-four equal labels is its own kind of unreadable.
  */
 .chron-week-hour {
   position: absolute;
   right: 4px;
   transform: translateY(-50%);
-  font-size: 0.52rem;
+  font-size: 9px;
   line-height: 1;
-  color: color-mix(in oklab, var(--muted), transparent 45%);
+  color: color-mix(in oklab, var(--muted), transparent 40%);
   font-variant-numeric: tabular-nums;
 }
 .chron-week-hour.is-strong {
-  font-size: 0.6rem;
+  font-size: 11px;
   color: var(--muted);
 }
 .chron-week-line.is-strong {
