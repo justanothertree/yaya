@@ -51,7 +51,28 @@ import { Toast } from '../circuit/ui/Toast'
  * — asked with a different scope and day, which is the whole reason the window lives on the goal.
  * Six views that each knew their own dates would be six planners that agreed most of the time.
  */
-type View = { id: string; label: string; scope: Scope; when: () => string; blurb: string }
+type View = {
+  id: string
+  label: string
+  scope: Scope
+  when: () => string
+  blurb: string
+  /**
+   * Always on the strip, even empty.
+   *
+   * ⚠️ SIX TABS FOR ONE GOAL. Measured on the live account: **1 goal, and six horizons to look
+   * for it in** — the strip scrolled 362px at 375, so half of it was off-screen, and five of the
+   * six were furniture. Three sizes of thinking carry it: today, this week, and the things that
+   * take years.
+   *
+   * ⚠️ AND THE OTHER THREE ARE HIDDEN RATHER THAN DELETED, which is the difference between this
+   * and the `quarter` removal above. That one was safe because no goal could have the scope; a
+   * goal CAN be a month or a year, and a goal takes the scope of the tab it was added from — so
+   * deleting the tab would strand anything already in it, unreachable and uneditable. A tab with
+   * something in it always shows. You cannot make a new month goal; you can always see an old one.
+   */
+  core?: true
+}
 
 /**
  * ⚠️ TODAY AND TOMORROW ARE THE SAME SCOPE, DIFFERENT DAYS, which is why this is a list of views
@@ -94,7 +115,14 @@ const HALVES: Array<[Half, string, string]> = [
 ]
 
 const VIEWS: View[] = [
-  { id: 'today', label: 'Today', scope: 'day', when: todayISO, blurb: 'What today is for.' },
+  {
+    id: 'today',
+    label: 'Today',
+    scope: 'day',
+    when: todayISO,
+    blurb: 'What today is for.',
+    core: true,
+  },
   {
     id: 'tomorrow',
     label: 'Tomorrow',
@@ -102,7 +130,14 @@ const VIEWS: View[] = [
     when: tomorrowISO,
     blurb: 'Decided now, so tomorrow does not have to be.',
   },
-  { id: 'week', label: 'This week', scope: 'week', when: todayISO, blurb: 'Sunday to Saturday.' },
+  {
+    id: 'week',
+    label: 'This week',
+    scope: 'week',
+    when: todayISO,
+    blurb: 'Sunday to Saturday.',
+    core: true,
+  },
   {
     id: 'month',
     label: 'This month',
@@ -115,6 +150,7 @@ const VIEWS: View[] = [
     id: 'life',
     label: 'Years',
     scope: 'life',
+    core: true,
     when: todayISO,
     blurb: 'No date on it — the things that take as long as they take.',
   },
@@ -305,7 +341,41 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const tabsId = useId()
   const panelId = `${tabsId}-panel`
-  const viewAt = VIEWS.findIndex((x) => x.id === view)
+  /** how many of each view has something in it, so the strip says where the work is */
+  const counts = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const x of VIEWS) {
+      const when = x.when()
+      /* ⚠️ THE LATE ONES COUNT TOO, or the strip reads 0 over a tab that has rows in it. They
+         are unfinished work in that window's list, which is the only thing this number means. */
+      out[x.id] = (goals ?? []).filter(
+        (g) =>
+          (inScope(g, x.scope, when) && !finished(g, got, when)) ||
+          lateIn(g, got, x.scope, when, todayISO()),
+      ).length
+    }
+    return out
+  }, [goals, got])
+
+  /**
+   * The horizons actually on the strip: the three core ones, plus any that holds something.
+   *
+   * ⚠️ IT DEPENDS ON `counts`, WHICH IS WHY IT SITS HERE AND NOT BESIDE `VIEWS`. A tab appears
+   * the moment a goal lands in it and goes again when that goal is finished — which is right,
+   * and means the strip is never showing a window with nothing to say.
+   */
+  const shown = useMemo(() => VIEWS.filter((x) => x.core || (counts[x.id] ?? 0) > 0), [counts])
+  /**
+   * ⚠️ AND IF THE OPEN TAB STOPS BEING SHOWN, THE PANEL HAS TO FOLLOW. Finishing the last month
+   * goal while looking at This month would otherwise leave the body of a window with no tab
+   * above it and no way back — the strip would simply have one fewer button and the room would
+   * look broken rather than tidy.
+   */
+  useEffect(() => {
+    if (shown.length && !shown.some((x) => x.id === view)) setView(shown[0].id)
+  }, [shown, view])
+
+  const viewAt = shown.findIndex((x) => x.id === view)
 
   /** which streak fetch is the current one — see the note in `load` about late answers */
   const runSeq = useRef(0)
@@ -377,7 +447,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setKept([])
   }, [view])
 
-  const v = VIEWS.find((x) => x.id === view) ?? VIEWS[0]
+  const v = shown.find((x) => x.id === view) ?? shown[0] ?? VIEWS[0]
   const on = v.when()
   const win = windowOf(v.scope, on)
   /**
@@ -422,22 +492,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       ),
     [goals, got, v.scope, on, kept],
   )
-
-  /** how many of each view has something in it, so the strip says where the work is */
-  const counts = useMemo(() => {
-    const out: Record<string, number> = {}
-    for (const x of VIEWS) {
-      const when = x.when()
-      /* ⚠️ THE LATE ONES COUNT TOO, or the strip reads 0 over a tab that has rows in it. They
-         are unfinished work in that window's list, which is the only thing this number means. */
-      out[x.id] = (goals ?? []).filter(
-        (g) =>
-          (inScope(g, x.scope, when) && !finished(g, got, when)) ||
-          lateIn(g, got, x.scope, when, todayISO()),
-      ).length
-    }
-    return out
-  }, [goals, got])
 
   const add = async () => {
     const t = title.trim()
@@ -707,7 +761,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       {half === 'aims' && (
         <>
           <div className="chron-strip" role="tablist" aria-label="How far ahead">
-            {VIEWS.map((x, i) => (
+            {shown.map((x, i) => (
               <button
                 key={x.id}
                 role="tab"
@@ -724,8 +778,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 tabIndex={view === x.id ? 0 : -1}
                 className={'btn chron-tab' + (view === x.id ? ' is-on' : ' btn-ghost')}
                 onKeyDown={(e) =>
-                  moveTab(e, i, VIEWS.length, (n) => {
-                    setView(VIEWS[n].id)
+                  moveTab(e, i, shown.length, (n) => {
+                    setView(shown[n].id)
                     setAdding(false)
                   })
                 }
