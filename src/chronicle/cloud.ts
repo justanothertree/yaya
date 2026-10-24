@@ -994,14 +994,26 @@ export async function friendsLog(fromISO: string, toISO: string): Promise<Friend
  * chronicle_entries.
  */
 export type Moment = {
-  kind: 'rating'
-  /** when it happened, ISO */
-  at: string
+  kind: 'rating' | 'workout'
+  /**
+   * When it happened, ISO — or null for something that has a day and no hour.
+   *
+   * ⚠️ A WORKOUT HAS NO TIME AND IS NOT GIVEN ONE. `circuit_logs.date` is a DATE; the only
+   * timestamp beside it is `updated_at`, which on this account is a sync artefact — 682 logs
+   * across 355 workout days but only 15 distinct updated_at days. Using it would have stacked a
+   * year of training onto a fortnight and looked, on screen, like a working feature. So the day
+   * is known, the hour is not, and the row says so by carrying no clock.
+   */
+  at: string | null
+  /** the local day it belongs to, `YYYY-MM-DD`, for a moment with no hour */
+  on: string | null
   title: string
   /** out of 100, as the circuit stores it */
   score: number | null
-  /** what sort of thing it was — "film", "game", and so on */
+  /** what sort of thing it was — "film", "game", or whose circuit a workout was */
   about: string | null
+  /** how many exercises the workout held in all, so a row cut at four can say it was cut */
+  detail: string | null
 }
 
 /**
@@ -1018,13 +1030,18 @@ export async function myMoments(fromISO: string, toISO: string): Promise<Moment[
     p_to: toISO,
   })
   if (error || !Array.isArray(data)) return []
-  return (data as Array<Record<string, unknown>>)
-    .map((r) => ({
-      kind: 'rating' as const,
-      at: String(r.at ?? ''),
-      title: String(r.title ?? ''),
-      score: r.score == null ? null : Number(r.score),
-      about: typeof r.about === 'string' ? r.about : null,
-    }))
-    .filter((r) => r.at !== '')
+  return (
+    (data as Array<Record<string, unknown>>)
+      .map((r) => ({
+        kind: r.kind === 'workout' ? ('workout' as const) : ('rating' as const),
+        at: r.at == null ? null : String(r.at),
+        on: r.on == null ? null : String(r.on),
+        title: String(r.title ?? ''),
+        score: r.score == null ? null : Number(r.score),
+        about: typeof r.about === 'string' ? r.about : null,
+        detail: r.detail == null ? null : String(r.detail),
+      }))
+      /* one or the other has to place it — a moment with neither cannot be drawn anywhere */
+      .filter((r) => r.title !== '' && (r.at !== null || r.on !== null))
+  )
 }

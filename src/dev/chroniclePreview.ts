@@ -1851,21 +1851,49 @@ const MOMENTS: ReadonlyArray<{
   { hoursAgo: 28, title: 'Paper Lanterns', score: 61, about: 'film' },
 ]
 
+/* a few invented workouts, to go with the invented ratings — the live ones need a circuit */
+const WORKOUTS: ReadonlyArray<{ daysAgo: number; title: string; held: string }> = [
+  { daysAgo: 0, title: 'Quad Curl 12 reps · Bench 8 reps', held: '4' },
+  { daysAgo: 2, title: 'Miles walked 3 mi', held: '1' },
+]
+
 export const pvMoments = (fromISO: string, toISO: string) => {
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
-  return MOMENTS.map((m) => ({
+  const dayOf = (daysAgo: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() - daysAgo)
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  }
+  const rated = MOMENTS.map((m) => ({
     kind: 'rating' as const,
     at: new Date(Date.now() - m.hoursAgo * 3_600_000).toISOString(),
+    on: null,
     title: m.title,
-    score: m.score,
-    about: m.about,
-  }))
-    .filter((m) => {
-      const t = Date.parse(m.at)
-      return t >= from && t < to
-    })
-    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    score: m.score as number | null,
+    about: m.about as string | null,
+    detail: null as string | null,
+  })).filter((m) => {
+    const t = Date.parse(m.at!)
+    return t >= from && t < to
+  })
+  /* ⚠️ no `at`, exactly as the server gives them — a workout has a day and no hour */
+  const worked = WORKOUTS.map((x) => ({
+    kind: 'workout' as const,
+    at: null as string | null,
+    on: dayOf(x.daysAgo),
+    title: x.title,
+    score: null as number | null,
+    about: 'You' as string | null,
+    detail: x.held as string | null,
+  })).filter((x) => {
+    const noon = Date.parse(x.on + 'T12:00:00')
+    return noon >= from && noon < to
+  })
+  return [...worked, ...rated].sort(
+    (a, b) => (b.at ? Date.parse(b.at) : Infinity) - (a.at ? Date.parse(a.at) : Infinity),
+  )
 }
 
 /** the journal, in the double — the same three rules the server keeps */

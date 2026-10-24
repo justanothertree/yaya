@@ -16124,6 +16124,10 @@ a.cz-msg-author:focus-visible {
   font-family: var(--mono);
   font-size: 0.76rem;
 }
+/* a workout is a day's fact rather than a minute's, and sits at the head of its day */
+.chron-moment.is-workout {
+  background: rgba(255, 255, 255, 0.045);
+}
 
 /**
  * Tap to count, while the clock runs.

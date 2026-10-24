@@ -437,9 +437,22 @@ export function Timer({
     > = []
     for (const e of seeSite ? log : didMyself)
       rows.push({ at: Date.parse(e.start), kind: 'sat', e })
-    for (const m of moments) rows.push({ at: Date.parse(m.at), kind: 'moment', m })
+    /**
+     * ⚠️ A MOMENT WITH NO HOUR GOES TO THE HEAD OF ITS DAY. A workout knows which day it was and
+     * not when — see `Moment.at` — so `Infinity` puts it above the day's sittings rather than
+     * guessing an hour and dropping it between two of them.
+     *
+     * ⚠️ AND IT IS FILTERED BY THE LOCAL DAY HERE, because only the room knows what that is. The
+     * server widens its window by a day on either side on purpose: `date` carries no timezone,
+     * so a strict comparison there would drop or add one at the edges depending on how far the
+     * viewer is from UTC.
+     */
+    for (const m of moments) {
+      if (m.at) rows.push({ at: Date.parse(m.at), kind: 'moment', m })
+      else if (m.on === seeing) rows.push({ at: Infinity, kind: 'moment', m })
+    }
     return rows.sort((x, y) => y.at - x.at)
-  }, [log, didMyself, moments, seeSite])
+  }, [log, didMyself, moments, seeSite, seeing])
 
   const onSiteMs = useMemo(
     () => onSite.reduce((n, e) => n + overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()), 0),
@@ -1444,21 +1457,34 @@ export function Timer({
           {stream.map((row) => {
             if (row.kind === 'moment') {
               const m = row.m
+              const workout = m.kind === 'workout'
+              /* how many it held in all, so a row cut at four can say it was cut */
+              const held = workout && m.detail ? Number(m.detail) : 0
               return (
-                <li key={`m-${m.at}-${m.title}`} className="chron-moment">
+                <li
+                  key={`m-${m.at ?? m.on}-${m.title}`}
+                  className={'chron-moment' + (workout ? ' is-workout' : '')}
+                >
                   <span className="chron-moment-what">
-                    <span aria-hidden>★</span> Rated <strong>{m.title}</strong>
-                    {m.about ? <span className="muted"> · {m.about}</span> : null}
+                    <span aria-hidden>{workout ? '🏋' : '★'}</span> {workout ? null : <>Rated </>}
+                    <strong>{m.title}</strong>
+                    {held > 4 ? <span className="muted"> +{held - 4} more</span> : null}
+                    {m.about && !workout ? <span className="muted"> · {m.about}</span> : null}
                   </span>
                   {m.score != null ? (
                     <span className="chron-moment-score">{countText(m.score)}</span>
                   ) : null}
-                  <span className="muted chron-moment-when">
-                    {new Date(m.at).toLocaleTimeString(undefined, {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                  </span>
+                  {/* ⚠️ nothing where the clock goes, rather than a guess — see Moment.at */}
+                  {m.at ? (
+                    <span className="muted chron-moment-when">
+                      {new Date(m.at).toLocaleTimeString(undefined, {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  ) : (
+                    <span className="muted chron-moment-when">all day</span>
+                  )}
                 </li>
               )
             }
