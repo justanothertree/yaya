@@ -86,6 +86,7 @@ const span = (
     start: a.toISOString(),
     end: new Date(a.getTime() + mins * 60_000).toISOString(),
     note,
+    notes: [],
     amount,
     quality,
   }
@@ -258,6 +259,7 @@ function seed(): Store {
         start: new Date(Date.now() - 7 * 60_000).toISOString(),
         end: null,
         note: null,
+        notes: [],
         amount: null,
         quality: null,
       },
@@ -903,6 +905,7 @@ export const pvStart = (activity: string): { why: string } | null => {
     start: new Date().toISOString(),
     end: null,
     note: null,
+    notes: [],
     amount: null,
     quality: null,
   })
@@ -943,6 +946,7 @@ export const pvAddEntry = (
   db().ents.push({
     id: mint('pv-e'),
     activity,
+    notes: [],
     start: fromISO,
     end: toISO,
     note,
@@ -1127,6 +1131,7 @@ export const pvVisit = (room: string, secs: number): void => {
       start: new Date(now - span * 1000).toISOString(),
       end: new Date(now).toISOString(),
       note: null,
+      notes: [],
       amount: null,
       quality: null,
     })
@@ -1170,6 +1175,9 @@ export const pvExport = (): Record<string, unknown> => ({
       started_at: e.start,
       ended_at: e.end,
       note: e.note,
+      /* ⚠️ `at` and `body`, with no id — the server's export writes exactly that, because an id
+         is this account's and a file is not. Carrying one would invite the import to trust it. */
+      notes: e.notes.map((n) => ({ at: n.at, body: n.body })),
       amount: e.amount,
       quality: e.quality,
       created_at: e.start,
@@ -1352,6 +1360,17 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       start,
       end,
       note: str(e.note),
+      /* ⚠️ ONLY ON THE ROWS THAT WENT IN — the push above is skipped for an entry the store
+         already holds, so a note can never be hung on the copy that was already there. The
+         server says the same thing with `if found then`. A file with no `notes` key is an older
+         file and reads as none. */
+      notes: (Array.isArray(e.notes) ? (e.notes as Array<Record<string, unknown>>) : [])
+        .map((n) => ({
+          id: mint('pv-n'),
+          at: String(n.at ?? new Date().toISOString()),
+          body: String(n.body ?? '').trim(),
+        }))
+        .filter((n) => n.body !== '' && n.body.length <= 4000),
       amount: e.amount == null ? null : numOr(e.amount, 0),
       quality: e.quality == null ? null : numOr(e.quality, 0),
     })
@@ -1847,4 +1866,33 @@ export const pvMoments = (fromISO: string, toISO: string) => {
       return t >= from && t < to
     })
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
+
+/** the journal, in the double — the same three rules the server keeps */
+export const pvNoteAdd = (entry: string, body: string): { why: string } | null => {
+  const text = body.trim()
+  if (!text) return { why: 'nothing to write down' }
+  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  const e = db().ents.find((x) => x.id === entry)
+  /* ⚠️ the server checks the session is YOURS; the double has one owner, so the only version of
+     that check it can keep is that the session exists — and it must keep it, or the workbench
+     would accept a note the live site refuses */
+  if (!e) return { why: 'no such session' }
+  if (e.notes.length >= 50) return { why: 'that is 50 notes on one session' }
+  e.notes = [...e.notes, { id: mint('pv-n'), at: new Date().toISOString(), body: text }]
+  return null
+}
+
+export const pvNoteEdit = (id: string, body: string): { why: string } | null => {
+  const text = body.trim()
+  for (const e of db().ents) {
+    const at = e.notes.findIndex((n) => n.id === id)
+    if (at < 0) continue
+    /* ⚠️ empty deletes, which is chronicle_note_edit's own rule */
+    e.notes = text
+      ? e.notes.map((n) => (n.id === id ? { ...n, body: text } : n))
+      : e.notes.filter((n) => n.id !== id)
+    return null
+  }
+  return { why: 'no such note' }
 }

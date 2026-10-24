@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addEntry,
+  addNote,
   archiveActivity,
   dropEntry,
   editEntry,
+  editNote,
   fixRunning,
   setAmount,
   setQuality,
   entriesBetween,
   myActivities,
   myMoments,
-  noteRunning,
   saveActivity,
   startTimer,
   stopTimer,
@@ -195,7 +196,6 @@ export function Timer({
   const [newSession, setNewSession] = useState('')
   const [gap, setGap] = useState(false)
   /** what you were doing, written down as you stop — the field the table has always had */
-  const [stopNote, setStopNote] = useState('')
   const [gapFrom, setGapFrom] = useState('')
   const [gapTo, setGapTo] = useState('')
   /**
@@ -228,6 +228,16 @@ export function Timer({
   /* ⚠️ false, and it resets on every load rather than being remembered: the site's own minutes
      are a thing you look up, not a thing you read every day */
   const [seeSite, setSeeSite] = useState(false)
+  /**
+   * The sitting that has just ended, if its dialog is still open.
+   *
+   * ⚠️ IT IS A SEPARATE PIECE OF STATE FROM `fixEnt` THOUGH BOTH OPEN THE SAME EDITOR. Stopping
+   * something and going back to fix it are different moments — one is offered, the other is
+   * asked for — and a single flag would make "cancel" on a finish mean the same thing as
+   * abandoning an edit, which it does not: there is nothing to abandon, the sitting is already
+   * recorded.
+   */
+  const [justDid, setJustDid] = useState<string | null>(null)
   /** the amount being typed against a span, keyed by entry id */
   const [entAmount, setEntAmount] = useState('')
   /** how the span being edited went, '' for unrated — see Entry.quality */
@@ -475,6 +485,59 @@ export function Timer({
     onChange?.()
   }
 
+  /**
+   * ⚠️ FLUSHED FROM `go` AND FROM `halt`, because a switch closes the sitting and a count still
+   * sitting in React state when that happens is a count nobody logged. In `halt` it goes BEFORE
+   * the stop: `after()` refetches the day and the local number would be overwritten by a row
+   * that does not have it yet.
+   */
+  /**
+   * ⚠️ THE DIALOG HAS TWO DOORS AND ONLY ONE OF THEM FILLED IT IN. ✎ seeds the fields in its own
+   * click handler; a Stop opens the same dialog with nothing behind it, so it showed `—` for
+   * both ends and "0m" in its own title. Seeding on the id covers both doors and cannot drift
+   * from either.
+   *
+   * ⚠️ AND THE BOX STARTS EMPTY WHATEVER THE SITTING HOLDS, because it adds a NEW journal entry
+   * rather than editing the last one — the existing ones are each editable in place above it.
+   */
+  useEffect(() => {
+    const id = fixEnt ?? justDid
+    if (!id) return
+    const e = log.find((x) => x.id === id)
+    if (!e) return
+    entWas.current = { from: e.start, to: e.end }
+    setEntAct(e.activity)
+    setEntFrom(forInput(e.start))
+    setEntTo(e.end ? forInput(e.end) : '')
+    setEntAmount(e.amount == null ? '' : String(e.amount))
+    setEntMood(e.quality == null ? '' : String(e.quality))
+    setEntNote('')
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [fixEnt, justDid])
+
+  const flushReps = async () => {
+    if (!runId || reps === repsSaved.current) return
+    const want = reps
+    if (await setAmount(runId, want)) repsSaved.current = want
+    else moan('those reps did not save')
+  }
+
+  /**
+   * ⚠️ IT CLEARS THE BOX BEFORE THE RELOAD, not after. `after()` refetches the day and the new
+   * entry arrives in the list; leaving the text in the box as well would show it twice for as
+   * long as the fetch took, which reads as having added it twice.
+   */
+  const addJournal = async (entry: string) => {
+    const body = entNote.trim()
+    if (!body || busy) return
+    setBusy(true)
+    const bad = await addNote(entry, body)
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    setEntNote('')
+    await after()
+  }
+
   const go = async (id: string) => {
     if (busy || !id) return
     /**
@@ -491,7 +554,6 @@ export function Timer({
      */
     if (id === running?.activity) return
     setBusy(true)
-    await flushNote()
     await flushReps()
     const bad = await startTimer(id)
     setBusy(false)
@@ -543,39 +605,12 @@ export function Timer({
   const repsSaved = useRef<number | null>(null)
   const liveReps = useRef<number | null>(null)
   liveReps.current = running?.amount ?? null
-  const noteSaved = useRef('')
-  const liveNote = useRef<string | null>(null)
-  liveNote.current = running?.note ?? null
   useEffect(() => {
-    const had = liveNote.current ?? ''
-    setStopNote(had)
-    noteSaved.current = had
-    /* the count belongs to the sitting exactly as the note does — see the note on re-seeding */
+    /* the count belongs to the sitting exactly as a journal entry does */
     const was = liveReps.current
     setReps(was)
     repsSaved.current = was
   }, [runId])
-
-  /**
-   * ⚠️ SAVED WHILE YOU TYPE, because the alternative is a Save button beside a Stop button and
-   * the room already asks enough of a thumb. `chronicle_running_note` writes one column on the
-   * open sitting and does not end it.
-   *
-   * ⚠️ AND A FAILURE IS SAID OUT LOUD. An autosave that quietly does nothing is the worst of the
-   * failure shapes in this project — the box would show the sentence exactly as you left it
-   * while the account held something else.
-   */
-  useEffect(() => {
-    if (!runId || stopNote === noteSaved.current) return
-    const t = window.setTimeout(() => {
-      void (async () => {
-        const bad = await noteRunning(stopNote)
-        if (bad) moan(bad.why)
-        else noteSaved.current = stopNote
-      })()
-    }, 700)
-    return () => window.clearTimeout(t)
-  }, [stopNote, runId, moan])
 
   /* tapped fast, written slowly: one round trip a beat after the last tap rather than one each */
   useEffect(() => {
@@ -584,34 +619,6 @@ export function Timer({
     return () => window.clearTimeout(t)
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [reps, runId])
-
-  /**
-   * ⚠️ THE NOTE GOES FIRST, ONTO THE SITTING IT WAS TYPED ABOUT. The autosave waits 700ms, so
-   * the natural rhythm — write a word, tap the next thing — beats the timer and throws the word
-   * away.
-   *
-   * ⚠️ A FAILED NOTE DOES NOT BLOCK THE SWITCH. Refusing to change what you are doing because a
-   * sentence would not save is the wrong way round: the sitting closes either way, so the note
-   * is gone either way, and what matters is being told rather than being stuck.
-   */
-  /**
-   * ⚠️ THE SAME SHAPE AS `flushNote` AND FOR THE SAME REASON — a switch closes the sitting, and
-   * a count still sitting in React state when that happens is a count nobody logged. It is
-   * called from `go` and from `halt`, so neither way out of a sitting can drop one.
-   */
-  const flushReps = async () => {
-    if (!runId || reps === repsSaved.current) return
-    const want = reps
-    if (await setAmount(runId, want)) repsSaved.current = want
-    else moan('those reps did not save')
-  }
-
-  const flushNote = async () => {
-    if (!runId || stopNote === noteSaved.current) return
-    const bad = await noteRunning(stopNote)
-    if (bad) moan(bad.why)
-    else noteSaved.current = stopNote
-  }
 
   const halt = async () => {
     if (busy) return
@@ -631,11 +638,20 @@ export function Timer({
     /* ⚠️ BEFORE the stop, not after: `after()` refetches the day and the local count would be
        overwritten by the row that does not have it yet */
     await flushReps()
-    const bad = await stopTimer(stopNote.trim() || null)
+    /**
+     * ⚠️ NULL, AND THE ASKING HAPPENS AFTER. The note box beside Stop was the only moment the
+     * room ever offered to write something down, which meant deciding what a sitting was worth
+     * BEFORE ending it — and getting one sentence to do it in. `chronicle_stop` still takes a
+     * note and this no longer sends one; the sitting that just ended opens its own dialog, where
+     * a rating is a tap and the journal takes as many entries as you like.
+     */
+    const bad = await stopTimer(null)
     setBusy(false)
     if (bad) return moan(bad.why)
-    setStopNote('')
     await after()
+    /* ⚠️ the id was read BEFORE the stop — see `was` above — because afterwards the running
+       entry is gone and finding it again means guessing which row just ended */
+    if (was) setJustDid(was.id)
     /* ⚠️ SAID ONCE, AFTER THE FACT, and not a confirmation beforehand: this is a note about what
        happened, not a gate on stopping. Somebody who wants to stop at twelve minutes is allowed
        to, and being asked to justify it would make the feature something to turn off. */
@@ -788,7 +804,13 @@ export function Timer({
          nothing, destroyed whatever you had written about it. The server now reads null as "leave
          it alone" so no caller can lose one by forgetting; this sends the box, so you can change
          one or empty it on purpose. */
-      entNote.trim(),
+      /**
+       * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
+       * box now, not this session's note — sending it here would copy whatever is half-typed in
+       * that box into the legacy `note` column on every Save. The journal is the one home for
+       * what you write about a sitting; the column is frozen where it stood.
+       */
+      null,
       /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
          mistake this room allows and the only remedy used to be deleting the session and typing
          it in again — losing the amount, the rating and the day it was recorded. */
@@ -1067,15 +1089,10 @@ export function Timer({
                 </div>
               )
             })()}
-            <label className="chron-note">
-              <span className="sr-only">What are you doing? (optional)</span>
-              <input
-                value={stopNote}
-                placeholder="a note, if you like"
-                onChange={(e) => setStopNote(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void halt()}
-              />
-            </label>
+            {/* ⚠️ THE NOTE BOX IS GONE FROM HERE. It asked what a sitting was worth before you
+                had ended it, in one line — and it was the only moment the room ever offered to
+                write anything down. Stopping opens a dialog instead, where the rating is a tap
+                and the journal takes as many entries as you like. */}
             <button className="btn" disabled={busy} onClick={() => void halt()}>
               ■ Stop
             </button>
@@ -1600,8 +1617,11 @@ export function Timer({
        * here would have been a second place for all of it to be wrong.
        */}
       {(() => {
-        const e = log.find((x) => x.id === fixEnt)
+        const showing = fixEnt ?? justDid
+        const e = log.find((x) => x.id === showing)
         if (!e) return null
+        /* ⚠️ what it SAYS differs though what it shows does not: one is an offer, one is a repair */
+        const finishing = fixEnt == null
         const a = byId.get(e.activity)
         const metric = byId.get(entAct)?.metric
         const len = minsBetweenLocal(entFrom, entTo)
@@ -1631,8 +1651,15 @@ export function Timer({
         )
         return (
           <Modal
-            title={`Edit ${a?.name ?? 'this session'}`}
-            onClose={() => setFixEnt(null)}
+            title={
+              finishing
+                ? `${spanText(ms)} of ${a?.name ?? 'that'} — how did it go?`
+                : `Edit ${a?.name ?? 'this session'}`
+            }
+            onClose={() => {
+              setFixEnt(null)
+              setJustDid(null)
+            }}
             footer={
               <div className="chron-modal-do">
                 {/* ⚠️ DELETE LIVES HERE, AWAY FROM SAVE — the arrangement the HTML version uses,
@@ -1641,8 +1668,16 @@ export function Timer({
                   🗑 Delete
                 </button>
                 <span className="chron-modal-right">
-                  <button className="btn btn-ghost" onClick={() => setFixEnt(null)}>
-                    Cancel
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setFixEnt(null)
+                      setJustDid(null)
+                    }}
+                  >
+                    {/* ⚠️ "Done" when finishing, because there is nothing to cancel — the
+                        sitting is already recorded and this dialog only ever adds to it */}
+                    {finishing ? 'Done' : 'Cancel'}
                   </button>
                   <button
                     className="btn"
@@ -1760,18 +1795,62 @@ export function Timer({
               </div>
             )}
 
-            {e.end && (
-              <div className="chron-field">
-                <label htmlFor="ent-note">Notes</label>
+            {/**
+             * ⚠️ A JOURNAL, NOT A FIELD. This was one `note` column, so a sitting you wanted to
+             * say three things about got one, and saying the third meant rewriting the first two.
+             * Each entry keeps the moment it was written, which is the half that makes it a
+             * journal rather than a longer box — "instead of just a single note id want to be
+             * able to journal multiple things into an activity".
+             *
+             * ⚠️ AND CLEARING ONE DELETES IT, which is `chronicle_note_edit`'s own rule and the
+             * one place in this room where empty means remove: a journal entry you have cleared
+             * is one you did not mean to write, and a blank row is a thing to tidy up later.
+             */}
+            <div className="chron-field">
+              <label>Journal</label>
+              {e.notes.length > 0 && (
+                <ul className="chron-journal">
+                  {e.notes.map((n) => (
+                    <li key={n.id}>
+                      <time dateTime={n.at}>
+                        {new Date(n.at).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                      <textarea
+                        rows={1}
+                        defaultValue={n.body}
+                        aria-label={`Written at ${new Date(n.at).toLocaleTimeString()}`}
+                        onBlur={(ev) => {
+                          if (ev.target.value.trim() === n.body) return
+                          void (async () => {
+                            const bad = await editNote(n.id, ev.target.value)
+                            if (bad) moan(bad.why)
+                            await after()
+                          })()
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="chron-journal-add">
                 <textarea
-                  id="ent-note"
-                  rows={2}
+                  rows={1}
                   value={entNote}
-                  placeholder="a note, if you like"
+                  placeholder={e.notes.length ? 'and another thing…' : 'write something down'}
                   onChange={(ev) => setEntNote(ev.target.value)}
                 />
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy || !entNote.trim()}
+                  onClick={() => void addJournal(e.id)}
+                >
+                  Add
+                </button>
               </div>
-            )}
+            </div>
           </Modal>
         )
       })()}

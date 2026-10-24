@@ -1,0 +1,53 @@
+-- ✅ APPLIED — migrations `chronicle_notes_journal`, `chronicle_entries_carry_their_notes` and
+-- `chronicle_backup_carries_the_journal`, 23 Oct 2026
+--
+-- "instead of just a single note id want to be able to journal multiple things into an activity".
+--
+-- ⚠️ ONE NOTE WAS THE WHOLE STORY. `chronicle_entries.note` is a single text column written at
+-- Stop, so a sitting you wanted to say three things about got one — and saying the third meant
+-- rewriting the first two. A journal entry also wants the moment it was written, which a column
+-- holding the latest version of one sentence cannot carry at all.
+--
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- WHY THE OLD COLUMN IS STILL THERE
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- Five functions write it: chronicle_entry_add, chronicle_entry_edit, chronicle_import,
+-- chronicle_running_note and chronicle_stop. Rebuilding all five to write rows instead would be
+-- five chances to break the record for one feature. So the CLIENT stopped handing notes to them
+-- — stopTimer sends null, editEntry sends null, noteRunning is deleted outright — the three
+-- notes that existed were copied into the new table, and the column is frozen where it stood.
+--
+--   It will go stale, deliberately. That is the trade and it is written down here rather than
+--   discovered later: the column holds what a session's note was on 23 Oct 2026 and nothing
+--   after. It is unread by the app, intact as a rollback, and still carried by export and import
+--   so no backup taken before today loses anything. Dropping it is irreversible, so §4 says ask,
+--   and it stays until its owner says otherwise.
+--
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- THE TABLE
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- chronicle_notes (id, owner, entry, at, body) — RLS on, zero policies, no grants, reached only
+-- through three SECURITY DEFINER RPCs. `pg_default_acl` hands arwdDxtm to anon and authenticated
+-- on every new table, so the revoke is a thing the table has to be GIVEN (CLAUDE.md §3).
+--
+-- Constraints on the table rather than in a function wherever they can be: a body that is blank
+-- after trimming is refused by CHECK, and 4000 characters is the ceiling. The two rules that
+-- cannot be constraints — the entry must be yours, and fifty notes is enough for one sitting —
+-- live in chronicle_note_add, which is the only way in.
+--
+-- ⚠️ EMPTY DELETES, IN chronicle_note_edit ONLY. Everywhere else in this room '' means "clear
+-- this field" and null means "leave it alone". Here a journal entry you have cleared is one you
+-- did not mean to write, and leaving a blank row behind would be a thing to tidy up later.
+--
+-- ⚠️ AND THE BACKUP CARRIES THEM. chronicle_notes arrived an hour before export knew about it,
+-- which would have made a copy saved today and restored tomorrow return every sitting with its
+-- journal silently gone — CLAUDE.md §2's round trip that stops closing. Export writes {at, body}
+-- with no id, because an id belongs to this account and a file does not. Import inserts them
+-- ONLY for an entry that actually went in: `found` is false for a row the account already holds,
+-- and hanging its notes on that id would double a journal on every put-back, which is the one
+-- thing an import that "adds what is missing" must not do.
+--
+-- Proved in a rolled-back transaction: two notes come back on the day read, in order, trimmed;
+-- a blank body is refused; another member's session is refused; editing to empty removes the
+-- row; anon holds execute on none of the three. The round trip was perturbed in the double —
+-- dropping notes from pvExport turns the fill-every-field test red.

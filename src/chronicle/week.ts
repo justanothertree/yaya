@@ -88,8 +88,20 @@ export function columns(
  * of numbers taller than the grid they describe; the lines are what make a block readable as "nine
  * in the morning", and the labels only have to be frequent enough to count from.
  */
-export function hours(every = 3): Array<{ hour: number; top: number; label: string | null }> {
-  const out: Array<{ hour: number; top: number; label: string | null }> = []
+/**
+ * ⚠️ EVERY HOUR IS LABELLED NOW, WHICH IS WHAT MAKES THE GRID READABLE. The default was 3, so a
+ * block sat between `9a` and `12p` and you counted thirds of the gap to work out it began at
+ * ten. The HTML version this is a port of labels all twenty-four and is the clearer of the two
+ * for it — a time grid you have to do arithmetic on is a picture, not a chart.
+ *
+ * ⚠️ AND THE QUARTER-DAY MARKS ARE STILL SPECIAL, because twenty-four identical labels is its own
+ * kind of unreadable. `strong` is true at midnight, six, noon and six — the four a person
+ * actually navigates by — and the stylesheet brightens those and fades the rest.
+ */
+export function hours(
+  every = 1,
+): Array<{ hour: number; top: number; label: string | null; strong: boolean }> {
+  const out: Array<{ hour: number; top: number; label: string | null; strong: boolean }> = []
   for (let h = 0; h < 24; h++) {
     const am = h < 12
     const twelve = h % 12 === 0 ? 12 : h % 12
@@ -97,6 +109,7 @@ export function hours(every = 3): Array<{ hour: number; top: number; label: stri
       hour: h,
       top: (h / 24) * 100,
       label: h % every === 0 ? `${twelve}${am ? 'a' : 'p'}` : null,
+      strong: h % 6 === 0,
     })
   }
   return out

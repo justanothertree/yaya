@@ -36,7 +36,8 @@ import {
   pvVisit,
   pvFriendsLog,
   pvMoments,
-  pvNoteRunning,
+  pvNoteAdd,
+  pvNoteEdit,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
 import { SPANS_AT_ONCE } from './year'
@@ -337,9 +338,43 @@ export async function entriesBetween(fromISO: string, toISO: string): Promise<En
     start: String(e.start),
     end: e.end ? String(e.end) : null,
     note: e.note ?? null,
+    /* a bundle talking to a server from before the journal existed gets nothing here */
+    notes: Array.isArray(e.notes)
+      ? (e.notes as Array<Record<string, unknown>>).map((n) => ({
+          id: String(n.id ?? ''),
+          at: String(n.at ?? ''),
+          body: String(n.body ?? ''),
+        }))
+      : [],
     amount: e.amount == null ? null : num(e.amount as number | string | null),
     quality: e.quality == null ? null : num(e.quality as number | string | null) || null,
   }))
+}
+
+/**
+ * Write something down about a sitting.
+ *
+ * ⚠️ THE SESSION HAS TO BE YOURS AND THE SERVER IS WHAT SAYS SO. `chronicle_notes` is deny-all,
+ * so `chronicle_note_add` checks the entry's owner on its own first line — without it a note
+ * could be hung on anybody's session by id. Proved by asking as one member for another's.
+ */
+export async function addNote(entry: string, body: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvNoteAdd(entry, body)
+  const { error } = await getSupabaseClient().rpc('chronicle_note_add', {
+    p_entry: entry,
+    p_body: body,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/** ⚠️ an empty body DELETES it — see chronicle_note_edit for why that is right here and nowhere else */
+export async function editNote(id: string, body: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvNoteEdit(id, body)
+  const { error } = await getSupabaseClient().rpc('chronicle_note_edit', {
+    p_id: id,
+    p_body: body,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
 }
 
 /** A span you forgot to time, which is the commonest hole in any log. */
@@ -758,28 +793,6 @@ export async function fixRunning(
     p_from: fromISO,
     p_activity: activity,
   })
-  return error ? { why: error.message || 'that did not save' } : null
-}
-
-/**
- * Say what the session you are IN is about, without ending it.
- *
- * ⚠️ IT OVERTURNS THE NOTE ABOVE, deliberately and on request. `fixRunning` says "there is no way
- * to set an end: the open entry is open because it has no end, and typing one in is what Stop is
- * for" — true of the END, and taken to cover the NOTE too, so a sitting could only be described
- * once it was over. The thing worth writing down is what you are doing WHILE you do it.
- *
- * ⚠️ ITS OWN FUNCTION rather than a third parameter on `fixRunning`, because `create or replace`
- * cannot add one without minting an overload — the same reason `setAmount` and `setQuality` sit
- * beside `editEntry` instead of inside it.
- *
- * ⚠️ AND '' CLEARS HERE, where null means "leave it alone" everywhere else in this room. It can
- * mean that there because those callers write other columns in the same breath; this writes one
- * column and nothing else, so calling it at all is the statement of intent.
- */
-export async function noteRunning(note: string): Promise<{ why: string } | null> {
-  if (previewMember) return pvNoteRunning(note)
-  const { error } = await getSupabaseClient().rpc('chronicle_running_note', { p_note: note })
   return error ? { why: error.message || 'that did not save' } : null
 }
 

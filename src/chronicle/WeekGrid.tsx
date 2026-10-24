@@ -70,7 +70,11 @@ export function WeekGrid({
         {/* the hour labels, once down the left rather than once per column */}
         <div className="chron-week-hours" aria-hidden>
           {rows.map((h) => (
-            <span key={h.hour} className="chron-week-hour" style={{ top: `${h.top}%` }}>
+            <span
+              key={h.hour}
+              className={'chron-week-hour' + (h.strong ? ' is-strong' : '')}
+              style={{ top: `${h.top}%` }}
+            >
               {h.label}
             </span>
           ))}
@@ -142,7 +146,11 @@ export function WeekGrid({
                 }
               >
                 {rows.map((h) => (
-                  <i key={h.hour} className="chron-week-line" style={{ top: `${h.top}%` }} />
+                  <i
+                    key={h.hour}
+                    className={'chron-week-line' + (h.strong ? ' is-strong' : '')}
+                    style={{ top: `${h.top}%` }}
+                  />
                 ))}
                 {c.blocks.map((b, i) => {
                   const a = byId.get(b.activity)

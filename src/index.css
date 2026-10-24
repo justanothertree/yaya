@@ -15763,6 +15763,50 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The journal on a sitting.
+ *
+ * ⚠️ EACH ENTRY KEEPS ITS OWN MOMENT, and that is what makes it a journal rather than a bigger
+ * box. The time sits in the gutter in mono so the column reads as a sequence; the text is a
+ * textarea that grows, because a thought is sometimes two lines and retyping it into a one-line
+ * input is how people stop writing them.
+ */
+.chron-journal {
+  list-style: none;
+  margin: 0 0 0.4rem;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.chron-journal li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+.chron-journal time {
+  flex: 0 0 auto;
+  min-width: 3.9rem;
+  padding-top: 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.chron-journal textarea,
+.chron-journal-add textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: vertical;
+}
+.chron-journal-add {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+.chron-journal-add .btn {
+  flex: 0 0 auto;
+  min-height: 38px;
+}
+
+/**
  * A labelled field, and a row of them — lifted from the HTML version of this app.
  *
  * ⚠️ THE LABEL ABOVE THE CONTROL IS THE WHOLE IDEA, and it is what the inline editor never had:
@@ -16642,13 +16686,27 @@ a.cz-msg-author:focus-visible {
   height: 240px;
 }
 
+/**
+ * ⚠️ TWENTY-FOUR LABELS IN 320px IS 13px A ROW, so they are small and most of them are faint.
+ * All twenty-four are there because counting thirds of a gap to find ten o'clock is arithmetic a
+ * chart should not ask for; only midnight, six, noon and six are bright, because those are what
+ * anybody actually navigates by and twenty-four equal labels is its own kind of unreadable.
+ */
 .chron-week-hour {
   position: absolute;
   right: 4px;
   transform: translateY(-50%);
+  font-size: 0.52rem;
+  line-height: 1;
+  color: color-mix(in oklab, var(--muted), transparent 45%);
+  font-variant-numeric: tabular-nums;
+}
+.chron-week-hour.is-strong {
   font-size: 0.6rem;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+}
+.chron-week-line.is-strong {
+  opacity: 1;
 }
 
 .chron-week-col {

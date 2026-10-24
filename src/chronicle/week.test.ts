@@ -148,9 +148,32 @@ describe('the hour lines', () => {
     expect(h[21].label).toBe('9p')
   })
 
-  it('labels only every third hour by default, so a phone is not a column of numbers', () => {
-    const labelled = hours().filter((x) => x.label != null)
-    expect(labelled).toHaveLength(8)
-    expect(hours().filter((x) => x.label == null)).toHaveLength(16)
+  /**
+   * ⚠️ THIS SAID "labels only every third hour by default, so a phone is not a column of
+   * numbers", AND THAT CONCERN WAS RIGHT. The default is 1 now, which overturns it — so the
+   * worry has to be answered rather than dropped. It is answered by weight: all twenty-four are
+   * there, because counting thirds of a gap to find ten o'clock is arithmetic a chart should not
+   * ask for, and only the four quarter-day marks are drawn bright. A column of numbers is what
+   * twenty-four EQUAL labels would be.
+   */
+  it('labels every hour, so no time has to be counted out from a neighbour', () => {
+    const all = hours()
+    expect(all.filter((x) => x.label != null)).toHaveLength(24)
+    expect(all.filter((x) => x.label == null)).toHaveLength(0)
+  })
+
+  /** and the old behaviour is still reachable, because `every` is still a parameter */
+  it('still thins them out when asked', () => {
+    expect(hours(3).filter((x) => x.label != null)).toHaveLength(8)
+    expect(hours(6).filter((x) => x.label != null)).toHaveLength(4)
+  })
+
+  /**
+   * ⚠️ THE FOUR A PERSON NAVIGATES BY, and the test is here because the whole readability of
+   * twenty-four labels rests on them being unequal. Midnight, six, noon, six.
+   */
+  it('marks the quarter-day hours strong and the rest not', () => {
+    const strong = hours().filter((x) => x.strong)
+    expect(strong.map((x) => x.hour)).toEqual([0, 6, 12, 18])
   })
 })

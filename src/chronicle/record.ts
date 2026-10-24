@@ -21,6 +21,17 @@ export type Entry = {
   end: string | null
   note: string | null
   /**
+   * The journal: everything you have written about this sitting, oldest first.
+   *
+   * ⚠️ IT REPLACES `note` AND `note` IS STILL HERE. One text column meant a session you wanted to
+   * say three things about got one, and saying the third meant rewriting the first two — "instead
+   * of just a single note id want to be able to journal multiple things into an activity". The
+   * notes live in `chronicle_notes` now and the column is frozen where it stood: unread by this
+   * app, intact as a rollback, still carried by export and import so no backup loses anything.
+   * See docs/2026-10-23-chronicle-notes.sql.
+   */
+  notes: Note[]
+  /**
    * How much of the activity's metric this session produced, or null.
    *
    * ⚠️ AN AMOUNT DOES NOT SPLIT ACROSS MIDNIGHT, which is the one place it behaves unlike the
@@ -182,6 +193,9 @@ export const CATS = [
  * parameter is what lets both sides of "planned against actual" be measured by the same
  * function, which is the only reason the two columns cannot disagree about what a span is worth.
  */
+/** one thing written about a sitting, at the moment it was written */
+export type Note = { id: string; at: string; body: string }
+
 export type Span = { start: string; end: string | null }
 
 /**
