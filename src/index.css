@@ -16083,8 +16083,13 @@ a.cz-msg-author:focus-visible {
   flex: 1 1 auto;
   min-width: 0;
 }
-.chron-else select {
+.chron-else select,
+.chron-else input {
   width: 100%;
+  /* ⚠️ `min-width: 0` — a flex child defaults to `min-width: auto`, and for an input that is its
+     `size` attribute's worth of characters, about 202px. See the §6 note in CLAUDE.md: without
+     it the box refuses to shrink and pushes Start off the end of the card. */
+  min-width: 0;
 }
 /* ⚠️ `btn-ghost` IS APPLIED IN THE JSX, NOT FORGED HERE. The first attempt set a transparent
    background and a `currentColor` ring, and on a dark card with a dark-green `currentColor` the

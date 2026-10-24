@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   addEntry,
   addNote,
@@ -228,6 +228,9 @@ export function Timer({
   /* ⚠️ false, and it resets on every load rather than being remembered: the site's own minutes
      are a thing you look up, not a thing you read every day */
   const [seeSite, setSeeSite] = useState(false)
+  /** what is in the box — see the note on the combobox for why it is not an id */
+  const [typed, setTyped] = useState('')
+  const actsListId = useId()
   /**
    * The sitting that has just ended, if its dialog is still open.
    *
@@ -527,6 +530,49 @@ export function Timer({
     setEntNote('')
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [fixEnt, justDid])
+
+  /**
+   * An activity by the name you typed, matched the way the server matches one.
+   *
+   * ⚠️ TRIMMED AND CASE-FOLDED, BECAUSE `chronicle_activities` IS UNIQUE (owner, name) AND THE
+   * SAVE REFUSES A CLASH IN WORDS. Typing "gym" when you have "Gym" must start the one you have
+   * rather than ask the server to make a second and come back with "you already have one called
+   * gym" — which is a reasonable thing to read in a log and a terrible thing to hand somebody
+   * who is trying to start a timer.
+   */
+  const byName = (name: string): Activity | undefined => {
+    const want = name.trim().toLowerCase()
+    if (!want) return undefined
+    return yours.find((a) => a.name.trim().toLowerCase() === want)
+  }
+
+  /**
+   * Start what is in the box: the one you have by that name, or a new one.
+   *
+   * ⚠️ A NEW ACTIVITY ARRIVES AS FREE TIME, which is the only honest guess — the same one
+   * `chronicle_visit` makes for a room it has noticed. The category is a judgement about what a
+   * thing IS and the box asked for a name; guessing Locked In from a word would put somebody's
+   * afternoon in the wrong column without their having said anything about it. It is one tap to
+   * change in the Activities fold, and the fold is where that decision belongs.
+   */
+  const startTyped = async () => {
+    if (busy) return
+    const name = typed.trim()
+    /* nothing typed, but a chip is lit — that is the chip's choice, and it stands */
+    if (!name) return pick ? void go(pick) : undefined
+    const had = byName(name)
+    if (had) {
+      setTyped('')
+      return void go(had.id)
+    }
+    setBusy(true)
+    const made = await saveActivity(name, 'free', null, undefined, null, null)
+    setBusy(false)
+    if ('why' in made) return moan(made.why)
+    setTyped('')
+    await after()
+    await go(made.id)
+  }
 
   const flushReps = async () => {
     if (!runId || reps === repsSaved.current) return
@@ -1283,32 +1329,49 @@ export function Timer({
        */}
       {!running && seeing === todayISO() && yours.length > 0 && (
         <div className="chron-else">
+          {/**
+           * ⚠️ TYPE IT OR PICK IT, WHICH IS WHAT THE ROOM ALWAYS MEANT. The chips are the
+           * clicking half and this was a `<select>` — so "something else" meant opening a
+           * grouped list and hunting, and a thing you had not named yet meant leaving to find
+           * ＋ Activity first. A `<datalist>` is both: the names you have are suggestions, and
+           * anything else is a new activity. The HTML version of this app has always done it
+           * this way (`<input list="act-dl">`) and it is the one control that makes the room
+           * usable without knowing it.
+           *
+           * ⚠️ AND IT DOES NOT CREATE WHILE YOU TYPE. Resolution happens on submit, so a name
+           * half-entered is not an activity — otherwise "Gy" becomes a permanent activity on the
+           * way to "Gym", and the list this control exists to search fills with typos.
+           */}
           <label className="chron-pickrow">
             <span className="sr-only">What are you doing?</span>
-            <select
-              value={gap ? gapAct : pick}
-              onChange={(e) => (gap ? setGapAct(e.target.value) : setPick(e.target.value))}
-            >
-              <option value="">Something else…</option>
-              {CATS.map(([cat, label]) => {
-                const inCat = yours.filter((a) => a.cat === cat)
-                return inCat.length ? (
-                  <optgroup key={cat} label={label}>
-                    {inCat.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null
-              })}
-            </select>
+            <input
+              list={actsListId}
+              value={typed}
+              placeholder={gap ? 'What was it?' : 'What are you doing?'}
+              onChange={(e) => {
+                setTyped(e.target.value)
+                /* an exact name is a choice, so the chips and the button agree with the box */
+                const hit = byName(e.target.value)
+                if (gap) setGapAct(hit?.id ?? '')
+                else setPick(hit?.id ?? '')
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                if (!gap) void startTyped()
+              }}
+            />
           </label>
+          <datalist id={actsListId}>
+            {yours.map((a) => (
+              <option key={a.id} value={a.name} />
+            ))}
+          </datalist>
           {!gap && (
             <button
               className="btn btn-ghost"
-              disabled={!pick || busy}
-              onClick={() => void go(pick)}
+              disabled={busy || (!typed.trim() && !pick)}
+              onClick={() => void startTyped()}
             >
               ▶ Start
             </button>
