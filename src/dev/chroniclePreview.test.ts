@@ -8,7 +8,8 @@ import {
   pvExport,
   pvImport,
   pvSaveRoutine,
-  pvNoteRunning,
+  pvNoteAdd,
+  pvNoteEdit,
   pvRoutines,
   pvAmount,
   pvEditEntry,
@@ -424,31 +425,57 @@ describe('saying what the session you are in is about', () => {
    * being right about it by luck; perturbation still caught the behaviours, but the reach was
    * nonsense.
    */
-  type Exported = { started_at: string; ended_at: string | null; note: string | null }
+  type Exported = {
+    id: string
+    started_at: string
+    ended_at: string | null
+    notes: Array<{ id?: string; at: string; body: string }>
+  }
   const rows = () => pvExport().entries as unknown as Exported[]
   const openOne = () => rows().find((e) => e.ended_at === null)
   const lastClosed = () =>
     rows()
       .filter((e) => e.ended_at !== null)
       .pop()
+  /* ⚠️ through the export, for the reason this block's own heading gives: a sitting started a
+     microsecond ago overlaps no window, so `pvEntries` cannot see it */
+  const openEntryId = () => openOne()?.id ?? ''
 
-  it('writes the note onto the open sitting, trimmed', () => {
+  it('writes a note onto the open sitting, trimmed', () => {
     pvStart(draw)
-    expect(pvNoteRunning('  the chapter that will not end  ')).toBeNull()
-    expect(openOne()?.note).toBe('the chapter that will not end')
+    expect(pvNoteAdd(openEntryId(), '  the chapter that will not end  ')).toBeNull()
+    expect(openOne()?.notes.map((n) => n.body)).toEqual(['the chapter that will not end'])
   })
 
-  /** ⚠️ '' CLEARS, unlike every other note path in this room — see the note on the function */
-  it('clears it with an empty box rather than leaving it alone', () => {
+  /**
+   * ⚠️ AND A SECOND ONE JOINS IT RATHER THAN REPLACING IT, which is the whole reason the column
+   * went. One `note` meant saying a third thing cost you the first two.
+   */
+  it('keeps every one of them, in the order they were written', () => {
     pvStart(draw)
-    pvNoteRunning('something')
-    expect(pvNoteRunning('   ')).toBeNull()
-    expect(openOne()?.note).toBeNull()
+    const id = openEntryId()
+    pvNoteAdd(id, 'first')
+    pvNoteAdd(id, 'second')
+    expect(openOne()?.notes.map((n) => n.body)).toEqual(['first', 'second'])
   })
 
-  it('refuses when nothing is running, in the words the server uses', () => {
-    pvStop(null)
-    expect(pvNoteRunning('into the void')).toEqual({ why: 'nothing is running' })
+  /**
+   * ⚠️ '' DELETES one, unlike every other note path in this room — see chronicle_note_edit.
+   *
+   * ⚠️ AND IT USES A LOGGED SITTING RATHER THAN A RUNNING ONE, because editing needs the note's
+   * own id and only `pvEntries` carries one — the export deliberately writes {at, body} with no
+   * id, since an id belongs to an account and a file does not.
+   */
+  it('clears one with an empty box rather than leaving it alone', () => {
+    pvAddEntry(draw, h(9), h(10), 'something')
+    const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
+    const noteId = e.notes[0]?.id ?? ''
+    expect(pvNoteEdit(noteId, '   ')).toBeNull()
+    expect(pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)?.notes).toEqual([])
+  })
+
+  it('refuses a sitting that is not there, in the words the server uses', () => {
+    expect(pvNoteAdd('pv-e-nope', 'into the void')).toEqual({ why: 'no such session' })
   })
 
   /**
@@ -495,31 +522,35 @@ describe('saying what the session you are in is about', () => {
     expect(got.some((e) => e.end === null)).toBe(true)
   })
 
-  it('keeps the note on the sitting that start closes', () => {
+  it('keeps the journal on the sitting that start closes', () => {
     lasting(5000, () => {
       pvStart(draw)
-      pvNoteRunning('the hands again, finally')
+      pvNoteAdd(openEntryId(), 'the hands again, finally')
     })
     pvStart(gym)
     vi.useRealTimers()
-    expect(lastClosed()?.note).toBe('the hands again, finally')
+    expect(lastClosed()?.notes.map((n) => n.body)).toEqual(['the hands again, finally'])
   })
 
-  /** ⚠️ and STOP still writes it, because that one really does — null clears, as the server does */
-  it('and stop still writes the note it is handed', () => {
+  /**
+   * ⚠️ AND STOP STILL TAKES ONE, because an older bundle still sends it — chronicle_stop keeps
+   * its `p_note` and writes it into the journal rather than onto a column that is gone. So the
+   * sitting ends holding both: what was written during it, and what was said at the end.
+   */
+  it('and stop still records the note it is handed, beside the ones already there', () => {
     lasting(5000, () => {
       pvStart(draw)
-      pvNoteRunning('mid-sitting')
+      pvNoteAdd(openEntryId(), 'mid-sitting')
     })
     pvStop('said at the end')
     vi.useRealTimers()
-    expect(lastClosed()?.note).toBe('said at the end')
+    expect(lastClosed()?.notes.map((n) => n.body)).toEqual(['mid-sitting', 'said at the end'])
   })
 
-  /** ⚠️ the control: it writes the note and does not end the sitting */
+  /** ⚠️ the control: writing one does not end the sitting */
   it('leaves the sitting running', () => {
     pvStart(draw)
-    pvNoteRunning('still going')
+    pvNoteAdd(openEntryId(), 'still going')
     expect(openOne()).toBeDefined()
   })
 })
@@ -892,7 +923,6 @@ describe('the file you can take away', () => {
       'activity',
       'started_at',
       'ended_at',
-      'note',
       'notes',
       'amount',
       'quality',
@@ -1233,7 +1263,6 @@ describe('putting a file back', () => {
           activity: act,
           started_at: h(9),
           ended_at: h(10),
-          note: 'a note',
           notes: [{ at: EPOCH, body: 'and a journal entry' }],
           amount: 12.5,
           quality: 4,
@@ -1387,7 +1416,13 @@ describe('the note on a session', () => {
     )
     return mine[mine.length - 1].id
   }
-  const noteOf = (id: string) => pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.note
+  /* ⚠️ THE FIRST JOURNAL ENTRY, because that is what "the note" became. `chronicle_entries.note`
+     was dropped once chronicle_notes held everything it had; these tests are about the behaviour
+     it had, which survives, not about the column. */
+  const noteOf = (id: string) =>
+    pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.notes[0]?.body ?? null
+  const noteIdOf = (id: string) =>
+    pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.notes[0]?.id ?? ''
 
   /**
    * ⚠️ THE BUG THIS IS FOR WAS REAL AND SHIPPED. The room passed `null` as the note on every edit
@@ -1410,21 +1445,54 @@ describe('the note on a session', () => {
     expect(noteOf(id)).toBe('drafted chapter three')
   })
 
+  /** ⚠️ through its own function now — the entry editor ignores `p_note`, as the server does */
   it('can be rewritten, and is trimmed', () => {
     const id = added(draw, h(9), h(10), 'first go')
-    pvEditEntry(id, h(9), h(10), '  second go  ')
+    expect(pvNoteEdit(noteIdOf(id), '  second go  ')).toBeNull()
     expect(noteOf(id)).toBe('second go')
   })
 
+  /**
+   * ⚠️ A FILE FROM BEFORE THE JOURNAL STILL CARRIES `note`, and dropping the column must not
+   * mean dropping what is in those backups. chronicle_import turns it into the sitting's first
+   * journal entry, and so does this — the round trip above cannot cover it, because the export
+   * no longer writes the key it is about.
+   */
+  it('reads a legacy note out of an older file', () => {
+    pvEmpty()
+    pvImport({
+      kind: 'chronicle',
+      version: 1,
+      activities: [{ id: 'a-old', name: 'Reading', cat: 'life' }],
+      entries: [
+        {
+          id: '99999999-9999-4999-8999-999999999999',
+          activity: 'a-old',
+          started_at: h(9),
+          ended_at: h(10),
+          note: '  from an older file  ',
+        },
+      ],
+    })
+    const back = pvEntries(dayStart(), dayEnd()).find((e) => e.activity === 'a-old')
+    expect(back?.notes.map((n) => n.body)).toEqual(['from an older file'])
+  })
+
   /** clearing one is still possible and now has to be asked for */
-  it('is cleared by an empty box, and by one holding only spaces', () => {
+  /**
+   * ⚠️ THE ENTRY EDITOR NO LONGER CLEARS ONE, AND THAT IS THE POINT OF THE CHANGE. It used to:
+   * `p_note` of '' meant "clear the column". With the column gone, chronicle_entry_edit ignores
+   * the argument entirely, so an older bundle sending '' cannot wipe a journal it does not know
+   * about. Clearing is chronicle_note_edit's job and is tested above.
+   */
+  it('is not cleared by an entry edit, whatever that edit sends', () => {
     const id = added(draw, h(9), h(10), 'first go')
     pvEditEntry(id, h(9), h(10), '')
-    expect(noteOf(id)).toBe(null)
+    expect(noteOf(id)).toBe('first go')
 
     const other = added(gym, h(13), h(14), 'something')
     pvEditEntry(other, h(13), h(14), '    ')
-    expect(noteOf(other)).toBe(null)
+    expect(noteOf(other)).toBe('something')
   })
 })
 

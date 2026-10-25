@@ -337,7 +337,6 @@ export async function entriesBetween(fromISO: string, toISO: string): Promise<En
     activity: String(e.activity),
     start: String(e.start),
     end: e.end ? String(e.end) : null,
-    note: e.note ?? null,
     /* a bundle talking to a server from before the journal existed gets nothing here */
     notes: Array.isArray(e.notes)
       ? (e.notes as Array<Record<string, unknown>>).map((n) => ({

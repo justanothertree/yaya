@@ -19,16 +19,14 @@ export type Entry = {
   /** ISO instants, as the server sends them */
   start: string
   end: string | null
-  note: string | null
   /**
    * The journal: everything you have written about this sitting, oldest first.
    *
-   * ⚠️ IT REPLACES `note` AND `note` IS STILL HERE. One text column meant a session you wanted to
-   * say three things about got one, and saying the third meant rewriting the first two — "instead
-   * of just a single note id want to be able to journal multiple things into an activity". The
-   * notes live in `chronicle_notes` now and the column is frozen where it stood: unread by this
-   * app, intact as a rollback, still carried by export and import so no backup loses anything.
-   * See docs/2026-10-23-chronicle-notes.sql.
+   * ⚠️ IT REPLACED A SINGLE `note` COLUMN, WHICH IS NOW GONE. One text column meant a sitting
+   * you wanted to say three things about got one, and saying the third meant rewriting the first
+   * two. The column was frozen for two days as a rollback and then dropped once its three rows
+   * were confirmed present here; an older BACKUP still carries its key, and chronicle_import
+   * turns that into the sitting's first journal entry. See docs/2026-10-23-chronicle-notes.sql.
    */
   notes: Note[]
   /**

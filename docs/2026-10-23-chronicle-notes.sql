@@ -51,3 +51,39 @@
 -- a blank body is refused; another member's session is refused; editing to empty removes the
 -- row; anon holds execute on none of the three. The round trip was perturbed in the double —
 -- dropping notes from pvExport turns the fill-every-field test red.
+
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- ✅ APPLIED — migration `chronicle_entries_drop_the_note_column`, 25 Oct 2026
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- The column is gone. Asked for and authorised: "it was all testing so far so go for it".
+--
+-- ⚠️ CHECKED BEFORE DROPPING, NOT ASSUMED. The migration above copied three notes into the
+-- table; before the drop ran, the count was still 3 in the column, 3 in the journal, and **0**
+-- entries carried a note with no matching journal row. A drop is the one thing in this file that
+-- cannot be undone, so the copy was confirmed rather than trusted.
+--
+-- ⚠️ THE `p_note` PARAMETERS STAY ON ALL THREE FUNCTIONS. A browser that loaded the site an hour
+-- ago still sends one, and changing a signature would make those calls fail outright rather than
+-- degrade. What changed is where it lands:
+--
+--   chronicle_entry_add   → writes it into the journal (a created sitting may carry a first note)
+--   chronicle_stop        → the same, and ONLY onto the sitting that actually closed: the update
+--                           takes no row for a timer under a second, which the next line deletes,
+--                           so a note sent with it has nothing to attach to and inventing a row
+--                           to hold it would record a sitting nobody sat
+--   chronicle_entry_edit  → ignores it. A journal entry is changed through chronicle_note_edit;
+--                           an edit that silently appended would turn pressing Save twice into
+--                           two copies of the same sentence.
+--
+-- ⚠️ AND AN OLDER BACKUP STILL CARRIES THE KEY. chronicle_export no longer writes `note` on an
+-- entry, but every file saved before today has one — so chronicle_import reads it and makes it
+-- the sitting's first journal entry, dated to that sitting's end. Dropping a column must not mean
+-- dropping what is in the backups people already hold.
+--
+-- chronicle_running_note is dropped with it: it existed only to write that column, and its last
+-- client caller went when the note box beside Stop did.
+--
+-- Proved in a rolled-back transaction: an old-bundle chronicle_entry_add with a note made exactly
+-- 1 journal row with the body trimmed; the day read carries 0 `note` keys and 2 `notes` arrays;
+-- the export carries 0 `note` keys on entries and 70 `notes`; and **goals keep their own `note`**,
+-- which is a different column three lines away in the same function and was not touched.

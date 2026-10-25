@@ -72,6 +72,7 @@ const span = (
   h: number,
   mins: number,
   amount: number | null = null,
+  /* a seeded sitting's note is its first journal entry now — the column is gone */
   note: string | null = null,
   quality: number | null = null,
 ): Entry => {
@@ -85,8 +86,15 @@ const span = (
     activity,
     start: a.toISOString(),
     end: new Date(a.getTime() + mins * 60_000).toISOString(),
-    note,
-    notes: [],
+    notes: note?.trim()
+      ? [
+          {
+            id: mint('pv-n'),
+            at: new Date(a.getTime() + mins * 60_000).toISOString(),
+            body: note.trim(),
+          },
+        ]
+      : [],
     amount,
     quality,
   }
@@ -258,7 +266,6 @@ function seed(): Store {
         activity: 'pv-draw',
         start: new Date(Date.now() - 7 * 60_000).toISOString(),
         end: null,
-        note: null,
         notes: [],
         amount: null,
         quality: null,
@@ -848,7 +855,10 @@ export const pvStop = (note: string | null): { why: string } | null => {
   if (now - Date.parse(open.start) < 1000) db().ents = db().ents.filter((e) => e !== open)
   else {
     open.end = new Date(now).toISOString()
-    open.note = note
+    /* ⚠️ the server's own words: chronicle_stop writes the note it is handed into
+       chronicle_notes now, and only onto the sitting that actually closed */
+    const said = (note ?? '').trim()
+    if (said) open.notes = [...open.notes, { id: mint('pv-n'), at: open.end, body: said }]
   }
   return null
 }
@@ -864,17 +874,6 @@ export const pvStop = (note: string | null): { why: string } | null => {
  * here and would have answered "no such activity" on the live site. An unfaithful double does not
  * only invent bugs — it hides them, and this one hid a real one until the check was copied.
  */
-/**
- * ⚠️ IT REFUSES WITH THE SERVER'S WORDS when nothing is open, because that is a state the room
- * can reach: leave the Now screen on a phone, let a Stop land from another tab, come back and
- * type. `chronicle_running_note` raises 'nothing is running'; so does this.
- */
-export const pvNoteRunning = (note: string): { why: string } | null => {
-  const open = db().ents.find((e) => e.end == null)
-  if (!open) return { why: 'nothing is running' }
-  open.note = note.trim() || null
-  return null
-}
 
 export const pvStart = (activity: string): { why: string } | null => {
   const a = db().acts.find((x) => x.id === activity)
@@ -904,7 +903,6 @@ export const pvStart = (activity: string): { why: string } | null => {
     activity,
     start: new Date().toISOString(),
     end: null,
-    note: null,
     notes: [],
     amount: null,
     quality: null,
@@ -946,10 +944,11 @@ export const pvAddEntry = (
   db().ents.push({
     id: mint('pv-e'),
     activity,
-    notes: [],
+    /* ⚠️ chronicle_entry_add puts the note a caller hands it into chronicle_notes now, so an
+       older bundle still records one — it just lands where notes live */
+    notes: note?.trim() ? [{ id: mint('pv-n'), at: toISO, body: note.trim() }] : [],
     start: fromISO,
     end: toISO,
-    note,
     amount: null,
     quality: null,
   })
@@ -965,7 +964,13 @@ export const pvEditEntry = (
   id: string,
   fromISO: string,
   toISO: string,
-  note: string | null,
+  /**
+   * ⚠️ TAKEN AND IGNORED, WHICH IS chronicle_entry_edit's OWN BEHAVIOUR NOW. The signature stays
+   * because a browser that loaded the site an hour ago still sends one; what changed is that
+   * there is no longer a column for it to land in, and a journal entry is edited through
+   * `pvNoteEdit`. An edit that silently appended would turn pressing Save twice into two copies.
+   */
+  _note: string | null,
   activity?: string | null,
 ): { why: string } | null => {
   const e = db().ents.find((x) => x.id === id)
@@ -997,7 +1002,9 @@ export const pvEditEntry = (
   Object.assign(e, {
     start: fromISO,
     end: toISO,
-    note: note === null ? e.note : note.trim() || null,
+    /* ⚠️ THE EDITOR IGNORES IT, which is chronicle_entry_edit's own behaviour now. A journal
+       entry is changed through pvNoteEdit; an edit that silently appended would turn pressing
+       Save twice into two copies of the same sentence. */
     activity: activity ?? e.activity,
   })
   return null
@@ -1130,7 +1137,6 @@ export const pvVisit = (room: string, secs: number): void => {
       activity: act.id,
       start: new Date(now - span * 1000).toISOString(),
       end: new Date(now).toISOString(),
-      note: null,
       notes: [],
       amount: null,
       quality: null,
@@ -1174,7 +1180,6 @@ export const pvExport = (): Record<string, unknown> => ({
       activity: e.activity,
       started_at: e.start,
       ended_at: e.end,
-      note: e.note,
       /* ⚠️ `at` and `body`, with no id — the server's export writes exactly that, because an id
          is this account's and a file is not. Carrying one would invite the import to trust it. */
       notes: e.notes.map((n) => ({ at: n.at, body: n.body })),
@@ -1359,12 +1364,25 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       activity: act,
       start,
       end,
-      note: str(e.note),
+      /* ⚠️ A FILE FROM BEFORE THE JOURNAL still carries `note`, and dropping the column must not
+         mean dropping what is in those backups — chronicle_import turns it into the sitting's
+         first journal entry, and so does this. */
       /* ⚠️ ONLY ON THE ROWS THAT WENT IN — the push above is skipped for an entry the store
          already holds, so a note can never be hung on the copy that was already there. The
          server says the same thing with `if found then`. A file with no `notes` key is an older
          file and reads as none. */
-      notes: (Array.isArray(e.notes) ? (e.notes as Array<Record<string, unknown>>) : [])
+      notes: [
+        ...(String(e.note ?? '').trim()
+          ? [
+              {
+                id: mint('pv-n'),
+                at: String(e.ended_at ?? e.started_at ?? new Date().toISOString()),
+                body: String(e.note).trim().slice(0, 4000),
+              },
+            ]
+          : []),
+        ...(Array.isArray(e.notes) ? (e.notes as Array<Record<string, unknown>>) : []),
+      ]
         .map((n) => ({
           id: mint('pv-n'),
           at: String(n.at ?? new Date().toISOString()),

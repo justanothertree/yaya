@@ -638,9 +638,9 @@ export function Timer({
    * still on screen to make it look fine. Now's own comment records the same measurement from
    * the other side, which is how it was found.
    *
-   * ⚠️ RE-SEEDED ON THE SITTING'S ID, NOT ON ITS NOTE. Keying this on `running?.note` too — which
-   * is what Now did — means our own autosave echoes back through a reload and overwrites whatever
-   * has been typed since. The id is the question actually being asked: is this a different
+   * ⚠️ RE-SEEDED ON THE SITTING'S ID. It once keyed on the sitting's note as well, back when a
+   * sitting had one — which meant an autosave echoing back through a reload overwrote whatever
+   * had been typed since. The id is the question actually being asked: is this a different
    * sitting from the one the box was filled for.
    */
   const runId = running?.id ?? null
@@ -1648,7 +1648,15 @@ export function Timer({
                     others are a word or a number and keep their place in the row. A plan's note
                     has been shown beside its plan all along; this is the same thing for a
                     session, which had been written and never read. */}
-                  {e.note ? <span className="muted chron-ent-note">{e.note}</span> : null}
+                  {/* ⚠️ THE FIRST ONE AND A COUNT, not all of them. A sitting can hold fifty
+                      journal entries and a log row is one line of a list — the row says there is
+                      something to read and the editor is where it is read. */}
+                  {e.notes.length ? (
+                    <span className="muted chron-ent-note">
+                      {e.notes[0].body}
+                      {e.notes.length > 1 ? ` +${e.notes.length - 1}` : ''}
+                    </span>
+                  ) : null}
                   {/**
                    * ⚠️ AN END OUTSIDE THIS DAY SAYS WHICH DAY IT IS IN. See `straddles`: the
                    * minutes beside this are only the share that falls here, so a bare
@@ -1693,7 +1701,6 @@ export function Timer({
                     onClick={() => {
                       setFixEnt(fixEnt === e.id ? null : e.id)
                       setEntAct(e.activity)
-                      setEntNote(e.note ?? '')
                       entWas.current = { from: e.start, to: e.end }
                       setEntFrom(forInput(e.start))
                       setEntTo(e.end ? forInput(e.end) : '')
@@ -2028,7 +2035,6 @@ export function Timer({
               setEntTo(e.end ? forInput(e.end) : '')
               setEntAmount(e.amount == null ? '' : String(e.amount))
               setEntMood(e.quality == null ? '' : String(e.quality))
-              setEntNote(e.note ?? '')
             }
           }}
           /**
