@@ -10,6 +10,7 @@ import {
 } from '../chronicle/record'
 import type { NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
 import type { Plan } from '../chronicle/plan'
+import { pvPictures } from './picturePreview'
 
 // ── DEV-ONLY chronicle preview store ─────────────────────────────────────────
 // Chronicle is members-only and keeps NO local copy — by design, see the long note at the top of
@@ -95,6 +96,7 @@ const span = (
           },
         ]
       : [],
+    picture: null,
     amount,
     quality,
   }
@@ -267,6 +269,7 @@ function seed(): Store {
         start: new Date(Date.now() - 7 * 60_000).toISOString(),
         end: null,
         notes: [],
+        picture: null,
         amount: null,
         quality: null,
       },
@@ -904,6 +907,7 @@ export const pvStart = (activity: string): { why: string } | null => {
     start: new Date().toISOString(),
     end: null,
     notes: [],
+    picture: null,
     amount: null,
     quality: null,
   })
@@ -949,6 +953,7 @@ export const pvAddEntry = (
     notes: note?.trim() ? [{ id: mint('pv-n'), at: toISO, body: note.trim() }] : [],
     start: fromISO,
     end: toISO,
+    picture: null,
     amount: null,
     quality: null,
   })
@@ -1135,6 +1140,7 @@ export const pvVisit = (room: string, secs: number): void => {
     db().ents.push({
       id: mint('pv-e'),
       activity: act.id,
+      picture: null,
       start: new Date(now - span * 1000).toISOString(),
       end: new Date(now).toISOString(),
       notes: [],
@@ -1362,6 +1368,10 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     db().ents.push({
       id,
       activity: act,
+      /* ⚠️ a picture id from a file belongs to the account that took it — chronicle_import keeps
+         one only when the row exists and is the importer's, and the double has no way to own
+         somebody else's, so a restored sitting arrives without one */
+      picture: null,
       start,
       end,
       /* ⚠️ A FILE FROM BEFORE THE JOURNAL still carries `note`, and dropping the column must not
@@ -1846,6 +1856,7 @@ export const pvFriendsLog = (fromISO: string, toISO: string) => {
       colour: r.colour,
       start: a.toISOString(),
       end: new Date(a.getTime() + r.mins * 60_000).toISOString(),
+      picture: null,
       amount: r.amount,
       metric: r.metric,
     }
@@ -1941,4 +1952,20 @@ export const pvNoteEdit = (id: string, body: string): { why: string } | null => 
     return null
   }
   return { why: 'no such note' }
+}
+
+/**
+ * ⚠️ BOTH HALVES CHECKED, IN THE SERVER'S WORDS. chronicle_entry_picture refuses a session that
+ * is not yours and a picture that is not yours, with 'no such session' and 'no such picture';
+ * the double has one owner, so the version of those checks it can keep is that each exists — and
+ * it must keep them, or the workbench would accept what the live site refuses.
+ */
+export const pvEntryPicture = (entry: string, picture: string | null): { why: string } | null => {
+  const e = db().ents.find((x) => x.id === entry)
+  if (!e) return { why: 'no such session' }
+  if (picture !== null && !pvPictures().some((p: { id: string }) => p.id === picture)) {
+    return { why: 'no such picture' }
+  }
+  e.picture = picture
+  return null
 }

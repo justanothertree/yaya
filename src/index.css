@@ -15802,6 +15802,36 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The photograph on a sitting.
+ *
+ * ⚠️ THE THUMBNAIL, NEVER THE FULL ONE. The grid in the Pictures room learned this the
+ * expensive way: a 320px thumb against a 1600px original is roughly a tenth of the bytes, for
+ * something drawn two inches wide. `object-fit: contain` because a sitting's photograph is as
+ * likely to be a portrait as a landscape and cropping one to a strip tells you less than a
+ * smaller whole picture does.
+ */
+.chron-shot {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.chron-shot img {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.chron-shot .btn {
+  min-height: 38px;
+}
+/* a row says there is one without drawing it — a log is a list, not a gallery */
+.chron-ent-shot {
+  font-size: 0.8rem;
+}
+
+/**
  * The journal on a sitting.
  *
  * ⚠️ EACH ENTRY KEEPS ITS OWN MOMENT, and that is what makes it a journal rather than a bigger

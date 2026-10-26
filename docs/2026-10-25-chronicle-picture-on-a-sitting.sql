@@ -1,0 +1,40 @@
+-- ✅ APPLIED — migration `chronicle_entries_take_a_picture`, 25 Oct 2026
+--
+-- A sitting can carry a photograph. The chronicle third of "i want to be able to upload a picture
+-- to a chronicle or circuit or review".
+--
+-- ⚠️ WHY THIS THIRD FIRST, AND WHAT THE OTHER TWO ACTUALLY NEED. A sitting is yours and nobody
+-- else reads it, so a photograph on one needs no sharing design at all. A rating and a workout are
+-- SHARED surfaces — circuit_logs is governed by `circuit_can_see_person(person_id)` and ratings by
+-- their own policies — so a photograph on either has to be signable by a VIEWER. The `pictures`
+-- edge function cannot do that: its `view` op is backed by `pictures_mine`, which only ever signs
+-- the caller's own. Doing those properly means a new RPC answering "may this person see this
+-- picture" in one place (owner, or attached to a thing they may already see), a new op on the
+-- edge function, and an attach control in the circuit UI — where `circuit_logs.img` today has a
+-- renderer in Feed.tsx and NO WRITER ANYWHERE. None of that is pretended at here.
+--
+-- ⚠️ AN ID, NOT A URL. R2 is private and every link into it is signed for a short while; a URL
+-- stored on a row is a link that stops working with nothing to say it has. The column holds the
+-- id and the room trades it for a fresh link when something is about to be drawn.
+--
+-- ⚠️ `on delete set null`, NOT cascade. Deleting a photograph must not delete the hour you spent:
+-- the sitting is the record and the picture is a thing hung on it.
+--
+-- ⚠️ BOTH HALVES ARE CHECKED, and the second is the one that is easy to forget.
+-- chronicle_entry_picture refuses a sitting that is not yours AND a picture that is not yours —
+-- without the second, a row you own could be made to point at a key you do not, and since
+-- member_pictures is deny-all nothing else covers it.
+--
+-- ⚠️ A RESTORED PICTURE ID ONLY MEANS SOMETHING ON THE ACCOUNT THAT TOOK IT. The export carries
+-- the id so a restore onto the same account keeps its photographs; the import keeps it only when
+-- the row exists and is the importer's. A file carried elsewhere names rows that are not theirs,
+-- which the foreign key would refuse outright — so the sitting comes back without its photograph,
+-- which is honest rather than broken.
+--
+-- ⚠️ AND IT DOES NOT CROSS TO A FRIEND. chronicle_friends_log carries no note and no rating
+-- because the profile card's "never shows" list promises as much, and a photograph is more than
+-- either. Nothing in this migration touches that function.
+--
+-- Proved in a rolled-back transaction: attaching reads back through chronicle_entries_between;
+-- another member hanging a picture on that sitting is refused; null clears it; anon holds execute
+-- on none of it.

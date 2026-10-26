@@ -36,6 +36,7 @@ import {
   pvVisit,
   pvFriendsLog,
   pvMoments,
+  pvEntryPicture,
   pvNoteAdd,
   pvNoteEdit,
 } from '../dev/chroniclePreview'
@@ -337,6 +338,7 @@ export async function entriesBetween(fromISO: string, toISO: string): Promise<En
     activity: String(e.activity),
     start: String(e.start),
     end: e.end ? String(e.end) : null,
+    picture: typeof e.picture === 'string' ? e.picture : null,
     /* a bundle talking to a server from before the journal existed gets nothing here */
     notes: Array.isArray(e.notes)
       ? (e.notes as Array<Record<string, unknown>>).map((n) => ({
@@ -362,6 +364,25 @@ export async function addNote(entry: string, body: string): Promise<{ why: strin
   const { error } = await getSupabaseClient().rpc('chronicle_note_add', {
     p_entry: entry,
     p_body: body,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Hang a photograph on a sitting, or take it off with null.
+ *
+ * ⚠️ BOTH HALVES ARE CHECKED ON THE SERVER. The sitting has to be yours and so does the picture
+ * — the second is the one that is easy to forget, and without it a row you own could be made to
+ * point at a key you do not. member_pictures is deny-all, so nothing else covers either.
+ */
+export async function setEntryPicture(
+  entry: string,
+  picture: string | null,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvEntryPicture(entry, picture)
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_picture', {
+    p_entry: entry,
+    p_picture: picture,
   })
   return error ? { why: error.message || 'that did not save' } : null
 }

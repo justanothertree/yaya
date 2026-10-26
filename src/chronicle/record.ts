@@ -30,6 +30,19 @@ export type Entry = {
    */
   notes: Note[]
   /**
+   * A photograph hung on this sitting, by id — or null.
+   *
+   * ⚠️ AN ID, NOT A URL, BECAUSE A URL EXPIRES. R2 is a private bucket and every link to it is
+   * signed for a short while; storing one would give a row a link that stops working and no way
+   * to tell that it had. The id is permanent and `seePictures` trades it for a fresh link when
+   * something is about to be drawn.
+   *
+   * ⚠️ AND IT DOES NOT CROSS TO A FRIEND. chronicle_friends_log carries no note and no rating
+   * because the profile card promises as much; a photograph is more than either and is covered
+   * by the same promise.
+   */
+  picture: string | null
+  /**
    * How much of the activity's metric this session produced, or null.
    *
    * ⚠️ AN AMOUNT DOES NOT SPLIT ACROSS MIDNIGHT, which is the one place it behaves unlike the

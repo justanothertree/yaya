@@ -8,6 +8,7 @@ import {
   editNote,
   fixRunning,
   setAmount,
+  setEntryPicture,
   setQuality,
   entriesBetween,
   myActivities,
@@ -23,6 +24,8 @@ import { WeekGrid } from './WeekGrid'
 import { weekOf } from './week'
 import { Routines } from './Routines'
 import { Modal } from '../circuit/ui/Modal'
+import { AddPicture } from '../pictures/AddPicture'
+import { myPictures, type Kept } from '../pictures/cloud'
 import { tilesFor } from './nowTiles'
 import {
   CATS,
@@ -572,6 +575,38 @@ export function Timer({
     setTyped('')
     await after()
     await go(made.id)
+  }
+
+  /**
+   * The photograph on the sitting the dialog is showing, with a link that works now.
+   *
+   * ⚠️ FETCHED, NOT STORED. The row keeps an id; R2 is private and every link to it is signed
+   * for a short while, so a URL kept anywhere is a link that stops working with nothing to say
+   * it has. This asks for one when the dialog opens and forgets it when it closes.
+   */
+  const [shot, setShot] = useState<Kept | null>(null)
+  useEffect(() => {
+    const id = fixEnt ?? justDid
+    const want = id ? (log.find((x) => x.id === id)?.picture ?? null) : null
+    if (!want) return setShot(null)
+    let dead = false
+    void (async () => {
+      const got = await myPictures()
+      if (!dead) setShot(got.pictures.find((p) => p.id === want) ?? null)
+    })()
+    return () => {
+      dead = true
+    }
+     
+  }, [fixEnt, justDid, log])
+
+  const hangPicture = async (entry: string, picture: string | null) => {
+    if (busy) return
+    setBusy(true)
+    const bad = await setEntryPicture(entry, picture)
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    await after()
   }
 
   const flushReps = async () => {
@@ -1651,6 +1686,15 @@ export function Timer({
                   {/* ⚠️ THE FIRST ONE AND A COUNT, not all of them. A sitting can hold fifty
                       journal entries and a log row is one line of a list — the row says there is
                       something to read and the editor is where it is read. */}
+                  {e.picture ? (
+                    <span
+                      className="muted chron-ent-shot"
+                      title="has a photograph"
+                      aria-label="has a photograph"
+                    >
+                      📷
+                    </span>
+                  ) : null}
                   {e.notes.length ? (
                     <span className="muted chron-ent-note">
                       {e.notes[0].body}
@@ -1900,6 +1944,30 @@ export function Timer({
              * state it returns to is the one it started in, which is the only thing an undo here
              * could sensibly mean.
              */}
+            {/**
+             * ⚠️ THE PICKER IS THE ONE FROM THE PICTURES ROOM, which is the whole reason it was
+             * lifted out of it. Choose, squeeze, keep — and what comes back is an id, which is
+             * all this sitting stores. A signed link is fetched when something is about to be
+             * drawn, because every link into a private bucket expires.
+             */}
+            <div className="chron-field">
+              <label>Photograph</label>
+              {shot ? (
+                <div className="chron-shot">
+                  <img src={shot.thumbUrl} alt={shot.alt ?? ''} />
+                  <button
+                    className="btn btn-ghost"
+                    disabled={busy}
+                    onClick={() => void hangPicture(e.id, null)}
+                  >
+                    Take it off
+                  </button>
+                </div>
+              ) : (
+                <AddPicture label="+ Add a photo" onKept={(k) => hangPicture(e.id, k.id)} />
+              )}
+            </div>
+
             {e.end && (
               <div className="chron-field">
                 <label>How did it go? (optional)</label>
