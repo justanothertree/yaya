@@ -14,12 +14,12 @@ import { ProfileCall } from '../voice/ProfileCall'
 import {
   ProfileBlocksEditor,
   ProfileBlocksView,
-  type ActivityItem,
   type ProfileTrophy,
   type ProfileBlock,
   type Tier,
   type Achievement,
 } from './ProfileBlocks'
+import type { ActivityItem } from './activityLine'
 
 // duplicated from ProfileBlocks.tsx's own (unexported) copy -- kept local rather than shared,
 // since exporting a plain constant alongside components there breaks Fast Refresh

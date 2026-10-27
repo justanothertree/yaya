@@ -1,0 +1,91 @@
+-- ✅ APPLIED  migrations: member_activity_includes_reviews, member_activity_rating_not_review
+--
+-- get_member_activity becomes the one catalogue of what somebody has been doing.
+--
+-- WHY
+-- The circuit's activity feed was built with the idea that a person's doings — workouts, reviews,
+-- scores — would be catalogued in one place, and chronicle is the point at which there is enough
+-- data for that to mean anything. The feed already had the visibility model, the ordering and the
+-- cap; what it did not have was the largest kind of event on the site. 79 ratings for one member
+-- alone were invisible to the feed that exists to show them.
+--
+-- WHAT
+-- A fourth branch, union'd into the same ordered set as the other three:
+--
+--   select 'rating' as kind, r.updated_at as at,
+--          coalesce(nullif(btrim(mv.title), ''), 'Something') as detail,
+--          r.score, null::jsonb as items
+--     from public.circuit_ratings r
+--     join public.circuit_movies mv on mv.id = r.movie_id
+--    where r.user_id = v_target
+--      and r.score is not null
+--      and public.movie_visible(r.movie_id)
+--
+-- `updated_at` IS NOT A CHOICE. circuit_ratings has no created_at — the columns are movie_id,
+-- user_id, score, icons, review, updated_at and nothing else. So an edited rating re-dates its
+-- own event and rises back up the feed. That is a consequence worth knowing about rather than a
+-- preference, and "fix it to use created_at" is not available without a new column.
+--
+-- `rating` AND NOT `review`, which is the name it carried for its first hour. chronicle_moments
+-- already called this same event `rating`; shipping a second word for one event is how two
+-- catalogues that are meant to converge drift apart instead. The app agrees — circuit_ratings,
+-- MovieRate, "Rate it" — and `review` is the name of the PROSE column on that table, so the word
+-- was already taken by something else.
+--
+-- VISIBILITY: nothing new is decided here, and that was the thing to check rather than assume.
+--
+-- movie_visible() is viewer-dependent: a member of the film's circuit, somebody who rated it
+-- themselves, a friend of somebody who rated it, or an admin. Every one of those tests is about
+-- auth.uid(), so for a viewer with no uid the whole predicate is false.
+--
+-- That matters because get_public_activity — the door anon holds execute on — is a gate that
+-- delegates straight to this function. Adding a kind here adds it there, to the anonymous
+-- internet, on profiles whose owners set public_page + activity_visibility = 'public' back when
+-- the feed meant workouts and game scores. CLAUDE.md §3: everybody who chose that chose it under
+-- the meaning it had then.
+--
+-- So it was measured as a true anonymous caller rather than reasoned about:
+--
+--   begin;
+--   select set_config('request.jwt.claims', null, true);     -- auth.uid() is null
+--   select jsonb_array_length(public.get_public_activity('evan', 50))                 -- 50 rows
+--        , (select count(*) from jsonb_array_elements(public.get_public_activity('evan',50)) e
+--            where e->>'kind' = 'rating');                                            -- 0
+--   rollback;
+--
+-- 0 ratings of the 79 that member holds. The published page did not widen by one row. A signed-in
+-- stranger does see some, which is movie_visible doing its job rather than failing to.
+--
+-- AND THE ACL, because a create-or-replace keeping its grants is a claim like any other:
+--
+--   get_member_activity  anon=false  authenticated=true   -- members only
+--   get_public_activity  anon=true   authenticated=true   -- the published-page door
+--   movie_visible        anon=false  authenticated=true   -- reached only from inside a definer
+--   chronicle_moments    anon=false  authenticated=true
+--
+-- WHAT THE CLIENT GOT WRONG, since it is the better half of the lesson.
+--
+-- activityLine() ended in a bare `return 'Scored ' + a.score + …` with no kind test in front of
+-- it — the snake-score case, serving as a default. So the new kind fell through it and a film
+-- rendered as "Scored 94 · Mistfall Hunter": a sentence about the wrong thing, from a function
+-- that threw nothing, with a build and a typecheck that stayed green, on a page where nothing
+-- looked broken.
+--
+-- Fixed twice over, because the two halves fail at different times:
+--   * the snake branch now tests its own kind and the function ends in `const x: never = a.kind`,
+--     so a kind added LATER with no sentence of its own is a type error;
+--   * the formatter moved to src/sections/activityLine.ts with a test asking the one question the
+--     bug answers wrongly — feed every kind the same score, detail and timestamp and require the
+--     four lines to DIFFER. A test comparing each kind to a string typed out from the code is the
+--     same sum twice and would have agreed with the bug.
+--
+-- Both were made to speak before being believed. With the exact original shape put back (no
+-- rating branch, bare snake fallthrough) the typecheck is GREEN — a fallthrough is legal
+-- TypeScript, which is precisely why it shipped — and the test fails with
+-- `expected 3 to be 4` plus the real wrong string. With only the branch removed, the typecheck
+-- fails at the `never`. Neither guard covers both halves.
+--
+-- It also could not be verified on screen, and that is worth writing down: neither profile path
+-- renders activity in the Browser pane. Both go straight to an RPC and previewMember has no
+-- session, while the demo path sets setActivity([]) deliberately. So the function is verified and
+-- the RPC is verified; the two of them together on a real page is not.

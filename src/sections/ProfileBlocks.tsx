@@ -7,6 +7,7 @@ import {
   subscribeLooks,
   type Look,
 } from '../ui/looks'
+import { activityLine, type ActivityItem } from './activityLine'
 import { createPortal } from 'react-dom'
 import { moveTab } from '../ui/tabStrip'
 import { getSupabaseClient } from '../finance/client'
@@ -241,16 +242,6 @@ const TIER_LABEL: Record<Tier, string> = {
   private: 'Only me',
 }
 
-export type ActivityItem = {
-  kind: 'circuit_log' | 'snake_score' | 'snake_trophy'
-  at: string
-  /** for a circuit log this is the circuits you SHARE, and null when you share none */
-  detail: string | null
-  score: number | null
-  /** circuit logs only: what was actually done, resolved against their own exercise list */
-  items?: Array<{ name: string; unit: string | null; val: number; points: number }> | null
-}
-
 const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   bio: '📝 Bio',
   free: '🧩 Free',
@@ -276,32 +267,6 @@ const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
  * state, a row of moods to click does not.
  */
 const MOODS = ['💭', '🎮', '💪', '🔥', '😴', '🎬', '🎧', '🍕', '🧠', '😤', '🥳', '🫠'] as const
-
-/** 2.5 -> "2.5", 40 -> "40" — a rep count should not read as 40.0 */
-const num = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100))
-
-function activityLine(a: ActivityItem): string {
-  const when = new Date(a.at).toLocaleDateString()
-  if (a.kind === 'circuit_log') {
-    /**
-     * "Logged a workout in The Crew" is the fact that activity happened, not the activity. The
-     * circuit feed says what was done, and so does this now.
-     *
-     * `detail` is the circuits you SHARE with them and is null when you share none — the person
-     * decides who sees their activity, but a group's NAME involves people other than them, so
-     * you get the what without the where.
-     */
-    const did = (a.items ?? [])
-      .map((it) => `${num(it.val)}${it.unit ? ' ' + it.unit : ''} ${it.name}`)
-      .join(', ')
-    const pts = a.score ? ` · ${a.score} pts` : ''
-    const where = a.detail ? ` · ${a.detail}` : ''
-    return (did || 'Logged a workout') + pts + where + ' · ' + when
-  }
-  if (a.kind === 'snake_trophy')
-    return 'Won ' + a.detail + ' in Snake (score ' + a.score + ') · ' + when
-  return 'Scored ' + a.score + (a.detail ? ' · ' + a.detail : '') + ' · ' + when
-}
 
 /**
  * A trophy, from get_member_trophies — EVERY one of them.
