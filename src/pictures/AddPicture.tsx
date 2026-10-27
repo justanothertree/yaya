@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { keepPicture, prepare, type Squeezed } from './cloud'
 import { FLOOR_QUALITY, MAX_QUALITY, sayBytes, savedBy } from './shrink'
 
@@ -39,6 +39,10 @@ export function AddPicture({
   const [busy, setBusy] = useState(false)
   const [working, setWorking] = useState(false)
   const [say, setSay] = useState<string | null>(null)
+  const [coarse] = useState(
+    () =>
+      typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true,
+  )
 
   const moan = (why: string) => {
     setSay(why)
@@ -118,26 +122,57 @@ export function AddPicture({
     await onKept(out)
   }
 
+  /* ⚠️ the input is cleared so choosing the SAME file again still fires a change — otherwise a
+     person who picked the wrong one, then picked it again on purpose, gets nothing and no
+     explanation. Both doors below share this, so the camera inherits it rather than forgetting it. */
+  const took = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null
+    setFile(f)
+    setReady(null)
+    show(null)
+    e.target.value = ''
+  }
+
   return (
     <div className="pics-add">
-      <label className="btn pics-pick">
-        {label}
-        <input
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          onChange={(e) => {
-            const f = e.target.files?.[0] ?? null
-            setFile(f)
-            setReady(null)
-            show(null)
-            /* ⚠️ the input is cleared so choosing the SAME file again still fires a change —
-               otherwise a person who picked the wrong one, then picked it again on purpose, gets
-               nothing and no explanation */
-            e.target.value = ''
-          }}
-        />
-      </label>
+      <span className="pics-doors">
+        <label className="btn pics-pick">
+          {label}
+          <input type="file" accept="image/*" className="sr-only" onChange={took} />
+        </label>
+
+        {/**
+         * ⚠️ `capture` IS A HINT TO THE DEVICE, NOT A CAMERA API, and that is why this is five
+         * lines rather than a hundred. On a phone `capture="environment"` opens the rear camera
+         * straight away and hands back a file; everything after that — the squeeze, the dial, the
+         * presigned PUT — is the path a chosen file already takes, so there is nothing new to get
+         * wrong in the part that matters.
+         *
+         * ⚠️ AND IT IS HIDDEN ON A MOUSE, because there it is not a camera button: a desktop
+         * browser ignores `capture` and opens the ordinary file picker, so the two controls would
+         * do exactly the same thing under different names. `(pointer: coarse)` is the question
+         * §6 of CLAUDE.md already asks everywhere else.
+         *
+         * Read once rather than watched: a device does not stop being a phone mid-session. A
+         * convertible switching from touch to trackpad keeps whichever it booted with until a
+         * reload, which is a worse trade than a listener on every mount.
+         *
+         * A webcam on a desktop would need getUserMedia, a video element and a canvas grab —
+         * worth doing if a profile picture ever wants it, and not worth it for this.
+         */}
+        {coarse ? (
+          <label className="btn btn-ghost pics-pick">
+            📷 Take a photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={took}
+            />
+          </label>
+        ) : null}
+      </span>
 
       {say ? (
         <p className="pics-say" role="status">

@@ -25,6 +25,7 @@ import { weekOf } from './week'
 import { Routines } from './Routines'
 import { Modal } from '../circuit/ui/Modal'
 import { AddPicture } from '../pictures/AddPicture'
+import { HoldButton } from '../ui/HoldButton'
 import { seenPictures, type Kept } from '../pictures/cloud'
 import { tilesFor } from './nowTiles'
 import {
@@ -72,7 +73,19 @@ import {
  * the exact form underneath, and anything coarser than fifteen is faster by repeating a tap than
  * by having a third size on the row.
  */
-const NUDGES = [-15, -5, 5, 15] as const
+/**
+ * ⚠️ TWO BUTTONS AT ONE MINUTE, WHERE THERE WERE FOUR AT FIVE AND FIFTEEN.
+ *
+ * The four were `[-15, -5, 5, 15]`, and they failed in both directions at once: you could not
+ * reach an exact minute with them, and they were four of the controls on a row that was already
+ * called "very control dense". "A plus and minus button to really adjust single increments that I
+ * can easily press and hold to ramp faster" solves both — one minute is exact, and a hold crosses
+ * an hour in about three seconds, so the coarse jumps have nothing left to do.
+ *
+ * The ramp itself lives in src/ui/hold.ts, where it can be asked how far a given hold moves
+ * rather than felt for in a browser that never fires a frame.
+ */
+const STEP_MINUTES = 1
 
 /** a day either side, by local calendar arithmetic rather than by adding hours */
 const dayStep = (iso: string, by: number): string => {
@@ -1801,22 +1814,38 @@ export function Timer({
         const untouched =
           was?.to != null && forInput(was.from) === entFrom && forInput(was.to) === entTo
         const ms = untouched ? Date.parse(was.to!) - Date.parse(was.from) : (len ?? 0) * 60_000
-        const when = (label: string, value: string, set: (v: string) => void) => (
+        const when = (
+          label: string,
+          value: string,
+          set: React.Dispatch<React.SetStateAction<string>>,
+        ) => (
           <div className="chron-field">
             <label>{label}</label>
             <div className="chron-when-row">
               <strong className="chron-when-at">{clockOfLocal(value)}</strong>
               <span className="chron-nudges">
-                {NUDGES.map((n) => (
-                  <button
-                    key={n}
-                    className="btn btn-ghost chron-nudge"
-                    onClick={() => set(nudgeLocal(value, n))}
-                    aria-label={`${label} ${n < 0 ? `${-n} minutes earlier` : `${n} minutes later`}`}
-                  >
-                    {n > 0 ? `+${n}` : n}
-                  </button>
-                ))}
+                {/**
+                 * ⚠️ THE UPDATER FORM, NOT `set(nudgeLocal(value, …))`, AND AT 40ms IT MATTERS.
+                 * `value` is read from the render that drew the button. A repeat that fires
+                 * before React has committed the previous one would compute from the OLD time
+                 * and write the same minute again — a hold that visibly stalls and then jumps,
+                 * from steps that were counted and thrown away. Asking the setter for its own
+                 * current value has no such window.
+                 */}
+                <HoldButton
+                  className="btn btn-ghost chron-nudge"
+                  label={`${label} one minute earlier (hold to go faster)`}
+                  onStep={() => set((cur) => nudgeLocal(cur, -STEP_MINUTES))}
+                >
+                  −
+                </HoldButton>
+                <HoldButton
+                  className="btn btn-ghost chron-nudge"
+                  label={`${label} one minute later (hold to go faster)`}
+                  onStep={() => set((cur) => nudgeLocal(cur, STEP_MINUTES))}
+                >
+                  +
+                </HoldButton>
               </span>
             </div>
           </div>

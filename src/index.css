@@ -18216,6 +18216,18 @@ a.cz-msg-author:focus-visible {
 
 /* ── Pictures ──────────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * ⚠️ A WRAPPING ROW, BECAUSE THERE ARE TWO DOORS ON A PHONE AND ONE ON A MOUSE. Choose a picture
+ * and Take a photo sit side by side where they fit and stack where they do not — and the phone is
+ * exactly where there are two of them and the least room for them. `gap` rather than a margin on
+ * the buttons, so the single-door case has nothing trailing it.
+ */
+.pics-doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
 .pics-pick {
   display: inline-block;
   min-height: 44px;

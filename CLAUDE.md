@@ -486,6 +486,19 @@ test` and `npm run build` all green. A reload fetched the same stale source, and
   `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
   returns `false` — so a confirmed action appears to do nothing and the feature appears broken
   (this cost an hour on the paint room's Clear button, which was fine).
+- **`setPointerCapture` THROWS FOR EVERY SYNTHETIC `pointerId` EXCEPT 1, AND A HANDLER THAT
+  CAPTURES BEFORE IT ACTS READS AS COMPLETELY DEAD.** Measured on 27 Oct, asking the browser
+  directly rather than guessing: `pointerId: 1` is **accepted** — Chrome treats it as the active
+  mouse pointer — while `2` and `99` raise **NotFoundError**. So a probe that dispatches
+  `pointerdown` with an invented id takes down whatever ran after the capture call. It cost a
+  wrong diagnosis on the new hold-to-ramp button: holding moved nine minutes and a tap moved
+  **zero**, which looks exactly like a broken control and was a broken probe — the hold happened
+  to use id 1 and the tap used id 2. **Dispatch pointer events with `pointerId: 1`**, and when
+  one synthetic press works and another does not, suspect the id before the component.
+  It is worth fixing in the product too, for a different reason: capture is an enhancement (it
+  stops a repeat running away when a thumb slides off a small button) and the step is the point,
+  so the step goes first and the capture is allowed to fail. A real finger always has a live
+  pointer, so this would never have shown up from use — only from being asked.
 - **A `computer` click in the pane is about 1ms long, which is shorter than a frame.** Measured:
   pointerdown and pointerup one millisecond apart. Anything that samples a LEVEL once a frame —
   a held key, a held button, a cast slot — never sees it, so the feature reads as broken and is
