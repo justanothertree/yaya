@@ -194,6 +194,23 @@ that render nothing at zero first**.
   `dist/` cannot tell the two apart. **So a `:4173` check is sound about code and says nothing
   about anything env-dependent**, and `grep dist/` for a suspicious constant wants the deploy
   workflow read before it is believed.
+- **AN EDGE-FUNCTION DEPLOY SENDS THE WHOLE FILE AS ONE ARGUMENT, AND THERE IS NO DIFF TO
+  LOOK AT.** Every other way code reaches production here goes through `git`, where a wrong
+  file announces itself as a diff and the pre-push hook builds it. `deploy_edge_function`
+  takes the file's entire contents inline, applies it instantly, and shows nothing — so on
+  26 Oct the `pictures` function went live as version 10 with the literal string
+  `PLACEHOLDER` as its whole body, from a template value left in the call. 87.9 seconds, and
+  it would have broken every upload, view and delete in that window. **Read the file and pass
+  what you read**, and afterwards prove the deployed module is the one you meant.
+  ⚠️ **AND THE PLATFORM'S 401 PROVES NOTHING**, which is what made the first check worthless:
+  with `verify_jwt` on, the gateway answers an unauthenticated POST before any code runs, so
+  `{"code":"UNAUTHORIZED_NO_AUTH_HEADER"}` comes back identically from a working function and
+  from a syntax error. A function with no body cannot be told from a healthy one that way. The
+  check that works is to make the deployed code say something only it would say — here, a
+  preflight carrying `Access-Control-Request-Headers: x-yaya-echo-probe-9f3a`, which came back
+  with that exact string echoed, because echoing is what this file's `corsFor` does and no
+  gateway invents it. **Ask the deployment for a sentence that is in your source and nowhere
+  else.**
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has
