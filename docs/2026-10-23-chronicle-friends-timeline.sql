@@ -100,3 +100,40 @@
 -- authenticated. The five chronicle tables were checked while here and are properly deny-all --
 -- RLS on, zero policies, and grants to postgres and service_role only, never anon or
 -- authenticated, so the §3 TRUNCATE hole is not open on any of them.
+
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════
+-- DECIDED, 27 Oct 2026: chronicle keeps its OWN opt-ins. No consolidation into
+-- activity_visibility. Nothing was changed; this is here so the question is not re-opened and
+-- quietly answered the other way.
+--
+-- The question was which switch governs a chronicle sitting appearing in somebody else's view:
+-- `profiles.activity_visibility`, the per-member tier every one of the 14 members already has
+-- set, or the chronicle block's own per-activity opt-ins. Evan's answer was "idk", so this is my
+-- call, and the conservative direction is the only defensible one.
+--
+-- THREE REASONS, IN ORDER OF WEIGHT.
+--
+-- 1. CLAUDE.md §3: "Two different tiers are not one decision." Every member who set
+--    activity_visibility set it when a feed meant workouts, game scores and — since this week —
+--    film ratings. A chronicle sitting is not that. It is minute-by-minute: when you got up, how
+--    long you worked, what you did instead of working. Folding the two would widen what fourteen
+--    people already chose, without any of them being asked, and the fact that it would be one
+--    line of SQL is exactly what makes it dangerous.
+--
+-- 2. The narrower gate already exists and is already the owner's stated preference. Asked who
+--    should see a friend's chronicle timeline, the answer was "friends only", and that is what
+--    chronicle_friends_log enforces: an accepted friendship AND the activity's own `shared`
+--    flag. Two opt-ins, both deliberate, currently 15 friendships and 0 shared activities — so
+--    nothing is exposed today and nothing becomes exposed by accident.
+--
+-- 3. The catalogues can converge without the VISIBILITY converging, and that is the useful half
+--    of the original idea. get_member_activity is now the one place that answers "what has this
+--    person been doing" for workouts, ratings and scores — one ordering, one cap, one visibility
+--    model. Chronicle sittings are a different question with a different audience, and a feed
+--    does not become more honest by containing everything.
+--
+-- WHAT WOULD CHANGE THIS: somebody actually asking for it. If a member turns their timeline on
+-- and then wants it to follow their profile's tier rather than its own switches, that is a
+-- request from the person whose data it is, which is the only authority that makes it a good
+-- idea. Until then the two stay separate.
