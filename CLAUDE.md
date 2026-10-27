@@ -287,6 +287,21 @@ that render nothing at zero first**.
   namespace import to named ones changed it, both measured as an identical bundle hash; building
   the store behind a function fixed it. `grep` the built `dist/assets/*.js` for a string only the
   harness contains, and keep its data in plain literals on exports nobody reaches.
+- **⚠️ AND THE SECOND CAUSE IS CODE SPLITTING, WHICH NO GUARD AND NO FUNCTION WRAPPER FIXES.**
+  The note above is right that a module-scope call keeps a file, and acting on it only got half
+  of `previewMember.ts` out. Measured on 26 Oct: `index-*.js` carried
+  `{id:"preview-me",name:"Preview You",…}` plus a run of discarded `t(180), t(174), …`.
+  Making the message fixtures lazy removed the calls — the half with a real cost, about a dozen
+  `Date` constructions per page load — and `preview-me` was **still there**. The next question
+  is the one that settles it: **is the binding referenced, or merely defined?** Counting its
+  occurrences in the chunk gave three, and the telling one was in the chunk's own EXPORT LIST
+  (`Vv as ad`). previewMember.ts lands in the shared entry chunk while Chat and Account are
+  split out, so the binding is re-exported ACROSS a chunk boundary; every importer's
+  `previewMember ? … : …` folds correctly at its own site and the export survives anyway.
+  So `import.meta.env.DEV` folding is a claim about BRANCHES, never about the module, and an
+  `export const` reachable from a lazily-loaded chunk ships whatever it holds. Grep `dist/` for
+  a string only the harness contains, and when it is still there after the obvious fix, ask
+  whether the minified binding appears more than once rather than guessing at another cause.
 - **A dynamic `import()` in the pane is a SECOND COPY of the module, and the app is bound to
   the other one.** Reaching into a module store from the console to drive a room —
   `setWorld(...)`, and the like — can update that store, fire a listener you registered on it,

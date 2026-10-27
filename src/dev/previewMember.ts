@@ -7,7 +7,10 @@ import type { ProfileData } from '../profile/profileData'
 // What it is NOT: no login, no credentials, no real Supabase session, no real database
 // access, no elevated permissions. It only (a) flips client-side UI gates and (b) feeds
 // components hardcoded mock data. Real RLS/security is completely untouched, and the whole
-// module is `import.meta.env.DEV`-gated so it tree-shakes out of production builds.
+// module is `import.meta.env.DEV`-gated, so every BRANCH that uses it folds away in a
+// production build. The module itself does not entirely go — see previewMsgs below, which
+// measures what survives and why. Nothing here is sensitive (every name is invented), but
+// "it tree-shakes out" is not a claim this file gets to make.
 //
 // NOTE: every name here is invented. This file is committed to a public repo, so it must
 // never carry a real member's name or username.
@@ -114,7 +117,7 @@ export function previewOverview(): {
 }[] {
   return PREVIEW_ROOMS.filter((r) => r.kind !== 'lounge' || PREVIEW_LOUNGE_IN)
     .map((r) => {
-      const ms = PREVIEW_MSGS[r.id] ?? []
+      const ms = previewMsgs()[r.id] ?? []
       const last = ms[ms.length - 1]
       return {
         ...r,
@@ -127,86 +130,122 @@ export function previewOverview(): {
     .sort((a, b) => (b.last_at ?? '').localeCompare(a.last_at ?? ''))
 }
 
-export const PREVIEW_MSGS: Record<string, PreviewMsg[]> = {
-  'pv-crew': [
-    {
-      id: 'c1',
-      room_id: 'pv-crew',
-      user_id: 'pv-alex',
-      author_name: 'Alex',
-      body: 'anyone lifting today?',
-      created_at: t(180),
-    },
-    {
-      id: 'c2',
-      room_id: 'pv-crew',
-      user_id: 'pv-riley',
-      author_name: 'Riley',
-      body: 'leg day 💀',
-      created_at: t(174),
-    },
-    {
-      id: 'c3',
-      room_id: 'pv-crew',
-      user_id: PREVIEW_ME.id,
-      author_name: 'Preview You',
-      body: 'just logged mine, 128 pts',
-      created_at: t(60),
-    },
-    {
-      id: 'c4',
-      room_id: 'pv-crew',
-      user_id: 'pv-alex',
-      author_name: 'Alex',
-      body: 'beast. catching up tonight',
-      created_at: t(12),
-    },
-  ],
-  'pv-lounge': [
-    {
-      id: 'l1',
-      room_id: 'pv-lounge',
-      user_id: 'pv-sam',
-      author_name: 'Sam',
-      body: 'new here, hi all 👋',
-      created_at: t(300),
-    },
-    {
-      id: 'l2',
-      room_id: 'pv-lounge',
-      user_id: PREVIEW_ME.id,
-      author_name: 'Preview You',
-      body: 'welcome!',
-      created_at: t(280),
-    },
-  ],
-  'pv-dm': [
-    {
-      id: 'd1',
-      room_id: 'pv-dm',
-      user_id: 'pv-alex',
-      author_name: 'Alex',
-      body: 'you around for the movie thing?',
-      created_at: t(45),
-    },
-    {
-      id: 'd2',
-      room_id: 'pv-dm',
-      user_id: PREVIEW_ME.id,
-      author_name: 'Preview You',
-      body: 'yeah, rating it after',
-      created_at: t(40),
-    },
-    {
-      id: 'd3',
-      room_id: 'pv-dm',
-      user_id: 'pv-alex',
-      author_name: 'Alex',
-      body: '🔥',
-      created_at: t(38),
-    },
-  ],
-}
+/**
+ * Stand-in chat, built on FIRST USE rather than at module load.
+ *
+ * ⚠️ IT IS A FUNCTION BECAUSE A MODULE-SCOPE CALL KEPT THIS WHOLE FILE IN THE PRODUCTION BUNDLE.
+ * The header above says this module tree-shakes out, and that was MEASURED FALSE: `index-*.js`
+ * carried `{id:"preview-me",name:"Preview You",username:"preview",email:"preview@localhost"}`
+ * followed by a run of discarded `t(180), t(174), …` calls. `previewMember` itself folded to
+ * `false` correctly — the guard was never the problem. `t()` reads `Date.now()` and builds a
+ * `Date`, which rollup cannot prove pure, so the calls below counted as side effects at module
+ * scope; a module with side effects is retained whole, and PREVIEW_ME came along with it even
+ * though every reference to it sits inside a branch that folded away.
+ *
+ * Behind a function there is nothing to evaluate until something calls it, and in production
+ * nothing does: the `t(…)` run is gone from the bundle, which is the part with a runtime cost —
+ * about a dozen `Date` constructions on every page load, for a harness nobody is using.
+ *
+ * ⚠️ AND THE OBJECT IS STILL THERE, 90 BYTES OF IT, FOR A REASON THAT IS NOT THE GUARD. This was
+ * first blamed on the side effect above, the fix was applied, and `preview-me` was still in
+ * `index-*.js` — so the next question was whether the binding is referenced or merely orphaned.
+ * It is referenced, once, in the chunk's own EXPORT LIST (`Vv as ad`). previewMember.ts lands in
+ * the shared entry chunk while Chat and Account are split out, so the binding is re-exported
+ * across a chunk boundary; each importer's `previewMember ? … : …` folds correctly at its own
+ * site, and the export in the shared chunk survives regardless. Code splitting, not tree shaking.
+ *
+ * Which is why this stops here: exporting `previewMe()` instead would ship a function body in
+ * place of an object literal for the same 90 bytes of invented placeholder, and the only real
+ * cure is loading the whole module dynamically in DEV — a restructure out of all proportion to
+ * what is left. The measurement is written down instead, so the next person starts from it.
+ *
+ * ⚠️ AND IT IS A MEMOISED SINGLETON, NOT A FRESH OBJECT, because Chat.tsx MUTATES it — sending a
+ * message in the harness appends to the room's array and expects it to still be there next
+ * render. Returning a new object each call would make a sent message vanish, which looks exactly
+ * like a broken chat.
+ */
+let msgs: Record<string, PreviewMsg[]> | null = null
+export const previewMsgs = (): Record<string, PreviewMsg[]> =>
+  (msgs ??= {
+    'pv-crew': [
+      {
+        id: 'c1',
+        room_id: 'pv-crew',
+        user_id: 'pv-alex',
+        author_name: 'Alex',
+        body: 'anyone lifting today?',
+        created_at: t(180),
+      },
+      {
+        id: 'c2',
+        room_id: 'pv-crew',
+        user_id: 'pv-riley',
+        author_name: 'Riley',
+        body: 'leg day 💀',
+        created_at: t(174),
+      },
+      {
+        id: 'c3',
+        room_id: 'pv-crew',
+        user_id: PREVIEW_ME.id,
+        author_name: 'Preview You',
+        body: 'just logged mine, 128 pts',
+        created_at: t(60),
+      },
+      {
+        id: 'c4',
+        room_id: 'pv-crew',
+        user_id: 'pv-alex',
+        author_name: 'Alex',
+        body: 'beast. catching up tonight',
+        created_at: t(12),
+      },
+    ],
+    'pv-lounge': [
+      {
+        id: 'l1',
+        room_id: 'pv-lounge',
+        user_id: 'pv-sam',
+        author_name: 'Sam',
+        body: 'new here, hi all 👋',
+        created_at: t(300),
+      },
+      {
+        id: 'l2',
+        room_id: 'pv-lounge',
+        user_id: PREVIEW_ME.id,
+        author_name: 'Preview You',
+        body: 'welcome!',
+        created_at: t(280),
+      },
+    ],
+    'pv-dm': [
+      {
+        id: 'd1',
+        room_id: 'pv-dm',
+        user_id: 'pv-alex',
+        author_name: 'Alex',
+        body: 'you around for the movie thing?',
+        created_at: t(45),
+      },
+      {
+        id: 'd2',
+        room_id: 'pv-dm',
+        user_id: PREVIEW_ME.id,
+        author_name: 'Preview You',
+        body: 'yeah, rating it after',
+        created_at: t(40),
+      },
+      {
+        id: 'd3',
+        room_id: 'pv-dm',
+        user_id: 'pv-alex',
+        author_name: 'Alex',
+        body: '🔥',
+        created_at: t(38),
+      },
+    ],
+  })
 
 /**
  * Stand-in profiles, so the profile page (looks, blocks, guestbook) can be inspected without a

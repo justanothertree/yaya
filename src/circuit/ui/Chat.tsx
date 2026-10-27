@@ -3,7 +3,7 @@ import { getSupabaseClient } from '../../finance/client'
 import {
   previewMember,
   PREVIEW_ME,
-  PREVIEW_MSGS,
+  previewMsgs,
   PREVIEW_PEOPLE,
   PREVIEW_UNREAD,
   previewOverview,
@@ -251,7 +251,7 @@ export function Chat({
         // Mirror what list_room_messages does server-side, so the harness exercises the real
         // rule: identity everywhere except the lounge, where the name stays unlinkable.
         setMsgs(
-          (PREVIEW_MSGS[room.id] ?? []).map((m) => ({
+          (previewMsgs()[room.id] ?? []).map((m) => ({
             id: m.id,
             room_id: m.room_id,
             author_user_id: room.kind === 'lounge' ? null : m.user_id,
@@ -425,7 +425,7 @@ export function Chat({
         ...prev,
         { ...fixture, author_user_id: fixture.user_id, author_username: null, mine: true },
       ])
-      PREVIEW_MSGS[room.id] = [...(PREVIEW_MSGS[room.id] ?? []), fixture]
+      previewMsgs()[room.id] = [...(previewMsgs()[room.id] ?? []), fixture]
       setDraft('')
       setTimeout(scrollDown, 60)
       return

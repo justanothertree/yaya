@@ -4584,7 +4584,7 @@ export function PaintRoom() {
             className={'btn' + (galleryOpen ? ' is-on' : '')}
             aria-expanded={galleryOpen}
             onClick={() => setGalleryOpen((v) => !v)}
-            title="Pictures you have kept"
+            title="Drawings you have kept"
           >
             🖼 Gallery{saved.length ? ` · ${saved.length}` : ''}
           </button>
