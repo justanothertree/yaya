@@ -909,6 +909,22 @@ function BackupCard() {
       <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
         Your chronicle is not in this file — it has its own, below.
       </p>
+      {/**
+       * ⚠️ THE THIRD TIME THIS CARD'S PROMISE HAS NARROWED, and the first time it narrows to
+       * nothing. "A file is the copy that survives losing the account" was true of everything on
+       * the account when it was written; chronicle arrived with its own copy, which the line above
+       * sends people to. Photographs arrived with NO copy — makeBackup() holds songs, art, looks,
+       * minions and wins, and nothing else, so there is nowhere to point. Saying so is the only
+       * honest option: somebody takes one file and believes they have everything, and the comments
+       * all over this card exist because that keeps nearly happening.
+       *
+       * (`art` here is the drawings store, which is a different thing from a photograph — easy to
+       * read this card and assume one covers the other.)
+       */}
+      <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+        Your photographs are not in it either, and have no file of their own yet —{' '}
+        <a href="#pictures">see what you have kept</a>.
+      </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn" type="button" onClick={download} disabled={!total}>
           ⬇ Save a copy

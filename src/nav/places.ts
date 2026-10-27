@@ -92,10 +92,23 @@ export const PLACES = [
    */
   { id: 'chronicle', label: 'Chronicle', icon: '🗓', title: 'Chronicle', nav: member },
   /**
-   * ⚠️ MEMBERS ONLY, like its neighbours, and for a plainer reason than theirs: these are a
-   * person's own photographs. There is no visitor version of that worth building.
+   * ⚠️ ROUTABLE AND UNLISTED, WHICH IS WHAT "NOT ITS OWN MODULE" MEANS HERE. The room shipped as
+   * a proof that the pipe worked — browser encode, presigned PUT, R2 — and the reading of it
+   * afterwards was the right one: "i dont want pictures as its own module but more so just a
+   * function to be used with other things like ratings, a circuit workout, maybe eventually a
+   * profile picture". That function now exists as `AddPicture` and is used from the rating
+   * editor, the workout form and a chronicle sitting.
+   *
+   * What is left is worth keeping and is not a module: somewhere to see everything you have kept
+   * and to delete one. That belongs with the other "your things" in Account, which is where the
+   * door now is.
+   *
+   * ⚠️ IT IS NOT DELETED, AND THAT IS DELIBERATE. `nav` answering false is exactly the
+   * "routable-but-not-listed" case this file's header describes, so #pictures keeps working for
+   * anybody who bookmarked it — a label must be a door, and taking the label away must not take
+   * the door with it.
    */
-  { id: 'pictures', label: 'Pictures', icon: '🖼', title: 'Pictures', nav: member },
+  { id: 'pictures', label: 'Pictures', icon: '🖼', title: 'Pictures', nav: () => false },
   {
     id: 'investments',
     label: 'Investments',

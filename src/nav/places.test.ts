@@ -67,6 +67,32 @@ describe('chronicle has a place', () => {
   })
 })
 
+/**
+ * Pictures is the one room deliberately taken OFF the nav while staying reachable, so both
+ * halves are worth pinning: re-listing it would undo a decision, and dropping the route would
+ * break a bookmark. "i dont want pictures as its own module but more so just a function to be
+ * used with other things" — the function is AddPicture; what is left is a gallery, and its door
+ * is in Account.
+ */
+describe('pictures is routable and unlisted', () => {
+  it('is offered to nobody, not even an admin', () => {
+    for (const v of [
+      visitor,
+      memberV,
+      suspendedV,
+      noFinanceV,
+      viewer({ authed: true, isAdmin: true }),
+    ])
+      expect(offered(v)).not.toContain('pictures')
+  })
+
+  it('still answers to its own link', () => {
+    expect(ALL_SECTIONS).toContain('pictures')
+    expect(sectionOf('#pictures')).toBe('pictures')
+    expect(SECTION_TITLES.pictures).toBeTruthy()
+  })
+})
+
 describe('who is offered what', () => {
   /**
    * The rule, not a list: whatever is behind the members' door stays behind it when the door is
