@@ -1,0 +1,106 @@
+-- APPLIED  migration: pictures_on_ratings_and_workouts
+-- APPLIED  edge function `pictures` version 11 (the `seen` op)
+--
+-- "i dont want pictures as its own module but more so just a function to be used with other
+-- things like ratings, a circuit workout, maybe eventually a profile picture"
+--
+-- A photograph can already hang on a chronicle sitting. This gives circuit_ratings and
+-- circuit_logs the same column, and -- the part that needed thinking about -- a way for somebody
+-- OTHER than the owner to be shown one.
+--
+--   alter table public.circuit_ratings add column picture uuid
+--     references public.member_pictures(id) on delete set null;
+--   alter table public.circuit_logs    add column picture uuid
+--     references public.member_pictures(id) on delete set null;
+--
+-- `on delete set null` so dropping a picture clears the attachment rather than leaving an id
+-- that draws a hole.
+--
+-- ───────────────────────────────────────────────────────────────────────────────────────────
+-- THE HOLE THIS WOULD HAVE HAD, WHICH IS THE WHOLE REASON TO WRITE ANY OF THIS DOWN
+--
+-- The obvious rule for pictures_i_can_see is "yours, or attached to a rating you may see". That
+-- is a read-anything bug, and the reason is a difference between two tables that look alike.
+--
+-- chronicle_entries is deny-all -- RLS on, zero policies, no grants -- so chronicle_entry_picture
+-- is the ONLY way its `picture` column can be written, and its guard ("both halves have to be
+-- yours") really is the only door.
+--
+-- circuit_ratings is not. It grants `authenticated` a direct UPDATE under `user_id = auth.uid()`,
+-- so a member can PATCH their own rating row through PostgREST and set any column on it -- and a
+-- FOREIGN KEY CHECK RUNS INTERNALLY, OUTSIDE RLS, so pointing `picture` at a uuid belonging to a
+-- stranger is accepted. An RPC guard cannot intercept what does not go through the RPC.
+--
+-- So "attached to a rating you may see" would have let any member read any picture on the site:
+-- write a stranger's id onto a rating of your own, then ask for a signed URL for it. A
+-- read-anything, through a row you are perfectly entitled to write.
+--
+-- The fix needs no grant surgery: require the picture's OWNER to be the host row's owner.
+--
+--   r.picture = m.id and r.user_id = m.owner and public.movie_visible(r.movie_id)
+--   l.picture = m.id and cp.owner_user_id = m.owner and public.circuit_can_see_log(l.id)
+--
+-- which is the honest rule anyway -- a picture beside a rating is the rater's own -- and a stolen
+-- id simply resolves to nothing.
+--
+-- MEASURED, in a rolled-back transaction, with a positive control, because a zero from a checker
+-- that was never made to speak is a checker reporting that it ran:
+--
+--   two pictures inserted, one owned by member B, one by member A
+--   as A (set local role authenticated, A's claims):
+--     update circuit_ratings set picture = <B's id> where user_id = A ...   -- SUCCEEDS
+--
+--   stolen_id_attached     1     <- the attack's first step really does work
+--   can_sign_Bs_picture    0     <- and the rule refuses it
+--   can_sign_own_picture   1     <- same call, same shape, so the zero is not vacuous
+--
+-- The three existing rules are reused rather than restated: movie_visible for a rating,
+-- circuit_can_see_log for a workout, owner = auth.uid() for your own. Each already decides who
+-- sees the thing the picture hangs on, which is the only question a picture on it can raise.
+--
+-- ───────────────────────────────────────────────────────────────────────────────────────────
+-- §8: WHICH SAVE PATHS WILL NOW OVERWRITE THE NEW COLUMN
+--
+-- Asked before adding it, which is the rule this project learned three times in two days. Both
+-- writers are safe, and for different reasons:
+--
+--   saveRating  names its columns explicitly and does not mention `picture`, so a PostgREST
+--               upsert leaves it alone.
+--   logToRow    sends `img: l.img ?? null` -- an explicit null on EVERY save. So `picture` is
+--               deliberately NOT added to it. This is exactly the shape the same file already
+--               documents for `personToRow`, which omits `visibility` "so a normal edit-save can
+--               never quietly revert someone's audience choice", and for `votes`, which is no
+--               longer sent at all. Attachment goes through circuit_log_picture only.
+--
+-- ───────────────────────────────────────────────────────────────────────────────────────────
+-- THE `seen` OP, AND A PERFORMANCE BUG IT FIXED ON THE WAY
+--
+-- `view` is backed by pictures_mine and can only answer about your own gallery, so it cannot
+-- serve a picture on a friend's rating. `seen` takes ids and asks pictures_i_can_see.
+--
+-- The chronicle dialog was calling myPictures() and finding one id in the result. That signs TWO
+-- urls for every picture on the account: at the 500-picture ceiling, a thousand signatures to
+-- draw one photograph. Invisible at four pictures, and it would not have stayed invisible. It now
+-- asks for the one id it wants.
+--
+-- ───────────────────────────────────────────────────────────────────────────────────────────
+-- WHAT IS VERIFIED, AND WHAT IS NOT
+--
+-- Verified: the RPC, directly, including the escalation attempt above with its control. The
+-- deployed function is running this source rather than something else -- proved by sending a
+-- preflight with `Access-Control-Request-Headers: x-yaya-echo-probe-9f3a` and getting that exact
+-- string echoed back, which only this file's corsFor does, plus an unlisted Origin falling back
+-- to ALLOWED[0]. The platform's own 401 proves nothing about the module, since the gateway
+-- answers it before any code runs ("UNAUTHORIZED_NO_AUTH_HEADER" is not a sentence in this file).
+--
+-- NOT verified: the `seen` op end to end, which needs a real JWT. And nothing on screen -- there
+-- is no attach control yet on a rating or a workout, and Feed.tsx still renders the dead `img`
+-- column (708 logs, 0 of them populated) rather than a signed picture. That is the next slice.
+--
+-- ⚠️ AND A DEPLOY SLIP WORTH RECORDING. Version 10 of this function was deployed with the literal
+-- string "PLACEHOLDER" as its entire body -- a template value left in the call. It was live for
+-- 87.9 seconds (2026-10-27T00:49:02Z to 00:50:30Z) and would have broken every picture upload,
+-- view and delete for that window. The project's log tables are not reachable through the MCP
+-- tool here, so whether a request landed in it is unknown rather than ruled out. Deploying an
+-- edge function sends a whole file in one argument, which is the one shape where a placeholder
+-- survives to production without any diff to look at.

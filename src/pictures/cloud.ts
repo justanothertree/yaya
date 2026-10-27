@@ -232,6 +232,29 @@ export async function myPictures(): Promise<{ pictures: Kept[]; used: Used | nul
   return { pictures: out?.pictures ?? [], used: out?.used ?? null }
 }
 
+/**
+ * The pictures behind these ids that you are allowed to see: yours, or one hanging on a rating
+ * or a workout you may see.
+ *
+ * ⚠️ ASK FOR THE IDS YOU WANT, which is the whole reason this exists beside `myPictures`. The
+ * chronicle dialog used to call myPictures() and pick one id out of the answer — and that signs
+ * TWO urls for every picture on the account, so at the 500-picture ceiling it is a thousand
+ * signatures to draw one photograph. It was invisible at four pictures and would not have stayed
+ * invisible.
+ *
+ * ⚠️ IT RETURNS FEWER THAN YOU ASK FOR WITHOUT SAYING SO. A picture that has gone, or that you
+ * may not see, is simply absent — so look one up by id rather than by position.
+ */
+export async function seenPictures(ids: string[]): Promise<Kept[]> {
+  if (!ids.length) return []
+  if (previewMember) return pvPictures().filter((p) => ids.includes(p.id))
+  const { data, error } = await getSupabaseClient().functions.invoke('pictures', {
+    body: { op: 'seen', ids },
+  })
+  if (error) return []
+  return (data as { pictures?: Kept[] } | null)?.pictures ?? []
+}
+
 export async function dropPicture(id: string): Promise<{ why: string } | null> {
   if (previewMember) return pvDrop(id)
   const { error } = await getSupabaseClient().functions.invoke('pictures', {

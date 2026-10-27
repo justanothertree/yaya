@@ -25,7 +25,7 @@ import { weekOf } from './week'
 import { Routines } from './Routines'
 import { Modal } from '../circuit/ui/Modal'
 import { AddPicture } from '../pictures/AddPicture'
-import { myPictures, type Kept } from '../pictures/cloud'
+import { seenPictures, type Kept } from '../pictures/cloud'
 import { tilesFor } from './nowTiles'
 import {
   CATS,
@@ -591,13 +591,12 @@ export function Timer({
     if (!want) return setShot(null)
     let dead = false
     void (async () => {
-      const got = await myPictures()
-      if (!dead) setShot(got.pictures.find((p) => p.id === want) ?? null)
+      const got = await seenPictures([want])
+      if (!dead) setShot(got.find((p) => p.id === want) ?? null)
     })()
     return () => {
       dead = true
     }
-     
   }, [fixEnt, justDid, log])
 
   const hangPicture = async (entry: string, picture: string | null) => {

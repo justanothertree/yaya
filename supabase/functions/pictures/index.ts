@@ -305,6 +305,37 @@ Deno.serve(async (req) => {
     return json({ pictures: out, used }, 200, origin)
   }
 
+  /**
+   * ⚠️ A WIDER QUESTION THAN `view`, PUT TO A DIFFERENT RPC. `view` is backed by pictures_mine,
+   * so it can only ever answer about your own gallery. A photograph hung on a rating or on a
+   * day's workout has to be signable by whoever may see that rating or that workout, which is a
+   * join rather than an owner check. pictures_i_can_see is where that lives, and it requires the
+   * picture's owner to match the host row's owner — so an id written onto somebody else's row,
+   * which circuit_ratings' direct UPDATE grant does permit, resolves to nothing.
+   *
+   * ⚠️ AND IT CARRIES NO `used`. That figure is the caller's own quota and says nothing about a
+   * picture somebody else owns; returning it here would invite it onto a page about a friend.
+   */
+  if (body.op === 'seen') {
+    const ids = Array.isArray(body.ids) ? (body.ids as string[]) : []
+    if (!ids.length) return json({ pictures: [] }, 200, origin)
+    const { data, error } = await supabase.rpc('pictures_i_can_see', { p_ids: ids })
+    if (error) return json({ error: error.message }, 400, origin)
+    const out = await Promise.all(
+      ((data ?? []) as Mine[]).map(async (p) => ({
+        id: p.id,
+        w: p.w,
+        h: p.h,
+        alt: p.alt,
+        bytes: p.bytes,
+        created_at: p.created_at,
+        url: await signFor(kit, p.key, 'GET', GET_FOR),
+        thumbUrl: await signFor(kit, p.thumb_key, 'GET', GET_FOR),
+      })),
+    )
+    return json({ pictures: out }, 200, origin)
+  }
+
   /* ── removing: the row goes first, because its answer is what names the objects ── */
   if (body.op === 'remove') {
     const { data, error } = await supabase.rpc('picture_drop', { p_id: body.id })
