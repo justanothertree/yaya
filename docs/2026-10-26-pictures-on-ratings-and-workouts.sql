@@ -104,3 +104,46 @@
 -- tool here, so whether a request landed in it is unknown rather than ruled out. Deploying an
 -- edge function sends a whole file in one argument, which is the one shape where a placeholder
 -- survives to production without any diff to look at.
+
+-- ───────────────────────────────────────────────────────────────────────────────────────────
+-- SLICE 2: THE CONTROLS, AND TWO GATES THE PANE FOUND
+--
+-- A photo section in MovieRate, a "+ Photo" in the Log form's button row, and Feed.tsx drawing
+-- the resolved id instead of the dead `img` column.
+--
+-- ⚠️ BOTH CONTROLS FIRST SHIPPED TO SIGNED-OUT VISITORS, and the demo board is what showed it.
+-- The circuit is deliberately playable without an account: `canEdit` is
+-- `uid == null || isAdmin || owner`, and `canRateAs` is `!me || raterId === me` -- signed out
+-- counts as ALLOWED in both, because the local board is anybody's to play with. Gating a photo on
+-- those reads as correct and is not: a picture goes to an ACCOUNT's gallery, through RPCs that
+-- refuse `auth.uid() is null`. So the demo board rendered "+ Photo" and "+ Add a photo", opening
+-- a file picker for an upload whose only possible answer was "not authenticated". Both now also
+-- require a persisted user id, and the page was asked again afterwards to confirm the section had
+-- actually gone rather than trusting the edit.
+--
+-- ⚠️ AND A PHOTOGRAPH IS CONTENT, in two places that delete a row when it looks empty.
+-- MovieRate's `allEmpty` test (score, icons, review) would have deleted a rating that held only a
+-- photo -- and the attachment lives ON that row, so Save would have thrown the photo away. The
+-- Log form is worse, because it autosaves: zeroing a day's numbers calls deleteLog, from no
+-- button anybody pressed. Both now count a picture as something.
+--
+-- VERIFIED IN THE PANE, at 375 with touch emulated (`(pointer: coarse)` true):
+--
+--   the sweep was made to speak first -- a 16x16 button and a 600px child in a 120px box
+--   appended to the live modal gave `tooSmall` naming the button and `spills` naming both
+--   chains; removed, they went back to clean.
+--
+--   clean run, two residuals, neither a fault:
+--     input[type=range] 230x16  -- the SCORE SLIDER, pre-existing, not from this change
+--     input.sr-only[type=file] 1x40 -- inside label.pics-pick, which measures 138x45. This is
+--       exactly the sr-only exclusion scripts/mobile-audit.js has and an ad-hoc sweep does not;
+--       the real tap target is the label and it clears the 24px floor comfortably.
+--
+-- To reach the signed-in branch at all, a token-shaped value was planted in localStorage so
+-- `peekPersistedUserId` would answer -- the sanctioned way across that gap, since it survives a
+-- reload where module state cannot. It carries no real credential, so every RPC behind it still
+-- refuses; it only reveals the JSX. Removed afterwards.
+--
+-- STILL NOT VERIFIED: an actual upload attached to an actual rating or workout, which needs a
+-- real session. The whole write path -- AddPicture -> R2 -> circuit_rating_picture -> re-read
+-- through `seen` -- has never run end to end. That is the live-site check.

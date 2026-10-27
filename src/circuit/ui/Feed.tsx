@@ -9,6 +9,7 @@ import { GoalBar } from './GoalBar'
 import { todayISO as isoToday, localISO } from '../dates'
 import { useFeedSocial, KUDOS, type FeedSocial } from '../social'
 import type { DayLog, Person } from '../types'
+import { useSeenPicture } from '../../pictures/seen'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
 function isoAdd(iso: string, days: number): string {
@@ -158,26 +159,44 @@ function LogCard({
             ))}
           </div>
         )}
-        {log.img && (
-          <img
-            src={log.img}
-            alt="workout"
-            onClick={(e) => {
-              e.stopPropagation()
-              onPhoto(log.img!)
-            }}
-            style={{
-              marginTop: 6,
-              maxHeight: 96,
-              borderRadius: 8,
-              cursor: 'zoom-in',
-              display: 'block',
-            }}
-          />
-        )}
+        <LogPhoto id={log.picture} onPhoto={onPhoto} />
         {social && <SocialBar logId={log.id} social={social} me={me ?? 'Me'} />}
       </div>
     </div>
+  )
+}
+
+/**
+ * The photograph on a workout, if there is one and you may see it.
+ *
+ * ⚠️ IT TAKES AN ID AND FETCHES A URL, which is the opposite of what was here. The old block
+ * rendered `log.img` directly — a column that has never held anything (708 logs, 0 populated) and
+ * could not safely hold a URL anyway, because a link into private R2 is signed for an hour. The
+ * id is the durable thing; the link is minted when somebody looks.
+ *
+ * ⚠️ AND `useSeenPicture` BATCHES, so a month of cards is one request rather than thirty. The
+ * alternative was resolving up in `Feed` and threading a lookup down through WeekView and DayView
+ * to get here.
+ */
+function LogPhoto({ id, onPhoto }: { id?: string | null; onPhoto: (src: string) => void }) {
+  const pic = useSeenPicture(id)
+  if (!pic) return null
+  return (
+    <img
+      src={pic.thumbUrl}
+      alt={pic.alt ?? 'workout'}
+      onClick={(e) => {
+        e.stopPropagation()
+        onPhoto(pic.url)
+      }}
+      style={{
+        marginTop: 6,
+        maxHeight: 96,
+        borderRadius: 8,
+        cursor: 'zoom-in',
+        display: 'block',
+      }}
+    />
   )
 }
 

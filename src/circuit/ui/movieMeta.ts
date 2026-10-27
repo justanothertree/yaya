@@ -32,7 +32,10 @@ export function useMoviesWithRatings(): Movie[] {
     const byMovie = new Map<string, Movie['ratings']>()
     for (const r of rows) {
       const into = byMovie.get(r.movieId) ?? {}
-      into[r.userId] = { score: r.score, icons: r.icons, review: r.review }
+      /* ⚠️ EVERY FIELD, because this is a projection and a field left out of it simply is not
+         there — the same shape as a save that omits a column, with no error either. `picture`
+         was the fourth and the rating editor read it from here. */
+      into[r.userId] = { score: r.score, icons: r.icons, review: r.review, picture: r.picture }
       byMovie.set(r.movieId, into)
     }
     return state.movies.map((m) => {

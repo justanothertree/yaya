@@ -13,7 +13,10 @@ import { Modal } from './Modal'
 import { GoalBar } from './GoalBar'
 import { todayISO, localISO } from '../dates'
 import { getSupabaseClient } from '../../finance/client'
-import type { Exercise } from '../types'
+import type { DayLog, Exercise } from '../types'
+import { AddPicture } from '../../pictures/AddPicture'
+import { useSeenPicture } from '../../pictures/seen'
+import { setLogPicture } from '../picture'
 
 const CATS = Object.keys(CAT_COLORS)
 // suggestions only — the unit field is free text, so you can type your own
@@ -154,7 +157,14 @@ export function Log({
       const entries = person.exercises
         .map((ex) => ({ eid: ex.id, val: parseFloat(vals[ex.id]) || 0 }))
         .filter((e) => e.val > 0)
-      if (entries.length === 0) {
+      /**
+       * ⚠️ A PHOTOGRAPH KEEPS THE DAY ALIVE. Clearing the numbers deletes the log, and the
+       * picture lives ON that row — so zeroing a day you had put a photo on would have taken the
+       * photo with it, silently, from an autosave nobody pressed. The same shape as the rating
+       * editor's empty test. The picture itself stays in the gallery either way; what would have
+       * gone is the fact that it belonged to this day.
+       */
+      if (entries.length === 0 && !existing?.picture) {
         if (existing) void circuitStore.deleteLog(existing.id)
       } else {
         void circuitStore.saveLog({
@@ -703,6 +713,20 @@ export function Log({
         <button className="btn" onClick={clear} title="Clear this day's entries (removes the log)">
           Clear
         </button>
+        {/**
+         * ⚠️ ONLY ONCE THE DAY EXISTS. circuit_log_picture refuses a row that is not there, and
+         * this form has no Save button to hang the attachment behind — it autosaves 600ms after a
+         * number is typed. So the control appears when there is a log to attach to, rather than
+         * offering something that would answer "no such workout".
+         *
+         * ⚠️ AND `uid != null` ON TOP OF `canEdit`, WHICH IS NOT REDUNDANT. canEdit is
+         * `uid == null || isAdmin || owner` — signed out counts as allowed, deliberately, because
+         * the local demo board is anybody's to play with. A photograph is not like the numbers: it
+         * goes to an ACCOUNT's gallery and through an RPC that refuses `auth.uid() is null`. Seen
+         * in the pane on the demo board, which rendered "+ Photo" happily — a file picker and an
+         * upload that could only ever answer "not authenticated".
+         */}
+        {existing && uid != null && canEdit && !imported ? <LogPicture log={existing} /> : null}
         <span
           key={savedPulse}
           className="muted"
@@ -1032,5 +1056,58 @@ function ExerciseEditModal({
         </div>
       </div>
     </Modal>
+  )
+}
+
+/**
+ * Attach, show or remove the photograph on one day's workout.
+ *
+ * ⚠️ IT WRITES STRAIGHT AWAY RATHER THAN WAITING FOR A SAVE, which is the opposite of the rating
+ * editor and right for the same reason: this form has no Save button. It autosaves 600ms after a
+ * number changes, so there is no moment to defer an attachment to — the only honest thing is to
+ * do it when the picture is kept and say so if it fails.
+ */
+function LogPicture({ log }: { log: DayLog }) {
+  const [id, setId] = useState<string | null>(log.picture ?? null)
+  const [say, setSay] = useState<string | null>(null)
+  const shot = useSeenPicture(id)
+
+  /* ⚠️ the row can change under this — realtime, or switching day — so follow it rather than
+     keeping whatever was attached to a log that is no longer the one on screen */
+  useEffect(() => setId(log.picture ?? null), [log.id, log.picture])
+
+  const hang = async (next: string | null) => {
+    const before = id
+    setId(next)
+    const bad = await setLogPicture(log.id, next)
+    if (bad) {
+      setId(before)
+      setSay(bad.why)
+      window.setTimeout(() => setSay(null), 6000)
+    }
+  }
+
+  if (say)
+    return (
+      <span className="muted" role="status" style={{ fontSize: '0.78rem' }}>
+        {say}
+      </span>
+    )
+
+  return id ? (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+      {shot ? (
+        <img
+          src={shot.thumbUrl}
+          alt={shot.alt ?? ''}
+          style={{ maxHeight: 32, borderRadius: 6, display: 'block' }}
+        />
+      ) : null}
+      <button className="btn btn-ghost" onClick={() => void hang(null)} title="Take the photo off">
+        Remove photo
+      </button>
+    </span>
+  ) : (
+    <AddPicture label="+ Photo" onKept={(k) => hang(k.id)} />
   )
 }

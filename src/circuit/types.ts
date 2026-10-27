@@ -65,8 +65,18 @@ export interface DayLog {
   /** ISO date "YYYY-MM-DD" */
   date: string
   entries: LogEntry[]
-  /** optional workout photo (data URL locally; storage URL once on Supabase) */
+  /**
+   * ⚠️ DEAD, AND KEPT ONLY SO AN OLDER CACHED TAB STILL PARSES. Nothing has ever written this:
+   * 708 logs on the live database and 0 with a value, no setter anywhere in the UI, and a
+   * renderer in Feed.tsx that had no input. `picture` below supersedes it. Dropping the column
+   * is a later step, the way the dead `votes` column was handled.
+   *
+   * It was also the wrong SHAPE: a URL into private R2 storage is signed for an hour, so a URL
+   * kept in a row is a link that stops working with nothing to say it has.
+   */
   img?: string | null
+  /** a member_pictures id — resolved to a signed url when drawn, never stored as one */
+  picture?: string | null
 }
 
 export interface MovieReview {
@@ -88,6 +98,8 @@ export interface MovieRating {
   /** decorative "vibes" icon ids */
   icons?: string[]
   review?: MovieReview | null
+  /** a member_pictures id — see Rating.picture, and useMoviesWithRatings, which carries it over */
+  picture?: string | null
 }
 
 /**
@@ -111,6 +123,8 @@ export interface Rating {
   score: number | null
   icons?: string[]
   review?: MovieReview | null
+  /** a member_pictures id. Set only through circuit_rating_picture, never by saveRating. */
+  picture?: string | null
 }
 
 export const ratingId = (movieId: ID, userId: string): ID => `${movieId}::${userId}`

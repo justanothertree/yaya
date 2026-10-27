@@ -5,6 +5,9 @@ import { circuitStore } from '../store'
 import { ratingId } from '../types'
 import type { Movie, MovieReview } from '../types'
 import { Modal } from './Modal'
+import { AddPicture } from '../../pictures/AddPicture'
+import { useSeenPicture } from '../../pictures/seen'
+import { setRatingPicture } from '../picture'
 import {
   MV_ICONS,
   REC,
@@ -15,6 +18,7 @@ import {
   scoreColor,
   useMoviesWithRatings,
 } from './movieMeta'
+import { peekPersistedUserId } from '../../finance/auth'
 
 const sectionLabel: React.CSSProperties = {
   fontSize: '0.72rem',
@@ -82,6 +86,14 @@ export function MovieRate({
   const [tags, setTags] = useState<string[]>(rv.tags ?? [])
   const [note, setNote] = useState(rv.note ?? '')
   const [customTag, setCustomTag] = useState('')
+  /**
+   * ⚠️ HELD HERE AND ATTACHED AFTER THE SAVE, because circuit_rating_picture refuses an
+   * attachment to a rating that does not exist yet — "no such rating", which is the right answer
+   * from the server and a baffling one to be shown while looking at the form you are filling in.
+   * A first-time rater has no row until Save, so the id waits in state and goes up behind it.
+   */
+  const [picture, setPicture] = useState<string | null>(existing?.picture ?? null)
+  const shot = useSeenPicture(picture)
 
   // this person's other rated movies, ranked — to show where the current score lands
   /* ⚠️ merged: on the raw list this ranking was always empty for a signed-in rater, so the
@@ -120,7 +132,10 @@ export function MovieRate({
       !tips.length &&
       !tags.length &&
       !review.note
-    const allEmpty = score == null && !icons.length && reviewEmpty
+    /* ⚠️ A PHOTOGRAPH IS CONTENT. Without it in this test, attaching a picture and nothing else
+       counted as "empty", so Save deleted the row — and the attachment with it, since the column
+       lives on the row. A photo of the place you ate is a rating of it. */
+    const allEmpty = score == null && !icons.length && reviewEmpty && !picture
     /**
      * ⚠️ ONE ROW, NOT THE WHOLE FILM. This used to be
      *     saveMovie({ ...movie, ratings: { ...movie.ratings, [personId]: … } })
@@ -131,9 +146,13 @@ export function MovieRate({
      * reach anybody else's work. The policies enforce the same thing server-side.
      */
     const id = ratingId(movie.id, personId)
-    if (allEmpty) void circuitStore.deleteRating(id)
-    else
-      void circuitStore.saveRating({
+    if (allEmpty) {
+      void circuitStore.deleteRating(id)
+      onClose()
+      return
+    }
+    void (async () => {
+      await circuitStore.saveRating({
         id,
         movieId: movie.id,
         userId: personId,
@@ -141,6 +160,11 @@ export function MovieRate({
         icons: icons.length ? icons : undefined,
         review: reviewEmpty ? undefined : review,
       })
+      /* ⚠️ ONLY WHEN IT CHANGED. saveRating does not touch the column, so an unchanged
+         attachment needs no round trip — and sending one on every Save would mean a rating
+         opened and closed rewrote a photograph it never looked at. */
+      if (picture !== (existing?.picture ?? null)) await setRatingPicture(movie.id, picture)
+    })()
     onClose()
   }
 
@@ -415,6 +439,38 @@ export function MovieRate({
         rows={3}
         style={{ width: '100%', padding: '0.5rem', resize: 'vertical', fontFamily: 'inherit' }}
       />
+
+      {/**
+       * ⚠️ ONLY WITH AN ACCOUNT, and `canRateAs` is not that check. It is `!me || raterId === me`
+       * — signed out can rate anybody, deliberately, because the public board is a playground.
+       * A photograph is different: it goes to an ACCOUNT's gallery through an RPC that refuses
+       * `auth.uid() is null`. Seen in the pane on the signed-out board, which offered "+ Add a
+       * photo" and a file picker for an upload that could only answer "not authenticated".
+       */}
+      {peekPersistedUserId() ? (
+        <>
+          {/* a photograph of it */}
+          <div style={sectionLabel}>Photo</div>
+          {picture ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {shot ? (
+                <img
+                  src={shot.thumbUrl}
+                  alt={shot.alt ?? ''}
+                  style={{ maxHeight: 72, borderRadius: 8, display: 'block' }}
+                />
+              ) : (
+                <span className="muted">finding it…</span>
+              )}
+              <button className="btn btn-ghost" onClick={() => setPicture(null)}>
+                Remove
+              </button>
+            </div>
+          ) : (
+            <AddPicture label="+ Add a photo" onKept={(k) => setPicture(k.id)} />
+          )}
+        </>
+      ) : null}
     </Modal>
   )
 }

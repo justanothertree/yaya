@@ -87,6 +87,9 @@ type LogRow = {
   date: string
   entries: DayLog['entries']
   img: string | null
+  /* optional on the row type because `select('*')` from a tab loaded before the migration will
+     not have it, and reading undefined as null is the honest answer there */
+  picture?: string | null
 }
 type MovieRow = {
   id: string
@@ -117,6 +120,8 @@ type RatingRow = {
   score: number | null
   icons: string[] | null
   review: MovieReview | null
+  /* optional for the same reason as LogRow.picture — a tab that loaded before the migration */
+  picture?: string | null
 }
 
 const personToRow = (p: Person): PersonRow => ({
@@ -143,6 +148,11 @@ const rowToPerson = (r: PersonRow): Person => ({
 })
 // NB: personToRow omits visibility — it changes only through set_person_visibility, so a
 // normal edit-save can never quietly revert someone's audience choice.
+/* ⚠️ `picture` IS NOT SENT, for the same reason `personToRow` omits `visibility`: this sends an
+   explicit value for every column it names, so naming a column the caller did not set is a
+   delete. A photograph is attached through circuit_log_picture and nowhere else, so an ordinary
+   day-save cannot quietly take it off. (CLAUDE.md §8 — the shape that cost three sittings' notes
+   in chronicle.) */
 const logToRow = (l: DayLog): LogRow => ({
   id: l.id,
   person_id: l.personId,
@@ -156,6 +166,7 @@ const rowToLog = (r: LogRow): DayLog => ({
   date: typeof r.date === 'string' ? r.date.slice(0, 10) : r.date,
   entries: r.entries ?? [],
   img: r.img,
+  picture: r.picture ?? null,
 })
 const movieToRow = (m: Movie): MovieRow => ({
   id: m.id,
@@ -227,6 +238,7 @@ const rowToRating = (r: RatingRow): Rating => ({
   score: r.score,
   icons: r.icons ?? undefined,
   review: r.review ?? undefined,
+  picture: r.picture ?? null,
 })
 
 /**
@@ -265,7 +277,7 @@ export function createSupabaseAdapter(): CircuitAdapter {
          board — and starts working the moment the SQL lands, with no second deploy. */
       sb.from('pools').select('id, name, audience, owner_user_id'),
       sb.from('pool_votes').select('item_id, user_id'),
-      sb.from('circuit_ratings').select('movie_id, user_id, score, icons, review'),
+      sb.from('circuit_ratings').select('movie_id, user_id, score, icons, review, picture'),
     ])
     // which circuit(s) each person is shared into — lets the board scope to one circuit
     const byPerson: Record<string, string[]> = {}
