@@ -242,17 +242,31 @@ export async function myPictures(): Promise<{ pictures: Kept[]; used: Used | nul
  * signatures to draw one photograph. It was invisible at four pictures and would not have stayed
  * invisible.
  *
- * ⚠️ IT RETURNS FEWER THAN YOU ASK FOR WITHOUT SAYING SO. A picture that has gone, or that you
- * may not see, is simply absent — so look one up by id rather than by position.
+ * ⚠️ IT RETURNS `failed` RATHER THAN AN EMPTY LIST, AND THE DIFFERENCE IS NOT COSMETIC. This used
+ * to `return []` on error, which makes two completely different answers identical: "that picture
+ * is not there, or is not yours to see" and "the request did not happen". The caller cannot tell
+ * them apart, so it draws nothing either way — and worse, `seen.ts` CACHES absence on purpose, so
+ * one dropped connection would have pinned a real photograph as missing for the next 45 minutes.
+ * An empty list is an answer; a failure is the absence of one.
+ *
+ * ⚠️ AND IT STILL RETURNS FEWER THAN YOU ASK FOR WHEN IT SUCCEEDS. A picture that has gone, or
+ * that you may not see, is simply absent from a `failed: false` result — so look one up by id
+ * rather than by position.
  */
-export async function seenPictures(ids: string[]): Promise<Kept[]> {
-  if (!ids.length) return []
-  if (previewMember) return pvPictures().filter((p) => ids.includes(p.id))
+export type Seen = { pictures: Kept[]; failed: boolean }
+
+export async function seenPictures(ids: string[]): Promise<Seen> {
+  if (!ids.length) return { pictures: [], failed: false }
+  if (previewMember)
+    return { pictures: pvPictures().filter((p) => ids.includes(p.id)), failed: false }
   const { data, error } = await getSupabaseClient().functions.invoke('pictures', {
     body: { op: 'seen', ids },
   })
-  if (error) return []
-  return (data as { pictures?: Kept[] } | null)?.pictures ?? []
+  if (error) return { pictures: [], failed: true }
+  /* a 200 whose body is not the shape agreed is also not an answer */
+  const rows = (data as { pictures?: Kept[] } | null)?.pictures
+  if (!Array.isArray(rows)) return { pictures: [], failed: true }
+  return { pictures: rows, failed: false }
 }
 
 export async function dropPicture(id: string): Promise<{ why: string } | null> {

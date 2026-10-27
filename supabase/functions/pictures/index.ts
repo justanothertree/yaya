@@ -317,8 +317,22 @@ Deno.serve(async (req) => {
    * picture somebody else owns; returning it here would invite it onto a page about a friend.
    */
   if (body.op === 'seen') {
-    const ids = Array.isArray(body.ids) ? (body.ids as string[]) : []
+    /**
+     * ⚠️ DEDUPED AND CAPPED HERE, not trusted from the caller. One page can ask for the same id
+     * many times over — a week where the same photograph hangs on several days, a feed re-render
+     * — and sending it twice costs a second signature for an identical answer. The cap is the
+     * blunter half: this signs two URLs per row, each a real HMAC, so an unbounded array is an
+     * invitation to make the function do arbitrary work for one request. 60 matches PER_CALL in
+     * src/pictures/seen.ts, which splits a larger batch rather than truncating it, so a page
+     * never reaches this limit and anything that does is not a page.
+     *
+     * `pictures_i_can_see` keeps its own looser bound of 200 as a backstop for any other caller.
+     */
+    const asked = Array.isArray(body.ids) ? (body.ids as unknown[]) : []
+    const ids = [...new Set(asked.filter((x): x is string => typeof x === 'string' && !!x))]
     if (!ids.length) return json({ pictures: [] }, 200, origin)
+    if (ids.length > 60)
+      return json({ error: `too many pictures at once (${ids.length} of 60)` }, 400, origin)
     const { data, error } = await supabase.rpc('pictures_i_can_see', { p_ids: ids })
     if (error) return json({ error: error.message }, 400, origin)
     const out = await Promise.all(

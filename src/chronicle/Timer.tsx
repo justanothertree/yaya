@@ -592,7 +592,11 @@ export function Timer({
     let dead = false
     void (async () => {
       const got = await seenPictures([want])
-      if (!dead) setShot(got.find((p) => p.id === want) ?? null)
+      /* ⚠️ on `failed` the id is left ALONE rather than resolved to null: the row's 📷 badge
+         comes from `e.picture` and is still right, and a dropped request is not evidence that
+         the photograph has gone. Leaving `shot` as it was shows nothing new instead of
+         asserting absence. */
+      if (!dead && !got.failed) setShot(got.pictures.find((p) => p.id === want) ?? null)
     })()
     return () => {
       dead = true
