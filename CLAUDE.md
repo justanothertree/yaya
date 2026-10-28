@@ -89,7 +89,9 @@ that render nothing at zero first**.
   fight run in it found a boss that walked off the map and never came back. It joins `park-dev`,
   never `park`, so a test creature never appears on somebody's screen — and it grants nothing,
   because ParkRoom's `authed` is a courtesy rather than a lock (the relay socket is
-  unauthenticated regardless). Walking the park needs the `requestAnimationFrame` stand-in above.
+  unauthenticated regardless). Walking the park used to need the `requestAnimationFrame`
+  stand-in above; rAF fires in the pane now (~89fps, measured 28 Oct 2026), so the loop runs
+  on its own and a park that does not move is a park that is broken.
 - **A test built from the same sum as the code confirms the mistake.** The park's `across()` and
   `down()` take SCREEN-heights while nearly everything is written in PET-heights, so the correct
   call is `across(v * PARK_TALL)` — and the factor went missing three times: a dodge that crossed
@@ -340,12 +342,14 @@ that render nothing at zero first**.
   ```
   And prefer a reading the PAGE gives you over any module read: the plan list on screen had been
   right from the first submission.
-- **The pane reports `document.visibilityState` as `hidden` while it is not displayed**, so anything
-  gated on being seen simply does not run — `useVisits` treats hidden as "not viewing" by
-  design, so its beat never fires there and the feature reads as dead. Stand it in like `rAF`:
+- **⚠️ CORRECTED 28 Oct 2026: the pane reports `document.visibilityState` as `visible`, hidden or
+  not.** This used to say the opposite, and the stand-in below was written because of it —
+  `useVisits` treats hidden as "not viewing" by design, so its beat never fired and the feature
+  read as dead. Measured with the pane not displayed, `visibilityState` is `visible`, so nothing
+  gated on being seen is suppressed any more and the stand-in is dead weight:
   `Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })`
-  With that and a wait past the beat, it was observable for the first time — it created its own
-  `auto` activity and wrote the visit.
+  It is kept here because it is harmless and still works if the pane ever goes back — but a
+  feature that looks dead in the pane is no longer explained by this, so look for a real cause.
 - **`if (rule.cssRules)` is not how you tell a group rule from a style rule, and believing it
   cost two wrong diagnoses in one sitting.** Chrome's `CSSStyleRule` implements
   `CSSGroupingRule` now, for CSS nesting — so every plain rule HAS a `cssRules`, an empty list,
@@ -471,21 +475,38 @@ test` and `npm run build` all green. A reload fetched the same stale source, and
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
   calls, so resize immediately before measuring.
-- **Four things never happen in the Browser pane, and each one fakes a pass.**
-  `requestAnimationFrame` never fires, so any animation loop simply does not run — a canvas that
-  is blank after a hot reload looks exactly like a renderer you have just broken, and is not.
-  **It can be stood in for**, which is how the fighting room's live round, keyboard and win state
-  were checked: replace `window.requestAnimationFrame` with a `setTimeout` at ~16ms, then leave
-  the room and come back so the loop starts against the replacement. Everything the loop DRIVES
-  is then observable; everything it computes should still live where it can be called directly.
-  `ResizeObserver` never fires, so anything that re-measures through one cannot be exercised.
-  A `window` resize listener CAN be — but `resize_window` does not fire the event, it only
-  changes the emulated viewport, so a component that resizes correctly reads as broken until you
-  `dispatchEvent(new Event('resize'))` yourself. That misreading cost a wrong diagnosis of the
-  ambient backdrop: its listener had always worked and the first measurement said it did not.
-  `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
-  returns `false` — so a confirmed action appears to do nothing and the feature appears broken
-  (this cost an hour on the paint room's Clear button, which was fine).
+- **⚠️ THREE OF THE FOUR THINGS THAT "NEVER HAPPEN IN THE BROWSER PANE" NOW HAPPEN, AND THE PANE
+  IS WHERE THAT CHANGED RATHER THAN THIS REPOSITORY.** This bullet is the exact shape §2 warns
+  about — measured claims with a date on them, falsified by something in a different program —
+  and it had been load-bearing for months. Re-measured **28 Oct 2026**, pane hidden:
+  - `requestAnimationFrame` **fires**: 45 frames in 505ms, **89fps**, median gap 11.4ms. It ran
+    with the pane not even displayed. So an animation loop DOES run, and the corollary that made
+    this dangerous is gone with it — a blank canvas after a hot reload is now evidence of a
+    broken renderer rather than evidence of nothing. The `setTimeout` stand-in is no longer
+    needed; where it is still wired in it is harmless and no longer proves anything by itself.
+  - `ResizeObserver` **fires**, both the initial callback on `observe()` and an element-only
+    resize with no window involved (probed directly: a div taken 100px → 300px, two callbacks,
+    widths `[100, 300]`). The investments chart's sizing is built on this and was verified
+    through it — its viewBox followed the card from 299 → 683 → 577 as the room changed columns,
+    with no reload.
+  - `resize_window` **does fire a `window` resize event** — one listener call per call to it. The
+    manual `dispatchEvent(new Event('resize'))` is no longer required.
+  - `document.visibilityState` reads **`visible`** while the pane is hidden, where this file says
+    it reads `hidden`. Whatever `useVisits` needed that stand-in for, it needs re-checking rather
+    than re-applying.
+
+  Two of the four are unchanged and still bite: `prefers-reduced-motion` cannot be emulated, and
+  `window.confirm` is auto-dismissed and returns `false` — so a confirmed action appears to do
+  nothing and the feature appears broken (this cost an hour on the paint room's Clear button,
+  which was fine). `window.prompt` still throws outright; see its own note below.
+
+  **The rule this leaves behind is bigger than any of the four.** A limitation of a TOOL is a
+  measured claim like any other, and the tool is updated by somebody else without telling you —
+  so it rots silently and in the dangerous direction, because a workaround for a limitation that
+  no longer exists keeps working and keeps hiding what it was hiding. Re-probing all four cost
+  one tool call. **Before building a stand-in for something the pane "cannot do", spend that call
+  asking it.**
+
 - **`window.dispatchEvent` MAKES `window` THE TARGET, WHICH COLLAPSES CAPTURE AND BUBBLE INTO
   REGISTRATION ORDER — so it cannot test a capture-phase `stopPropagation` at all.** The second
   unfaithful-synthetic-event trap in two days, and it produced a confident false failure. The new
