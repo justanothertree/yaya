@@ -896,7 +896,9 @@ export function AccountCard({
   account: AccountPortfolio
   timeline?: Timeline | null
 }) {
-  const [showAll, setShowAll] = useState(false)
+  /* whether the small-pieces fold is open — it was `showAll` when the list was sliced by
+     COUNT, and that name stopped being true the moment it started folding by VALUE */
+  const [crumbsOpen, setCrumbsOpen] = useState(false)
   const [openSym, setOpenSym] = useState<string | null>(null)
   const [showInfo, setShowInfo] = useState(false)
   const hVal = (h: AccountPortfolio['holdings'][number]) =>
@@ -1315,14 +1317,14 @@ export function AccountCard({
                 <button
                   type="button"
                   className="inv-row inv-small"
-                  onClick={() => setShowAll((v) => !v)}
-                  aria-expanded={showAll}
+                  onClick={() => setCrumbsOpen((v) => !v)}
+                  aria-expanded={crumbsOpen}
                   aria-label={`${small.length} small pieces, worth ${usd(smallWorth)} together`}
                 >
                   <span className="inv-dot is-many" />
                   <span className="inv-row-name">
                     <span className="inv-ticker">
-                      {small.length} small pieces {showAll ? '▾' : '▸'}
+                      {small.length} small pieces {crumbsOpen ? '▾' : '▸'}
                     </span>
                     <span className="inv-company muted">Leftovers under $1 each</span>
                   </span>
@@ -1330,7 +1332,7 @@ export function AccountCard({
                     <span className="cz-num inv-row-val">{usd(smallWorth)}</span>
                   </span>
                 </button>
-                {showAll &&
+                {crumbsOpen &&
                   small.map((h) => (
                     <button
                       type="button"
