@@ -123,6 +123,26 @@ describe('the small-pieces fold', () => {
     expect(n.shown.map((h) => h.symbol)).toContain('CRUMB')
   })
 
+  /**
+   * ⚠️ THE FIXTURE ABOVE CANNOT ASK THIS, which is why it is its own case: every account in it has
+   * comfortable holdings, so "fold only when there is something above the fold" was invisible to
+   * all twenty tests. A brand-new account on the live fund looks exactly like this — at 33
+   * accounts the first buys are each under a dollar a head.
+   */
+  it('does not fold when the fold would be the entire list', () => {
+    const allCrumbs = account({
+      holdings: [
+        hold({ symbol: 'A', units: 0.1, price: 4 }),
+        hold({ symbol: 'B', units: 0.2, price: 2 }),
+        hold({ symbol: 'C', units: 0.3, price: 1 }),
+      ],
+    })
+    const n = accountNumbers(allCrumbs, timeline(), NOW)
+    expect(n.small).toHaveLength(3)
+    expect(n.folds).toBe(false)
+    expect(n.shown.map((h) => h.symbol).sort()).toEqual(['A', 'B', 'C'])
+  })
+
   it('never folds away a holding nobody has a price for', () => {
     const n = accountNumbers(account(), timeline(), NOW)
     expect(n.small.map((h) => h.symbol)).not.toContain('PRIV')
@@ -216,6 +236,32 @@ describe('gain, and which basis answers it', () => {
   it('says nothing rather than “up ∞%” when there is no basis anywhere', () => {
     const n = accountNumbers(account({ heldBasis: undefined }), timeline({ events: [] }), NOW)
     expect(n.gain).toBeNull()
+  })
+
+  /** sold everything: no shares, no basis, and so no gain question — not a gain of zero */
+  it('says nothing about a gain when there are no shares to have one', () => {
+    const sold = account({ holdings: [], heldBasis: 0, cash: 118.4 })
+    expect(accountNumbers(sold, timeline(), NOW).gain).toBeNull()
+  })
+
+  it('still reports a gain on something that cost nothing', () => {
+    const free = account({
+      holdings: [hold({ symbol: 'GIFT', units: 2, price: 25 })],
+      heldBasis: 0,
+    })
+    const n = accountNumbers(free, timeline(), NOW)
+    expect(n.gain?.dollars).toBeCloseTo(50, 6)
+    expect(n.gain?.pct).toBeNull()
+  })
+
+  it('still reports no change as no change', () => {
+    const flat = account({
+      holdings: [hold({ symbol: 'VOO', units: 2, price: 50 })],
+      heldBasis: 100,
+    })
+    const n = accountNumbers(flat, timeline(), NOW)
+    expect(n.gain?.dollars).toBeCloseTo(0, 6)
+    expect(n.gain?.pct).toBeCloseTo(0, 6)
   })
 
   it('leaves a holding out of the per-row figures when its cost is unknowable', () => {

@@ -1206,8 +1206,13 @@ function AccountHoldings({ n, heading }: { n: AccountNumbers; heading: string })
       </div>
 
       {n.holdings.length === 0 ? (
+        /* ⚠️ "Nothing allocated to this account yet" is wrong the moment there is cash: they HAVE
+           had something allocated, it was sold, and the money is on the card above. An empty
+           state that contradicts the line two inches over it reads as a bug in both. */
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
-          Nothing allocated to this account yet.
+          {n.cash > 0.005
+            ? 'No shares right now — the cash above is waiting to be invested.'
+            : 'Nothing allocated to this account yet.'}
         </p>
       ) : (
         /**

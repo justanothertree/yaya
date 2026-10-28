@@ -94,8 +94,17 @@ export function accountNumbers(
   const big = holdings.filter((h) => !isDust(h.price != null ? holdingWorth(h) : null))
   const small = holdings.filter((h) => isDust(h.price != null ? holdingWorth(h) : null))
   const smallWorth = small.reduce((n, h) => n + holdingWorth(h), 0)
-  /* one crumb is just a holding; a fold is only worth its own row from two up */
-  const folds = small.length >= 2
+  /**
+   * ⚠️ A FOLD NEEDS SOMETHING ABOVE IT. One crumb is just a holding, so the fold starts at two —
+   * but with nothing in `big` the fold is the ENTIRE list, and "What you own" renders as one grey
+   * summary row and no holdings at all. That is what a brand-new account looks like: at 33
+   * accounts the first few buys are each under a dollar a head, so every holding is a crumb for
+   * the first weeks. A card that answers "what do you own" with "5 small pieces" reads as broken.
+   *
+   * The crumbs only become noise once there is signal to drown out, which is exactly when `big`
+   * stops being empty.
+   */
+  const folds = small.length >= 2 && big.length > 0
 
   const series = new Map<string, PricePoint[]>()
   if (timeline) {
@@ -162,6 +171,18 @@ export function accountNumbers(
     return basis > 0 ? { dollars: val - basis, pct: ((val - basis) / basis) * 100 } : null
   })()
 
+  /**
+   * ⚠️ NO SHARES MEANS NO GAIN TO REPORT, NOT A GAIN OF ZERO. An account that has sold everything
+   * has a basis of 0 and a value of 0, and `accountGain` dutifully answers "+$0.00" with a null
+   * percentage — which the tile drew as a green ▲ next to nothing. A label arguing with reality.
+   *
+   * ⚠️ AND IT IS NARROWER THAN "THE BASIS IS ZERO", deliberately. Basis 0 with a value above it
+   * is a real gain on something that cost nothing (a split, a correction) and must still show;
+   * basis 100 with value 100 is a real "no change" and must still show. Only zero against zero
+   * is the absence of a question.
+   */
+  const gainToShow = gain && gain.dollars === 0 && gain.pct == null ? null : gain
+
   const pricedAsOf = account.holdings.reduce<string | null>(
     (acc, h) => (h.priceAt && (!acc || h.priceAt > acc) ? h.priceAt : acc),
     null,
@@ -173,7 +194,7 @@ export function accountNumbers(
     cash: account.cash ?? 0,
     putIn: account.contributed ?? null,
     ab: aheadBehind(account),
-    gain,
+    gain: gainToShow,
     dayChange: anyMove ? dayMove : null,
     pricedAsOf,
     pricesStale: ageDays != null && ageDays >= STALE_AFTER_DAYS,

@@ -209,6 +209,35 @@ const CASES: Case[] = [
   },
   {
     /**
+     * ⚠️ THE TWO EMPTY-ISH STATES PART D §7 ASKS FOR, AND BOTH ARE REACHABLE ON THE LIVE FUND.
+     * Cash-only is one sale away for anybody; pennies-only is where an account STARTS, because
+     * at 33 accounts the first few buys are all under a dollar a head.
+     */
+    label: 'Everything sold, nothing bought back yet',
+    what: '“Worth today” counts shares, and there are none — so it is honestly $0.00 with the whole balance on the cash line underneath. The holdings card must say why it is empty rather than looking broken.',
+    account: {
+      ...base,
+      id: 'pv-11',
+      name: 'Tamsin',
+      cash: 118.4,
+      heldBasis: 0,
+      holdings: [],
+    },
+  },
+  {
+    label: 'Only pennies so far',
+    what: 'Every holding is under $1, so the fold is the entire list and there is nothing above it. A brand-new account looks like this for its first few weeks.',
+    account: {
+      ...base,
+      id: 'pv-12',
+      name: 'Bram',
+      contributed: 8,
+      heldBasis: 7.4,
+      holdings: [...CRUMBS],
+    },
+  },
+  {
+    /**
      * ⚠️ SEVEN FIGURES, BECAUSE EVERY FIGURE ON THIS CARD IS LAID OUT BY ITS OWN WIDTH. The tiles
      * size to their content, the holdings row's figures column sizes to its content, and the
      * chart's y labels set the left padding — so the only way to know any of them survives a big
@@ -271,6 +300,12 @@ export function InvestmentsMemberPreview() {
           <em>after</em> something occurs (a sale, a loss, a dead price feed) are the ones worth
           checking; they are otherwise unreachable without waiting for the thing to happen in
           production.
+        </p>
+        <p className="muted" style={{ margin: '0.5rem 0 0', fontSize: '0.8rem' }}>
+          ⚠️ Every case shares <strong>one</strong> timeline, so the chart draws the same ~$118 fund
+          on all of them and will disagree with the card above it. That is the fixture, not a bug —
+          the chart is here for its layout and its controls. Anything about the chart&apos;s own
+          figures has to be asked of the real room.
         </p>
       </div>
 
