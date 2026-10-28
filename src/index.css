@@ -2241,10 +2241,21 @@ section[id] {
     box-shadow 0.2s ease,
     border-color 0.2s ease;
 }
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
-  border-color: var(--border-strong);
+/**
+ * ⚠️ GATED ON A REAL POINTER, BECAUSE `:hover` STICKS ON A TOUCHSCREEN. A phone has no hover, so
+ * tapping a card applies this and LEAVES it applied until something else is tapped — the card
+ * stays lifted 2px with a drop shadow, as though it were still under a finger that left. Every
+ * card on the site, on every tap.
+ *
+ * `(hover: hover) and (pointer: fine)` is the pair rather than `(hover: hover)` alone: a stylus
+ * and some TV remotes report hover without being a mouse, and the lift is a mouse affordance.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+    border-color: var(--border-strong);
+  }
 }
 
 .nav {
@@ -15395,7 +15406,22 @@ a.cz-msg-author:focus-visible {
    taken on the same argument instead, which holds without a measurement: both declarations are
    minimums, so widening the gate can raise a target and cannot move a layout. A narrow desktop
    window keeps the rule, which costs a mouse a few pixels and is the harmless direction. */
+/**
+ * ⚠️ `#investments .inv-info` AND `.inv-info`, BECAUSE THE PLAIN SELECTOR LOST AND NOBODY COULD
+ * SEE IT LOSE. `#investments .btn-ghost { min-height: 24px }` two blocks above is (1,1,0) and the
+ * ⓘ carries `btn btn-ghost inv-info`, so a bare `.inv-info` at (0,1,0) never applied: the control
+ * this whole block exists to raise was **36×24** on the live page, measured, with 24 winning.
+ *
+ * Its sibling already knew — `#investments .inv-pick` three blocks up is written exactly this way
+ * for exactly this reason. This one was simply missed.
+ *
+ * ⚠️ BOTH SELECTORS, NOT JUST THE ID ONE. The id form wins where it matters (equal specificity to
+ * the .btn-ghost rule, later in source order), and the bare form keeps the rule working wherever
+ * the component renders outside that wrapper. A selector list is evaluated per selector, so each
+ * keeps its own specificity and the stronger one decides when both match.
+ */
 @media (max-width: 700px), (pointer: coarse) {
+  #investments .inv-info,
   .inv-info {
     min-height: 36px;
     min-width: 36px;

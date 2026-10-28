@@ -2105,9 +2105,25 @@ export default function App() {
           )}
           {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
             <div className="dev-bench">
-              <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <InvestmentsMemberPreview />
-              </Suspense>
+              {/**
+               * ⚠️ `id="investments"` BECAUSE WITHOUT IT THIS BENCH HIDES THE BUGS IT EXISTS TO
+               * SHOW. The real room is `<section id="investments" className="card reveal">`, and
+               * a dozen rules in index.css are scoped `#investments …` — including
+               * `#investments .btn-ghost { min-height: 24px }`, which outranks `.inv-info`'s 36
+               * on specificity. Measured at 375 with a coarse pointer: the ⓘ is **36×24** inside
+               * the wrapper and **36×36** without it. So the bench reported a healthy target for
+               * a control that is 24px tall on the live page — an unfaithful double concealing a
+               * fault rather than inventing one, which is the harder direction to notice.
+               *
+               * ⚠️ `reveal` IS LEFT OFF ON PURPOSE. Its entrance animation never advances in the
+               * Browser pane, so its computed opacity stays 0 — faithful to production and
+               * useless to look at. `card` and the id are what the cascade actually reads.
+               */}
+              <section id="investments" className="card">
+                <Suspense fallback={<div aria-busy>Loading…</div>}>
+                  <InvestmentsMemberPreview />
+                </Suspense>
+              </section>
             </div>
           )}
           {/* ONE shared canvas instance — mounted whenever desktop+canvas are on, for every page
