@@ -28,13 +28,13 @@ const LINES = [
     // stopped being true when cash was folded into this line — and the summary card above the
     // chart excludes cash from its own worth figure on purpose.
     hint: 'What the holdings are worth at each day’s prices, plus cash from any sales',
-    color: '#22cc78',
+    color: 'var(--gain)',
   },
   {
     key: 'invested' as const,
     label: 'Net in',
     hint: 'Money put in minus money taken out, at cost',
-    color: '#7c6af7',
+    color: 'var(--accent, #7c6af7)',
   },
   {
     key: 'promised' as const,
@@ -291,7 +291,7 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
               )}
               {show.promised && <span className="muted">Promised {usd(p.promised)}</span>}
               {order && (
-                <span style={{ color: order.cost < 0 ? '#f46b6b' : 'var(--accent,#7c6af7)' }}>
+                <span style={{ color: order.cost < 0 ? 'var(--loss)' : 'var(--accent,#7c6af7)' }}>
                   ● {order.cost < 0 ? 'Sold' : 'Ordered'} {usd(Math.abs(order.cost))}
                   {order.count > 1 ? ` · ${order.count} orders` : ''}
                 </span>
@@ -346,7 +346,7 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
               x2={xFor(i)}
               y1={H - PAD.bottom}
               y2={H - PAD.bottom - 6}
-              stroke={sell ? '#f46b6b' : 'var(--accent,#7c6af7)'}
+              stroke={sell ? 'var(--loss)' : 'var(--accent,#7c6af7)'}
               strokeWidth="1.6"
               opacity={0.65}
             />

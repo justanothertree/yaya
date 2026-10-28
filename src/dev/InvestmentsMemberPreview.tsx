@@ -70,6 +70,20 @@ const holdings = (priceAt: string = FRESH) => [
  *  Sound here only because these fixtures have no sells, so netCash and basis coincide. */
 const COST = holdings().reduce((s, h) => s + h.netCash, 0)
 
+/**
+ * ⚠️ SUB-$1 HOLDINGS, BECAUSE THE FOLD WAS UNTESTABLE WITHOUT THEM. Every seeded account held
+ * three comfortable positions, so `.inv-small` never rendered and a sweep of this bench reported
+ * a clean room about a feature that was not on screen. Two of these carry names the map knows and
+ * two do not, so the empty-second-line path is exercised too.
+ */
+const CRUMBS = [
+  { symbol: 'PEXNY', assetType: 'stock', units: 0.18, netCash: 0.9, price: 1.1, priceAt: FRESH },
+  { symbol: 'NWL', assetType: 'stock', units: 0.14, netCash: 1.4, price: 4.6, priceAt: FRESH },
+  { symbol: 'CODI', assetType: 'stock', units: 0.19, netCash: 1.1, price: 2.4, priceAt: FRESH },
+  { symbol: 'OLOX', assetType: 'stock', units: 0.88, netCash: 2.1, price: 0.21, priceAt: FRESH },
+  { symbol: 'RIME', assetType: 'stock', units: 0.96, netCash: 1.9, price: 0.36, priceAt: FRESH },
+]
+
 const base: Omit<AccountPortfolio, 'id' | 'name'> = {
   dollarPerDay: 1,
   startDate: START,
@@ -131,6 +145,30 @@ const CASES: Case[] = [
         ...holdings(),
         { symbol: 'PRIV', assetType: 'stock', units: 3, netCash: 60, price: null, priceAt: null },
       ],
+    },
+  },
+  {
+    label: 'Mostly crumbs',
+    what: 'The live fund’s real shape: 37 of 76 holdings per account are worth under $1, because at 33 accounts any buy under $33 is under a dollar a head on the day it settles. They must fold into one row that still counts them, and a holding with no price must NOT fold — unknown is not small.',
+    account: {
+      ...base,
+      id: 'pv-8',
+      name: 'Juniper',
+      holdings: [
+        ...holdings(),
+        ...CRUMBS,
+        { symbol: 'PRIV', assetType: 'stock', units: 3, netCash: 60, price: null, priceAt: null },
+      ],
+    },
+  },
+  {
+    label: 'One crumb only',
+    what: 'A single sub-$1 holding is just a holding. The fold is only worth its own row from two up, or it is a summary of one thing.',
+    account: {
+      ...base,
+      id: 'pv-9',
+      name: 'Rowan',
+      holdings: [...holdings(), CRUMBS[0]],
     },
   },
 ]

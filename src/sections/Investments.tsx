@@ -1,6 +1,8 @@
 // Family "dollar-a-day" investments. Members see their own read-only portfolio (holdings at
 // cost + dollars/day, plus current value and gain/loss from the daily price sweep). Admins
 // also get "All accounts" (view as any member) and the trades ledger.
+import { isDust } from '../finance/dust'
+import { nameFor } from '../finance/symbolNames'
 import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../ui/errText'
 import { isAuthDenial } from '../finance/auth'
@@ -337,7 +339,7 @@ function PortfolioList({
               {ab != null && (
                 <span
                   className="cz-num"
-                  style={{ fontSize: '0.76rem', color: ab >= 0 ? '#22cc78' : '#f46b6b' }}
+                  style={{ fontSize: '0.76rem', color: ab >= 0 ? 'var(--gain)' : 'var(--loss)' }}
                 >
                   {ab >= 0 ? '+' : '−'}
                   {usd(Math.abs(ab))}
@@ -427,7 +429,7 @@ function AllAccounts({
         <Stat label="Accounts" value={String(accounts.length)} />
         <Stat label="People linked" value={`${people}${openSlots ? ` · ${openSlots} open` : ''}`} />
         <Stat label="Promised / day" value={`${usd(totalDaily)}`} />
-        <Stat label="Reserved total" value={usd(totalReserved)} color="#22cc78" />
+        <Stat label="Reserved total" value={usd(totalReserved)} color="var(--gain)" />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -831,7 +833,9 @@ function AccountForm({
           >
             {confirmDel ? (
               <>
-                <span style={{ fontSize: '0.78rem', color: '#f46b6b' }}>Delete this account?</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--loss)' }}>
+                  Delete this account?
+                </span>
                 <button
                   className="btn"
                   type="button"
@@ -861,7 +865,7 @@ function AccountForm({
                 type="button"
                 onClick={() => setConfirmDel(true)}
                 style={{
-                  color: '#f46b6b',
+                  color: 'var(--loss)',
                   borderColor: 'rgba(244,107,107,0.5)',
                   fontSize: '0.78rem',
                 }}
@@ -901,8 +905,25 @@ export function AccountCard({
   const ab = aheadBehind(account)
   const unpriced = account.holdings.filter((h) => h.price == null).length
   const holdings = [...account.holdings].sort((x, y) => hVal(y) - hVal(x))
-  const HOLDINGS_PREVIEW = 10
-  const shown = showAll ? holdings : holdings.slice(0, HOLDINGS_PREVIEW)
+  /**
+   * ⚠️ SMALL PIECES FOLD, "SHOW ALL" GOES. "Show all" handed a child a list of 76 rows, 37 of
+   * them worth under a dollar — measured on the live fund, those 37 cost $33.86 and are now worth
+   * $15.69 between them. The length was never the problem; the noise was. Folding by VALUE shows
+   * everything that matters and collapses the crumbs into one honest line.
+   *
+   * ⚠️ AND THE CRUMBS ARE NOT A BUG TO FIX. At 33 accounts any buy under $33 is under $1 a head
+   * on the day it settles. That is the fund's shape, not a rounding error, so the row says what
+   * they are rather than hiding them: they still count toward the total.
+   *
+   * ⚠️ AN UNPRICED HOLDING IS NEVER FOLDED — see `isDust`. A null price means nobody knows what it
+   * is worth, which is the opposite of knowing it is small.
+   */
+  const big = holdings.filter((h) => !isDust(h.price != null ? hVal(h) : null))
+  const small = holdings.filter((h) => isDust(h.price != null ? hVal(h) : null))
+  const smallWorth = small.reduce((n, h) => n + hVal(h), 0)
+  /* one crumb is just a holding; a fold is only worth its own row from two up (Part D §6) */
+  const folds = small.length >= 2
+  const shown = folds ? big : holdings
 
   // daily price series per symbol (for sparklines + the "today" change)
   const priceSeries = useMemo(() => {
@@ -1065,7 +1086,7 @@ export function AccountCard({
           {!pricesStale && dayChange != null && Math.abs(dayChange) >= 0.005 && (
             <span
               className="cz-num"
-              style={{ fontWeight: 700, color: dayChange >= 0 ? '#22cc78' : '#f46b6b' }}
+              style={{ fontWeight: 700, color: dayChange >= 0 ? 'var(--gain)' : 'var(--loss)' }}
             >
               {dayChange >= 0 ? '▲ +' : '▼ −'}
               {usd(Math.abs(dayChange))} today
@@ -1119,7 +1140,12 @@ export function AccountCard({
         {(gain || ab != null) && (
           <div className="cz-num" style={{ fontSize: '0.84rem' }}>
             {gain && (
-              <span style={{ fontWeight: 700, color: gain.dollars >= 0 ? '#22cc78' : '#f46b6b' }}>
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: gain.dollars >= 0 ? 'var(--gain)' : 'var(--loss)',
+                }}
+              >
                 {gain.dollars >= 0 ? '▲ +' : '▼ −'}
                 {usd(Math.abs(gain.dollars))}
                 {/* no percentage when the basis is zero — "up ∞%" helps nobody */}
@@ -1162,36 +1188,13 @@ export function AccountCard({
         </p>
       ) : (
         <>
-          {/* allocation bar */}
-          <div
-            style={{
-              display: 'flex',
-              height: 12,
-              borderRadius: 6,
-              overflow: 'hidden',
-              background: 'var(--b1, rgba(127,127,127,0.18))',
-            }}
-            title="Allocation by asset"
-          >
-            {holdings.map((h) => (
-              <span
-                key={h.symbol}
-                title={`${h.symbol}: ${usd(hVal(h))} — tap for details`}
-                onClick={() => {
-                  setShowAll(true)
-                  toggleSym(h.symbol)
-                }}
-                style={{
-                  width: `${total > 0 ? (hVal(h) / total) * 100 : 0}%`,
-                  background: assetColor(h.symbol),
-                  cursor: 'pointer',
-                  outline: openSym === h.symbol ? '2px solid var(--fg,#fff)' : 'none',
-                  outlineOffset: -2,
-                }}
-              />
-            ))}
-          </div>
-
+          {/**
+           * ⚠️ THE ALLOCATION BAR IS GONE, AND IT WAS A TAP TRAP RATHER THAN A CHART. It was 12px
+           * tall and sliced by weight, so a holding worth a few pennies of a $1,284 account got a
+           * slice under a pixel wide — unhittable, and sitting next to slices that were. Each
+           * slice also opened a DIFFERENT holding, so a near miss opened the wrong one silently.
+           * The coloured dot on each row carries the same colour key, and the row is 60px.
+           */}
           {/* holdings list */}
           <div style={{ display: 'grid', gap: '0.4rem' }}>
             {shown.map((h) => {
@@ -1203,79 +1206,53 @@ export function AccountCard({
               const pl = plFor(h)
               return (
                 <div key={h.symbol}>
-                  {/* ⚠️ The only role="button" in the codebase — every other control here is a
-                      real <button> — and it shipped without tabIndex or a key handler, so a
-                      keyboard or screen-reader user could not open a single holding row on the
-                      card this file calls "the component a family member actually reads".
-                      Units, average cost, price and gain were all unreachable. */}
-                  <div
+                  {/**
+                   * ⚠️ A REAL `<button>` NOW. This was the only `role="button"` in the codebase —
+                   * a div with the role bolted on, which had already cost a keyboard user every
+                   * holding's detail until tabIndex and a key handler were added by hand. An
+                   * element that behaves like a button should be one; then Enter, Space, focus
+                   * and the accessible name all come for free instead of being remembered.
+                   *
+                   * ⚠️ 60px, NOT 44. Two lines of text — ticker over company name — do not fit a
+                   * 44px row without crushing them, and this is the control a member taps most.
+                   * The grid is `12px minmax(0,1fr) auto`: the dot is fixed, the name column is
+                   * allowed to SHRINK (that is what `minmax(0,…)` buys over `auto`), and the
+                   * figures size to their own content. The previous row used three `clamp()`
+                   * widths, which pinned the value column at 67.5px on a phone, so a seven-figure
+                   * holding ran into the percentage beside it.
+                   */}
+                  <button
+                    type="button"
+                    className="inv-row"
                     onClick={() => toggleSym(h.symbol)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        toggleSym(h.symbol)
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
                     aria-expanded={isOpen}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.6rem',
-                      flexWrap: 'wrap',
-                      padding: '0.4rem 0.2rem',
-                      borderBottom: '1px solid var(--b1, rgba(127,127,127,0.12))',
-                      cursor: 'pointer',
-                    }}
+                    aria-label={`${h.symbol}${nameFor(h.symbol) ? ', ' + nameFor(h.symbol) : ''}, worth ${h.price == null ? 'unknown' : usd(val)}${pl ? `, ${pl.pct >= 0 ? 'up' : 'down'} ${Math.abs(pl.pct).toFixed(1)} percent` : ''}`}
                   >
-                    <span
-                      style={{
-                        width: 9,
-                        height: 9,
-                        borderRadius: '50%',
-                        background: assetColor(h.symbol),
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ fontWeight: 700, minWidth: 'clamp(3rem, 14vw, 4.5rem)' }}>
-                      {h.symbol}
+                    <span className="inv-dot" style={{ background: assetColor(h.symbol) }} />
+                    <span className="inv-row-name">
+                      <span className="inv-ticker">{h.symbol}</span>
+                      {nameFor(h.symbol) ? (
+                        <span className="inv-company muted">{nameFor(h.symbol)}</span>
+                      ) : null}
                     </span>
-                    <span style={{ opacity: 0.5, fontSize: '0.72rem' }}>{isOpen ? '▾' : '▸'}</span>
-                    <span
-                      className="cz-num"
-                      style={{
-                        marginLeft: 'auto',
-                        /* ⚠️ clamped, not fixed. Three fixed columns plus a dot and an arrow
-                           came to 261px of a row, against 285px of content on a 375px phone —
-                           so the last one hung off the edge. vw units let the row give way on a
-                           narrow screen and keep the comfortable width everywhere else. */
-                        width: 'clamp(4.2rem, 18vw, 6rem)',
-                        textAlign: 'right',
-                        fontWeight: 700,
-                      }}
-                      title="Current worth (units × price)"
-                    >
-                      {h.price == null ? '—' : usd(val)}
+                    <span className="inv-row-figs">
+                      <span className="cz-num inv-row-val">{h.price == null ? '—' : usd(val)}</span>
+                      <span
+                        className="cz-num inv-row-gain"
+                        style={{
+                          color: pl
+                            ? pl.pct >= 0
+                              ? 'var(--gain)'
+                              : 'var(--loss)'
+                            : 'var(--muted,#888)',
+                        }}
+                      >
+                        {pl
+                          ? `${pl.pct >= 0 ? '▲ +' : '▼ −'}${usd(Math.abs(pl.dollars))} (${pl.pct >= 0 ? '+' : '−'}${Math.abs(pl.pct).toFixed(1)}%)`
+                          : '—'}
+                      </span>
                     </span>
-                    <span
-                      className="cz-num"
-                      title={
-                        pl
-                          ? `${pl.pct >= 0 ? 'Up' : 'Down'} from your average cost of ${usd(pl.avgCost)}/share`
-                          : 'Not enough cost history to show gain/loss'
-                      }
-                      style={{
-                        width: 'clamp(3.2rem, 14vw, 4.5rem)',
-                        textAlign: 'right',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        color: pl ? (pl.pct >= 0 ? '#22cc78' : '#f46b6b') : 'var(--muted,#888)',
-                      }}
-                    >
-                      {pl ? `${pl.pct >= 0 ? '▲ ' : '▼ '}${Math.abs(pl.pct).toFixed(1)}%` : '—'}
-                    </span>
-                  </div>
+                  </button>
                   {isOpen && (
                     <div
                       style={{
@@ -1300,7 +1277,7 @@ export function AccountCard({
                         <Stat
                           label="Gain / loss"
                           value={`${pl.dollars >= 0 ? '+' : '−'}${usd(Math.abs(pl.dollars))} · ${pl.pct >= 0 ? '▲' : '▼'}${Math.abs(pl.pct).toFixed(1)}%`}
-                          color={pl.pct >= 0 ? '#22cc78' : '#f46b6b'}
+                          color={pl.pct >= 0 ? 'var(--gain)' : 'var(--loss)'}
                         />
                       )}
                       <Stat label="Of this fund" value={`${pct.toFixed(1)}%`} />
@@ -1324,15 +1301,57 @@ export function AccountCard({
                 </div>
               )
             })}
-            {holdings.length > HOLDINGS_PREVIEW && (
-              <button
-                className="btn btn-ghost"
-                onClick={() => setShowAll((s) => !s)}
-                style={{ fontSize: '0.78rem', justifySelf: 'start' }}
-                aria-expanded={showAll}
-              >
-                {showAll ? '▴ Show top holdings only' : `▾ Show all ${holdings.length} holdings`}
-              </button>
+            {/**
+             * ⚠️ THE CRUMBS, IN ONE LINE, AND THEY STILL COUNT. The fold says how many and what
+             * they come to together, so nothing disappears — it is a summary, not a filter. The
+             * second line says why they exist, because "37 things worth 42 cents" reads like
+             * something has gone wrong and nothing has.
+             *
+             * ⚠️ NOT REMEMBERED BETWEEN VISITS. Opening it is a one-off curiosity; restoring it
+             * on every load would make the noisy list the default again by the back door.
+             */}
+            {folds && (
+              <>
+                <button
+                  type="button"
+                  className="inv-row inv-small"
+                  onClick={() => setShowAll((v) => !v)}
+                  aria-expanded={showAll}
+                  aria-label={`${small.length} small pieces, worth ${usd(smallWorth)} together`}
+                >
+                  <span className="inv-dot is-many" />
+                  <span className="inv-row-name">
+                    <span className="inv-ticker">
+                      {small.length} small pieces {showAll ? '▾' : '▸'}
+                    </span>
+                    <span className="inv-company muted">Leftovers under $1 each</span>
+                  </span>
+                  <span className="inv-row-figs">
+                    <span className="cz-num inv-row-val">{usd(smallWorth)}</span>
+                  </span>
+                </button>
+                {showAll &&
+                  small.map((h) => (
+                    <button
+                      type="button"
+                      key={h.symbol}
+                      className="inv-row is-tucked"
+                      onClick={() => toggleSym(h.symbol)}
+                      aria-label={`${h.symbol}, worth ${usd(hVal(h))}`}
+                    >
+                      <span className="inv-dot" style={{ background: assetColor(h.symbol) }} />
+                      <span className="inv-row-name">
+                        <span className="inv-ticker">{h.symbol}</span>
+                        {nameFor(h.symbol) ? (
+                          <span className="inv-company muted">{nameFor(h.symbol)}</span>
+                        ) : null}
+                      </span>
+                      <span className="inv-row-figs">
+                        <span className="cz-num inv-row-val">{usd(hVal(h))}</span>
+                      </span>
+                    </button>
+                  ))}
+              </>
             )}
           </div>
         </>
@@ -1365,7 +1384,7 @@ function Sparkline({
   const up = points[points.length - 1] >= points[0]
   return (
     <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height }} aria-hidden>
-      <path d={d} fill="none" stroke={up ? '#22cc78' : '#f46b6b'} strokeWidth="1.6" />
+      <path d={d} fill="none" stroke={up ? 'var(--gain)' : 'var(--loss)'} strokeWidth="1.6" />
     </svg>
   )
 }
@@ -1450,7 +1469,7 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
           <>
             {' '}
             — those shares are{' '}
-            <strong style={{ color: up ? '#22cc78' : '#f46b6b' }}>
+            <strong style={{ color: up ? 'var(--gain)' : 'var(--loss)' }}>
               {pct} {up ? 'up' : 'down'}
             </strong>{' '}
             on the {usd(t.basis)} they cost
@@ -1490,19 +1509,19 @@ function ScheduleSummary({ accounts }: { accounts: AccountPortfolio[] }) {
           <Stat
             label={up ? 'Gain on holdings' : 'Loss on holdings'}
             value={`${up ? '+' : '−'}${usd(Math.abs(t.gain))}`}
-            color={up ? '#22cc78' : '#f46b6b'}
+            color={up ? 'var(--gain)' : 'var(--loss)'}
           />
         )}
         <Stat
           label={ahead ? 'Ahead of the promise' : 'Behind the promise'}
           value={`${ahead ? '+' : '−'}${usd(Math.abs(behindBy))}`}
-          color={ahead ? '#22cc78' : '#f46b6b'}
+          color={ahead ? 'var(--gain)' : 'var(--loss)'}
         />
         {days != null && (
           <Stat
             label={ahead ? 'Days ahead' : 'Days behind'}
             value={`≈ ${days}`}
-            color={ahead ? '#22cc78' : '#f46b6b'}
+            color={ahead ? 'var(--gain)' : 'var(--loss)'}
           />
         )}
       </div>
@@ -1665,7 +1684,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
       )}
       <article className="card" style={{ display: 'grid', gap: '0.7rem' }}>
         <div style={{ display: 'flex', gap: '1.6rem', flexWrap: 'wrap' }}>
-          <Stat label="Family fund (worth)" value={usd(familyValue)} big color="#22cc78" />
+          <Stat label="Family fund (worth)" value={usd(familyValue)} big color="var(--gain)" />
           {/* no Math.max here: a negative would mean the allocations claim more than you hold,
               which integrity check 7 exists to catch — clamping it just hid the sign. */}
           <Stat label="Still yours (worth)" value={usd(portfolioValue - familyValue)} big />
@@ -1741,7 +1760,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       </span>
                       {p.units < 0 && (
                         <span
-                          style={{ fontSize: '0.7rem', color: '#f46b6b', fontWeight: 700 }}
+                          style={{ fontSize: '0.7rem', color: 'var(--loss)', fontWeight: 700 }}
                           title="More sold than bought in the data — usually a stock split the export missed"
                         >
                           oversold?
@@ -1801,7 +1820,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                           marginLeft: 'auto',
                           fontSize: '0.74rem',
                           padding: '0.18rem 0.6rem',
-                          color: p.isFamily ? '#22cc78' : 'inherit',
+                          color: p.isFamily ? 'var(--gain)' : 'inherit',
                           borderColor: p.isFamily ? 'rgba(34,204,120,0.5)' : undefined,
                         }}
                       >
@@ -1909,7 +1928,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                   </span>
                 ) : (
                   isSell && (
-                    <span style={{ fontSize: '0.68rem', color: '#f46b6b', fontWeight: 700 }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--loss)', fontWeight: 700 }}>
                       SELL
                     </span>
                   )

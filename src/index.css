@@ -7,6 +7,22 @@
   --text: #eeeef8;
   --muted: #9090b0;
   --accent: #22c55e;
+  /**
+   * ⚠️ GAIN AND LOSS AS TOKENS, BECAUSE THEY WERE 33 HARD-CODED HEXES ACROSS TWO FILES. `#22cc78`
+   * and `#f46b6b` were written inline wherever a number needed a colour, so a theme could not
+   * reach them and the light theme rendered a green that is 2.3:1 on white — unreadable, and
+   * invisible to anyone auditing the themes, since the value never appeared in this file.
+   *
+   * ⚠️ THE LIGHT THEME NEEDS DIFFERENT HEXES, NOT THE SAME ONES. That is the whole reason this is
+   * a token rather than a constant in a module: a single pair cannot clear 4.5:1 on both a near
+   * black and a pure white background. Darker green and red are used there and measured.
+   *
+   * ⚠️ AND COLOUR IS NEVER THE ONLY SIGNAL — every figure that uses these also carries ▲ or ▼, so
+   * the direction survives a monochrome screen and the eight percent of men who cannot separate
+   * the two hues.
+   */
+  --gain: #22c55e;
+  --loss: #ef4444;
   /* The flair ramp: five colours for the click effects, mouse trails and animated
      backgrounds, which between them could previously find only the accent pair. Derived by
      rotating hue exactly as derivePalette does for custom palettes, so a built-in theme and
@@ -60,6 +76,22 @@
   --text: #eeeef8;
   --muted: #9090b0;
   --accent: #22c55e;
+  /**
+   * ⚠️ GAIN AND LOSS AS TOKENS, BECAUSE THEY WERE 33 HARD-CODED HEXES ACROSS TWO FILES. `#22cc78`
+   * and `#f46b6b` were written inline wherever a number needed a colour, so a theme could not
+   * reach them and the light theme rendered a green that is 2.3:1 on white — unreadable, and
+   * invisible to anyone auditing the themes, since the value never appeared in this file.
+   *
+   * ⚠️ THE LIGHT THEME NEEDS DIFFERENT HEXES, NOT THE SAME ONES. That is the whole reason this is
+   * a token rather than a constant in a module: a single pair cannot clear 4.5:1 on both a near
+   * black and a pure white background. Darker green and red are used there and measured.
+   *
+   * ⚠️ AND COLOUR IS NEVER THE ONLY SIGNAL — every figure that uses these also carries ▲ or ▼, so
+   * the direction survives a monochrome screen and the eight percent of men who cannot separate
+   * the two hues.
+   */
+  --gain: #22c55e;
+  --loss: #ef4444;
   --fx-0: #45c522;
   --fx-1: #22c55e;
   --fx-2: #22c5bd;
@@ -90,6 +122,22 @@
   --text: #0f172a;
   --muted: #475569;
   --accent: #16a34a;
+  /**
+   * ⚠️ GAIN AND LOSS AS TOKENS, BECAUSE THEY WERE 33 HARD-CODED HEXES ACROSS TWO FILES. `#22cc78`
+   * and `#f46b6b` were written inline wherever a number needed a colour, so a theme could not
+   * reach them and the light theme rendered a green that is 2.3:1 on white — unreadable, and
+   * invisible to anyone auditing the themes, since the value never appeared in this file.
+   *
+   * ⚠️ THE LIGHT THEME NEEDS DIFFERENT HEXES, NOT THE SAME ONES. That is the whole reason this is
+   * a token rather than a constant in a module: a single pair cannot clear 4.5:1 on both a near
+   * black and a pure white background. Darker green and red are used there and measured.
+   *
+   * ⚠️ AND COLOUR IS NEVER THE ONLY SIGNAL — every figure that uses these also carries ▲ or ▼, so
+   * the direction survives a monochrome screen and the eight percent of men who cannot separate
+   * the two hues.
+   */
+  --gain: #15803d;
+  --loss: #b91c1c;
   --fx-0: #34a316;
   --fx-1: #16a34a;
   --fx-2: #16a39c;
@@ -121,6 +169,22 @@
   --text: #e6e9ff;
   --muted: #a3a9c7;
   --accent: #7c3aed;
+  /**
+   * ⚠️ GAIN AND LOSS AS TOKENS, BECAUSE THEY WERE 33 HARD-CODED HEXES ACROSS TWO FILES. `#22cc78`
+   * and `#f46b6b` were written inline wherever a number needed a colour, so a theme could not
+   * reach them and the light theme rendered a green that is 2.3:1 on white — unreadable, and
+   * invisible to anyone auditing the themes, since the value never appeared in this file.
+   *
+   * ⚠️ THE LIGHT THEME NEEDS DIFFERENT HEXES, NOT THE SAME ONES. That is the whole reason this is
+   * a token rather than a constant in a module: a single pair cannot clear 4.5:1 on both a near
+   * black and a pure white background. Darker green and red are used there and measured.
+   *
+   * ⚠️ AND COLOUR IS NEVER THE ONLY SIGNAL — every figure that uses these also carries ▲ or ▼, so
+   * the direction survives a monochrome screen and the eight percent of men who cannot separate
+   * the two hues.
+   */
+  --gain: #22c55e;
+  --loss: #ef4444;
   --fx-0: #3a60ed;
   --fx-1: #7c3aed;
   --fx-2: #e43aed;
@@ -15366,8 +15430,11 @@ a.cz-msg-author:focus-visible {
  * nothing crossed the right edge or scrolled sideways.
  */
 @media (max-width: 700px), (pointer: coarse) {
-  #investments .inv-pick {
-    min-height: 36px;
+  #investments .inv-pick,
+  .inv-pick {
+    /* ⚠️ 44, not 36 — see the note on .inv-row. 36 cleared WCAG's 24 and is still short of what
+       a thumb wants, and "All" is the narrowest pill at 34px wide. */
+    min-height: 44px;
   }
 }
 
@@ -15392,6 +15459,109 @@ a.cz-msg-author:focus-visible {
  * measured across seven cards, the whole bench grew 11px — while 36 would add nine per row to a
  * layout nobody has seen signed in. The coarse rule below still gives a thumb the full 36.
  */
+/**
+ * ── "What you own" ────────────────────────────────────────────────────────────────────────
+ *
+ * ⚠️ `12px minmax(0, 1fr) auto` IS THE WHOLE LAYOUT, AND `minmax(0, …)` IS THE LOAD-BEARING
+ * PART. A grid child defaults to `min-width: auto`, which means "never shrink below your
+ * content" — so a long company name would push the figures off the row rather than ellipsing,
+ * exactly as a 66-character goal title once took a card 223px past its own edge. `minmax(0, 1fr)`
+ * is the permission to shrink; `overflow: hidden` on the name column is what then clips it.
+ *
+ * ⚠️ AND THE FIGURES COLUMN IS `auto`, NOT A CLAMP. Three `clamp()` widths used to pin the value
+ * column at 67.5px on a 375px phone, so $1,234,567.89 ran into the percentage beside it. `auto`
+ * sizes to the content, and the name column gives way instead — which is the right thing to lose,
+ * because a truncated name is still recognisable and a truncated number is a different number.
+ */
+.inv-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 2px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.14));
+  border-radius: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.inv-row:last-of-type {
+  border-bottom: 0;
+}
+.inv-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.inv-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+/* the fold's own marker: the crumbs have many colours, so it gets none of them */
+.inv-dot.is-many {
+  background: var(--muted, #888);
+  opacity: 0.5;
+}
+.inv-row-name {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+.inv-ticker {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-company {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ⚠️ `nowrap` on both figures: "▲ +$41.20 (+8.7%)" wrapping makes the row 44px taller and the
+   number ambiguous for a beat while it reflows. The name column is the one that gives way. */
+.inv-row-figs {
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  text-align: right;
+  white-space: nowrap;
+}
+.inv-row-val {
+  font-weight: 700;
+}
+.inv-row-gain {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+/* a crumb opened out of the fold, set in from its summary row */
+.inv-row.is-tucked {
+  padding-left: 14px;
+  opacity: 0.88;
+}
+
+/**
+ * ⚠️ 44px IS A COMFORT BAR, NOT THE WCAG ONE. scripts/mobile-audit.js checks 24×24 — WCAG 2.5.8,
+ * the outside bar — and everything in this room already cleared it. 44 is the number a thumb
+ * actually wants, and this is the room a family member reads on a phone, so it gets the stricter
+ * one deliberately rather than by accident.
+ */
+@media (max-width: 700px), (pointer: coarse) {
+  #investments .inv-row,
+  .inv-row {
+    min-height: 60px;
+  }
+}
+
 .inv-info {
   min-height: 24px;
   min-width: 24px;
@@ -15423,8 +15593,9 @@ a.cz-msg-author:focus-visible {
 @media (max-width: 700px), (pointer: coarse) {
   #investments .inv-info,
   .inv-info {
-    min-height: 36px;
-    min-width: 36px;
+    /* 44 square: it is a lone glyph with nothing beside it to aim at */
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
