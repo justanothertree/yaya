@@ -7,6 +7,26 @@ Running `supabase db reset` or `supabase db push` against this directory would b
 missing most of the schema — and it would look like it had worked. That is the one thing to know
 before using anything in here.
 
+## ⛔ Files ending `.DRAFT.sql` have NOT been applied
+
+Two of them, both from Yaxa's 28 Oct review and both waiting on Evan:
+
+- `20261028120000_close_insert_allocation.DRAFT.sql`
+- `20261028120100_family_fund_safety.DRAFT.sql`
+
+They are here because the review asked for its SQL to land in this directory for review. The
+`.DRAFT.sql` suffix is deliberate: the Supabase CLI matches `<timestamp>_<name>.sql`, and these
+still match it, so **a `db push` would try to apply them**. The suffix is a sign for a person, not
+a guard against tooling. Read them before running anything in this directory.
+
+Each one carries, in its own header, the read-only queries whose answers justify it — and what
+bounds its urgency. Both are about the first time a fund account is handed to somebody other than
+Evan; measured today, there are 33 accounts, **1 owner** and **1 distinct start date**, so neither
+problem can currently be reached.
+
+Rename the suffix away once applied, and move the "verified" header notes into `docs/` the way
+every other change here records its reasoning.
+
 ## Why the rest are not here
 
 Every migration until now was applied directly against the project and its reasoning written to

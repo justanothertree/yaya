@@ -20,6 +20,18 @@ const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
 
 // Max incoming message size (32 KB) – prevents DoS via huge payloads.
 const MAX_MSG_BYTES = 32768
+/**
+ * ⚠️ HOW LONG THE RELAY WAITS ON ANYTHING OUTSIDE ITSELF. Every `fetch` below had no timeout at
+ * all, so a Supabase or Cloudflare endpoint that accepts a connection and then says nothing holds
+ * the handler open indefinitely — and in `verifyToken`/`inGoodStanding`/`isAdmin` that means a
+ * join request that never answers rather than one that is refused.
+ *
+ * Every one of those three already ends in `catch { return false }`, and the two Cloudflare ones
+ * and `finalize_round_rpc` either catch or throw into a caller that does — so an `AbortError`
+ * lands on the existing failure path and the auth checks stay FAIL-CLOSED, which is the property
+ * that mattered before adding this.
+ */
+const OUTBOUND_TIMEOUT_MS = 8000
 // Max length for user-supplied strings before they are truncated.
 const MAX_NAME_LEN = 64
 // In-match chat. Nothing is stored: the relay forwards a line to the room and forgets it.
@@ -604,6 +616,7 @@ async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
     if (!res.ok) {
       console.error('[ws] finalize_round_rpc HTTP error', res.status, await res.text())
@@ -803,6 +816,7 @@ async function iceServers() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ ttl: TURN_TTL }),
+        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
       },
     )
     if (!r.ok) throw new Error(`turn ${r.status}`)
@@ -876,6 +890,7 @@ async function verifyToken(token) {
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
     if (!r.ok) return null
     const user = await r.json()
@@ -918,6 +933,7 @@ async function inGoodStanding(token, userId) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({ p_user_id: userId }),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
     if (!r.ok) return false
     const suspended = await r.json()
@@ -947,6 +963,7 @@ async function isAdmin(req) {
         'Content-Type': 'application/json',
       },
       body: '{}',
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
     if (!r.ok) return false
     return (await r.json()) === true
@@ -990,6 +1007,7 @@ async function turnUsage() {
         query: USAGE_QUERY,
         variables: { accountId: CF_ACCOUNT_ID, from, to },
       }),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
     /**
      * ⚠️ Check the HTTP status BEFORE trusting the body.
@@ -1309,6 +1327,7 @@ async function handleImport(req, res, rawUrl) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
     const text = await r.text()
     if (!r.ok) throw new Error(`${fn}: ${text.slice(0, 300)}`)
@@ -1442,7 +1461,11 @@ function connectionAllowed(addr) {
   }
 }
 
-const wss = new WebSocketServer({ server })
+/* ⚠️ `maxPayload` REFUSES AN OVERSIZED FRAME BEFORE BUFFERING IT. The length check further down
+   is still there and still right, but it runs on a message `ws` has already assembled in memory —
+   so the default ~100 MiB ceiling was the real limit, 3,200× the one this file thinks it has.
+   Over the cap the socket closes with 1009. */
+const wss = new WebSocketServer({ server, maxPayload: MAX_MSG_BYTES })
 
 wss.on('connection', (ws, req) => {
   /**
