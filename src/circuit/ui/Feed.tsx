@@ -10,6 +10,7 @@ import { todayISO as isoToday, localISO } from '../dates'
 import { useFeedSocial, KUDOS, type FeedSocial } from '../social'
 import type { DayLog, Person } from '../types'
 import { useSeenPicture } from '../../pictures/seen'
+import { useBigPicture } from '../../pictures/useBigPicture'
 
 type View = 'list' | 'month' | 'week' | 'day' | 'table'
 function isoAdd(iso: string, days: number): string {
@@ -65,7 +66,7 @@ function LogCard({
 }: {
   log: DayLog
   person: Person
-  onPhoto: (src: string) => void
+  onPhoto: (src: string, alt?: string | null) => void
   onOpen?: () => void
   compact?: boolean
   social?: FeedSocial
@@ -178,7 +179,13 @@ function LogCard({
  * alternative was resolving up in `Feed` and threading a lookup down through WeekView and DayView
  * to get here.
  */
-function LogPhoto({ id, onPhoto }: { id?: string | null; onPhoto: (src: string) => void }) {
+function LogPhoto({
+  id,
+  onPhoto,
+}: {
+  id?: string | null
+  onPhoto: (src: string, alt?: string | null) => void
+}) {
   const pic = useSeenPicture(id)
   if (!pic) return null
   return (
@@ -187,7 +194,7 @@ function LogPhoto({ id, onPhoto }: { id?: string | null; onPhoto: (src: string) 
       alt={pic.alt ?? 'workout'}
       onClick={(e) => {
         e.stopPropagation()
-        onPhoto(pic.url)
+        onPhoto(pic.url, pic.alt)
       }}
       style={{
         marginTop: 6,
@@ -378,7 +385,7 @@ export function Feed({
   // start the list back at page one whenever the set of entries changes under it, so
   // narrowing to one person doesn't leave you scrolled into a page you can no longer see
   useEffect(() => setShown(PAGE), [filter, view])
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const bigPicture = useBigPicture()
   const [cursor, setCursor] = useState<string | null>(null)
   const [filterOpen, setFilterOpen] = useState(() => {
     try {
@@ -556,7 +563,7 @@ export function Feed({
               key={log.id}
               log={log}
               person={peopleById[log.personId]}
-              onPhoto={setLightbox}
+              onPhoto={bigPicture.open}
               onOpen={onOpenLog ? () => onOpenLog(log.personId, log.date) : undefined}
               social={cardSocial}
               me={me}
@@ -589,7 +596,7 @@ export function Feed({
           cur={cur}
           logsByDate={logsByDate}
           peopleById={peopleById}
-          onPhoto={setLightbox}
+          onPhoto={bigPicture.open}
           onDay={drillToDay}
           onOpenLog={onOpenLog}
           social={cardSocial}
@@ -602,7 +609,7 @@ export function Feed({
           cur={cur}
           logsByDate={logsByDate}
           peopleById={peopleById}
-          onPhoto={setLightbox}
+          onPhoto={bigPicture.open}
           onOpenLog={onOpenLog}
           social={cardSocial}
           me={me}
@@ -619,28 +626,11 @@ export function Feed({
         />
       )}
 
-      {/* photo lightbox */}
-      {lightbox && (
-        <div
-          onClick={() => setLightbox(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.88)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'zoom-out',
-            zIndex: 1500,
-          }}
-        >
-          <img
-            src={lightbox}
-            alt="workout"
-            style={{ maxWidth: '94vw', maxHeight: '92vh', borderRadius: 10 }}
-          />
-        </div>
-      )}
+      {/* ⚠️ PORTALLED NOW, because this was a fixed overlay inside a TRANSFORMED ancestor — see
+          the long note in pictures/PhotoViewer.tsx. It opened off-screen on a scrolled feed, and
+          nobody had seen it because the only route in was `log.img`, a column with 0 of 708 rows
+          populated. */}
+      {bigPicture.viewer}
     </div>
   )
 }
@@ -866,7 +856,7 @@ function WeekView({
   cur: string
   logsByDate: Record<string, DayLog[]>
   peopleById: Record<string, Person>
-  onPhoto: (src: string) => void
+  onPhoto: (src: string, alt?: string | null) => void
   onDay: (date: string) => void
   onOpenLog?: (personId: string, date: string) => void
   social?: FeedSocial
@@ -959,7 +949,7 @@ function DayView({
   cur: string
   logsByDate: Record<string, DayLog[]>
   peopleById: Record<string, Person>
-  onPhoto: (src: string) => void
+  onPhoto: (src: string, alt?: string | null) => void
   onOpenLog?: (personId: string, date: string) => void
   social?: FeedSocial
   me?: string

@@ -76,6 +76,13 @@ const span = (
   /* a seeded sitting's note is its first journal entry now — the column is gone */
   note: string | null = null,
   quality: number | null = null,
+  /**
+   * ⚠️ A SEEDED PHOTOGRAPH, BECAUSE WITHOUT ONE THE PHOTO PATH IS UNREACHABLE IN THE PANE. Every
+   * sitting here had `picture: null`, so the editor's thumbnail branch never rendered and nothing
+   * could be driven — a room with nothing in it passes every check there is (§2). The id has to
+   * be one `pvPictures()` actually serves, since `seenPictures` resolves against that fixture.
+   */
+  picture: string | null = null,
 ): Entry => {
   let a = at(daysAgo, h)
   if (daysAgo === 0) {
@@ -96,7 +103,7 @@ const span = (
           },
         ]
       : [],
-    picture: null,
+    picture,
     amount,
     quality,
   }
@@ -195,7 +202,9 @@ function seed(): Store {
       a('pv-old', 'Guitar', 'free', { archived: true }),
     ],
     ents: [
-      span('pv-e1', 'pv-draw', 0, 10, 35, null, null, 5),
+      /* one of today's sittings carries a photograph, so the editor's thumbnail, the full-size
+         viewer and "Take it off" are all reachable in the pane */
+      span('pv-e1', 'pv-draw', 0, 10, 35, null, null, 5, 'pv-pic1'),
       span('pv-e2', 'pv-draw', 1, 10, 42, null, 'the hands again', 2),
       span('pv-e3', 'pv-draw', 2, 9, 31),
       span('pv-e4', 'pv-draw', 3, 11, 50),

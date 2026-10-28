@@ -18222,6 +18222,32 @@ a.cz-msg-author:focus-visible {
  * exactly where there are two of them and the least room for them. `gap` rather than a margin on
  * the buttons, so the single-door case has nothing trailing it.
  */
+/**
+ * ⚠️ A BUTTON WRAPPING A THUMBNAIL NEEDS ITS BUTTON-NESS TAKEN OFF, not its semantics. The
+ * thumbnails that enlarge are real buttons — reachable by keyboard, with a name — and inheriting
+ * `.btn`'s padding and min-height would frame each photo in a chunky grey box. So the chrome goes
+ * and the target stays: the image itself is the 72px+ tap target, comfortably over the 24px floor.
+ */
+.pics-zoom {
+  padding: 0;
+  border: 0;
+  background: none;
+  min-height: 0;
+  line-height: 0;
+  border-radius: 8px;
+  cursor: zoom-in;
+  display: inline-block;
+}
+.pics-zoom img {
+  display: block;
+  max-height: 72px;
+  border-radius: 8px;
+}
+.pics-zoom:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .pics-doors {
   display: flex;
   flex-wrap: wrap;

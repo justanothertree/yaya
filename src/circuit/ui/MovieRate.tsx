@@ -7,6 +7,7 @@ import type { Movie, MovieReview } from '../types'
 import { Modal } from './Modal'
 import { AddPicture } from '../../pictures/AddPicture'
 import { useSeenPicture } from '../../pictures/seen'
+import { useBigPicture } from '../../pictures/useBigPicture'
 import { setRatingPicture } from '../picture'
 import {
   MV_ICONS,
@@ -94,6 +95,7 @@ export function MovieRate({
    */
   const [picture, setPicture] = useState<string | null>(existing?.picture ?? null)
   const shot = useSeenPicture(picture)
+  const bigPicture = useBigPicture()
 
   // this person's other rated movies, ranked — to show where the current score lands
   /* ⚠️ merged: on the raw list this ranking was always empty for a signed-in rater, so the
@@ -454,11 +456,18 @@ export function MovieRate({
           {picture ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {shot ? (
-                <img
-                  src={shot.thumbUrl}
-                  alt={shot.alt ?? ''}
-                  style={{ maxHeight: 72, borderRadius: 8, display: 'block' }}
-                />
+                /* ⚠️ A BUTTON, NOT AN IMG WITH AN onClick. A 72px thumbnail that enlarges is a
+                   control, so it needs to be reachable by keyboard and to say what it does —
+                   this shipped yesterday as a bare <img> with no handler at all, so the only
+                   copy of the photograph anybody could see was 72px tall. */
+                <button
+                  type="button"
+                  className="btn btn-ghost pics-zoom"
+                  aria-label="See this photo full size"
+                  onClick={() => bigPicture.open(shot.url, shot.alt)}
+                >
+                  <img src={shot.thumbUrl} alt={shot.alt ?? ''} />
+                </button>
               ) : (
                 <span className="muted">finding it…</span>
               )}
@@ -471,6 +480,7 @@ export function MovieRate({
           )}
         </>
       ) : null}
+      {bigPicture.viewer}
     </Modal>
   )
 }

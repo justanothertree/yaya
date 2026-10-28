@@ -27,6 +27,7 @@ import { Modal } from '../circuit/ui/Modal'
 import { AddPicture } from '../pictures/AddPicture'
 import { HoldButton } from '../ui/HoldButton'
 import { seenPictures, type Kept } from '../pictures/cloud'
+import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
 import {
   CATS,
@@ -598,6 +599,7 @@ export function Timer({
    * it has. This asks for one when the dialog opens and forgets it when it closes.
    */
   const [shot, setShot] = useState<Kept | null>(null)
+  const bigPicture = useBigPicture()
   useEffect(() => {
     const id = fixEnt ?? justDid
     const want = id ? (log.find((x) => x.id === id)?.picture ?? null) : null
@@ -1986,7 +1988,15 @@ export function Timer({
               <label>Photograph</label>
               {shot ? (
                 <div className="chron-shot">
-                  <img src={shot.thumbUrl} alt={shot.alt ?? ''} />
+                  {/* same as the rating editor: a thumbnail that enlarges is a control */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost pics-zoom"
+                    aria-label="See this photo full size"
+                    onClick={() => bigPicture.open(shot.url, shot.alt)}
+                  >
+                    <img src={shot.thumbUrl} alt={shot.alt ?? ''} />
+                  </button>
                   <button
                     className="btn btn-ghost"
                     disabled={busy}
@@ -1994,6 +2004,8 @@ export function Timer({
                   >
                     Take it off
                   </button>
+                  {/* portaled, so where it sits in the tree does not matter */}
+                  {bigPicture.viewer}
                 </div>
               ) : (
                 <AddPicture label="+ Add a photo" onKept={(k) => hangPicture(e.id, k.id)} />

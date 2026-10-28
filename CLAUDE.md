@@ -486,6 +486,20 @@ test` and `npm run build` all green. A reload fetched the same stale source, and
   `prefers-reduced-motion` cannot be emulated. And `window.confirm` is auto-dismissed, which
   returns `false` — so a confirmed action appears to do nothing and the feature appears broken
   (this cost an hour on the paint room's Clear button, which was fine).
+- **`window.dispatchEvent` MAKES `window` THE TARGET, WHICH COLLAPSES CAPTURE AND BUBBLE INTO
+  REGISTRATION ORDER — so it cannot test a capture-phase `stopPropagation` at all.** The second
+  unfaithful-synthetic-event trap in two days, and it produced a confident false failure. The new
+  photo viewer listens on `window` in the CAPTURE phase and stops propagation, so one Escape
+  closes the photo and leaves the dialog behind it standing; Modal listens on `window` in the
+  bubble phase. Probed with `window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'}))`,
+  **both closed** — because when you dispatch ON window, window is the target, and at the target
+  node every listener fires in the order it was registered regardless of phase. Modal mounted
+  first, so Modal went first. Nothing was wrong with the code. Dispatched from an element inside
+  the page instead — `viewerImg.dispatchEvent(…, {bubbles: true})` — the event captures down
+  through window first and the behaviour is correct. **Dispatch a synthetic event from where a
+  real one would originate**, never from the node whose listeners you are trying to order. And
+  note what this means for the product: `stopPropagation` separates listeners on DIFFERENT nodes
+  and `stopImmediatePropagation` is what separates listeners on the SAME node.
 - **`setPointerCapture` THROWS FOR EVERY SYNTHETIC `pointerId` EXCEPT 1, AND A HANDLER THAT
   CAPTURES BEFORE IT ACTS READS AS COMPLETELY DEAD.** Measured on 27 Oct, asking the browser
   directly rather than guessing: `pointerId: 1` is **accepted** — Chrome treats it as the active
