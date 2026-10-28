@@ -1,6 +1,6 @@
-import { AccountCard } from '../sections/Investments'
+import { AccountCard, SoloAccount } from '../sections/Investments'
 import type { AccountPortfolio } from '../finance/portfolio'
-import type { Timeline } from '../finance/timeline'
+import type { PricePoint, Timeline, TimelineEvent } from '../finance/timeline'
 
 /**
  * DEV-only workbench for what a FAMILY MEMBER sees.
@@ -41,21 +41,67 @@ const START = isoDay(Date.now() - 250 * DAY)
 type Case = { label: string; what: string; account: AccountPortfolio }
 
 /**
- * A price history for the sparklines and the "today" delta.
+ * ⚠️ THE TIMELINE WAS TWO PRICES AND NO EVENTS, AND THAT EMPTIED HALF THE CARD WITHOUT SAYING SO.
  *
- * Two points minimum per symbol or `dayChange` stays null and that row of the card never
- * renders — which would quietly hide a thing this workbench exists to show.
+ * `events` drives `avgCostBySymbol`, which is the only source of a per-holding basis — so with
+ * none, every row's gain column rendered the em dash and the expanded detail dropped its "Avg
+ * cost" and "Gain / loss" figures entirely. A sweep of this bench was measuring a row whose
+ * figures column held one short number, and the live row holds two long ones. The same emptiness
+ * hid the chart: `SoloAccount` only draws it when there are events, so the member's three-card
+ * layout could not be seen here at all.
+ *
+ * ⚠️ DETERMINISTIC, NEVER `Math.random()`. A fixture that draws a different chart on every reload
+ * cannot be compared against the last screenshot.
+ *
+ * The last price of each run IS the holding's price, so the card's "worth today" and the chart's
+ * last point agree — two numbers for one quantity on one screen is the bug this room keeps
+ * producing. The one before it differs, so "today" is a real move rather than zero.
  */
+const wobble = (i: number) => Math.sin(i * 0.7) * 0.035 + Math.sin(i * 0.23) * 0.055
+
+const priceRun = (symbol: string, now: number, days = 120): PricePoint[] =>
+  Array.from({ length: days }, (_, k) => ({
+    symbol,
+    date: isoDay(Date.now() - (days - 1 - k) * DAY),
+    price:
+      k === days - 1
+        ? now
+        : Math.round(now * (0.82 + (0.18 * k) / (days - 1) + wobble(k)) * 1e4) / 1e4,
+  }))
+
+/**
+ * Buys spread across the fund's life, with the units chosen from a TARGET average cost so the
+ * percentages on screen are the ones this file claims: VOO +13%, AAPL −6%, BTC +18%. Deriving
+ * the units is what keeps that true — typing them in and asserting the percentage separately is
+ * how a fixture comes to disagree with its own comment.
+ */
+const AVG_COST: Record<string, number> = { VOO: 520, AAPL: 262, BTC: 52000, NWL: 6.1 }
+const ORDER = 4.1
+
+const EVENTS: TimelineEvent[] = [
+  ...Array.from({ length: 30 }, (_, k): TimelineEvent => {
+    const symbol = ['VOO', 'AAPL', 'BTC', 'NWL'][k % 4]
+    return {
+      date: isoDay(Date.now() - (238 - k * 8) * DAY),
+      symbol,
+      units: ORDER / AVG_COST[symbol],
+      cost: ORDER,
+    }
+  }),
+  /* one sale, so "money put in" is not simply the sum of the buys — and so the cash cases have
+     something in the timeline that explains where their cash came from */
+  { date: isoDay(Date.now() - 36 * DAY), symbol: 'AAPL', units: -0.02, cost: -5.24 },
+]
+
 const TIMELINE: Timeline = {
   accounts: [{ dollarPerDay: 1, startDate: START }],
-  events: [],
+  events: EVENTS,
   prices: [
-    { symbol: 'VOO', date: isoDay(Date.now() - 2 * DAY), price: 580 },
-    { symbol: 'VOO', date: isoDay(Date.now() - DAY), price: 588 },
-    { symbol: 'AAPL', date: isoDay(Date.now() - 2 * DAY), price: 250 },
-    { symbol: 'AAPL', date: isoDay(Date.now() - DAY), price: 245.5 },
-    { symbol: 'BTC', date: isoDay(Date.now() - 2 * DAY), price: 60000 },
-    { symbol: 'BTC', date: isoDay(Date.now() - DAY), price: 61444 },
+    ...priceRun('VOO', 588),
+    ...priceRun('AAPL', 245.5),
+    ...priceRun('BTC', 61444),
+    /* one crumb with a price history and one without, so both row states are on screen */
+    ...priceRun('NWL', 4.6),
   ],
   costBasis: [],
 }
@@ -162,6 +208,43 @@ const CASES: Case[] = [
     },
   },
   {
+    /**
+     * ⚠️ SEVEN FIGURES, BECAUSE EVERY FIGURE ON THIS CARD IS LAID OUT BY ITS OWN WIDTH. The tiles
+     * size to their content, the holdings row's figures column sizes to its content, and the
+     * chart's y labels set the left padding — so the only way to know any of them survives a big
+     * number is to put one on screen. Nobody in the fund is here yet; the layout has to be.
+     */
+    label: 'A number nobody has yet',
+    what: 'Not a real state — a width test. $1.2m of worth, a seven-figure gain and a four-digit percentage, to check that nothing wraps mid-number or runs off its own card.',
+    account: {
+      ...base,
+      id: 'pv-10',
+      name: 'Peregrine',
+      contributed: 98765.43,
+      cash: 4321.09,
+      heldBasis: 101234.56,
+      holdings: [
+        {
+          symbol: 'BTC',
+          assetType: 'crypto',
+          units: 19.4,
+          netCash: 90000,
+          price: 61444,
+          priceAt: FRESH,
+        },
+        {
+          symbol: 'VOO',
+          assetType: 'stock',
+          units: 120.5,
+          netCash: 60000,
+          price: 588,
+          priceAt: FRESH,
+        },
+        ...CRUMBS,
+      ],
+    },
+  },
+  {
     label: 'One crumb only',
     what: 'A single sub-$1 holding is just a holding. The fold is only worth its own row from two up, or it is a summary of one thing.',
     account: {
@@ -182,11 +265,12 @@ export function InvestmentsMemberPreview() {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>What one family member sees</h3>
         <p className="muted" style={{ margin: 0, fontSize: '0.84rem' }}>
-          Every card below is the real <code>AccountCard</code> — the same component a signed-in
-          member gets, on the one-account path Evan&apos;s own view never takes. The states that
-          only happen <em>after</em> something occurs (a sale, a loss, a dead price feed) are the
-          ones worth checking; they are otherwise unreachable without waiting for the thing to
-          happen in production.
+          Each block below is the real <code>SoloAccount</code> inside the room&apos;s own{' '}
+          <code>.inv-solo</code> grid — the same three cards a signed-in member gets, on the
+          one-account path Evan&apos;s own view never takes. The states that only happen{' '}
+          <em>after</em> something occurs (a sale, a loss, a dead price feed) are the ones worth
+          checking; they are otherwise unreachable without waiting for the thing to happen in
+          production.
         </p>
       </div>
 
@@ -198,9 +282,37 @@ export function InvestmentsMemberPreview() {
           <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
             {c.what}
           </p>
-          <AccountCard account={c.account} timeline={TIMELINE} />
+          {/**
+           * ⚠️ `grid inv-solo` IS NOT DECORATION — IT IS THE LAYOUT UNDER TEST. `SoloAccount`
+           * returns three sibling cards and `.inv-solo` is what arranges them: one column on a
+           * phone, and at 900px up a 1.35fr/1fr pair with the headline spanning both. Rendered
+           * without it they would stack in whatever the parent happened to be doing, and the
+           * bench would be reporting on a layout that does not ship.
+           */}
+          <div className="grid inv-solo" style={{ gap: '1rem' }}>
+            <SoloAccount account={c.account} timeline={TIMELINE} />
+          </div>
         </section>
       ))}
+
+      {/**
+       * ⚠️ AND THE NESTED SHAPE, WHICH IS A DIFFERENT COMPONENT. `AccountCard` is one card with
+       * everything in it, used for an expanded row in the multi-account list and for the admin's
+       * "view as any member". It shares both halves with the layout above, so a change to either
+       * half lands in two places — and its heading is not second person, because in view-as this
+       * is somebody else's money.
+       */}
+      <section style={{ display: 'grid', gap: '0.4rem' }}>
+        <div className="cz-sec" style={{ margin: 0 }}>
+          The admin&apos;s nested &ldquo;view as&rdquo;
+        </div>
+        <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+          The same two halves in one card, which is what an expanded row in the 33-account list
+          renders. No chart — it is already inside a card, and a card inside a card inside a row is
+          where the width runs out.
+        </p>
+        <AccountCard account={CASES[0].account} timeline={TIMELINE} />
+      </section>
     </div>
   )
 }

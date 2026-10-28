@@ -2,7 +2,7 @@
 // week / month / year / all ranges, a hover (or touch) crosshair readout, and a
 // clickable legend that shows or hides each line. Hand-rolled SVG to match the
 // Circuit's charts — no chart library.
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { buildDailySeries, type Timeline } from '../finance/timeline'
 import { fundToday } from '../finance/fundDay'
 import { usd } from '../finance/portfolio'
@@ -15,9 +15,23 @@ const RANGES = [
 ] as const
 type RangeKey = (typeof RANGES)[number]['key']
 
-const W = 720
-const H = 260
-const PAD = { top: 14, right: 14, bottom: 26, left: 56 }
+/**
+ * ⚠️ THE BOX IS MEASURED, BECAUSE A FIXED viewBox SHRINKS THE TEXT ALONG WITH IT. This was
+ * `720 × 260` with `width: 100%`, which on a phone is drawn into 299 × 108 CSS pixels — every
+ * SVG unit scaled by 0.415, so `fontSize="10"` reached the screen at **4px** and the axis was
+ * decorative. No font size would have fixed it: the whole coordinate system was being divided.
+ *
+ * One SVG unit = one CSS pixel instead, so 10 means 10. The side padding holds the widest y
+ * label, which is narrower on a phone because there is less room and the figures are smaller.
+ *
+ * ⚠️ AND THE HEIGHT IS A RATIO WITH BOUNDS, not a constant. At 299px wide a 260-tall chart is
+ * nearly square and reads as a blob; at 1,000 wide a 260-tall one is a strip. 0.42 keeps the
+ * shape between the two, and the bounds stop it from becoming either.
+ */
+const MIN_W = 260
+const MAX_W = 1000
+const padFor = (w: number) => ({ top: 12, right: 12, bottom: 22, left: w < 420 ? 40 : 52 })
+const heightFor = (w: number) => Math.round(Math.max(150, Math.min(300, w * 0.42)))
 const DAY = 86_400_000
 
 const LINES = [
@@ -32,23 +46,35 @@ const LINES = [
   },
   {
     key: 'invested' as const,
-    label: 'Net in',
-    hint: 'Money put in minus money taken out, at cost',
+    /* ⚠️ "Net in" is accountancy. The same quantity, in words somebody reads once: this is the
+       figure the headline card calls "Money put in", and the two must keep the same name — they
+       are the same walk, which is why timeline.ts says it follows finance.account_ledger. */
+    label: 'Money put in',
+    hint: 'Money put in for you, not counting a sale’s proceeds being re-invested',
     color: 'var(--accent, #7c6af7)',
   },
   {
     key: 'promised' as const,
-    label: 'Promised',
-    hint: 'The $-per-day plan line',
+    /* "Promised" reads like a thing somebody said; this is the arithmetic of the plan to date. */
+    label: 'Planned so far',
+    hint: 'What the $-a-day plan adds up to by each day',
     color: 'rgba(150,150,170,0.9)',
   },
 ]
 type LineKey = (typeof LINES)[number]['key']
 
+/**
+ * An axis tick, as short as it can be and still be the number.
+ *
+ * ⚠️ NO CENTS. Ticks land on round money by construction — see `niceStep` — so the two trailing
+ * zeros in "$150.00" are never information, and three of them stacked down the side of a 299px
+ * chart is the widest thing in the drawing. `usd()` is right everywhere a figure is a FIGURE;
+ * here it is a gridline's name.
+ */
 const compact = (n: number) =>
   Math.abs(n) >= 1000
     ? `${n < 0 ? '−' : ''}$${(Math.abs(n) / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k`
-    : usd(n)
+    : `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: Number.isInteger(n) ? 0 : 2 })}`
 
 /**
  * The nearest "round" step at or above a target: 1, 2, 2.5 or 5 times a power of ten.
@@ -69,12 +95,67 @@ function niceStep(target: number): number {
 export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?: string }) {
   const [range, setRange] = useState<RangeKey>('1M')
   const [hover, setHover] = useState<number | null>(null)
+  /**
+   * ⚠️ ONE LINE BY DEFAULT. Three lines, a three-chip legend and a four-figure readout is a
+   * trading screen, and the person this page is for asked one question: what is it worth. Money
+   * put in and the plan are the answer to a second question, which is why they are behind a
+   * chip — not removed, because the gap between worth and plan is the whole point of the fund.
+   */
+  const [details, setDetails] = useState(false)
   const [show, setShow] = useState<Record<LineKey, boolean>>({
     value: true,
     invested: true,
     promised: true,
   })
   const svgRef = useRef<SVGSVGElement | null>(null)
+  const boxRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * The drawing box, in CSS pixels.
+   *
+   * ⚠️ 520 IS A FIRST GUESS THAT IS NEVER PAINTED. `useLayoutEffect` runs before the browser
+   * paints, so the measured width is in place for the first frame the reader sees; the initial
+   * value only decides what React lays out internally.
+   */
+  const [boxW, setBoxW] = useState(520)
+  useLayoutEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const read = () => {
+      const next = Math.round(el.getBoundingClientRect().width)
+      if (next > 0) setBoxW(Math.max(MIN_W, Math.min(MAX_W, next)))
+    }
+    read()
+    /**
+     * ⚠️ AND THE OBSERVER IS THE RIGHT TOOL, BECAUSE THIS BOX CHANGES WIDTH WITHOUT THE WINDOW.
+     * At 900px the room's grid goes to two columns and this card loses a third of its width in
+     * one step; a `window` resize listener would hear that only by coincidence.
+     *
+     * ⚠️ CLAUDE.md SAID RESIZE OBSERVERS NEVER FIRE IN THE BROWSER PANE. Measured on 28 Oct
+     * 2026, they do — the initial callback and an element-only resize both arrive — so this
+     * path is verified rather than assumed. The note is corrected there; it is recorded here
+     * too, because this is the first thing written against it.
+     */
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(read)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const W = boxW
+  const H = heightFor(boxW)
+  /* memoised so the paths memo below has a stable dependency — all three are pure in `boxW` */
+  const PAD = useMemo(() => padFor(boxW), [boxW])
+
+  /**
+   * What is actually drawn. `show` is the reader's per-line choice; `vis` is that choice AFTER
+   * the details chip has its say, and every path below asks `vis` — a line that is hidden must
+   * also be out of the y-axis bounds, out of the readout and out of the crosshair, or the chart
+   * leaves room for something nobody can see.
+   */
+  const vis: Record<LineKey, boolean> = details
+    ? show
+    : { value: true, invested: false, promised: false }
 
   /* ⚠️ the fund's day, matching the server's promised figure and the summary card — see
      finance/fundDay.ts. This was toISOString(), so the axis ran a day past the reader's
@@ -106,9 +187,9 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     let hi = -Infinity
     for (const p of series) {
       const candidates: Array<number | null> = [
-        show.invested ? p.invested : null,
-        show.promised ? p.promised : null,
-        show.value ? p.value : null,
+        vis.invested ? p.invested : null,
+        vis.promised ? p.promised : null,
+        vis.value ? p.value : null,
       ]
       for (const v of candidates) {
         if (v == null) continue
@@ -161,16 +242,16 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     }
     return {
       paths: {
-        value: show.value ? line((p) => p.value) : '',
-        invested: show.invested ? line((p) => p.invested) : '',
-        promised: show.promised ? line((p) => p.promised) : '',
+        value: vis.value ? line((p) => p.value) : '',
+        invested: vis.invested ? line((p) => p.invested) : '',
+        promised: vis.promised ? line((p) => p.promised) : '',
       },
       yMin,
       yMax,
       xFor,
       yFor,
     }
-  }, [series, show])
+  }, [series, vis.value, vis.invested, vis.promised, W, H, PAD])
 
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -181,6 +262,25 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     const innerW = W - PAD.left - PAD.right
     const i = Math.round(((x - PAD.left) / innerW) * (series.length - 1))
     setHover(Math.max(0, Math.min(series.length - 1, i)))
+  }
+
+  /**
+   * ⚠️ THE READING HAPPENS FIRST AND THE CAPTURE IS ALLOWED TO FAIL — the same order as
+   * HoldButton, and for the same reason. Capture is an enhancement: it keeps the crosshair
+   * following a finger that has slid off the chart, which is most of a drag on a phone. It is
+   * not what the control is FOR, so it cannot be allowed to take the control down with it.
+   *
+   * It does fail: `setPointerCapture` throws `NotFoundError` for every synthetic `pointerId`
+   * except 1, so any probe that invents an id would kill whatever ran after the call. A real
+   * finger always has a live pointer, which is exactly why this would never show up from use.
+   */
+  const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    onMove(e)
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* no capture; the crosshair simply stops at the edge of the chart */
+    }
   }
 
   const hp = hover != null ? series[hover] : null
@@ -200,14 +300,23 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
     if (spansYears) return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     return d.toLocaleDateString(undefined, { month: 'short' })
   }
-  // which points get an x-axis label: every day in Week view, else ~6 evenly spaced
+  /**
+   * Which points get an x-axis label: every day in Week view, else as many as fit.
+   *
+   * ⚠️ AS MANY AS FIT, NOT ALWAYS SIX. Six dated labels across the 275px of drawing area a phone
+   * has is 46px each for "Oct 25" — they touched, and in Month view they overlapped outright.
+   * One label per 72px of inner width, which is the measured width of the longest format this
+   * uses ("Oct 2026") plus breathing room.
+   */
+  const innerW = Math.max(1, W - PAD.left - PAD.right)
+  const maxTicks = Math.max(2, Math.min(6, Math.floor(innerW / 72)))
   const xTickIdx =
     series.length <= 1
       ? [0]
       : range === '1W'
         ? series.map((_, i) => i)
-        : Array.from({ length: Math.min(6, series.length) }, (_, k) =>
-            Math.round((k * (series.length - 1)) / (Math.min(6, series.length) - 1)),
+        : Array.from({ length: Math.min(maxTicks, series.length) }, (_, k) =>
+            Math.round((k * (series.length - 1)) / (Math.min(maxTicks, series.length) - 1)),
           ).filter((v, i, a) => a.indexOf(v) === i)
 
   // Days the fund actually placed orders (real money in/out — not zero-dollar split fixes),
@@ -261,11 +370,19 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
         </span>
       </div>
 
-      {/* readout: hovered day (or the latest) */}
-      <div
-        className="cz-num"
-        style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap', fontSize: '0.82rem' }}
-      >
+      {/**
+       * The hovered day, or the latest one.
+       *
+       * ⚠️ IT RESERVES ITS HEIGHT, BECAUSE IT USED TO PUSH THE CHART AROUND AS YOU READ IT. The
+       * items here are conditional — the cash split only on a day with cash, the order marker
+       * only on a day money moved — so dragging across the chart added and removed lines and the
+       * drawing underneath slid up and down under the finger that was pointing at it. A readout
+       * that moves the thing it describes is worse than no readout.
+       *
+       * `.inv-readout` holds two rows open whether or not they are filled. Measured by dragging
+       * across every day in range: the SVG's top offset does not change.
+       */}
+      <div className={'cz-num inv-readout' + (details ? ' is-detailed' : '')}>
         {(() => {
           const p = hp ?? series[series.length - 1]
           if (!p) return <span className="muted">No activity in this range yet.</span>
@@ -273,23 +390,23 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
           return (
             <>
               <span className="muted">{fullDate(p.date)}</span>
-              {show.value && p.value != null && (
+              {vis.value && p.value != null && (
                 <span style={{ color: LINES[0].color, fontWeight: 700 }}>Worth {usd(p.value)}</span>
               )}
               {/* Only when there IS cash — otherwise this is a breakdown of one number into
                   itself. With cash, it is the line that reconciles this chart against the card
                   above it, which counts the shares only. */}
-              {show.value && p.value != null && p.cash > 0.005 && (
+              {vis.value && p.value != null && p.cash > 0.005 && (
                 <span className="muted" style={{ fontSize: '0.78rem' }}>
                   {usd(p.shares ?? 0)} in shares + {usd(p.cash)} cash
                 </span>
               )}
-              {show.invested && (
+              {vis.invested && (
                 <span style={{ color: LINES[1].color, fontWeight: 700 }}>
-                  Net in {usd(p.invested)}
+                  Put in {usd(p.invested)}
                 </span>
               )}
-              {show.promised && <span className="muted">Promised {usd(p.promised)}</span>}
+              {vis.promised && <span className="muted">Planned {usd(p.promised)}</span>}
               {order && (
                 <span style={{ color: order.cost < 0 ? 'var(--loss)' : 'var(--accent,#7c6af7)' }}>
                   ● {order.cost < 0 ? 'Sold' : 'Ordered'} {usd(Math.abs(order.cost))}
@@ -301,113 +418,130 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
         })()}
       </div>
 
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        style={{ width: '100%', height: 'auto', touchAction: 'pan-y', cursor: 'crosshair' }}
-        onPointerMove={onMove}
-        onPointerDown={onMove}
-        onPointerLeave={() => setHover(null)}
-        role="img"
-        aria-label="Portfolio worth, net in, and promised over time"
-      >
-        {/* y grid + labels */}
-        {ticks.map((v) => (
-          <g key={v}>
-            <line
-              x1={PAD.left}
-              x2={W - PAD.right}
-              y1={yFor(v)}
-              y2={yFor(v)}
-              stroke="rgba(127,127,127,0.18)"
-              strokeDasharray="3 4"
-            />
-            <text
-              x={PAD.left - 6}
-              y={yFor(v) + 3}
-              textAnchor="end"
-              fontSize="10"
-              fill="currentColor"
-              opacity={0.55}
-            >
-              {compact(v)}
-            </text>
-          </g>
-        ))}
-        {/* fund-order rug: a tick under the axis on each day money went in or out */}
-        {series.map((p, i) => {
-          const o = ordersByDay.get(p.date)
-          if (!o) return null
-          const sell = o.cost < 0
-          return (
-            <line
-              key={`o${i}`}
-              x1={xFor(i)}
-              x2={xFor(i)}
-              y1={H - PAD.bottom}
-              y2={H - PAD.bottom - 6}
-              stroke={sell ? 'var(--loss)' : 'var(--accent,#7c6af7)'}
-              strokeWidth="1.6"
-              opacity={0.65}
-            />
-          )
-        })}
-        {/* x labels: weekdays (Week), dated ticks (Month), months (Year/All) */}
-        {series.length > 0 &&
-          xTickIdx.map((i) => (
-            <text
-              key={i}
-              x={xFor(i)}
-              y={H - 8}
-              textAnchor={i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'}
-              fontSize="10"
-              fill="currentColor"
-              opacity={0.55}
-            >
-              {axisLabel(series[i].date)}
-            </text>
+      {/* the measured box — the svg fills it, so one SVG unit is one CSS pixel */}
+      <div ref={boxRef} style={{ width: '100%' }}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{
+            width: '100%',
+            height: H,
+            display: 'block',
+            touchAction: 'pan-y',
+            cursor: 'crosshair',
+          }}
+          onPointerMove={onMove}
+          onPointerDown={onDown}
+          /**
+           * ⚠️ A MOUSE LEAVING MEANS "DONE"; A FINGER LIFTING DOES NOT. Clearing on every
+           * pointerleave wiped the figure the instant a thumb came off the glass, so on a phone
+           * the readout existed only while something was covering the chart. A tap should leave
+           * the number on screen to be read.
+           */
+          onPointerLeave={(e) => {
+            if (e.pointerType === 'mouse') setHover(null)
+          }}
+          role="img"
+          aria-label={`What this is worth over time${details ? ', with money put in and the plan' : ''}`}
+        >
+          {/* y grid + labels */}
+          {ticks.map((v) => (
+            <g key={v}>
+              <line
+                x1={PAD.left}
+                x2={W - PAD.right}
+                y1={yFor(v)}
+                y2={yFor(v)}
+                stroke="rgba(127,127,127,0.18)"
+                strokeDasharray="3 4"
+              />
+              <text
+                x={PAD.left - 6}
+                y={yFor(v) + 3}
+                textAnchor="end"
+                fontSize="10"
+                fill="currentColor"
+                opacity={0.55}
+              >
+                {compact(v)}
+              </text>
+            </g>
           ))}
+          {/* fund-order rug: a tick under the axis on each day money went in or out */}
+          {series.map((p, i) => {
+            const o = ordersByDay.get(p.date)
+            if (!o) return null
+            const sell = o.cost < 0
+            return (
+              <line
+                key={`o${i}`}
+                x1={xFor(i)}
+                x2={xFor(i)}
+                y1={H - PAD.bottom}
+                y2={H - PAD.bottom - 6}
+                stroke={sell ? 'var(--loss)' : 'var(--accent,#7c6af7)'}
+                strokeWidth="1.6"
+                opacity={0.65}
+              />
+            )
+          })}
+          {/* x labels: weekdays (Week), dated ticks (Month), months (Year/All) */}
+          {series.length > 0 &&
+            xTickIdx.map((i) => (
+              <text
+                key={i}
+                x={xFor(i)}
+                y={H - 8}
+                textAnchor={i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'}
+                fontSize="10"
+                fill="currentColor"
+                opacity={0.55}
+              >
+                {axisLabel(series[i].date)}
+              </text>
+            ))}
 
-        {paths.promised && (
-          <path
-            d={paths.promised}
-            fill="none"
-            stroke={LINES[2].color}
-            strokeWidth="1.4"
-            strokeDasharray="5 4"
-          />
-        )}
-        {paths.invested && (
-          <path d={paths.invested} fill="none" stroke={LINES[1].color} strokeWidth="2" />
-        )}
-        {paths.value && (
-          <path d={paths.value} fill="none" stroke={LINES[0].color} strokeWidth="2.2" />
-        )}
-
-        {/* crosshair */}
-        {hp && hover != null && (
-          <g>
-            <line
-              x1={xFor(hover)}
-              x2={xFor(hover)}
-              y1={PAD.top}
-              y2={H - PAD.bottom}
-              stroke="rgba(127,127,127,0.5)"
+          {paths.promised && (
+            <path
+              d={paths.promised}
+              fill="none"
+              stroke={LINES[2].color}
+              strokeWidth="1.4"
+              strokeDasharray="5 4"
             />
-            {show.value && hp.value != null && (
-              <circle cx={xFor(hover)} cy={yFor(hp.value)} r="3.5" fill={LINES[0].color} />
-            )}
-            {show.invested && (
-              <circle cx={xFor(hover)} cy={yFor(hp.invested)} r="3" fill={LINES[1].color} />
-            )}
-            {show.promised && (
-              <circle cx={xFor(hover)} cy={yFor(hp.promised)} r="2.5" fill={LINES[2].color} />
-            )}
-          </g>
-        )}
-      </svg>
+          )}
+          {paths.invested && (
+            <path d={paths.invested} fill="none" stroke={LINES[1].color} strokeWidth="2" />
+          )}
+          {paths.value && (
+            <path d={paths.value} fill="none" stroke={LINES[0].color} strokeWidth="2.2" />
+          )}
 
-      {/* legend: tap a chip to show/hide that line */}
+          {/* crosshair */}
+          {hp && hover != null && (
+            <g>
+              <line
+                x1={xFor(hover)}
+                x2={xFor(hover)}
+                y1={PAD.top}
+                y2={H - PAD.bottom}
+                stroke="rgba(127,127,127,0.5)"
+              />
+              {vis.value && hp.value != null && (
+                <circle cx={xFor(hover)} cy={yFor(hp.value)} r="3.5" fill={LINES[0].color} />
+              )}
+              {vis.invested && (
+                <circle cx={xFor(hover)} cy={yFor(hp.invested)} r="3" fill={LINES[1].color} />
+              )}
+              {vis.promised && (
+                <circle cx={xFor(hover)} cy={yFor(hp.promised)} r="2.5" fill={LINES[2].color} />
+              )}
+            </g>
+          )}
+        </svg>
+      </div>
+
+      {/* legend: tap a chip to show or hide that line, once the details are open */}
       <div
         style={{
           display: 'flex',
@@ -417,34 +551,48 @@ export function PortfolioChart({ timeline, title }: { timeline: Timeline; title?
           fontSize: '0.76rem',
         }}
       >
-        {LINES.map((l) => (
-          <button
-            key={l.key}
-            className="btn btn-ghost inv-pick"
-            onClick={() => setShow((s) => ({ ...s, [l.key]: !s[l.key] }))}
-            aria-pressed={show[l.key]}
-            title={`${l.hint} — tap to ${show[l.key] ? 'hide' : 'show'}`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.2rem 0.6rem',
-              fontSize: '0.76rem',
-              opacity: show[l.key] ? 1 : 0.45,
-            }}
-          >
-            <span
+        {/**
+         * ⚠️ IT SAYS WHAT IT WILL SHOW, not "Details". Measured on the live fund, the two hidden
+         * lines are the plan and the money put in — which is the comparison the whole dollar-a-day
+         * idea rests on, so the chip has to name them or nobody opens it.
+         */}
+        <button
+          className="btn btn-ghost inv-pick"
+          onClick={() => setDetails((d) => !d)}
+          aria-expanded={details}
+          style={{ padding: '0.2rem 0.6rem', fontSize: '0.76rem' }}
+        >
+          {details ? '✕ Just the worth' : 'Show money put in & plan'}
+        </button>
+        {details &&
+          LINES.map((l) => (
+            <button
+              key={l.key}
+              className="btn btn-ghost inv-pick"
+              onClick={() => setShow((s) => ({ ...s, [l.key]: !s[l.key] }))}
+              aria-pressed={show[l.key]}
+              title={`${l.hint} — tap to ${show[l.key] ? 'hide' : 'show'}`}
               style={{
-                width: 14,
-                height: 4,
-                borderRadius: 2,
-                background: l.color,
-                display: 'inline-block',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.2rem 0.6rem',
+                fontSize: '0.76rem',
+                opacity: show[l.key] ? 1 : 0.45,
               }}
-            />
-            {l.label}
-          </button>
-        ))}
+            >
+              <span
+                style={{
+                  width: 14,
+                  height: 4,
+                  borderRadius: 2,
+                  background: l.color,
+                  display: 'inline-block',
+                }}
+              />
+              {l.label}
+            </button>
+          ))}
         <span
           className="muted"
           style={{

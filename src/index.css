@@ -15429,6 +15429,21 @@ a.cz-msg-author:focus-visible {
  * stayed on one line at the same widths, the page grew 24px in total across the two rows, and
  * nothing crossed the right edge or scrolled sideways.
  */
+/**
+ * ⚠️ AND 24 WITH A MOUSE, WHICH IS WHERE THEY WERE 23. The block below is gated on a narrow
+ * window or a coarse pointer, so at 1,000px with a mouse none of it applied: measured on the
+ * signed-out demo, Week / Month / Year / All are **23px tall**, one pixel under WCAG 2.5.8, and
+ * the spacing exception cannot save them because they sit in a row touching each other — which
+ * is exactly the case the ⓘ's own note says the exception does NOT cover.
+ *
+ * One pixel each, so nothing can reflow, and it is a minimum rather than a padding change, so
+ * the look they were given stands. The 44 below still answers for a thumb.
+ */
+#investments .inv-pick,
+.inv-pick {
+  min-height: 24px;
+}
+
 @media (max-width: 700px), (pointer: coarse) {
   #investments .inv-pick,
   .inv-pick {
@@ -15459,6 +15474,146 @@ a.cz-msg-author:focus-visible {
  * measured across seven cards, the whole bench grew 11px — while 36 would add nine per row to a
  * layout nobody has seen signed in. The coarse rule below still gives a thumb the full 36.
  */
+/**
+ * ── The member's own layout: headline, then chart, then what you own ──────────────────────
+ *
+ * ⚠️ ONLY ON THE ONE-ACCOUNT PATH, and `Investments` decides that — `.inv-solo` is added when
+ * there is exactly one account to draw, which is the surface a family member reads. The admin's
+ * 33-row list, the trades ledger and the reconcile table stay one full-width column: a
+ * 1,500-row table does not want to be 1,100px wide, and none of them has a chart to put beside
+ * anything.
+ *
+ * ⚠️ 900px, NOT THE SITE'S USUAL 700. Two columns need room for a chart AND a list of holdings
+ * whose rows carry a ticker, a company name, a value and a gain. Measured at 820 (the tablet
+ * width this file checks): the holdings column lands near 330px, which is where the company
+ * name starts losing words. 900 is where both columns are still readable.
+ *
+ * ⚠️ `minmax(0, …)` ON BOTH, FOR THE SAME REASON THE HOLDINGS ROW USES IT. A grid child defaults
+ * to `min-width: auto` — "never shrink below your content" — so the chart's SVG and a long
+ * company name would each refuse to give way and push the other column off the page.
+ */
+.inv-solo {
+  max-width: 1100px;
+}
+@media (min-width: 900px) {
+  .inv-solo {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    /* cards are different heights; stretching the short one leaves a tall empty box */
+    align-items: start;
+  }
+  /* the page header, the banners and the headline run the full width above the two columns */
+  .inv-solo > .inv-span {
+    grid-column: 1 / -1;
+  }
+}
+
+/**
+ * The two figures under the headline: money put in, and the gain on it.
+ *
+ * ⚠️ FLEX WITH A `max-content` FLOOR, NOT A GRID WITH A FIXED ONE, AND THE DIFFERENCE IS WHAT
+ * THE FIGURES ARE WORTH. A `minmax(10rem, 1fr)` grid decides how many columns fit from a length
+ * typed in here, which cannot know that this account holds $1,284 and that one holds $1,234,567 —
+ * so it either stacks two short tiles that had room to sit together, or squeezes a long one until
+ * its number wraps mid-digit. Measured at 375: the two tiles need 107px and 165px, and 300px is
+ * available, so they belong side by side; a fixed 10rem floor stacked them.
+ *
+ * `min-width: max-content` is the floor that asks the CONTENT instead. Two tiles share the row
+ * when both fit and wrap onto their own lines when they do not, with no number to maintain.
+ */
+.inv-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.inv-tile {
+  display: grid;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: max-content;
+  padding: 0.55rem 0.7rem;
+  background: var(--b1, rgba(127, 127, 127, 0.06));
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.16));
+  border-radius: 10px;
+  /* a tile is not a target, so it does not need 44 — it needs to not look squashed */
+  min-height: 56px;
+  align-content: center;
+}
+.inv-tile-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+/**
+ * ⚠️ THE FIGURE NEVER BREAKS; THE PERCENTAGE MOVES. `overflow-wrap: anywhere` on the whole value
+ * would split "$1,234,567.89" across two lines, and half a number is a different number. The
+ * dollars and the percentage are separate flex items, so the wrap — when one is needed — happens
+ * between them.
+ */
+.inv-tile-val {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.3rem;
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+/* the percentage is the qualifier, not the headline — it reads as one phrase with the dollars */
+.inv-tile-pct {
+  font-size: 0.86rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+/**
+ * The chart's readout: a box that keeps its height whether or not the day it describes happens to
+ * have every figure.
+ *
+ * ⚠️ RESERVED, BECAUSE IT USED TO PUSH THE CHART AROUND AS YOU READ IT. The items are
+ * conditional — the cash split only on a day holding cash, the order marker only on a day money
+ * moved — so dragging across the chart added and removed lines and the drawing underneath slid
+ * up and down under the finger pointing at it.
+ *
+ * ⚠️ THE TWO NUMBERS ARE MEASURED AT 375, which is where the wrapping is worst. Swept across
+ * every day of a 120-day fixture with the reserve lifted, the tallest content was **2.5em**
+ * closed and **3.84em** open, against reserves of 2.9 and 4.4 — and with the reserve in place
+ * the chart's top offset took exactly ONE value across 17 samples in each mode, on three
+ * different accounts. `align-content: flex-start` is what makes a reserve work: without it the
+ * rows spread to fill the box and a one-line readout floats in the middle of its own padding.
+ *
+ * ⚠️ THE HEADROOM IS HALF A LINE, WHICH BOUNDS THIS RATHER THAN SETTLING IT. These accounts
+ * hold hundreds of dollars; one holding millions has longer figures, and the worst case is then
+ * a line taller than the reserve. The failure is a single line-height of movement on an unusual
+ * day rather than a wandering chart — but it is a number that wants re-measuring if the fund
+ * ever grows, which is why the sweep is written down and not only its result.
+ */
+.inv-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.15rem 1.1rem;
+  font-size: 0.82rem;
+  min-height: 2.9em;
+}
+.inv-readout.is-detailed {
+  min-height: 4.4em;
+}
+
+/**
+ * The ⓘ panel: one short line per figure on screen, in the order they are read.
+ *
+ * ⚠️ IT WAS ONE PARAGRAPH, AND A PARAGRAPH OF DEFINITIONS IS A WALL. Four labels explained in
+ * running prose means finding the one you want by reading all of it — on a phone, five lines of
+ * 0.76rem text. One line each is the same words and a tenth of the work.
+ */
+.inv-info-panel {
+  display: grid;
+  gap: 5px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 /**
  * ── "What you own" ────────────────────────────────────────────────────────────────────────
  *
