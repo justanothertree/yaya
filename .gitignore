@@ -50,3 +50,6 @@ src/circuit/seed.ts
 
 # the Supabase CLI writes its own scratch here — a version string, not source
 supabase/.temp/
+
+# vitest --reporter=json scratch output
+.vitest/

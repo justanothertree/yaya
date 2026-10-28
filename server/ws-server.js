@@ -14,6 +14,9 @@ import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 // The SAME parser the CLI uses — see the note in that file.
 import { parseTrades } from './lib/parseTrades.mjs'
+/* the room-settings allowlist, lifted out so it can be asked a question without opening a
+   socket — see the header of that file */
+import { DEFAULT_SETTINGS, boardModeFor, sanitizeSettings } from './lib/settings.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
@@ -155,15 +158,6 @@ const CONN_WINDOW_MS = Number(process.env.CONN_WINDOW_MS || 60000)
 const MAX_CLIENTS = Number(process.env.MAX_CLIENTS || 400)
 /** Whether x-forwarded-for can be believed. True on Render; false if exposed directly. */
 const TRUST_PROXY = process.env.TRUST_PROXY !== 'false'
-
-// Default settings mirrored from client DEFAULT_SETTINGS
-const DEFAULT_SETTINGS = {
-  grid: 30,
-  // Mirrors DEFAULT_SETTINGS in src/game/manager.tsx — change both together.
-  apples: 4,
-  passThroughEdges: true,
-  canvasSize: 'medium',
-}
 
 // Supabase env (server-side). These should be configured in Render:
 // SUPABASE_URL, SUPABASE_ANON_KEY
@@ -350,45 +344,6 @@ function makeSeed(room) {
   if (settings.tron) startTron(room)
   if (settings.tron || settings.solidBodies) seedData.starts = tronStarts(room)
   return { type: 'seed', roundId, seedData }
-}
-
-function sanitizeSettings(input, prev) {
-  const next = { ...(prev || DEFAULT_SETTINGS) }
-  if (!input || typeof input !== 'object') return next
-  const s = input
-  // Ceiling raised from 4 so the count can be typed rather than only picked. Still bounded:
-  // apples are spawned in a loop against free cells, so an unbounded number would spin.
-  // No upper bound by request. Spawning loops against free cells and is guarded, so a silly
-  // number fills the board instead of hanging; the floor of 1 is what actually matters.
-  if (typeof s.apples === 'number' && s.apples >= 1) next.apples = Math.floor(s.apples)
-  if (typeof s.passThroughEdges === 'boolean') next.passThroughEdges = s.passThroughEdges
-  if (typeof s.grid === 'number' && s.grid >= 10 && s.grid <= 60) next.grid = s.grid
-  if (typeof s.canvasSize === 'string' && ['small', 'medium', 'large'].includes(s.canvasSize)) {
-    next.canvasSize = s.canvasSize
-  }
-  if (typeof s.race === 'boolean') next.race = s.race
-  if (typeof s.tron === 'boolean') next.tron = s.tron
-  if (typeof s.tronRivals === 'boolean') next.tronRivals = s.tronRivals
-  if (typeof s.solidBodies === 'boolean') next.solidBodies = s.solidBodies
-  if (typeof s.ghosts === 'boolean') next.ghosts = s.ghosts
-  /**
-   * Hunger was missing here, and the symptom was baffling: toggling it on in a room flickered
-   * and the seconds options never appeared. This list is an ALLOWLIST — anything absent is
-   * dropped — so the client set hunger, sent it, and the relay echoed the room's settings back
-   * without it, undoing the click. A setting that isn't here doesn't half-work, it silently
-   * reverts. Add new ones here at the same time as the client control.
-   */
-  if (typeof s.hunger === 'boolean') next.hunger = s.hunger
-  if (typeof s.hungerSeconds === 'number' && s.hungerSeconds >= 2 && s.hungerSeconds <= 120) {
-    next.hungerSeconds = Math.floor(s.hungerSeconds)
-  }
-  if (typeof s.raceTarget === 'number' && s.raceTarget >= 5 && s.raceTarget <= 500) {
-    next.raceTarget = Math.floor(s.raceTarget)
-  }
-  if (typeof s.speedMs === 'number' && s.speedMs >= 40 && s.speedMs <= 400) {
-    next.speedMs = Math.floor(s.speedMs)
-  }
-  return next
 }
 
 /* ── race mode: the relay owns the apples ────────────────────────────────────
@@ -647,13 +602,6 @@ async function finalizeRoundOnSupabase(roomId, roundId, gameMode, baseItems) {
  * each. tron wins over race for the same reason it does on the client — a tron round can carry
  * race scoring, but the trails are what decide how it is played.
  */
-function boardModeFor(settings) {
-  const s = settings || {}
-  if (s.tron) return 'tron'
-  if (s.race) return 'race'
-  return 'survival'
-}
-
 async function tryFinalize(room, roomId) {
   const r = room.round
   if (!r || !r.active || !r.id) return
@@ -1788,13 +1736,11 @@ wss.on('connection', (ws, req) => {
 
     // Optional debug logging for message routing
     if (WS_DEBUG && msg.type !== 'preview' && msg.type !== 'tick' && msg.type !== 'input') {
-      try {
-        console.log('[ws] message received', {
-          type: msg.type,
-          joinedRoomId,
-          from: id,
-        })
-      } catch {}
+      console.log('[ws] message received', {
+        type: msg.type,
+        joinedRoomId,
+        from: id,
+      })
     }
 
     // Maintain last seen host; re-validate if host disconnects later
@@ -2470,30 +2416,26 @@ wss.on('connection', (ws, req) => {
       }
       case 'restart': {
         if (WS_DEBUG) {
-          try {
-            console.log('[ws] restart received', {
-              room: joinedRoomId,
-              from: id,
-              hostId: room.hostId,
-              isHost: id === room.hostId,
-              state: Array.from(room.state.entries()).map(([pid, st]) => ({
-                pid,
-                ready: !!st.ready,
-                spectate: !!st.spectate,
-              })),
-            })
-          } catch {}
+          console.log('[ws] restart received', {
+            room: joinedRoomId,
+            from: id,
+            hostId: room.hostId,
+            isHost: id === room.hostId,
+            state: Array.from(room.state.entries()).map(([pid, st]) => ({
+              pid,
+              ready: !!st.ready,
+              spectate: !!st.spectate,
+            })),
+          })
         }
 
         if (id !== room.hostId) {
           if (WS_DEBUG) {
-            try {
-              console.warn('[ws] restart ignored: not host', {
-                room: joinedRoomId,
-                from: id,
-                hostId: room.hostId,
-              })
-            } catch {}
+            console.warn('[ws] restart ignored: not host', {
+              room: joinedRoomId,
+              from: id,
+              hostId: room.hostId,
+            })
           }
           break
         }
@@ -2501,9 +2443,7 @@ wss.on('connection', (ws, req) => {
         // Generate new roundId server-side
         room.roundId = uuid()
         if (WS_DEBUG) {
-          try {
-            console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
-          } catch {}
+          console.log(`[ws] restart accepted room=${joinedRoomId} roundId=${room.roundId}`)
         }
         // Capture fresh participants snapshot: ready && not spectating at restart time.
         // This Set is frozen for the duration of the round (except disconnects).
@@ -2536,9 +2476,7 @@ wss.on('connection', (ws, req) => {
         // Follow with seed broadcast containing same roundId
         const seedPayload = makeSeed(room)
         if (WS_DEBUG) {
-          try {
-            console.log(`[ws] seed room=${joinedRoomId} roundId=${room.roundId} seed=${room.seed}`)
-          } catch {}
+          console.log(`[ws] seed room=${joinedRoomId} roundId=${room.roundId} seed=${room.seed}`)
         }
         broadcast(room, seedPayload)
         // The apples themselves went out inside the seed above; this is just the empty
