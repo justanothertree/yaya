@@ -9,10 +9,11 @@ before using anything in here.
 
 ## ⛔ Files ending `.DRAFT.sql` have NOT been applied
 
-Two of them, both from Yaxa's 28 Oct review and both waiting on Evan:
+Three of them, all from Yaxa's 28 Oct review and all waiting on Evan:
 
 - `20261028120000_close_insert_allocation.DRAFT.sql`
 - `20261028120100_family_fund_safety.DRAFT.sql`
+- `20261028120200_ktos_pep_are_family.DRAFT.sql` — two lines, and the admin UI can do it instead
 
 They are here because the review asked for its SQL to land in this directory for review. The
 `.DRAFT.sql` suffix is deliberate: the Supabase CLI matches `<timestamp>_<name>.sql`, and these
