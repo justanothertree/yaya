@@ -234,6 +234,16 @@ that render nothing at zero first**.
   with that exact string echoed, because echoing is what this file's `corsFor` does and no
   gateway invents it. **Ask the deployment for a sentence that is in your source and nowhere
   else.**
+  ⚠️ **AND THAT PROBE ANSWERS "DOES IT RUN", NOT "IS IT THE RIGHT FILE" — which is the question
+  the PLACEHOLDER incident was actually about.** Any healthy version of this function echoes that
+  header, so v13 and v14 are indistinguishable by it; a file that is wrong but still compiles
+  passes. The check that settles it is a real diff, and `get_edge_function` makes one possible:
+  it returns the deployed source, so write that back out and compare it to disk. Done for v14 on
+  29 Oct — md5 **3af47673c643f633760d31b363123d9b**, 23,877 bytes, byte for byte the repository's
+  copy. Two different questions, two checks: **the probe proves it boots, the diff proves it is
+  yours.** The transcription risk is real and unavoidable, because the tool takes the file's text
+  inline and there is no CLI here — so the diff is the only thing standing between a dropped
+  character and production.
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has
