@@ -319,6 +319,50 @@ export async function fetchPositions(): Promise<Position[]> {
 }
 
 /** What a designation flip actually did, which the server counts and nobody was reading. */
+/** One trade whose "was this for the family?" has already been answered. */
+export type RecentReview = {
+  id: string
+  date: string
+  reviewedAt: string
+  symbol: string
+  platform: string
+  dollars: number
+  units: number
+  isFamilySymbol: boolean
+  familyUnits: number
+  /** null for a zero-dollar restatement, which has no answerable fraction — see the RPC */
+  fraction: number | null
+}
+
+/**
+ * The last N answers, so one can be changed.
+ *
+ * ⚠️ THERE WAS NO WAY BACK TO AN ANSWERED TRADE AT ALL. `reviewed_at` is what removes a row
+ * from `trades_needing_review`, so the moment it is stamped the trade leaves the only list that
+ * ever showed it. Measured 29 Oct 2026: 103 trades were answered in about seven minutes and 109
+ * of the 113 ever answered say "Mine" — a mis-tap in that run is invisible and permanent from
+ * the screen's point of view, and a wrong "Mine" means the family quietly does not own something.
+ *
+ * Changing one needs no new write path: `admin_set_trade_allocation` already replaces rather than
+ * adds ("start clean: changing your mind replaces the answer, never adds to it").
+ */
+export async function fetchRecentReviews(limit = 30): Promise<RecentReview[]> {
+  const { data, error } = await getSupabaseClient().rpc('admin_recent_reviews', { p_limit: limit })
+  if (error) throw error
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    date: String(r.date),
+    reviewedAt: String(r.reviewedAt ?? ''),
+    symbol: String(r.symbol),
+    platform: String(r.platform),
+    dollars: Number(r.dollars ?? 0),
+    units: Number(r.units ?? 0),
+    isFamilySymbol: r.isFamilySymbol === true,
+    familyUnits: Number(r.familyUnits ?? 0),
+    fraction: r.fraction == null ? null : Number(r.fraction),
+  }))
+}
+
 export type DesignationResult = {
   family: boolean
   allocationsCreated: number

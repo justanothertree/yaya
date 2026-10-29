@@ -7134,6 +7134,92 @@ table.reconcile tfoot .reconcile-total td {
   }
 }
 
+/**
+ * One symbol's trades, answered together.
+ *
+ * ⚠️ THE GROUP IS INDENTED AND THE HEAD IS NOT, so the rows read as belonging to the symbol
+ * above them rather than as a flat list that happens to repeat a name. Without that, "All 7 mine"
+ * sits next to seven rows with their own Mine buttons and it is not obvious which covers which.
+ */
+.import-review-group {
+  border-bottom: 1px solid var(--b1, rgba(127, 127, 127, 0.12));
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.import-review-group .import-review-row {
+  padding-left: 0.9rem;
+  border-bottom: 0;
+}
+.import-review-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0 0.2rem;
+  font-size: 0.86rem;
+}
+.import-review-head .import-review-actions {
+  margin-left: auto;
+}
+/* the broker, because designation is per symbol AND broker — SOFI is two different questions */
+.import-broker {
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.import-review-also {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.15rem 0 0.3rem 0.9rem;
+  font-size: 0.78rem;
+  opacity: 0.85;
+  cursor: pointer;
+}
+/* ⚠️ 24px IN PX, NOT rem — the root font-size here is fluid, so a rem is not a length */
+.import-review-also input {
+  min-width: 24px;
+  min-height: 24px;
+  margin: 0;
+}
+/* the Part… field: a dollar box and the sentence that says what pressing it will do */
+.import-part {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0 0.5rem 0.9rem;
+}
+.import-part label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+/* ⚠️ `min-width: 0` BECAUSE A FLEX CHILD INPUT WILL NOT SHRINK WITHOUT IT — its default
+   `min-width: auto` resolves to the `size` attribute's worth of characters, about 202px, which
+   runs straight off a narrow card. The floor keeps it usable. */
+.import-part input {
+  flex: 1 1 7rem;
+  min-width: 0;
+  width: 7rem;
+  min-height: 40px;
+}
+.import-part-preview {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.import-recent {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--b1, rgba(127, 127, 127, 0.12));
+}
+
 /* An outcome you cannot scroll past. Both states are boxes rather than a line of text, because
    the whole failure being fixed here was "I pressed the button and I can't tell if it worked". */
 .import-fail,

@@ -148,6 +148,17 @@ const InvestmentsMemberPreview = import.meta.env.DEV
       (m) => m.InvestmentsMemberPreview,
     )
   : null
+/**
+ * The trade review, which no checker could see: it lives in ImportPanel and `#dev-admin` renders
+ * that with no token, so its list was always empty. Same workbench reasoning as #dev-admin and
+ * #dev-park — invented trades, the real component, and nothing here writes.
+ */
+const TradeReviewPreview = import.meta.env.DEV
+  ? lazyRetry(
+      () => import('./dev/TradeReviewPreview'),
+      (m) => m.TradeReviewPreview,
+    )
+  : null
 const AcceptInvite = lazyRetry(
   () => import('./sections/AcceptInvite'),
   (m) => m.AcceptInvite,
@@ -2093,6 +2104,11 @@ export default function App() {
             health bar and the knockout were checked as pure functions and never once seen on a
             field. This is the one workbench that is about a GAME rather than a layout, and it
             joins a room of its own so it can never be the real park. */}
+          {TradeReviewPreview && DEV_PREVIEW === 'review' && (
+            <Suspense fallback={<div aria-busy>Loading…</div>}>
+              <TradeReviewPreview />
+            </Suspense>
+          )}
           {ParkPreview && DEV_PREVIEW === 'park' && (
             <Suspense fallback={<div aria-busy>Finding the park…</div>}>
               <ParkPreview />

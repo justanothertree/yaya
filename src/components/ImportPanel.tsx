@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { fetchRecentReviews, setSymbolDesignation, type RecentReview } from '../finance/portfolio'
+import { type ReviewTrade } from '../finance/reviewGroups'
+import { TradeReview } from './TradeReview'
 
 /**
  * Importing a broker CSV without a terminal.
@@ -49,20 +52,14 @@ const relayBase = () => {
 const usd = (n: number) =>
   n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 
-/** How many review rows are shown before "show more". */
-const REVIEW_WINDOW = 12
-
-/** One trade still waiting on "was this for the family?" */
-type Undecided = {
-  id: string
-  date: string
-  symbol: string
-  platform: string
-  dollars: number
-  units: number
-  isFamilySymbol: boolean
-  alreadyHeld: number
-}
+/**
+ * One trade still waiting on "was this for the family?".
+ *
+ * Shared with `src/finance/reviewGroups.ts`, which holds the grouping and the Part… arithmetic
+ * so they can be tested without an admin session — `#dev-admin` renders this panel with no
+ * token, so every RPC answers nothing and the list is empty.
+ */
+type Undecided = ReviewTrade
 
 type Health = {
   node: string
@@ -85,10 +82,15 @@ export function ImportPanel() {
    * actually lives — and right after an import is when Evan still remembers it.
    */
   const [undecided, setUndecided] = useState<Undecided[] | null>(null)
-  const [decided, setDecided] = useState<Record<string, number>>({})
   const [reviewErr, setReviewErr] = useState<string | null>(null)
-  /** A dozen at a time — see `visibleReview` for why the whole backlog is not on screen. */
-  const [reviewLimit, setReviewLimit] = useState(REVIEW_WINDOW)
+  /** the last answers, so one can be changed — see `fetchRecentReviews` for why this exists */
+  const [recent, setRecent] = useState<RecentReview[] | null>(null)
+  /**
+   * ⚠️ THE HEADING COUNT COMES FROM THE SERVER, NOT FROM THE LOADED ARRAY. The list is capped
+   * at 200, so a backlog deeper than that would have described itself as exactly 200 — a number
+   * that looks precise and is a ceiling.
+   */
+  const [undecidedTotal, setUndecidedTotal] = useState<number | null>(null)
 
   /**
    * ⚠️ Not gated on having just imported, and deliberately NOT narrowed to one import.
@@ -113,24 +115,63 @@ export function ImportPanel() {
       return
     }
     setUndecided((data ?? []) as Undecided[])
+    /* the real depth of the backlog, which the capped list above cannot tell you */
+    const { data: att } = await getSupabaseClient().rpc('admin_attention')
+    const n = (att as { undecided?: number } | null)?.undecided
+    if (typeof n === 'number') setUndecidedTotal(n)
+  }, [])
+
+  const loadRecent = useCallback(async () => {
+    try {
+      setRecent(await fetchRecentReviews(30))
+    } catch (e) {
+      setReviewErr(e instanceof Error ? e.message : String(e))
+    }
   }, [])
 
   useEffect(() => {
     void loadUndecided()
-  }, [loadUndecided])
+    void loadRecent()
+  }, [loadUndecided, loadRecent])
 
-  async function decide(t: Undecided, fraction: number) {
-    setReviewErr(null)
-    const { error } = await getSupabaseClient().rpc('admin_set_trade_allocation', {
-      p_trade: t.id,
-      p_fraction: fraction,
-    })
-    if (error) {
-      setReviewErr(error.message)
-      return
-    }
-    setDecided((d) => ({ ...d, [t.id]: fraction }))
-  }
+  /**
+   * Answer one trade, or a whole symbol's worth.
+   *
+   * ⚠️ `admin_set_trade_allocation` REPLACES rather than adds — it deletes the trade's
+   * allocations, stamps `reviewed_at` and re-splits — which is why "change an answer" needs no
+   * write path of its own. Calling it on an already-answered trade IS the undo.
+   *
+   * ⚠️ AND THE TRADES GO ONE AT A TIME, IN SEQUENCE. Each call deletes and re-inserts
+   * allocations for its own trade; firing fourteen 33-account splits at the same two tables
+   * together buys nothing, because a person is waiting either way. Sequential also means a
+   * failure halfway leaves a state you can read: everything before it answered, everything after
+   * it still waiting. The first failure stops the run and is reported.
+   */
+  const answerTrades = useCallback(
+    async (ids: string[], fraction: number) => {
+      setReviewErr(null)
+      for (const id of ids) {
+        const { error } = await getSupabaseClient().rpc('admin_set_trade_allocation', {
+          p_trade: id,
+          p_fraction: fraction,
+        })
+        if (error) throw new Error(error.message)
+        setUndecidedTotal((n) => (n == null ? n : Math.max(0, n - 1)))
+      }
+      void loadRecent()
+    },
+    [loadRecent],
+  )
+
+  /** settle the symbol itself, so the same question does not return on the next import (P3.4) */
+  const designateSymbol = useCallback(
+    async (symbol: string, platform: string, family: boolean) => {
+      await setSymbolDesignation(symbol, platform, family)
+      await loadUndecided()
+      void loadRecent()
+    },
+    [loadUndecided, loadRecent],
+  )
 
   /**
    * Ask the relay what it is configured with, before anything is attempted.
@@ -247,19 +288,6 @@ export function ImportPanel() {
       setBusy(null)
     }
   }
-
-  /**
-   * Still unanswered right now. Ones just decided stay on screen with a ✓ — the confirmation is
-   * the point — but they stop counting toward the heading, so it ticks down as he works.
-   */
-  const pendingReview = (undecided ?? []).filter((t) => decided[t.id] == null)
-  /**
-   * How much of the backlog is on screen. Ones already decided this session stay inside the
-   * window with their ✓ rather than vanishing — a row that disappears the instant you tap it
-   * gives you nothing to check your own answer against.
-   */
-  const visibleReview = (undecided ?? []).slice(0, reviewLimit)
-  const reviewRemaining = (undecided?.length ?? 0) - visibleReview.length
 
   return (
     <div>
@@ -459,83 +487,21 @@ export function ImportPanel() {
        * one using it — so the common two cases are one tap, and the fiddly one only appears when
        * he asks for it.
        */}
-      {pendingReview.length > 0 && (
-        <div className="card import-review">
-          <strong>
-            {pendingReview.length} trade{pendingReview.length === 1 ? '' : 's'} — was any of this
-            for the family?
-          </strong>
-          <p className="muted" style={{ margin: '0.2rem 0 0.6rem', fontSize: '0.82rem' }}>
-            Everything since the fund started on a symbol you haven&apos;t already settled one way
-            or the other. Anything in a symbol you&apos;ve marked family was split automatically;
-            these are the ones nothing decided for you. Answering &ldquo;mine&rdquo; is a real
-            answer — it won&apos;t be asked again.
-          </p>
-          {reviewErr && <p className="import-err">{reviewErr}</p>}
-          {/* ⚠️ A window, not the whole backlog. There are 106 of these on day one and they go
-              back to December — dropping all of them onto the tab he opens to import a CSV is a
-              wall, and a wall gets scrolled past rather than answered. Newest first, a dozen at
-              a time, and the count above already told him how deep it goes. */}
-          {visibleReview.map((t) => {
-            const done = decided[t.id]
-            return (
-              <div key={t.id} className="import-review-row">
-                <span>
-                  <strong>{t.symbol}</strong>{' '}
-                  <span className="muted">
-                    {t.date} · {usd(t.dollars)} · {t.units.toFixed(4)} units
-                    {t.alreadyHeld > 0 && ' · they already hold some'}
-                  </span>
-                </span>
-                {done == null ? (
-                  <span className="import-review-actions">
-                    <button className="btn btn-ghost" onClick={() => void decide(t, 0)}>
-                      Mine
-                    </button>
-                    <button className="btn" onClick={() => void decide(t, 1)}>
-                      All theirs
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        const raw = window.prompt(
-                          `How many dollars of this ${usd(t.dollars)} ${t.symbol} trade were for the family?`,
-                          '',
-                        )
-                        if (raw == null) return
-                        const part = Number(raw.replace(/[^0-9.]/g, ''))
-                        if (!Number.isFinite(part) || part <= 0 || part > Math.abs(t.dollars)) {
-                          setReviewErr(`Enter an amount between 0 and ${usd(Math.abs(t.dollars))}.`)
-                          return
-                        }
-                        void decide(t, part / Math.abs(t.dollars))
-                      }}
-                    >
-                      Part…
-                    </button>
-                  </span>
-                ) : (
-                  <span className="muted" style={{ fontSize: '0.82rem' }}>
-                    {done === 0
-                      ? 'kept yours'
-                      : done === 1
-                        ? 'all theirs ✓'
-                        : `${(done * 100).toFixed(0)}% theirs ✓`}
-                  </span>
-                )}
-              </div>
-            )
-          })}
-          {reviewRemaining > 0 && (
-            <button
-              className="btn btn-ghost"
-              style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}
-              onClick={() => setReviewLimit((n) => n + REVIEW_WINDOW)}
-            >
-              Show {Math.min(REVIEW_WINDOW, reviewRemaining)} more · {reviewRemaining} still to sort
-            </button>
-          )}
-        </div>
+      {/**
+       * The review, which lives in its own component so something can look at it: ImportPanel
+       * reaches for `getSupabaseClient()` directly, and `#dev-admin` has no token, so every RPC
+       * answered nothing and this list was always empty. The writes stay here; the screen is
+       * `TradeReview`, and the arithmetic is in `src/finance/reviewGroups.ts` with its own tests.
+       */}
+      {(undecided !== null || recent !== null) && (
+        <TradeReview
+          trades={undecided ?? []}
+          total={undecidedTotal ?? undecided?.length ?? 0}
+          recent={recent ?? []}
+          error={reviewErr}
+          onAnswer={answerTrades}
+          onDesignate={designateSymbol}
+        />
       )}
     </div>
   )
