@@ -55,6 +55,17 @@ that render nothing at zero first**.
   runs `tsc -b`.
 - `npm run lint`, then `npm run build`. The pre-push hook runs the build, so a broken tree cannot
   reach the remote — but finding out at push time is finding out late.
+- **⚠️ AND UNTIL 28 Oct 2026 `npm run lint` LOOKED AT TYPESCRIPT AND NOTHING ELSE.** The config
+  had one block, `files: ['**/*.{ts,tsx}']`, and a file matching no block has no rules to break —
+  so every `.js` and `.mjs` in the repository passed by saying nothing. Measured:
+  `npx eslint server scripts` printed nothing and exited 0, and went on printing nothing after
+  `undefinedFunctionCall()` and an unused const were appended to `server/ws-server.js`. That file
+  is the relay the park's realtime runs on; `scripts/mobile-audit.js` is what this project's whole
+  viewport doctrine is measured with. It is the same blind spot as the worktrees note above and
+  vitest's `exclude`, in the opposite direction: there the set was too big, here it was too small,
+  which is the direction nothing ever contradicts. Node globals cover `server/` and
+  `scripts/*.mjs`; `mobile-audit.js` gets BROWSER globals, because it is pasted into the pane and
+  talks to `document`.
 - **AND A TOOL THAT WALKS THE PROJECT ROOT WALKS THE WORKTREES TOO — ALL OF THEM.** vite.config.ts
   has a long note about vitest running seven copies of the suite because the desktop app puts a
   background task's checkout in `.claude/worktrees/<name>/`, which is gitignored and very much
@@ -69,11 +80,21 @@ that render nothing at zero first**.
 - **`npm run test` is vitest over the PURE modules, and it exists because the code was already
   shaped for it.** strike.ts, cast.ts, walk.ts, play.ts, zone.ts, mapDoc.ts and solid.ts all say
   in their own comments that they are pure so they can be asked a question without a browser —
-  and for a long time nothing asked. It runs in about a third of a second, on pre-push and in CI.
+  and for a long time nothing asked. It runs on pre-push and in CI.
   What belongs in it is anything with a UNIT or an INVARIANT in it: the pet-height conversions,
   a jump arc, a dodge's reach, a cast's radius, the gap between a fissure's steps, a round trip
   through a saved format. What does not is anything needing a DOM — that is what the Browser
   pane is for.
+- **IT IS NOT ONLY `src/` ANY MORE, AND THE RULE THAT GOT IT THERE IS WORTH KEEPING.** It picks up
+  `server/lib/*.test.mjs` and `supabase/functions/**/*.test.ts` as well, because the same sentence
+  kept being true somewhere new: a rule written where nothing can call it is a rule nobody checks.
+  `sanitizeSettings` was the relay's only check on client-supplied room settings, inside a
+  2,713-line module that opens a socket at import. The picture size check needed a deployed
+  runtime, a member's JWT and R2 credentials. `parseTrades` is 514 lines deciding what counts as a
+  buy, with a fixtures README spelling out seven exact expected results that **nothing ever read**.
+  When something important is unreachable, move the decision out rather than concluding it cannot
+  be tested — that is what `server/lib/settings.mjs`, `supabase/functions/pictures/verdict.ts` and
+  `src/finance/designation.ts` all are.
 - **Write the expectation from the world's SHAPE, never from the code's sum.** This is the same
   rule as the note below about `across(PARK_TALL)`, and it is the difference between a test and
   a second copy of the bug: `outBy(n) * PARK.across * ASPECT === n * PARK_TALL` says "a creature
