@@ -2430,6 +2430,12 @@ section[id] {
   justify-content: center;
   width: 1.35rem;
   height: 1.35rem;
+  /* ⚠️ 1.35rem COMES OUT 23px AND THE FLOOR IS 24. The root font-size here is fluid, so a rem is
+     not a length: at the 17.05px root this measured 23.0125 square, which is under WCAG 2.5.8 by
+     one pixel in both directions. The min-* pair is in px because that is the unit the rule is
+     written in, and it still lets the arrow grow with the root rather than pinning it. */
+  min-width: 24px;
+  min-height: 24px;
   padding: 0;
   border-radius: 50%;
   border: 1px solid var(--border);
@@ -5423,8 +5429,10 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
-  margin-left: 10px;
-  padding: 0;
+  /* padding buys the hit area, the negative margin gives the space back: 4 + 6 keeps the same
+     10px gap this had with `margin-left: 10px; padding: 0`, and the line box does not grow */
+  padding: 4px 6px;
+  margin: -4px 0 -4px 4px;
   opacity: 0.85;
 }
 .wh-open:hover {
@@ -5441,9 +5449,18 @@ button.appearance-slider-val:not(:disabled):focus-visible {
  * rather than rem on purpose — the root font-size here is fluid, so rem is not a reliable unit
  * for anything that has to come out a particular number of pixels.
  *
- * ⚠️ AND ON A COARSE POINTER RATHER THAN A NARROW SCREEN, because the thing that makes
- * this too small is a finger, not a width. A tablet with a mouse does not need it and a big
- * phone does.
+ * ⚠️ AND IT USED TO BE COARSE-ONLY, WHICH LEFT THE MOUSE CASE AT 97×22. The note here said
+ * the thing that makes this too small is a finger rather than a width, "a tablet with a mouse
+ * does not need it" — and that is the SAME SHAPE as the bug §6 describes from the other
+ * direction, where every input took its touch size from `max-width: 640px` and so was 21px on a
+ * tablet held in the hand. One rule keyed to the wrong question either way. WCAG 2.5.8 is not
+ * about pointer type, and the base rule costs nothing: the negative margin means the footer is
+ * identical at every pointer, measured 131.8px tall before and after.
+ *
+ * The inline exception in 2.5.8 would have covered this — it IS a button inside a sentence —
+ * which is why it was left alone twice. It is fixed anyway because the fix is free; an exception
+ * is permission not to, not a reason not to. The coarse rule below still buys a bigger box,
+ * because a finger wants more than the floor.
  */
 @media (pointer: coarse) {
   .wh-open {
@@ -15341,8 +15358,9 @@ a.cz-msg-author:focus-visible {
   .map-size input[type='range'] {
     min-height: 36px;
   }
-  /* on its own line already, so height costs nothing around it — unlike the footer's
-     "What's here?", which sits INSIDE a line of text and is left alone deliberately */
+  /* on its own line already, so height costs nothing around it. The footer's "What's here?"
+     sits INSIDE a line of text and was left alone for that reason; it is handled now, with
+     padding for the hit box and a negative margin so the line is unchanged — see `.wh-open`. */
   .also-together-go {
     min-height: 36px;
   }
