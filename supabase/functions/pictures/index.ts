@@ -388,7 +388,7 @@ Deno.serve(async (req) => {
    * ⚠️ AND THIS IS NOW THE ONLY WAY TO FINISH ONE, which is what makes the measurement a lock
    * rather than a courtesy. `picture_ready(uuid)` used to be granted to `authenticated`, so a
    * stale bundle — or anybody writing RPC calls by hand — could flip a row ready without being
-   * measured. It is revoked (20261029091000_picture_ready_revoke.sql); what is left is the 2-arg
+   * measured. It is revoked (the `picture_ready_revoke` migration); what is left is the 2-arg
    * `picture_ready(uuid, uuid)`, granted to `service_role` and nothing else.
    *
    * ⚠️ SO THIS ONE CALL USES A SERVICE-ROLE CLIENT, AND ONLY THIS ONE. `picture_pending` and

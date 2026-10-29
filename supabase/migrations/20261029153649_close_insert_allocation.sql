@@ -21,7 +21,7 @@
 -- no second member to attack or to attack from, and member payloads never return trade ids.
 --
 -- ⚠️ AND IT IS NOW SECURITY DEFINER, WHICH THE DRAFT DID NOT ASK FOR AND THE OTHER MIGRATION MADE
--- NECESSARY. 20261029092100_family_fund_safety.sql revokes INSERT/UPDATE/DELETE on the three
+-- NECESSARY. 20261029153952_family_fund_safety.sql revokes INSERT/UPDATE/DELETE on the three
 -- finance tables from `authenticated`. This function was SECURITY INVOKER, so its insert ran as
 -- the caller — and the two changes applied in either order would have left the ADMIN unable to
 -- hand-assign units, which is the regression this file's shape exists to avoid. Measured, both

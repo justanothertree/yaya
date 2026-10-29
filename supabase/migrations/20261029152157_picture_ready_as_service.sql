@@ -3,7 +3,7 @@
 -- Step one of two for Part A8's last step. This file is ADDITIVE ON PURPOSE: with it applied the
 -- `pictures` function at v13 keeps working unchanged, so there is no window in which an upload is
 -- broken. The revoke that closes the hole is a separate file, applied after the new code is live
--- and read back — see 20261029091000_picture_ready_revoke.sql.
+-- and read back — see 20261029153249_picture_ready_revoke.sql.
 --
 -- WHAT THE HOLE IS. `picture_ready(uuid)` sets `ready = true` and asks the store nothing, and it
 -- is granted to `authenticated`. Every ceiling in `picture_claim` — 2 MB a picture, 256 KB a

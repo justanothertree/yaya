@@ -1,26 +1,44 @@
 # The four drafts, applied — 29 Oct 2026
 
-✅ All applied. Seven migrations, because two of the four drafts were prose sketches rather than
-SQL and one needed splitting so there was never a window where uploads were broken.
+✅ All applied. **Eight migrations**, because two of the four drafts were prose sketches rather
+than SQL, one needed splitting so there was never a window where uploads were broken, and one
+needed a follow-up to fix its own copy.
 
-| migration                          | was                   | what it does                                                                                                                          |
-| ---------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `picture_ready_as_service`         | A8 (new)              | `picture_pending` also returns the owner; a 2-arg `picture_ready(uuid, uuid)` granted to `service_role` only                          |
-| `picture_ready_revoke`             | `20261028190000`      | takes `picture_ready(uuid)` away from `authenticated`                                                                                 |
-| `close_insert_allocation`          | `20261028120000`      | `is_admin()` gate, trade ownership, over-allocation bound; SECURITY DEFINER                                                           |
-| `family_fund_safety`               | `20261028120100` §1–2 | member write policies and grants off the three finance tables; two RESTRICT foreign keys; `admin_delete_member` counts accounts first |
-| `finance_reads_respect_suspension` | §3, was a sketch      | suspension + feature switch on `get_my_portfolio` / `get_my_timeline`                                                                 |
-| `even_split_counts_eligible`       | §4, was a sketch      | the divisor and the counter in `admin_even_split_trades`                                                                              |
-| `ktos_pep_are_family`              | `20261028120200`      | the two designation rows, through the admin RPC                                                                                       |
+| migration                             | was                   | what it does                                                                                                                          |
+| ------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `picture_ready_as_service`            | A8 (new)              | `picture_pending` also returns the owner; a 2-arg `picture_ready(uuid, uuid)` granted to `service_role` only                          |
+| `picture_ready_revoke`                | `20261028190000`      | takes `picture_ready(uuid)` away from `authenticated`                                                                                 |
+| `close_insert_allocation`             | `20261028120000`      | `is_admin()` gate, trade ownership, over-allocation bound; SECURITY DEFINER                                                           |
+| `family_fund_safety`                  | `20261028120100` §1–2 | member write policies and grants off the three finance tables; two RESTRICT foreign keys; `admin_delete_member` counts accounts first |
+| `admin_delete_member_counts_accounts` | follow-up             | the wording of that refusal: "1 fund account(s)" is admin-facing copy                                                                 |
+| `finance_reads_respect_suspension`    | §3, was a sketch      | suspension + feature switch on `get_my_portfolio` / `get_my_timeline`                                                                 |
+| `even_split_counts_eligible`          | §4, was a sketch      | the divisor and the counter in `admin_even_split_trades`                                                                              |
+| `ktos_pep_are_family`                 | `20261028120200`      | the two designation rows, through the admin RPC                                                                                       |
 
 Each migration's own header carries its measurements. This file is for the things that are about
 more than one of them.
 
-⚠️ **Seven files, eight rows in `schema_migrations`.** `family_fund_safety` went in twice: once as
-itself, then as `admin_delete_member_counts_accounts`, because the refusal it adds read "that person
-owns 1 fund account(s)" and that string is shown on the admin screen. The file holds the final
-version, so a replay produces the right thing in one step — noted here only so the count in the
-database and the count in this directory are not a small mystery later.
+⚠️ **THE DIRECTORY AND THE DATABASE DRIFTED THE SAME DAY, AND THIS NOTE USED TO DESCRIBE THE
+DRIFT RATHER THAN FIX IT.** It read "seven files, eight rows in `schema_migrations`" and explained
+that the correction to `admin_delete_member` had been folded back into the family_fund_safety FILE
+while the database kept both migrations — as though documenting that were enough. It was not: a
+file no longer matched the migration of its own name, and the file NAMES were invented when the
+files were written (0900–0924) rather than taken from the versions the server assigned
+(152157–155118), so the two lists could not be read against each other at all.
+
+Both are fixed. Every migration applied on 29 Oct now has a file named for its applied version,
+including the two from an earlier session that had never been captured
+(`picture_pending_for_size_check`, `positions_carry_allocation_row_count`) — ten files, ten rows.
+Those two are byte-identical to the SQL that ran, recovered from `schema_migrations.statements`.
+
+And the stronger property is checked rather than asserted: for each applied migration, every
+`create or replace function` span was md5'd on both sides. **All ten match.** The standing query is
+in `supabase/migrations/README.md`. The rule it encodes is worth keeping — a file's HEADER comments
+are its own, but a comment INSIDE a function body is part of the stored definition, so a file that
+differs there builds a different function on replay.
+
+It took somebody counting two lists against each other to notice, which is exactly the kind of
+check that happens once.
 
 ---
 
@@ -107,7 +125,7 @@ reason**.
 ## What is still open after today
 
 - **One picture upload on evancook.dev.** Everything checkable here is checked — the deployed module
-  is byte-identical to the repo (md5 `3af47673c643f633760d31b363123d9b`), it answers an echo probe,
+  is byte-identical to the repo (md5 `4f070d96d1edf024f474934d60eb2ed7`, v15), it answers an echo probe,
   the 2-arg RPC works as `service_role` and is refused to `authenticated`, and the live bundle
   contains no `picture_ready` call in any of its 42 chunks. What cannot be driven from a tool
   session is a real member JWT plus a real R2 PUT. If it fails, the undo is one line:

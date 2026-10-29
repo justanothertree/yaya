@@ -235,18 +235,20 @@ makes safe.
 which is exactly the kind of sentence that goes stale and misleads the next reader; the reasoning
 in them is carried into the applied files, corrected where it was wrong, and git has the originals.
 
-### 10b. Two things only a signed-in browser can exercise
+### 10b. One thing only a signed-in browser can exercise
 
-**Keep one more picture on evancook.dev.** The upload's finishing step now runs as `service_role`
-against a 2-arg `picture_ready`, and the old 1-arg one is revoked from `authenticated` — so this is
-a different code path from the one Evan exercised on 28 Oct and wants one more press. Everything
-checkable from a session is checked: the deployed module is byte-identical to the repository
-(md5 `3af47673c643f633760d31b363123d9b`, 23,877 bytes), it answers a live echo probe, the new RPC
-works as `service_role` and is refused to `authenticated`, and **none of the live site's 42 chunks
-contains a `picture_ready` call** — so the bundle people are running reaches the measured path only.
-What no tool session has is a real member JWT and a real R2 PUT.
+**~~Keep one more picture on evancook.dev.~~ ✅ DONE 29 Oct — Evan saved a photo on a new review and
+another on his circuit, and both worked.** That is the service-role path exercised end to end: the
+finishing step runs as `service_role` against the 2-arg `picture_ready`, and the old 1-arg one is
+revoked from `authenticated`, so there was no fallback left to quietly carry it. It was the last
+thing no tool session could reach — a real member JWT and a real R2 PUT.
 
-If it fails, the undo is one line and takes a second:
+⚠️ He tested **v15's predecessor**; `pictures` was redeployed afterwards as v15, which differs by
+one comment line and no code. Said plainly rather than left for somebody to wonder about: the test
+still covers what runs, and the deployed module is byte-identical to this repository
+(md5 `4f070d96d1edf024f474934d60eb2ed7`, 23,874 bytes).
+
+The undo, if it ever regresses, is still one line and takes a second:
 `grant execute on function public.picture_ready(uuid) to authenticated;`
 
 **Open Investments → Trades and press a symbol's Family/Personal toggle.** Unchanged from 28 Oct:

@@ -19,7 +19,7 @@
 --      48 hours. A missing or wrong key cannot produce that — supabase-js throws on an undefined
 --      key and the RPC 401s on a bad one.
 --
---   2. 20261029090000_picture_ready_as_service.sql — ADDITIVE, so v13 kept working while it
+--   2. 20261029152157_picture_ready_as_service.sql — ADDITIVE, so v13 kept working while it
 --      landed: `picture_pending` also returns the owner, and a 2-arg `picture_ready(uuid, uuid)`
 --      exists, granted to `service_role` and revoked from public, anon and authenticated.
 --      Verified: the baseline md5 of `picture_pending` for a real picture is unchanged once the

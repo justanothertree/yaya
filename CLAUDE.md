@@ -238,9 +238,10 @@ that render nothing at zero first**.
   the PLACEHOLDER incident was actually about.** Any healthy version of this function echoes that
   header, so v13 and v14 are indistinguishable by it; a file that is wrong but still compiles
   passes. The check that settles it is a real diff, and `get_edge_function` makes one possible:
-  it returns the deployed source, so write that back out and compare it to disk. Done for v14 on
-  29 Oct — md5 **3af47673c643f633760d31b363123d9b**, 23,877 bytes, byte for byte the repository's
-  copy. Two different questions, two checks: **the probe proves it boots, the diff proves it is
+  it returns the deployed source, so write that back out and compare it to disk. Done twice on
+  29 Oct, and the second time is the one that shows why it is worth the trouble: v15 differs from
+  v14 by a single COMMENT line, which no probe could ever distinguish. Deployed `pictures` is
+  md5 **4f070d96d1edf024f474934d60eb2ed7**, 23,874 bytes, byte for byte the repository's copy. Two different questions, two checks: **the probe proves it boots, the diff proves it is
   yours.** The transcription risk is real and unavoidable, because the tool takes the file's text
   inline and there is no CLI here — so the diff is the only thing standing between a dropped
   character and production.

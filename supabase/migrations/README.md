@@ -1,8 +1,9 @@
 # ⚠️ This is NOT a complete schema history. Do not `db reset` from it.
 
 The live database has **295 applied migrations** (15 Jun 2026 → 29 Oct 2026, 973 kB of SQL). This
-directory holds **9** — only the ones captured since the practice of committing them started, on
-27 Oct 2026. That gap is the whole warning.
+directory holds **12** — only the ones captured since the practice of committing them started, on
+27 Oct 2026. That gap is the whole warning. Every migration applied ON or AFTER 29 Oct has a file
+here; the 283 before it do not.
 
 ⚠️ Both figures are measured and both rot. Ask rather than trust them:
 
@@ -28,6 +29,42 @@ Every one of those headers began "⛔ DRAFT — NOT APPLIED. Nothing in this fil
 the suffix would have left that sentence sitting at the top of an applied migration, which is worse
 than no file: the reasoning in them is carried into the applied versions — corrected where it was
 wrong, and two of them were — and git still has the originals.
+
+## Two counts that have to agree, and a query that checks them
+
+⚠️ **THE DIRECTORY AND THE DATABASE DRIFTED WITHIN HOURS OF BEING WRITTEN, and nothing downstream
+would ever have said so.** On 29 Oct this held seven files against eight applied versions: a
+correction to `admin_delete_member` had been folded back into the family_fund_safety FILE while the
+database kept both migrations, so a file no longer matched the migration of its own name. The
+numbering had drifted too — files named 0900–0924 against applied versions 152157–155118, because
+the names were invented when the files were written rather than taken from what the server
+assigned. Both were caught by a person counting the two lists against each other, which is exactly
+the kind of check that does not happen twice.
+
+So ask instead. Names and versions:
+
+```sql
+select version, name from supabase_migrations.schema_migrations
+where version >= '20261029' order by version;
+```
+
+And the stronger one — **does each file actually reproduce the function the migration created?**
+`statements` holds the SQL as it ran, so every `create or replace` can be compared span by span:
+
+```sql
+select s.version,
+       substring(m[1] from 'function public\.([a-z_]+)') as fn,
+       md5(m[1]) as fn_md5
+from supabase_migrations.schema_migrations s,
+     lateral regexp_matches(array_to_string(s.statements, E'\n'),
+       '(create or replace function.*?\$function\$;)', 'gs') as m
+where s.version like '20261029%' order by s.version, 2;
+```
+
+Run the same regex over the files and compare the md5s. All ten matched on 29 Oct. A file's HEADER
+comments are its own and need not match — but a comment INSIDE a function body is part of the
+stored definition, so it does: `pg_get_functiondef` returns it, and a file that differs there
+builds a different function on replay.
 
 ⚠️ **The reason the suffix was never a guard is still worth knowing.** The Supabase CLI matches
 `<timestamp>_<name>.sql`, and `*.DRAFT.sql` matches that too — so a `db push` would have tried to

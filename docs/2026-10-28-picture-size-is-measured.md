@@ -85,8 +85,8 @@ writes through `upsert_prices`, and `finance.price_cache` held 179 rows updated 
 supabase-js throws on an undefined key and the RPC 401s on a bad one, so that freshness is proof.
 
 It is now closed, in two migrations so there was never a window where uploads were broken:
-`20261029090000_picture_ready_as_service.sql` (additive — v13 kept working) and
-`20261029091000_picture_ready_revoke.sql`. `pictures` is at **v14**, calling a 2-arg
+`20261029152157_picture_ready_as_service.sql` (additive — v13 kept working) and
+`20261029153249_picture_ready_revoke.sql`. `pictures` is at **v15**, calling a 2-arg
 `picture_ready(uuid, uuid)` as `service_role` with the owner Postgres returned; the 1-arg version is
 revoked from `authenticated` and a direct call as a member now answers `42501 permission denied for
 function picture_ready`. See `docs/2026-10-29-the-four-drafts-applied.md`.

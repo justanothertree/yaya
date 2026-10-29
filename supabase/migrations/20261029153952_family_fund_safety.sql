@@ -10,7 +10,7 @@
 -- ⚠️ §3 AND §4 OF THE DRAFT ARE NOT HERE, and that is deliberate rather than an omission. They
 -- were written as prose sketches — "take the current text first, then add these two guards" — and
 -- they replace two long live functions. They are in their own files, built from the live
--- definitions with a baseline either side: 20261029092200 (suspension) and 20261029092300 (the
+-- definitions with a baseline either side: 20261029154440 (suspension) and 20261029154808 (the
 -- even split). A sketch applied as SQL is a no-op that reports success.
 
 -- ─── 1. Members cannot edit their own fund records ─────────────────────────────────────────────
@@ -71,7 +71,7 @@ end $$;
 --   ERROR 42501 permission denied for table allocations
 --   CONTEXT: insert_allocation(jsonb) line 28
 --
--- 20261029092000_close_insert_allocation.sql makes it SECURITY DEFINER with an `is_admin()` gate,
+-- 20261029153649_close_insert_allocation.sql makes it SECURITY DEFINER with an `is_admin()` gate,
 -- and must be applied BEFORE this file. Re-checked after: the admin's hand-assign still inserts.
 
 -- ─── 2. Deleting a login must not silently take somebody's shares ─────────────────────────────
@@ -127,12 +127,9 @@ begin
      this function's search_path does not include it. */
   select count(*) into v_accounts from finance.family_accounts fa where fa.user_id = p_user_id;
   if v_accounts > 0 then
-    /* "1 fund account(s)" is the sort of thing nobody notices in a migration and everybody
-       notices on the screen — this is admin-facing copy, so it is written out. */
     raise exception
-      'that person owns % — reassign or delete % first, or their holdings go with the login',
-      v_accounts || (case when v_accounts = 1 then ' fund account' else ' fund accounts' end),
-      case when v_accounts = 1 then 'it' else 'them' end;
+      'that person owns % fund account(s) — reassign or delete them first, or their holdings go with the login',
+      v_accounts;
   end if;
 
   delete from public.invites where used_by = p_user_id; -- clears the NO ACTION FK
@@ -140,6 +137,16 @@ begin
   delete from auth.users where id = p_user_id; -- cascades profiles + account_features + auth internals
 end;
 $function$;
+
+-- ⚠️ "1 fund account(s)" BELOW IS WRONG AND IS LEFT HERE ON PURPOSE. It is what this migration
+-- actually ran; 20261029154129_admin_delete_member_counts_accounts.sql fixes the wording two
+-- minutes later. Writing the correction into this file instead is what produced the drift Evan
+-- caught — seven files against eight applied versions, and a file whose contents no longer matched
+-- the migration of its own name. Replaying both in order lands on the right text anyway.
+--
+-- A comment INSIDE a function body is part of the stored definition, so it has to match too:
+-- `pg_get_functiondef` returns it, and a file that differs there reproduces a different function.
+-- Everything from `create or replace` down is byte for byte what was applied.
 
 -- ⚠️ ONE ORPHAN PATH IS LEFT OPEN ON PURPOSE, NAMED RATHER THAN CLOSED (§10).
 -- `allocations.executed_trade_id` still has no foreign key, so deleting a trade would orphan its
