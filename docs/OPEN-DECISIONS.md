@@ -270,7 +270,28 @@ week touch things those engines differ on:
 
 Neither is exotic. Both are worth a glance if anything looks wrong on an iPhone.
 
-### 10d. Three things named rather than closed
+### 10d. What is left of Part C P3 and Part E
+
+Added 29 Oct, after working through both. Everything else in them is done and pushed; these are
+what is genuinely left, with why.
+
+**Nothing is waiting on Evan here.** Two items are design decisions, two need a browser he is
+signed into, and one is explicitly "later" in the review itself.
+
+| left                                                 | why                                                                                                                                                                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E §1.5 — weighted or subset splits ("just the kids") | the review marks it _"Later, for other families"_; today every split is even across 33 and there is no second family                                                                                                    |
+| E §2.5 — the handover check                          | needs a throwaway member and a real reassignment on the live site; creating a member to test with is Evan's call, not something to do from a session                                                                    |
+| E §2.4 — per-account chart series                    | the title says "All 3 accounts over time" now, which was the lie. Actually splitting `timeline.events` per account is a bigger change to `_fund_timeline` and wants deciding rather than guessing                       |
+| P3.1's `trimmed` count                               | the importer reports how many rows it absorbed; the figure crosses the relay and the import panel does not display it yet                                                                                               |
+| E §3.1's dust-only fold                              | asked for, deliberately not done — `accountNumbers` had already rejected it in a comment, and the two situations it would serve are opposite in meaning. A sentence above the list does the job instead; see the commit |
+
+And one thing is reasoned rather than exercised: the **"All N accounts over time"** title lives in
+the Investments room, which needs a session, and the workbench renders `PortfolioList` without the
+room around it. The guardian case in `#dev-investments` shows the rows and the shared sparklines,
+not the title.
+
+### 10e. Three things named rather than closed
 
 Not waiting on Evan — waiting on a reason. Each is a door with no path to it today, written down so
 the day a path appears, the door is already known:
@@ -286,7 +307,7 @@ the day a path appears, the door is already known:
   An account with no start date receives no allocations, because `>= fa.start_date` is NULL. The
   even-split fix no longer miscounts because of it, but the row would still quietly get nothing.
 
-### 10e. One decision parked on purpose
+### 10f. One decision parked on purpose
 
 The cash question — whether "worth today" should include cash from sales — is untouched by
 everything above. The card still counts shares only and the chart's line still includes cash, both

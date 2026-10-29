@@ -95,4 +95,16 @@ database, and `import_key`'s unique index would not save you — a changed key i
 
 Expected: 5 rows, 4 kept incl 1 reinvestment, 3 adjustments, 1 skipped as `ZZZZ`.
 
+**`rh-cciv-rounding.csv`** — the rounding a symbol change leaves behind. CCIV→LCID, the real
+case: 6 then 0.286364 bought, and "6.2864S" removed when the name changed. Robinhood rounds the
+removal to four decimals and does not round the buys, so the two do not meet.
+
+Expected: 4 rows, 4 kept, 2 adjustments — and CCIV left at **−0.000036**, which is NEGATIVE.
+
+⚠️ That residue is the point of the fixture and the parser must NOT tidy it. It reports what the
+broker said; `admin_import_trades` absorbs it, by removing exactly what is held when an incoming
+zero-dollar row would overshoot (the `import_absorbs_symbol_change_rounding` migration). Fixing it
+in both places is how the two stop agreeing, and fixing it only in the parser would hide the
+discrepancy from the only thing that can see a whole position.
+
 A header-only file (no data rows) parses to 0 and does not crash — worth keeping true.

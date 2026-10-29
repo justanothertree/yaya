@@ -1,7 +1,7 @@
 # ⚠️ This is NOT a complete schema history. Do not `db reset` from it.
 
-The live database has **295 applied migrations** (15 Jun 2026 → 29 Oct 2026, 973 kB of SQL). This
-directory holds **12** — only the ones captured since the practice of committing them started, on
+The live database has **300 applied migrations** (15 Jun 2026 → 29 Oct 2026). This
+directory holds **17** — only the ones captured since the practice of committing them started, on
 27 Oct 2026. That gap is the whole warning. Every migration applied ON or AFTER 29 Oct has a file
 here; the 283 before it do not.
 
@@ -61,7 +61,8 @@ from supabase_migrations.schema_migrations s,
 where s.version like '20261029%' order by s.version, 2;
 ```
 
-Run the same regex over the files and compare the md5s. All ten matched on 29 Oct. A file's HEADER
+Run the same regex over the files and compare the md5s. All of 29 Oct's matched — fifteen
+migrations, seventeen files counting the two from 27 Oct. A file's HEADER
 comments are its own and need not match — but a comment INSIDE a function body is part of the
 stored definition, so it does: `pg_get_functiondef` returns it, and a file that differs there
 builds a different function on replay.
