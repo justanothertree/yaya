@@ -3,6 +3,10 @@
 // also get "All accounts" (view as any member) and the trades ledger.
 import { nameFor } from '../finance/symbolNames'
 import { designationPlan } from '../finance/designation'
+import { site } from '../config/site'
+
+/** who the member is being told about — see `site.fundOwner` for why it is not a literal */
+const fundOwner = site.fundOwner
 import { correctionWarning, fullPrecision } from '../finance/correction'
 import { accountNumbers, holdingWorth, type AccountNumbers } from '../finance/accountNumbers'
 import { useEffect, useMemo, useState } from 'react'
@@ -242,8 +246,23 @@ export function Investments({ demo = false }: { demo?: boolean }) {
           <>
             {/* the roll-up banner is for multi-account views; one account says it all itself */}
             {mine && mine.length > 1 && <ScheduleSummary accounts={mine} />}
+            {/**
+             * ⚠️ ONE CHART, ALL THE ACCOUNTS — AND IT USED TO CLAIM OTHERWISE BY OMISSION
+             * (review §2.4). `get_my_timeline` returns the caller's accounts COMBINED, and every
+             * collapsed row below renders that same combined series, so a parent looking at three
+             * children saw one line titled "Your fund over time" and no hint that it was all
+             * three added together. The title says which it is now; splitting the series per
+             * account is a bigger change and is named in OPEN-DECISIONS rather than guessed at.
+             */}
             {tl && tl.events.length > 0 && (
-              <PortfolioChart timeline={tl} title="Your fund over time" />
+              <PortfolioChart
+                timeline={tl}
+                title={
+                  mine && mine.length > 1
+                    ? `All ${mine.length} accounts over time`
+                    : 'Your fund over time'
+                }
+              />
             )}
             {/* null (loading) and empty both have states of their own in here */}
             <PortfolioList accounts={mine} own timeline={tl} />
@@ -292,7 +311,7 @@ function ModeBtn({
   )
 }
 
-function PortfolioList({
+export function PortfolioList({
   accounts,
   own,
   timeline,
@@ -313,8 +332,12 @@ function PortfolioList({
     return (
       <article className="card">
         <p className="muted" style={{ margin: 0 }}>
+          {/* ⚠️ IT SAYS WHAT TO DO, rather than describing the vacuum (review §3.2). "Once an
+              account is set up for you" is passive about a thing somebody has to actually do, and
+              gives no clue who. The name is a constant rather than a literal so another family
+              can change one line — see `fundOwner`. */}
           {own
-            ? 'No accounts yet — once an account is set up for you, your holdings will show here.'
+            ? `No account yet — ask ${fundOwner} to set one up for you, and your holdings will show here.`
             : 'No accounts.'}
         </p>
       </article>
@@ -926,11 +949,36 @@ export function SoloAccount({
   const n = useMemo(() => accountNumbers(account, timeline), [account, timeline])
   /* the chart is a bonus and lands after the page does — see fetchMyTimeline above */
   const charted = !!timeline && timeline.events.length > 0
+  /* how many accounts the fund is split between, from the data rather than a literal 33 */
+  const fundSize = timeline?.accounts.length ?? 0
   return (
     <>
       <article className="card inv-span" style={{ display: 'grid', gap: '0.9rem' }}>
         <AccountHero account={account} n={n} />
       </article>
+      {/**
+       * ⚠️ WHAT IS THIS AND WHY IS IT MINE (review §2.2). The card answered "how much" in four
+       * figures and never once said what the thing was. A child opening it saw a balance with no
+       * account of where it came from, and the ① panel — which does explain — is a thing you
+       * have to know to go looking for.
+       *
+       * The fund size comes from the timeline rather than a literal 33, so it stays true as
+       * people join and stays generic for another family; the name is `site.fundOwner` for the
+       * same reason.
+       */}
+      {/**
+       * ⚠️ "SPLIT EVENLY BETWEEN 1 OF YOU" IS WHAT IT SAID FIRST, and it was true. The fund
+       * size is read from the timeline rather than hard-coded, so a family of one gets 1 — a
+       * sentence that is accurate, absurd, and would only ever have been seen by the one person
+       * least able to tell it was a bug. Found by reading the workbench, whose fixture has a
+       * single account; the live fund has 33, so nothing on this site would have shown it.
+       */}
+      {fundSize > 0 && (
+        <p className="muted inv-model-line">
+          Part of the family fund: {fundOwner} puts in {usd(account.dollarPerDay)} a day for you
+          {fundSize > 1 ? `, and family buys are split evenly between ${fundSize} of you.` : '.'}
+        </p>
+      )}
       {timeline && timeline.events.length > 0 && (
         <PortfolioChart timeline={timeline} title="Your fund over time" />
       )}
@@ -939,7 +987,7 @@ export function SoloAccount({
         className={charted ? 'card' : 'card inv-span'}
         style={{ display: 'grid', gap: '0.6rem' }}
       >
-        <AccountHoldings n={n} heading="What you own" />
+        <AccountHoldings n={n} account={account} heading="What you own" />
       </article>
     </>
   )
@@ -971,7 +1019,7 @@ export function AccountCard({
   return (
     <article className="card" style={{ display: 'grid', gap: '0.9rem' }}>
       <AccountHero account={account} n={n} />
-      <AccountHoldings n={n} heading="Holdings" />
+      <AccountHoldings n={n} account={account} heading="Holdings" />
     </article>
   )
 }
@@ -1127,12 +1175,25 @@ function AccountHero({ account, n }: { account: AccountPortfolio; n: AccountNumb
         </div>
       )}
 
+      {/**
+       * ⚠️ "$12 BEHIND YOUR PLAN" READS LIKE THE CHILD OWES SOMEBODY TWELVE DOLLARS (review
+       * §2.3). The figure is about deposits the MANAGER has or has not made — it is a promise
+       * being kept or not kept, and the member is the one owed. Same number, same colour, and
+       * the sentence now says who is behind. "Ahead" needs no such care, so it keeps the shorter
+       * reading.
+       */}
       {n.ab != null && (
         <p className="muted" style={{ margin: 0, fontSize: '0.84rem' }}>
           <strong style={{ color: n.ab >= 0 ? 'var(--gain)' : 'var(--loss)' }}>
             {usd(Math.abs(n.ab))} {n.ab >= 0 ? 'ahead of' : 'behind'}
           </strong>{' '}
-          your {usd(account.dollarPerDay)}/day plan.
+          {n.ab >= 0 ? (
+            <>the {usd(account.dollarPerDay)}/day promised for you.</>
+          ) : (
+            <>
+              on the {usd(account.dollarPerDay)}/day promised for you — {fundOwner} catches that up.
+            </>
+          )}
         </p>
       )}
 
@@ -1189,7 +1250,15 @@ function AccountHero({ account, n }: { account: AccountPortfolio; n: AccountNumb
 }
 
 /** "What you own": one row per holding, with the crumbs folded into a line of their own. */
-function AccountHoldings({ n, heading }: { n: AccountNumbers; heading: string }) {
+function AccountHoldings({
+  n,
+  account,
+  heading,
+}: {
+  n: AccountNumbers
+  account: AccountPortfolio
+  heading: string
+}) {
   /* whether the small-pieces fold is open — it was `showAll` when the list was sliced by
      COUNT, and that name stopped being true the moment it started folding by VALUE */
   const [crumbsOpen, setCrumbsOpen] = useState(false)
@@ -1207,6 +1276,28 @@ function AccountHoldings({ n, heading }: { n: AccountNumbers; heading: string })
         )}
       </div>
 
+      {/**
+       * ⚠️ EXPLAINED, NOT COLLAPSED — AND THIS IS A DELIBERATE DEPARTURE FROM REVIEW §3.1,
+       * which asks for a dust-only account to fold into one line. `accountNumbers` already
+       * considered and rejected that, in a comment written after the fact: with nothing in `big`
+       * the fold is the ENTIRE list, so "What you own" becomes one grey summary row and no
+       * holdings at all, and a card that answers "what do you own" with "5 small pieces" reads
+       * as broken.
+       *
+       * The two situations are indistinguishable in the data and opposite in meaning: a
+       * brand-new account is all crumbs because at 33 accounts the first buys are each under a
+       * dollar a head, and a finished one is all crumbs because the rest was sold. Collapsing
+       * serves the second and lies about the first. A sentence serves both, keeps the list, and
+       * is the half of §3.1 that was actually missing — nothing on screen said WHY every row
+       * was pennies.
+       */}
+      {n.holdings.length > 0 && n.big.length === 0 && (
+        <p className="muted" style={{ margin: '0 0 0.4rem', fontSize: '0.8rem' }}>
+          Every piece here is still under {usd(1)} — {usd(n.smallWorth)} altogether. Family buys are
+          split between everyone, so each one starts small.
+        </p>
+      )}
+
       {n.holdings.length === 0 ? (
         /* ⚠️ "Nothing allocated to this account yet" is wrong the moment there is cash: they HAVE
            had something allocated, it was sold, and the money is on the card above. An empty
@@ -1214,7 +1305,7 @@ function AccountHoldings({ n, heading }: { n: AccountNumbers; heading: string })
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
           {n.cash > 0.005
             ? 'No shares right now — the cash above is waiting to be invested.'
-            : 'Nothing allocated to this account yet.'}
+            : `Nothing bought for this account yet. ${fundOwner} adds ${usd(account.dollarPerDay)} a day for you, and the first shares show up after the next import.`}
         </p>
       ) : (
         /**

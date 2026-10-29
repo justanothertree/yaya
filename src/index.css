@@ -7134,6 +7134,14 @@ table.reconcile tfoot .reconcile-total td {
   }
 }
 
+/* "Part of the family fund: …" — the one line that says what this screen IS. It sits between
+   the balance and the chart, so it is read once on the way down and never needs opening. */
+.inv-model-line {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 /* The "are you sure about those decimals?" line under the correct-position box. A warning, not
    an error: every case it names can be legitimate, and this is the only way to fix a bad export. */
 .cz-correction-warn {

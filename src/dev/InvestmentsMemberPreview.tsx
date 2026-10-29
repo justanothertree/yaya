@@ -1,4 +1,4 @@
-import { AccountCard, SoloAccount } from '../sections/Investments'
+import { AccountCard, PortfolioList, SoloAccount } from '../sections/Investments'
 import type { AccountPortfolio } from '../finance/portfolio'
 import type { PricePoint, Timeline, TimelineEvent } from '../finance/timeline'
 
@@ -285,6 +285,18 @@ const CASES: Case[] = [
   },
 ]
 
+/**
+ * Three accounts for one person — the guardian case.
+ *
+ * Built from cases that already exist rather than invented again, so the rows differ from each
+ * other in the ways that matter: one ordinary, one sold out to cash, one all crumbs.
+ */
+const GUARDIAN = [
+  { ...CASES[0].account, id: 'pv-g1', name: 'Robin' },
+  { ...CASES[1].account, id: 'pv-g2', name: 'Sam' },
+  { ...CASES.find((c) => c.account.id === 'pv-11')!.account, id: 'pv-g3', name: 'Alex' },
+]
+
 export function InvestmentsMemberPreview() {
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
@@ -347,6 +359,39 @@ export function InvestmentsMemberPreview() {
           where the width runs out.
         </p>
         <AccountCard account={CASES[0].account} timeline={TIMELINE} />
+      </section>
+
+      {/**
+       * ⚠️ THE TWO PATHS `SoloAccount` NEVER TAKES (review §3.3). Everything above is the
+       * one-account card. `PortfolioList` branches three ways — none, one, several — and the
+       * other two were unreachable from any workbench: Evan has 33 accounts so he only ever sees
+       * the list, and a member with none or with three sees something nothing had rendered.
+       *
+       * The guardian case is the one worth looking at: every collapsed row draws the SAME
+       * combined timeline, so three rows show three identical sparklines of one fund. That is
+       * the thing §2.4 is about, and it is only visible here.
+       */}
+      <section style={{ display: 'grid', gap: '0.4rem' }}>
+        <div className="cz-sec" style={{ margin: 0 }}>
+          A guardian with three accounts
+        </div>
+        <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+          A parent holding their children&apos;s accounts. Collapsed rows, each expandable — and
+          each drawing the same combined chart, which is why the title above it now says how many
+          accounts it covers.
+        </p>
+        <PortfolioList accounts={GUARDIAN} own timeline={TIMELINE} />
+      </section>
+
+      <section style={{ display: 'grid', gap: '0.4rem' }}>
+        <div className="cz-sec" style={{ margin: 0 }}>
+          Somebody with no account yet
+        </div>
+        <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
+          A member who can reach Investments and has nothing in it. The copy has to say what to do
+          about that, not describe the vacuum.
+        </p>
+        <PortfolioList accounts={[]} own timeline={TIMELINE} />
       </section>
     </div>
   )
