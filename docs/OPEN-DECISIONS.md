@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-08-25 (third pass).
+Last reviewed: 2026-10-28 (fourth pass — §10 is new; §1–9 untouched).
 
 ---
 
@@ -204,3 +204,63 @@ Lot-level detail exists already — every allocation carries its trade's date.
 they cost him money.
 
 </details>
+
+---
+
+## 10. What is waiting on Evan after 28 Oct 2026
+
+Added 28 Oct. Everything below is built and pushed; none of it can be finished from a tool
+session. Ordered by what it costs to leave.
+
+### 10a. Four `.DRAFT.sql` migrations, none applied
+
+`supabase/migrations/` holds them and `README.md` there lists them. Each carries, in its own
+header, the read-only queries whose answers justify it.
+
+| file                                               | what it does                            | if it keeps waiting                                                                                  |
+| -------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `20261028190000_picture_ready_revoke.DRAFT.sql`    | shuts the last of the picture-size hole | a hand-written RPC call can still store any size; the site itself cannot                             |
+| `20261028120000_close_insert_allocation.DRAFT.sql` | closes a direct insert path             | unreachable today — 1 owner, 1 start date                                                            |
+| `20261028120100_family_fund_safety.DRAFT.sql`      | the safety set                          | same                                                                                                 |
+| `20261028120200_ktos_pep_are_family.DRAFT.sql`     | two tags, KTOS and PEP                  | both are left out of the chart's cost basis, and PEP dividends queue for review instead of splitting |
+
+⚠️ **The picture one must not be applied on its own.** It breaks every upload, including the new
+measured path, because the edge function calls `picture_ready` with the caller's token. Its header
+has the order: confirm `SUPABASE_SERVICE_ROLE_KEY` is set, change one call in the function to use
+it, deploy, test an upload, then run the file. The other three are independent of each other.
+
+The KTOS/PEP one can be done from the admin UI instead, and that is the better route — it is the
+path a second person could repeat.
+
+### 10b. Two things only the live site can exercise
+
+**Keep a picture on evancook.dev.** The upload path now ends at a new `ready` op that HEADs both
+objects in R2 and compares them to what was claimed. It cannot be driven from a tool session:
+`previewMember` makes no session and the room falls back to `pvKeep`, which touches neither
+Supabase nor R2. If it fails at the last step the message comes from that op; reverting is one
+commit on `keepPicture` and nothing on the server. See
+`docs/2026-10-28-picture-size-is-measured.md`.
+
+**Open Investments → Trades and press a symbol's Family/Personal toggle.** It asks first now, and
+says how many allocations it is about to delete — 6,006 for SPCE. Press "Leave it" the first time
+and check the sentence reads right. The positions table needs an admin session, so the wired
+component is unexercised; the wording module, the CSS and the SQL are all checked.
+
+Both are unverifiable here rather than unverified — the difference matters and is the reason they
+are listed rather than claimed.
+
+### 10c. Two things only another browser can answer
+
+The Browser pane is Chromium. **Firefox and Safari are untested**, as always, and two changes this
+week touch things those engines differ on:
+
+- the investments chart now sizes itself from a `ResizeObserver` and a layout-effect measurement;
+- the holdings row leans on `minmax(0, 1fr)` and `min-width: max-content` in grid and flex.
+
+Neither is exotic. Both are worth a glance if anything looks wrong on an iPhone.
+
+### 10d. One decision parked on purpose
+
+The cash question — whether "worth today" should include cash from sales — is untouched by
+everything above. The card still counts shares only and the chart's line still includes cash, both
+deliberately, both documented where they are. Nothing this week moved either.
