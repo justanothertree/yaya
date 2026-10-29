@@ -15567,6 +15567,32 @@ a.cz-msg-author:focus-visible {
 }
 
 /**
+ * The question a destructive admin toggle asks before it goes through.
+ *
+ * ⚠️ `flex-basis: 100%` IS WHAT PUTS IT ON ITS OWN LINE. The positions row is a wrapping flex, so
+ * without this the question squeezes in beside the symbol and the units and reads as another
+ * control rather than as a stop. It is the only declaration here doing real work; the rest is
+ * making a warning look like one.
+ */
+.inv-ask {
+  flex-basis: 100%;
+  display: grid;
+  gap: 4px;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--loss);
+  border-radius: 8px;
+  background: rgba(229, 72, 77, 0.08);
+}
+/* the receipt afterwards is not a warning — same shape, no alarm */
+.inv-ask.is-done {
+  border-color: var(--border, rgba(127, 127, 127, 0.25));
+  background: var(--b1, rgba(127, 127, 127, 0.06));
+  font-size: 0.78rem;
+  margin: 0.4rem 0 0;
+}
+
+/**
  * The chart's readout: a box that keeps its height whether or not the day it describes happens to
  * have every figure.
  *

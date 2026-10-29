@@ -50,6 +50,8 @@ export function FundPanel() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  /* which contribution is being asked about — one at a time, so a stray Enter cannot clear two */
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const sb = getSupabaseClient()
@@ -96,12 +98,23 @@ export function FundPanel() {
     await load()
   }
 
+  /**
+   * ⚠️ IT ASKS FIRST NOW, AND THIS IS THE ONE RECORD ON THE PAGE THAT CANNOT BE REBUILT. The note
+   * at the top of this panel says it: money set aside that has not been invested yet, which "the
+   * trades cannot know about, so this is the one thing here that has to be typed". Everything
+   * else on the fund screens is derived from the trade history and can be recomputed; a deleted
+   * contribution is gone, and it is a figure `admin_fund_status` and every ahead-or-behind
+   * calculation reads from.
+   *
+   * It was a plain "Remove" with no step in between, in a row of rows.
+   */
   async function remove(id: string) {
     const sb = getSupabaseClient()
     if (!sb) return
     setBusy(true)
     const { error } = await sb.rpc('admin_delete_contribution', { p_id: id })
     setBusy(false)
+    setConfirmRemove(null)
     if (error) setErr(error.message)
     else await load()
   }
@@ -227,10 +240,43 @@ export function FundPanel() {
                 <span className="muted" style={{ fontSize: '0.78rem' }}>
                   {money(r.per_person)} each
                 </span>
-                <span style={{ flex: 1, fontSize: '0.82rem' }}>{r.note}</span>
-                <button className="btn btn-ghost" disabled={busy} onClick={() => void remove(r.id)}>
-                  Remove
-                </button>
+                <span style={{ flex: 1, minWidth: 0, fontSize: '0.82rem' }}>{r.note}</span>
+                {confirmRemove === r.id ? (
+                  <span style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--loss)' }}>
+                      Delete {money(r.amount)}? Nothing rebuilds it.
+                    </span>
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void remove(r.id)}
+                      style={{
+                        fontSize: '0.76rem',
+                        background: '#e5484d',
+                        color: '#fff',
+                        borderColor: 'transparent',
+                      }}
+                    >
+                      Yes, delete
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => setConfirmRemove(null)}
+                      style={{ fontSize: '0.76rem' }}
+                    >
+                      No
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    className="btn btn-ghost"
+                    disabled={busy}
+                    aria-expanded={false}
+                    onClick={() => setConfirmRemove(r.id)}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
           </div>

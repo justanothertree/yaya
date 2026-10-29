@@ -2,6 +2,7 @@
 // cost + dollars/day, plus current value and gain/loss from the daily price sweep). Admins
 // also get "All accounts" (view as any member) and the trades ledger.
 import { nameFor } from '../finance/symbolNames'
+import { designationPlan } from '../finance/designation'
 import { accountNumbers, holdingWorth, type AccountNumbers } from '../finance/accountNumbers'
 import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../ui/errText'
@@ -1571,6 +1572,9 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const [busySym, setBusySym] = useState<string | null>(null)
   const [fixFor, setFixFor] = useState<string | null>(null)
   const [fixVal, setFixVal] = useState('')
+  /* which position is asking before it flips, and what the last flip turned out to have done */
+  const [askFor, setAskFor] = useState<string | null>(null)
+  const [didSay, setDidSay] = useState<{ key: string; says: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   // trade-list filters + lazy rendering (1,500+ rows would drown the page)
   const [fSymbol, setFSymbol] = useState('')
@@ -1588,13 +1592,40 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
 
   const posKey = (p: Position) => `${p.symbol}|${p.platform}`
 
+  /**
+   * ⚠️ IT ASKS FIRST, AND THEN IT SAYS WHAT IT DID. Turning a symbol off deletes every allocation
+   * for it across all 33 accounts — 6,006 rows for SPCE, measured — and this was a plain click in
+   * a table row next to "Set", with nothing before it and nothing after it. The server has always
+   * counted what it changed; the client threw the number away. See finance/designation.ts.
+   */
   const toggleDesignation = (pos: Position) => {
-    setBusySym(posKey(pos))
+    const key = posKey(pos)
+    setBusySym(key)
+    setAskFor(null)
     setErr(null)
+    setDidSay(null)
     setSymbolDesignation(pos.symbol, pos.platform, !pos.isFamily)
-      .then(load)
+      .then((r) => {
+        setDidSay({
+          key,
+          says: r.allocationsRemoved
+            ? `Removed ${r.allocationsRemoved.toLocaleString()} allocation${r.allocationsRemoved === 1 ? '' : 's'} for ${pos.symbol}.`
+            : r.allocationsCreated
+              ? `Shared ${pos.symbol} out — ${r.allocationsCreated.toLocaleString()} new allocation${r.allocationsCreated === 1 ? '' : 's'}.`
+              : `${pos.symbol} is now ${r.family ? 'family' : 'personal'}. Nothing else changed.`,
+        })
+        return load()
+      })
       .catch((e: unknown) => setErr(errText(e)))
       .finally(() => setBusySym(null))
+  }
+
+  /** press the toggle: either it goes, or the row grows a question first */
+  const askOrFlip = (pos: Position) => {
+    const plan = designationPlan(pos, !pos.isFamily)
+    if (!plan.asks) return toggleDesignation(pos)
+    setDidSay(null)
+    setAskFor((cur) => (cur === posKey(pos) ? null : posKey(pos)))
   }
 
   const saveCorrection = (pos: Position) => {
@@ -1832,9 +1863,10 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       )}
                       <button
                         className="btn btn-ghost"
-                        onClick={() => toggleDesignation(p)}
+                        onClick={() => askOrFlip(p)}
                         disabled={busySym !== null}
                         aria-pressed={p.isFamily}
+                        aria-expanded={askFor === key}
                         title={
                           p.isFamily
                             ? 'In the family fund — click to make personal'
@@ -1850,6 +1882,53 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                       >
                         {busySym === key ? '…' : p.isFamily ? '👨‍👩‍👧 Family' : '🔒 Personal'}
                       </button>
+                      {/**
+                       * ⚠️ THE QUESTION IS IN THE ROW, NOT IN `window.confirm`. A native confirm
+                       * cannot name the six thousand rows it is about to delete, it is
+                       * auto-dismissed to `false` in the Browser pane so the flow cannot be driven
+                       * at all, and this codebase already answers this three times over in
+                       * AccountForm. The wording is `designationPlan`, which is tested.
+                       */}
+                      {askFor === key &&
+                        (() => {
+                          const plan = designationPlan(p, !p.isFamily)
+                          return (
+                            <div className="inv-ask" role="group" aria-label={plan.title}>
+                              <strong style={{ fontSize: '0.8rem' }}>{plan.title}</strong>
+                              <span className="muted" style={{ fontSize: '0.76rem' }}>
+                                {plan.says}
+                              </span>
+                              <span style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <button
+                                  className="btn"
+                                  onClick={() => toggleDesignation(p)}
+                                  disabled={busySym !== null}
+                                  style={{
+                                    fontSize: '0.74rem',
+                                    background: plan.destroys ? '#e5484d' : 'var(--accent,#7c6af7)',
+                                    color: '#fff',
+                                    borderColor: 'transparent',
+                                  }}
+                                >
+                                  {plan.go}
+                                </button>
+                                <button
+                                  className="btn btn-ghost"
+                                  onClick={() => setAskFor(null)}
+                                  style={{ fontSize: '0.74rem' }}
+                                >
+                                  Leave it
+                                </button>
+                              </span>
+                            </div>
+                          )
+                        })()}
+                      {/* and afterwards, the count the server returned — see toggleDesignation */}
+                      {didSay?.key === key && (
+                        <p className="inv-ask is-done" role="status">
+                          ✓ {didSay.says}
+                        </p>
+                      )}
                     </div>
                   )
                 })}

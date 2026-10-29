@@ -278,6 +278,15 @@ export type Position = {
   /** Symbol-level designation. ⚠️ NOT ownership — see familyUnits. */
   isFamily: boolean
   /**
+   * How many allocation rows the family's share of this symbol is made of.
+   *
+   * ⚠️ IT IS WHAT TURNING THE DESIGNATION OFF DELETES, and it is not `familyUnits`. A position
+   * bought and sold out nets to zero units while thousands of rows still carry the cost history
+   * `heldBasis` is built from — so units is the wrong number to warn somebody with. Measured on
+   * the live fund: SPCE on Cash App is 6,006 rows across all 33 accounts.
+   */
+  familyRows: number
+  /**
    * Units the family actually owns, from the allocations.
    *
    * ⚠️ `isFamily` is a decision about a SYMBOL; this is what they hold. They diverge whenever
@@ -304,22 +313,44 @@ export async function fetchPositions(): Promise<Position[]> {
     value: p.value == null ? null : Number(p.value),
     isFamily: p.isFamily !== false,
     familyUnits: Number(p.familyUnits ?? 0),
+    familyRows: Number(p.familyRows ?? 0),
     familyValue: p.familyValue == null ? null : Number(p.familyValue),
   }))
 }
 
-/** Flip one broker's holding of a symbol family/personal — allocations re-sync to match. */
+/** What a designation flip actually did, which the server counts and nobody was reading. */
+export type DesignationResult = {
+  family: boolean
+  allocationsCreated: number
+  allocationsRemoved: number
+}
+
+/**
+ * Flip one broker's holding of a symbol family/personal — allocations re-sync to match.
+ *
+ * ⚠️ IT RETURNED `void` AND THREW THE COUNTS AWAY. `admin_set_symbol_designation` computes
+ * `allocationsCreated` and `allocationsRemoved` for this symbol specifically, and its own comment
+ * says why: "the count is taken for THIS symbol so the number the admin reads is about the button
+ * they pressed". Nobody read it. Turning SPCE off deletes 6,006 rows and the screen said nothing
+ * at all — not before, and not after.
+ */
 export async function setSymbolDesignation(
   symbol: string,
   platform: string,
   family: boolean,
-): Promise<void> {
-  const { error } = await getSupabaseClient().rpc('admin_set_symbol_designation', {
+): Promise<DesignationResult> {
+  const { data, error } = await getSupabaseClient().rpc('admin_set_symbol_designation', {
     p_symbol: symbol,
     p_platform: platform,
     p_family: family,
   })
   if (error) throw error
+  const r = (data ?? {}) as Record<string, unknown>
+  return {
+    family: r.family !== false,
+    allocationsCreated: Number(r.allocationsCreated ?? 0),
+    allocationsRemoved: Number(r.allocationsRemoved ?? 0),
+  }
 }
 
 /** Assert one broker's TRUE current units for a symbol (exports miss some events — Cash App
