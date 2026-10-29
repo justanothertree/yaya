@@ -193,6 +193,51 @@ describe('the codes that are not buys or sells', () => {
   })
 })
 
+describe('the rounding a symbol change leaves behind', () => {
+  const { summary, trades } = parseTrades(load('rh-cciv-rounding.csv'))
+
+  /**
+   * ⚠️ ROBINHOOD ROUNDS THE REMOVAL TO FOUR DECIMALS AND THE PURCHASES ARE NOT ROUNDED, SO
+   * THE TWO DO NOT CANCEL. CCIV→LCID is the real case: 6 + 0.286364 bought, then "6.2864S"
+   * removed by the symbol change. The residue is −0.000036 — a position that is very slightly
+   * NEGATIVE, for ever, on a stock that no longer exists under that name.
+   *
+   * ⚠️ AND THE PARSER MUST NOT TIDY IT. It reports what the broker said; inventing the
+   * difference here would hide it from the one place that can see the whole position, which is
+   * the database. `admin_import_trades` absorbs it (plan P3.1) by removing exactly what is held
+   * when the incoming row would otherwise overshoot. This test pins the parser's faithfulness so
+   * that fix stays necessary and visible rather than being quietly duplicated in two places.
+   */
+  it('reports the rounded removal rather than correcting it', () => {
+    expect(summary.dataRows).toBe(4)
+    expect(summary.kept).toBe(4)
+    const cciv = trades.filter((t) => t.symbol === 'CCIV')
+    const bought = cciv.filter((t) => t.dollars !== 0).reduce((n, t) => n + t.units, 0)
+    const removed = cciv.filter((t) => t.dollars === 0).reduce((n, t) => n + t.units, 0)
+    expect(bought).toBeCloseTo(6.286364, 9)
+    expect(removed).toBeCloseTo(-6.2864, 9)
+    /* the whole point: what the broker's own numbers leave behind */
+    expect(bought + removed).toBeCloseTo(-0.000036, 9)
+    expect(bought + removed).toBeLessThan(0)
+  })
+
+  it('counts the two zero-dollar rows as adjustments and moves no money on them', () => {
+    expect(summary.adjustments).toBe(2)
+    const adj = trades.filter((t) => t.dollars === 0)
+    expect(adj).toHaveLength(2)
+    expect(adj.reduce((n, t) => n + t.dollars, 0)).toBe(0)
+    /* one out of CCIV, one into LCID — a symbol change is a pair, not a sale */
+    expect(adj.map((t) => t.symbol).sort()).toEqual(['CCIV', 'LCID'])
+  })
+
+  /** ⚠️ the new name arrives with the ROUNDED quantity, which is what the family then holds */
+  it('opens the new symbol at the figure the broker actually gave', () => {
+    const lcid = trades.filter((t) => t.symbol === 'LCID')
+    expect(lcid).toHaveLength(1)
+    expect(lcid[0].units).toBeCloseTo(6.2864, 9)
+  })
+})
+
 describe('what it refuses and what it survives', () => {
   it('says which broker it could not identify rather than guessing', () => {
     expect(() => parseTrades('a,b,c\n1,2,3\n')).toThrow(/Robinhood or Cash App/)
