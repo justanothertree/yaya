@@ -5,7 +5,19 @@ statement. **Every value here is invented** — made-up tickers (ZZTOP, QUACK, W
 amounts, made-up transaction ids. Nothing in this folder is anyone's real financial data, which
 is why it can live in a public repo.
 
-Run any of them as a dry run — nothing is written to the database:
+## ⚠️ Every "Expected:" line below is now asserted, not just written down
+
+`server/lib/parseTrades.test.mjs` reads these files and checks those numbers. Until 28 Oct 2026
+they were prose — a complete specification, including "if the summary says anything other than 6
+rows, that parser has regressed", that nothing in the repository ever read. 514 lines of parser
+feeding real money into the fund, with every case documented and none of them checked.
+
+So the figures here and the test cannot drift: change a fixture and the test goes red. Add a
+fixture and `accounts for every row of every fixture, once` picks it up automatically — it walks
+the directory rather than naming files.
+
+Run any of them as a dry run too, when you want to look at the output rather than a pass/fail —
+nothing is written to the database:
 
 ```bash
 node scripts/import-trades.mjs scripts/fixtures/robinhood-sample.csv
