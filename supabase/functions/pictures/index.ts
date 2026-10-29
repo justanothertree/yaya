@@ -86,6 +86,13 @@ type Pending = {
   bytes: number
   thumb_bytes: number
   ready: boolean
+  /**
+   * ⚠️ THE OWNER COMES BACK FROM POSTGRES, NEVER FROM THE REQUEST. `picture_pending` proved
+   * `owner = auth.uid()` before answering, so this field is the database's word for who the
+   * caller is — which is what lets the finishing call be made as `service_role` without this
+   * file deciding anything about ownership. See the note on the `ready` op.
+   */
+  owner: string
 }
 type Mine = {
   id: string
@@ -378,11 +385,17 @@ Deno.serve(async (req) => {
    * credentials. The decision it makes is in `verdict.ts` so that it can be tested without a
    * deployed runtime, a member's JWT and a bucket — see the note at the top of that file.
    *
-   * ⚠️ AND IT IS NOT THE WHOLE LOCK YET. `picture_ready(uuid)` is still granted to
-   * `authenticated`, so a bundle from before this — or anyone writing RPC calls by hand — can
-   * still finish a picture without being measured. Closing that needs this function to call the
-   * RPC as `service_role`, which needs a secret set on the project; the revoke is written up in
-   * supabase/migrations as a draft rather than guessed at.
+   * ⚠️ AND THIS IS NOW THE ONLY WAY TO FINISH ONE, which is what makes the measurement a lock
+   * rather than a courtesy. `picture_ready(uuid)` used to be granted to `authenticated`, so a
+   * stale bundle — or anybody writing RPC calls by hand — could flip a row ready without being
+   * measured. It is revoked (20261029091000_picture_ready_revoke.sql); what is left is the 2-arg
+   * `picture_ready(uuid, uuid)`, granted to `service_role` and nothing else.
+   *
+   * ⚠️ SO THIS ONE CALL USES A SERVICE-ROLE CLIENT, AND ONLY THIS ONE. `picture_pending` and
+   * `picture_drop` above stay on the caller's token, so ownership is still proved by Postgres and
+   * not by the file holding the key — CLAUDE.md §3's house pattern is that "what may be written"
+   * is one question answered in one place, and a service-role client used liberally makes this
+   * file a second place. The owner it passes is the one `picture_pending` returned.
    */
   if (body.op === 'ready') {
     const { data, error } = await supabase.rpc('picture_pending', { p_id: body.id })
@@ -435,7 +448,18 @@ Deno.serve(async (req) => {
       return json({ error: verdict.why }, 400, origin)
     }
 
-    const { error: badReady } = await supabase.rpc('picture_ready', { p_id: body.id })
+    /* ⚠️ SAID PLAINLY RATHER THAN AS A CRASH, for the same reason as "R2 is not configured"
+       above: `createClient(url, undefined)` throws out of supabase-js with a message about a
+       missing key, which reaches the page as a 500 and reads like the picture was too big. */
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!serviceKey) {
+      return json({ error: 'this project cannot finish pictures yet' }, 503, origin)
+    }
+    const asService = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey)
+    const { error: badReady } = await asService.rpc('picture_ready', {
+      p_id: body.id,
+      p_owner: claim.owner,
+    })
     if (badReady) return json({ error: badReady.message }, 400, origin)
     return json({ ok: true }, 200, origin)
   }
