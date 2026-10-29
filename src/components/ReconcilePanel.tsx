@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
+import { DUST_USD } from '../finance/dust'
 
 /**
  * Checking the numbers against the brokers, without needing me.
@@ -50,8 +51,18 @@ const units = (n: number) =>
  * Mirrors integrity check #7 exactly — a dollar of shortfall, not a unit of it. Without a price
  * there are no dollars to judge, so it falls back to a hundredth of a unit, which is still two
  * orders of magnitude above the rounding dust that made the old zero-threshold version useless.
+ *
+ * ⚠️ THE DOLLAR COMES FROM `dust.ts` NOW RATHER THAN BEING TYPED HERE (plan P3.3). It was the
+ * same number in two files with a comment promising they agreed, which is the arrangement that
+ * drifts — and the symptom would be a row red on this screen and absent from the badge above it,
+ * or the reverse. One constant cannot disagree with itself.
+ *
+ * ⚠️ AND THE THIRD COPY IS IN SQL AND CANNOT IMPORT ANYTHING. `finance.integrity_checks()`
+ * carries check #7's dollar in the database, so the guarantee here reaches the two client screens
+ * and stops at the wire. That is worth knowing rather than papering over: if the server's
+ * threshold ever moves, this constant has to move with it by hand.
  */
-const OVERHANG_DOLLARS = 1
+const OVERHANG_DOLLARS = DUST_USD
 const personallyShort = (r: Row) =>
   r.price == null ? r.personalUnits < -0.01 : r.personalUnits * r.price < -OVERHANG_DOLLARS
 
@@ -77,6 +88,13 @@ export function ReconcilePanel() {
   if (!report) return <p className="muted">Checking…</p>
 
   const problems = report.checks.filter((c) => c.count > 0)
+  /**
+   * ⚠️ THIS IS NOT THE DUST THRESHOLD AND MUST NOT BECOME IT. The question here is "does the
+   * family hold any of this at all", which is about a position EXISTING — a millionth of a unit
+   * filters out exact zeros and float residue and nothing else. `DUST_UNITS` (0.0001) answers a
+   * different question, whether a position is CLOSED, and using it here would hide a hundred
+   * real-but-tiny family holdings from the one screen that exists to reconcile them.
+   */
   const rows = report.symbols.filter((r) => !onlyFamily || r.familyUnits > 0.000001)
 
   /**

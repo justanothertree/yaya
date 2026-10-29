@@ -3,6 +3,7 @@
 // also get "All accounts" (view as any member) and the trades ledger.
 import { nameFor } from '../finance/symbolNames'
 import { designationPlan } from '../finance/designation'
+import { correctionWarning, fullPrecision } from '../finance/correction'
 import { accountNumbers, holdingWorth, type AccountNumbers } from '../finance/accountNumbers'
 import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../ui/errText'
@@ -1825,7 +1826,7 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                         className="btn btn-ghost"
                         onClick={() => {
                           setFixFor((cur) => (cur === key ? null : key))
-                          setFixVal(String(Math.max(0, p.units)))
+                          setFixVal(fullPrecision(p.units))
                         }}
                         disabled={busySym !== null}
                         title="Wrong count after a split the export missed? Enter the true units you hold."
@@ -1861,6 +1862,29 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                           </button>
                         </span>
                       )}
+                      {/**
+                       * ⚠️ A WARNING RATHER THAN A REFUSAL, and this is how LCID became 253.78.
+                       * The box used to prefill `String(p.units)`, which renders 253.783975 in
+                       * full but is indistinguishable on screen from a figure already rounded —
+                       * type over it with a number read off a broker app and the fraction is gone
+                       * without a word. Every case `correctionWarning` names CAN be legitimate,
+                       * and this screen is the only way to fix an export that lied, so refusing
+                       * would turn a rare annoyance into an unfixable one. Saying both numbers
+                       * back in full is what makes it noticeable.
+                       */}
+                      {fixFor === key &&
+                        (() => {
+                          const w = correctionWarning(p.units, fixVal)
+                          return w ? (
+                            <span
+                              className="cz-correction-warn"
+                              role="status"
+                              style={{ flexBasis: '100%' }}
+                            >
+                              <strong>{w.says}</strong> {w.because}
+                            </span>
+                          ) : null
+                        })()}
                       <button
                         className="btn btn-ghost"
                         onClick={() => askOrFlip(p)}

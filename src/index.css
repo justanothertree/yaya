@@ -7134,6 +7134,15 @@ table.reconcile tfoot .reconcile-total td {
   }
 }
 
+/* The "are you sure about those decimals?" line under the correct-position box. A warning, not
+   an error: every case it names can be legitimate, and this is the only way to fix a bad export. */
+.cz-correction-warn {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: #e0a33e;
+  padding: 0.2rem 0 0.1rem;
+}
+
 /**
  * One symbol's trades, answered together.
  *
