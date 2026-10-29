@@ -1,4 +1,5 @@
 // Group detail modal — all ratings for one movie, aggregated gut reactions + tag cloud.
+// A rating's photograph is drawn here too: see RatingPhoto at the foot of this file.
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { Modal } from './Modal'
@@ -13,6 +14,8 @@ import {
   scoreColor,
 } from './movieMeta'
 import { peekPersistedUserId } from '../../finance/auth'
+import { useSeenPicture } from '../../pictures/seen'
+import { useBigPicture } from '../../pictures/useBigPicture'
 import { MovieRate } from './MovieRate'
 import { MoviePersonProfile } from './MoviePersonProfile'
 import { kindOf, kindsPresent } from '../reviewKinds'
@@ -21,6 +24,9 @@ import type { Movie, Person } from '../types'
 
 export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => void }) {
   const { people } = useCircuit()
+  /* tapping a photograph opens it full-size over this dialog — see PhotoViewer's own note on
+     why Escape has to be handled in the capture phase to close the photo and not the modal */
+  const bigPicture = useBigPicture()
   const [editing, setEditing] = useState<Person | null>(null)
   const [personProfile, setPersonProfile] = useState<Person | null>(null)
 
@@ -379,9 +385,14 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
                         refuse anybody else's, so offering the button would be offering a
                         failure */}
                     {canRateAs(p.id) && (
+                      /* ⚠️ 24 HIGH, BECAUSE 2px OF PADDING ON 0.7rem TEXT IS 17. Measured at 375
+                         while checking the photo above it: this and its "Rate" twin were the only
+                         two things in the dialog under WCAG 2.5.8's floor, and they are the button
+                         somebody taps to write a review. A min-height cannot reflow anything —
+                         the row is already taller than this — so it costs the look nothing. */
                       <button
                         className="btn"
-                        style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                        style={{ fontSize: '0.7rem', padding: '2px 8px', minHeight: 24 }}
                         onClick={() => setEditing(p)}
                       >
                         {r?.score != null ? 'Edit' : 'Rate'}
@@ -422,6 +433,21 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
                     "{rv.note}"
                   </p>
                 )}
+                {/**
+                 * ⚠️ THE ONE PART OF A RATING NOBODY COULD READ. Everything else a person writes
+                 * reaches this block — the vibes, the recommend, the rewatch, the tips, the tags
+                 * and the note — and the photograph did not, anywhere. It was drawn in exactly
+                 * one place: the dialog you use to ATTACH it. So the person who took it had to
+                 * reopen their own rating to see it, and nobody else could see it at all.
+                 *
+                 * The hard half was already built and is why this is three lines. `pictures_i_can_see`
+                 * has a `circuit_ratings` branch — a picture is signable by whoever may see the
+                 * rating it hangs on, requiring the picture's owner to match the rating's owner so
+                 * an id written onto somebody else's row resolves to nothing. The adapter selects
+                 * `picture` for every rater, `movieMeta` carries it onto each one. Nothing ever
+                 * asked for the URL.
+                 */}
+                <RatingPhoto id={r?.picture} who={p.name} onPhoto={bigPicture.open} />
                 {!r && (
                   <span className="muted" style={{ fontSize: '0.8rem' }}>
                     Not rated yet
@@ -432,6 +458,9 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
           })}
         </div>
       </Modal>
+      {/* ⚠️ OUTSIDE the Modal, so the photo is not clipped by the dialog it was opened from —
+          PhotoViewer portals to document.body and sits above it at z-index 1600 */}
+      {bigPicture.viewer}
 
       {editing && (
         <MovieRate
@@ -452,5 +481,53 @@ export function MovieDetail({ movie, onClose }: { movie: Movie; onClose: () => v
         />
       )}
     </>
+  )
+}
+
+/**
+ * The photograph somebody hung on their rating, if there is one and you may see it.
+ *
+ * ⚠️ IT TAKES AN ID AND FETCHES A URL, never a stored link. A URL into private R2 is signed for
+ * an hour, so a link kept in a row is one that stops working with nothing to say it has. The id
+ * is the durable thing and the link is minted when somebody looks — the same shape as `LogPhoto`
+ * in Feed.tsx, which this deliberately mirrors rather than inventing a second way.
+ *
+ * ⚠️ AND `useSeenPicture` BATCHES. A film with eight raters is one request for eight pictures,
+ * not eight requests — `src/pictures/seen.ts` collects the ids asked for in a tick and splits
+ * them into calls of sixty, which is the cap the `seen` op enforces on the other side.
+ *
+ * It renders nothing at all when the id is absent, unresolvable, or belongs to somebody whose
+ * rating you cannot see. That last case is the server's answer, not a guess made here.
+ */
+function RatingPhoto({
+  id,
+  who,
+  onPhoto,
+}: {
+  id?: string | null
+  who?: string | null
+  onPhoto: (src: string, alt?: string | null) => void
+}) {
+  const pic = useSeenPicture(id)
+  if (!pic) return null
+  /* the alt somebody typed, else whose rating it is — never an empty alt on a real photograph */
+  const alt = pic.alt ?? (who ? `${who}'s photo` : 'photo on this rating')
+  return (
+    <img
+      src={pic.thumbUrl}
+      alt={alt}
+      onClick={(e) => {
+        e.stopPropagation()
+        onPhoto(pic.url, pic.alt)
+      }}
+      style={{
+        marginTop: 6,
+        maxHeight: 120,
+        maxWidth: '100%',
+        borderRadius: 8,
+        cursor: 'zoom-in',
+        display: 'block',
+      }}
+    />
   )
 }
