@@ -229,17 +229,28 @@ measured path, because the edge function calls `picture_ready` with the caller's
 has the order: confirm `SUPABASE_SERVICE_ROLE_KEY` is set, change one call in the function to use
 it, deploy, test an upload, then run the file. The other three are independent of each other.
 
+**✅ Step 1 of that order is answered.** `SUPABASE_SERVICE_ROLE_KEY` IS set on the project —
+`refresh-prices` builds its client from it and its cron has been pricing the fund for months, so
+the secret exists and works. That was the only thing a tool session could not establish, and it is
+what made this a draft rather than a change. The remaining steps are all doable from a session.
+
+**None of these four needs Evan's hands.** Three were staged as drafts because Yaxa's review said
+"don't apply it yourself" — an instruction about reviewing them, not about who runs them — and the
+fourth because of the secret above. They are waiting on a decision, not on labour.
+
 The KTOS/PEP one can be done from the admin UI instead, and that is the better route — it is the
 path a second person could repeat.
 
 ### 10b. Two things only the live site can exercise
 
-**Keep a picture on evancook.dev.** The upload path now ends at a new `ready` op that HEADs both
-objects in R2 and compares them to what was claimed. It cannot be driven from a tool session:
-`previewMember` makes no session and the room falls back to `pvKeep`, which touches neither
-Supabase nor R2. If it fails at the last step the message comes from that op; reverting is one
-commit on `keepPicture` and nothing on the server. See
+**~~Keep a picture on evancook.dev.~~ ✅ DONE 28 Oct — Evan kept one and it worked.** The upload
+path ends at a `ready` op that HEADs both objects in R2 and compares them to what was claimed, and
+that op could not be driven from a tool session. It is exercised now. See
 `docs/2026-10-28-picture-size-is-measured.md`.
+
+It also turned up two things he could only find by using it, both now fixed: the photograph on a
+rating was drawn ONLY in the dialog you attach it in — not on the shared page where everyone reads
+the ratings — and the "Rate" and "Edit" buttons in that page were 17px tall.
 
 **Open Investments → Trades and press a symbol's Family/Personal toggle.** It asks first now, and
 says how many allocations it is about to delete — 6,006 for SPCE. Press "Leave it" the first time
