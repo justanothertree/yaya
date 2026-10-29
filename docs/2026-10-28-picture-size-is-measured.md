@@ -67,17 +67,29 @@ would turn a flaky connection into lost work on the retry.
 **`keepPicture`** now calls the op instead of the RPC, with no fallback. A fallback would quietly
 re-enable the thing it replaces and the first anyone would know is a storage bill.
 
-## What is NOT closed
+## ~~What is NOT closed~~ ✅ CLOSED 29 Oct 2026
 
-`picture_ready(uuid)` is still granted to `authenticated`. A bundle from before this — or anyone
-writing RPC calls by hand — can still finish a picture without being measured. **The hole is closed
-for the site and open to a deliberate caller.**
+**This section described the state for one day. It is kept because the reasoning in it is why the
+close took two migrations rather than one, but what it says is no longer true.**
 
-Closing it is `supabase/migrations/20261028190000_picture_ready_revoke.DRAFT.sql`, and it cannot be
-applied on its own: the edge function calls `picture_ready` with the **caller's** JWT, so revoking
-the grant breaks the new path too. It needs the function to make that one call as `service_role`,
-which needs `SUPABASE_SERVICE_ROLE_KEY` set on the project — a secret this session cannot read or
-verify. Guessing it was set and deploying against it would have broken uploads for everyone.
+It said: `picture_ready(uuid)` is still granted to `authenticated`, so a bundle from before this —
+or anyone writing RPC calls by hand — can still finish a picture without being measured; the hole
+is closed for the site and open to a deliberate caller. And that closing it could not be done alone,
+because the edge function calls `picture_ready` with the **caller's** JWT, so the revoke would break
+the new path too; it needed the function to make that one call as `service_role`, which needs
+`SUPABASE_SERVICE_ROLE_KEY` set on the project — a secret that session could not read or verify.
+
+All of that held. What changed is that the secret turned out to be establishable **from its
+effect** rather than by reading it: `refresh-prices` builds its only client from that key and
+writes through `upsert_prices`, and `finance.price_cache` held 179 rows updated inside 48 hours.
+supabase-js throws on an undefined key and the RPC 401s on a bad one, so that freshness is proof.
+
+It is now closed, in two migrations so there was never a window where uploads were broken:
+`20261029090000_picture_ready_as_service.sql` (additive — v13 kept working) and
+`20261029091000_picture_ready_revoke.sql`. `pictures` is at **v14**, calling a 2-arg
+`picture_ready(uuid, uuid)` as `service_role` with the owner Postgres returned; the 1-arg version is
+revoked from `authenticated` and a direct call as a member now answers `42501 permission denied for
+function picture_ready`. See `docs/2026-10-29-the-four-drafts-applied.md`.
 
 ## Verified here
 

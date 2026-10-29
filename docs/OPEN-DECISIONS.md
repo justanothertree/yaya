@@ -207,55 +207,53 @@ they cost him money.
 
 ---
 
-## 10. What is waiting on Evan after 28 Oct 2026
+## 10. What is waiting on Evan after 29 Oct 2026
 
-Added 28 Oct. Everything below is built and pushed; none of it can be finished from a tool
-session. Ordered by what it costs to leave.
+Rewritten 29 Oct. The four drafts this section was mostly about are **applied**, so what is left is
+much shorter: two things that need a browser Evan is signed into, and two engines the pane cannot
+be.
 
-### 10a. Four `.DRAFT.sql` migrations, none applied
+### 10a. ~~Four `.DRAFT.sql` migrations, none applied~~ ✅ DONE 29 Oct
 
-`supabase/migrations/` holds them and `README.md` there lists them. Each carries, in its own
-header, the read-only queries whose answers justify it.
+All four are live, as seven migrations — two of the drafts were prose sketches rather than runnable
+SQL, and the picture one had to be split so there was never a window where uploads were broken.
+`docs/2026-10-29-the-four-drafts-applied.md` has the table, the measurements and the standing
+queries; each migration's own header has its own.
 
-| file                                               | what it does                            | if it keeps waiting                                                                                  |
-| -------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `20261028190000_picture_ready_revoke.DRAFT.sql`    | shuts the last of the picture-size hole | a hand-written RPC call can still store any size; the site itself cannot                             |
-| `20261028120000_close_insert_allocation.DRAFT.sql` | closes a direct insert path             | unreachable today — 1 owner, 1 start date                                                            |
-| `20261028120100_family_fund_safety.DRAFT.sql`      | the safety set                          | same                                                                                                 |
-| `20261028120200_ktos_pep_are_family.DRAFT.sql`     | two tags, KTOS and PEP                  | both are left out of the chart's cost basis, and PEP dividends queue for review instead of splitting |
+Two things are worth carrying forward from doing it:
 
-⚠️ **The picture one must not be applied on its own.** It breaks every upload, including the new
-measured path, because the edge function calls `picture_ready` with the caller's token. Its header
-has the order: confirm `SUPABASE_SERVICE_ROLE_KEY` is set, change one call in the function to use
-it, deploy, test an upload, then run the file. The other three are independent of each other.
+**Two of the drafts broke each other, and neither file said so.** `close_insert_allocation` kept
+its guard inside `insert_allocation` specifically so the admin UI would not have to change;
+`family_fund_safety` §1 revokes `INSERT` on that table from `authenticated`, and
+`insert_allocation` ran as the caller. Applied in either order they would have left **the admin**
+unable to assign units. Measured rather than spotted by reading: the same call that inserts a unit
+today returns `42501 permission denied for table allocations` with the revoke applied first. The
+repair was to make that one function SECURITY DEFINER, which the new `is_admin()` gate is what
+makes safe.
 
-**✅ Step 1 of that order is answered.** `SUPABASE_SERVICE_ROLE_KEY` IS set on the project —
-`refresh-prices` builds its client from it and its cron has been pricing the fund for months, so
-the secret exists and works. That was the only thing a tool session could not establish, and it is
-what made this a draft rather than a change. The remaining steps are all doable from a session.
+**The `.DRAFT.sql` files are gone, not renamed.** Their headers all began "⛔ DRAFT — NOT APPLIED",
+which is exactly the kind of sentence that goes stale and misleads the next reader; the reasoning
+in them is carried into the applied files, corrected where it was wrong, and git has the originals.
 
-**None of these four needs Evan's hands.** Three were staged as drafts because Yaxa's review said
-"don't apply it yourself" — an instruction about reviewing them, not about who runs them — and the
-fourth because of the secret above. They are waiting on a decision, not on labour.
+### 10b. Two things only a signed-in browser can exercise
 
-The KTOS/PEP one can be done from the admin UI instead, and that is the better route — it is the
-path a second person could repeat.
+**Keep one more picture on evancook.dev.** The upload's finishing step now runs as `service_role`
+against a 2-arg `picture_ready`, and the old 1-arg one is revoked from `authenticated` — so this is
+a different code path from the one Evan exercised on 28 Oct and wants one more press. Everything
+checkable from a session is checked: the deployed module is byte-identical to the repository
+(md5 `3af47673c643f633760d31b363123d9b`, 23,877 bytes), it answers a live echo probe, the new RPC
+works as `service_role` and is refused to `authenticated`, and **none of the live site's 42 chunks
+contains a `picture_ready` call** — so the bundle people are running reaches the measured path only.
+What no tool session has is a real member JWT and a real R2 PUT.
 
-### 10b. Two things only the live site can exercise
+If it fails, the undo is one line and takes a second:
+`grant execute on function public.picture_ready(uuid) to authenticated;`
 
-**~~Keep a picture on evancook.dev.~~ ✅ DONE 28 Oct — Evan kept one and it worked.** The upload
-path ends at a `ready` op that HEADs both objects in R2 and compares them to what was claimed, and
-that op could not be driven from a tool session. It is exercised now. See
-`docs/2026-10-28-picture-size-is-measured.md`.
-
-It also turned up two things he could only find by using it, both now fixed: the photograph on a
-rating was drawn ONLY in the dialog you attach it in — not on the shared page where everyone reads
-the ratings — and the "Rate" and "Edit" buttons in that page were 17px tall.
-
-**Open Investments → Trades and press a symbol's Family/Personal toggle.** It asks first now, and
-says how many allocations it is about to delete — 6,006 for SPCE. Press "Leave it" the first time
-and check the sentence reads right. The positions table needs an admin session, so the wired
-component is unexercised; the wording module, the CSS and the SQL are all checked.
+**Open Investments → Trades and press a symbol's Family/Personal toggle.** Unchanged from 28 Oct:
+it asks first and says how many allocations it is about to delete — 6,006 for SPCE. Press "Leave
+it" the first time and check the sentence reads right. The positions table needs an admin session,
+so the wired component is still the one unexercised piece; the wording module, the CSS and the SQL
+are all checked.
 
 Both are unverifiable here rather than unverified — the difference matters and is the reason they
 are listed rather than claimed.
@@ -270,7 +268,23 @@ week touch things those engines differ on:
 
 Neither is exotic. Both are worth a glance if anything looks wrong on an iPhone.
 
-### 10d. One decision parked on purpose
+### 10d. Three things named rather than closed
+
+Not waiting on Evan — waiting on a reason. Each is a door with no path to it today, written down so
+the day a path appears, the door is already known:
+
+- **`allocations.executed_trade_id` has no foreign key.** Deleting a trade would orphan its
+  allocations the way deleting a login used to orphan them (now fixed with a RESTRICT FK on the
+  account side). Nothing deletes trades — checked across every function in `public` and `finance` —
+  so it becomes real the day a "remove an imported trade" control is added.
+- **`admin_get_portfolios` and `admin_get_timeline` do not check suspension**, where their member
+  equivalents now do. The case is a suspended admin, which cannot exist: `admin_delete_member`
+  refuses to touch an admin and nothing suspends one.
+- **`family_accounts.start_date` is nullable and `admin_create_family_account` accepts a null one.**
+  An account with no start date receives no allocations, because `>= fa.start_date` is NULL. The
+  even-split fix no longer miscounts because of it, but the row would still quietly get nothing.
+
+### 10e. One decision parked on purpose
 
 The cash question — whether "worth today" should include cash from sales — is untouched by
 everything above. The card still counts shares only and the chart's line still includes cash, both

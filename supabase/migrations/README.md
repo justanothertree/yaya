@@ -1,38 +1,38 @@
 # ⚠️ This is NOT a complete schema history. Do not `db reset` from it.
 
-The live database has **285 applied migrations** (15 Jun 2026 → today). This directory holds only
-the ones captured since the practice of committing them started, on 27 Oct 2026.
+The live database has **295 applied migrations** (15 Jun 2026 → 29 Oct 2026, 973 kB of SQL). This
+directory holds **9** — only the ones captured since the practice of committing them started, on
+27 Oct 2026. That gap is the whole warning.
+
+⚠️ Both figures are measured and both rot. Ask rather than trust them:
+
+```sql
+select count(*), min(version), max(version) from supabase_migrations.schema_migrations;
+```
 
 Running `supabase db reset` or `supabase db push` against this directory would build a database
 missing most of the schema — and it would look like it had worked. That is the one thing to know
 before using anything in here.
 
-## ⛔ Files ending `.DRAFT.sql` have NOT been applied
+## ✅ The four drafts are applied — 29 Oct 2026
 
-Four of them, all waiting on Evan:
+There are no `.DRAFT.sql` files any more. The four that sat here from Yaxa's 28 Oct review went in
+on 29 Oct, as **seven** migrations: two of the drafts were prose sketches rather than runnable SQL,
+and the picture one had to be split in two so there was never a window where uploads were broken.
 
-- `20261028120000_close_insert_allocation.DRAFT.sql`
-- `20261028120100_family_fund_safety.DRAFT.sql`
-- `20261028120200_ktos_pep_are_family.DRAFT.sql` — two lines, and the admin UI can do it instead
-- `20261028190000_picture_ready_revoke.DRAFT.sql` — ⚠️ **breaks every picture upload if applied on
-  its own.** The rest of that change is already live (`picture_pending`, `pictures` v13); this last
-  line needs the edge function to make one call as `service_role` first, which needs a secret this
-  session could not verify. Its header has the order to do it in.
+`docs/2026-10-29-the-four-drafts-applied.md` has the mapping, the measurements and the standing
+queries. Each migration's own header has its own.
 
-The first three are from Yaxa's 28 Oct review; the fourth is from Part A8 of it.
+⚠️ **They were deleted rather than renamed, which is a departure from the instruction below.**
+Every one of those headers began "⛔ DRAFT — NOT APPLIED. Nothing in this file has run." Renaming
+the suffix would have left that sentence sitting at the top of an applied migration, which is worse
+than no file: the reasoning in them is carried into the applied versions — corrected where it was
+wrong, and two of them were — and git still has the originals.
 
-They are here because the review asked for its SQL to land in this directory for review. The
-`.DRAFT.sql` suffix is deliberate: the Supabase CLI matches `<timestamp>_<name>.sql`, and these
-still match it, so **a `db push` would try to apply them**. The suffix is a sign for a person, not
-a guard against tooling. Read them before running anything in this directory.
-
-Each one carries, in its own header, the read-only queries whose answers justify it — and what
-bounds its urgency. Both are about the first time a fund account is handed to somebody other than
-Evan; measured today, there are 33 accounts, **1 owner** and **1 distinct start date**, so neither
-problem can currently be reached.
-
-Rename the suffix away once applied, and move the "verified" header notes into `docs/` the way
-every other change here records its reasoning.
+⚠️ **The reason the suffix was never a guard is still worth knowing.** The Supabase CLI matches
+`<timestamp>_<name>.sql`, and `*.DRAFT.sql` matches that too — so a `db push` would have tried to
+apply them. The suffix was a sign for a person, not a safety. If a draft is ever parked here again,
+that is the thing to remember about it.
 
 ## Why the rest are not here
 
