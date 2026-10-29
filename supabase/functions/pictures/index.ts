@@ -26,6 +26,8 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { AwsClient } from 'npm:aws4fetch@1.0.20'
+/* the size check's decision, in its own file so vitest can ask it — see that file's header */
+import { lengthFrom, verdictFor } from './verdict.ts'
 
 /* ⚠️ NAMED ORIGINS RATHER THAN `*`. The JWT is what actually guards this — CORS does not protect
    a token the app sends deliberately — but an endpoint that mints upload URLs is not one to leave
@@ -78,6 +80,13 @@ const PUT_FOR = 300 // five minutes: long enough for a slow upload, short enough
 const GET_FOR = 3600
 
 type Claim = { id: string; key: string; thumb_key: string }
+type Pending = {
+  key: string
+  thumb_key: string
+  bytes: number
+  thumb_bytes: number
+  ready: boolean
+}
 type Mine = {
   id: string
   key: string
@@ -348,6 +357,87 @@ Deno.serve(async (req) => {
       })),
     )
     return json({ pictures: out }, 200, origin)
+  }
+
+  /**
+   * ── finishing: the store is asked what it actually holds ──────────────────────────────────
+   *
+   * ⚠️ UNTIL THIS EXISTED, EVERY CEILING WAS APPLIED TO A NUMBER THE BROWSER CHOSE. `picture_claim`
+   * bounds 2 MB a picture, 256 KB a thumbnail, 500 pictures and 50 MB an account against
+   * `p_bytes` / `p_thumb_bytes` sent from the page, and `signFor` signs with `signQuery`, which
+   * binds the method, the key and an expiry and NOT a content length — so R2 takes an object of
+   * any size at that key. `picture_ready` then flipped the row ready without asking the store
+   * anything.
+   *
+   * Measured on the live database, 28 Oct 2026, in a rolled-back transaction: a claim of
+   * `bytes: 1, thumbBytes: 1` was accepted, the row read `bytes=1 thumb_bytes=1 ready=true`, and
+   * the 50 MB ceiling counted **2 bytes** for it. Five hundred of those is an account at its row
+   * limit holding whatever it liked, billed to Evan.
+   *
+   * ⚠️ THIS FUNCTION IS THE ONLY THING THAT CAN ASK, because it is the only thing holding R2
+   * credentials. The decision it makes is in `verdict.ts` so that it can be tested without a
+   * deployed runtime, a member's JWT and a bucket — see the note at the top of that file.
+   *
+   * ⚠️ AND IT IS NOT THE WHOLE LOCK YET. `picture_ready(uuid)` is still granted to
+   * `authenticated`, so a bundle from before this — or anyone writing RPC calls by hand — can
+   * still finish a picture without being measured. Closing that needs this function to call the
+   * RPC as `service_role`, which needs a secret set on the project; the revoke is written up in
+   * supabase/migrations as a draft rather than guessed at.
+   */
+  if (body.op === 'ready') {
+    const { data, error } = await supabase.rpc('picture_pending', { p_id: body.id })
+    if (error) return json({ error: error.message }, 400, origin)
+    const claim = data as Pending
+    /* already finished: a retry is not a mistake, and re-measuring would charge for the HEADs */
+    if (claim.ready) return json({ ok: true }, 200, origin)
+
+    /** `content-length` from the store, or null when it could not say — never a zero */
+    const measure = async (key: string): Promise<number | null> => {
+      try {
+        const res = await kit.client.fetch(`${kit.base}/${key}`, { method: 'HEAD' })
+        return res.ok ? lengthFrom(res.headers) : null
+      } catch {
+        return null
+      }
+    }
+    const [seenBytes, seenThumb] = await Promise.all([measure(claim.key), measure(claim.thumb_key)])
+
+    const verdict = verdictFor({
+      claimedBytes: claim.bytes,
+      claimedThumb: claim.thumb_bytes,
+      seenBytes,
+      seenThumb,
+    })
+
+    if (!verdict.ok) {
+      /**
+       * ⚠️ THE OBJECT GOES, NOT ONLY THE ROW. The row is what the ceiling counts and the object is
+       * what Cloudflare bills, so dropping the row alone would leave the bytes in the bucket with
+       * nothing in the database pointing at them — the quota would read as freed while the cost
+       * stayed. `drop: false` is the upload that never arrived: there is nothing to delete, and
+       * the hourly sweep in `picture_claim` takes the row.
+       */
+      if (verdict.drop) {
+        const { data: keys } = await supabase.rpc('picture_drop', { p_id: body.id })
+        const k = keys as { key: string; thumb_key: string } | null
+        if (k) {
+          await Promise.all(
+            [k.key, k.thumb_key].map(async (one) => {
+              try {
+                await kit.client.fetch(`${kit.base}/${one}`, { method: 'DELETE' })
+              } catch {
+                /* an object nobody can reach any more; the row is already gone */
+              }
+            }),
+          )
+        }
+      }
+      return json({ error: verdict.why }, 400, origin)
+    }
+
+    const { error: badReady } = await supabase.rpc('picture_ready', { p_id: body.id })
+    if (badReady) return json({ error: badReady.message }, 400, origin)
+    return json({ ok: true }, 200, origin)
   }
 
   /* ── removing: the row goes first, because its answer is what names the objects ── */

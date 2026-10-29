@@ -190,8 +190,27 @@ export async function keepPicture(
     return { why: seen ? `${refused}. ${seen}` : refused }
   }
 
-  const { error: badReady } = await supabase.rpc('picture_ready', { p_id: mint.id })
-  if (badReady) return { why: badReady.message || 'that did not go up' }
+  /**
+   * ⚠️ THE SERVER MEASURES WHAT ARRIVED; THIS USED TO ASSERT IT. The last step was
+   * `picture_ready(id)`, which flips the row ready and asks the store nothing — so every ceiling
+   * on this feature (2 MB a picture, 256 KB a thumbnail, 500 pictures, 50 MB an account) was
+   * applied to `full.blob.size` and `thumb.blob.size` as sent from here, and the presigned PUT
+   * above binds no content length at all. Measured on the live database inside a rolled-back
+   * transaction: a claim of one byte plus one byte was accepted, went ready, and the account's
+   * 50 MB ceiling counted two bytes for it.
+   *
+   * The `ready` op HEADs both objects and compares them to the claim before anything is marked
+   * finished, and deletes the objects when they disagree. It is the only thing that can: R2
+   * credentials live in the edge function and nowhere else.
+   *
+   * ⚠️ NO FALLBACK TO THE OLD RPC. A fallback would quietly re-enable the thing this replaces,
+   * and the first anyone would know is a storage bill — the same shape as a double that hides a
+   * bug by standing in for the server. If the op fails, this says so.
+   */
+  const { error: badReady } = await supabase.functions.invoke('pictures', {
+    body: { op: 'ready', id: mint.id },
+  })
+  if (badReady) return { why: await sayFunctionError(badReady, 'that did not go up') }
   return { id: mint.id }
 }
 

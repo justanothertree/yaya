@@ -9,11 +9,17 @@ before using anything in here.
 
 ## ⛔ Files ending `.DRAFT.sql` have NOT been applied
 
-Three of them, all from Yaxa's 28 Oct review and all waiting on Evan:
+Four of them, all waiting on Evan:
 
 - `20261028120000_close_insert_allocation.DRAFT.sql`
 - `20261028120100_family_fund_safety.DRAFT.sql`
 - `20261028120200_ktos_pep_are_family.DRAFT.sql` — two lines, and the admin UI can do it instead
+- `20261028190000_picture_ready_revoke.DRAFT.sql` — ⚠️ **breaks every picture upload if applied on
+  its own.** The rest of that change is already live (`picture_pending`, `pictures` v13); this last
+  line needs the edge function to make one call as `service_role` first, which needs a secret this
+  session could not verify. Its header has the order to do it in.
+
+The first three are from Yaxa's 28 Oct review; the fourth is from Part A8 of it.
 
 They are here because the review asked for its SQL to land in this directory for review. The
 `.DRAFT.sql` suffix is deliberate: the Supabase CLI matches `<timestamp>_<name>.sql`, and these

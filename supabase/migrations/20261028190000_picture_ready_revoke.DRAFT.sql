@@ -1,0 +1,73 @@
+-- ⛔ DRAFT — NOT APPLIED, AND IT MUST NOT BE APPLIED ON ITS OWN. Applying this alone breaks every
+-- picture upload on the site, including the new measured path. Read the whole header.
+--
+-- Part A8's last step. The rest of it is live: `picture_pending` is applied and the `pictures`
+-- edge function is at v13 with a `ready` op that HEADs both objects and compares what arrived
+-- against what was claimed. docs/2026-10-28-picture-size-is-measured.md has the reasoning and the
+-- measurement.
+--
+-- WHAT IS STILL OPEN. `picture_ready(uuid)` sets `ready = true` and asks the store nothing. It is
+-- granted to `authenticated`, so a bundle from before v13 — or anybody writing RPC calls by hand —
+-- can still finish a picture without being measured, which is the whole hole:
+--
+--   measured on this database, 28 Oct 2026, in a rolled-back transaction
+--   a claim of 1 byte + 1 byte          accepted
+--   picture_ready(id)                   ready = true, R2 never consulted
+--   the row                             bytes=1 thumb_bytes=1
+--   what the 50 MB ceiling counted      2 bytes
+--
+-- ⚠️ WHY IT CANNOT JUST BE REVOKED. The edge function builds its Supabase client from the
+-- CALLER's Authorization header — deliberately, so `auth.uid()` inside every RPC is the person at
+-- the browser and the ownership checks apply unchanged (see that file's header). So the function
+-- calls `picture_ready` as `authenticated` too, and this revoke takes the new path down with the
+-- old one.
+--
+-- WHAT HAS TO HAPPEN FIRST, in this order:
+--
+--   1. Confirm `SUPABASE_SERVICE_ROLE_KEY` is set as a secret on the project. This session could
+--      not read it or verify it, and deploying code that assumes it would break every upload if
+--      it were missing:
+--        supabase secrets list --project-ref lcpyatpktpkiybocyoij
+--
+--   2. In `supabase/functions/pictures/index.ts`, make ONLY the final `picture_ready` call use a
+--      service-role client — not the whole file, which would make it a second place where "what
+--      may be read" is decided and is exactly what CLAUDE.md §3's house pattern exists to stop.
+--      Everything before it (`picture_pending`, `picture_drop`) stays on the caller's token, so
+--      ownership is still proved by Postgres and not by this file:
+--
+--        const asService = createClient(
+--          Deno.env.get('SUPABASE_URL')!,
+--          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+--        )
+--        const { error: badReady } = await asService.rpc('picture_ready', { p_id: body.id })
+--
+--      ⚠️ `picture_ready` reads `auth.uid()` and would find none under the service role, so it
+--      needs an owner argument at the same time — a 2-arg overload, with the owner taken from the
+--      row `picture_pending` already returned rather than from anything the caller sent.
+--
+--   3. Deploy that, and prove the deployed module is the one you meant — the platform's 401 proves
+--      nothing with verify_jwt on. The echo probe is in CLAUDE.md and was used for v13.
+--
+--   4. Keep a picture on evancook.dev and watch it work.
+--
+--   5. Only then run this file.
+--
+-- ⚠️ AND EVERYONE HAS TO HAVE RELOADED. A tab open on a bundle from before v13 still calls
+-- `picture_ready` directly, and after this revoke its last step answers "permission denied for
+-- function picture_ready" — an upload that looks like it worked and then did not. Measured today
+-- there are 14 members and 1 of them has ever kept a picture, so the cost of being wrong about
+-- this is small; it will not stay small.
+
+revoke execute on function public.picture_ready(uuid) from authenticated;
+
+-- Afterwards, prove it:
+--
+--   select p.proname,
+--     has_function_privilege('anon', p.oid, 'execute') as anon,
+--     has_function_privilege('authenticated', p.oid, 'execute') as authed,
+--     has_function_privilege('service_role', p.oid, 'execute') as service
+--   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--   where n.nspname = 'public' and p.proname like 'picture%' order by 1;
+--
+-- `picture_ready` should read anon=false, authed=false, service=true. Every other picture function
+-- keeps authed=true — they are the ones a member is supposed to call.
