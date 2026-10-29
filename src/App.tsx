@@ -2287,6 +2287,23 @@ export default function App() {
                 >
                   <Investments demo />
                 </Suspense>
+              ) : canFinance === null ? (
+                /**
+                 * ⚠️ null IS "STILL ASKING", AND THIS BRANCH USED TO CALL IT "NOT ENABLED". The
+                 * state above is deliberately three-valued — the comment on it says a cached
+                 * false stays loading so a deep link cannot be bounced before the server weighs
+                 * in — and then both non-true values fell through to the same card. So a member
+                 * who DOES have investments, arriving at #investments on a device with no cached
+                 * flag, was told for one round trip that it was not enabled for them.
+                 *
+                 * Found while checking whether the new server-side guards could flash an error at
+                 * somebody being redirected (they cannot: the real room only mounts on `true`).
+                 * Reasoned from this gate rather than exercised — the null state needs a real
+                 * session, and #dev-investments forces canFinance true.
+                 */
+                <div className="card" aria-busy>
+                  Loading investments…
+                </div>
               ) : (
                 <div className="card">
                   <h2 className="section-title" style={{ marginTop: 0 }}>
