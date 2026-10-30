@@ -10,8 +10,8 @@
 #
 #     git mv docs/ci/db-guards.yml .github/workflows/db-guards.yml && git commit && git push
 #
-# It will fail on its first run until a schema baseline exists; the reason and the one command
-# that fixes it are in the first step below.
+# It will fail on its first run until a schema baseline exists; the reason, the one command that
+# fixes it, and what has to happen to the 37 existing migrations are all in the first step below.
 #
 name: db guards
 
@@ -32,6 +32,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# read-only: this job checks out code and talks to a local container, nothing else
+permissions:
+  contents: read
+
 jobs:
   guards:
     runs-on: ubuntu-latest
@@ -41,26 +45,57 @@ jobs:
 
       # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
       # so in one sentence rather than letting `db reset` fail three minutes later with
-      # `relation "public.profiles" does not exist`. supabase/migrations holds the changes made
-      # since late October; the 285 migrations before them live only in the live database, so
-      # nothing here creates the tables the recent ones alter.
+      # `relation "public.profiles" does not exist`. supabase/migrations holds the 37 changes
+      # made since late October; the 283 before them live only in the live database, so nothing
+      # here creates the tables the recent ones alter.
       #
-      # The fix is one command, run once, by somebody who holds the database password:
-      #
+      # ── GENERATING THE BASELINE ────────────────────────────────────────────────────────────
       #     supabase link --project-ref <ref>
       #     supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql
       #
-      # After that this job builds the whole schema and the guards run for real on every push.
+      # ── AND WHAT THEN HAPPENS TO THE 37 ────────────────────────────────────────────────────
+      # The dump is the schema AS IT IS TODAY, so it already contains everything those 37 did.
+      # On a fresh database they replay on top of it, and most of them do not mind: 35 of the 37
+      # are `create or replace function`, `add column if not exists`, `create ... if not exists`,
+      # `drop ... if exists`, grants, revokes, or data updates that are no-ops on empty tables.
+      #
+      # ⚠️ EXACTLY TWO STATEMENTS IN ONE FILE WOULD FAIL, counted rather than guessed:
+      # `20261030032833_suspension_reaches_the_social_tables.sql` has two bare `create policy`
+      # statements, and a policy that already exists is an error rather than a no-op. (The
+      # `create trigger` in `20261030134148_...` looks like a third and is not — it is preceded
+      # by `drop trigger if exists`.)
+      #
+      # Two ways to resolve it, and they trade different things:
+      #
+      #   a) MAKE THOSE TWO IDEMPOTENT — add `drop policy if exists` above each `create policy`.
+      #      Two lines. Keeps one migrations directory, keeps all 37 headers where they are, and
+      #      the repo still builds. The cost is that this one file stops matching the statement
+      #      recorded in `schema_migrations` byte for byte, which is a convention this project
+      #      keeps deliberately; it would need a note in its own header saying what diverged and
+      #      why. RECOMMENDED — the divergence is two lines and explainable, and squashing is
+      #      not.
+      #
+      #   b) SQUASH — keep only the baseline and move the 37 into a subdirectory (the CLI reads
+      #      `*.sql` in the migrations directory and ignores folders), or delete them. Clean
+      #      directory; loses nothing from git history but takes the migration headers out of
+      #      the place people look, and those headers are where this project keeps its reasoning.
+      #
+      # Either way the baseline must sort FIRST, hence the all-zero timestamp: `db reset` applies
+      # files in filename order, so a baseline dated after the 37 would let them run first
+      # against an empty database and fail exactly as today.
       - name: Check the migrations can build the schema
         run: |
-          if ! grep -rqiE 'create table (if not exists )?(public\.)?profiles' supabase/migrations/; then
-            echo "::error title=No schema baseline::supabase/migrations cannot build this schema from scratch — nothing in it creates public.profiles, so the migrations that ALTER it will fail. Generate a baseline once: supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql"
+          if ! grep -rqiE 'create[[:space:]]+table[[:space:]]+(if[[:space:]]+not[[:space:]]+exists[[:space:]]+)?("?public"?\.)?"?profiles"?([[:space:](]|$)' supabase/migrations/; then
+            echo "::error title=No schema baseline::supabase/migrations cannot build this schema from scratch — nothing in it creates public.profiles, so the migrations that ALTER it will fail. Generate a baseline once: supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql (see this workflow's comments for what then happens to the 37 existing migrations)"
             exit 1
           fi
 
+      # ⚠️ PINNED. `version: latest` means a CLI release can change what this job does without a
+      # commit here, which is the same rot a floating dependency always is — and for a job whose
+      # whole purpose is to notice changes, a moving part nobody chose is the wrong kind.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.122.0
 
       - name: Start a throwaway database
         run: supabase start

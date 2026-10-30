@@ -79,7 +79,22 @@ export async function fetchPublicCircuit(): Promise<{ state: CircuitState; live:
         ...emptyCircuitState(),
         people: [demoPerson, ...(slice.people ?? [])],
         logs: [...demoLogs, ...(slice.logs ?? [])],
-        // movies/watchlist now come from the board too (ratings/votes filtered to public people)
+        /**
+         * ⚠️ BOTH SIDES OF THIS `??` ARE EMPTY NOW, AND THAT IS THE POINT RATHER THAN A BUG.
+         * This comment used to say "ratings/votes filtered to public people", which was true of
+         * the films and never true of the watchlist — that select had no filter at all. Both are
+         * group data: a film title belongs to the group it was watched in, not to whoever rated
+         * it, and `circuit_public()` now only serves groups where EVERY person is public. There
+         * are none, so a signed-out visitor sees no film board.
+         *
+         * The fallback is empty too, deliberately: `publicSeed` used to bundle 74 of those films
+         * and 110 pool titles into the build, shown on first paint and whenever this fetch
+         * fails — so fixing only the server would have changed nothing a visitor ever saw.
+         *
+         * ⚠️ AND NOTE THE `??` CANNOT RESTORE THEM EITHER WAY: an empty array is not nullish, so
+         * a live board that returns `[]` keeps `[]`. The seed is a fallback for a FAILED fetch,
+         * not for an empty answer.
+         */
         movies: slice.movies ?? publicSeed.movies,
         watchlist: slice.watchlist ?? publicSeed.watchlist,
       },

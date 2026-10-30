@@ -34,6 +34,12 @@ const KEY = 'circuit_state_v1'
  * it appear, and have it deleted from under them a second or two later when the background
  * refresh landed — no error, no toast, nothing on screen to say why the thing they just typed
  * was gone. Measured: added a review, saw 74 rows, saw 73 a moment later.
+ *
+ * ⚠️ THE 74 IS HISTORICAL NOW AND THE MECHANISM MATTERS MORE THAN IT DID. The signed-out board
+ * returns no films at all since a group became the unit of privacy, and `publicSeed` bundles
+ * none either — so a visitor's own additions are the ONLY rows the review board and the pool
+ * will ever have. `keepMine` is what stands between them and an empty screen a second after
+ * they type, rather than between them and a shortened list.
  */
 const LOCAL_KEY = 'circuit_local_ids_v1'
 
