@@ -129,16 +129,17 @@ Nothing widens. Two members narrow, and both are named.
 | `public_page`       | —                            | **stays a separate switch** | —    | no                             |
 | `lounge_opt_in`     | bool                         | stays its own thing         | 14   | no                             |
 
-> ⚠️ **THIS TABLE ASSUMES EVERY MEMBER IS AN ESTABLISHED ADULT, AND TODAY NONE OF THEM IS.**
-> Added after Phase 1 was built, because building it made the table above conditional.
-> `visibility_ceiling` caps anyone whose `age_band` is not `adult` at **Friends** — minors and
-> unknowns alike, deliberately, since a cap that assumes adulthood protects nobody. Measured on
-> the live data the moment the function existed: **13 of 14 members sit at a `friends` ceiling**,
-> because nobody's age has been set yet.
+> ⚠️ **RESOLVED 30 Oct — this table is now live-accurate.** It briefly was not. Building Phase 1
+> made it conditional: `visibility_ceiling` caps anyone whose `age_band` is not `adult` at
+> **Friends** — minors and unknowns alike, deliberately, since a cap that assumes adulthood
+> protects nobody — and the moment the function existed, **13 of 14 members sat at a `friends`
+> ceiling** because no age had been established. Running Phase 2 then would have narrowed almost
+> everything rather than the three rows below.
 >
-> So the mapping below is what happens _once the adult/minor list is in_. Run Phase 2 before
-> that and it does not narrow three rows, it narrows almost everything to Friends. **Phase 2 is
-> gated on the list**, and that is now written into the phase itself.
+> Evan has since confirmed that nobody on the site today is a minor, and all 14 are marked
+> `adult` (`everyone_here_today_is_an_adult`). Ceilings are now 13 × members and 1 × public, which
+> is exactly what this table assumes. The gate is spent; the caveat is kept because the shape of
+> it will return the first time somebody joins who has not been marked.
 
 **The three narrowing rows cost almost nothing in practice.** Josh's three blocks are marked
 `public` on a page that is _not_ published, so no stranger can reach them today — capping them to
@@ -168,14 +169,30 @@ TRUNCATE); `visibility_ceiling()`, `clamp_visibility()` and `may_publish_a_page(
 behaviour change, proved by the matrix: 14/14 activity hashes and 14/14 trophy hashes identical,
 813 events.
 
-**Phase 2 — apply the ceiling on READ. ⚠️ GATED ON THE ADULT/MINOR LIST.** Change `can_see` to
-clamp by the owner's ceiling. With ages established this narrows exactly the rows in §3 —
-Josh's three blocks and jefelegendary's person. **Without them it narrows 13 of 14 members to
-Friends**, because the ceiling treats an unestablished age as a minor's. The list is not a
-nice-to-have for this phase; it is the input that decides whether the phase does what §3 says.
+**Phase 2 — apply the ceiling on READ. ✅ DONE 30 Oct**, as `can_see_respects_the_ceiling` and
+`the_public_doors_respect_the_ceiling_too`. It took two migrations because the first one did
+nothing, and finding that out is the most useful thing in this phase.
 
-A phase that cannot state what it will change before it runs does not run. Re-measure the
-ceiling distribution immediately before applying, and compare it to §3.
+`can_see` now clamps by the owner's ceiling. Predicted beforehand to be a no-op between members
+— everyone can already see `members`-tier content, so cutting `public` to `members` cannot change
+what one member sees of another — and measured as one: the 196-cell viewer × owner matrix hashes
+identically before and after (`35acf6cf…`, 539 blocks / 8,175 events / 130 trophies).
+
+⚠️ **AND A NO-OP EVERYWHERE WOULD HAVE MEANT A CLAMP THAT WAS NOT WIRED.** With the anon surface
+also identical, every number said the phase was clean. So the clamp was made to speak: Josh's
+page published in a rolled-back transaction, his ceiling toggled between `members` and `public`
+— and anon saw his **3 blocks in all three states**. `can_see` does not govern the open web at
+all. The public doors compare the stored tier themselves (`b.visibility = 'public'`), so the
+ceiling never reached them.
+
+That is "count the write paths" asked of READS. Of the ten functions that compare a tier to a
+literal, **four are anon-callable**; three were clamped (the fourth, `get_demo_profile`, is
+fabricated data with no owner). Re-run after: page refused → ceiling raised → loads with 3
+blocks → ceiling lowered → refused.
+
+**The live effect is exactly one thing**, as predicted here: the anonymous profile surface is
+byte-identical, and `circuit_public` went from 44,221 to 43,564 bytes because jefelegendary's
+circuit person leaves the signed-out board. His person has 0 logs; Evan's keeps all 255.
 
 **Phase 3 — Only me stops meaning "only me and Evan", and the general bypass goes.** Decided:
 the admin moderation view stays, but it must **respect Only me**, and the blanket bypasses go —
@@ -250,10 +267,14 @@ somebody simplifies two near-identical checks into one.
 
 ## 6 · Still open
 
-**Phase 1 is built and inert.** The only thing standing between here and Phase 2 is the
-adult/minor list — and it is a harder gate than it looked when this plan was written, because
-the ceiling treats "age not established" exactly as it treats "minor". That is the right
-default and it means Phase 2 cannot be a quiet step.
+**Phases 1 and 2 are done.** The adult/minor list arrived as "nobody here is a minor", all 14 are
+marked, and the ceiling is live on every read path including the three anonymous ones. Phase 3 is
+next and is the one with teeth: removing the admin bypass from `can_see`'s friends branch and
+from `movie_visible`, while keeping a named moderation path that respects Only me.
+
+⚠️ Before Phase 3, enumerate what the bypass is currently load-bearing for. `grep is_admin` is
+only the start — 13 functions and 6 policies route through `can_see`, and some read member
+content without mentioning `is_admin` themselves.
 
 One other thing to decide before Phase 5, noted while building Phase 1 and not urgent:
 `clamp_visibility` silently narrows a request rather than refusing it. For a setter driven by a
