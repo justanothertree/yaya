@@ -129,6 +129,17 @@ Nothing widens. Two members narrow, and both are named.
 | `public_page`       | —                            | **stays a separate switch** | —    | no                             |
 | `lounge_opt_in`     | bool                         | stays its own thing         | 14   | no                             |
 
+> ⚠️ **THIS TABLE ASSUMES EVERY MEMBER IS AN ESTABLISHED ADULT, AND TODAY NONE OF THEM IS.**
+> Added after Phase 1 was built, because building it made the table above conditional.
+> `visibility_ceiling` caps anyone whose `age_band` is not `adult` at **Friends** — minors and
+> unknowns alike, deliberately, since a cap that assumes adulthood protects nobody. Measured on
+> the live data the moment the function existed: **13 of 14 members sit at a `friends` ceiling**,
+> because nobody's age has been set yet.
+>
+> So the mapping below is what happens _once the adult/minor list is in_. Run Phase 2 before
+> that and it does not narrow three rows, it narrows almost everything to Friends. **Phase 2 is
+> gated on the list**, and that is now written into the phase itself.
+
 **The three narrowing rows cost almost nothing in practice.** Josh's three blocks are marked
 `public` on a page that is _not_ published, so no stranger can reach them today — capping them to
 All members changes nothing observable. The one that genuinely narrows is jefelegendary's circuit
@@ -148,13 +159,23 @@ changes: `docs/2026-09-15-member-to-member-sweep.sql` already simulates this. St
 Every later phase re-runs it and diffs. A phase that changes a hash it did not intend to change
 does not ship.
 
-**Phase 1 — the type and the ceiling, read-only.** Add `certain` to `visibility_tier`, add the
-circles tables, add `visibility_ceiling()` and `clamp_visibility()`. Nothing calls them yet.
-Zero behaviour change, provable by the Phase 0 matrix being identical.
+**Phase 1 — the type and the ceiling, read-only. ✅ DONE 30 Oct**, as
+`visibility_tier_gains_certain` and `visibility_circles_and_the_ceiling`. `certain` sits between
+`private` and `friends` so the enum's sort order _is_ the ladder and `least()` is the clamp; the
+circles tables are deny-all (RLS on, zero policies, zero grants, checked per privilege including
+TRUNCATE); `visibility_ceiling()`, `clamp_visibility()` and `may_publish_a_page()` exist and
+**nothing calls any of them** — verified by asking the catalogue, not by grepping the repo. Zero
+behaviour change, proved by the matrix: 14/14 activity hashes and 14/14 trophy hashes identical,
+813 events.
 
-**Phase 2 — apply the ceiling on READ.** Change `can_see` to clamp by the owner's ceiling. This
-is where Josh's three blocks and jefelegendary's person narrow. Expected and listed above: the
-matrix changes in exactly those cells and nowhere else.
+**Phase 2 — apply the ceiling on READ. ⚠️ GATED ON THE ADULT/MINOR LIST.** Change `can_see` to
+clamp by the owner's ceiling. With ages established this narrows exactly the rows in §3 —
+Josh's three blocks and jefelegendary's person. **Without them it narrows 13 of 14 members to
+Friends**, because the ceiling treats an unestablished age as a minor's. The list is not a
+nice-to-have for this phase; it is the input that decides whether the phase does what §3 says.
+
+A phase that cannot state what it will change before it runs does not run. Re-measure the
+ceiling distribution immediately before applying, and compare it to §3.
 
 **Phase 3 — Only me stops meaning "only me and Evan", and the general bypass goes.** Decided:
 the admin moderation view stays, but it must **respect Only me**, and the blanket bypasses go —
@@ -229,6 +250,14 @@ somebody simplifies two near-identical checks into one.
 
 ## 6 · Still open
 
-Nothing blocking. The adult/minor list is the only input Phase 1 waits on, and Phase 1 itself
-(the type, the circles tables, the ceiling functions, all uncalled) can be built before it
-arrives.
+**Phase 1 is built and inert.** The only thing standing between here and Phase 2 is the
+adult/minor list — and it is a harder gate than it looked when this plan was written, because
+the ceiling treats "age not established" exactly as it treats "minor". That is the right
+default and it means Phase 2 cannot be a quiet step.
+
+One other thing to decide before Phase 5, noted while building Phase 1 and not urgent:
+`clamp_visibility` silently narrows a request rather than refusing it. For a setter driven by a
+picker that only ever offers reachable levels, silent is right. For an import, a restore, or any
+path that replays a level chosen under an older ceiling, silent is how somebody's setting changes
+without them being told. The write paths will need to decide which of the two they are — the same
+question `chronicle_import` had to answer about span rules.

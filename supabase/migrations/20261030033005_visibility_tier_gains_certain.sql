@@ -1,0 +1,25 @@
+-- ✅ APPLIED 30 Oct 2026 as `visibility_tier_gains_certain`.
+--
+-- Phase 1 of docs/2026-10-30-one-visibility-ladder-plan.md. Nothing uses this value yet.
+--
+-- ⚠️ IT GOES BEFORE `friends`, BECAUSE THE SORT ORDER IS THE CLAMP. `clamp_visibility` is
+-- `least(wanted, ceiling)` over this enum, so the order has to be the ladder itself, narrowest
+-- first: private < certain < friends < members < public. "Certain friends" is a SUBSET of your
+-- friends, so it belongs below `friends` — put it anywhere else and clamping a request to a
+-- ceiling of Friends would silently widen it to a level the owner never chose.
+--
+-- Verified after applying:
+--   'certain' < 'friends'                      true
+--   'private' < 'certain'                      true
+--   least('public','friends')                  friends
+--   least('certain','friends')                 certain
+--
+-- ⚠️ IT IS ITS OWN MIGRATION ON PURPOSE. Postgres lets `alter type ... add value` run inside a
+-- transaction but will not let the new value be USED in that same transaction, so anything
+-- referencing 'certain' has to land separately. Nothing in Phase 1 references it by name, but
+-- splitting it costs one file and removes the question entirely.
+--
+-- Adding a value between two existing ones does not renumber the existing ones, so no stored
+-- row and no existing `order by` on this type changes meaning.
+
+alter type public.visibility_tier add value if not exists 'certain' before 'friends';
