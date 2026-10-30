@@ -221,7 +221,29 @@ admin answer — one bit each, and moderation needs them.
 rather than built speculatively. When it is built: it must respect Only me through its own
 queries, or it has moved the rule rather than implemented it.
 
-**Phase 4 — the booleans become levels.** `shared`, `timeline` → a tier column, migrating
+**Phase 4 — the booleans become levels. ✅ ADDITIVE HALF DONE 30 Oct**, as
+`chronicle_sharing_becomes_a_tier`. `chronicle_activities` and `chronicle_goals` each carry a
+`visibility` column now, backfilled `true → friends` / `false → private`.
+
+⚠️ **ELEVEN FUNCTIONS READ OR WRITE `shared` AND NONE WAS TOUCHED.** A BEFORE trigger derives
+whichever side was not moved and a CHECK makes disagreement impossible, so the four writers and
+seven readers keep working untouched. Two columns that can drift are a bug; two that _cannot_ are
+a migration in progress, and the CHECK is the whole difference.
+
+⚠️ **`certain` sets `shared = false`**, so an activity moved to Certain friends becomes
+invisible to the seven readers still using the boolean rather than visible to everyone. An
+unwired level failing closed is what lets this ship before circles exist.
+
+The useful range here is private | certain | friends, not the whole ladder: a sitting-by-sitting
+timeline is friends-only by design and nothing here widens it. What the tier adds is the ability
+to go NARROWER than "all my friends".
+
+**Still owed by Phase 5**, written down now because a round trip would lose it: `chronicle_export`
+carries `shared` and `chronicle_import` writes it, so exporting and re-importing would turn a
+`certain` activity into a plain private one. It cannot happen today — nothing can set `certain`
+yet — which is exactly why it is recorded rather than left to be found.
+
+_(the original plan for this phase, still owed:)_ **the booleans become levels.** `shared`, `timeline` → a tier column, migrating
 `true → friends` and `false → private`. Both directions tested with the round-trip discipline:
 a fixture where every field differs from its default, each field dropped in turn to watch it go
 red.
