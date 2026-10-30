@@ -63,16 +63,21 @@ export function Friends({ authed }: { authed: boolean }) {
       <div className="chron-friends-none">
         <p className="muted">Nothing from anyone yet.</p>
         {/**
-         * ⚠️ THE EMPTY STATE NAMES THE THREE SWITCHES, because every one of them is off by
-         * default and "nothing yet" would read as "none of my friends use this". Two of the
-         * three are on the reader's own side of the fence and one is not, so the list says who
-         * has to do what rather than implying it is somebody else's fault.
+         * ⚠️ THE EMPTY STATE NAMES THE SWITCH, because it is off by default and "nothing yet"
+         * would read as "none of my friends use this" — which was never the reason. It is still
+         * mostly somebody ELSE's switch that is missing, so it says so rather than implying the
+         * reader has done something wrong.
+         *
+         * ⚠️ AND THE LAST SENTENCE STOPPED BEING TRUE THE MOMENT THE SWITCH EXISTED. This used
+         * to end "nothing of yours is here until you do all three" and point at a profile editor
+         * in another room. There are no longer three, and the one there is sits directly above
+         * this paragraph — CLAUDE.md §2, check what your own change made untrue, and the thing
+         * it makes untrue is usually a sentence.
          */}
         <p className="muted">
-          A friend shows up here once they have added a Chronicle card to their profile, ticked
-          <strong> Show my timeline</strong> on it, and ticked <strong>Friends can see this</strong>{' '}
-          on an activity. Yours works the same way — nothing of yours is here until you do all
-          three.
+          A friend shows up here once they have switched their own Chronicle sharing on and ticked
+          an activity. Yours is the switch above — nothing of yours is here, or on anybody
+          else&apos;s screen, until you turn it on.
         </p>
       </div>
     )

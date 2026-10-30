@@ -18976,3 +18976,176 @@ a.cz-msg-author:focus-visible {
   cursor: pointer;
   min-height: 44px;
 }
+
+/* ── the feed ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Built from .chron-friend-row, which already learned this file's hardest lesson twice over:
+ * an automatic grid column takes a long unbroken word as its OWN width, so both text columns
+ * get minmax() — and the floor is in PIXELS rather than rem, because the root size here is
+ * fluid and a rem is therefore not a length. A bare min-width: 0 is not "let it shrink", it is
+ * "let it vanish", and the measured version of that was every title crushed to a 3px column
+ * reading ":".
+ */
+.feed-day h3 {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+.feed-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.feed-row {
+  display: grid;
+  grid-template-columns: auto minmax(64px, 0.7fr) minmax(90px, 2fr) auto;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid transparent;
+}
+/* one colour per kind, so the shape of a day is readable before a word of it is */
+.feed-row.is-sitting {
+  border-left-color: #7c6af7;
+}
+.feed-row.is-circuit_log {
+  border-left-color: #4ade80;
+}
+.feed-row.is-rating {
+  border-left-color: #fbbf24;
+}
+.feed-row.is-snake_score,
+.feed-row.is-snake_trophy {
+  border-left-color: #60a5fa;
+}
+.feed-glyph {
+  font-size: 0.95em;
+  line-height: 1;
+}
+.feed-who {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the name is a door to their page; it should not look like body text */
+.feed-who a {
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+.feed-what {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.4rem;
+  min-width: 0;
+}
+.feed-noun {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.feed-verb {
+  font-size: 0.85em;
+}
+.feed-sub {
+  font-size: 0.82em;
+}
+.feed-score {
+  font-weight: 600;
+}
+.feed-when {
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+.feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.feed-none p + p {
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+}
+/*
+ * ⚠️ THE CLOCK GOES FIRST WHEN THE ROW WILL NOT FIT A THUMB, not the activity. Same answer as
+ * .chron-act-extra and .chron-ent-when: the first thing to drop is the one the row can be read
+ * without. A time is recoverable from the day heading above it; what somebody DID is not.
+ */
+@media (max-width: 430px) {
+  .feed-row {
+    grid-template-columns: auto minmax(56px, 0.8fr) minmax(90px, 2fr);
+  }
+  .feed-when {
+    display: none;
+  }
+}
+
+/* ── the chronicle sharing switch ─────────────────────────────────────────────────────────
+ *
+ * It governs the list beneath it, so it reads as a lid rather than as another row: a little
+ * more weight, a rule under it, and the activity ticks indented by nothing at all — they are
+ * the same decision at a smaller scale, not a sub-setting.
+ */
+.chron-sharing {
+  margin: 0 0 0.9rem;
+  padding: 0 0 0.7rem;
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+.chron-sharing-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  cursor: pointer;
+  /* the whole row is the target, so it clears the 24px floor without the box growing a tick */
+  min-height: 44px;
+}
+.chron-sharing-switch > span {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.chron-sharing-says {
+  font-size: 0.82rem;
+}
+.chron-sharing-lede {
+  margin: 0.6rem 0 0.35rem;
+  font-size: 0.82rem;
+}
+.chron-sharing-acts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+}
+.chron-sharing-acts label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  min-width: 0;
+  cursor: pointer;
+}
+/* a long activity name may ellipse; it must never take the row off its own edge, and a floor
+   in PIXELS because the root size on this site is fluid and a rem is therefore not a length */
+.chron-sharing-act {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-sharing-err {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #f46b6b;
+}

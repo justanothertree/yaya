@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
 import { Chronicle } from './sections/Chronicle'
+import { FeedRoom } from './feed/FeedRoom'
 import { Pictures } from './pictures/Pictures'
 import { useVisits } from './chronicle/useVisits'
 import { site } from './config/site'
@@ -1567,6 +1568,8 @@ export default function App() {
         return <People authed={isFinanceAuthed || previewMember} />
       case 'pictures':
         return <Pictures authed={isFinanceAuthed || previewMember} />
+      case 'feed':
+        return <FeedRoom authed={isFinanceAuthed || previewMember} />
       case 'chronicle':
         /* ⚠️ previewMember like its neighbours, so the dev harness can open a members-only room —
            see dev/previewMember.ts, and the note on Circuit's own authed prop */
@@ -2235,6 +2238,11 @@ export default function App() {
           {!sharedCanvasShowing && active === 'pictures' && (
             <section id="pictures" className="card reveal">
               <Pictures authed={isFinanceAuthed || previewMember} />
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'feed' && (
+            <section id="feed" className="card reveal">
+              <FeedRoom authed={isFinanceAuthed || previewMember} />
             </section>
           )}
           {!sharedCanvasShowing && active === 'chronicle' && (

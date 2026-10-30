@@ -35,6 +35,7 @@ import {
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Friends } from '../chronicle/Friends'
+import { Sharing } from '../chronicle/Sharing'
 import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
@@ -756,7 +757,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * filter rather than a second navigation. Splitting them would leave a horizon chooser on
        * screen with nothing on screen for it to choose between.
        */}
-      {half === 'friends' && <Friends authed={authed} />}
+      {half === 'friends' && (
+        <>
+          {/* ⚠️ THE SWITCH SITS ABOVE THE LIST IT GOVERNS. This is the screen that is empty
+              because sharing is off, so it is the screen that must be able to turn it on — the
+              old empty state named three switches in prose and linked to none of them. */}
+          <Sharing authed={authed} />
+          <Friends authed={authed} />
+        </>
+      )}
 
       {half === 'aims' && (
         <>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { navFor, type Viewer } from '../nav/places'
+import { navFor, type Section, type Viewer } from '../nav/places'
 import { occupancy, usePartyHere } from '../party/whereEveryone'
 
 /**
@@ -15,22 +15,18 @@ import { occupancy, usePartyHere } from '../party/whereEveryone'
  * Desktop keeps the top nav untouched; this renders only below the desktop breakpoint.
  */
 
-export type MobileSection =
-  | 'home'
-  | 'circuit'
-  | 'ratings'
-  | 'chat'
-  | 'people'
-  | 'signin'
-  | 'investments'
-  | 'account-settings'
-  | 'games'
-  | 'visualizer'
-  | 'instrument'
-  | 'paint'
-  | 'contact'
-  | 'admin'
-  | 'profile'
+/**
+ * ⚠️ THIS WAS A HAND-WRITTEN COPY OF `Section` AND IT HAD ALREADY DRIFTED. It listed fifteen
+ * places and the site has more: `chronicle`, `pictures` and `invite` were all missing, and
+ * nothing complained because the launcher cast every place to this type on its way in
+ * (`place.id as MobileSection`). A cast is how a second list of the same fact stays quiet —
+ * it does not reconcile the two, it just stops asking.
+ *
+ * This is the exact failure nav/places.ts was written to end, in the exact file whose header
+ * tells the story of Paint being missing from the phone for its whole life. So it is an alias
+ * now: one list, and adding a room can no longer half-arrive here.
+ */
+export type MobileSection = Section
 
 type Dest = {
   key: string
@@ -92,9 +88,28 @@ export function MobileNav({
   const whoIsWhere = usePartyHere()
   const ring = (d: Dest) => (d.tab ? null : occupancy(whoIsWhere[d.section]))
 
+  /**
+   * ⚠️ THE BAR IS HAND-PICKED AND SHOULD STAY THAT WAY — it is the thumb zone, not the site map,
+   * and the launcher below already draws every place from nav/places.ts. The list this file's
+   * header warns about is the LAUNCHER's, which used to be written out by hand and is why Paint
+   * was missing from the phone for its whole life. Four daily destinations is a choice; a second
+   * copy of the site map would be the bug.
+   *
+   * ⚠️ FEED IS ADDED, AND NOTHING WAS DROPPED TO MAKE ROOM — because the bar was measured rather
+   * than guessed at. The first version of this line dropped Ratings on the reasoning that five
+   * destinations plus the menu would squeeze every target under the tap floor. Measured in the
+   * pane at 375: five items are **71×48** and six are **59×48**, with `scrollWidth - clientWidth`
+   * of **0**. 59×48 clears WCAG 2.5.8's 24px by a factor of two, so the squeeze was imaginary and
+   * a room would have left the thumb zone for nothing.
+   *
+   * That number went into this comment as a justification BEFORE it was measured, which is the
+   * failure CLAUDE.md §2 names exactly: a count used as a justification is a measured number, and
+   * a wrong one arguing for a change you were going to make anyway is the kind nothing falsifies.
+   */
   const bar: Dest[] = member
     ? [
         { key: 'home', label: 'Home', icon: '🏠', section: 'home' },
+        { key: 'feed', label: 'Feed', icon: '📡', section: 'feed' },
         { key: 'circuit', label: 'Circuit', icon: '🏆', section: 'circuit' },
         { key: 'ratings', label: 'Ratings', icon: '⭐', section: 'ratings' },
         { key: 'chat', label: 'Chat', icon: '💬', section: 'chat' },
@@ -142,7 +157,7 @@ export function MobileNav({
       key: place.id,
       label: place.label,
       icon: place.icon,
-      section: place.id as MobileSection,
+      section: place.id,
     },
     ...(extras[place.id] ?? []),
   ])

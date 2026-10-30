@@ -58,6 +58,19 @@ const member = (v: Viewer) => v.financeOn && v.authed && !v.suspended
 export const PLACES = [
   { id: 'home', label: 'Home', icon: '🏠', title: 'Home', nav: () => true },
   /**
+   * ⚠️ FIRST AMONG THE GROUP ROOMS, because it is the only one that is ABOUT all of them. Every
+   * other members' room is one activity seen in depth — a workout board, a planner, a ratings
+   * list — and each of them was also, quietly, the only place its own events could be seen. The
+   * site had a feed before this (`#circuit?tab=feed`) and it could show exactly one of the five
+   * kinds of thing people do here, which meant somebody who rated films and kept a chronicle had
+   * most of their life on this site happening where nobody looks.
+   *
+   * ⚠️ MEMBERS ONLY AND NO DEMO, for the same reason Chronicle has none: a fabricated feed is a
+   * page of invented people doing invented things, which teaches a visitor nothing true. Home is
+   * what a visitor gets, and it is the better page for them anyway.
+   */
+  { id: 'feed', label: 'Feed', icon: '📡', title: 'Feed', nav: member },
+  /**
    * ⚠️ OPEN TO EVERYBODY, because they always were — the nav was the only thing pretending
    * otherwise. Both rooms already rendered for a signed-out visitor who typed the hash: Circuit
    * wires a localStorage sandbox seeded from publicSeed and passes `demo={!authed}`, Ratings
