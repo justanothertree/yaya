@@ -36,6 +36,31 @@
 -- chronicle_sharing_mine (22), feed_recent (18 events), chronicle_friends_log (0 sittings) and
 -- chronicle_activities_mine (23) all answer exactly as before.
 --
+-- ⚠️ WHICH SIDE WINS WHEN A WRITE SETS BOTH, MEASURED RATHER THAN ASSUMED — and it is not simply
+-- "visibility wins". The trigger compares each side to the STORED row, so:
+--
+--   only `shared` differs from the row      -> the boolean wins, visibility follows it
+--   only `visibility` differs               -> the tier wins, shared follows it
+--   BOTH differ                             -> the tier wins, shared follows it
+--
+-- The subtle case is the first one, and it bit on the first test: a statement that names
+-- `visibility` at the value the row ALREADY holds has not moved it, so the boolean decides even
+-- though the caller wrote both. `update … set shared = true, visibility = 'private'` on a row
+-- that is already private comes out `friends/true`, not `private/false`.
+--
+-- Where both genuinely differ, the tier winning is fail-closed for the level that matters:
+-- `set shared = true, visibility = 'certain'` lands on `certain/false`, so the narrower intent
+-- survives and the seven boolean readers stay shut out. It is NOT fail-closed in general —
+-- `set shared = false, visibility = 'friends'` opens — so "the tier is authoritative" is the
+-- honest description, and "fail-closed" is a property of `certain` rather than of the rule.
+--
+-- ⚠️ AND THE CHECK ONLY EVER FIRES FOR A WRITE MADE WITH THE TRIGGER OFF. The trigger runs
+-- BEFORE and reconciles the row, so in normal operation the constraint is unreachable by
+-- construction. That is not a reason to drop it: it is what catches a `disable trigger`, a
+-- future `alter table … disable trigger all` during a restore, or a replica applying rows
+-- without the trigger — and it is how the test above was able to prove the constraint works at
+-- all, by disabling the trigger and watching the write be refused.
+--
 -- ⚠️ WHAT PHASE 5 STILL OWES, named here because it is the half a round trip would lose:
 -- `chronicle_export` carries `shared` and `chronicle_import` writes it, so exporting and
 -- re-importing a chronicle would turn a `certain` activity into a plain private one. It cannot

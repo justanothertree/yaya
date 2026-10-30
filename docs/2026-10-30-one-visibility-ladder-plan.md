@@ -243,10 +243,32 @@ carries `shared` and `chronicle_import` writes it, so exporting and re-importing
 `certain` activity into a plain private one. It cannot happen today — nothing can set `certain`
 yet — which is exactly why it is recorded rather than left to be found.
 
-_(the original plan for this phase, still owed:)_ **the booleans become levels.** `shared`, `timeline` → a tier column, migrating
-`true → friends` and `false → private`. Both directions tested with the round-trip discipline:
-a fixture where every field differs from its default, each field dropped in turn to watch it go
-red.
+**Capped 30 Oct**, as `chronicle_tiers_are_capped_and_the_export_carries_them`: the column
+accepted `members` and `public` and nothing stopped it — a sentence in a comment is not a
+constraint. Both tables now CHECK `visibility in ('private','certain','friends')`.
+
+**And the export now carries the tier.** Checking whether `certain` survives a round trip turned
+up something older: **the goals block never carried `shared` at all**, so a goal put on somebody's
+profile has come back from a restore unshared since exports existed. Fail-closed, so nothing
+leaked — a setting silently lost, which is §8's shape pointed at a restore instead of a save.
+
+### Moved to Phase 5, explicitly
+
+Three things the original Phase 4 named that are **not** done:
+
+1. **`timeline` becoming a level.** Recommended instead: it should NOT become one. It is a master
+   switch — "do I publish a timeline at all" — and the audience now lives per activity on
+   `chronicle_activities.visibility`. Making it a tier would let somebody widen a
+   sitting-by-sitting record past Friends, which the profile editor refuses in writing today and
+   which the new cap refuses in SQL. Decide this in Phase 5 rather than inheriting it.
+2. **The import side.** `chronicle_import` reads `shared` and ignores `visibility`, so a restore
+   recreates a `certain` activity as private and a shared goal as unshared. ⚠️ The goals half is a
+   **live** bug — goal sharing is settable today — while the activities half cannot be reached
+   until circles exist. Capture was fixed first on purpose: a backup taken from today carries
+   everything, so the information is there whenever the restore learns to read it.
+3. **The round-trip fixture test.** A fixture where every field differs from its default, each
+   field dropped in turn to watch it go red. It is what found the goals gap by hand; it should
+   exist as a file in `supabase/tests/` next to the other two.
 
 **Phase 5 — writes clamp, and the UI offers one control.** Every setter routes through
 `clamp_visibility`. One shared picker component replaces the five different shapes of control
@@ -301,14 +323,30 @@ somebody simplifies two near-identical checks into one.
 
 ## 6 · Still open
 
-**Phases 1 and 2 are done.** The adult/minor list arrived as "nobody here is a minor", all 14 are
-marked, and the ceiling is live on every read path including the three anonymous ones. Phase 3 is
-next and is the one with teeth: removing the admin bypass from `can_see`'s friends branch and
-from `movie_visible`, while keeping a named moderation path that respects Only me.
+**Phases 1–4 are done** (Phase 4's import half excepted, above). The ceiling is live on every
+read path including the three anonymous ones, the admin's ambient read bypasses are gone, and
+chronicle sharing is a capped tier with the old boolean kept in lockstep.
 
-⚠️ Before Phase 3, enumerate what the bypass is currently load-bearing for. `grep is_admin` is
-only the start — 13 functions and 6 policies route through `can_see`, and some read member
-content without mentioning `is_admin` themselves.
+**Phase 5 is next**, and it is the first one that is mostly client work: the circles UI, one
+shared picker, every setter routed through `clamp_visibility`, and the three items moved into it
+above.
+
+### Was Phase 0's matrix ever stored?
+
+**No — not until 30 Oct.** The plan said "store the matrix" and what actually happened is that it
+was recomputed by hand before and after each phase and the hash quoted in commit messages and
+migration headers. That is evidence somebody has to go hunting for, in prose. It is a file now:
+`supabase/tests/visibility-matrix.sql`, with the query and the recorded numbers.
+
+⚠️ **And writing it down immediately caught a stale figure — mine.** The file first shipped saying
+the matrix was unchanged through every phase, copied from the Phase 3 measurement. Running it
+said **8,175 → 7,118 activity events**: `get_member_activity` has a rating branch, that branch
+calls `movie_visible`, and requiring group membership for a film removed 1,057 rating events.
+A recorded number went stale between the measurement and the sentence, inside the very file whose
+job is to stop that.
+
+⚠️ The matrix is member-to-member and says nothing about anonymous visitors. Phase 2 was a no-op
+in it and still removed a person from the signed-out board. A clean matrix is not a clean site.
 
 One other thing to decide before Phase 5, noted while building Phase 1 and not urgent:
 `clamp_visibility` silently narrows a request rather than refusing it. For a setter driven by a
