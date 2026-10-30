@@ -1,5 +1,12 @@
 -- ✅ APPLIED 30 Oct 2026 as `suspension_reaches_the_social_tables`.
 --
+-- ⚠️ THIS FILE DIVERGES FROM THE STATEMENT RECORDED IN `schema_migrations`, ON PURPOSE AND BY
+-- TWO ADDED LINES. Everything here ran as written; what was added afterwards is the wrapper
+-- that lets it run a SECOND time without failing, so the repository can rebuild its own schema
+-- from a baseline (see docs/ci/db-guards.yml). The md5 check in supabase/migrations/README.md
+-- will report this file as changed, which is the intended and documented exception rather than
+-- drift -- the SQL that touches the database is identical.
+--
 -- A suspended member could still comment on and react to workout logs.
 --
 -- ⚠️ EIGHT TABLES HAD THE GUARD AND TWO DID NOT. `circuit_logs`, `circuit_people`,
@@ -37,11 +44,13 @@
 -- After, with the same fixture: controls still insert 1, a non-suspended member can still read
 -- comments, and both suspended attempts are refused.
 
+drop policy if exists circuit_log_comments_not_suspended on public.circuit_log_comments;
 create policy circuit_log_comments_not_suspended on public.circuit_log_comments
   as restrictive for all to authenticated
   using (not public.is_suspended(auth.uid()))
   with check (not public.is_suspended(auth.uid()));
 
+drop policy if exists circuit_log_reactions_not_suspended on public.circuit_log_reactions;
 create policy circuit_log_reactions_not_suspended on public.circuit_log_reactions
   as restrictive for all to authenticated
   using (not public.is_suspended(auth.uid()))

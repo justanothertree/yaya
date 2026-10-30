@@ -38,7 +38,6 @@ const USER = envOf('PUBLIC_SEED_USER_ID') ?? argOf('--user')
  * sandbox expects, since ratersIn falls back to person.id when there is no account behind it.
  */
 const LOCAL_ID = '2'
-/** include icons and the written review with each score — off by default, see the note below */
 
 function envOf(key) {
   for (const f of ['.env.local', '.env']) {
@@ -94,7 +93,12 @@ const logRows = await grab('circuit_logs', 'id,person_id,date,entries')
 const countFor = (pid) => logRows.filter((l) => l.person_id === pid).length
 const me = mine.sort((a, b) => countFor(b.id) - countFor(a.id))[0]
 
-const ratingRows = await grab('circuit_ratings', 'movie_id,user_id,score,icons,review')
+/* ⚠️ TWO COLUMNS, NOT FIVE. `score`, `icons` and `review` were pulled so a film row could carry
+   them; no film row ships now, so the only thing this fetch still answers is WHICH films the demo
+   person rated (for the held-back count) and which other accounts exist (for the leak check
+   below). A generator that reads somebody's written reviews in order to not use them is handling
+   data it has no reason to touch. */
+const ratingRows = await grab('circuit_ratings', 'movie_id,user_id')
 const myRatings = ratingRows.filter((r) => r.user_id === USER)
 const ratedIds = new Set(myRatings.map((r) => r.movie_id))
 const movieRows = await grab('circuit_movies', 'id,title,kind,date,rt')

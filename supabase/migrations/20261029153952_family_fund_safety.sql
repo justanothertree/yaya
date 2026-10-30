@@ -1,5 +1,12 @@
 -- ✅ APPLIED 29 Oct 2026 as `family_fund_safety`.
 --
+-- ⚠️ THIS FILE DIVERGES FROM THE STATEMENT RECORDED IN `schema_migrations`, ON PURPOSE AND BY
+-- EXACTLY ONE GUARD. Everything here ran as written; what was added afterwards is the wrapper
+-- that lets it run a SECOND time without failing, so the repository can rebuild its own schema
+-- from a baseline (see docs/ci/db-guards.yml). The md5 check in supabase/migrations/README.md
+-- will report this file as changed, which is the intended and documented exception rather than
+-- drift -- the SQL that touches the database is identical.
+--
 -- Yaxa's review, Part B §0 #2 and Part C "Database tightening". Two independent changes, both
 -- about the first time a fund account belongs to somebody other than Evan.
 --
@@ -87,9 +94,18 @@ end $$;
 -- applying — 0 of 14,223 allocations point at a missing account:
 --   select count(*) from finance.allocations al
 --    where not exists (select 1 from finance.family_accounts fa where fa.id = al.family_account_id);
-alter table finance.allocations
-  add constraint allocations_family_account_fk
-  foreign key (family_account_id) references finance.family_accounts(id) on delete restrict;
+-- ⚠️ GUARDED AFTER THE FACT so the file can be replayed over a schema baseline; see the note at
+-- the top of this header. Postgres has no `add constraint if not exists`, so this is the same
+-- do-block shape `feed_waits_for_an_adult` already uses for `profiles_age_band_check`. The
+-- statement inside is byte for byte what was applied.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'allocations_family_account_fk') then
+    alter table finance.allocations
+      add constraint allocations_family_account_fk
+      foreign key (family_account_id) references finance.family_accounts(id) on delete restrict;
+  end if;
+end $$;
 
 alter table finance.family_accounts
   drop constraint family_accounts_user_fk,

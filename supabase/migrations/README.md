@@ -67,6 +67,19 @@ comments are its own and need not match — but a comment INSIDE a function body
 stored definition, so it does: `pg_get_functiondef` returns it, and a file that differs there
 builds a different function on replay.
 
+⚠️ **TWO FILES NOW DIVERGE ON PURPOSE, AND THE EXCEPTION IS NAMED SO IT CANNOT BE MISTAKEN FOR
+DRIFT.** `20261029153952_family_fund_safety.sql` and
+`20261030032833_suspension_reaches_the_social_tables.sql` were edited after they were applied, to
+add guards — a `do $$ … if not exists … $$` around one `add constraint`, and `drop policy if
+exists` above two `create policy` statements. Nothing they do to the database changed; what
+changed is that they can now run a SECOND time without failing, which is what lets this directory
+rebuild the schema from a baseline (see `docs/ci/db-guards.yml`). Three statements, in two files,
+each noted in its own header.
+
+The distinction worth holding onto: a file may diverge in what makes it **re-runnable**, never in
+what it **does**. The first is a property of the repository; the second is the thing the md5 check
+exists to protect. A third file appearing in this list without a header note is drift.
+
 ⚠️ **The reason the suffix was never a guard is still worth knowing.** The Supabase CLI matches
 `<timestamp>_<name>.sql`, and `*.DRAFT.sql` matches that too — so a `db push` would have tried to
 apply them. The suffix was a sign for a person, not a safety. If a draft is ever parked here again,
