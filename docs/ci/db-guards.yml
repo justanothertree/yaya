@@ -1,0 +1,83 @@
+# ⚠️ THIS FILE BELONGS AT .github/workflows/db-guards.yml AND IS PARKED HERE.
+# GitHub refuses a push that creates or edits a workflow file unless the pushing credential
+# holds the `workflow` scope, and the one I push with does not:
+#
+#     ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update
+#       workflow `.github/workflows/db-guards.yml` without `workflow` scope)
+#
+# So it is committed here instead of being silently dropped. To enable it, move it and push
+# yourself -- or paste it into GitHub's web editor, which creates the file with your own scope:
+#
+#     git mv docs/ci/db-guards.yml .github/workflows/db-guards.yml && git commit && git push
+#
+# It will fail on its first run until a schema baseline exists; the reason and the one command
+# that fixes it are in the first step below.
+#
+name: db guards
+
+# Runs supabase/tests/visibility-guards.sql against a throwaway local database on every push.
+#
+# ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
+# `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
+# connection string to the live project would make every workflow run a thing that can read
+# members' data, which is a much larger decision than running a test.
+#
+# ⚠️ AND IT CANNOT PASS BY TESTING NOTHING. A freshly migrated database has no members, no admin
+# and no logs, so every check that needs a session would succeed against an empty set and report
+# a green zero. `supabase/seed.sql` supplies the fixtures, and the guard file refuses to run
+# without them — see its block 0.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
+      # so in one sentence rather than letting `db reset` fail three minutes later with
+      # `relation "public.profiles" does not exist`. supabase/migrations holds the changes made
+      # since late October; the 285 migrations before them live only in the live database, so
+      # nothing here creates the tables the recent ones alter.
+      #
+      # The fix is one command, run once, by somebody who holds the database password:
+      #
+      #     supabase link --project-ref <ref>
+      #     supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql
+      #
+      # After that this job builds the whole schema and the guards run for real on every push.
+      - name: Check the migrations can build the schema
+        run: |
+          if ! grep -rqiE 'create table (if not exists )?(public\.)?profiles' supabase/migrations/; then
+            echo "::error title=No schema baseline::supabase/migrations cannot build this schema from scratch — nothing in it creates public.profiles, so the migrations that ALTER it will fail. Generate a baseline once: supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql"
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start a throwaway database
+        run: supabase start
+
+      # applies every migration in order, then supabase/seed.sql
+      - name: Apply migrations and seed
+        run: supabase db reset
+
+      - name: Run the visibility guards
+        run: |
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          # ON_ERROR_STOP turns the suite's own RAISE into a failed job
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+
+      - name: Stop the database
+        if: always()
+        run: supabase stop --no-backup || true

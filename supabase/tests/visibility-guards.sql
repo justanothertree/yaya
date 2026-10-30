@@ -33,6 +33,24 @@ create temp table subject as
 grant select on subject to authenticated, anon;
 grant select, insert on fails to authenticated, anon;
 
+-- ── 0. THE FIXTURES MUST EXIST, OR EVERY CHECK BELOW PASSES BY TESTING NOTHING ──────────────
+-- ⚠️ THIS IS THE MOST IMPORTANT BLOCK IN THE FILE, and it was added when this test was pointed
+-- at CI. Against the live database the fixtures are obviously there; against a freshly created
+-- database with only the migrations applied there are no members, no admin and no logs — and
+-- every check that needs a session would then quietly succeed against nobody. A guard suite that
+-- reports "0 failures" on an empty schema is worse than no suite, because it reports it in green.
+insert into fails select 'FIXTURE: no non-admin member exists', 'seed the database before running this'
+where (select member from subject) is null;
+insert into fails select 'FIXTURE: no admin exists', 'seed an admin_users row before running this'
+where (select admin from subject) is null;
+insert into fails select 'FIXTURE: no profiles at all', 'the schema may be empty'
+where not exists (select 1 from public.profiles);
+insert into fails select 'FIXTURE: no circuit log with an owner',
+       'the suspension checks below would test nothing'
+where not exists (select 1 from public.circuit_logs l
+                   join public.circuit_people cp on cp.id = l.person_id
+                  where cp.owner_user_id is not null);
+
 -- ── A. the ceiling helpers are not callable by members or anon ──────────────────────────────
 insert into fails
 select 'ceiling helper is callable', r || ' can execute ' || f

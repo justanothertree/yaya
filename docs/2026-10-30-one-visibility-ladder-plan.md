@@ -194,20 +194,32 @@ blocks → ceiling lowered → refused.
 byte-identical, and `circuit_public` went from 44,221 to 43,564 bytes because jefelegendary's
 circuit person leaves the signed-out board. His person has 0 logs; Evan's keeps all 255.
 
-**Phase 3 — Only me stops meaning "only me and Evan", and the general bypass goes.** Decided:
-the admin moderation view stays, but it must **respect Only me**, and the blanket bypasses go —
-`is_admin()` comes out of `can_see`'s friends branch and out of `movie_visible` entirely.
+**Phase 3 — Only me stops meaning "only me and Evan". ✅ DONE 30 Oct**, as
+`phase_three_the_admin_stops_reading_by_default`, after an audit that changed what it removed.
 
-So the admin keeps a named, deliberate path for moderation and loses the ambient ability to read
-every friends-tier block and every rating on the site. ⚠️ **Enumerate what breaks before
-changing it**: `grep` for `is_admin` is only the start, because the real list is "which admin
-views read member content", and some of them read it through functions that do not mention
-`is_admin` themselves. The moderation path should be explicit enough that reading somebody's
-content is a thing you can see in the code, not a side effect of who you are.
+⚠️ **THE AUDIT FOUND A THIRD BYPASS AND IT WAS THE ONLY ONE DOING ANY WORK.** The two named
+here — `can_see`'s friends branch and `movie_visible` — granted the admin **nothing at all**:
+he is friends with 12 of the 13 other members, the one exception has no friends-tier rows, and
+all 163 films reach him through group membership anyway. `circuit_is_member` was the real one.
+It began `is_admin() or`, making him a member of every circuit group, and it feeds 2 functions
+and **12 policies**. `grep is_admin` finds the function; it does not find the twelve policies
+leaning on it — which is exactly the worry this plan recorded, arriving from the other
+direction.
 
-⚠️ And Only me must mean Only me **through the moderation path too** — an admin view that
-respects the tier everywhere except its own queries has not implemented the rule, it has moved
-it.
+Measured as the admin, before → after: groups **3 → 2**, group members **10 → 9**, and nothing
+else moved (163 films, 4 watchlist, 710 logs, 479 ratings, Josh's 20 blocks all unchanged). For
+members, the 196-cell matrix is byte-identical. Made to speak, since two moved numbers could also
+be an unwired change: delete the admin's friendship with Josh and Josh's blocks fall 20 → 19,
+where the old bypass would have held them at 20.
+
+**Management keeps its bypasses**, decided: `rename_circuit`, `delete_circuit`,
+`circuit_can_edit_person` and the finance writers stay admin-capable. What went is READING other
+people's things as a side effect of who you are. `is_suspended` and `are_friends` keep their
+admin answer — one bit each, and moderation needs them.
+
+**The moderation read path is deliberately NOT built.** Held until a real report needs one,
+rather than built speculatively. When it is built: it must respect Only me through its own
+queries, or it has moved the rule rather than implemented it.
 
 **Phase 4 — the booleans become levels.** `shared`, `timeline` → a tier column, migrating
 `true → friends` and `false → private`. Both directions tested with the round-trip discipline:
