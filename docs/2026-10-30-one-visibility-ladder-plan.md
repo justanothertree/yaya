@@ -71,7 +71,10 @@ One type, used everywhere:
 Three rules on top:
 
 1. **Public is Evan's alone** until he says otherwise.
-2. **Minors are capped at Friends** — they may not choose All members or Public.
+2. **Minors are capped at Friends** — they may not choose All members or Public. ⚠️ The cap is
+   not the whole protection: it bounds how wide a minor may choose to be, and says nothing about
+   whether anybody agreed to an audience at all. The guardian opt-in stays alongside it — see
+   Phase 6.
 3. **Only me excludes the admin.** This is the one that changes existing behaviour, and it is the
    point of having the level at all.
 
@@ -153,11 +156,20 @@ Zero behaviour change, provable by the Phase 0 matrix being identical.
 is where Josh's three blocks and jefelegendary's person narrow. Expected and listed above: the
 matrix changes in exactly those cells and nowhere else.
 
-**Phase 3 — Only me stops meaning "only me and Evan".** Remove `is_admin()` from `can_see`'s
-friends branch and from `movie_visible`. ⚠️ **This will break admin screens that rely on it** —
-they must be enumerated first (`grep` for `is_admin` is the start, but the real list comes from
-asking which admin views read member content). Replace with explicit, narrow admin paths rather
-than a blanket bypass.
+**Phase 3 — Only me stops meaning "only me and Evan", and the general bypass goes.** Decided:
+the admin moderation view stays, but it must **respect Only me**, and the blanket bypasses go —
+`is_admin()` comes out of `can_see`'s friends branch and out of `movie_visible` entirely.
+
+So the admin keeps a named, deliberate path for moderation and loses the ambient ability to read
+every friends-tier block and every rating on the site. ⚠️ **Enumerate what breaks before
+changing it**: `grep` for `is_admin` is only the start, because the real list is "which admin
+views read member content", and some of them read it through functions that do not mention
+`is_admin` themselves. The moderation path should be explicit enough that reading somebody's
+content is a thing you can see in the code, not a side effect of who you are.
+
+⚠️ And Only me must mean Only me **through the moderation path too** — an admin view that
+respects the tier everywhere except its own queries has not implemented the rule, it has moved
+it.
 
 **Phase 4 — the booleans become levels.** `shared`, `timeline` → a tier column, migrating
 `true → friends` and `false → private`. Both directions tested with the round-trip discipline:
@@ -169,18 +181,54 @@ red.
 members see today.
 
 **Phase 6 — the feed gets its scope.** `feed_recent(p_scope)` with `you_and_friends` (the
-default) and `all_members`, and a tab in `FeedRoom`. The interim `age_band` guard folds into the
-ladder's minor cap at this point and `feed_opt_in` can retire.
+default) and `all_members`, and a tab in `FeedRoom`.
+
+⚠️ **THE GUARDIAN OPT-IN STAYS. It is not replaced by the Friends cap.** The earlier draft of
+this plan said `feed_opt_in` could retire once minors were capped at Friends, and that was
+wrong — they answer two different questions:
+
+- the **cap** says how wide a minor may ever choose to be (never past Friends);
+- the **opt-in** says whether a guardian has agreed to this child appearing in other people's
+  feeds at all.
+
+A minor capped at Friends with no guardian consent still has friends, and would still stream
+into every one of their feeds. The cap bounds the audience; it does not establish that anybody
+agreed to an audience. Collapsing the two would quietly turn a decision somebody has to make
+into a default that happens to them, which is the opposite of what the interim guard was for.
+
+So both survive into the ladder: `age_band` becomes an input to `visibility_ceiling()`, and
+`feed_opt_in` stays exactly as it is — admin-set, because for a minor the consent that counts is
+a guardian's, and a checkbox the minor can tick themselves is not that.
 
 ---
 
-## 5 · What I need from you before Phase 1
+## 5 · Decided
 
-1. **Who is a minor?** Nothing in the database knows. Until you mark them the feed shows nobody
-   but yourself to anyone — that is the guard doing its job, but it also means the feed is quiet
-   for everybody right now. One line per person and I can set them.
-2. **Phase 3 is the risky one.** Removing the admin bypass is correct for "Only me means no one
-   else" but it will change what your own admin screens can see. Do you want that, or do you want
-   Only me to exclude the admin while the other levels keep the bypass?
-3. **jefelegendary's circuit person** is the one row that genuinely narrows. Tell him, or leave it?
-4. **Certain friends** — circles, as proposed? Or per-item lists after all?
+Answered 30 Oct. These are settled; the phases above already reflect them.
+
+| Question                       | Answer                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Who is a minor?                | **List coming separately.** Until then the guard holds and the feed shows each member only their own activity.      |
+| The admin bypass               | **Keep the moderation view, make it respect Only me, drop the general friends-tier and ratings bypass.** Phase 3.   |
+| jefelegendary's circuit person | **Evan tells him himself.** No silent change.                                                                       |
+| Certain friends                | **Reusable named circles**, as proposed.                                                                            |
+| `public_page`                  | **Stays separate from the ladder.** Only Evan may publish for now; later it opens to **adults only, never minors**. |
+
+### The one that needs building rather than noting
+
+`public_page` opening to adults later is its own small ceiling, and it is _not_ the same function
+as the tier ceiling: publishing a page and choosing a level are the pair this audit found in §1c,
+and the whole reason that pair is load-bearing is that they are allowed to disagree. So
+`may_publish_a_page(owner)` is a second, one-line check — `age_band = 'adult'` and, for now, also
+`is the owner` — rather than a branch inside `visibility_ceiling()`.
+
+Writing it as one function would re-create exactly the bug §1c describes, a year from now, when
+somebody simplifies two near-identical checks into one.
+
+---
+
+## 6 · Still open
+
+Nothing blocking. The adult/minor list is the only input Phase 1 waits on, and Phase 1 itself
+(the type, the circles tables, the ceiling functions, all uncalled) can be built before it
+arrives.
