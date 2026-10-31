@@ -406,6 +406,39 @@ circle, or it states plainly that it cannot preview that level. Deciding it is p
 not a detail to be discovered afterwards — and it is the reason `certain` is absent from
 `VisibilityTier`, `TIER_ORDER` and `REACH` today rather than half-added.
 
+✅ **The circles MANAGEMENT layer is done** — `circles_can_be_named_and_filled`, 31 Oct.
+`visibility_circle_save`, `visibility_circle_delete`, `visibility_circle_set_member` and
+`my_visibility_circles`, all owner-scoped, members-only, against the two deny-all tables Phase 1
+left uncalled.
+
+It grants nothing, which is why it could land on its own: `can_see` still has no `certain` branch,
+so a friend who is genuinely in a circle is still refused. Measured with a control, because a
+function that answers false to everything would look identical — the same friend asking
+`friends` gets true, and asking `private` gets false.
+
+⚠️ **Friendship is required to ADD and not to REMOVE.** `certain` sits below `friends`, so it
+must never reach somebody `friends` would not, and a stranger cannot be put in a circle at all.
+But when a friendship ENDS the membership row survives, and an owner who could not then take it
+out would be stuck looking at a name they cannot tidy away. The stale row is LISTED, with
+`friend: false`, rather than filtered out — hiding it would be tidier to write and dishonest to
+read.
+
+⚠️ **AND THIS IS THE DECISION STILL OUTSTANDING, which the management layer deliberately does
+not take: HOW DOES AN ITEM POINT AT A CIRCLE?** `can_see(p_owner, p_tier)` takes no circle, and an
+owner may have several. Two readings:
+
+- **`certain` means "anyone in any of my circles."** Nothing more to build: one `can_see` branch
+  requiring `are_friends` AND membership of any circle of the owner's. Naming circles becomes an
+  organising aid rather than a per-item choice, and "reusable" is then a bit of a stretch.
+- **Every row carrying `certain` names a circle.** This is what "reusable named circles" most
+  naturally means, and it is much bigger: a nullable `circle_id` on all five tables that carry a
+  visibility column, plus a third argument to `can_see`, which is used in eleven RLS policies.
+
+The second is the honest reading of the request and the first is nearly free, so it wants deciding
+rather than assuming. One consequence travels with the second: deleting a circle that rows point
+at must leave those rows at **`private`**, not `friends` — fail closed, the same way an unwired
+`certain` already does.
+
 There are also three separate copies of `TIER_LABEL` — the shared one in
 `src/components/visibilityLabels.ts`, and private copies in `Profile.tsx` and `ProfileBlocks.tsx`
 whose wording disagrees with it (`Members` against `Anyone with an account`). Consolidating them
