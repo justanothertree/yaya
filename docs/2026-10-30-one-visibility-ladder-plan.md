@@ -274,6 +274,23 @@ Three things the original Phase 4 named that are **not** done:
 `clamp_visibility`. One shared picker component replaces the five different shapes of control
 members see today.
 
+✅ **The setter half is done** — `setters_clamp_to_the_ceiling`, 31 Oct. There were **four**
+unclamped setters, not the three obvious ones: the fourth, `save_my_profile_blocks`, was found by
+asking which functions write a visibility column rather than by reading names.
+
+⚠️ **It was not a leak, and the shape of the non-leak is the part worth keeping.** The read doors
+clamp, and that was measured rather than read off the source: with a page's tier stored at
+`public`, dropping its owner's ceiling took an anonymous `get_public_activity` from **50 rows to
+0**. What was wrong was LATENT — a tier stored above the ceiling is a widening with a trigger on
+it, waiting for the day that ceiling rises (a member marked admin, or publishing opening to adults
+as this plan intends). Five rows were already in that state, and they are deliberately not
+backfilled: rewriting another member's settings is the owner's call under CLAUDE.md §4.
+
+⚠️ **`set_person_visibility` clamps against the ROW'S OWNER, not the caller**, and getting it
+backwards would have been worse than leaving it alone: an admin's own ceiling is `public`, so
+clamping to `auth.uid()` would have let a moderation action publish a member's person past that
+member's ceiling, in the name of adding a safety check.
+
 ⚠️ **AND A SETTER MUST WRITE THE TIER ALONE, NEVER THE TIER AND THE BOOLEAN TOGETHER.** The
 lockstep trigger decides between them by which one moved, so a setter that writes both can open
 sharing while appearing to close it: `set shared = false, visibility = 'friends'` leaves the row
@@ -346,9 +363,18 @@ somebody simplifies two near-identical checks into one.
 read path including the three anonymous ones, the admin's ambient read bypasses are gone, and
 chronicle sharing is a capped tier with the old boolean kept in lockstep.
 
-**Phase 5 is next**, and it is the first one that is mostly client work: the circles UI, one
-shared picker, every setter routed through `clamp_visibility`, and the three items moved into it
-above.
+**Phase 5 is part done.** Its import half landed on 30 Oct (`the_import_puts_sharing_back`, plus
+`plans_can_be_put_back_at_all` for the bug the round-trip test found) and its setter half on 31 Oct
+(`setters_clamp_to_the_ceiling`). What is left is the client work it was always mostly made of: the
+**circles UI** for naming and filling a Certain-friends circle, and the **one shared picker** that
+replaces the five shapes of control members see today.
+
+⚠️ Two things the picker has to carry, both found while doing the halves above.
+`save_my_profile_blocks` validates `visibility` against `('public','friends','members','private')`
+and so **cannot store `certain` on a profile block at all** — the ladder has five levels and that
+table accepts four, which has to change with the picker rather than before it. And the picker is
+what makes silent clamping honest (below): a control that only offers reachable levels never
+narrows anything.
 
 ### Was Phase 0's matrix ever stored?
 
@@ -367,9 +393,19 @@ job is to stop that.
 ⚠️ The matrix is member-to-member and says nothing about anonymous visitors. Phase 2 was a no-op
 in it and still removed a person from the signed-out board. A clean matrix is not a clean site.
 
-One other thing to decide before Phase 5, noted while building Phase 1 and not urgent:
-`clamp_visibility` silently narrows a request rather than refusing it. For a setter driven by a
-picker that only ever offers reachable levels, silent is right. For an import, a restore, or any
-path that replays a level chosen under an older ceiling, silent is how somebody's setting changes
-without them being told. The write paths will need to decide which of the two they are — the same
-question `chronicle_import` had to answer about span rules.
+**Silent narrowing, or a refusal?** This plan carried the question from Phase 1: for a setter
+driven by a picker that only offers reachable levels, silent is right; for an import or a restore
+replaying a level chosen under an older ceiling, silent is how somebody's setting changes without
+them being told.
+
+✅ **Answered, and one of the two cases decided it.** Every write path clamps silently, because
+`profile_blocks.visibility` defaults to **`members`** while a new signup's `age_band` is
+`unknown`, whose ceiling is **`friends`**. A refusal there would have made the profile editor's own
+default value unsaveable — the first thing a new member ever did on the site would have failed.
+That is the "tidy-looking constraint that locks the room" CLAUDE.md names, and it was one line away
+from being written. Silent is also what the read doors already do, so clamping on write makes the
+stored tier agree with the effective one rather than changing what anybody can see.
+
+⚠️ The honest cost is that a member is not told. That belongs to the picker, not the setter: a
+control that only ever offers reachable levels never needs to narrow anything, which is why the
+picker is the other half of this phase and not a cosmetic one.

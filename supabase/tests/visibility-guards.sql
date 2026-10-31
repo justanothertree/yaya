@@ -209,6 +209,34 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
     'get_public_profile', 'submit_contact_message', 'submit_score'
   );
 
+-- ── I. every writer of a visibility tier must route through the clamp ──────────────────
+-- ⚠️ THE ENUMERATION IS THE CHECK, because a function's NAME is no guide at all. Four setters
+-- wrote a raw tier for a month while `clamp_visibility` sat beside them, and the fourth --
+-- `save_my_profile_blocks` -- is one nobody would ever have listed: its job reads as "save my
+-- page", and it writes the tier in an INSERT column list rather than a `set visibility =`, so it
+-- is invisible to every grep shaped like the other three. This asks the SCHEMA which tables carry
+-- a visibility column and then asks which functions write one, which is why it cannot miss the
+-- fifth. It found `chronicle_share_timeline` on its first run.
+--
+-- A constant tier of 'friends' is exempt, and the reason has to be stated rather than assumed:
+-- 'friends' is the LOWEST ceiling the ladder can produce, so a literal 'friends' cannot exceed
+-- anybody's. `chronicle_share_timeline` creates its card that way on purpose, and its own comment
+-- says so. Anything else writing a constant belongs here only with the same argument.
+insert into fails
+select 'writes a visibility tier without clamping', f.proname || ' -> ' || t.t
+from (select p.oid, p.proname, pg_get_functiondef(p.oid) as d
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public') f
+join (select distinct c.relname as t
+        from pg_attribute a join pg_class c on c.oid = a.attrelid
+        join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind = 'r' and a.attnum > 0
+         and a.attname in ('visibility', 'activity_visibility')) t
+  on f.d ~* ('update\s+(public\.)?' || t.t || '[^;]{0,200}(activity_)?visibility\s*=')
+  or f.d ~* ('insert\s+into\s+(public\.)?' || t.t || '\s*\([^)]{0,250}(activity_)?visibility')
+where f.d !~* 'clamp_visibility|chronicle_tier_from_file'
+  and f.proname not in ('chronicle_share_timeline');
+
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
 declare n int; msg text;
@@ -221,5 +249,22 @@ begin
 end $$;
 
 select 'all visibility guards hold' as result, count(*) as failures from fails;
+
+-- ── and one thing REPORTED rather than failed ─────────────────────────────────
+-- Rows whose STORED tier is above their owner's ceiling. The read doors clamp, so these are not a
+-- leak today -- each is a widening waiting for the day that ceiling rises. They are not a failure
+-- either, because they are real members' saved choices and rewriting another member's settings is
+-- the owner's call under CLAUDE.md §4, not something a test suite should demand. Reported so the
+-- number cannot sit unnoticed. They also heal on their own: a member's next save clamps them.
+select 'stored above the owner''s ceiling' as report, col, n from (
+  select 'profiles.activity_visibility' as col, count(*) as n
+    from public.profiles p where p.activity_visibility > public.visibility_ceiling(p.user_id)
+  union all select 'player_registry.visibility', count(*)
+    from public.player_registry r where r.visibility > public.visibility_ceiling(r.user_id)
+  union all select 'circuit_people.visibility', count(*)
+    from public.circuit_people c where c.visibility > public.visibility_ceiling(c.owner_user_id)
+  union all select 'profile_blocks.visibility', count(*)
+    from public.profile_blocks b where b.visibility > public.visibility_ceiling(b.user_id)
+) z where n > 0 order by col;
 
 rollback;
