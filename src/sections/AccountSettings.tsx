@@ -14,6 +14,7 @@ import { getSupabaseClient } from '../finance/client'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { site } from '../config/site'
 import { VisibilityPicker } from '../components/VisibilityPicker'
+import { CirclesCard } from '../components/CirclesCard'
 import type { VisibilityTier } from '../circuit/types'
 import { showToast } from '../circuit/toast'
 import { YourCopy } from '../chronicle/YourCopy'
@@ -1288,6 +1289,7 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
 
           <NicknamesCard />
           <CircuitsCard />
+          <CirclesCard />
           <PublishCard />
           <BackupCard />
           {/* the chronicle's own copy, beside the library's — see the note on YourCopy for why
