@@ -146,7 +146,20 @@ function HandleRow({
           type="button"
           className="btn btn-ghost"
           onClick={open}
-          style={{ padding: '1px 8px', fontSize: '0.75rem' }}
+          /**
+           * ⚠️ 24px IS THE FLOOR AND THIS WAS 17, measured by `scripts/mobile-audit.js` at 375 —
+           * the only finding in the whole room. It reads as a word beside the handle, which is
+           * why it was styled like one, but it is a button and WCAG 2.5.8 does not care what it
+           * looks like. The size is in PIXELS rather than rem because the root size on this site
+           * is fluid, so a rem is not a length here.
+           */
+          style={{
+            padding: '2px 8px',
+            fontSize: '0.75rem',
+            minHeight: 24,
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
         >
           Change
         </button>

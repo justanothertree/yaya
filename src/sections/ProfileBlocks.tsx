@@ -17,6 +17,7 @@ import {
   type MemberChronicleResult,
 } from '../chronicle/cloud'
 import { useTouchOnly } from '../ui/pointerKind'
+import { TIER_SHORT as TIER_LABEL } from '../components/visibilityLabels'
 import {
   BANNER_STYLES,
   BLOCK_EDGES,
@@ -234,13 +235,6 @@ const CAN_TINT: ReadonlySet<ProfileBlock['block_type']> = new Set([
   'song',
   'chronicle',
 ])
-
-const TIER_LABEL: Record<Tier, string> = {
-  public: 'Anyone',
-  friends: 'Friends',
-  members: 'Members',
-  private: 'Only me',
-}
 
 const BLOCK_LABEL: Record<ProfileBlock['block_type'], string> = {
   bio: '📝 Bio',

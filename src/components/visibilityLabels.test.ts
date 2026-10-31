@@ -3,6 +3,7 @@ import {
   TIER_ORDER,
   TIER_LABEL,
   TIER_HINTS,
+  TIER_SHORT,
   openness,
   offeredTiers,
   isOverCeiling,
@@ -118,5 +119,36 @@ describe('the copy covers the ladder', () => {
 
   it('shows a database name to nobody', () => {
     for (const t of TIER_ORDER) expect(TIER_LABEL[t]).not.toBe(t)
+  })
+})
+
+/**
+ * The short names, and the order they come out in.
+ *
+ * ⚠️ THE KEY ORDER IS LOAD-BEARING AND NOTHING ELSE WOULD CATCH IT. `Profile.tsx` and
+ * `ProfileBlocks.tsx` both build a control by iterating this map with `Object.keys`, so its
+ * insertion order IS the order of a dropdown and a row of buttons on screen. These lived as two
+ * identical literals inside those components until they moved here; moving them was safe only
+ * because the order came with them, and the next person to tidy this map alphabetically would
+ * silently rearrange two controls with nothing going red.
+ */
+describe('TIER_SHORT', () => {
+  it('comes out widest-first, which is the order the controls have always had', () => {
+    expect(Object.keys(TIER_SHORT)).toEqual(['public', 'friends', 'members', 'private'])
+  })
+
+  it('names every tier, so no option renders blank', () => {
+    for (const t of TIER_ORDER) expect((TIER_SHORT[t] ?? '').trim()).not.toBe('')
+  })
+
+  it('shows a database name to nobody', () => {
+    for (const t of TIER_ORDER) expect(TIER_SHORT[t]).not.toBe(t)
+  })
+
+  it('is the shorter register: members reads as one word here and a phrase in the picker', () => {
+    // the whole reason both maps exist -- "Only what anyone with an account are sent" does not parse
+    expect(TIER_SHORT.members).toBe('Members')
+    expect(TIER_LABEL.members).not.toBe(TIER_SHORT.members)
+    expect(TIER_SHORT.members.length).toBeLessThan(TIER_LABEL.members.length)
   })
 })

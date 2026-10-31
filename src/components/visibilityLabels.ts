@@ -17,6 +17,33 @@ export const TIER_LABEL: Record<VisibilityTier, string> = {
   public: 'Anyone',
 }
 
+/**
+ * The same four levels in one word each, for the places the long names cannot go.
+ *
+ * ⚠️ TWO MAPS IS NOT DUPLICATION HERE, AND COLLAPSING THEM BREAKS A SENTENCE. `TIER_LABEL` is
+ * written for a PICKER, where "Anyone with an account" has to be unambiguous on its own because
+ * somebody is choosing it. These are written for PROSE and for buttons sitting in a row, where
+ * that phrase does not fit and does not parse: the profile's "view as" row builds
+ * `Only what ${…toLowerCase()} are sent`, which reads "Only what members are sent" and would
+ * become "Only what anyone with an account are sent".
+ *
+ * They lived as two identical literals inside `Profile.tsx` and `ProfileBlocks.tsx`, each with a
+ * note saying they were kept local to avoid exporting a constant from a module full of
+ * components. That reason is real and this file is the answer to it, so the words live here and
+ * the components import them.
+ *
+ * ⚠️ THE KEY ORDER IS LOAD-BEARING. Both callers iterate it with `Object.keys` to build a
+ * dropdown and a row of buttons, so this is widest-first on purpose — the order those controls
+ * have always had. `TIER_ORDER` below is the opposite direction and is the one to use when the
+ * order is what matters rather than the words.
+ */
+export const TIER_SHORT: Record<VisibilityTier, string> = {
+  public: 'Anyone',
+  friends: 'Friends',
+  members: 'Members',
+  private: 'Only me',
+}
+
 /** closed -> open, so moving right always means more people */
 export const TIER_ORDER: VisibilityTier[] = ['private', 'friends', 'members', 'public']
 

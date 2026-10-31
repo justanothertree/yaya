@@ -20,15 +20,7 @@ import {
   type Achievement,
 } from './ProfileBlocks'
 import type { ActivityItem } from './activityLine'
-
-// duplicated from ProfileBlocks.tsx's own (unexported) copy -- kept local rather than shared,
-// since exporting a plain constant alongside components there breaks Fast Refresh
-const TIER_LABEL: Record<Tier, string> = {
-  public: 'Anyone',
-  friends: 'Friends',
-  members: 'Members',
-  private: 'Only me',
-}
+import { TIER_SHORT as TIER_LABEL } from '../components/visibilityLabels'
 
 /**
  * A member's profile — the page behind every name on the site.
