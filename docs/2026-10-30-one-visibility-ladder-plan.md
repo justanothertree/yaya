@@ -376,6 +376,41 @@ table accepts four, which has to change with the picker rather than before it. A
 what makes silent clamping honest (below): a control that only offers reachable levels never
 narrows anything.
 
+✅ **The ceiling half of the picker is done** — `VisibilityPicker` now asks
+`my_visibility_ceiling()` and offers only levels the account can actually choose, which is what
+makes clamping-without-telling-anybody honest rather than a quiet lie.
+
+Two things that came out of building it, both worth more than the change itself:
+
+⚠️ **A FAILED CEILING LOOKUP AND AN UNFINISHED ONE MUST NOT LOOK THE SAME.** The first version of
+the hook returned `VisibilityTier | undefined`, and the picker held its options disabled while the
+answer was outstanding — correct, and about 100ms. But a lookup that FAILED returned the same
+`undefined` for ever, so the control would have been permanently dead, on exactly the surface
+where somebody is trying to shut something off. It now returns a shape that distinguishes the two
+and says so on screen. The tempting fix — fall back to offering the whole ladder, since
+`clamp_visibility` runs on every write anyway — was rejected on purpose: it reinstates precisely
+the lie the ceiling exists to remove, on a bad network where nobody is watching.
+
+⚠️ **AND `certain` IS NOT A RUNG, WHICH IS WHY IT IS STILL NOT IN THE CLIENT.** The client's tier
+vocabulary is ordered: `REACH` in `src/profile/look.ts` ranks the four levels and `tierSees(viewer,
+block)` asks whether a viewer is wide enough to clear a block. That shape cannot express `certain`
+at all, because clearing a `certain` block is not a matter of being wide enough — it is
+membership of a named set. `tierSees` feeds the "view as" previews in both `Profile.tsx` and
+`ProfileBlocks.tsx`, so adding a fifth value to that union would make those previews silently
+wrong about who sees what: a control overstating what it does, which this codebase's own comment
+in `save_my_profile_blocks` calls the one thing a privacy control must never be.
+
+So the circles work has to answer a question the ladder does not: **what does "view as" mean for
+Certain friends?** Either the preview gains a "somebody in this circle" option that names the
+circle, or it states plainly that it cannot preview that level. Deciding it is part of circles,
+not a detail to be discovered afterwards — and it is the reason `certain` is absent from
+`VisibilityTier`, `TIER_ORDER` and `REACH` today rather than half-added.
+
+There are also three separate copies of `TIER_LABEL` — the shared one in
+`src/components/visibilityLabels.ts`, and private copies in `Profile.tsx` and `ProfileBlocks.tsx`
+whose wording disagrees with it (`Members` against `Anyone with an account`). Consolidating them
+changes text on screen, so it is its own change rather than a quiet rider on this one.
+
 ### Was Phase 0's matrix ever stored?
 
 **No — not until 30 Oct.** The plan said "store the matrix" and what actually happened is that it

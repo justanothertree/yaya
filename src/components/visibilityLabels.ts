@@ -20,6 +20,39 @@ export const TIER_LABEL: Record<VisibilityTier, string> = {
 /** closed -> open, so moving right always means more people */
 export const TIER_ORDER: VisibilityTier[] = ['private', 'friends', 'members', 'public']
 
+/** How wide a tier reaches, as a position in TIER_ORDER. Bigger means more people. */
+export function openness(t: VisibilityTier): number {
+  return TIER_ORDER.indexOf(t)
+}
+
+/**
+ * Which levels a picker may offer, given the account's ceiling and what is stored today.
+ *
+ * Pure so it can be asked a question without a browser, which matters more here than usual:
+ * the preview harness has no session, so `my_visibility_ceiling` answers nothing there and the
+ * Browser pane cannot show a narrowed picker at all. A test is the only thing that can.
+ *
+ * `undefined` ceiling means not known yet, and the answer is the whole ladder — the caller is
+ * expected to hold the options disabled meanwhile rather than treat it as "no limit".
+ *
+ * ⚠️ THE STORED VALUE IS ALWAYS OFFERED, EVEN ABOVE THE CEILING. Rows like that exist: a tier
+ * chosen before the ceiling applied is still in the database, held back by the read clamp rather
+ * than rewritten. Dropping it would leave the control with nothing selected, which reads as a
+ * broken picker rather than as a setting about to change.
+ */
+export function offeredTiers(
+  ceiling: VisibilityTier | undefined,
+  value: VisibilityTier,
+): VisibilityTier[] {
+  if (ceiling === undefined) return TIER_ORDER
+  return TIER_ORDER.filter((t) => openness(t) <= openness(ceiling) || t === value)
+}
+
+/** Is what is stored wider than this account is allowed to choose? */
+export function isOverCeiling(ceiling: VisibilityTier | undefined, value: VisibilityTier): boolean {
+  return ceiling !== undefined && openness(value) > openness(ceiling)
+}
+
 /**
  * Circuit sharing and the tier are two different mechanisms, and reading only the tier
  * makes people think "Friends" hides them from a crewmate who isn't a friend. It doesn't.
