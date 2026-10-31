@@ -6,8 +6,21 @@
 -- hunting for, in prose, which is exactly the shape CLAUDE.md §11 says not to rely on. It is a
 -- file now, so "did it change?" is a command rather than an archaeology exercise.
 --
--- HOW TO RUN: paste into the SQL editor or hand to execute_sql. Read-only, no transaction needed,
--- but it is wrapped anyway so a stray session setting cannot escape.
+-- HOW TO RUN: paste into the SQL editor or hand to execute_sql. It is wrapped in a transaction
+-- that rolls back, so it leaves nothing behind.
+--
+-- ⚠️ IT NEEDS A CONNECTION THAT CAN WRITE, despite reading nothing but counts. `create or replace
+-- function pg_temp.…` is a write as far as Postgres is concerned, so a read-only session refuses
+-- it outright — the failure is `cannot execute CREATE FUNCTION in a read-only transaction`, which
+-- reads like a permissions problem with the data and is a permissions problem with the temporary
+-- function. Run it on an ordinary connection.
+--
+-- ⚠️ AND THE COUNTS ARE CAPPED, SO TREAT THE HASH AS THE SIGNAL. `get_member_activity` is asked
+-- for 200 per cell, so any viewer/owner pair with more than 200 visible events reports 200 and
+-- stops. The totals below are therefore a floor, not a census: a change that moves events a pair
+-- already has more than 200 of will not move the number at all. What the hash is good for is
+-- "did ANY cell change", and that is the question to ask it. If a phase needs an exact count for
+-- one surface, measure that surface directly rather than reading it out of this total.
 --
 -- WHAT IT IS: 14 viewers × 14 owners = 196 cells, each the count of profile blocks, activity
 -- events and trophies that viewer can see of that owner. It walks `can_see` through the three

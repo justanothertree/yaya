@@ -36,8 +36,22 @@
 -- chronicle_sharing_mine (22), feed_recent (18 events), chronicle_friends_log (0 sittings) and
 -- chronicle_activities_mine (23) all answer exactly as before.
 --
--- ⚠️ WHICH SIDE WINS WHEN A WRITE SETS BOTH, MEASURED RATHER THAN ASSUMED — and it is not simply
--- "visibility wins". The trigger compares each side to the STORED row, so:
+-- ⚠️ ON INSERT THERE IS NO STORED ROW TO COMPARE AGAINST, so the rule is different and simpler:
+--
+--   `visibility` given as anything but 'private'  -> the tier wins, shared follows it
+--   `visibility` absent or 'private'              -> the boolean wins, visibility follows it
+--
+-- Which means a plain `insert … (shared) values (true)` lands on `friends/true` — the old column
+-- still works untouched, which is what lets the four writers stay as they are. And an insert
+-- naming `visibility` explicitly gets what it asked for, EXCEPT that an explicit 'private'
+-- cannot be told from an omitted one. That is the one ambiguity in the arrangement: inserting
+-- `shared = true, visibility = 'private'` together gives `friends/true`, because 'private' reads
+-- as "nothing was said". It matters only to a caller that sets both and means the narrow one,
+-- which no current writer does, and which Phase 5's setters will avoid by routing through
+-- `clamp_visibility` and writing the tier alone.
+--
+-- ⚠️ WHICH SIDE WINS WHEN AN UPDATE SETS BOTH, MEASURED RATHER THAN ASSUMED — and it is not
+-- simply "visibility wins". The trigger compares each side to the STORED row, so:
 --
 --   only `shared` differs from the row      -> the boolean wins, visibility follows it
 --   only `visibility` differs               -> the tier wins, shared follows it

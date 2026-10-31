@@ -274,6 +274,25 @@ Three things the original Phase 4 named that are **not** done:
 `clamp_visibility`. One shared picker component replaces the five different shapes of control
 members see today.
 
+⚠️ **AND A SETTER MUST WRITE THE TIER ALONE, NEVER THE TIER AND THE BOOLEAN TOGETHER.** The
+lockstep trigger decides between them by which one moved, so a setter that writes both can open
+sharing while appearing to close it: `set shared = false, visibility = 'friends'` leaves the row
+at **friends/true**, because both differ from the stored row and the tier wins. The rule for
+Phase 5 is therefore narrow and worth stating once —
+
+- compute the level with `clamp_visibility(owner, wanted)`, so the owner's ceiling applies at the
+  write as well as the read;
+- write **`visibility` only**, and let the trigger derive `shared`;
+- never name `shared` in a setter again.
+
+The existing four writers are exempt because they do the opposite — they write only `shared` and
+let the trigger derive the tier, which is equally unambiguous. It is the _mixture_ that is unsafe,
+and it is unsafe in the direction that opens.
+
+⚠️ There is one ambiguity the trigger cannot resolve and the picker must avoid: on INSERT, an
+explicit `visibility = 'private'` cannot be told from an omitted one, so a new row created with
+`shared = true, visibility = 'private'` lands on friends. Create rows with the tier alone too.
+
 **Phase 6 — the feed gets its scope.** `feed_recent(p_scope)` with `you_and_friends` (the
 default) and `all_members`, and a tab in `FeedRoom`.
 
