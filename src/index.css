@@ -18986,6 +18986,20 @@ a.cz-msg-author:focus-visible {
  * "let it vanish", and the measured version of that was every title crushed to a 3px column
  * reading ":".
  */
+/* Whose activity — two tabs, so no scrolling strip and no mask; they wrap instead. */
+.feed-scope {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.feed-tab {
+  flex: 0 0 auto;
+  /* ⚠️ WCAG 2.5.8 — these sit in a row, so the spacing exception cannot rescue them. Pixels
+     rather than rem, because the root size on this site is fluid and a rem is not a length. */
+  min-height: 36px;
+}
+
 .feed-day h3 {
   margin: 0.9rem 0 0.3rem;
   font-size: 0.86rem;

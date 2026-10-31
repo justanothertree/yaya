@@ -23,6 +23,23 @@ import { countText, spanText } from '../chronicle/record'
  */
 export type FeedKind = ActivityItem['kind'] | 'sitting'
 
+/**
+ * Whose activity the feed is asking about.
+ *
+ * ⚠️ A FILTER, NOT A PERMISSION, and the distinction is worth keeping in front of whoever reads
+ * this next. Every event has already been through `can_see` on the server, so `all_members` is
+ * not a wider licence — it is a wider list of people to ask. Switching tabs can never reveal
+ * something the other tab was hiding on purpose; it only stops leaving out the people you have
+ * not befriended.
+ */
+export type FeedScope = 'you_and_friends' | 'all_members'
+
+/** Narrow first, so the default is the smaller room and the wider one is a deliberate step. */
+export const FEED_SCOPES: ReadonlyArray<{ id: FeedScope; label: string }> = [
+  { id: 'you_and_friends', label: 'You + friends' },
+  { id: 'all_members', label: 'All members' },
+]
+
 export type FeedEvent = {
   kind: FeedKind
   /**

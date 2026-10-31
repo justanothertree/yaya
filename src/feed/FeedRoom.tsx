@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { fetchFeed } from './cloud'
-import { dayKeyOf, groupByDay, mergeEvents, type FeedEvent, type FeedKind } from './event'
+import {
+  dayKeyOf,
+  groupByDay,
+  mergeEvents,
+  FEED_SCOPES,
+  type FeedEvent,
+  type FeedKind,
+  type FeedScope,
+} from './event'
+import { moveTab } from '../ui/tabStrip'
 import { spanText, countText } from '../chronicle/record'
 
 /**
@@ -104,13 +113,23 @@ function What({ e }: { e: FeedEvent }) {
 export function FeedRoom({ authed }: { authed: boolean }) {
   const [events, setEvents] = useState<FeedEvent[] | null>(null)
   const [failed, setFailed] = useState(false)
+  const [scope, setScope] = useState<FeedScope>('you_and_friends')
+
+  /**
+   * ⚠️ THE STRIP AND ITS PANEL ARE NAMED, and the roving tabIndex is the contract
+   * `role="tablist"` takes on — the same reasoning written up over Chronicle's strip. Declaring
+   * the role and not keeping it is worse than two plain buttons, because the announcement
+   * promises arrow keys that would not be there.
+   */
+  const tabsId = useId()
+  const panelId = `${tabsId}-panel`
 
   const load = useCallback(async () => {
     if (!authed) return
     const to = new Date()
     const from = new Date(to.getTime() - DAYS * 86_400_000)
     try {
-      const rows = await fetchFeed(from.toISOString(), to.toISOString())
+      const rows = await fetchFeed(from.toISOString(), to.toISOString(), 40, scope)
       /* merged even though the server already ordered them: the client is what holds the
          previous window, and a refresh that overlaps is the normal case rather than a fault */
       setEvents(mergeEvents(rows))
@@ -119,7 +138,7 @@ export function FeedRoom({ authed }: { authed: boolean }) {
       setEvents([])
       setFailed(true)
     }
-  }, [authed])
+  }, [authed, scope])
 
   useEffect(() => {
     void load()
@@ -132,68 +151,106 @@ export function FeedRoom({ authed }: { authed: boolean }) {
       </p>
     )
 
-  if (events === null)
-    return (
-      <p className="muted" aria-busy>
-        Looking…
-      </p>
-    )
-
-  if (failed)
-    return (
-      <p className="muted">
-        The feed could not be loaded just now.{' '}
-        <button className="btn btn-ghost" onClick={() => void load()}>
-          Try again
-        </button>
-      </p>
-    )
-
-  if (events.length === 0)
-    return (
-      <div className="feed-none">
-        <p className="muted">Nothing in the last fortnight.</p>
-        {/**
-         * ⚠️ IT OFFERS DOORS RATHER THAN DESCRIBING THEM. The Chronicle friends list had an
-         * empty state naming three switches in prose with not one link in it — the page that
-         * proved the switches were off was the page that could not turn them on. Whatever is
-         * missing here, the next thing somebody wants is a way in.
-         */}
-        <p className="muted">
-          Start something in <a href="#chronicle">Chronicle</a>, log a workout in{' '}
-          <a href="#circuit">the Circuit</a>, or <a href="#ratings">rate something</a> — it shows up
-          here.
-        </p>
-      </div>
-    )
-
   const todayKey = dayKeyOf(new Date().toISOString())
+  const current = Math.max(
+    0,
+    FEED_SCOPES.findIndex((s) => s.id === scope),
+  )
 
+  /**
+   * ⚠️ THE STRIP SITS OUTSIDE EVERY STATE BELOW, and the first draft had it inside the one that
+   * draws rows. The states that most need it are the empty ones: a tab you switch to and find
+   * empty is exactly where you want to switch back, and a strip that appears only when there is
+   * something to show takes the way out away at the moment it is wanted. The same goes for the
+   * loading and failed states, which used to return on their own.
+   */
   return (
-    <div className="feed">
-      {groupByDay(events).map(([key, rows]) => (
-        <section key={key} className="feed-day">
-          <h3>{dayName(key, todayKey)}</h3>
-          <ul>
-            {rows.map((e) => (
-              <li key={`${e.kind}:${e.id}`} className={'feed-row is-' + e.kind}>
-                <span className="feed-glyph" aria-hidden>
-                  {GLYPH[e.kind]}
-                </span>
-                <span className="feed-who">
-                  {e.mine ? (
-                    'You'
-                  ) : (
-                    <a href={'#profile?u=' + encodeURIComponent(e.who)}>{e.name}</a>
-                  )}
-                </span>
-                <What e={e} />
-                <span className="muted feed-when">{clock(e.at)}</span>
-              </li>
+    <div className="feed-room">
+      <div className="feed-scope" role="tablist" aria-label="Whose activity">
+        {FEED_SCOPES.map((s, i) => (
+          <button
+            key={s.id}
+            role="tab"
+            id={`${tabsId}-${i}`}
+            aria-selected={scope === s.id}
+            aria-controls={panelId}
+            tabIndex={scope === s.id ? 0 : -1}
+            className={'btn feed-tab' + (scope === s.id ? ' is-on' : ' btn-ghost')}
+            onKeyDown={(e) => moveTab(e, i, FEED_SCOPES.length, (n) => setScope(FEED_SCOPES[n].id))}
+            onClick={() => setScope(s.id)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <div id={panelId} role="tabpanel" aria-labelledby={`${tabsId}-${current}`}>
+        {events === null ? (
+          <p className="muted" aria-busy>
+            Looking…
+          </p>
+        ) : failed ? (
+          <p className="muted">
+            The feed could not be loaded just now.{' '}
+            <button className="btn btn-ghost" onClick={() => void load()}>
+              Try again
+            </button>
+          </p>
+        ) : events.length === 0 ? (
+          <div className="feed-none">
+            <p className="muted">
+              {scope === 'you_and_friends'
+                ? 'Nothing from you or your friends in the last fortnight.'
+                : 'Nothing in the last fortnight.'}
+            </p>
+            {/**
+             * ⚠️ IT OFFERS DOORS RATHER THAN DESCRIBING THEM. The Chronicle friends list had an
+             * empty state naming three switches in prose with not one link in it — the page that
+             * proved the switches were off was the page that could not turn them on. Whatever is
+             * missing here, the next thing somebody wants is a way in. On the narrow tab the
+             * nearest door is the wider tab, so it is a button rather than a sentence about one.
+             */}
+            {scope === 'you_and_friends' && (
+              <p className="muted">
+                <button className="btn btn-ghost" onClick={() => setScope('all_members')}>
+                  Look at all members
+                </button>
+              </p>
+            )}
+            <p className="muted">
+              Start something in <a href="#chronicle">Chronicle</a>, log a workout in{' '}
+              <a href="#circuit">the Circuit</a>, or <a href="#ratings">rate something</a> — it
+              shows up here.
+            </p>
+          </div>
+        ) : (
+          <div className="feed">
+            {groupByDay(events).map(([key, rows]) => (
+              <section key={key} className="feed-day">
+                <h3>{dayName(key, todayKey)}</h3>
+                <ul>
+                  {rows.map((e) => (
+                    <li key={`${e.kind}:${e.id}`} className={'feed-row is-' + e.kind}>
+                      <span className="feed-glyph" aria-hidden>
+                        {GLYPH[e.kind]}
+                      </span>
+                      <span className="feed-who">
+                        {e.mine ? (
+                          'You'
+                        ) : (
+                          <a href={'#profile?u=' + encodeURIComponent(e.who)}>{e.name}</a>
+                        )}
+                      </span>
+                      <What e={e} />
+                      <span className="muted feed-when">{clock(e.at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
-        </section>
-      ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

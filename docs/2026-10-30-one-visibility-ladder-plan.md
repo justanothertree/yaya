@@ -313,6 +313,38 @@ explicit `visibility = 'private'` cannot be told from an omitted one, so a new r
 **Phase 6 — the feed gets its scope.** `feed_recent(p_scope)` with `you_and_friends` (the
 default) and `all_members`, and a tab in `FeedRoom`.
 
+✅ **Done** — `the_feed_gets_its_scope`, 31 Oct, with the tab strip in `FeedRoom`.
+
+⚠️ **A drop and create, not a replace**: a fourth parameter OVERLOADS rather than replaces, and
+two `feed_recent`s would leave PostgREST choosing between them. Nothing in the database called it
+— no function body, no policy expression — so the only caller was the client.
+
+⚠️ **Checked against a behavioural baseline rather than by reading the diff**, because the body
+is long and was retyped to add six lines. The feed was md5'd for all 14 members over a fixed
+window before and after:
+
+| call                                | events | result            |
+| ----------------------------------- | ------ | ----------------- |
+| before, the old 3-argument function | 1,586  | baseline          |
+| after, `all_members`                | 1,586  | **identical md5** |
+| after, `you_and_friends`            | 1,569  | the new default   |
+| after, no scope passed              | 1,569  | = the default     |
+
+⚠️ **The narrowing is small today and the figures say so rather than implying otherwise.** Only
+one member's feed changed at all (17 events to 0 — somebody with no accepted friendships). For
+the other thirteen the scopes are identical, because `get_member_activity` already filters by
+`can_see`: a non-friend whose things are private contributes nothing to either scope, so leaving
+them out of the list of people to ask changes nothing. The tab earns its keep as the site grows
+and as people use the members tier.
+
+⚠️ **And the fixture had three real members in it.** `previewFeed` attributed invented activity
+to `cam`, `josh` and `salty` — all three real usernames on this site — in a fixture committed
+to a public repo, which is the one thing `previewMember.ts`'s header says must never happen. They
+are invented names now. A sweep of every tracked source file against the real member list found no
+others of that kind; the remaining hits are in `docs/*.sql` and in code comments, where they are
+the project's factual record of real migrations and real incidents rather than fabricated
+activity, so they were left alone.
+
 ⚠️ **THE GUARDIAN OPT-IN STAYS. It is not replaced by the Friends cap.** The earlier draft of
 this plan said `feed_opt_in` could retire once minors were capped at Friends, and that was
 wrong — they answer two different questions:

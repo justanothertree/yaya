@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
-import type { FeedEvent, FeedKind } from './event'
+import type { FeedEvent, FeedKind, FeedScope } from './event'
 
 /**
  * The feed, fetched.
@@ -56,12 +56,14 @@ export async function fetchFeed(
   fromISO: string,
   toISO: string,
   perMember = 40,
+  scope: FeedScope = 'you_and_friends',
 ): Promise<FeedEvent[]> {
-  if (previewMember) return previewFeed()
+  if (previewMember) return previewFeed(scope)
   const { data, error } = await getSupabaseClient().rpc('feed_recent', {
     p_from: fromISO,
     p_to: toISO,
     p_per_member: perMember,
+    p_scope: scope,
   })
   if (error || !Array.isArray(data)) return []
   return (data as Array<Record<string, unknown>>)
@@ -83,9 +85,14 @@ export async function fetchFeed(
  * a fixture that exercises four of five branches is how the fifth ships broken. The sitting with
  * an amount is deliberate too: `metric` is the one optional field the sentence changes shape for.
  */
-export function previewFeed(): FeedEvent[] {
+export function previewFeed(scope: FeedScope = 'all_members'): FeedEvent[] {
   const ago = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString()
-  return [
+  /* ⚠️ THE STAND-IN NARROWS, because a double that ignores the control under test makes the
+     control look broken when it works and working when it is broken. Tolliver is deliberately
+     not a friend here, so "You + friends" drops their row and "All members" keeps it -- the same
+     person who appears in the circles card as a membership whose friendship has ended. */
+  const friends = new Set(['preview-you', 'marlow', 'quill'])
+  const all: FeedEvent[] = [
     {
       kind: 'sitting',
       id: 'pv-f-1',
@@ -101,8 +108,8 @@ export function previewFeed(): FeedEvent[] {
     {
       kind: 'circuit_log',
       id: 'pv-f-2',
-      who: 'cam',
-      name: 'Cam',
+      who: 'marlow',
+      name: 'Marlow',
       at: ago(200),
       detail: 'The Crew',
       score: 118,
@@ -114,8 +121,8 @@ export function previewFeed(): FeedEvent[] {
     {
       kind: 'rating',
       id: 'pv-f-3',
-      who: 'josh',
-      name: 'Josh',
+      who: 'quill',
+      name: 'Quill',
       at: ago(420),
       detail: 'Mistfall Hunter',
       score: 94,
@@ -123,8 +130,8 @@ export function previewFeed(): FeedEvent[] {
     {
       kind: 'sitting',
       id: 'pv-f-4',
-      who: 'cam',
-      name: 'Cam',
+      who: 'marlow',
+      name: 'Marlow',
       at: ago(1_500),
       until: ago(1_440),
       detail: 'Reading',
@@ -136,8 +143,8 @@ export function previewFeed(): FeedEvent[] {
     {
       kind: 'snake_trophy',
       id: 'pv-f-5',
-      who: 'salty',
-      name: 'Salty',
+      who: 'tolliver',
+      name: 'Tolliver',
       at: ago(2_900),
       detail: 'Longest run',
       score: 2140,
@@ -153,4 +160,5 @@ export function previewFeed(): FeedEvent[] {
       mine: true,
     },
   ]
+  return scope === 'all_members' ? all : all.filter((e) => e.mine || friends.has(e.who))
 }

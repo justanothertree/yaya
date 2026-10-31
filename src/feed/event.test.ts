@@ -5,8 +5,10 @@ import {
   feedSentence,
   groupByDay,
   mergeEvents,
+  FEED_SCOPES,
   type FeedEvent,
   type FeedKind,
+  type FeedScope,
 } from './event'
 
 /**
@@ -191,5 +193,36 @@ describe('feedSentence', () => {
     )
     expect(line).toContain('Walk')
     expect(line).not.toMatch(/NaN|Invalid/)
+  })
+})
+
+/**
+ * The scope strip.
+ *
+ * ⚠️ THE ORDER IS THE FEATURE, not presentation. `FeedRoom` starts on `you_and_friends` and the
+ * server defaults to it too, so "the narrow one is first" is the statement that the quieter room
+ * is the one you land in. Reversing the array would move everybody into a feed of the whole site
+ * without a single line of the component changing, which is the kind of thing that wants a test
+ * rather than a convention.
+ */
+describe('feed scopes', () => {
+  it('offers exactly the two the server accepts', () => {
+    expect(FEED_SCOPES.map((s) => s.id)).toEqual(['you_and_friends', 'all_members'])
+  })
+
+  it('puts the narrower one first, because that is the one people land in', () => {
+    expect(FEED_SCOPES[0].id).toBe('you_and_friends')
+  })
+
+  it('names each one in words, never by its database value', () => {
+    for (const s of FEED_SCOPES) {
+      expect(s.label.trim()).not.toBe('')
+      expect(s.label).not.toBe(s.id)
+    }
+  })
+
+  it('has no duplicate ids, so a tab cannot shadow another', () => {
+    const ids: FeedScope[] = FEED_SCOPES.map((s) => s.id)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })
