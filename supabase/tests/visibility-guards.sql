@@ -365,6 +365,57 @@ from (
    where g.visibility > least(public.visibility_ceiling(g.owner), 'friends'::public.visibility_tier)
 ) z where n > 0;
 
+-- ── K. a member-callable writer must refuse a suspended member ─────────────────
+-- ⚠️ THREE SWEEPS BY HAND WENT STALE IN THREE DAYS. Ten functions were guarded on 3 Nov by
+-- naming them, then seven more, and a census afterwards found 91 member-callable SECURITY
+-- DEFINER writers still unguarded -- including `post_profile_note`, which puts your words on
+-- somebody else's page, and `submit_score`, which puts your name on the board everybody reads.
+-- A list cannot keep up with a schema. This asks the catalogue instead.
+--
+-- WHY THE FUNCTIONS AND NOT THE TABLES: these all run as the OWNER, so the RESTRICTIVE
+-- `*_not_suspended` policies on the circuit tables never see the caller. A policy cannot guard a
+-- definer function; only the function can.
+--
+-- WHO IS OUT, and each exemption is a rule rather than a name on a list:
+--
+--   * anything whose only writes are DELETEs. Suspension stops somebody acting on other
+--     people's screens; taking your own things down is the opposite, and blocking it would trap
+--     a suspended member with the very thing they were suspended for. That is the `picture_drop`
+--     decision, generalised.
+--   * anything admin-gated (`is_admin()` in the body, or named `admin_*`). It has its own door,
+--     and `admin_set_suspended` must never be blocked by the state it exists to change.
+--
+-- And four named exemptions, which ARE a list, because each is a judgement:
+--
+--   * `submit_contact_message` -- how somebody APPEALS a suspension. Shutting it would make the
+--     punishment unappealable.
+--   * `mark_activity_seen`, `mark_room_read` -- pure self-bookkeeping; they clear your own
+--     unread badges and reach nobody.
+--   * `close_park_room`, `close_profile_room` -- they only close a room of your own, which is a
+--     narrowing action like a delete.
+--   * `link_snake_names_to_accounts` -- maintenance that links unlinked handles to the accounts
+--     whose username matches exactly. It takes no argument and cannot be aimed at anybody.
+--     ⚠️ It is member-callable and arguably should not be; flagged rather than changed.
+insert into fails
+select 'a member-callable writer does not refuse a suspended member', p.proname
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
+  and has_function_privilege('authenticated', p.oid, 'execute')
+  and p.proname not like 'admin\_%'
+  and p.proname not in (
+    'submit_contact_message', 'mark_activity_seen', 'mark_room_read',
+    'close_park_room', 'close_profile_room', 'link_snake_names_to_accounts'
+  )
+  /* comments stripped first, for the reason block I records: a word in a comment is not code */
+  and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
+                     '--[^' || chr(10) || ']*', ' ', 'g')
+        ~* '\m(insert\s+into|update)\s+(public\.)?[a-z_]+'
+  and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
+                     '--[^' || chr(10) || ']*', ' ', 'g') !~* 'is_suspended'
+  and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
+                     '--[^' || chr(10) || ']*', ' ', 'g') !~* 'is_admin\s*\(\)';
+
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
 declare n int; msg text;
