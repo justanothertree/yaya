@@ -382,8 +382,11 @@ from (
 --     people's screens; taking your own things down is the opposite, and blocking it would trap
 --     a suspended member with the very thing they were suspended for. That is the `picture_drop`
 --     decision, generalised.
---   * anything admin-gated (`is_admin()` in the body, or named `admin_*`). It has its own door,
---     and `admin_set_suspended` must never be blocked by the state it exists to change.
+--   * anything named `admin_*`, or whose body OPENS with a refusal for non-admins. It has its
+--     own door, and `admin_set_suspended` must never be blocked by the state it exists to change.
+--     ⚠️ "Opens with" rather than "mentions": the first version of this check took the
+--     mere presence of `is_admin()` as a gate, and `rename_circuit` -- `is_admin() OR the
+--     circuit OWNER` -- walked straight through it.
 --
 -- And four named exemptions, which ARE a list, because each is a judgement:
 --
@@ -393,9 +396,11 @@ from (
 --     unread badges and reach nobody.
 --   * `close_park_room`, `close_profile_room` -- they only close a room of your own, which is a
 --     narrowing action like a delete.
---   * `link_snake_names_to_accounts` -- maintenance that links unlinked handles to the accounts
---     whose username matches exactly. It takes no argument and cannot be aimed at anybody.
---     ⚠️ It is member-callable and arguably should not be; flagged rather than changed.
+--
+--   `link_snake_names_to_accounts` used to be listed here and is no longer member-callable at
+--   all: anybody can pre-post a leaderboard score under a username nobody has claimed, and that
+--   function would hand the row to the real person the day they signed up. Revoked, so it falls
+--   out of this check's scope by itself.
 insert into fails
 select 'a member-callable writer does not refuse a suspended member', p.proname
 from pg_proc p
@@ -405,7 +410,7 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
   and p.proname not like 'admin\_%'
   and p.proname not in (
     'submit_contact_message', 'mark_activity_seen', 'mark_room_read',
-    'close_park_room', 'close_profile_room', 'link_snake_names_to_accounts'
+    'close_park_room', 'close_profile_room'
   )
   /* comments stripped first, for the reason block I records: a word in a comment is not code */
   and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
@@ -413,8 +418,21 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
         ~* '\m(insert\s+into|update)\s+(public\.)?[a-z_]+'
   and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
                      '--[^' || chr(10) || ']*', ' ', 'g') !~* 'is_suspended'
+  /* ⚠️ GATED BY is_admin(), NOT MERELY MENTIONING IT. The first version of this
+     check exempted any body containing the word, and that let `rename_circuit` through: it reads
+     `if not (is_admin() or <the circuit owner>)`, so it mentions the function and is gated by
+     neither. A suspended circuit OWNER could rename a circuit everybody in it sees.
+     (Checked rather than assumed: the exists clause requires `gm.role = 'owner'`, and an
+     ordinary member of the group is refused. The size of the blast radius was smaller than
+     first written; the hole, and the reason the exemption was wrong, were not.)
+
+     The test is now that the body OPENS with a refusal for non-admins -- optionally after a
+     `declare`, optionally with the admin test inside parentheses alongside a service-role
+     alternative, which is how `upsert_prices` reads. Anything that checks something else first,
+     or that offers a non-admin branch, is not exempt. */
   and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
-                     '--[^' || chr(10) || ']*', ' ', 'g') !~* 'is_admin\s*\(\)';
+                     '--[^' || chr(10) || ']*', ' ', 'g')
+        !~* '^\s*(declare\s.*?)?\s*begin\s*if\s+not\s*\(?\s*(public\.)?is_admin\s*\(\)';
 
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
