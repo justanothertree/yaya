@@ -98,10 +98,22 @@ export const TIER_HINTS: Record<'circuit' | 'snake', Record<VisibilityTier, stri
   },
   // No real names in example copy, ever — not even as illustration. This file ships in a
   // public repo and renders on a page other members read.
+  /**
+   * ⚠️ `public` NO LONGER PROMISES SIGNED-OUT, because the code never delivered it.
+   * `snake_friend_names` is the only thing that puts a member's name beside a handle, and its
+   * first condition is `auth.uid() is not null` — so a signed-out visitor sees handles and
+   * scores and never a name, whatever tier is set. The old wording said "signed in or not",
+   * which is a privacy control claiming to be WIDER than it is: somebody reading it would think
+   * they had published their name to the open web and might set it narrower in alarm, or trust
+   * it and be wrong about which way.
+   *
+   * Narrowed the copy rather than widening the code, deliberately. The behaviour is the safe one
+   * and nobody has asked for signed-out names; only the sentence was wrong.
+   */
   snake: {
     private: 'Your scores show under the handle you typed, and nobody learns it’s you.',
     friends: 'Friends see your name beside the handle. Everyone else sees just the handle.',
     members: 'Anyone signed in can tell these scores are yours.',
-    public: 'Your name shows next to these scores for anyone, signed in or not.',
+    public: 'Anyone signed in sees your name here. Signed-out visitors only ever see the handle.',
   },
 }

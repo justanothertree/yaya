@@ -5658,6 +5658,20 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   font-size: 0.78rem;
   flex-shrink: 0;
 }
+
+/* "put this on which board?" — wraps rather than scrolls, so a fourth group is not off the edge */
+.cz-rate-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.cz-rate-where .btn {
+  /* WCAG 2.5.8: these sit in a row, so the spacing exception cannot rescue them. Pixels
+     because the root size on this site is fluid and a rem is therefore not a length. */
+  min-height: 32px;
+}
 @media (prefers-reduced-motion: no-preference) {
   .cz-stage.is-spinning .cz-stage-face {
     /* each new face arrives, rather than replacing the last one in place */

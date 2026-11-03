@@ -66,6 +66,25 @@ rollback;
 
 -- ── the record ────────────────────────────────────────────────────────────────────
 --
+-- 3 Nov 2026, after the snake handle tier was honoured: CHANGED.
+--
+--   cells 196 · blocks 539 · activity 6,945 · trophies 130
+--   md5   b89fc62c856482e4e5b248651da62fa0
+--
+-- ⚠️ -173 ACTIVITY EVENTS, AND THE ARITHMETIC SAYS 240. `get_member_activity`'s two snake
+-- branches joined `player_registry` by user and never read `r.visibility`, so a member set to
+-- `private` -- "nobody learns it's you" -- still had their scores on their profile under their
+-- name. Five members have snake events and a `friends` tier (8, 5, 4, 2 and 1 events each),
+-- hidden from the 12 viewers who are not their friends: 240 by multiplication.
+--
+-- The realised figure is 173 because 28 of the 49 non-empty cells sit at the 200-per-cell cap
+-- this file warns about. In a saturated cell, hiding a snake event lets another take its place
+-- and the count does not move. That is the cap behaving exactly as documented, and it is why
+-- the hash rather than the total is the signal.
+--
+-- Blocks are unchanged at 539, and trophies at 130 -- `get_member_trophies` is a different
+-- function, and only the trophy branch INSIDE get_member_activity was gated.
+--
 -- 3 Nov 2026, after Part 1 (the ceiling backfill): UNCHANGED.
 --
 --   cells 196 ' + chr(183) + ' blocks 539 ' + chr(183) + ' activity 7,118 ' + chr(183) + ' trophies 130

@@ -37,7 +37,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
-import { defaultMovieGroup } from './movieMeta'
 import { buildLibrary, filterLibrary, libraryKinds, type LibraryEntry } from '../poolLibrary'
 import { buildReel, reelStep, ROLL_MS, sendRoll, watchRolls, weightedPick } from '../poolRoll'
 import { useScrollFade } from '../../hooks/useScrollFade'
@@ -316,7 +315,19 @@ export function Watchlist() {
    * Two buttons, because there are two endings and the old one guessed wrong at both: you
    * watched it and want to rate it, or you didn't and want it gone.
    */
-  function rateIt(w: Winner) {
+  /**
+   * ⚠️ IT USED TO PICK THE BOARD FOR YOU, AND THAT IS A PUBLISHING DECISION. `rateIt` called
+   * `defaultMovieGroup()`, which returns whichever group already holds the most films — so the
+   * wheel landed on something, you pressed the button that means "we watched it", and the title
+   * went onto a shared board you were never asked about. For a pool you keep to yourself that is
+   * the whole privacy of the thing gone in one tap.
+   *
+   * ⚠️ A JUST-ME POOL NEVER PUBLISHES AT ALL. `just_me` and the stand-in LOOSE pool (options
+   * that predate pools, and the signed-out demo board) are yours; the film is created with no
+   * group, which `movie_visible` reads as "only the person who rated it". There is no group
+   * question for those, because the honest set of answers is empty.
+   */
+  function rateIt(w: Winner, groupId: string | null) {
     void circuitStore.saveMovie({
       id: 'm' + (crypto.randomUUID?.() ?? String(Date.now())),
       title: w.title,
@@ -331,10 +342,13 @@ export function Watchlist() {
       rt: allWatchlist.find((x) => x.id === w.id)?.rt,
       /* nobody has rated it yet — this is the row to hang a rating on, not a rating */
       ratings: {},
-      groupId: defaultMovieGroup(),
+      /* null, not `defaultMovieGroup()` — see above. A film with no group is visible to the
+         person who rated it and to nobody else. */
+      groupId: groupId ?? undefined,
     })
     void circuitStore.deleteWatchlist(w.id)
     setLanded(null)
+    setRating(null)
     /* straight to where the rating happens; landing back on the pool it just left would leave
        you to find it yourself on a board of a hundred and fifty */
     window.location.hash = '#ratings?tab=reviews'
@@ -458,6 +472,14 @@ export function Watchlist() {
    * you made yourself, and the difference decides whether the settings button will let you
    * change anything.
    */
+  /** the winner waiting on a "which board?" answer — see rateIt */
+  const [rating, setRating] = useState<Winner | null>(null)
+  /**
+   * ⚠️ THE STAND-IN POOL COUNTS AS PRIVATE. LOOSE is not a row and has no audience of its
+   * own; it holds options that predate pools and the whole signed-out demo board. Treating it as
+   * shareable would publish the demo board's picks to a real group.
+   */
+  const keptToMyself = !pool || pool.id === LOOSE_ID || pool.audience === 'just_me'
   const ownerName = pool?.ownerUserId ? (names[pool.ownerUserId] ?? 'Someone') : null
   const audienceLine = !pool
     ? ''
@@ -674,7 +696,11 @@ export function Watchlist() {
               <>
                 <button
                   className="btn cz-tap"
-                  onClick={() => rateIt(landed)}
+                  onClick={() => {
+                    /* a pool you keep to yourself publishes nowhere, so there is nothing to ask */
+                    if (keptToMyself) rateIt(landed, null)
+                    else setRating(landed)
+                  }}
                   title="We did this one — put it on the review board"
                 >
                   ★ Rate it
@@ -695,6 +721,33 @@ export function Watchlist() {
               {landed ? `Picked ${landed.title}` : ''}
             </span>
           </div>
+
+          {/**
+           * ⚠️ ASKED, NOT GUESSED. Putting a title on a board is publishing it to everybody in
+           * that board, and the old code chose the board by counting which one already held the
+           * most films. "Just me" is first and is always offered, because the honest default for
+           * a question nobody has answered is the narrow one.
+           */}
+          {rating && (
+            <div className="cz-rate-where" role="group" aria-label="Which board?">
+              <span className="muted">Put “{rating.title}” on which board?</span>
+              <button className="btn cz-tap" onClick={() => rateIt(rating, null)}>
+                Just me
+              </button>
+              {(state.groups ?? []).map((g) => (
+                <button key={g.id} className="btn cz-tap" onClick={() => rateIt(rating, g.id)}>
+                  {g.name}
+                </button>
+              ))}
+              <button
+                className="btn cz-tap"
+                style={{ opacity: 0.6 }}
+                onClick={() => setRating(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
 
           {multiKind && (
             <div
