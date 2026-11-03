@@ -36,6 +36,48 @@ export type Kept = {
   created_at: string
   url: string
   thumbUrl: string
+  /**
+   * Where this picture is used — the OWNER's own rows, counted by `pictures_mine`.
+   *
+   * ⚠️ ALL THREE FOREIGN KEYS ARE `on delete set null`, which is what makes these worth
+   * showing. Deleting a picture does not delete the rating, the workout day or the sitting it was
+   * attached to; it leaves them there without a photograph. So the number is how many places
+   * would lose one — the thing a person needs before pressing ✕ on a thumbnail they may not
+   * recognise out of context.
+   *
+   * Optional because a bundle talking to a server from before this shipped gets nothing here, and
+   * `0` would be the wrong reading of that silence: it would turn every picture into a one-click
+   * delete, which is the behaviour the confirm step exists to stop.
+   */
+  in_ratings?: number
+  in_logs?: number
+  in_sittings?: number
+}
+
+/**
+ * How many places would lose this picture, and how to say it.
+ *
+ * ⚠️ `null` MEANS "NOT TOLD", WHICH IS NOT "NOWHERE". An older server sends no counts,
+ * and reading that as zero would skip the confirm step on a picture that is in use. The room
+ * treats null as "ask anyway" — the cautious direction, and the only one that cannot silently
+ * lose somebody's photograph from three places at once.
+ */
+export function pictureUses(p: Kept): { total: number | null; says: string } {
+  const parts: Array<[number, string, string]> = [
+    [p.in_ratings ?? 0, 'rating', 'ratings'],
+    [p.in_logs ?? 0, 'workout', 'workouts'],
+    [p.in_sittings ?? 0, 'sitting', 'sittings'],
+  ]
+  const told = p.in_ratings !== undefined || p.in_logs !== undefined || p.in_sittings !== undefined
+  if (!told) return { total: null, says: '' }
+  const total = parts.reduce((n, [c]) => n + c, 0)
+  return {
+    total,
+    says: parts
+      .filter(([c]) => c > 0)
+      .map(([c, one, many]) => `${c} ${c === 1 ? one : many}`)
+      .join(' · '),
+  }
 }
 
 /** what a squeeze came to, for the dial to show */
@@ -286,6 +328,33 @@ export async function seenPictures(ids: string[]): Promise<Seen> {
   const rows = (data as { pictures?: Kept[] } | null)?.pictures
   if (!Array.isArray(rows)) return { pictures: [], failed: true }
   return { pictures: rows, failed: false }
+}
+
+/**
+ * Just the two numbers the ceilings are applied to, for a card that does not want the pictures.
+ *
+ * ⚠️ ITS OWN CALL RATHER THAN `myPictures()`, which signs TWO urls per picture -- at the
+ * 500-picture ceiling that is a thousand signatures to draw "4 of 500". The same reasoning as
+ * `seenPictures` beside it: ask for what you want.
+ *
+ * ⚠️ AND IT HAS A PREVIEW BRANCH, because the Account card that uses it is otherwise
+ * stuck on "Counting..." for ever in the workbench. `previewMember` has no session, so an RPC
+ * answers nothing there -- which is the trap CLAUDE.md names: a surface that renders its loading
+ * state and only its loading state, where a sweep of it reports no faults because there is
+ * nothing on screen to find.
+ *
+ * ⚠️ AND A FAILURE IS `null`, WHICH THE CALLER MUST NOT DRAW AS ZERO. "0 of 500" on a
+ * dead network reads as an empty account, which is alarming and wrong; the card says it could not
+ * count instead.
+ */
+export async function picturesUsed(): Promise<Used | null> {
+  if (previewMember) return pvUsed()
+  const { data, error } = await getSupabaseClient().rpc('pictures_used')
+  if (error || !data) return null
+  const u = data as Partial<Used>
+  return typeof u.count === 'number' && typeof u.bytes === 'number'
+    ? { count: u.count, ready: typeof u.ready === 'number' ? u.ready : u.count, bytes: u.bytes }
+    : null
 }
 
 export async function dropPicture(id: string): Promise<{ why: string } | null> {

@@ -50,12 +50,23 @@ const made = (
   alt: string | null,
   bytes: number,
   daysAgo: number,
+  /**
+   * ⚠️ WHERE THIS ONE IS USED, AND THE DEFAULT IS DELIBERATELY NOT ALL ZEROES. The room
+   * asks before deleting a picture that is in use and deletes an unused one in one press, so a
+   * fixture where nothing is used can only ever show the one-press path -- the branch that cannot
+   * lose anything. Two of the four below are in use, which is what makes both paths reachable in
+   * the workbench. `[ratings, workouts, sittings]`.
+   */
+  uses: [number, number, number] = [0, 0, 0],
 ): PvPic => ({
   id,
   w,
   h,
   alt,
   bytes,
+  in_ratings: uses[0],
+  in_logs: uses[1],
+  in_sittings: uses[2],
   created_at: new Date(Date.now() - daysAgo * 86_400_000).toISOString(),
   url: drawn(w, h, a, b, label),
   thumbUrl: drawn(
@@ -79,7 +90,8 @@ const seed = (): PvPic[] => [
     184_000,
     0,
   ),
-  made('pv-pic2', 1200, 1600, '#1f9d55', '#0b7285', 'two', null, 221_000, 2),
+  /* in use in two places, so the room's confirm step is reachable in the workbench */
+  made('pv-pic2', 1200, 1600, '#1f9d55', '#0b7285', 'two', null, 221_000, 2, [2, 0, 1]),
   /**
    * ⚠️ A PANORAMA ON PURPOSE. A grid of near-squares tells you nothing about a grid; the shape
    * that breaks a layout is the one nothing in a tidy fixture has. `fitWithin` has its own test
@@ -107,6 +119,8 @@ const seed = (): PvPic[] => [
     'a very long description of a picture, written by somebody who wanted to be thorough about it',
     402_000,
     9,
+    /* in use in exactly one place -- the singular wording is its own thing to get wrong */
+    [0, 1, 0],
   ),
 ]
 

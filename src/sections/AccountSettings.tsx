@@ -16,6 +16,8 @@ import { site } from '../config/site'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import { CirclesCard } from '../components/CirclesCard'
 import type { VisibilityTier } from '../circuit/types'
+import { PICTURES_EACH, PICTURE_BYTES_ALL, picturesUsed, type Used } from '../pictures/cloud'
+import { sayBytes } from '../pictures/shrink'
 import { showToast } from '../circuit/toast'
 import { YourCopy } from '../chronicle/YourCopy'
 import { Toast } from '../circuit/ui/Toast'
@@ -872,6 +874,89 @@ function CircuitsCard() {
  * database. This is what makes the fix something to get right rather than something to rush: work
  * you can carry to another machine and put back after a wipe is not one browser setting from gone.
  */
+/**
+ * YOUR PICTURES — how much room they take, and the way into the room that holds them.
+ *
+ * ⚠️ IT EXISTS BECAUSE `#pictures` HAS NO NAV ENTRY. `places.ts` says `nav: () => false` for it
+ * deliberately — it is a room you arrive at from wherever you were attaching a photograph, not a
+ * place to go and browse. But that makes the two ceilings invisible: `picture_claim` refuses at
+ * 500 pictures or 50 MB with a readable sentence, and until that sentence arrives there is
+ * nowhere on the site that says how close you are. This is that, beside the card that already
+ * explains photographs are not in the backup file.
+ *
+ * ⚠️ AND IT IS THE SERVER'S FIGURE, which is the correction `pics-used` in the room itself had
+ * to make: `pictures_used()` counts EVERY row — half-finished claims from failed uploads
+ * included, and their thumbnails — while a count of what is on screen holds only ready pictures
+ * and only their full-size bytes. Measured in the room once: 942 KB on screen against 5,724,752
+ * spoken for. A figure shown against a limit has to be the figure the limit uses.
+ */
+function PicturesCard() {
+  /**
+   * ⚠️ THREE STATES, NOT TWO, AND THE MIDDLE ONE IS WHY. 'asking' and 'failed' look the
+   * same if both are `null` -- so a dead network would leave this card on "Counting..." for ever,
+   * which reads as a slow page rather than as a question that was asked and not answered. The
+   * same shape, for the same reason, as `useMyCeiling`'s.
+   */
+  const [used, setUsed] = useState<Used | null | 'failed'>(null)
+  useEffect(() => {
+    let live = true
+    void picturesUsed().then((u) => {
+      if (live) setUsed(u ?? 'failed')
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  const have = used && used !== 'failed' ? used : null
+  const pct = have ? Math.max(have.count / PICTURES_EACH, have.bytes / PICTURE_BYTES_ALL) : 0
+  const half = have ? have.count - have.ready : 0
+
+  return (
+    <article className="card" style={{ display: 'grid', gap: 10 }}>
+      <h3 style={{ margin: 0 }}>Your pictures</h3>
+      {used === 'failed' ? (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }} role="status">
+          {/* ⚠️ not "0 of 500", which on a dead network reads as an empty account */}
+          Couldn’t count them just now — reload the page to try again.
+        </p>
+      ) : used === null ? (
+        <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }} aria-busy>
+          Counting…
+        </p>
+      ) : (
+        <>
+          <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+            {used.count} of {PICTURES_EACH} · {sayBytes(used.bytes)} of{' '}
+            {sayBytes(PICTURE_BYTES_ALL)}
+          </p>
+          {/* ⚠️ THE BAR SHOWS WHICHEVER CEILING IS NEARER, because either one refuses on its own.
+              Five hundred tiny pictures and ten enormous ones are both full, and a bar built on
+              bytes alone would sit at 4% while the next upload is turned away. */}
+          <div
+            className="pics-bar"
+            role="img"
+            aria-label={`${Math.round(pct * 100)}% of the room you have for pictures`}
+          >
+            <span style={{ width: `${Math.min(100, Math.round(pct * 100))}%` }} />
+          </div>
+          {half > 0 && (
+            <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+              {half} half-finished {half === 1 ? 'upload is' : 'uploads are'} still holding room,
+              and clear within the hour.
+            </p>
+          )}
+        </>
+      )}
+      <p style={{ margin: 0 }}>
+        <a className="btn" href="#pictures">
+          Browse &amp; manage →
+        </a>
+      </p>
+    </article>
+  )
+}
+
 function BackupCard() {
   const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
@@ -958,9 +1043,14 @@ function BackupCard() {
        * (`art` here is the drawings store, which is a different thing from a photograph — easy to
        * read this card and assume one covers the other.)
        */}
+      {/* ⚠️ AND IT POINTS AT THE CARD BELOW NOW, matching the chronicle line above it. The
+          sentence itself is unchanged and must stay: photographs have no file of their own, and
+          the warning is the whole reason this card has three paragraphs. What changed is that
+          "see what you have kept" used to send somebody to a room that has no nav entry, where
+          the chronicle line sends them two inches down the page. Same wording, nearer answer. */}
       <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
-        Your photographs are not in it either, and have no file of their own yet —{' '}
-        <a href="#pictures">see what you have kept</a>.
+        Your photographs are not in it either, and have no file of their own yet — see{' '}
+        <strong>Your pictures</strong>, below.
       </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn" type="button" onClick={download} disabled={!total}>
@@ -1328,6 +1418,10 @@ export function AccountSettings({ canFinance = false }: { canFinance?: boolean }
           <CirclesCard />
           <PublishCard />
           <BackupCard />
+          {/* ⚠️ DIRECTLY BELOW `BackupCard`, because that card's third paragraph now points at
+              it by name. Two inches, not a room with no nav entry — which is what "see what you
+              have kept" used to mean. */}
+          <PicturesCard />
           {/* the chronicle's own copy, beside the library's — see the note on YourCopy for why
               it is here rather than at the bottom of a room people open to press Start */}
           <YourCopy />

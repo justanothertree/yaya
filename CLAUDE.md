@@ -240,11 +240,25 @@ that render nothing at zero first**.
   passes. The check that settles it is a real diff, and `get_edge_function` makes one possible:
   it returns the deployed source, so write that back out and compare it to disk. Done twice on
   29 Oct, and the second time is the one that shows why it is worth the trouble: v15 differs from
-  v14 by a single COMMENT line, which no probe could ever distinguish. Deployed `pictures` is
-  md5 **4f070d96d1edf024f474934d60eb2ed7**, 23,874 bytes, byte for byte the repository's copy. Two different questions, two checks: **the probe proves it boots, the diff proves it is
-  yours.** The transcription risk is real and unavoidable, because the tool takes the file's text
-  inline and there is no CLI here — so the diff is the only thing standing between a dropped
-  character and production.
+  v14 by a single COMMENT line, which no probe could ever distinguish. Two different questions,
+  two checks: **the probe proves it boots, the diff proves it is yours.** The transcription risk
+  is real and unavoidable, because the tool takes the file's text inline and there is no CLI here
+  — so the diff is the only thing standing between a dropped character and production.
+  ⚠️ **AND A RECORDED HASH IS A MEASURED CLAIM WITH A DATE ON IT, §2's own rule applied to this
+  very bullet.** This said "Deployed `pictures` is md5 4f070d96d1edf024f474934d60eb2ed7, 23,874
+  bytes" as a standing fact, and it stopped being one the next time the function was deployed —
+  which is a thing this file tells you to expect and had not done about itself. The current
+  figures belong beside the version, so: **v16, 3 Nov 2026** — `index.ts` 28,463 bytes, md5
+  `f5594457d9fc86b8a7adf7df3b8c2457`; `verdict.ts` 4,556 bytes, md5
+  `4aa1b9bb902e6d25e329e8593fc4217c`; both byte for byte the repository's copies. Do not trust
+  these; `get_edge_function` answers in one call and `md5` of the file on disk answers in another.
+  ⚠️ **AND A THIRD CHECK IS WORTH MORE THAN BOTH WHEN THE DEPLOY IS FOR A GATE: ask the deployed
+  function to REFUSE you.** v16's whole point was closing `op: 'check'` to the publishable key,
+  and the two 401s are distinguishable, which is what makes the probe meaningful — the function's
+  own body is `{"error":"not authenticated"}` while the gateway's is
+  `{"code":"UNAUTHORIZED_NO_AUTH_HEADER",...}`. Getting the FUNCTION's sentence back from a call
+  carrying the anon key proves the code ran and refused, which a diff cannot show and a boot
+  probe cannot either.
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has

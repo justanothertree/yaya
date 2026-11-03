@@ -17,6 +17,7 @@ import { parseTrades } from './lib/parseTrades.mjs'
 /* the room-settings allowlist, lifted out so it can be asked a question without opening a
    socket — see the header of that file */
 import { DEFAULT_SETTINGS, boardModeFor, sanitizeSettings } from './lib/settings.mjs'
+import { r2Operations, r2Storage } from './lib/r2ops.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
@@ -966,11 +967,58 @@ async function isAdmin(req) {
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || ''
 const CF_ANALYTICS_TOKEN = process.env.CF_ANALYTICS_TOKEN || ''
+/**
+ * ⚠️ TURN AND SFU SHARE THE 1,000 GB, AND THIS ASKED ABOUT ONE OF THEM. Cloudflare's Realtime
+ * pricing is one allowance across both products — "SFU and TURN share this allowance; they do
+ * not have independent free tiers" — so a panel built on the TURN dataset alone reports a
+ * fraction of what the bill is measured against. Nothing on this site uses the SFU today, which
+ * is exactly why it was easy to leave out and exactly why it has to be in: the figure's job is to
+ * answer "am I about to be charged", and it cannot do that about a product it does not look at.
+ *
+ * ⚠️ AND IT IS BILLED ON EGRESS ONLY. `ingressBytes` is still fetched and still reported, because
+ * what came IN is worth seeing — but it is not added to the billable total any more. Checked
+ * against Cloudflare's own docs rather than assumed: billing is "based on data sent from
+ * Cloudflare edge to your application", at $0.05/GB past the shared 1,000.
+ */
 const USAGE_QUERY = `query turnUsage($accountId: String!, $from: Date!, $to: Date!) {
   viewer {
     accounts(filter: { accountTag: $accountId }) {
       callsTurnUsageAdaptiveGroups(limit: 1000, filter: { date_geq: $from, date_leq: $to }) {
         sum { egressBytes ingressBytes }
+      }
+      callsSfuUsageAdaptiveGroups(limit: 1000, filter: { date_geq: $from, date_leq: $to }) {
+        sum { egressBytes ingressBytes }
+      }
+    }
+  }
+}`
+
+/**
+ * R2, which is where the pictures live.
+ *
+ * ⚠️ TWO DATASETS, BECAUSE R2 BILLS TWO DIFFERENT THINGS. Storage is a GB-month figure and is
+ * read as the MAX over the window (`r2StorageAdaptiveGroups` reports a level, not a flow, so
+ * summing it would multiply one bucket by the number of days). Operations are a COUNT and are
+ * read as the sum of `requests` grouped by `actionType` — which is the only way to split Class A
+ * from Class B, because the two are priced an order of magnitude apart and the dataset does not
+ * do the split for you.
+ *
+ * ⚠️ AND THE FILTER IS `datetime_*`, NOT `date_*`. The Calls datasets above take a `Date`; these
+ * take a `Time`. A `date_geq` here is a GraphQL type error, which comes back as an `errors` array
+ * and reads like a dead token.
+ *
+ * `metadataSize` is fetched beside `payloadSize` because R2 bills the sum of both, and a bucket
+ * of small objects is mostly metadata. Omitting it is how a figure quietly runs under.
+ */
+const R2_QUERY = `query r2Usage($accountId: String!, $from: Time!, $to: Time!) {
+  viewer {
+    accounts(filter: { accountTag: $accountId }) {
+      r2StorageAdaptiveGroups(limit: 1000, filter: { datetime_geq: $from, datetime_leq: $to }) {
+        max { objectCount payloadSize metadataSize }
+      }
+      r2OperationsAdaptiveGroups(limit: 10000, filter: { datetime_geq: $from, datetime_leq: $to }) {
+        sum { requests }
+        dimensions { actionType }
       }
     }
   }
@@ -1019,16 +1067,105 @@ async function turnUsage() {
     }
     const data = await r.json()
     if (data?.errors?.length) throw new Error(data.errors[0]?.message || 'graphql error')
-    const groups = data?.data?.viewer?.accounts?.[0]?.callsTurnUsageAdaptiveGroups ?? []
+    const acct = data?.data?.viewer?.accounts?.[0] ?? {}
     let egress = 0
     let ingress = 0
-    for (const g of groups) {
-      egress += Number(g?.sum?.egressBytes || 0)
-      ingress += Number(g?.sum?.ingressBytes || 0)
+    /* both products, because the free allowance is one allowance across both */
+    for (const key of ['callsTurnUsageAdaptiveGroups', 'callsSfuUsageAdaptiveGroups']) {
+      for (const g of acct[key] ?? []) {
+        egress += Number(g?.sum?.egressBytes || 0)
+        ingress += Number(g?.sum?.ingressBytes || 0)
+      }
     }
-    // Billed on the total moved through the relay, so report the sum and its parts.
-    const body = { configured: true, from, to, egressBytes: egress, ingressBytes: ingress }
+    /**
+     * ⚠️ `billableBytes` IS EGRESS ALONE, AND THE PANEL USED TO ADD THE PAIR. This comment said
+     * "billed on the total moved through the relay", which is not what Cloudflare bills: the
+     * charge is on data sent from their edge to the application. Adding ingress overstated the
+     * figure — harmless in the sense that it only ever alarmed, and exactly the wrong direction
+     * for a number somebody reads to decide whether to look at a dashboard.
+     *
+     * Both parts stay in the body. The old pair of fields stay too, under their old names, so a
+     * browser running an older bundle keeps working rather than reporting nothing.
+     */
+    const body = {
+      configured: true,
+      from,
+      to,
+      egressBytes: egress,
+      ingressBytes: ingress,
+      billableBytes: egress,
+    }
     usageCache = { at: Date.now(), body }
+    return body
+  } catch (err) {
+    return { configured: true, error: String(err?.message || err) }
+  }
+}
+
+let r2Cache = { at: 0, body: null }
+
+/**
+ * What R2 has stored and been asked to do this month.
+ *
+ * ⚠️ ITS OWN CACHE, NOT `turnUsage`'s, because one failing must not blank the other. They are two
+ * GraphQL round trips to the same account with the same token; folding them into one body behind
+ * one cache would mean a transient error on either reporting both as unknown for fifteen minutes.
+ * The 15-minute window and the admin gate are the same.
+ *
+ * ⚠️ AND A MISSING FIELD IS `null`, NEVER 0. The whole lesson of the `!r.ok` paragraph above:
+ * this endpoint exists to answer "am I about to be charged", so a confident zero is the one
+ * answer it must never invent. If Cloudflare adds a field, renames a dataset, or the token loses
+ * the R2 scope, the panel says "unknown" and the operator goes and looks.
+ */
+async function r2Usage() {
+  if (!CF_ACCOUNT_ID || !CF_ANALYTICS_TOKEN) {
+    return { configured: false, reason: 'CF_ACCOUNT_ID / CF_ANALYTICS_TOKEN not set' }
+  }
+  if (r2Cache.body && Date.now() - r2Cache.at < 15 * 60_000) return r2Cache.body
+  const now = new Date()
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+  const to = now.toISOString()
+  try {
+    const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CF_ANALYTICS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: R2_QUERY,
+        variables: { accountId: CF_ACCOUNT_ID, from, to },
+      }),
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+    })
+    if (!r.ok) {
+      const detail = (await r.text().catch(() => '')).slice(0, 200)
+      throw new Error(`cloudflare http ${r.status}${detail ? ` — ${detail}` : ''}`)
+    }
+    const data = await r.json()
+    if (data?.errors?.length) throw new Error(data.errors[0]?.message || 'graphql error')
+    const acct = data?.data?.viewer?.accounts?.[0]
+    if (!acct) throw new Error('cloudflare returned no account')
+
+    /* the two folds live in server/lib/r2ops.mjs, where a test can reach them -- the `max`
+       versus `sum` decision and the Class A/B price list are both there, with the reasoning */
+    const { bytes, objects } = r2Storage(acct.r2StorageAdaptiveGroups)
+    const { classA, classB, freeOps, unknown } = r2Operations(acct.r2OperationsAdaptiveGroups)
+
+    const body = {
+      configured: true,
+      from,
+      to,
+      bytes,
+      objects,
+      classA,
+      classB,
+      freeOps,
+      /* an action neither list knows, priced as a write and named so it can be looked up rather
+         than discovered on a bill */
+      unknownActions: unknown.slice(0, 12),
+    }
+    r2Cache = { at: Date.now(), body }
     return body
   } catch (err) {
     return { configured: true, error: String(err?.message || err) }
@@ -1062,9 +1199,19 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ error: 'admin only' }))
         return
       }
-      const body = await turnUsage()
+      /**
+       * ⚠️ R2 ARRIVES AS A SIBLING FIELD, AND AN OLDER BROWSER MUST NOT NOTICE. The Realtime
+       * fields stay exactly where they were at the top level; `r2` is added beside them. A
+       * bundle that has never heard of it reads the body as before, and a bundle that has it
+       * against a relay not yet redeployed sees `r2: undefined` — which is the "unknown" state
+       * the panel is written for, rather than a zero.
+       *
+       * Both are fetched in parallel: they are two round trips to the same API and nothing in
+       * either depends on the other. Each has its own cache, so one failing leaves the other.
+       */
+      const [calls, r2] = await Promise.all([turnUsage(), r2Usage()])
       res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify(body))
+      res.end(JSON.stringify({ ...calls, r2 }))
     })
     return
   }

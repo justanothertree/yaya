@@ -4,6 +4,7 @@ import {
   PICTURE_BYTES_ALL,
   dropPicture,
   myPictures,
+  pictureUses,
   type Kept,
   type Used,
 } from './cloud'
@@ -29,6 +30,15 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
   const [open, setOpen] = useState<Kept | null>(null)
   const [busy, setBusy] = useState(false)
   const [say, setSay] = useState<string | null>(null)
+  /**
+   * Which picture has been pressed once and is waiting for the second press.
+   *
+   * ⚠️ ONE AT A TIME, AND IT CLEARS ON A RELOAD. Holding a set would let somebody arm
+   * three deletes and then forget which; holding one means the armed state is always the thing
+   * they just touched. `load()` runs after every delete, which re-renders the grid -- so an armed
+   * picture that has gone takes its armed state with it.
+   */
+  const [confirming, setConfirming] = useState<string | null>(null)
 
   const moan = (why: string) => {
     setSay(why)
@@ -62,11 +72,36 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  /**
+   * ⚠️ AN IN-USE PICTURE GETS A SECOND PRESS, AND AN UNUSED ONE DOES NOT. The note below is right
+   * that deleting a thumbnail you are looking at is a small, obvious act — and it was written
+   * when a picture was only ever in the grid. All three foreign keys are `on delete set null`, so
+   * deleting one that is attached to a rating, a workout day or a sitting leaves those rows there
+   * with no photograph: the thing that is lost is somewhere else on the site, which is exactly
+   * the case where an obvious act stops being obvious.
+   *
+   * ⚠️ AND IT IS INLINE, NOT `window.confirm`, which is auto-dismissed in the Browser pane and
+   * returns false — so a flow built on it reads as a dead button and cannot be driven or checked
+   * here at all. That is the CirclesCard decision, for the same reason, and it is better on a
+   * phone anyway: there is no modal to mis-tap and the step says what it will do.
+   *
+   * ⚠️ AND "NOT TOLD" ASKS ANYWAY. An older server sends no counts; reading that silence as zero
+   * would skip the step on a picture that is in use. `pictureUses` returns a null total for that
+   * case and the branch below treats it as needing a confirm — the cautious direction, and the
+   * only one that cannot quietly take somebody's photograph out of three places at once.
+   */
+  const askFirst = (p: Kept) => {
+    const { total } = pictureUses(p)
+    return total === null || total > 0
+  }
+
   const drop = async (p: Kept) => {
     if (busy) return
-    /* ⚠️ `confirm` is auto-dismissed in the Browser pane — see CLAUDE.md — so this is deliberately
-       not behind one. Deleting a picture you can see the thumbnail of is a small, obvious act; the
-       dangerous version would be deleting several at once, which this cannot do. */
+    if (askFirst(p) && confirming !== p.id) {
+      setConfirming(p.id)
+      return
+    }
+    setConfirming(null)
     /* the same guard as `keep` above, for the same reason */
     setBusy(true)
     let bad: { why: string } | null
@@ -154,15 +189,45 @@ export function Pictures({ authed = false }: { authed?: boolean } = {}) {
                     {sayBytes(p.bytes)} · {p.w}×{p.h}
                   </span>
                   <button
-                    className="btn btn-ghost chron-x"
+                    className={'btn btn-ghost chron-x' + (confirming === p.id ? ' is-on' : '')}
                     onClick={() => void drop(p)}
                     disabled={busy}
-                    aria-label={p.alt ? `Delete ${p.alt}` : 'Delete this picture'}
-                    title="Delete"
+                    aria-label={
+                      confirming === p.id
+                        ? `Delete ${p.alt ?? 'this picture'} anyway`
+                        : p.alt
+                          ? `Delete ${p.alt}`
+                          : 'Delete this picture'
+                    }
+                    title={confirming === p.id ? 'Press again to delete' : 'Delete'}
                   >
                     ✕
                   </button>
                 </span>
+                {/**
+                 * ⚠️ WHERE IT IS USED, DRAWN RATHER THAN LEFT TO THE CONFIRM STEP. A photograph in
+                 * a grid of twenty thumbnails is hard to place; "2 ratings · 1 sitting" is what
+                 * tells you which one this is before you reach for ✕ — and the FKs are
+                 * `on delete set null`, so those rows survive and simply stop having a picture.
+                 */}
+                {(() => {
+                  const { total, says } = pictureUses(p)
+                  if (total === null || total === 0) return null
+                  return <span className="pics-uses muted">Used in: {says}</span>
+                })()}
+                {confirming === p.id ? (
+                  <span className="pics-sure" role="status">
+                    {(() => {
+                      const { total } = pictureUses(p)
+                      return total === null
+                        ? 'Can’t tell where this is used. Delete anyway?'
+                        : `Used in ${total} ${total === 1 ? 'place' : 'places'}; ${total === 1 ? 'it' : 'they'} will lose the picture. Delete anyway?`
+                    })()}{' '}
+                    <button className="btn btn-ghost" onClick={() => setConfirming(null)}>
+                      Keep it
+                    </button>
+                  </span>
+                ) : null}
                 {/* ⚠️ the description is drawn, not only an alt attribute — a picture nobody can
                     describe to themselves is one they will not find again, and a tooltip does not
                     exist on a phone */}

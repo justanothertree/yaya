@@ -521,7 +521,44 @@ Deno.serve(async (req) => {
         }
       }),
     )
-    return json({ ok: true, orphaned: gone.some((g) => !g) }, 200, origin)
+    const orphaned = gone.some((g) => !g)
+    /**
+     * ⚠️ "REPORTED, SO A SWEEP CAN FIND IT LATER" WAS NOT TRUE, AND THE ROW ORDER IS WHY. The
+     * paragraph above is right that a failed R2 delete must not be raised at the person — but it
+     * said the leftover object was reported, and the only report was `orphaned: true` in a
+     * response nobody keeps. By the time that is returned the `member_pictures` row has already
+     * gone, and those two keys were the ONLY place the object's name existed: unreachable,
+     * uncountable, and billed, with nothing left to sweep by.
+     *
+     * So the keys are written down. `picture_orphans` is deny-all with no grants at all, reached
+     * only through `picture_orphan_log`, which is granted to `service_role` and nothing else —
+     * the same shape `picture_ready` above uses for the same client. `which` says whether the
+     * full-size, the thumbnail or both are left, so a sweep looks for what is actually there.
+     *
+     * ⚠️ AND IT IS BEST-EFFORT ON TOP OF A BEST-EFFORT. If the log itself cannot be written the
+     * delete is STILL a success: the member's picture is gone, which is what they asked for, and
+     * failing their request because an operator's bookkeeping failed would be the tail wagging
+     * the dog. The failure goes to the function's own log, which is the one place left.
+     */
+    if (orphaned) {
+      try {
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        if (serviceKey) {
+          const asService = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey)
+          await asService.rpc('picture_orphan_log', {
+            p_owner: user.id,
+            p_key: keys.key,
+            p_thumb_key: keys.thumb_key,
+            p_which: !gone[0] && !gone[1] ? 'both' : !gone[0] ? 'full' : 'thumb',
+          })
+        } else {
+          console.error('orphaned picture, and no service key to write it down', keys.key)
+        }
+      } catch (e) {
+        console.error('could not log an orphaned picture', keys.key, String(e))
+      }
+    }
+    return json({ ok: true, orphaned }, 200, origin)
   }
 
   return json({ error: 'unknown op' }, 400, origin)

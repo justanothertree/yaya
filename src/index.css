@@ -1253,6 +1253,48 @@
   line-height: 1.4;
 }
 
+/* Where a picture is used, under its size line. Quieter than the facts above it -- it is a
+   label, not a control -- and it wraps rather than ellipsing, because "2 ratings" cut to "2 ra"
+   is worse than a second line in a tile that already has room for one. */
+.pics-uses {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+/* ⚠️ THE CONFIRM STEP, AND IT IS A FULL-WIDTH ROW RATHER THAN A TOOLTIP. It says what
+   will be lost, so it has to be readable on a phone -- which a `title` is not. 44px on the Keep
+   it button, because it is the way OUT of a destructive step and must be the easy thing to hit. */
+.pics-sure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  padding: 0.3rem 0;
+}
+.pics-sure > .btn {
+  min-height: 44px;
+  font-size: 0.74rem;
+}
+
+/* How much room your pictures take, in the Account card. Two ceilings, one bar: it shows
+   whichever is nearer, because either refuses on its own. */
+.pics-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--b1, rgba(127, 127, 127, 0.18));
+  overflow: hidden;
+}
+.pics-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #7c6af7);
+  /* a full bar is the one state worth noticing without reading the number beside it */
+  transition: width 0.2s;
+}
+
 /* The list behind "Certain friends". Names wrap rather than scroll, for the same reason the
    tiers above them do: a friend hidden off the edge of a phone is somebody you think you have
    shared with. Indented slightly so it reads as belonging to the option that opened it. */
