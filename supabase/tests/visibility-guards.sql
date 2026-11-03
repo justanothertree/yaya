@@ -209,33 +209,155 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
     'get_public_profile', 'submit_contact_message', 'submit_score'
   );
 
--- ── I. every writer of a visibility tier must route through the clamp ──────────────────
+-- ── I. every writer of a visibility tier must route through the clamp ────────────────────
 -- ⚠️ THE ENUMERATION IS THE CHECK, because a function's NAME is no guide at all. Four setters
 -- wrote a raw tier for a month while `clamp_visibility` sat beside them, and the fourth --
 -- `save_my_profile_blocks` -- is one nobody would ever have listed: its job reads as "save my
--- page", and it writes the tier in an INSERT column list rather than a `set visibility =`, so it
--- is invisible to every grep shaped like the other three. This asks the SCHEMA which tables carry
--- a visibility column and then asks which functions write one, which is why it cannot miss the
--- fifth. It found `chronicle_share_timeline` on its first run.
+-- page", and it writes the tier in an INSERT column list rather than a `set visibility =`. This
+-- asks the SCHEMA which tables carry a tier and then asks which statements write one.
 --
--- A constant tier of 'friends' is exempt, and the reason has to be stated rather than assumed:
--- 'friends' is the LOWEST ceiling the ladder can produce, so a literal 'friends' cannot exceed
--- anybody's. `chronicle_share_timeline` creates its card that way on purpose, and its own comment
--- says so. Anything else writing a constant belongs here only with the same argument.
+-- ⚠️ JUDGED PER STATEMENT, NOT PER FUNCTION, and the first version got this wrong. It exempted
+-- a whole function body as soon as the word `clamp_visibility` appeared anywhere in it -- so a
+-- function with one clamped write and one unclamped write passed on the strength of the clamped
+-- one. Proved by injecting exactly that: the old block was silent, this one names it.
+--
+-- ⚠️ AND COMMENTS ARE STRIPPED FIRST, which is not tidiness -- it is the difference between a
+-- checker and a nuisance. `pg_get_functiondef` returns the comments, and on the first run they
+-- produced two findings on a clean tree: `chronicle_share_timeline` has the word 'public' IN
+-- QUOTES inside a comment explaining why it does not use that tier, which defeated the
+-- narrow-literal exemption; and a semicolon inside one of `chronicle_import`'s comments split
+-- the goals insert away from its own helper call. A checker that cries wolf about correct code
+-- is one nobody runs twice.
+--
+-- The split is naive about semicolons inside STRING LITERALS, and that is the safe direction: an
+-- over-split statement loses its clamp and gets REPORTED, which is visible and fixable.
+--
+-- ⚠️ AND IT READS `prosrc`, THE BODY, NOT `pg_get_functiondef`, WHICH ALSO RETURNS THE HEADER.
+-- `player_registry_default_reveal` has no semicolon before its one assignment, so the first
+-- fragment carried the whole header down with it -- including `SET search_path TO 'public'`,
+-- whose quoted 'public' defeated the narrow-literal exemption and failed a correct trigger.
+--
+-- Exempt, by rule rather than by name: a statement whose only tier values are the narrow
+-- literals. `private`, `certain` and `friends` are at or below the LOWEST ceiling the ladder can
+-- produce, so a statement that mentions those and never `members` or `public` cannot exceed
+-- anybody's. `chronicle_share_timeline` creates its card at a literal 'friends' that way, and
+-- `chronicle_tier_sync` and `player_registry_default_reveal` derive one the same way.
 insert into fails
 select 'writes a visibility tier without clamping', f.proname || ' -> ' || t.t
-from (select p.oid, p.proname, pg_get_functiondef(p.oid) as d
-        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'public') f
-join (select distinct c.relname as t
-        from pg_attribute a join pg_class c on c.oid = a.attrelid
-        join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname = 'public' and c.relkind = 'r' and a.attnum > 0
-         and a.attname in ('visibility', 'activity_visibility')) t
-  on f.d ~* ('update\s+(public\.)?' || t.t || '[^;]{0,200}(activity_)?visibility\s*=')
-  or f.d ~* ('insert\s+into\s+(public\.)?' || t.t || '\s*\([^)]{0,250}(activity_)?visibility')
-where f.d !~* 'clamp_visibility|chronicle_tier_from_file'
-  and f.proname not in ('chronicle_share_timeline');
+from (
+  select s.proname, btrim(st.stmt) as stmt
+    from (
+      select p.proname,
+             regexp_replace(
+               regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
+               '--[^' || chr(10) || ']*', ' ', 'g') as src
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public' and p.prokind = 'f'
+    ) s
+    cross join lateral regexp_split_to_table(s.src, ';') as st(stmt)
+) f
+join (
+  select distinct c.relname as t
+    from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and a.attnum > 0 and not a.attisdropped
+     and a.attname in ('visibility', 'activity_visibility')
+) t
+  on f.stmt ~* ('(update|insert\s+into)\s+(public\.)?' || t.t || '\M')
+where (
+       f.stmt ~* 'set[^;]*\m(activity_)?visibility\s*='
+    or f.stmt ~* 'insert\s+into[^(]*\([^)]*\m(activity_)?visibility\M'
+    or f.stmt ~* 'do\s+update\s+set[^;]*\m(activity_)?visibility\s*='
+  )
+  and f.stmt !~* 'clamp_visibility|chronicle_tier_from_file'
+  and not (f.stmt ~ '''(private|certain|friends)''' and f.stmt !~ '''(members|public)''');
+
+insert into fails
+select 'a trigger assigns a visibility tier without clamping', f.proname
+from (
+  select s.proname, btrim(st.stmt) as stmt
+    from (
+      select p.proname,
+             regexp_replace(
+               regexp_replace(p.prosrc, '/\*.*?\*/', ' ', 'gs'),
+               '--[^' || chr(10) || ']*', ' ', 'g') as src
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public'
+    ) s
+    cross join lateral regexp_split_to_table(s.src, ';') as st(stmt)
+) f
+where f.stmt ~* '\mnew\.(activity_)?visibility\s*:='
+  and f.stmt !~* 'clamp_visibility|chronicle_tier_from_file'
+  and not (f.stmt ~ '''(private|certain|friends)''' and f.stmt !~ '''(members|public)''');
+
+-- ⚠️ AND THE FUNCTIONS ARE ONLY HALF OF IT: A GRANT IS A WRITE PATH TOO. `authenticated` held
+-- INSERT and UPDATE on `circuit_people`, column `visibility` included, with no trigger -- so a
+-- hand-sent PATCH wrote the tier directly and never met `set_person_visibility`. Measured before
+-- it was closed: through the RPC, asking for `public` stored `members`; a direct UPDATE stored
+-- `public` on an account whose ceiling is `members`. Every other tier table is deny-all, which
+-- is why no amount of looking at FUNCTIONS could ever have found it.
+--
+-- A table whose tier column a member may write must carry a BEFORE INSERT OR UPDATE trigger
+-- whose function clamps. A deny-all table needs no trigger, because there is no way in.
+insert into fails
+select 'a tier column is writable with no clamp trigger on the table',
+       r.role || ' has ' || pr.priv || ' on ' || t.t || '.' || t.col
+from (
+  select distinct c.oid, c.relname as t, a.attname as col
+    from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and a.attnum > 0 and not a.attisdropped
+     and a.attname in ('visibility', 'activity_visibility')
+) t,
+(values ('anon'), ('authenticated')) r(role),
+(values ('INSERT'), ('UPDATE')) pr(priv)
+where has_column_privilege(r.role, t.oid, t.col, pr.priv)
+  and not exists (
+    select 1 from pg_trigger tg
+     where tg.tgrelid = t.oid
+       and not tg.tgisinternal
+       and (tg.tgtype & 2) <> 0    -- BEFORE
+       and (tg.tgtype & 4) <> 0    -- INSERT
+       and (tg.tgtype & 16) <> 0   -- UPDATE
+       and pg_get_functiondef(tg.tgfoid) ~* 'clamp_visibility'
+  );
+
+-- ── J. no stored tier may sit above its owner's ceiling ────────────────────────────
+-- ⚠️ THIS WAS A REPORT UNTIL 3 NOV AND IS NOW A FAILURE, because the five rows it was reporting
+-- have been brought down. It could not be a failure before that: they were real members' saved
+-- choices, and a suite that stays red until somebody else's data is rewritten is a suite that
+-- gets ignored. Once the data is clean, the same check becomes the thing that keeps it clean.
+--
+-- These were never a leak -- the read doors clamp, and that clamp was measured load-bearing
+-- (an anonymous read of a page went from 50 rows to 0 when its owner's ceiling dropped). What
+-- they were is a LATENT widening: `least(stored, ceiling)` starts returning the wider value the
+-- day a ceiling rises, and nobody chooses that on the day it happens.
+--
+-- Counts immediately before the backfill: profiles 1, circuit_people 1, profile_blocks 3,
+-- player_registry 0. After it, and expected from here on: 0 everywhere.
+insert into fails
+select 'a stored tier sits above its owner''s ceiling', col || ': ' || n || ' row(s)'
+from (
+  select 'profiles.activity_visibility' as col, count(*) as n
+    from public.profiles p where p.activity_visibility > public.visibility_ceiling(p.user_id)
+  union all select 'player_registry.visibility', count(*)
+    from public.player_registry r where r.visibility > public.visibility_ceiling(r.user_id)
+  union all select 'circuit_people.visibility', count(*)
+    from public.circuit_people c where c.visibility > public.visibility_ceiling(c.owner_user_id)
+  union all select 'profile_blocks.visibility', count(*)
+    from public.profile_blocks b where b.visibility > public.visibility_ceiling(b.user_id)
+  -- chronicle carries a second, lower cap of its own: a timeline is friends-only by design
+  union all select 'chronicle_activities.visibility', count(*)
+    from public.chronicle_activities a
+   where a.visibility > least(public.visibility_ceiling(a.owner), 'friends'::public.visibility_tier)
+  union all select 'chronicle_goals.visibility', count(*)
+    from public.chronicle_goals g
+   where g.visibility > least(public.visibility_ceiling(g.owner), 'friends'::public.visibility_tier)
+) z where n > 0;
 
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
@@ -249,22 +371,5 @@ begin
 end $$;
 
 select 'all visibility guards hold' as result, count(*) as failures from fails;
-
--- ── and one thing REPORTED rather than failed ─────────────────────────────────
--- Rows whose STORED tier is above their owner's ceiling. The read doors clamp, so these are not a
--- leak today -- each is a widening waiting for the day that ceiling rises. They are not a failure
--- either, because they are real members' saved choices and rewriting another member's settings is
--- the owner's call under CLAUDE.md §4, not something a test suite should demand. Reported so the
--- number cannot sit unnoticed. They also heal on their own: a member's next save clamps them.
-select 'stored above the owner''s ceiling' as report, col, n from (
-  select 'profiles.activity_visibility' as col, count(*) as n
-    from public.profiles p where p.activity_visibility > public.visibility_ceiling(p.user_id)
-  union all select 'player_registry.visibility', count(*)
-    from public.player_registry r where r.visibility > public.visibility_ceiling(r.user_id)
-  union all select 'circuit_people.visibility', count(*)
-    from public.circuit_people c where c.visibility > public.visibility_ceiling(c.owner_user_id)
-  union all select 'profile_blocks.visibility', count(*)
-    from public.profile_blocks b where b.visibility > public.visibility_ceiling(b.user_id)
-) z where n > 0 order by col;
 
 rollback;

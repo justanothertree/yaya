@@ -66,6 +66,18 @@ rollback;
 
 -- ── the record ────────────────────────────────────────────────────────────────────
 --
+-- 3 Nov 2026, after Part 1 (the ceiling backfill): UNCHANGED.
+--
+--   cells 196 ' + chr(183) + ' blocks 539 ' + chr(183) + ' activity 7,118 ' + chr(183) + ' trophies 130
+--   md5   8e163d91a6925025e270416c6d387718
+--
+-- ⚠️ AND UNCHANGED IS THE EXPECTED RESULT HERE, NOT A SIGN THE BACKFILL DID NOTHING.
+-- Bringing five stored tiers down to their owners ceilings cannot move this matrix, and that is
+-- provable rather than lucky: the read doors already compute least(stored, ceiling), the
+-- backfill set stored := least(stored, ceiling), and least(least(x,c),c) = least(x,c). What
+-- changed is that the STORED value stopped disagreeing with the served one -- which is the whole
+-- point, because a tier held back only by a ceiling activates the day that ceiling rises.
+--
 -- 30 Oct 2026, current:
 --
 --   cells 196 · blocks 539 · activity 7,118 · trophies 130

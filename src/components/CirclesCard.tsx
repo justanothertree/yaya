@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
 
-type CircleMember = { username: string; name: string; friend: boolean }
-type Circle = { id: string; name: string; created_at: string; members: CircleMember[] }
+type CircleMember = { username: string; name: string }
+type Circle = {
+  id: string
+  name: string
+  created_at: string
+  members: CircleMember[]
+  /** people on the list who are no longer friends: counted, never named */
+  ex_friends: number
+}
 type Friend = { username: string; name: string; status: string; direction: string }
 
 /**
@@ -23,14 +30,19 @@ function previewCircles(): Circle[] {
       id: 'pv-circle-near',
       name: 'Nearest',
       created_at: '2026-10-01T00:00:00Z',
-      members: [
-        { username: 'quill', name: 'Quill', friend: true },
-        /* a membership whose friendship has ended: it counts for nothing and is still shown,
-           because an owner who cannot see it cannot tidy it away */
-        { username: 'tolliver', name: 'Tolliver', friend: false },
-      ],
+      members: [{ username: 'quill', name: 'Quill' }],
+      /* one membership whose friendship has ended. The server counts these and does NOT name
+         them, so the fixture must not name them either -- a double that knows more than the
+         thing it stands in for is how a leak stays invisible in the workbench. */
+      ex_friends: 1,
     },
-    { id: 'pv-circle-empty', name: 'Workshop', created_at: '2026-10-02T00:00:00Z', members: [] },
+    {
+      id: 'pv-circle-empty',
+      name: 'Workshop',
+      created_at: '2026-10-02T00:00:00Z',
+      members: [],
+      ex_friends: 0,
+    },
   ]
 }
 
@@ -232,7 +244,7 @@ export function CirclesCard() {
                 )}
               </div>
 
-              {c.members.length === 0 ? (
+              {c.members.length === 0 && c.ex_friends === 0 ? (
                 <span className="muted" style={{ fontSize: '0.78rem' }}>
                   Nobody in it yet.
                 </span>
@@ -244,11 +256,6 @@ export function CirclesCard() {
                       style={{ ...row, padding: '0.2rem 0.5rem', gap: '0.3rem' }}
                     >
                       <span style={{ minWidth: 0 }}>{m.name}</span>
-                      {!m.friend && (
-                        <span className="muted" style={{ fontSize: '0.72rem' }}>
-                          not a friend any more
-                        </span>
-                      )}
                       <button
                         type="button"
                         className="btn"
@@ -261,6 +268,43 @@ export function CirclesCard() {
                       </button>
                     </span>
                   ))}
+                  {/**
+                   * ⚠️ COUNTED, NOT NAMED. The server stopped returning these people's usernames
+                   * and first names on purpose: the row grants nothing, and rendering somebody's
+                   * CURRENT details keeps a window open onto a person who is no longer a friend.
+                   * The count is enough to say there is something to tidy, and the button is the
+                   * way to tidy it without naming anybody.
+                   */}
+                  {c.ex_friends > 0 && (
+                    <span
+                      className="muted"
+                      style={{
+                        ...row,
+                        padding: '0.2rem 0.5rem',
+                        gap: '0.4rem',
+                        fontSize: '0.78rem',
+                      }}
+                    >
+                      <span style={{ minWidth: 0 }}>
+                        {c.ex_friends === 1
+                          ? '1 person here is no longer a friend'
+                          : `${c.ex_friends} people here are no longer friends`}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn"
+                        style={small}
+                        disabled={busy}
+                        onClick={() =>
+                          void act(() =>
+                            sb.rpc('visibility_circle_drop_ex_friends', { p_id: c.id }),
+                          )
+                        }
+                      >
+                        Tidy up
+                      </button>
+                    </span>
+                  )}
                 </div>
               )}
 
