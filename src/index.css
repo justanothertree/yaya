@@ -18034,6 +18034,40 @@ a.cz-msg-author:focus-visible {
 .chron-plan .btn {
   min-width: 24px;
 }
+/**
+ * The action cluster at the end of a chronicle row — ✎ Change and whatever travels with it.
+ *
+ * ⚠️ 44px, AND SCOPED TO THE CLUSTER RATHER THAN TO ✎ ALONE, BECAUSE A SCREENSHOT SAID SO. The
+ * ask was the Change button's tap target, and the first version gave exactly that its own class.
+ * Measured, it worked — ✎ went 39.2 → 44 — and it looked like a bug: a goal row carries ✎, ◉ and
+ * ✕ as three identical-looking glyphs, and they came out **44 / 36.8 / 39.2**, one visibly taller
+ * than its neighbours. Chronicle.tsx says of that row "THE THREE MOVE AS ONE, the way a log row's
+ * do", which is the same sentence from the other side: the unit here is the cluster, so sizing one
+ * of its members on its own is not a smaller change, it is a wrong one.
+ *
+ * ⚠️ AND IT IS NOT A BIGGER `.chron-x`, which would have been the lazy reading. Ten controls wear
+ * that class, and only four of them are in a cluster: the other six are five buttons in Routines
+ * and Pictures' delete, in rooms this change has no business touching. Raising the shared floor
+ * would have moved all ten. Scoping to the three containers moves the four that belong to a row's
+ * actions — ✎ and its neighbours — and leaves the six alone, which is the line §10 draws.
+ * Measured after: Routines' and Pictures' buttons are still 39.2 tall.
+ *
+ * ⚠️ AND 36px WAS ALREADY INERT, which is why 40 would have been a no-op. Measured at 375 with
+ * touch emulated, before any of this: every Change button was **46.9 × 39.2**, from `.btn`'s own
+ * `padding: 0.6rem 1rem` at a 16px root — `.chron-x`'s 36px minimum never applied, and neither
+ * would 40. 44 is the first number that moves the box, and it is what this file already uses where
+ * a thumb has to land on a fiddly or destructive control (`.pics-sure > .btn`,
+ * `.chron-sharing-fold > summary`).
+ *
+ * The plan row's buttons had no real floor at all: `.chron-plan .btn { min-width: 24px }` and
+ * padding, with no min-height. They are covered here with the rest.
+ */
+.chron-goal-do .btn,
+.chron-plan-do .btn,
+.chron-ent-do .btn {
+  min-width: 44px;
+  min-height: 44px;
+}
 .chron-ent-do,
 .chron-plan-do {
   display: flex;
