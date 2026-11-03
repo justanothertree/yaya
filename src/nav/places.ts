@@ -165,6 +165,13 @@ export const PLACES = [
   { id: 'visualizer', label: 'Visualiser', icon: '🎚️', title: 'Visualiser', nav: () => true },
   { id: 'instrument', label: 'Instrument', icon: '🎹', title: 'Instrument', nav: () => true },
   { id: 'paint', label: 'Paint', icon: '🎨', title: 'Paint', nav: () => true },
+  /**
+   * ⚠️ A ROOM FOR EXPERIMENTS, NOT FOR ONE. It is WebGPU work — compute and render straight on the
+   * graphics card — and it opens on a particle swarm because that is the thing a CPU plainly
+   * cannot do at this size. Anything else built on the same device belongs here beside it rather
+   * than as a room of its own. Open to everybody: it reads nothing and keeps nothing.
+   */
+  { id: 'lab', label: 'Lab', icon: '🧪', title: 'Lab', nav: () => true },
   /* ⚠️ MINIONS IS NOT A PLACE ANY MORE — it is the room inside Games, and `#minions` is aliased
      below. Making one creature and playing it used to touch three tabs: Paint to draw it and to
      reach the map maker, Minions to see it, Games to play it — and the map you had just drawn was

@@ -1,0 +1,148 @@
+.lab {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/* ⚠️ THE STAGE HAS A HEIGHT OF ITS OWN, not one taken from the canvas. The backing store is set
+   from the box (see the ResizeObserver in GpuLab), so a canvas sized by its own width/height
+   attributes would grow each time it was measured. Capped in px rather than rem — the root
+   size is fluid here — and by the viewport, so a phone keeps some page to scroll by. */
+.lab-stage {
+  position: relative;
+  height: min(62vh, 560px);
+  min-height: 240px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #05050d;
+  border: 1px solid var(--border);
+}
+.lab-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* a drag on the field steers the swarm; it must not scroll or zoom the page underneath */
+  touch-action: none;
+  cursor: crosshair;
+}
+.lab-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  text-align: center;
+  /* the stage is always dark, whatever the theme, so its words are too */
+  color: #e6e6f2;
+  max-width: 34rem;
+  margin: 0 auto;
+}
+.lab-veil .muted {
+  color: #a0a0c0;
+}
+.lab-fps {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: rgba(230, 230, 242, 0.7);
+  pointer-events: none;
+}
+
+.lab-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.lab-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.lab-controls .btn {
+  padding: 0.45rem 0.8rem;
+  min-height: 36px;
+}
+.lab-controls .btn.btn-ghost[aria-pressed='true'] {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
+.lab-flow {
+  flex: 1 1 14rem;
+  min-width: 200px;
+}
+/* a range input is 16px tall by default, under the 24px target floor; the track stays thin and
+   only the area you can press grows */
+.lab-flow input[type='range'] {
+  min-height: 28px;
+}
+.lab-hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.lab-report summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.35rem 0;
+}
+.lab-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  gap: 0.35rem 1.25rem;
+  margin: 0.5rem 0;
+}
+.lab-fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.lab-fact dt {
+  color: var(--muted);
+  /* the limit names are long identifiers with no spaces; let them break rather than spill */
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.lab-fact dd {
+  margin: 0;
+  font-family: var(--mono);
+  text-align: right;
+  /* a number broken across two lines reads as two numbers — the NAME is what gives way */
+  white-space: nowrap;
+  flex: none;
+}
+.lab-features-head {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.85rem;
+}
+.lab-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lab-features code {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  background: var(--control-bg);
+  font-size: 0.75rem;
+}
+.lab-warn {
+  margin: 0.25rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #f59e0b;
+  background: color-mix(in oklab, #f59e0b, transparent 88%);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}

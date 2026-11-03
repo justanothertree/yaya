@@ -206,6 +206,10 @@ const AudioVisualizer = lazyRetry(
   () => import('./sections/AudioVisualizer'),
   (m) => m.AudioVisualizer,
 )
+const GpuLab = lazyRetry(
+  () => import('./sections/GpuLab'),
+  (m) => m.GpuLab,
+)
 
 if (import.meta.env.DEV) {
   import('./dev/supabaseDebug')
@@ -1496,6 +1500,7 @@ export default function App() {
     'visualizer',
     'instrument',
     'paint',
+    'lab',
     'contact',
     'admin',
     'signin',
@@ -1526,6 +1531,7 @@ export default function App() {
     visualizer: '🎚️ Visualiser',
     instrument: '🎹 Instrument',
     paint: '🎨 Paint',
+    lab: '🧪 Lab',
     contact: '✉️ Contact',
     admin: '🛠 Admin',
     signin: '🔑 Sign in',
@@ -1572,6 +1578,8 @@ export default function App() {
         return <InstrumentRoom inCanvas />
       case 'paint':
         return <PaintRoom />
+      case 'lab':
+        return <GpuLab />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -2538,6 +2546,18 @@ export default function App() {
                */}
               <Suspense fallback={<div aria-busy>Loading…</div>}>
                 <PaintRoom />
+              </Suspense>
+            </section>
+          )}
+          {!sharedCanvasShowing && active === 'lab' && (
+            <section id="lab" className="card reveal">
+              <h2>🧪 Lab</h2>
+              <p className="muted">
+                Experiments with WebGPU — your graphics card doing the work directly, with nothing
+                in between.
+              </p>
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <GpuLab />
               </Suspense>
             </section>
           )}
