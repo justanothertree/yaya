@@ -90,6 +90,9 @@ type Row = {
   done: boolean
   /* optional: a bundle talking to a server from before the column existed gets nothing here */
   shared?: boolean
+  /* likewise, and `string` rather than the union so an unknown value falls through to the
+     boolean's reading instead of being asserted into a tier that is not there */
+  visibility?: string
   note: string | null
   sort: number | null
   activity: string | null
@@ -123,6 +126,25 @@ const read = (r: Row): Goal => ({
   done: !!r.done,
   /* a row from before the column existed is not shared, which is the safe reading */
   shared: r.shared === true,
+  /**
+   * The ladder level, which `shared` cannot express for one value out of three.
+   *
+   * ⚠️ A GOAL AT `certain` HAS `shared = false`, BY CHECK CONSTRAINT -- so a control built on
+   * the boolean shows "not on your profile" above a goal three chosen friends can see on it,
+   * and pressing it widens the thing to every friend. The tier is read so the control can say
+   * what is true. A row from before the column existed reads `private` when unshared and
+   * `friends` when shared, which is exactly what the boolean meant.
+   */
+  visibility:
+    r.visibility === 'private' ||
+    r.visibility === 'certain' ||
+    r.visibility === 'friends' ||
+    r.visibility === 'members' ||
+    r.visibility === 'public'
+      ? r.visibility
+      : r.shared === true
+        ? 'friends'
+        : 'private',
   note: r.note ?? null,
   sort: num(r.sort),
   activity: r.activity ?? null,
@@ -228,7 +250,21 @@ export async function setProgress(id: string, progress: number, done: boolean): 
  */
 export async function shareGoal(id: string, on: boolean): Promise<boolean> {
   if (previewMember) return pvShareGoal(id, on)
-  const { error } = await getSupabaseClient().rpc('chronicle_goal_share', { p_id: id, p_on: on })
+  /**
+   * ⚠️ IT WRITES A TIER NOW, NOT THE BOOLEAN, and the two are not interchangeable in one
+   * direction. `chronicle_goals_tier_agrees` pins `shared = visibility in (friends, members,
+   * public)`, so `chronicle_goal_share(id, false)` on a goal at `certain` is a no-op — the
+   * boolean is already false — and the goal would stay shared with its chosen friends while the
+   * button reported having taken it off. Naming the level says what is meant.
+   *
+   * `chronicle_goal_set_visibility` returns the tier it stored, clamped by the account's ceiling
+   * and by Chronicle's own cap at friends. The caller does not read it because the goal list is
+   * reloaded straight afterwards, which is the same value by a path that shares no arithmetic.
+   */
+  const { error } = await getSupabaseClient().rpc('chronicle_goal_set_visibility', {
+    p_id: id,
+    p_tier: on ? 'friends' : 'private',
+  })
   return !error
 }
 
@@ -260,6 +296,9 @@ export async function myActivities(): Promise<Activity[]> {
     /* a bundle talking to a server from before the column existed gets nothing here, and
        `false` is the right reading of that silence — see the goals' `shared` above */
     shared: !!a.shared,
+    /* and the tier beside it, falling back to what the boolean meant -- the same reading the
+       goals' mapper above does, for the same reason */
+    visibility: a.visibility ?? (a.shared ? 'friends' : 'private'),
     auto: !!a.auto,
     metric: a.metric ?? null,
     session: a.session == null ? null : num(a.session as number | string | null) || null,

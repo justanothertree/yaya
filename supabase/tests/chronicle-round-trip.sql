@@ -25,19 +25,45 @@
 
 begin;
 
+-- ⚠️ AND THE SUBJECT MUST HAVE AN ACCEPTED FRIEND, which is a new requirement and the
+-- reason is the `certain` list. The list stores usernames and the import only keeps a name that
+-- is still an accepted friend -- so a subject with no friends would restore an EMPTY list from a
+-- file that had one in it, and the field below would report "not checked" while looking thorough.
+-- A fixture that cannot hold the value being tested is the trap §2 names: the one dimension under
+-- test, pinned flat.
 create temp table subject as
-  select p.user_id as uid, p.username::text as u
+  select p.user_id as uid, p.username::text as u,
+         (select f2.user_id from public.profiles f2
+           where coalesce(f2.suspended,false) = false
+             and exists (select 1 from public.friendships f
+                          where f.status = 'accepted'
+                            and f.user_a = least(p.user_id, f2.user_id)
+                            and f.user_b = greatest(p.user_id, f2.user_id))
+           order by f2.username limit 1) as friend,
+         (select f2.username::text from public.profiles f2
+           where coalesce(f2.suspended,false) = false
+             and exists (select 1 from public.friendships f
+                          where f.status = 'accepted'
+                            and f.user_a = least(p.user_id, f2.user_id)
+                            and f.user_b = greatest(p.user_id, f2.user_id))
+           order by f2.username limit 1) as friend_u
     from public.profiles p
    where coalesce(p.suspended,false) = false
      and not exists (select 1 from public.chronicle_activities a where a.owner = p.user_id)
      and not exists (select 1 from public.chronicle_entries e where e.owner = p.user_id)
+     and exists (select 1 from public.friendships f
+                  where f.status = 'accepted'
+                    and (f.user_a = p.user_id or f.user_b = p.user_id))
    order by p.username
    limit 1;
 
 do $$
 begin
   if not exists (select 1 from subject) then
-    raise exception 'FIXTURE: every member already has chronicle rows; this test needs an empty one';
+    raise exception 'FIXTURE: this test needs a member with no chronicle rows and one accepted friend';
+  end if;
+  if (select friend from subject) is null then
+    raise exception 'FIXTURE: the subject has no accepted friend, so the certain list cannot be tested';
   end if;
 end $$;
 
@@ -88,11 +114,26 @@ select '44444444-4444-4444-8444-444444444444', uid, '11111111-1111-4111-8111-111
        '2026-03-01T08:00:00Z'::timestamptz, '2026-03-01T09:00:00Z'::timestamptz,
        'a plan note', '2026-02-20T00:00:00Z'::timestamptz from subject;
 
+-- ⚠️ AND THE TWO `certain` ITEMS GET A LIST, because an empty one is the DEFAULT and a
+-- round trip is only worth the fields whose fixture value differs from it. Written directly
+-- rather than through `visibility_certain_set`, which would need a session; the rule it keeps
+-- (accepted friends only) is satisfied by the subject selection above.
+insert into public.visibility_certain (owner, item_kind, item_id, friend)
+select uid, 'chronicle_activity', '11111111-1111-4111-8111-111111111111', friend from subject
+union all
+select uid, 'chronicle_goal', '22222222-2222-4222-8222-222222222222', friend from subject;
+
 create temp table before_rows as select
   (select jsonb_agg(to_jsonb(a)-'owner' order by a.id) from public.chronicle_activities a where a.owner=(select uid from subject)) as acts,
   (select jsonb_agg(to_jsonb(g)-'owner' order by g.id) from public.chronicle_goals g where g.owner=(select uid from subject)) as goals,
   (select jsonb_agg(to_jsonb(p)-'owner' order by p.id) from public.chronicle_plans p where p.owner=(select uid from subject)) as plans,
-  (select jsonb_agg(to_jsonb(r)-'owner' order by r.id) from public.chronicle_routines r where r.owner=(select uid from subject)) as routines;
+  (select jsonb_agg(to_jsonb(r)-'owner' order by r.id) from public.chronicle_routines r where r.owner=(select uid from subject)) as routines,
+  /* the Certain lists, as item -> username, because the list lives in its own table and the
+     four columns above cannot see it */
+  (select jsonb_agg(vc.item_kind || ':' || vc.item_id || ':' || p.username::text
+                    order by vc.item_kind, vc.item_id, p.username)
+     from public.visibility_certain vc join public.profiles p on p.user_id = vc.friend
+    where vc.owner=(select uid from subject)) as lists;
 
 select set_config('request.jwt.claims',
   json_build_object('sub', (select uid::text from subject), 'role','authenticated')::text, true);
@@ -115,7 +156,13 @@ create temp table after_rows as select
   (select jsonb_agg(to_jsonb(a)-'owner' order by a.id) from public.chronicle_activities a where a.owner=(select uid from subject)) as acts,
   (select jsonb_agg(to_jsonb(g)-'owner' order by g.id) from public.chronicle_goals g where g.owner=(select uid from subject)) as goals,
   (select jsonb_agg(to_jsonb(p)-'owner' order by p.id) from public.chronicle_plans p where p.owner=(select uid from subject)) as plans,
-  (select jsonb_agg(to_jsonb(r)-'owner' order by r.id) from public.chronicle_routines r where r.owner=(select uid from subject)) as routines;
+  (select jsonb_agg(to_jsonb(r)-'owner' order by r.id) from public.chronicle_routines r where r.owner=(select uid from subject)) as routines,
+  /* the Certain lists, as item -> username, because the list lives in its own table and the
+     four columns above cannot see it */
+  (select jsonb_agg(vc.item_kind || ':' || vc.item_id || ':' || p.username::text
+                    order by vc.item_kind, vc.item_id, p.username)
+     from public.visibility_certain vc join public.profiles p on p.user_id = vc.friend
+    where vc.owner=(select uid from subject)) as lists;
 
 insert into out
 select 'part 1', t.f,
@@ -124,11 +171,20 @@ from (values
   ('activities', (select acts from before_rows) is not distinct from (select acts from after_rows)),
   ('goals',      (select goals from before_rows) is not distinct from (select goals from after_rows)),
   ('plans',      (select plans from before_rows) is not distinct from (select plans from after_rows)),
-  ('routines',   (select routines from before_rows) is not distinct from (select routines from after_rows))
+  ('routines',   (select routines from before_rows) is not distinct from (select routines from after_rows)),
+  ('certain lists', (select lists from before_rows) is not distinct from (select lists from after_rows))
 ) as t(f, ok);
 
 -- ── part 2: drop each field in turn and watch it go red ─────────────────────────────────────
 -- A field that cannot be made to fail is a field this test does not actually check.
+--
+-- ⚠️ AND `certain` IS THE FIELD THAT FORCED THE COMPARISON TO WIDEN. It is the one
+-- exported value that does not live on the activity's or goal's ROW -- the list is rows in
+-- `visibility_certain` -- so a comparison of the two tables could not see it, and adding the
+-- field to the arrays below would have reported "not checked" about a value the import really
+-- does restore. Both snapshots carry the lists now and part 2 compares rows AND lists together.
+-- Measured 3 Nov 2026: `certain` reports `carried` for both kinds, 28 of 30 fields carried, and
+-- the two exceptions are the `shared` pair below.
 --
 -- ⚠️ `shared` IS EXPECTED TO REPORT "not checked", AND THAT IS CORRECT RATHER THAN A GAP. It is
 -- a derived column: the trigger computes it from `visibility`, so dropping it from the file
@@ -140,15 +196,19 @@ begin
   select d into v_doc from doc;
   for r in
     select unnest(array['name','cat','colour','archived_at','created_at','auto','metric',
-                        'session_mins','shared','visibility']) as fld, 'activity' as k
+                        'session_mins','shared','visibility','certain']) as fld, 'activity' as k
     union all
     select unnest(array['title','scope','anchor','repeat_every','target','unit','progress',
                         'done_at','note','sort','counts','est_mins','priority','shared',
-                        'visibility']), 'goal'
+                        'visibility','certain']), 'goal'
   loop
     f := r.fld; which := r.k;
     delete from public.chronicle_goals where owner=(select uid from subject);
     delete from public.chronicle_activities where owner=(select uid from subject);
+    /* the lists go with their items -- the AFTER DELETE triggers see to that -- but say so
+       rather than rely on it, because a list left behind would make every later round of this
+       loop compare against a leftover */
+    delete from public.visibility_certain where owner=(select uid from subject);
     if which='activity' then
       perturbed := jsonb_set(v_doc,'{activities}',
         (select jsonb_agg(e - f) from jsonb_array_elements(v_doc->'activities') e));
@@ -159,15 +219,26 @@ begin
     perform set_config('request.jwt.claims',
       json_build_object('sub',(select uid::text from subject),'role','authenticated')::text, true);
     perform public.chronicle_import(perturbed);
-    if which='activity' then
-      select (select jsonb_agg(to_jsonb(a)-'owner' order by a.id) from public.chronicle_activities a
-               where a.owner=(select uid from subject)) is not distinct from (select acts from before_rows)
-        into same;
-    else
-      select (select jsonb_agg(to_jsonb(g)-'owner' order by g.id) from public.chronicle_goals g
-               where g.owner=(select uid from subject)) is not distinct from (select goals from before_rows)
-        into same;
-    end if;
+    /* ⚠️ ROWS AND LISTS COMPARED TOGETHER, because `certain` is the one exported field
+       that does not live on the row. It used to compare only the activities or only the goals,
+       which is why adding the field to the arrays above would have reported "not checked" about
+       a value the import does restore. Comparing both kinds at once costs nothing -- the loop
+       only ever perturbs one of them -- and catches a perturbation that reaches across. */
+    select jsonb_build_array(
+             (select jsonb_agg(to_jsonb(a)-'owner' order by a.id) from public.chronicle_activities a
+               where a.owner=(select uid from subject)),
+             (select jsonb_agg(to_jsonb(g)-'owner' order by g.id) from public.chronicle_goals g
+               where g.owner=(select uid from subject)),
+             (select jsonb_agg(vc.item_kind || ':' || vc.item_id || ':' || pr.username::text
+                               order by vc.item_kind, vc.item_id, pr.username)
+                from public.visibility_certain vc
+                join public.profiles pr on pr.user_id = vc.friend
+               where vc.owner=(select uid from subject))
+           )
+           is not distinct from
+           jsonb_build_array((select acts from before_rows), (select goals from before_rows),
+                             (select lists from before_rows))
+      into same;
     insert into out values ('part 2 · ' || which, f,
       case when same then 'NOT CHECKED - dropping it changed nothing' else 'carried' end);
   end loop;

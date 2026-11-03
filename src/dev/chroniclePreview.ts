@@ -112,8 +112,11 @@ const span = (
 const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): Goal => ({
   anchor: null,
   every: null,
-  /* ⚠️ private unless a fixture says otherwise, which is what the column's default does */
+  /* ⚠️ private unless a fixture says otherwise, which is what the column's default does.
+     Both, because `shared` cannot say `certain` -- the real row keeps them in step with a
+     trigger and a CHECK, so a double that sets only one invents a state the server refuses. */
   shared: false,
+  visibility: 'private',
   target: null,
   unit: null,
   progress: 0,
@@ -162,6 +165,7 @@ function seed(): Store {
     colour: null,
     archived: false,
     shared: false,
+    visibility: 'private',
     auto: false,
     metric: null,
     session: null,
@@ -846,6 +850,7 @@ export const pvSaveActivity = (
       colour,
       archived: false,
       shared: false,
+      visibility: 'private',
       auto: false,
       metric: metric || null,
       session: session || null,
@@ -1113,6 +1118,7 @@ export const pvVisit = (room: string, secs: number): void => {
       name,
       cat: 'free',
       shared: false,
+      visibility: 'private',
       colour: null,
       archived: false,
       auto: true,
@@ -1311,9 +1317,24 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       name: String(a.name ?? ''),
       cat: (a.cat === 'locked' || a.cat === 'life' ? a.cat : 'free') as Activity['cat'],
       colour: str(a.colour),
-      /* ⚠️ a file from before this column existed describes a PRIVATE activity, so silence
-         reads as false — the same reading chronicle_import gives it on the server */
-      shared: a.shared === true,
+      /* ⚠️ THE SERVER'S OWN READING, which is `chronicle_tier_from_file`: a file carrying a
+         `visibility` lets the tier decide, an older file carrying only `shared` lets the boolean
+         decide, and an unrecognised value falls back to the boolean rather than refusing the
+         row. Clamped at `friends` because the chronicle tables cap there. The two fields are
+         then kept in step the way the trigger keeps them, so the double cannot hold a row the
+         table would refuse. A file's `certain` LIST is not restored here, and cannot be: the
+         harness has no friendships to check a username against. */
+      ...(() => {
+        const vis =
+          a.visibility === 'private' || a.visibility === 'certain' || a.visibility === 'friends'
+            ? a.visibility
+            : a.visibility === 'members' || a.visibility === 'public'
+              ? ('friends' as const)
+              : a.shared === true
+                ? ('friends' as const)
+                : ('private' as const)
+        return { visibility: vis, shared: vis === 'friends' }
+      })(),
       archived: a.archived_at != null,
       auto: a.auto === true,
       metric: str(a.metric),
@@ -1433,9 +1454,24 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       every: g.repeat_every == null ? null : numOr(g.repeat_every, 0) || null,
       target: g.target == null ? null : numOr(g.target, 0),
       unit: str(g.unit),
-      /* ⚠️ an imported goal is NOT shared, whatever the file says — chronicle_import does not
-         carry the column, so a file from somebody else cannot put goals on your profile */
-      shared: false,
+      /* ⚠️ THIS USED TO SAY "an imported goal is NOT shared, whatever the file says —
+         chronicle_import does not carry the column", AND THAT STOPPED BEING TRUE IN A DIFFERENT
+         FILE. The server carries `shared` and `visibility` on a restored goal now (it was a
+         setting silently lost on every put-back, fixed 3 Nov), so the double was pinning a field
+         the real room restores — an unfaithful double in the direction that HIDES a bug, where
+         nothing looks wrong. Same reading as the activities above: the server's
+         `chronicle_tier_from_file`. */
+      ...(() => {
+        const vis =
+          g.visibility === 'private' || g.visibility === 'certain' || g.visibility === 'friends'
+            ? g.visibility
+            : g.visibility === 'members' || g.visibility === 'public'
+              ? ('friends' as const)
+              : g.shared === true
+                ? ('friends' as const)
+                : ('private' as const)
+        return { visibility: vis, shared: vis === 'friends' }
+      })(),
       progress: numOr(g.progress, 0),
       done: g.done_at != null,
       note: str(g.note),

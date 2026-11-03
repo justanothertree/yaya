@@ -1,5 +1,6 @@
 import { localISO } from '../circuit/dates'
 import { localMidnight, type Activity } from './record'
+import type { VisibilityTier } from '../circuit/types'
 
 /**
  * A goal, and the window it is judged over.
@@ -42,6 +43,20 @@ export type Goal = {
    * as well, so neither tick alone shows anybody anything.
    */
   shared: boolean
+  /**
+   * The same decision as `shared`, on the ladder that can express all of it.
+   *
+   * ⚠️ `shared` CANNOT SAY `certain`, BY CHECK CONSTRAINT: `chronicle_goals_tier_agrees`
+   * pins it to `visibility in ('friends','members','public')`, so a goal shared with three
+   * chosen friends has `shared = false`. A control reading only the boolean shows "not on your
+   * profile" above a goal that is on it, and pressing it widens the goal to every friend and
+   * drops the list on the way out. Both are read; `shared` is kept because it is what the rest
+   * of this room has always asked.
+   *
+   * Chronicle caps itself at `friends` -- `chronicle_goals_tier_capped` -- so `members` and
+   * `public` cannot be stored here even though the type allows them.
+   */
+  visibility: VisibilityTier
   /** what you have told it, for a goal you move by hand */
   progress: number
   done: boolean

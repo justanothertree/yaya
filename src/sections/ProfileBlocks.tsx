@@ -17,7 +17,7 @@ import {
   type MemberChronicleResult,
 } from '../chronicle/cloud'
 import { useTouchOnly } from '../ui/pointerKind'
-import { TIER_SHORT as TIER_LABEL } from '../components/visibilityLabels'
+import { VisibilityPicker } from '../components/VisibilityPicker'
 import {
   BANNER_STYLES,
   BLOCK_EDGES,
@@ -52,6 +52,7 @@ import {
   blockLookAttrs,
   tintName,
   type BannerStyle,
+  type Tier,
 } from '../profile/look'
 import { SongBlock, VisualBlock } from '../profile/ProfileMusic'
 import {
@@ -85,7 +86,15 @@ import { PALETTES } from '../audio/palettes'
  * itself belongs in the block, not a button pointing somewhere else.
  */
 
-export type Tier = 'public' | 'friends' | 'members' | 'private'
+/**
+ * ⚠️ THE SECOND HAND-WRITTEN COPY OF THE LADDER, now an alias of the one authority. It read
+ * `'public' | 'friends' | 'members' | 'private'` — identical to the one in `profile/look.ts` and
+ * to the `visibility_tier` enum minus `certain` — so widening the real union typechecked clean
+ * and left both aliases quietly wrong. Re-exported from here because a dozen files import `Tier`
+ * from this module and the name reads well at those call sites; what it must never be again is a
+ * list of strings that somebody has to remember to update.
+ */
+export type { Tier }
 
 /**
  * One achievement, earned or not, as the server derives it.
@@ -134,6 +143,17 @@ export type ProfileBlock = {
   size: 'small' | 'medium' | 'large'
   config: Record<string, unknown>
   visibility: Tier
+  /**
+   * Usernames on this block's Certain list, when `visibility` is `certain`.
+   *
+   * ⚠️ IT TRAVELS IN THE SAVE PAYLOAD BECAUSE A BLOCK HAS NO ID THE CLIENT CAN KEEP.
+   * `save_my_profile_blocks` deletes every block and re-inserts, so each save mints a fresh
+   * uuid — there is nothing to hang a separate `visibility_certain_set` call on. The server
+   * matches the lists up by POSITION across the save, which is the only identity a block has
+   * there. `get_profile_blocks` sends it back to the owner, and `null` to anybody else: who
+   * else is on a list is the owner's decision about other people.
+   */
+  certain?: string[]
 }
 
 /** Shape of one guestbook note as list_profile_notes returns it. Local — only the Guestbook
@@ -605,6 +625,7 @@ export function ProfileBlocksView({
   isMe = false,
   guest = false,
   asTier,
+  asFriend,
   page,
 }: {
   blocks: ProfileBlock[]
@@ -625,6 +646,16 @@ export function ProfileBlocksView({
    * "what would a stranger have got?" has no other way to be answered.
    */
   asTier?: Tier
+  /**
+   * Which friend is being previewed, when `asTier` stands in for a chosen one.
+   *
+   * ⚠️ IT TAKES A PERSON, NOT A TIER, BECAUSE `certain` IS NOT A REACH. Every other level is a
+   * rule about a relationship, so one preview per level covers everybody who holds it. A Certain
+   * list belongs to one block, so two friends are sent different pages — there is no "a viewer
+   * at this tier" to stand in for them. Absent means a friend who is on no list, which is its
+   * own useful answer: what an ordinary friend gets.
+   */
+  asFriend?: string
 }) {
   /**
    * ⚠️ NO TAB BAR UNTIL SOMEBODY MAKES A SECOND SECTION. A page with everything in one place
@@ -647,7 +678,17 @@ export function ProfileBlocksView({
    */
   /* the pretend audience first, then the blocks that actually draw something — in that order,
      so a section does not keep its tab on the strength of a block this viewer cannot see */
-  const visible = asTier ? blocks.filter((b) => tierSees(asTier, b.visibility)) : blocks
+  const visible = asTier
+    ? blocks.filter((b) =>
+        tierSees(
+          asTier,
+          b.visibility,
+          /* `b.certain` is sent only to a block's owner, which is the only case `asTier` is ever
+             set in. Case-insensitive, because the server matches usernames on `lower()`. */
+          !!asFriend && (b.certain ?? []).some((n) => n.toLowerCase() === asFriend.toLowerCase()),
+        ),
+      )
+    : blocks
   const live = visible.filter((b) => !isBlockEmpty(b))
   const tabs = tabsOf(live)
   /* an unnamed leading section exists only while something is still unfiled — see blockTab */
@@ -2693,12 +2734,22 @@ export function ProfileBlocksEditor({
    * Debounced rather than per-keystroke: 700ms also coalesces a hue slider drag, which would
    * otherwise post a couple of hundred times.
    */
+  /**
+   * ⚠️ `certain` IS SENT ON EVERY BLOCK, EVEN AN EMPTY ONE, and that is a protocol decision
+   * rather than tidiness. `save_my_profile_blocks` works out whether the sender knows about
+   * lists by asking whether the key appears ANYWHERE in the payload — because a bundle that has
+   * never heard of them must not have its silence read as "wipe every list", which is how one
+   * stale tab could clear the whole page's choices. Sending `[]` on a friends block is this
+   * client saying "I know about lists and that one has none"; sending nothing at all would put
+   * the server into the older-bundle path and make an emptied list unsaveable.
+   */
   const payloadOf = (list: ProfileBlock[]) =>
-    list.map(({ block_type, size, config, visibility }) => ({
+    list.map(({ block_type, size, config, visibility, certain }) => ({
       block_type,
       size,
       config,
       visibility,
+      certain: certain ?? [],
     }))
 
   /**
@@ -3538,38 +3589,40 @@ export function ProfileBlocksEditor({
                       ))}
                     </span>
                   </label>
-                  <label>
-                    <span className="muted">Who can see this</span>
-                    <select
-                      className="btn"
-                      value={selected.visibility}
-                      onChange={(e) =>
-                        setBlocks((all) =>
-                          all.map((x, idx) =>
-                            idx === openIdx ? { ...x, visibility: e.target.value as Tier } : x,
-                          ),
-                        )
-                      }
-                    >
-                      {/**
-                       * ⚠️ A CHRONICLE BLOCK IS NOT OFFERED "ANYONE", because the server refuses
-                       * it — and a control that offers a choice the save then rejects blames the
-                       * member for a decision the site had already made. The reason is in
-                       * docs/2026-10-14-chronicle-profile-block.sql: can_see(owner,'public') is
-                       * true for anon too, but get_member_chronicle refuses an unauthenticated
-                       * caller, so that tier would READ as the open internet and BEHAVE as
-                       * members. The refusal stays on the server, where it is enforceable; this
-                       * only stops the dead end being reachable.
-                       */}
-                      {(Object.keys(TIER_LABEL) as Tier[])
-                        .filter((t) => t !== 'public' || selected.block_type !== 'chronicle')
-                        .map((t) => (
-                          <option key={t} value={t}>
-                            {TIER_LABEL[t]}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
+                  {/**
+                   * ⚠️ `VisibilityPicker`, NOT A `<select>`, AND THE REASON IS THE CEILING. The
+                   * dropdown offered all four levels to everybody, and `clamp_visibility`
+                   * narrows anything above the account's — so a member capped at Friends could
+                   * pick "Anyone with an account", be told it saved, and go on reading the wider
+                   * word above a block only their friends could see. The picker asks
+                   * `my_visibility_ceiling` and offers nothing it cannot deliver.
+                   *
+                   * ⚠️ AND THE CHRONICLE EXCEPTION IS NOW A RULE RATHER THAN A `.filter()`. A
+                   * chronicle block is not offered "Anyone" because `can_see(owner,'public')` is
+                   * true for anon while `get_member_chronicle` refuses an unauthenticated caller
+                   * — so that tier would READ as the open internet and BEHAVE as members. That
+                   * stayed a one-off filter here for a month; `omit` is the same decision in the
+                   * one place that also knows about the ceiling and the stored value, so a block
+                   * already holding `public` keeps it selectable instead of rendering blank.
+                   * See docs/2026-10-14-chronicle-profile-block.sql.
+                   */}
+                  <VisibilityPicker
+                    kind="block"
+                    label="Who can see this"
+                    value={selected.visibility}
+                    omit={selected.block_type === 'chronicle' ? ['public'] : undefined}
+                    onChange={(tier) =>
+                      setBlocks((all) =>
+                        all.map((x, idx) => (idx === openIdx ? { ...x, visibility: tier } : x)),
+                      )
+                    }
+                    certain={selected.certain ?? []}
+                    onCertainChange={(names) =>
+                      setBlocks((all) =>
+                        all.map((x, idx) => (idx === openIdx ? { ...x, certain: names } : x)),
+                      )
+                    }
+                  />
                   {/**
                    * ⚠️ "ANYONE" CHANGED MEANING AND THE WORD DID NOT.
                    *

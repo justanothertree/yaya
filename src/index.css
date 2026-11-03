@@ -1252,6 +1252,36 @@
   font-size: 0.75rem;
   line-height: 1.4;
 }
+
+/* The list behind "Certain friends". Names wrap rather than scroll, for the same reason the
+   tiers above them do: a friend hidden off the edge of a phone is somebody you think you have
+   shared with. Indented slightly so it reads as belonging to the option that opened it. */
+.certain-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1, 0.25rem);
+  padding: var(--sp-1, 0.25rem) 0 0 var(--sp-2, 0.5rem);
+  border-left: 2px solid var(--b2, rgba(127, 127, 127, 0.3));
+}
+.certain-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1, 0.25rem);
+}
+.certain-circles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1, 0.25rem);
+  font-size: 0.72rem;
+}
+/* 26px, not the 32px of a tier button: these are a shortcut beside the real control, and the
+   WCAG floor is 24. Measured in pixels because the root size here is fluid. */
+.certain-circle-btn {
+  font-size: 0.72rem;
+  min-height: 26px;
+  padding: 0.1rem 0.45rem;
+}
 /* page controls handed to the canvas menu (the Circuit's group filter). Keeps its own
    sizing rather than inheriting the window-tab button treatment around it. */
 .cz-menu-tool {
@@ -6593,6 +6623,54 @@ button.appearance-slider-val:not(:disabled):focus-visible {
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+}
+/* ⚠️ THE ACTIVITY PICKER OPENS OVER THE PAGE RATHER THAN INSIDE THE ROW. In flow it would
+   push the header's buttons apart by the height of a picker plus a list of friends; the row is
+   `margin-left: auto` against the right edge, so the panel is pinned there too and bounded by
+   the viewport rather than by a rem, because the root size on this site is fluid. */
+/* ⚠️ THE ROW IS THE CONTAINING BLOCK, NOT THE FOLD, AND GETTING THAT WRONG PUT THE PANEL
+   149px OFF THE LEFT EDGE. With `position: relative` on the fold, `right: 0` meant the right
+   edge of the summary -- which below 700px sits at x=171 on a 375 screen, so a 320px panel
+   anchored there ran to -149. Measured; and `mobileAudit` said zero, because `offEdge` is a
+   measurement against the RIGHT edge and content off the left creates no scroll either. A clean
+   number is not a clean room. Relative on the row instead, which is full width below 700. */
+.profile-head-actions {
+  position: relative;
+}
+.profile-activity-fold {
+  position: static;
+}
+.profile-activity-fold > summary {
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+.profile-activity-fold > summary::-webkit-details-marker {
+  display: none;
+}
+/* ⚠️ ANCHORED RIGHT AND SIZED IN PIXELS, AND THE FIRST VERSION WAS 177px WIDE AT 375.
+   It said `left: 0; right: 0; width: auto` under a 700px media query, meaning to fill the row --
+   but the containing block of an absolutely positioned child is its nearest positioned ancestor,
+   which is `.profile-activity-fold` above, not the row. So "fill the row" filled the SUMMARY: a
+   three-level picker and a list of friends inside the width of the words "Activity: Friends".
+   Measured, which is the only reason it was caught -- the sweep reported nothing, because the
+   options wrapped rather than overflowing and a crushed control is not an overflowing one.
+   Both numbers are px because the root font-size on this site is fluid, so a rem is not a
+   length; `min()` against the viewport is what keeps it on screen at 320. */
+.profile-activity-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  left: auto;
+  min-width: min(320px, calc(100vw - 2rem));
+  max-width: min(360px, calc(100vw - 2rem));
+  padding: 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--b2, rgba(127, 127, 127, 0.3));
+  background: var(--card, #1b1b26);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  text-align: left;
 }
 @media (max-width: 700px) {
   .profile-head-actions {
@@ -19147,13 +19225,16 @@ a.cz-msg-author:focus-visible {
   margin: 0.6rem 0 0.35rem;
   font-size: 0.82rem;
 }
+/* ⚠️ ONE ROW PER LINE NOW, NOT A WRAPPING ROW OF TICKS. Each activity is a fold holding a
+   three-level picker and a list of friends, so two of them side by side would open into each
+   other. The summary is the line it used to be, plus the level in words. */
 .chron-sharing-acts {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 0.6rem;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 .chron-sharing-acts label {
   display: flex;
@@ -19162,6 +19243,44 @@ a.cz-msg-author:focus-visible {
   min-height: 32px;
   min-width: 0;
   cursor: pointer;
+}
+.chron-sharing-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  /* 44px: this is the one control in the list and a thumb has to land on it */
+  min-height: 44px;
+  padding: 0 0.3rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+.chron-sharing-fold > summary:hover {
+  background: var(--b1, rgba(127, 127, 127, 0.08));
+}
+/* the level, pushed to the right and allowed to wrap under the name on a narrow screen rather
+   than taking the row past its own edge */
+.chron-sharing-tier {
+  margin-left: auto;
+  font-size: 0.74rem;
+  text-align: right;
+  min-width: 0;
+}
+.chron-sharing-fold[open] > summary {
+  background: var(--b1, rgba(127, 127, 127, 0.08));
+}
+.chron-sharing-fold > :not(summary) {
+  padding: 0.4rem 0.3rem 0.6rem 0.6rem;
+}
+/* what stands where the tick cannot go -- an activity at `certain`, whose level this form has no
+   room to edit */
+.chron-share-note {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 /* a long activity name may ellipse; it must never take the row off its own edge, and a floor
    in PIXELS because the root size on this site is fluid and a rem is therefore not a length */

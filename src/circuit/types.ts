@@ -8,8 +8,18 @@ export type ID = string
  * Who can see a thing. One vocabulary shared by circuit boards, chat rooms and Snake
  * handles, matching the `visibility_tier` enum in Postgres. Circuit group sharing is a
  * separate mechanism layered on top — see docs/visibility-tiers-design.md.
+ *
+ * ⚠️ `certain` IS THE ONLY LEVEL WHOSE AUDIENCE IS NOT DERIVABLE FROM THE TIER. The other four
+ * are a rule about a relationship — nobody, your friends, every member, everyone — so the tier
+ * alone answers "can this person see it". `certain` is a rule about a LIST, held per item in
+ * `visibility_certain` and asked through `can_see_item(owner, tier, kind, id)`. Anything that
+ * decides visibility from the tier and nothing else will be wrong about exactly this one, which
+ * is why the server's four-argument gate exists and why the two-argument `can_see` fails closed
+ * on it. An empty list means nobody but the owner.
+ *
+ * It sits BELOW `friends`: the people on it must already be accepted friends.
  */
-export type VisibilityTier = 'private' | 'friends' | 'members' | 'public'
+export type VisibilityTier = 'private' | 'certain' | 'friends' | 'members' | 'public'
 
 /** A participant in the shared Circuit. */
 export interface Person {

@@ -143,11 +143,33 @@ export function CircuitsPanel() {
       return r
     }, 'Circuit renamed')
 
-  const setVisibility = (personId: string, tier: VisibilityTier) =>
-    run(
-      () => sb.rpc('set_person_visibility', { p_person_id: personId, p_tier: tier }),
-      `Now visible to: ${TIER_LABEL[tier].toLowerCase()}`,
-    )
+  /**
+   * ⚠️ THE TOAST NAMED THE TIER THAT WAS ASKED FOR, WHICH IS THE ONE THING IT MUST NOT DO.
+   * `set_person_visibility` clamps against the row's owner's ceiling and says nothing, so an
+   * account capped at "anyone with an account" could press Anyone and be told, in words, "Now
+   * visible to: anyone" about a board no stranger can load. The picker only offers reachable
+   * levels now, so the two agree — but the message is built from the server's answer rather than
+   * from the request, which is what makes that a fact instead of a hope.
+   *
+   * Not through `run()`, which forwards only `{ error }`. The refresh it does afterwards is kept
+   * because the stored tier has to reach the row on screen as well as the toast.
+   */
+  const setVisibility = async (personId: string, tier: VisibilityTier) => {
+    setBusy(true)
+    setErr(null)
+    const { data, error } = await sb.rpc('set_person_visibility', {
+      p_person_id: personId,
+      p_tier: tier,
+    })
+    setBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    const stored = (typeof data === 'string' ? (data as VisibilityTier) : null) ?? tier
+    showToast(`Now visible to: ${TIER_LABEL[stored].toLowerCase()}`)
+    await refresh()
+  }
 
   const copyCode = (code: string) => {
     void navigator.clipboard?.writeText(code).then(
@@ -486,9 +508,11 @@ export function CircuitsPanel() {
                 </div>
                 <VisibilityPicker
                   value={p.visibility ?? 'private'}
-                  onChange={(t) => setVisibility(p.id, t)}
+                  onChange={(t) => void setVisibility(p.id, t)}
                   disabled={busy}
                   kind="circuit"
+                  /* a person has a stable text id, so the chooser loads and saves its own list */
+                  certainItem={{ kind: 'circuit_person', id: p.id }}
                 />
               </div>
             ))}

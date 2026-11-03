@@ -525,10 +525,28 @@ function SnakeVisibility() {
       return
     }
     setBusy(true)
-    const { error } = await getSupabaseClient().rpc('set_my_snake_visibility', { p_tier: t })
+    /**
+     * ⚠️ WHAT CAME BACK, NOT WHAT WENT IN. This used to `setTier(t)` on any non-error reply,
+     * and the setter clamps a tier above the account's ceiling without comment — so a member
+     * capped at "anyone with an account" could press "Anyone" and watch the control settle on
+     * it while the database held something narrower. The picker only offers reachable levels
+     * now, so the two should agree; storing the server's answer is what makes that a measured
+     * fact rather than an assumption.
+     *
+     * It returns the stored tier where it used to return a row count — which was a worse
+     * answer than it looked, since `0` means both "no handle to set" and "refused".
+     */
+    const { data, error } = await getSupabaseClient().rpc('set_my_snake_visibility', { p_tier: t })
     if (!error) {
-      setTier(t)
-      showToast('Snake name visibility updated')
+      if (typeof data === 'string') {
+        setTier(data as VisibilityTier)
+        showToast('Snake name visibility updated')
+      } else {
+        /* null means no claimed handle to set — which this card does not render for, so it can
+           only mean the handle went while the page was open. Say so rather than show a level
+           nothing is stored at. */
+        showToast('Couldn’t find a handle to change — reload the page')
+      }
     }
     setBusy(false)
   }
@@ -540,6 +558,11 @@ function SnakeVisibility() {
         onChange={(t) => void change(t)}
         kind="snake"
         disabled={busy}
+        /* ⚠️ `certain` IS NOT OFFERED HERE AND THE SETTER IS WHY, not the copy.
+           `set_my_snake_visibility` moves EVERY handle you have claimed in one write, so there
+           is no single item for a per-item list to belong to — a Certain list has to hang off
+           one row. Offering the level would be a control that stores a tier reaching nobody. */
+        omit={['certain']}
         label={`Who can tell ${handles.length > 1 ? 'these handles are' : 'this handle is'} you?`}
       />
       <p className="muted" style={{ margin: 0, fontSize: '0.75rem' }}>

@@ -16,6 +16,8 @@
  * CSS gradients alone — no uploads, no external requests, no storage, nothing to break.
  */
 
+import type { VisibilityTier } from '../circuit/types'
+
 /** Stable small hash of a string — same input, same colour, on every device and every render. */
 function hashOf(s: string): number {
   let h = 2166136261
@@ -195,15 +197,45 @@ export function surpriseMe(count: number): {
  * looking at their OWN page with every block already in hand, can be shown the subset somebody
  * else would have been sent. Nothing is protected by it and nothing may ever be.
  *
- * ⚠️ The ordering is by WIDTH, not by rank of person: 'public' is the widest audience and so
- * the lowest bar. A viewer clears a block when their own reach is at least as wide as the
- * audience the block was written for.
+ * ⚠️ THE INVARIANT, STATED THE ONE WAY ROUND THAT IS NOT AMBIGUOUS: a block reaches a viewer
+ * when the block's audience is at least as WIDE as the group the viewer belongs to. A block
+ * written for "members" reaches a member and a friend; it does not reach a stranger, because
+ * "the public" is not inside "members".
+ *
+ * This comment used to say "a viewer clears a block when their own reach is at least as wide as
+ * the audience the block was written for", and that reads backwards — a stranger's reach is the
+ * NARROWEST thing here, not the widest, so "wide" was doing opposite duty on the two sides of
+ * the sentence. The code was right the whole time; the sentence cost a wrong first draft of
+ * tierSees.test.ts, which is what it would cost the next person. The numbers below therefore run
+ * the opposite way to `openness()` in visibilityLabels.ts, on purpose: this table ranks how
+ * NARROW a tier is, and that one ranks how open it is.
+ *
+ * ⚠️ `certain` BREAKS THE RANKING AND HAS TO BE ASKED SEPARATELY. The other four tiers are a
+ * rule about a relationship, so a single number per tier settles every pair. `certain` is a rule
+ * about a LIST held per item — two friends looking at the same block get different answers — so
+ * no rank can express it and `onList` is a third input. Ranked anyway, at 3, for the case where
+ * a chosen friend is the VIEWER: they are a friend, so they clear a friends block and not a
+ * private one.
  */
-const REACH: Record<Tier, number> = { public: 0, members: 1, friends: 2, private: 3 }
+const REACH: Record<Tier, number> = { public: 0, members: 1, friends: 2, certain: 3, private: 4 }
 
-export type Tier = 'public' | 'friends' | 'members' | 'private'
+/**
+ * ⚠️ THIS WAS A HAND-WRITTEN COPY OF THE LADDER AND IT WENT STALE SILENTLY. It read
+ * `'public' | 'friends' | 'members' | 'private'`, duplicated character for character in
+ * `ProfileBlocks.tsx`, so adding `certain` to `VisibilityTier` broke nothing and typechecked
+ * clean while every surface built on these two aliases quietly believed the level did not exist.
+ * A union that mirrors another union is a claim with no check behind it; aliasing is the only
+ * version that cannot drift.
+ */
+export type Tier = VisibilityTier
 
-export function tierSees(viewer: Tier, block: Tier): boolean {
+/**
+ * @param onList whether this viewer is on the item's Certain list. Meaningless for the other
+ *   four tiers, and REQUIRED to be right for `certain` — the default of `false` is the
+ *   fail-closed answer, which is what a caller that has not been taught about lists should get.
+ */
+export function tierSees(viewer: Tier, block: Tier, onList = false): boolean {
+  if (block === 'certain') return onList
   return REACH[block] <= REACH[viewer]
 }
 

@@ -12,6 +12,8 @@
  * where it can be tested, rather than in a component where it can only be eyeballed.
  */
 
+import type { VisibilityTier } from '../circuit/types'
+
 /** A span against an activity. `end` null is the timer that is still going. */
 export type Entry = {
   id: string
@@ -133,6 +135,19 @@ export type Activity = {
    * docs/2026-10-23-chronicle-friends-timeline.sql.
    */
   shared: boolean
+  /**
+   * The same decision on the ladder that can hold all of it.
+   *
+   * ⚠️ `shared` CANNOT SAY `certain`, BY CHECK CONSTRAINT. `chronicle_activities_tier_agrees`
+   * pins the boolean to `visibility in ('friends','members','public')`, so an activity shared
+   * with three chosen friends has `shared = false` -- and a tick built on the boolean shows an
+   * empty box above sittings those three can see. Both are read; `shared` stays because it is
+   * what this room has always asked, and because the server keeps them in step with a trigger.
+   *
+   * Chronicle caps itself at `friends` (`chronicle_activities_tier_capped`), so `members` and
+   * `public` cannot be stored here even though the type allows them.
+   */
+  visibility: VisibilityTier
   /**
    * How long a single sitting ought to be, in minutes — or null, which is most of them.
    *

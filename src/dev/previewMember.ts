@@ -315,6 +315,87 @@ export const PREVIEW_PROFILES: Record<string, ProfileData> = {
 }
 
 /**
+ * YOUR OWN PAGE'S BLOCKS, so the "Seen by" row has something to filter.
+ *
+ * ⚠️ WITHOUT THIS THE ROW RENDERED OVER AN EMPTY PAGE AND EVERY CHECK OF IT PASSED. The
+ * preview harness has no session, so `get_profile_blocks` answers nothing — and the audience
+ * preview is exactly the feature CLAUDE.md's "a room with nothing in it passes every check"
+ * warning is about: the five buttons appeared, the friend picker filled itself from the roster,
+ * and the thing they are for — showing the subset somebody else would have been sent — could not
+ * be observed at all, because the subset of nothing is nothing at every level.
+ *
+ * ⚠️ ONE BLOCK PER LEVEL, AND TWO AT `certain` WITH DIFFERENT LISTS. The second one is the
+ * point: `certain` is the only level where two friends looking at the same page are sent
+ * different pages, so a fixture with one list cannot tell a per-item rule from a per-tier one.
+ * Quill is on one, Marlow on the other, and Bramble on neither — which makes "a friend on no
+ * list" a state the row can be driven into rather than a sentence in a comment.
+ *
+ * The usernames match `friendRoster`'s own stand-in, because a list naming somebody the chooser
+ * does not offer is a state the server cannot produce (it drops a name that is not an accepted
+ * friend) and so is one the double must not invent.
+ *
+ * A function rather than a const, and the same bundle reasoning as everything else in here.
+ */
+export function previewMyBlocks(): Array<Record<string, unknown>> {
+  return [
+    {
+      id: 'pv-b-1',
+      block_type: 'bio',
+      position: 1,
+      size: 'medium',
+      config: { text: 'Anyone can read this one.' },
+      visibility: 'public',
+      certain: [],
+    },
+    {
+      id: 'pv-b-2',
+      block_type: 'status',
+      position: 2,
+      size: 'small',
+      config: { text: 'Members only' },
+      visibility: 'members',
+      certain: [],
+    },
+    {
+      id: 'pv-b-3',
+      block_type: 'stats',
+      position: 3,
+      size: 'small',
+      config: {},
+      visibility: 'friends',
+      certain: [],
+    },
+    {
+      id: 'pv-b-4',
+      block_type: 'trophies',
+      position: 4,
+      size: 'small',
+      config: {},
+      visibility: 'certain',
+      certain: ['quill'],
+    },
+    {
+      id: 'pv-b-5',
+      block_type: 'guestbook',
+      position: 5,
+      size: 'medium',
+      config: {},
+      visibility: 'certain',
+      certain: ['marlow'],
+    },
+    {
+      id: 'pv-b-6',
+      block_type: 'activity',
+      position: 6,
+      size: 'small',
+      config: {},
+      visibility: 'private',
+      certain: [],
+    },
+  ]
+}
+
+/**
  * A call in progress, for the preview.
  *
  * Voice presence is live realtime state with no session behind it in preview mode, so

@@ -39,6 +39,7 @@ const goal = (over: Partial<Goal> = {}): Goal => ({
   scope: 'day',
   anchor: '2026-10-12',
   shared: false,
+  visibility: 'private',
   every: null,
   target: null,
   unit: null,
@@ -951,6 +952,9 @@ const reading: Activity = {
   name: 'Reading',
   cat: 'free',
   shared: true,
+  /* the tier `shared: true` means. Both, because the server keeps them in step with a
+     trigger and a CHECK, so a fixture setting one invents a row the table would refuse. */
+  visibility: 'friends',
   colour: '#c2763a',
   archived: false,
   auto: false,

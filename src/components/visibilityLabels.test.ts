@@ -24,9 +24,23 @@ import type { VisibilityTier } from '../circuit/types'
  */
 describe('openness', () => {
   it('orders the ladder from closed to open', () => {
-    expect(openness('private')).toBeLessThan(openness('friends'))
+    expect(openness('private')).toBeLessThan(openness('certain'))
+    expect(openness('certain')).toBeLessThan(openness('friends'))
     expect(openness('friends')).toBeLessThan(openness('members'))
     expect(openness('members')).toBeLessThan(openness('public'))
+  })
+
+  /**
+   * ⚠️ `certain` BELOW `friends` IS WHAT MAKES THE LIST RULE NECESSARY, and asserting it
+   * here is asserting the product rather than the array. A list naming somebody who is not an
+   * accepted friend would make the narrow level reach further than the broad one directly above
+   * it -- so every comparison built on this order would quietly mean the wrong thing, and the
+   * server drops a non-friend name in both `visibility_certain_set` and `save_my_profile_blocks`
+   * for exactly this reason.
+   */
+  it('puts certain below friends, which is why its list may only hold friends', () => {
+    expect(openness('certain')).toBeLessThan(openness('friends'))
+    expect(openness('private')).toBeLessThan(openness('certain'))
   })
 
   it('agrees with TIER_ORDER for every tier, so nothing is unranked', () => {
@@ -42,9 +56,10 @@ describe('offeredTiers', () => {
   it('offers the ceiling and everything below it, and nothing above', () => {
     // asserted against the ladder, not against the filter: count what SHOULD be reachable
     const cases: [VisibilityTier, VisibilityTier[]][] = [
-      ['public', ['private', 'friends', 'members', 'public']],
-      ['members', ['private', 'friends', 'members']],
-      ['friends', ['private', 'friends']],
+      ['public', ['private', 'certain', 'friends', 'members', 'public']],
+      ['members', ['private', 'certain', 'friends', 'members']],
+      ['friends', ['private', 'certain', 'friends']],
+      ['certain', ['private', 'certain']],
       ['private', ['private']],
     ]
     for (const [ceiling, expected] of cases) {
@@ -78,7 +93,44 @@ describe('offeredTiers', () => {
 
   it('adds the over-ceiling value without also letting anything else through', () => {
     // `public` stored under a `friends` ceiling must not drag `members` in with it
-    expect(offeredTiers('friends', 'public')).toEqual(['private', 'friends', 'public'])
+    expect(offeredTiers('friends', 'public')).toEqual(['private', 'certain', 'friends', 'public'])
+  })
+
+  /**
+   * `omit` is for a level the SURFACE cannot store, which is a different question from the
+   * ceiling. Chronicle caps at friends by CHECK; a chronicle profile block cannot be public
+   * because `get_member_chronicle` refuses an unauthenticated caller; a snake handle has no
+   * `certain` because one setter moves every handle at once. Each of those was a hand-written
+   * `.filter()` at its own call site before this argument existed.
+   */
+  describe('omit', () => {
+    it('leaves out what the surface cannot store', () => {
+      expect(offeredTiers('public', 'private', ['members', 'public'])).toEqual([
+        'private',
+        'certain',
+        'friends',
+      ])
+      expect(offeredTiers('public', 'private', ['certain'])).toEqual([
+        'private',
+        'friends',
+        'members',
+        'public',
+      ])
+    })
+
+    it('still offers an omitted level when that is what is stored, so nothing renders blank', () => {
+      // a block saved as `public` before the chronicle rule existed is exactly this row
+      expect(offeredTiers('public', 'public', ['public'])).toContain('public')
+      expect(offeredTiers('public', 'certain', ['certain'])).toContain('certain')
+    })
+
+    it('applies the ceiling and the omission together', () => {
+      expect(offeredTiers('friends', 'private', ['certain'])).toEqual(['private', 'friends'])
+    })
+
+    it('changes nothing when there is nothing to omit', () => {
+      expect(offeredTiers('members', 'private', [])).toEqual(offeredTiers('members', 'private'))
+    })
   })
 
   it('returns tiers in ladder order whatever the stored value', () => {
@@ -109,8 +161,8 @@ describe('the copy covers the ladder', () => {
     }
   })
 
-  it('has a hint for every tier in both kinds', () => {
-    for (const kind of ['circuit', 'snake'] as const) {
+  it('has a hint for every tier in every kind', () => {
+    for (const kind of ['circuit', 'snake', 'block', 'activity', 'chronicle'] as const) {
       for (const t of TIER_ORDER) {
         expect(TIER_HINTS[kind][t]).toBeTruthy()
       }
@@ -133,8 +185,15 @@ describe('the copy covers the ladder', () => {
  * silently rearrange two controls with nothing going red.
  */
 describe('TIER_SHORT', () => {
-  it('comes out widest-first, which is the order the controls have always had', () => {
-    expect(Object.keys(TIER_SHORT)).toEqual(['public', 'friends', 'members', 'private'])
+  /**
+   * ⚠️ THIS USED TO ASSERT `['public','friends','members','private']` AND THE ORDER WAS LOAD-
+   * BEARING, because two controls built themselves by iterating the map with `Object.keys`. Both
+   * are `VisibilityPicker` now, which orders itself from `TIER_ORDER` and knows about the
+   * ceiling -- so the insertion order stopped being a thing on screen, and the map is words
+   * only. Asserted against the ladder instead, so the two cannot drift apart.
+   */
+  it('comes out in ladder order, and covers the ladder exactly', () => {
+    expect(Object.keys(TIER_SHORT)).toEqual(TIER_ORDER)
   })
 
   it('names every tier, so no option renders blank', () => {

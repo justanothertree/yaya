@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
+import { VisibilityPicker } from '../components/VisibilityPicker'
+import { TIER_SHORT } from '../components/visibilityLabels'
+import type { VisibilityTier } from '../circuit/types'
 
 /**
  * One switch for sharing a chronicle, in the room where the chronicle is.
@@ -23,7 +26,25 @@ import { previewMember } from '../dev/previewMember'
  * reads as "rename this".
  */
 
-type Act = { id: string; name: string; cat: string; colour: string | null; shared: boolean }
+type Act = {
+  id: string
+  name: string
+  cat: string
+  colour: string | null
+  shared: boolean
+  /** the ladder level, which is what the picker edits. `shared` is the old boolean beside it. */
+  visibility: VisibilityTier
+  /**
+   * Whether this one actually reaches anybody — `item_reaches_anyone` on the server.
+   *
+   * ⚠️ NOT THE SAME QUESTION AS `visibility !== 'private'`, and that is the whole reason it is
+   * sent. An activity at `certain` with nobody on its list is SET to a sharing level and reaches
+   * no one, so a count built on the tier would overstate and a row built on it would read as
+   * shared. It is the same predicate the feed uses on the same rows, so the number here and the
+   * contents there cannot disagree.
+   */
+  reaches: boolean
+}
 type Sharing = { timeline: boolean; hasCard: boolean; activities: Act[] }
 
 const EMPTY: Sharing = { timeline: false, hasCard: false, activities: [] }
@@ -34,9 +55,35 @@ function previewSharing(): Sharing {
     timeline: false,
     hasCard: false,
     activities: [
-      { id: 'pv-a-1', name: 'Guitar', cat: 'free', colour: '#7c6af7', shared: false },
-      { id: 'pv-a-2', name: 'Reading', cat: 'free', colour: '#46b17b', shared: true },
-      { id: 'pv-a-3', name: 'Work', cat: 'locked', colour: null, shared: false },
+      {
+        id: 'pv-a-1',
+        name: 'Guitar',
+        cat: 'free',
+        colour: '#7c6af7',
+        shared: false,
+        visibility: 'private',
+        reaches: false,
+      },
+      {
+        id: 'pv-a-2',
+        name: 'Reading',
+        cat: 'free',
+        colour: '#46b17b',
+        shared: true,
+        visibility: 'friends',
+        reaches: true,
+      },
+      /* the state that only `certain` can produce: a sharing level that reaches nobody. The
+         double must be able to show it, or the workbench cannot see the row that says so. */
+      {
+        id: 'pv-a-3',
+        name: 'Work',
+        cat: 'locked',
+        colour: null,
+        shared: false,
+        visibility: 'certain',
+        reaches: false,
+      },
     ],
   }
 }
@@ -91,37 +138,64 @@ export function Sharing({ authed }: { authed: boolean }) {
     setBusy(null)
   }
 
-  const setShared = async (a: Act, on: boolean) => {
+  /**
+   * ⚠️ A TIER, NOT A TICK, AND THE OLD BOOLEAN COULD NOT HAVE EXPRESSED THIS ONE. `shared` is
+   * pinned by a CHECK to `visibility in ('friends','members','public')`, so an activity set to
+   * `certain` has `shared = false` — a checkbox built on it would show an unticked box above a
+   * row three friends can see, and ticking it would widen the thing to all friends and drop the
+   * list on the way. `chronicle_activity_set_visibility` takes the level and returns the one it
+   * stored, which is doubly clamped: by the account's ceiling and by Chronicle's own cap at
+   * friends.
+   */
+  const setTier = async (a: Act, tier: VisibilityTier) => {
     setBusy(a.id)
     setError(null)
+    /* optimistic for the same reason the switch above is: a privacy control that waits a round
+       trip before moving reads as not having been pressed. `reaches` is guessed here and
+       corrected by the reload — a `certain` row's real answer depends on its list. */
     setState((s) =>
       s
-        ? { ...s, activities: s.activities.map((x) => (x.id === a.id ? { ...x, shared: on } : x)) }
+        ? {
+            ...s,
+            activities: s.activities.map((x) =>
+              x.id === a.id
+                ? {
+                    ...x,
+                    visibility: tier,
+                    shared: tier === 'friends',
+                    reaches: tier !== 'private',
+                  }
+                : x,
+            ),
+          }
         : s,
     )
     if (previewMember) {
       setBusy(null)
       return
     }
-    const { error: e } = await getSupabaseClient().rpc('chronicle_activity_share', {
+    const { error: e } = await getSupabaseClient().rpc('chronicle_activity_set_visibility', {
       p_id: a.id,
-      p_on: on,
+      p_tier: tier,
     })
     if (e) {
-      setState((s) =>
-        s
-          ? {
-              ...s,
-              activities: s.activities.map((x) => (x.id === a.id ? { ...x, shared: !on } : x)),
-            }
-          : s,
-      )
       setError('That did not save. Try again?')
+      await load()
+    } else {
+      /* reload rather than trust the returned tier on its own: the row's `reaches` depends on a
+         list this call did not touch, and the panel's count is built from it */
+      await load()
     }
     setBusy(null)
   }
 
-  const ticked = state.activities.filter((a) => a.shared).length
+  /**
+   * ⚠️ COUNTED FROM `reaches`, NOT FROM THE TIER. This number goes into a sentence that tells
+   * somebody who can see their days, and an activity at `certain` with an empty list is set to a
+   * sharing level and reaches nobody. Counting the tier would say "friends can see 3" where the
+   * truth is 2 — a wrong number in the one place that must not have one.
+   */
+  const ticked = state.activities.filter((a) => a.reaches).length
 
   return (
     <section className="chron-sharing">
@@ -153,23 +227,46 @@ export function Sharing({ authed }: { authed: boolean }) {
       {state.timeline && (
         <>
           <p className="muted chron-sharing-lede">
-            Which ones. Anything left unticked stays invisible, even while the switch is on.
+            Which ones, and who. Anything left at <strong>Only me</strong> stays invisible, even
+            while the switch is on.
           </p>
+          {/**
+           * ⚠️ A FOLD PER ROW, NOT A PICKER PER ROW. Three levels, a hint and a list of friends
+           * is four controls; twenty activities of that is a wall, and the one thing somebody
+           * scanning this list wants is the level each activity is at. Closed, every row is one
+           * line that says the level in words — which is more than the checkbox ever said.
+           */}
           <ul className="chron-sharing-acts">
             {state.activities.map((a) => (
               <li key={a.id}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={a.shared}
+                <details className="chron-sharing-fold">
+                  <summary>
+                    {a.colour ? (
+                      <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+                    ) : null}
+                    <span className="chron-sharing-act">{a.name}</span>
+                    {/* ⚠️ THE ROW SAYS WHEN IT REACHES NOBODY, because that is the one state a
+                        level alone cannot tell you about. "Certain friends" with an empty list is
+                        Only me, and an owner would otherwise find that out from a friend. */}
+                    <span className="muted chron-sharing-tier">
+                      {a.visibility === 'certain' && !a.reaches
+                        ? 'Certain friends — nobody picked yet'
+                        : TIER_SHORT[a.visibility]}
+                    </span>
+                  </summary>
+                  <VisibilityPicker
+                    kind="chronicle"
+                    label={`Who can see ${a.name}?`}
+                    value={a.visibility}
+                    /* Chronicle is capped at friends by `chronicle_activities_tier_capped`: a
+                       day-by-day record of somebody's time is not a members-tier thing. Omitted
+                       rather than offered and clamped. */
+                    omit={['members', 'public']}
                     disabled={busy === a.id}
-                    onChange={(e) => void setShared(a, e.target.checked)}
+                    onChange={(t) => void setTier(a, t)}
+                    certainItem={{ kind: 'chronicle_activity', id: a.id }}
                   />
-                  {a.colour ? (
-                    <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-                  ) : null}
-                  <span className="chron-sharing-act">{a.name}</span>
-                </label>
+                </details>
               </li>
             ))}
           </ul>

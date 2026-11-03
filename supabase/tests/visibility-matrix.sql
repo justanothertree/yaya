@@ -87,7 +87,7 @@ rollback;
 --
 -- 3 Nov 2026, after Part 1 (the ceiling backfill): UNCHANGED.
 --
---   cells 196 ' + chr(183) + ' blocks 539 ' + chr(183) + ' activity 7,118 ' + chr(183) + ' trophies 130
+--   cells 196 · blocks 539 · activity 7,118 · trophies 130
 --   md5   8e163d91a6925025e270416c6d387718
 --
 -- ⚠️ AND UNCHANGED IS THE EXPECTED RESULT HERE, NOT A SIGN THE BACKFILL DID NOTHING.

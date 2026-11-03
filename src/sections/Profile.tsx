@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getSupabaseClient, getSupabaseClientOrNull } from '../finance/client'
 import { tierSees, avatarStyle } from '../profile/look'
 import type { ProfileData } from '../profile/profileData'
-import { previewMember, PREVIEW_PROFILES } from '../dev/previewMember'
+import { previewMember, PREVIEW_PROFILES, previewMyBlocks } from '../dev/previewMember'
 import { applyPalette, derivePalette, loadPalette } from '../theme/customTheme'
 import { isFxStyle, previewClickFx, setClickFxScope } from '../ui/clickFx'
 import { beatLink } from '../game/challenge'
@@ -21,6 +21,8 @@ import {
 } from './ProfileBlocks'
 import type { ActivityItem } from './activityLine'
 import { TIER_SHORT as TIER_LABEL } from '../components/visibilityLabels'
+import { VisibilityPicker } from '../components/VisibilityPicker'
+import { useFriendRoster } from '../components/friendRoster'
 
 /**
  * A member's profile — the page behind every name on the site.
@@ -140,6 +142,50 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    * Null means "as me". A tier means: show only what somebody with that reach was sent.
    */
   const [seenAs, setSeenAs] = useState<Tier | null>(null)
+  /**
+   * Which friend to look through the eyes of, when `seenAs` is `certain`.
+   *
+   * ⚠️ `certain` IS THE ONE LEVEL WHERE "a viewer at this tier" IS NOT A THING. The other four
+   * are a rule about a relationship, so one preview per tier covers everybody who holds it. A
+   * Certain list is per item, so two friends looking at the same page see different pages — and
+   * a preview that picked one of them silently, or averaged them, would be the most confident
+   * possible wrong answer about who can see what. So it asks which friend. Evan's decision, 3
+   * Nov: let him pick one and see the page as them, on the list versus not on it.
+   */
+  const [seenAsFriend, setSeenAsFriend] = useState<string | null>(null)
+  /**
+   * The signed-in account's own id, for the one Certain list whose item IS its owner.
+   *
+   * `owns_item('profile_activity', id, owner)` is `id = owner`, so the activity stream's list is
+   * keyed on the uid rather than on a row. Read from the session rather than plumbed through,
+   * the way CircuitsPanel does it; null until it arrives, and the chooser waits rather than
+   * rendering a control with nothing to save to.
+   */
+  const [myUid, setMyUid] = useState<string | null>(null)
+  /** the same accepted-friend list the Certain chooser uses, so the two cannot disagree */
+  const roster = useFriendRoster()
+  /**
+   * The reach the previewed viewer actually has.
+   *
+   * ⚠️ `certain` IS NOT A REACH, which is why it maps to `friends` here rather than to itself.
+   * Somebody on a list is a friend — the list only adds the blocks that name them, it does not
+   * take away the friends-tier ones. Previewing `certain` as `certain` would hide every ordinary
+   * friends block from a chosen friend, which is the opposite of what the level does.
+   */
+  const seenAsTier: Tier | null = seenAs === null ? null : seenAs === 'certain' ? 'friends' : seenAs
+  /**
+   * Whether the previewed friend is on this block's own list.
+   *
+   * `b.certain` is sent only to a block's owner, which is exactly when this row renders — a
+   * visitor gets `null` there, because who else is on a list is the owner's decision about other
+   * people. Case-insensitive, because the server matches usernames on `lower()`.
+   */
+  const onCertainList = (b: ProfileBlock) =>
+    !!seenAsFriend && (b.certain ?? []).some((n) => n.toLowerCase() === seenAsFriend.toLowerCase())
+  /** the previewed friend's own name — the list stores usernames, the sentence wants a person */
+  const seenAsName =
+    roster?.friends.find((f) => f.username.toLowerCase() === (seenAsFriend ?? '').toLowerCase())
+      ?.name ?? seenAsFriend
   /**
    * ⚠️ HELD SEPARATELY FROM `p`, because it is the one part of the payload the owner edits in
    * place. Writing it back into the profile object would mean either refetching the whole profile
@@ -266,9 +312,18 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
     setTrophies([])
     setAchievements([])
     const sb = getSupabaseClient()
-    void sb.rpc('get_profile_blocks', { p_username: u }).then(({ data }) => {
-      if (live) setBlocks(Array.isArray(data) ? (data as ProfileBlock[]) : [])
-    })
+    /* ⚠️ A STAND-IN FOR YOUR OWN PAGE, because without one the "Seen by" row filters an
+       empty list and reports success at every level. `previewMember` has no session, so this RPC
+       answers nothing here -- which is CLAUDE.md's "a room with nothing in it passes every
+       check" in the one place whose whole job is showing what somebody else was sent. Only your
+       own page: a visitor's blocks come from the server and are not the thing being previewed. */
+    if (previewMember && PREVIEW_PROFILES[u]?.is_me) {
+      setBlocks(previewMyBlocks() as unknown as ProfileBlock[])
+    } else {
+      void sb.rpc('get_profile_blocks', { p_username: u }).then(({ data }) => {
+        if (live) setBlocks(Array.isArray(data) ? (data as ProfileBlock[]) : [])
+      })
+    }
     void sb.rpc('get_member_activity', { p_username: u, p_limit: 20 }).then(({ data }) => {
       if (live) setActivity(Array.isArray(data) ? (data as ActivityItem[]) : [])
     })
@@ -456,6 +511,20 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
       .rpc('list_member_directory')
       .then(({ data }) => {
         if (live && data) setPeople(data as Person[])
+      })
+    return () => {
+      live = false
+    }
+  }, [authed])
+
+  /* the account's own id — the key the activity stream's Certain list hangs on */
+  useEffect(() => {
+    if (!authed) return
+    let live = true
+    void getSupabaseClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (live) setMyUid(data.user?.id ?? null)
       })
     return () => {
       live = false
@@ -780,24 +849,49 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
         </div>
         {p.is_me && (
           <span className="profile-head-actions">
-            <select
-              className="btn"
-              value={p.activity_visibility}
-              title="Who can see your circuits, ratings, snake results and activity"
-              onChange={async (e) => {
-                const tier = e.target.value as Tier
-                const { error } = await getSupabaseClient().rpc('set_my_activity_visibility', {
-                  p_tier: tier,
-                })
-                if (!error) setState({ kind: 'ok', p: { ...p, activity_visibility: tier } })
-              }}
-            >
-              {(Object.keys(TIER_LABEL) as Tier[]).map((t) => (
-                <option key={t} value={t}>
-                  Activity: {TIER_LABEL[t]}
-                </option>
-              ))}
-            </select>
+            {/**
+             * ⚠️ A FOLD RATHER THAN A DROPDOWN, AND IT IS THE CEILING THAT FORCED IT. The old
+             * control was a `<select>` built from `Object.keys(TIER_SHORT)`, which offered all
+             * four levels to everybody — and `clamp_visibility` narrows anything above the
+             * account's ceiling without comment, so a member capped at "anyone with an account"
+             * could choose Anyone, be told nothing, and go on reading the wider word. The picker
+             * knows the ceiling and offers nothing it cannot deliver; it also has to ask WHICH
+             * friends once Certain is chosen, which is three more controls than a header row can
+             * hold. So the summary keeps the one-line reading this row has always had, and the
+             * decision happens in a panel.
+             */}
+            <details className="profile-activity-fold">
+              <summary
+                className="btn"
+                title="Who can see your circuits, ratings, snake results and activity"
+              >
+                Activity: {TIER_LABEL[p.activity_visibility]}
+              </summary>
+              <div className="profile-activity-panel">
+                <VisibilityPicker
+                  kind="activity"
+                  label="Who can see your activity?"
+                  value={p.activity_visibility}
+                  onChange={async (tier) => {
+                    const { data, error } = await getSupabaseClient().rpc(
+                      'set_my_activity_visibility',
+                      { p_tier: tier },
+                    )
+                    /* ⚠️ the tier the SERVER stored. It used to store `tier` on any non-error
+                       reply, which is the clamp's silence being repeated back as fact. */
+                    if (!error) {
+                      const stored = (typeof data === 'string' ? (data as Tier) : null) ?? tier
+                      setState({ kind: 'ok', p: { ...p, activity_visibility: stored } })
+                    }
+                  }}
+                  /* the "item" for an activity stream IS its owner, which is what
+                     owns_item('profile_activity', id, owner) checks: `id = owner`. Without the
+                     uid in hand there is nothing to key a list on, so the chooser stays away
+                     rather than appearing and saving nowhere. */
+                  {...(myUid ? { certainItem: { kind: 'profile_activity', id: myUid } } : {})}
+                />
+              </div>
+            </details>
             <button
               className="btn"
               onClick={toggleEditing}
@@ -840,7 +934,7 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
         {p.is_me && !editing && (
           <div className="profile-seenas" role="group" aria-label="Preview this page as">
             <span className="muted">Seen by</span>
-            {([null, 'friends', 'members', 'public'] as const).map((t) => (
+            {([null, 'certain', 'friends', 'members', 'public'] as const).map((t) => (
               <button
                 key={t ?? 'me'}
                 className={'btn' + (seenAs === t ? ' is-on' : '')}
@@ -849,31 +943,74 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                 title={
                   t === null
                     ? 'Everything, including what only you can see'
-                    : `Only what ${TIER_LABEL[t].toLowerCase()} are sent`
+                    : t === 'certain'
+                      ? 'One friend in particular — pick who, and see the page as them'
+                      : `Only what ${TIER_LABEL[t].toLowerCase()} are sent`
                 }
               >
                 {t === null ? 'Me' : TIER_LABEL[t]}
               </button>
             ))}
-            {seenAs && !blocks.some((b) => tierSees(seenAs, b.visibility)) && (
-              <span className="muted profile-seenas-note">
-                {/* ⚠️ An empty page is the one answer that needs saying out loud. Without this the
+            {/**
+             * ⚠️ IT ASKS WHICH FRIEND, because at this level there is no such person as "a
+             * viewer at this tier". A Certain list belongs to one block, so two friends looking
+             * at the same page are sent different pages — the preview has to name one of them or
+             * it is guessing. Until per-item lists existed this row honestly could not preview
+             * the level at all; now it can, by looking through one person's eyes.
+             */}
+            {seenAs === 'certain' && (
+              <label className="profile-seenas-who">
+                <span className="muted">as</span>
+                <select
+                  className="btn"
+                  value={seenAsFriend ?? ''}
+                  onChange={(e) => setSeenAsFriend(e.target.value || null)}
+                >
+                  <option value="">a friend on no list</option>
+                  {(roster?.friends ?? []).map((f) => (
+                    <option key={f.username} value={f.username}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {seenAsTier &&
+              !blocks.some((b) => tierSees(seenAsTier, b.visibility, onCertainList(b))) && (
+                <span className="muted profile-seenas-note">
+                  {/* ⚠️ An empty page is the one answer that needs saying out loud. Without this the
                     preview renders nothing at all, which reads as broken rather than as the
                     correct and possibly unwanted answer to what a stranger receives. */}
-                <strong>Nothing on your page is set to {TIER_LABEL[seenAs]}</strong> — so this is
-                what they get. Set a block&apos;s audience to {TIER_LABEL[seenAs]} to put something
-                here.
-              </span>
-            )}
-            {seenAs && blocks.some((b) => tierSees(seenAs, b.visibility)) && (
-              <span className="muted profile-seenas-note">
-                {/* ⚠️ Said out loud, because a page that looks emptier than you remember is
+                  {seenAs === 'certain' && seenAsFriend ? (
+                    <>
+                      <strong>Nothing on your page reaches {seenAsName}</strong> — they are not on
+                      any block&apos;s list, and nothing is set to Friends or wider.
+                    </>
+                  ) : (
+                    <>
+                      {/* `seenAsTier` rather than `seenAs`: outside the `certain` branch they are
+                        the same value, and this one is what the guard above narrowed. */}
+                      <strong>Nothing on your page is set to {TIER_LABEL[seenAsTier]}</strong> — so
+                      this is what they get. Set a block&apos;s audience to {TIER_LABEL[seenAsTier]}{' '}
+                      to put something here.
+                    </>
+                  )}
+                </span>
+              )}
+            {seenAsTier &&
+              blocks.some((b) => tierSees(seenAsTier, b.visibility, onCertainList(b))) && (
+                <span className="muted profile-seenas-note">
+                  {/* ⚠️ Said out loud, because a page that looks emptier than you remember is
                     alarming until you know why — and knowing why is the entire point of this row. */}
-                {seenAs === 'public'
-                  ? 'A stranger with your link. The guestbook and activity stay between members.'
-                  : `Blocks set to ${TIER_LABEL[seenAs]} or wider.`}
-              </span>
-            )}
+                  {seenAs === 'public'
+                    ? 'A stranger with your link. The guestbook and activity stay between members.'
+                    : seenAs === 'certain'
+                      ? seenAsFriend
+                        ? `What ${seenAsName} gets: blocks set to Friends or wider, plus the ones whose list names them.`
+                        : 'A friend who is on no list: blocks set to Friends or wider, and nothing set to Certain friends.'
+                      : `Blocks set to ${TIER_LABEL[seenAsTier]} or wider.`}
+                </span>
+              )}
           </div>
         )}
 
@@ -977,7 +1114,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           username={p.username}
           isMe={p.is_me}
           guest={!authed || seenAs === 'public'}
-          asTier={seenAs ?? undefined}
+          asTier={seenAsTier ?? undefined}
+          /* only meaningful at `certain`: at every other level the question "is this person on
+             the list" has no bearing, and passing a name would invite one */
+          asFriend={seenAs === 'certain' ? (seenAsFriend ?? undefined) : undefined}
           page={pageStyle}
         />
       )}

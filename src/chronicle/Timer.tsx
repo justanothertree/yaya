@@ -2268,14 +2268,30 @@ export function Timer({
                    * anybody's business. The line under it is drawn from `shared` itself rather
                    * than written once, so it cannot drift from what the tick does.
                    */}
-                  <label className="chron-share">
-                    <input
-                      type="checkbox"
-                      checked={actShared}
-                      onChange={(e) => setActShared(e.target.checked)}
-                    />
-                    <span>Friends can see this</span>
-                  </label>
+                  {/**
+                   * ⚠️ AND A TICK CANNOT SAY `certain`, SO IT STANDS ASIDE RATHER THAN LYING.
+                   * `chronicle_activities_tier_agrees` pins `shared` to friends-or-wider, so an
+                   * activity shared with three chosen friends has `shared = false` — this box
+                   * would show empty above sittings those three can see, and ticking it would
+                   * widen the activity to every friend and strip the list on the way out. The
+                   * three-level picker lives in Sharing, which has room for the list; this is
+                   * the quick switch for the two states it can express, and it defers when the
+                   * value is the third.
+                   */}
+                  {byId.get(fixAct ?? '')?.visibility === 'certain' ? (
+                    <p className="muted chron-share-note">
+                      Shared with the friends you chose. Change who in <strong>Sharing</strong>.
+                    </p>
+                  ) : (
+                    <label className="chron-share">
+                      <input
+                        type="checkbox"
+                        checked={actShared}
+                        onChange={(e) => setActShared(e.target.checked)}
+                      />
+                      <span>Friends can see this</span>
+                    </label>
+                  )}
                   <button
                     className="btn"
                     disabled={!actName.trim() || busy}

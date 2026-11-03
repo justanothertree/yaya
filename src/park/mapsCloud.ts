@@ -26,7 +26,12 @@ import { readMapDoc, type MapDoc } from './mapDoc'
  */
 
 /** who may walk in. 'public' is not offered — a park is for members, and the relay has no
-    anonymous door. See open_park_room, which refuses rather than clamps. */
+    anonymous door. See open_park_room, which refuses rather than clamps.
+    ⚠️ AND `certain` IS NOT OFFERED EITHER, which is why this stays a narrow union rather than
+    becoming an alias of `VisibilityTier` the way profile/look.ts's `Tier` did. A Certain list
+    belongs to one ITEM, and a room is a live place rather than a thing with a list hanging off
+    it — the relay decides who may join from the audience alone. `open_park_room`'s allowlist
+    already refuses it, so the narrowness here agrees with the server rather than trailing it. */
 export type ParkAudience = 'friends' | 'members' | 'private'
 
 /**

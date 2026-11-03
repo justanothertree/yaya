@@ -116,7 +116,24 @@ const shown = (el) => {
  * clipping what. This rule only decides whether to blame an individual element for it.
  */
 const scrollsX = (el) => {
-  for (let p = el.parentElement; p; p = p.parentElement) {
+  /* ⚠️ IT STOPS BEFORE <html>, AND NOT STOPPING KILLED TWO OF THIS FILE'S SIX FIGURES
+     OUTRIGHT. This site sets `html { overflow-x: hidden }` on purpose -- there is a long note
+     beside it in index.css explaining that the clamp must live on html rather than body, because
+     on body it makes body a scroll container and silently breaks every `position: sticky`. The
+     walk below used to include the root, find that `hidden`, and answer TRUE for every element
+     on every page. `offEdge` and `clipped` are both gated on `!scrollsX(el)`, so both were
+     structurally empty, always, in every room.
+
+     Measured on 3 Nov 2026 before the fix, at 375 on the profile: a div placed 100px past the
+     right edge of the viewport and a sentence clipped inside a 40px box gave
+     `offEdge: [], clipped: []`. Afterwards both are named. That is also the likeliest
+     explanation for three faults CLAUDE.md records as "found by eye and none by the sweep",
+     one of which was a title taking a card 223px past its own edge.
+
+     A page-level clamp against sideways dragging is not "a container that manages its own
+     horizontal axis", which is what this question is for -- and the document is covered anyway
+     by `sideways`, which does not come through here. */
+  for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
     const o = getComputedStyle(p).overflowX
     if (o === 'auto' || o === 'scroll' || o === 'hidden') return true
   }
@@ -332,7 +349,23 @@ const hitBox = (el) => {
  * to `#home`, which is why `room` below reports the scope rather than trusting the URL.
  */
 export function mobileAudit(root = document) {
-  const W = innerWidth
+  /* ⚠️ THE LAYOUT VIEWPORT, NOT `innerWidth`, AND THE BROWSER PANE IS WHY. The pane
+     emulates a viewport by scaling the page: at the `mobile` preset the page lays out at 375 CSS
+     pixels while `window.innerWidth` reports the PANE's own width -- measured 676 on 3 Nov 2026.
+     So every rule that compares a box to the right edge of the screen was comparing it to an
+     edge nearly twice as far away as the one being emulated, and a div placed 100px past the
+     real edge sat comfortably "inside".
+
+     The evidence was on screen the whole time and got read past: `sideways` is
+     `documentElement.scrollWidth - W`, which printed **-10** at a custom 820. A negative page
+     overflow is not a thing; it was the subtraction saying the two numbers came from different
+     viewports. `documentElement.clientWidth` is the width the page was laid out at, which is
+     what "off the edge" means, and it is right in a real browser too -- it excludes a classic
+     scrollbar, which `innerWidth` includes and which content genuinely cannot use.
+
+     This and the `scrollsX` root bug above were masking each other: with every element exempted
+     there was nothing left to measure against the wrong number. */
+  const W = document.documentElement.clientWidth
   const targets = [...root.querySelectorAll(CONTROLS)].filter(shown)
   const out = {
     room:
@@ -401,9 +434,25 @@ export function mobileAudit(root = document) {
     if (!shown(el)) continue
     const r = el.getBoundingClientRect()
     const cs = getComputedStyle(el)
+    /* ⚠️ BOTH EDGES. This asked `r.right > W` only, and the asymmetry hid a real fault on
+       3 Nov: the profile's activity panel is absolutely positioned and anchored by its RIGHT
+       edge, so a wrong containing block put it at left: -149 on a 375 screen -- 149px of a
+       privacy control off the side of the phone. Every figure here read zero, correctly by its
+       own rules: nothing was past the right edge, and content off the LEFT creates no document
+       scroll either, so `sideways` could not see it. It was found by measuring the box by hand,
+       which is the step a sweep exists to remove.
+
+       The same `width < W * 3` guard applies, for the same reason: a deliberately huge canvas or
+       a horizontally scrolled strip is not a fault, and `scrollsX` excludes anything whose
+       ancestor manages the axis. A negative `left` on something inside such a strip is how it
+       works rather than how it breaks. */
     if (r.right > W + 1 && r.width < W * 3 && !scrollsX(el) && !once.has('o' + id(el))) {
       once.add('o' + id(el))
       out.offEdge.push({ el: id(el), right: Math.round(r.right) })
+    }
+    if (r.left < -1 && r.width < W * 3 && !scrollsX(el) && !once.has('l' + id(el))) {
+      once.add('l' + id(el))
+      out.offEdge.push({ el: id(el), left: Math.round(r.left) })
     }
     if (
       el.children.length === 0 &&
@@ -511,12 +560,17 @@ export function deadBands() {
     const ta = cs.touchAction
     if (ta === 'auto' || ta === 'manipulation' || ta.startsWith('pan-y')) continue
     const r = el.getBoundingClientRect()
-    /* only wide, tall things on a page that actually scrolls can strand somebody */
-    if (r.width < innerWidth * 0.5 || r.height < 40) continue
+    /* only wide, tall things on a page that actually scrolls can strand somebody.
+       `clientWidth` rather than `innerWidth` for the reason written up in mobileAudit above: in
+       the Browser pane the two disagree by the emulation's scale factor, and a "half the screen"
+       threshold measured against the wrong screen lets through exactly the big panels this is
+       looking for. */
+    const vw = document.documentElement.clientWidth
+    if (r.width < vw * 0.5 || r.height < 40) continue
     out.push({
       el: el.tagName + '.' + (typeof el.className === 'string' ? el.className.split(' ')[0] : ''),
       size: Math.round(r.width) + 'x' + Math.round(r.height),
-      shareOfWidth: Math.round((r.width / innerWidth) * 100) + '%',
+      shareOfWidth: Math.round((r.width / vw) * 100) + '%',
       touchAction: ta,
     })
   }

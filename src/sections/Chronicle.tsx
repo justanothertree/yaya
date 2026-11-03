@@ -589,9 +589,16 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * member who ticks this and has no block — or a block that does not want goals — has published
    * nothing. Said in the title rather than left to be discovered.
    */
+  /**
+   * ⚠️ IT NARROWS FROM `certain`, NEVER WIDENS. `!g.shared` was the old toggle, and on a goal at
+   * `certain` the boolean is already false — so pressing it asked for `shared = true`, which the
+   * tier sync turns into `friends` and the drop trigger then strips the list from. One press,
+   * from "three chosen friends" to "every friend", on a control whose label said "put this on
+   * your profile". Anything that is already on the profile comes off; only `private` goes on.
+   */
   const putOnProfile = async (g: Goal) => {
     setBusy(true)
-    await shareGoal(g.id, !g.shared)
+    await shareGoal(g.id, g.visibility === 'private')
     setBusy(false)
     await load()
   }
@@ -1084,21 +1091,37 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                * will see. The title names the other half of the switch, because a tick here
                                * alone genuinely does nothing.
                                */}
+                              {/**
+                               * ⚠️ IT READS THE TIER, NOT `shared`, AND THE THIRD STATE IS WHY. A
+                               * goal at `certain` has `shared = false` by check constraint — so
+                               * on the boolean this button showed ○, "not on your profile",
+                               * above a goal its owner's chosen friends can see on it. Pressing
+                               * it then went private → friends and widened the thing. Three
+                               * glyphs, three states, and the certain one is not a press away
+                               * from being widened: it narrows.
+                               */}
                               <button
-                                className={'btn btn-ghost chron-x' + (g.shared ? ' is-on' : '')}
+                                className={
+                                  'btn btn-ghost chron-x' +
+                                  (g.visibility !== 'private' ? ' is-on' : '')
+                                }
                                 onClick={() => void putOnProfile(g)}
                                 aria-label={
-                                  g.shared
-                                    ? `${g.title} is on your profile — take it off`
-                                    : `Put ${g.title} on your profile`
+                                  g.visibility === 'certain'
+                                    ? `${g.title} is on your profile for certain friends — take it off`
+                                    : g.visibility !== 'private'
+                                      ? `${g.title} is on your profile — take it off`
+                                      : `Put ${g.title} on your profile`
                                 }
                                 title={
-                                  g.shared
-                                    ? 'On your profile, if your Chronicle block is showing goals'
-                                    : 'Put this on your profile'
+                                  g.visibility === 'certain'
+                                    ? 'On your profile for the friends you chose. Pressing this takes it off entirely.'
+                                    : g.visibility !== 'private'
+                                      ? 'On your profile, if your Chronicle block is showing goals'
+                                      : 'Put this on your profile'
                                 }
                               >
-                                {g.shared ? '◉' : '○'}
+                                {g.visibility === 'certain' ? '◍' : g.shared ? '◉' : '○'}
                               </button>
                               <button
                                 className="btn btn-ghost chron-x"
