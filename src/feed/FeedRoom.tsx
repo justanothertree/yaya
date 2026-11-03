@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { fetchFeed } from './cloud'
 import {
   dayKeyOf,
@@ -124,17 +124,29 @@ export function FeedRoom({ authed }: { authed: boolean }) {
   const tabsId = useId()
   const panelId = `${tabsId}-panel`
 
+  /**
+   * ⚠️ THE SCOPE CAN CHANGE WHILE A FETCH IS IN FLIGHT, and without a guard the slower answer
+   * wins. Switch to All members and back quickly and the first request — the wider, slower one —
+   * lands last and fills the narrow tab with everybody. The flag is captured per run and checked
+   * before every setState, so a superseded run finishes quietly instead of overwriting the tab
+   * somebody is actually looking at.
+   */
+  const live = useRef(0)
+
   const load = useCallback(async () => {
     if (!authed) return
+    const run = ++live.current
     const to = new Date()
     const from = new Date(to.getTime() - DAYS * 86_400_000)
     try {
       const rows = await fetchFeed(from.toISOString(), to.toISOString(), 40, scope)
+      if (run !== live.current) return
       /* merged even though the server already ordered them: the client is what holds the
          previous window, and a refresh that overlaps is the normal case rather than a fault */
       setEvents(mergeEvents(rows))
       setFailed(false)
     } catch {
+      if (run !== live.current) return
       setEvents([])
       setFailed(true)
     }

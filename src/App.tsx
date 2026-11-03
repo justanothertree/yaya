@@ -8,9 +8,6 @@ import { PresenceBeacon } from './components/PresenceBeacon'
 import type { ReactNode } from 'react'
 import { ContactForm } from './sections/ContactForm'
 import { EvanCook, homePanes } from './sections/EvanCook'
-import { Chronicle } from './sections/Chronicle'
-import { FeedRoom } from './feed/FeedRoom'
-import { Pictures } from './pictures/Pictures'
 import { useVisits } from './chronicle/useVisits'
 import { site } from './config/site'
 import { IconGitHub, IconLinkedIn } from './components/Icons'
@@ -175,6 +172,27 @@ const Ratings = lazyRetry(
 const ChatPage = lazyRetry(
   () => import('./sections/ChatPage'),
   (m) => m.ChatPage,
+)
+
+/**
+ * The three newest rooms, which were eagerly imported while every room around them was lazy.
+ *
+ * Chronicle is the big one -- a day grid, a planner, goal arithmetic and its own Supabase client
+ * -- and every visitor downloaded it, including the signed-out ones who cannot open it at all.
+ * The feed and the pictures room are smaller but the same argument: both render sites for each
+ * are gated on the active room, so nothing was keeping them in the entry chunk except the import.
+ */
+const Chronicle = lazyRetry(
+  () => import('./sections/Chronicle'),
+  (m) => m.Chronicle,
+)
+const FeedRoom = lazyRetry(
+  () => import('./feed/FeedRoom'),
+  (m) => m.FeedRoom,
+)
+const Pictures = lazyRetry(
+  () => import('./pictures/Pictures'),
+  (m) => m.Pictures,
 )
 const People = lazyRetry(
   () => import('./sections/People'),
@@ -2237,17 +2255,23 @@ export default function App() {
           )}
           {!sharedCanvasShowing && active === 'pictures' && (
             <section id="pictures" className="card reveal">
-              <Pictures authed={isFinanceAuthed || previewMember} />
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <Pictures authed={isFinanceAuthed || previewMember} />
+              </Suspense>
             </section>
           )}
           {!sharedCanvasShowing && active === 'feed' && (
             <section id="feed" className="card reveal">
-              <FeedRoom authed={isFinanceAuthed || previewMember} />
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <FeedRoom authed={isFinanceAuthed || previewMember} />
+              </Suspense>
             </section>
           )}
           {!sharedCanvasShowing && active === 'chronicle' && (
             <section id="chronicle" className="reveal">
-              <Chronicle authed={isFinanceAuthed || previewMember} />
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <Chronicle authed={isFinanceAuthed || previewMember} />
+              </Suspense>
             </section>
           )}
           {!sharedCanvasShowing && active === 'chat' && (

@@ -24,6 +24,13 @@ import { TradeReview } from './TradeReview'
 type Summary = {
   name: string
   committed: boolean
+  /**
+   * `committed` now means only that the TRADES landed. The even-split pass runs after them and
+   * can fail on its own; when it does the relay says so here rather than reporting the whole
+   * import as not committed, which it used to -- and which invited a second import of trades
+   * that were already in.
+   */
+  splitError?: string
   source: string
   dataRows: number
   kept: number
@@ -459,6 +466,12 @@ export function ImportPanel() {
                 {summary.split &&
                   ` · split ${summary.split.tradesAllocated} trades across ${summary.split.accounts} accounts (${summary.split.allocationsCreated} allocations)`}
               </p>
+              {summary.splitError && (
+                <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.84rem' }}>
+                  The trades are in. The even split did not run: {summary.splitError} — it is
+                  housekeeping and safe to run again; importing this file a second time is not.
+                </p>
+              )}
             </div>
           ) : (
             <div style={{ marginTop: '0.6rem' }}>

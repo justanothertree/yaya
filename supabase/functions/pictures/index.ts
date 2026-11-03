@@ -206,6 +206,35 @@ Deno.serve(async (req) => {
   }
 
   /**
+   * ── who is actually asking ─────────────────────────────────────────────────────────────────
+   *
+   * ⚠️ AN `Authorization` HEADER IS NOT A PERSON, and everything below used to assume it was. The
+   * only check was that the header EXISTS — and the publishable anon key is a perfectly valid
+   * value for it, shipped in the browser bundle to anybody who views source. The RPC ops were
+   * never really exposed that way, because they run as the caller and `auth.uid()` would be null,
+   * so Postgres refused them. `op: 'check'` is the one that mattered: it talks to R2 directly,
+   * asks Postgres nothing, and reports the bucket name and whether the credentials work.
+   */
+  const { data: whoData, error: whoErr } = await supabase.auth.getUser()
+  const user = whoData?.user ?? null
+  if (whoErr || !user) return json({ error: 'not authenticated' }, 401, origin)
+
+  /**
+   * ⚠️ `remove` AND `view` STAY OPEN TO A SUSPENDED MEMBER, which matches the decision made for
+   * `picture_drop` in the database. Suspension is for stopping somebody putting things on other
+   * people's screens; it should not trap them with a picture they want taken down — possibly the
+   * very one they were suspended for. Everything that creates or publishes is shut.
+   *
+   * ⚠️ AND THIS CANNOT BE LEFT TO THE RPCs. `op: 'ready'` finishes through the SERVICE ROLE
+   * client below, where `auth.uid()` is null by construction and no function-level guard can see
+   * the member at all. That path is gated here or nowhere.
+   */
+  const { data: suspended } = await supabase.rpc('is_suspended', { p_user_id: user.id })
+  if (suspended === true && body.op !== 'remove' && body.op !== 'view') {
+    return json({ error: 'your account is suspended' }, 403, origin)
+  }
+
+  /**
    * ── is R2 reachable from HERE ──────────────────────────────────────────────────────────────
    *
    * ⚠️ A SERVER-SIDE REQUEST IS NOT SUBJECT TO CORS, which is the whole reason this op exists.
@@ -224,6 +253,13 @@ Deno.serve(async (req) => {
    * are about to learn anyway from whether their picture uploads.
    */
   if (body.op === 'check') {
+    /* ⚠️ ADMIN ONLY. The paragraph above argues this op leaks nothing a member would not learn
+       anyway, and that argument was written when the only gate was "is there a header". It is a
+       question about the PROJECT — is storage configured, what is the bucket called — rather than
+       about the caller's own pictures, and the answer is of no use to a member and of obvious use
+       to anybody else. A diagnostic is exactly the kind of door worth keeping narrow. */
+    const { data: admin } = await supabase.rpc('is_admin')
+    if (admin !== true) return json({ error: 'not allowed' }, 403, origin)
     try {
       const res = await kit.client.fetch(kit.base, { method: 'HEAD' })
       return json(

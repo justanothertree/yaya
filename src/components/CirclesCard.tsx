@@ -142,10 +142,18 @@ export function CirclesCard() {
     await act(() => sb.rpc('visibility_circle_save', { p_id: null, p_name: name }))
   }
 
+  /**
+   * ⚠️ AN UNCHANGED NAME IS NOT A SAVE. The field commits on blur, and blur happens whenever
+   * attention moves — tabbing away, clicking the row, pressing Rename again. Each of those was a
+   * round trip that rewrote the row with the name already in it, and on a duplicate name it
+   * raised "you already have a circle called that" about the circle's own name.
+   */
   const rename = async (id: string, name: string) => {
     setRenaming(null)
-    if (!name.trim()) return
-    await act(() => sb.rpc('visibility_circle_save', { p_id: id, p_name: name.trim() }))
+    const next = name.trim()
+    if (!next) return
+    if (next === circles?.find((c) => c.id === id)?.name) return
+    await act(() => sb.rpc('visibility_circle_save', { p_id: id, p_name: next }))
   }
 
   const setMember = (id: string, username: string, isIn: boolean) =>
@@ -203,6 +211,11 @@ export function CirclesCard() {
                   className="btn"
                   style={small}
                   disabled={busy}
+                  /* ⚠️ mousedown, NOT click. Pressing this while the field is open blurs the
+                     field first, which commits a save, and the click that follows then reopens
+                     it — so the button that should close the editor saved and reopened instead.
+                     Preventing the default on mousedown stops the blur ever happening. */
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setRenaming(renaming === c.id ? null : c.id)}
                 >
                   Rename

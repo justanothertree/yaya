@@ -879,14 +879,14 @@ function BackupCard() {
         return
       }
       const got = restoreBackup(raw)
-      const added = got.songs + got.art + got.looks + got.minions
+      const added = got.songs + got.art + got.looks + got.minions + got.maps
       /* ⚠️ counted separately, because a record is merged rather than added — restoring onto a
          machine that has played since keeps whichever time was quicker, so "added 3" would be
          the wrong word for it and a silent merge would be the wrong amount of nothing. */
       const kept = got.wins ? ` Park records: ${got.wins} brought over.` : ''
       showToast(
         added
-          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks, ${got.minions} minions.${kept}`
+          ? `Added ${added} — ${got.songs} songs, ${got.art} drawings, ${got.looks} looks, ${got.minions} minions, ${got.maps} park maps.${kept}`
           : kept
             ? `Nothing new to add.${kept}`
             : 'Everything in that file was already here',

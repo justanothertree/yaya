@@ -6,7 +6,7 @@ import { backupSays, backupTotal, countBackup, type BackupCounts } from './backu
  * which is exactly how the bug got in — and equal counts would let a sentence read the wrong field
  * and still agree. Five distinct numbers mean any mix-up shows up as the wrong number.
  */
-const some: BackupCounts = { songs: 3, art: 7, looks: 2, minions: 5, wins: 11 }
+const some: BackupCounts = { songs: 3, art: 7, looks: 2, minions: 5, wins: 11, maps: 4 }
 
 /** The numbers the sentence actually says, read back out of it. */
 const numbersIn = (s: string): number[] => (s.match(/\d+/g) ?? []).map(Number)
@@ -27,7 +27,7 @@ describe('what the copy will contain, said on the card', () => {
 
   it('leaves nothing out when only one kind has anything in it', () => {
     for (const k of Object.keys(some) as Array<keyof BackupCounts>) {
-      const only = { songs: 0, art: 0, looks: 0, minions: 0, wins: 0, [k]: 4 }
+      const only = { songs: 0, art: 0, looks: 0, minions: 0, wins: 0, maps: 0, [k]: 4 }
       expect(backupTotal(only)).toBe(4)
       expect(numbersIn(backupSays(only))).toEqual([4])
       /* and it says a word about it, not just the number */
@@ -37,24 +37,26 @@ describe('what the copy will contain, said on the card', () => {
 
   /** "0 songs" is a fact about songs nobody asked for; the line says what the file will hold */
   it('says nothing about a kind you have none of', () => {
-    const s = backupSays({ songs: 2, art: 0, looks: 0, minions: 0, wins: 0 })
+    const s = backupSays({ songs: 2, art: 0, looks: 0, minions: 0, wins: 0, maps: 0 })
     expect(s).toBe('2 songs')
     expect(s).not.toMatch(/0/)
   })
 
   it('is empty when there is nothing to copy, so the card can say so in its own words', () => {
-    expect(backupSays({ songs: 0, art: 0, looks: 0, minions: 0, wins: 0 })).toBe('')
-    expect(backupTotal({ songs: 0, art: 0, looks: 0, minions: 0, wins: 0 })).toBe(0)
+    expect(backupSays({ songs: 0, art: 0, looks: 0, minions: 0, wins: 0, maps: 0 })).toBe('')
+    expect(backupTotal({ songs: 0, art: 0, looks: 0, minions: 0, wins: 0, maps: 0 })).toBe(0)
   })
 
   /** "1 songs" is the kind of thing that makes a page look unfinished */
   it('counts one of a thing in the singular', () => {
-    const s = backupSays({ songs: 1, art: 1, looks: 1, minions: 1, wins: 1 })
-    expect(s).toBe('1 song · 1 drawing · 1 look · 1 minion · 1 park record')
+    const s = backupSays({ songs: 1, art: 1, looks: 1, minions: 1, wins: 1, maps: 1 })
+    expect(s).toBe('1 song · 1 drawing · 1 look · 1 minion · 1 park record · 1 park map')
   })
 
   it('reads in the order the card has always listed them', () => {
-    expect(backupSays(some)).toBe('3 songs · 7 drawings · 2 looks · 5 minions · 11 park records')
+    expect(backupSays(some)).toBe(
+      '3 songs · 7 drawings · 2 looks · 5 minions · 11 park records · 4 park maps',
+    )
   })
 
   /**
@@ -63,7 +65,7 @@ describe('what the copy will contain, said on the card', () => {
    * only keepsake was a run of records had Save disabled and no way to take them anywhere.
    */
   it('is willing to make a file of park records alone', () => {
-    const onlyWins = { songs: 0, art: 0, looks: 0, minions: 0, wins: 6 }
+    const onlyWins = { songs: 0, art: 0, looks: 0, minions: 0, wins: 6, maps: 0 }
     expect(backupTotal(onlyWins)).toBeGreaterThan(0)
     expect(backupSays(onlyWins)).toBe('6 park records')
   })
@@ -77,6 +79,35 @@ describe('what the copy will contain, said on the card', () => {
       art: 0,
       looks: 0,
       minions: 0,
+      wins: 0,
+      maps: 0,
     })
+  })
+
+  /**
+   * ⚠️ A FILE OF NOTHING BUT PARK RECORDS, OR NOTHING BUT MAPS, IS STILL A BACKUP.
+   * The "is this a backup" test named four kinds while the file held six, so somebody whose only
+   * keepsake was a run of records or a set of maps was told "That is not a backup file" about a
+   * file this app had just written for them. It is the reading-side twin of the counting bug
+   * recorded above, and it bit the same two kinds.
+   */
+  it('recognises a file whose only contents are a kind the old check did not name', () => {
+    expect(countBackup({ wins: [1, 2, 3] })).toEqual({
+      songs: 0,
+      art: 0,
+      looks: 0,
+      minions: 0,
+      wins: 3,
+      maps: 0,
+    })
+    expect(countBackup({ maps: [{ name: 'a', doc: {} }] })?.maps).toBe(1)
+  })
+
+  /** and park maps are a kind the summary says out loud, or the file lies about what it holds */
+  it('says park maps in the summary', () => {
+    expect(backupSays({ songs: 0, art: 0, looks: 0, minions: 0, wins: 0, maps: 2 })).toBe(
+      '2 park maps',
+    )
+    expect(backupTotal({ songs: 0, art: 0, looks: 0, minions: 0, wins: 0, maps: 2 })).toBe(2)
   })
 })

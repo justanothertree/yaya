@@ -81,6 +81,29 @@ const isBout = (roomId) => roomId.startsWith('fight:')
  * ⚠️ THE ROOM ID IS THE ROW ID, so an answer can be kept for ever — park_rooms.id never changes
  * hands. A miss is cached as null too, or a room that is not a hosted map asks on every message.
  */
+/**
+ * Keep a Map bounded by dropping its OLDEST entries.
+ *
+ * ⚠️ THREE CACHES HERE USED `.clear()` AT CAPACITY, which empties the whole thing. That is not
+ * an eviction policy, it is a periodic outage: the moment the 201st token arrives, the 200 live
+ * sessions all lose their cached verification at once and every one of them re-verifies against
+ * Supabase on its next frame. A busy moment is exactly when the cache fills AND exactly when you
+ * least want a thundering herd of outbound calls. Worse, it is trivially reachable from outside:
+ * a client that sends 200 junk tokens flushes everybody else's.
+ *
+ * A JavaScript Map iterates in insertion order, so the oldest key is `keys().next().value` and
+ * dropping one per insert keeps the size steady without touching anything else. Note that
+ * re-`set`ting an existing key does NOT move it, so this is FIFO rather than LRU — which is what
+ * is wanted for entries that expire on a timer anyway.
+ */
+function capMap(map, max) {
+  while (map.size > max) {
+    const oldest = map.keys().next().value
+    if (oldest === undefined) break
+    map.delete(oldest)
+  }
+}
+
 const parkHosts = new Map()
 async function hostOfParkRoom(roomId) {
   if (!isPark(roomId)) return null
@@ -97,8 +120,8 @@ async function hostOfParkRoom(roomId) {
     owner = null
   }
   /* bounded, because a room id is whatever anybody typed into a hello */
-  if (parkHosts.size > 500) parkHosts.clear()
   parkHosts.set(id, owner)
+  capMap(parkHosts, 500)
   return owner
 }
 const carriesArt = (roomId) => isPark(roomId) || isBout(roomId)
@@ -833,6 +856,16 @@ function bearer(req) {
  */
 async function verifyToken(token) {
   if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  /**
+   * ⚠️ THE LENGTH IS CHECKED BEFORE ANYTHING ELSE, AND AN OVERSIZED TOKEN IS NEVER CACHED. A real
+   * Supabase access token is a JWT of a few hundred bytes; there is no legitimate one anywhere
+   * near this. Refusing first means a megabyte of junk costs a string compare instead of an
+   * outbound round trip — and not caching it means the junk cannot take a slot in a bounded map,
+   * which would otherwise let somebody push every real session out with garbage. The `auth`
+   * frame has its own 4096 check at the call site; this is the one that covers every OTHER
+   * caller, including the HTTP side through `verifyUser`.
+   */
+  if (token.length > 4096) return null
   const hit = tokenCache.get(token)
   if (hit && Date.now() - hit.at < TOKEN_TTL) return hit.user
   try {
@@ -840,12 +873,23 @@ async function verifyToken(token) {
       headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
       signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     })
-    if (!r.ok) return null
+    /**
+     * ⚠️ A REFUSAL IS CACHED TOO, and it was not before. An expired token is the common case —
+     * a tab left open overnight retries on every frame — and each retry was a fresh call to
+     * Supabase for an answer that cannot change until the token does. Caching the null for the
+     * same minute makes a stale tab cost one round trip rather than hundreds, and makes a
+     * deliberate flood of one bad token cost one as well.
+     */
+    if (!r.ok) {
+      tokenCache.set(token, { at: Date.now(), user: null })
+      capMap(tokenCache, 200)
+      return null
+    }
     const user = await r.json()
     const ok = user?.id ? user : null
     tokenCache.set(token, { at: Date.now(), user: ok })
     // the cache is per-token and unbounded otherwise; a call has a handful of tokens at most
-    if (tokenCache.size > 200) tokenCache.clear()
+    capMap(tokenCache, 200)
     return ok
   } catch {
     return null
@@ -887,7 +931,7 @@ async function inGoodStanding(token, userId) {
     const suspended = await r.json()
     const ok = suspended !== true
     standingCache.set(userId, { at: Date.now(), ok })
-    if (standingCache.size > 200) standingCache.clear()
+    capMap(standingCache, 200)
     return ok
   } catch {
     return false
@@ -1282,15 +1326,37 @@ async function handleImport(req, res, rawUrl) {
     return text ? JSON.parse(text) : null
   }
 
+  /**
+   * ⚠️ THE TWO CALLS ARE REPORTED SEPARATELY, because only the first one decides whether
+   * anything was written. They used to share a `try`, so a failure in the SPLIT — which runs
+   * after the trades are already in — came back as `committed: false`. The panel believes that
+   * word: it shows "Ready to import" and offers the button again, so the honest response to
+   * being told nothing happened is to do it twice. The trades were in the database the whole
+   * time.
+   *
+   * `admin_even_split_trades` is idempotent housekeeping and can be re-run on its own; losing it
+   * is a thing to report, not a thing to roll back. So `committed` says what it means — the
+   * trades landed — and `splitError` says the rest.
+   */
+  let imported
   try {
-    const imported = await rpc('admin_import_trades', {
-      p_user_id: me.id,
-      p_trades: parsed.trades,
-    })
+    imported = await rpc('admin_import_trades', { p_user_id: me.id, p_trades: parsed.trades })
+  } catch (err) {
+    return say(502, { error: String(err?.message || err), ...parsed.summary, committed: false })
+  }
+
+  try {
     const split = await rpc('admin_even_split_trades', { p_user_id: me.id })
     say(200, { name, committed: true, ...parsed.summary, imported, split })
   } catch (err) {
-    say(502, { error: String(err?.message || err), ...parsed.summary, committed: false })
+    say(200, {
+      name,
+      committed: true,
+      ...parsed.summary,
+      imported,
+      split: null,
+      splitError: String(err?.message || err),
+    })
   }
 }
 
@@ -1508,6 +1574,19 @@ wss.on('connection', (ws, req) => {
   let joinedRoomId = null
   /** see PARK_VOUCH_MS — cleared on close, or a dropped socket keeps a timer alive */
   let parkVouchTimer = null
+  /**
+   * ⚠️ ONE AUTH FRAME IN FLIGHT AND FIVE A MINUTE, per socket. An `auth` frame is a few hundred
+   * bytes to send and costs this process an outbound round trip to Supabase — and the handler is
+   * fire-and-forget, so nothing upstream was counting them. A client that sent a hundred bought a
+   * hundred concurrent fetches for almost nothing, and the token cache cannot absorb that because
+   * each junk token is a different key. The message limiter below counts frames per socket, which
+   * does not help: these are cheap frames with an expensive tail.
+   *
+   * Five a minute is far past honest use. A client authenticates once on joining, and again only
+   * if it reconnects — which opens a new socket and gets a fresh allowance anyway.
+   */
+  let authInFlight = false
+  let authTimes = []
   // see the heartbeat below — a half-open socket answers no pong and gets terminated,
   // which runs this connection's normal close handler and frees its room
   ws.isAlive = true
@@ -2198,6 +2277,16 @@ wss.on('connection', (ws, req) => {
          * Never broadcast: peers learn names, never account ids.
          */
         if (typeof msg.token !== 'string' || msg.token.length > 4096) break
+        /* see authInFlight above: cheap frames with an expensive tail, so they are counted here
+           rather than left to the byte-based message limiter */
+        if (authInFlight) break
+        {
+          const nowMs = Date.now()
+          authTimes = authTimes.filter((t) => nowMs - t < 60_000)
+          if (authTimes.length >= 5) break
+          authTimes.push(nowMs)
+        }
+        authInFlight = true
         const token = msg.token
         void verifyToken(token)
           .then(async (user) => {
@@ -2257,6 +2346,11 @@ wss.on('connection', (ws, req) => {
                  which socket said so — the same rule the auth note states about account ids */
               scene: room.scene ? { map: room.scene.map, at: room.scene.at } : null,
             })
+          })
+          /* released whatever happened, including a rejection — a flag left true by a failure
+             would lock the socket out of ever authenticating again */
+          .finally(() => {
+            authInFlight = false
           })
         break
       }

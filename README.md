@@ -41,6 +41,17 @@ platform. Instead of describing past work, each nav section is something you can
   Trades import from broker CSV exports and are split across the family's accounts; an
   admin ledger tracks what's allocated vs still unassigned. Feature-flagged per account,
   with a sample-data demo for signed-out visitors.
+- **Chronicle** — a time journal: activities you start and stop, a day grid, planned sittings,
+  routines, and goals with windows (this week, this month, a life-long one). It keeps no local
+  copy by design — the database is the record — and a whole chronicle exports to a file and
+  restores from one.
+- **Feed** — everything happening here in one list: sittings, workouts, ratings, snake scores and
+  trophies, five kinds in one round trip. Defaults to you and your friends, with an All members
+  tab.
+- **Pictures** — member photographs, stored in Cloudflare R2 and reached through signed URLs that
+  an edge function mints; Postgres holds the row, the keys and the per-member caps.
+- **The Park** — a members-only side-scrolling world with drawn creatures, co-op play over the
+  same relay as Snake, and maps you build and save.
 - **Accounts** — invite-based signup, member profiles, and an admin console, all enforced by
   Supabase Auth + row-level security.
 
@@ -86,6 +97,18 @@ This runs for real friends and family, so access is enforced in the database rat
 
 - **Row-level security on every table**, with deny-by-default for anything lacking a policy.
   The client is never the authority on who may read or write a row.
+- **One visibility ladder** — Only me, Certain friends, Friends, Anyone with an account, Anyone —
+  shared by profile blocks, chronicle activities and goals, circuit people, snake handles and the
+  activity feed. Each account has a _ceiling_ it cannot choose above (only the owner's account can
+  publish to the open web; an account whose age band is unknown stops at Friends), and that
+  ceiling is applied on the **write** by `clamp_visibility` and again on every **read**, so a tier
+  stored before a rule existed cannot outlive it. `Certain friends` has its circles built but is
+  not yet wired to a reader, and fails closed until it is.
+- **Checked rather than asserted** — `supabase/tests/` holds a standing guard suite that asks the
+  schema, not a list: which functions write a tier without clamping it, which tier columns a
+  member can write with no trigger guarding them, and whether any stored tier sits above its
+  owner's ceiling. It raises rather than reporting, and every rule in it has been made to fail
+  once on purpose.
 - **Privileged actions go through `SECURITY DEFINER` RPCs** that check membership internally
   (for example, sending a chat message resolves the author's name server-side, so it can't be
   spoofed), and are granted to `authenticated` rather than `anon` unless a signed-out visitor

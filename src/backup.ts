@@ -5,6 +5,8 @@ import { packDrawing, readDrawing } from './draw/strokes'
 import { readPresets, savePreset } from './audio/vizPresets'
 import { packPet, pets, readPet, savePet } from './pets/pets'
 import { mergeWins, packWins } from './park/records'
+import { packMapDoc, parkMaps, saveMap } from './park/maps'
+import { readMapDoc } from './park/mapDoc'
 
 /**
  * Everything you have made here, as one file you can keep.
@@ -55,6 +57,17 @@ export type Backup = {
    * except the thing they had made most recently.
    */
   wins?: unknown[]
+  /**
+   * ⚠️ THE ONLY STORE WITH NO OTHER COPY, AND THE LAST ONE INTO THIS FILE. Songs,
+   * drawings, looks and minions all sync to the account through library/cloud.ts, so a lost
+   * browser costs nothing. Park maps do not sync -- `saveMap` says so in its own refusal
+   * comment, which is why it refuses a thirteenth map rather than evicting the oldest. That
+   * makes this file the ONLY way a map leaves one machine, and it did not carry them.
+   *
+   * Optional for the same reason `wins` is: a file written before today has none, and must
+   * restore exactly as it did.
+   */
+  maps?: Array<{ name: string; doc: unknown }>
 }
 
 export function makeBackup(): Backup {
@@ -66,6 +79,7 @@ export function makeBackup(): Backup {
     looks: readPresets().map((p) => ({ name: p.name, s: p.s })),
     minions: pets().map(packPet),
     wins: packWins(),
+    maps: parkMaps().map((m) => ({ name: m.name, doc: packMapDoc(m.doc) })),
   }
 }
 
@@ -78,6 +92,7 @@ export function backupName(): string {
 
 export type Restored = {
   songs: number
+  maps: number
   art: number
   looks: number
   minions: number
@@ -94,7 +109,7 @@ export type Restored = {
  * with everything twice.
  */
 export function restoreBackup(raw: unknown): Restored {
-  const out: Restored = { songs: 0, art: 0, looks: 0, minions: 0, wins: 0, skipped: 0 }
+  const out: Restored = { songs: 0, art: 0, looks: 0, minions: 0, wins: 0, maps: 0, skipped: 0 }
   if (!raw || typeof raw !== 'object') return out
   const b = raw as Partial<Backup>
 
@@ -133,6 +148,32 @@ export function restoreBackup(raw: unknown): Restored {
       if (saveArt(d)) {
         have.add(d.name)
         out.art++
+      } else out.skipped++
+    }
+  }
+
+  if (Array.isArray(b.maps)) {
+    /* ⚠️ SKIPPED BY NAME HERE RATHER THAN LEFT TO `saveMap`, which REPLACES a map of
+       the same name. That is right when you are saving over your own work and wrong for a
+       restore: this function adds and never replaces, so a file restored onto a machine that
+       already has a map called the same thing must leave the one already there alone. */
+    const have = new Set(parkMaps().map((m) => m.name.toLowerCase()))
+    for (const entry of b.maps.slice(0, 50)) {
+      const e = entry as { name?: unknown; doc?: unknown }
+      const doc = readMapDoc(e?.doc)
+      if (!doc) {
+        out.skipped++
+        continue
+      }
+      if (have.has(doc.name.toLowerCase())) {
+        out.skipped++
+        continue
+      }
+      /* `saveMap` also refuses when the store is full or the map is too big, and a refusal
+         is a skip rather than a silent loss -- the same shape as the four kinds above. */
+      if (saveMap(doc)) {
+        have.add(doc.name.toLowerCase())
+        out.maps++
       } else out.skipped++
     }
   }
@@ -186,23 +227,26 @@ export function restoreBackup(raw: unknown): Restored {
 }
 
 /** What a backup holds, for showing before anything is written. */
-export function countBackup(
-  raw: unknown,
-): { songs: number; art: number; looks: number; minions: number } | null {
+export function countBackup(raw: unknown): BackupCounts | null {
   if (!raw || typeof raw !== 'object') return null
   const b = raw as Partial<Backup>
-  if (
-    !Array.isArray(b.songs) &&
-    !Array.isArray(b.art) &&
-    !Array.isArray(b.looks) &&
-    !Array.isArray(b.minions)
-  )
-    return null
+  /**
+   * ⚠️ THE "IS THIS A BACKUP" TEST NAMED FOUR KINDS WHILE THE FILE HELD SIX, which is
+   * the same mistake the summary above it records -- caught on the READING side this time. A file
+   * whose owner kept nothing but park records, or nothing but park maps, has none of these four
+   * arrays, so this answered null and the import said "That is not a backup file" about a file
+   * this app had written. Asked of every kind the file can hold, it cannot say that again.
+   */
+  const kinds = [b.songs, b.art, b.looks, b.minions, b.wins, b.maps]
+  if (!kinds.some((k) => Array.isArray(k))) return null
+  const n = (k: unknown) => (Array.isArray(k) ? k.length : 0)
   return {
-    songs: Array.isArray(b.songs) ? b.songs.length : 0,
-    art: Array.isArray(b.art) ? b.art.length : 0,
-    looks: Array.isArray(b.looks) ? b.looks.length : 0,
-    minions: Array.isArray(b.minions) ? b.minions.length : 0,
+    songs: n(b.songs),
+    art: n(b.art),
+    looks: n(b.looks),
+    minions: n(b.minions),
+    wins: n(b.wins),
+    maps: n(b.maps),
   }
 }
 
@@ -226,6 +270,7 @@ export function countBackup(
  */
 export type BackupCounts = {
   songs: number
+  maps: number
   art: number
   looks: number
   minions: number
@@ -239,6 +284,7 @@ const KINDS: ReadonlyArray<readonly [keyof BackupCounts, string, string]> = [
   ['looks', 'look', 'looks'],
   ['minions', 'minion', 'minions'],
   ['wins', 'park record', 'park records'],
+  ['maps', 'park map', 'park maps'],
 ]
 
 /** How many things a file would hold — the same sum the summary is built from. */
@@ -261,5 +307,6 @@ export function myBackupCounts(): BackupCounts {
     looks: b.looks.length,
     minions: b.minions.length,
     wins: b.wins?.length ?? 0,
+    maps: b.maps?.length ?? 0,
   }
 }
