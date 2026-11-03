@@ -61,18 +61,24 @@ from (values ('anon'),('authenticated')) roles(r),
              ('public.feed_may_show(uuid)')) fns(f)
 where has_function_privilege(r, f, 'execute');
 
--- ── B. the circles tables are deny-all, per privilege ───────────────────────────────────────
+-- ── B. the circles and Certain-list tables are deny-all, per privilege ──────────────────────
+-- ⚠️ `visibility_certain` JOINED THIS LIST THE DAY IT WAS CREATED, because the default
+-- ACL on this schema hands arwdDxtm to anon and authenticated on EVERY new table. Deny-all is
+-- something a table has to be given, never something it starts with -- so the revoke in the
+-- migration and this check are the same rule said twice, once as an action and once as a test.
 insert into fails
 select 'circles table is not deny-all', r || ' has ' || priv || ' on ' || t
 from (values ('anon'),('authenticated')) roles(r),
-     (values ('public.visibility_circles'),('public.visibility_circle_members')) tbls(t),
+     (values ('public.visibility_circles'),('public.visibility_circle_members'),
+             ('public.visibility_certain')) tbls(t),
      (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE')) privs(priv)
 where has_table_privilege(r, t, priv);
 
 insert into fails
 select 'circles table has RLS off or a policy', c.relname
 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and c.relname in ('visibility_circles','visibility_circle_members')
+where n.nspname = 'public'
+  and c.relname in ('visibility_circles','visibility_circle_members','visibility_certain')
   and (not c.relrowsecurity
        or exists (select 1 from pg_policy p where p.polrelid = c.oid));
 
