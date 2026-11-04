@@ -417,12 +417,31 @@ no item table carries one, and `can_see_item` takes a kind and an id rather than
 That is closer to the first reading, and it keeps the cost the first reading promised. What it
 gives up is the second reading's actual request: a circle renamed or refilled does **not** change
 who can see an item that was filled from it, because the fill copies names in and the link ends
-there. Whether that is the intended meaning of "reusable named circles" is Evan's to say.
+there.
 
-⚠️ **It is still cheap to change course, and this is the moment.** Measured 4 Nov: **0 circles
-defined and 0 `certain` rows in production** — the whole level is built, tested and unused, so
-nobody's choices would be rewritten by changing how it is stored. That stops being true the first
-time somebody picks it.
+✅ **DECIDED 4 Nov — the shortcut stays, and it is now a test rather than a description.** Evan's
+answer: a circle only pre-fills the Certain picker, editing or deleting one never changes an
+existing item's list, and there is no live link. The reason is the one the chooser's own copy
+already gives: the tidier-sounding alternative is a mechanism by which somebody's audience
+changes while they are not looking.
+
+Confirmed rather than assumed, by enumeration on both sides:
+
+- **Server.** None of `visibility_circle_save`, `_set_member`, `_delete`, `_drop_ex_friends`
+  writes `visibility_certain`; there is no trigger on either circle table; and no foreign key
+  runs between the circle tables and `visibility_certain` in either direction. The one mention
+  of the word "certain" inside a circle function is a comment about the ladder.
+- **Client.** `CertainChooser.fill()` copies usernames into the local list and `CertainForItem`
+  saves names through `visibility_certain_set`. Nothing on an item refers to a circle.
+- **Nothing to fix**, so nothing was changed. What was added is the block in
+  `supabase/tests/certain-lists.sql` that renames a circle, takes somebody out of it and deletes
+  it, then asserts the item's list and the friend's sight of it are both untouched. Made to fail
+  by building the rejected design as a trigger: both assertions went red.
+
+⚠️ **The window for changing course was open and is now deliberately closed.** Measured 4 Nov:
+**0 circles defined and 0 `certain` rows in production** — the whole level is built, tested and
+unused, so nobody's choices would have been rewritten by storing it differently. That stops being
+true the first time somebody picks it, and from now on the test is what says so.
 
 ### Open, and each of these is Evan's to decide
 

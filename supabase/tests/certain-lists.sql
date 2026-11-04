@@ -464,6 +464,94 @@ end
 $save$;
 
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
+-- ── A CIRCLE IS A FILL-IN SHORTCUT, AND NOTHING MORE ────────────────────────────────────────
+-- Evan's design of 31 Oct, confirmed 4 Nov: pressing a circle copies its people into the
+-- Certain picker and the two stop being related. Editing or deleting the circle afterwards does
+-- not change who can see anything already set.
+--
+-- ⚠️ IT IS THE DESIGN THAT NEEDS THE TEST, NOT A BUG. Nothing links them today — checked by
+-- enumeration rather than by reading: no circle function writes `visibility_certain` (all four
+-- of `visibility_circle_save`, `_set_member`, `_delete`, `_drop_ex_friends`), there is no
+-- trigger on either circle table, and no foreign key runs between them in either direction. The
+-- one mention of the word "certain" inside a circle function is a comment about the ladder.
+-- So this block defends a decision rather than fixing a fault, and the thing it is defending
+-- against is somebody later adding the OTHER design — which is tidier-sounding, which is the
+-- problem: it means an audience changing while the person who chose it is not looking.
+--
+-- ⚠️ AND THE SILENT HALF IS WHY IT ASKS TWICE. Comparing the stored list catches a row being
+-- deleted; `can_see_item` catches the audience actually changing. A live link would do both, but
+-- a half-built one — say a circle rename that rewrote the list — could move the rows without
+-- moving anybody's sight of it, or the reverse.
+--
+-- Made to fail, 4 Nov, by BUILDING the rejected design: an after-delete trigger on
+-- `visibility_circle_members` that drops that person from the owner's certain lists, which a
+-- circle delete then cascades into. Both assertions went red — the list went from two names to
+-- one, and the friend lost sight of the item — and both are silent against the real schema.
+--
+-- The fixture holds TWO friends on purpose. With one, removing them from the circle empties the
+-- list, and an empty list is also what a failed fixture looks like.
+do $circles$
+declare
+  v_owner uuid := (select uid from cast_ where part = 'owner');
+  v_on_u  text := (select u   from cast_ where part = 'on_list');
+  v_off_u text := (select u   from cast_ where part = 'off_list');
+  v_circle uuid; v_block uuid; v_kept int; v_before text; v_now text;
+begin
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner::text, 'role', 'authenticated')::text, true);
+
+  v_circle := public.visibility_circle_save(null, 'certain-lists circle');
+  perform public.visibility_circle_set_member(v_circle, v_on_u, true);
+  perform public.visibility_circle_set_member(v_circle, v_off_u, true);
+
+  insert into public.profile_blocks (user_id, block_type, position, size, config, visibility)
+  values (v_owner, 'bio', 93, 'small', '{"text":"circle shortcut fixture"}'::jsonb, 'certain')
+  returning id into v_block;
+
+  /* what the chooser's "fill from circle" amounts to: the names are copied in the client and
+     saved as NAMES, so nothing on the item ever refers to the circle */
+  v_kept := public.visibility_certain_set('profile_block', v_block::text,
+                                          array[v_on_u, v_off_u]);
+
+  v_before := (select string_agg(p.username::text, ',' order by p.username)
+                 from public.visibility_certain vc
+                 join public.profiles p on p.user_id = vc.friend
+                where vc.item_kind = 'profile_block' and vc.item_id = v_block::text);
+
+  /* the positive control: without a two-person list, "unchanged" below is two nulls agreeing */
+  if v_kept <> 2 or v_before is null then
+    insert into fails values ('FIXTURE: the item did not get a two-person list',
+      coalesce(v_kept::text, 'null') || ' kept, list ' || coalesce(v_before, '(none)'));
+    return;
+  end if;
+
+  perform public.visibility_circle_save(v_circle, 'certain-lists circle, renamed');
+  perform public.visibility_circle_set_member(v_circle, v_off_u, false);
+  perform public.visibility_circle_delete(v_circle);
+
+  v_now := (select string_agg(p.username::text, ',' order by p.username)
+              from public.visibility_certain vc
+              join public.profiles p on p.user_id = vc.friend
+             where vc.item_kind = 'profile_block' and vc.item_id = v_block::text);
+
+  if v_now is distinct from v_before then
+    insert into fails values ('editing or deleting a circle changed an item''s certain list',
+      coalesce(v_before, '(none)') || ' -> ' || coalesce(v_now, '(none)'));
+  end if;
+
+  /* the friend who was taken OUT of the circle, and whose circle was then deleted, must still
+     see the item -- the rows surviving is not the same claim as the audience surviving */
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', (select uid::text from cast_ where part = 'off_list'),
+                      'role', 'authenticated')::text, true);
+  if not coalesce(public.can_see_item(v_owner, 'certain', 'profile_block', v_block::text), false)
+  then
+    insert into fails values ('a friend lost sight of an item when the circle was deleted',
+      'they were taken out of the circle and the circle then deleted');
+  end if;
+end
+$circles$;
+
 do $$
 declare n int; msg text;
 begin
