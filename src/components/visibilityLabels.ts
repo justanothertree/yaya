@@ -124,7 +124,7 @@ export const CIRCUIT_ALWAYS =
  * activity stream it governs five modules at once. One generic line would have to be vague
  * enough to be true everywhere, and a vague privacy hint is worse than none.
  */
-export type HintKind = 'circuit' | 'snake' | 'block' | 'activity' | 'chronicle'
+export type HintKind = 'circuit' | 'snake' | 'block' | 'activity' | 'chronicle' | 'goal'
 
 export const TIER_HINTS: Record<HintKind, Record<VisibilityTier, string>> = {
   circuit: {
@@ -159,6 +159,25 @@ export const TIER_HINTS: Record<HintKind, Record<VisibilityTier, string>> = {
     private: 'Yours alone. It stays out of the feed and off your profile.',
     certain: 'Only the friends you pick below see these sittings.',
     friends: 'Friends you’ve added see these sittings in the feed and on your page.',
+    members: 'Not offered here — Chronicle stops at friends.',
+    public: 'Not offered here — Chronicle stops at friends.',
+  },
+  /**
+   * ⚠️ A GOAL IS NOT A SITTING, AND THE DIFFERENCE IS THE FEED. The `chronicle` hints above say
+   * "these sittings … in the feed", which is right for an activity and wrong twice over for a
+   * goal: `get_member_chronicle` is the only reader of `chronicle_goals` that consults `can_see`,
+   * so a goal reaches one place — the Chronicle card on a profile — and never the feed. The goals
+   * half of the Sharing panel showed the activity wording for as long as it took to read it on
+   * screen once.
+   *
+   * What the level governs is the TITLE. The card's "1 goal on the go" is the block's own payload,
+   * gated by the block's visibility rather than this one, which is why no hint here promises that
+   * `private` hides a goal's existence from somebody who can see the card.
+   */
+  goal: {
+    private: 'Yours alone. The title stays off your profile.',
+    certain: 'Only the friends you pick below see this on your profile.',
+    friends: 'Friends you’ve added see this on your profile.',
     members: 'Not offered here — Chronicle stops at friends.',
     public: 'Not offered here — Chronicle stops at friends.',
   },

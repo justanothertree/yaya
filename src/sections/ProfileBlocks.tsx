@@ -2060,9 +2060,16 @@ function BlockFields({
             />
             <span>Show the goals I&apos;ve picked</span>
           </label>
+          {/**
+           * ⚠️ THE LINE BELOW NAMED THE NARROWER OF THE TWO CONTROLS, which was the only one when
+           * it was written. ○ beside a goal still works and still only says friends-or-nobody;
+           * Chronicle's Friends tab has a level for each goal, and is the only place "certain
+           * friends" can be chosen at all. So it names the tab rather than the glyph.
+           */}
           {block.config.goals === true && (
             <p className="muted" style={{ margin: 0, fontSize: '0.78rem' }}>
-              Pick them in Chronicle — ○ beside a goal puts it here. Nothing shows until you do.
+              Pick them in Chronicle — the Friends tab sets who sees each one. Nothing shows until
+              you do.
             </p>
           )}
           {/**

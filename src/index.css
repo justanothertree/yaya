@@ -4991,6 +4991,17 @@ button.appearance-slider-val {
   background: none;
   color: inherit;
   cursor: pointer;
+  /* ⚠️ 24px, WCAG 2.5.8's floor, because the readout measured 51 × 14. The `padding: 0` two lines
+     up is what makes it look like the plain number beside every other slider, and it is also what
+     left the box exactly one line of 0.78rem mono tall. Flex rather than taller text: the glyphs
+     stay where they were, right-aligned on the slider's centre line, and the target gets somewhere
+     to be. The sibling readouts are spans, so this rule reaches only the one control.
+     `getComputedStyle` reports `flex` rather than `inline-flex` here and nothing is overriding it:
+     the button is a flex item of its own row, and a flex item's display is blockified. */
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 button.appearance-slider-val:disabled {
   cursor: default;
@@ -19334,13 +19345,16 @@ a.cz-msg-author:focus-visible {
 .chron-sharing-fold > summary:hover {
   background: var(--b1, rgba(127, 127, 127, 0.08));
 }
-/* the level, pushed to the right and allowed to wrap under the name on a narrow screen rather
-   than taking the row past its own edge */
+/* the level, pushed to the right and allowed to wrap rather than taking the row past its own edge.
+   ⚠️ A FLOOR IN PIXELS, NOT `min-width: 0`, now that the name beside it may shrink. Letting both
+   sides of a flex row shrink freely is the §6 trap: whichever is rigid wins and the other pays the
+   whole bill, and "Certain friends — nobody picked yet" crushed to a sliver is the half that says
+   something nothing else on the row can. Pixels because the root size on this site is fluid. */
 .chron-sharing-tier {
   margin-left: auto;
   font-size: 0.74rem;
   text-align: right;
-  min-width: 0;
+  min-width: 92px;
 }
 .chron-sharing-fold[open] > summary {
   background: var(--b1, rgba(127, 127, 127, 0.08));
@@ -19358,14 +19372,41 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   line-height: 1.35;
 }
-/* a long activity name may ellipse; it must never take the row off its own edge, and a floor
-   in PIXELS because the root size on this site is fluid and a rem is therefore not a length */
+/* A long name may ellipse; it must never take the row off its own edge.
+   ⚠️ IT TAKES THE ROOM THAT IS THERE RATHER THAN A FLAT 180px, since the goals list joined it.
+   An activity is a word — "Guitar", "Reading" — and a goal is a sentence, so the cap written for
+   one truncated the other while the row sat half empty: measured at 375, a 58-character title cut
+   to 180px inside a 327px row, and at 1440 it was 180 inside 1313. Shrinking instead of capping
+   means it ellipses only when something else needs the space, and the tier's own pixel floor above
+   is what stops that becoming "let it vanish". */
 .chron-sharing-act {
   min-width: 0;
-  max-width: 180px;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* ⚠️ A SIBLING OF THE SWITCH, NOT A PART OF IT, and the rule above it says so. Goals reach a
+   profile through `config.goals` and sittings through `config.timeline` — two keys on one card and
+   two independent answers — so this half is not inside the switch's fold. See Sharing.tsx. */
+.chron-sharing-goals {
+  margin: 0.8rem 0 0;
+  padding: 0.7rem 0 0;
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+/* a real heading, because this is a region of the panel rather than a label — at the weight of the
+   switch's own `strong` rather than an h3's default size, since the room's only h2 is right above */
+.chron-sharing-head {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+/* "done" beside a finished goal, so a repeating goal's two rows are not one row twice */
+.chron-sharing-done {
+  flex: none;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .chron-sharing-err {
   margin: 0.5rem 0 0;
