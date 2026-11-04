@@ -168,10 +168,17 @@ reset role;
 -- ── F. a suspended member cannot comment or react ───────────────────────────────────────────
 -- ids are resolved BEFORE the suspension, because a suspended member cannot select a log and a
 -- fixture that looks one up afterwards silently tests nothing.
+-- ⚠️ IT REMEMBERS WHAT IT FOUND, because this block suspends somebody and block L below needs a
+-- cast that is not quietly one member short. `limit 1` here has no ORDER BY, so WHICH member gets
+-- suspended is up to the planner; leaving them suspended made every later block depend on that
+-- choice, which is the "result turns on fixture order" trap certain-lists.sql already paid for.
+-- The restore is three lines below the last assertion that needs the suspension.
 create temp table fx as
-  select l.id as log_id, cp.owner_user_id as owner
+  select l.id as log_id, cp.owner_user_id as owner,
+         coalesce(p.suspended, false) as was_suspended
   from public.circuit_logs l
   join public.circuit_people cp on cp.id = l.person_id
+  join public.profiles p on p.user_id = cp.owner_user_id
   where cp.owner_user_id is not null
   limit 1;
 grant select on fx to authenticated;
@@ -199,6 +206,10 @@ begin
   exception when others then null; end;
 end $$;
 reset role;
+
+/* put them back as found -- see the note on `fx`. Both assertions above have run by here. */
+update public.profiles set suspended = (select was_suspended from fx)
+ where user_id = (select owner from fx);
 
 -- ── G. anon cannot reach anything but the eight public doors ────────────────────────────────
 set local role anon;
@@ -449,34 +460,35 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
 -- block. Neither application was checked, in either scope.
 --
 -- ⚠️ IT IS A DIFFERENTIAL, BECAUSE "A MINOR'S THINGS ARE ABSENT" IS ALSO WHAT AN EMPTY FEED
--- SAYS. A feed with nothing in it, a window with nothing in it, a cast with no activity in it and
--- a genuinely working rule are indistinguishable from the zero alone — the empty-room trap in
--- CLAUDE.md §2. So the baseline must be non-zero before anything is flipped, and the guardian
--- opt-in must bring the SAME COUNT BACK. The zero in the middle only means something between two
--- numbers that are not zero.
+-- SAYS. A feed with nothing in it, a window with nothing in it and a cast with no activity in it
+-- are indistinguishable from a working rule when all you have is the zero — the empty-room trap
+-- in CLAUDE.md §2. So the opted-in state must be non-zero, or the zero beside it means nothing.
 --
--- ⚠️ AND IT ASSERTS THAT THE CEILING DID NOT MOVE, which is a guard on the guard. `age_band`
--- feeds two rules — this one and `visibility_ceiling`, which caps a minor at Friends — so a cast
--- whose subject is capped by the flip would hide their items for a second reason and this block
--- would pass while measuring the wrong thing. Measured on today's cast: the ceiling reads
--- `public` in every state, because the subject is the admin and `visibility_ceiling` answers for
--- that first. That is luck rather than design, so it is checked rather than assumed: if the cast
--- ever picks a non-admin, this block says it is now measuring two rules instead of quietly
--- agreeing with itself.
+-- ⚠️ THE TWO STATES DIFFER ONLY IN `feed_opt_in`, AND THE FIRST DRAFT OF THIS BLOCK GOT IT
+-- WRONG. It compared an ADULT against a MINOR, which moves two rules at once: this one and
+-- `visibility_ceiling`, which caps a minor at Friends. Against production that happened not to
+-- matter — the cast's subject is the admin, and the ceiling answers `public` for an admin before
+-- it looks at age — so the block passed with the confound sitting in it unseen. Against the CI
+-- seed, where the subject is an ordinary member, the ceiling really does drop, and the block
+-- would have reported a zero it had not earned. Holding `age_band` at `minor` across BOTH
+-- measurements removes the confound by construction rather than by luck: the ceiling is identical
+-- either side, so the only thing that moved is the guardian's tick. It is still compared below,
+-- as a tripwire rather than as a hope.
 --
--- ⚠️ ORDERING HAZARD, NAMED ON PURPOSE: block F suspends a member and never puts them back, and
--- its `limit 1` has no ORDER BY. Today that is somebody outside this cast. If it ever lands on
--- the subject or a viewer, the cast excludes them as suspended and the FIXTURE lines below go
--- red naming it, rather than this block passing against nobody.
+-- ⚠️ AND THE POSITIVE CONTROL HAS TO BE THE FRIEND, NOT THE NON-FRIEND. A minor's ceiling is
+-- Friends, so a non-friend cannot see their things whatever the guardian ticks; there is no state
+-- in which that viewer's count comes back, and demanding one would fail honestly for the wrong
+-- reason. The non-friend is still measured, as a one-directional check that All members shows
+-- them nothing — the friend's pair is what makes the zeros mean something.
 --
--- Costs about seven `feed_recent` calls, ~1.6s measured. The window is frozen once so the three
--- states are compared over the same span.
+-- Costs five `feed_recent` calls, ~1.2s. The window is frozen once so both states span the same
+-- fourteen days.
 --
--- Measured green on 4 Nov 2026, and the three numbers are the whole argument:
---   a non-friend, All members        24 -> 0 -> 24
---   a friend, You + friends          88 -> 0 -> 88
---   a friend, All members, as minor  0
---   the subject's ceiling            public in both states, so only one rule moved
+-- Measured against production, 4 Nov 2026. The subject there is the admin, so the ceiling holds
+-- at `public` and even the non-friend's count returns, which is more than this block asks for:
+--   a friend, All members        0 -> 88
+--   a friend, You + friends      0 -> 88
+--   a non-friend, All members    0  (not asserted on the opted-in side)
 --
 -- Made to fail once, by deleting `and public.feed_may_show(p.user_id)` from the member loop
 -- inside the same rolled-back transaction: 3 assertions red, naming 24 items to a non-friend and
@@ -492,11 +504,10 @@ declare
   v_sub uuid; v_sub_u text; v_far uuid; v_near uuid;
   v_from timestamptz := clock_timestamp() - interval '14 days';
   v_to   timestamptz := clock_timestamp();
-  v_band text; v_opt boolean;            -- the subject's real values, put back at the end
-  v_ceil_adult text; v_ceil_minor text;
-  n_far_base int; n_near_base int;
-  n_far_minor int; n_near_minor int; n_near_all_minor int;
-  n_far_opt int; n_near_opt int;
+  v_band text; v_opt boolean;                 -- the subject's real values, put back at the end
+  v_ceil_off text; v_ceil_on text;
+  n_near_all_off int; n_near_yf_off int; n_far_all_off int;
+  n_near_all_on int;  n_near_yf_on int;
 begin
   /* the same cast rule as certain-lists.sql: the member with the most accepted friendships is
      the one most likely to have activity worth seeing, and the suite stays consistent */
@@ -536,32 +547,9 @@ begin
   select age_band::text, coalesce(feed_opt_in, false) into v_band, v_opt
     from public.profiles where user_id = v_sub;
 
-  -- ── the baseline, as an adult: both viewers must actually be seeing something ──
-  update public.profiles set age_band = 'adult', feed_opt_in = false where user_id = v_sub;
-  v_ceil_adult := public.visibility_ceiling(v_sub)::text;
-
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
-  select count(*) into n_far_base from jsonb_array_elements(
-    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
-
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
-  select count(*) into n_near_base from jsonb_array_elements(
-    public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
-
-  if n_far_base = 0 then
-    insert into fails values ('FIXTURE: the subject reaches nobody in All members',
-      'nothing to hide, so every assertion below would pass against an empty feed');
-  end if;
-  if n_near_base = 0 then
-    insert into fails values ('FIXTURE: the subject reaches no friend in You + friends',
-      'nothing to hide, so every assertion below would pass against an empty feed');
-  end if;
-
-  -- ── a minor, with no guardian opt-in: gone from both tabs, for both viewers ──
+  -- ── a minor whose guardian has not opted in: nothing of theirs, in either tab ──
   update public.profiles set age_band = 'minor', feed_opt_in = false where user_id = v_sub;
-  v_ceil_minor := public.visibility_ceiling(v_sub)::text;
+  v_ceil_off := public.visibility_ceiling(v_sub)::text;
 
   if public.feed_may_show(v_sub) then
     insert into fails values ('feed_may_show admits a minor whose guardian has not opted in',
@@ -569,62 +557,62 @@ begin
   end if;
 
   perform set_config('request.jwt.claims',
-    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
-  select count(*) into n_far_minor from jsonb_array_elements(
+    json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_near_all_off from jsonb_array_elements(
     public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
+  select count(*) into n_near_yf_off from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
 
   perform set_config('request.jwt.claims',
-    json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
-  select count(*) into n_near_minor from jsonb_array_elements(
-    public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
-  select count(*) into n_near_all_minor from jsonb_array_elements(
+    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_far_all_off from jsonb_array_elements(
     public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
 
-  if n_far_minor <> 0 then
+  if n_near_all_off <> 0 then
     insert into fails values ('a minor reaches All members with no guardian opt-in',
-      n_far_minor || ' item(s) of ' || v_sub_u || ' to a non-friend');
+      n_near_all_off || ' item(s) of ' || v_sub_u || ' to a friend');
   end if;
-  if n_near_all_minor <> 0 then
+  if n_far_all_off <> 0 then
     insert into fails values ('a minor reaches All members with no guardian opt-in',
-      n_near_all_minor || ' item(s) of ' || v_sub_u || ' to a friend');
+      n_far_all_off || ' item(s) of ' || v_sub_u || ' to a non-friend');
   end if;
-  if n_near_minor <> 0 then
+  if n_near_yf_off <> 0 then
     insert into fails values ('a minor reaches You + friends with no guardian opt-in',
-      n_near_minor || ' item(s) of ' || v_sub_u);
+      n_near_yf_off || ' item(s) of ' || v_sub_u);
   end if;
 
-  -- ── the guardian opts in: the same items come back, which is what makes the zeros mean
-  --    something rather than describing an empty feed ──
+  -- ── the same minor, guardian opted in. `age_band` is untouched, so the ceiling cannot be
+  --    what changes the answer ──
   update public.profiles set feed_opt_in = true where user_id = v_sub;
+  v_ceil_on := public.visibility_ceiling(v_sub)::text;
 
   if not public.feed_may_show(v_sub) then
     insert into fails values ('feed_may_show refuses a minor whose guardian HAS opted in', v_sub_u);
   end if;
 
   perform set_config('request.jwt.claims',
-    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
-  select count(*) into n_far_opt from jsonb_array_elements(
-    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
-
-  perform set_config('request.jwt.claims',
     json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
-  select count(*) into n_near_opt from jsonb_array_elements(
+  select count(*) into n_near_all_on from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
+  select count(*) into n_near_yf_on from jsonb_array_elements(
     public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
 
-  if n_far_opt <> n_far_base then
-    insert into fails values ('the guardian opt-in did not restore All members',
-      n_far_base || ' -> 0 -> ' || n_far_opt);
+  /* the control. Without this the three zeros above are also what an empty feed says. */
+  if n_near_all_on = 0 then
+    insert into fails values ('FIXTURE: an opted-in minor still reaches their friend with nothing',
+      'the zeros above would pass against an empty feed — seed the subject some activity');
   end if;
-  if n_near_opt <> n_near_base then
-    insert into fails values ('the guardian opt-in did not restore You + friends',
-      n_near_base || ' -> 0 -> ' || n_near_opt);
+  if n_near_yf_on = 0 then
+    insert into fails values ('FIXTURE: an opted-in minor reaches You + friends with nothing',
+      'the zeros above would pass against an empty feed — seed the subject some activity');
   end if;
 
-  /* the guard on the guard -- see the note above this block */
-  if v_ceil_minor is distinct from v_ceil_adult then
+  /* the tripwire -- see the note above this block. Both measurements are taken at `minor`, so
+     this can only move if something else reads `feed_opt_in` into the ceiling. */
+  if v_ceil_on is distinct from v_ceil_off then
     insert into fails values ('this block now measures two rules at once',
-      'flipping age_band moved the subject''s ceiling ' || v_ceil_adult || ' -> ' || v_ceil_minor
-      || ', so a zero above could be the cap rather than the feed rule');
+      'the ceiling moved ' || v_ceil_off || ' -> ' || v_ceil_on
+      || ' on a guardian tick, so a zero above could be the cap rather than the feed rule');
   end if;
 
   /* put the subject back as found. The file rolls back regardless, so this is for the blocks

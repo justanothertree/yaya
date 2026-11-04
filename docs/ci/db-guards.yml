@@ -25,7 +25,10 @@ name: db guards
 # ⚠️ AND IT CANNOT PASS BY TESTING NOTHING. A freshly migrated database has no members, no admin
 # and no logs, so every check that needs a session would succeed against an empty set and report
 # a green zero. `supabase/seed.sql` supplies the fixtures, and the guard file refuses to run
-# without them — see its block 0.
+# without them — see its block 0, and block L, which refuses its own zeros unless an opted-in
+# minor is reaching their friend with something. The seed carries a second circuit log purely so
+# that block has a non-zero to measure against; the comment on it says so, in case it ever looks
+# redundant.
 
 on:
   push:
@@ -45,44 +48,56 @@ jobs:
 
       # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
       # so in one sentence rather than letting `db reset` fail three minutes later with
-      # `relation "public.profiles" does not exist`. supabase/migrations holds the 37 changes
-      # made since late October; the 283 before them live only in the live database, so nothing
-      # here creates the tables the recent ones alter.
+      # `relation "public.profiles" does not exist`. supabase/migrations holds the changes made
+      # since late October; the 283 before them live only in the live database, so nothing here
+      # creates the tables the recent ones alter.
       #
-      # ── GENERATING THE BASELINE ────────────────────────────────────────────────────────────
+      # ── GENERATING THE BASELINE (still the one thing standing between this job and green) ──
       #     supabase link --project-ref <ref>
-      #     supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql
+      #     supabase db dump --linked --schema public,finance \
+      #       -f supabase/migrations/00000000000000_baseline.sql
       #
-      # ── AND WHAT THEN HAPPENS TO THE 37 ────────────────────────────────────────────────────
-      # The dump is the schema AS IT IS TODAY, so it already contains everything those 37 did.
-      # On a fresh database they replay on top of it, and most of them do not mind: 35 of the 37
-      # are `create or replace function`, `add column if not exists`, `create ... if not exists`,
-      # `drop ... if exists`, grants, revokes, or data updates that are no-ops on empty tables.
+      # ⚠️ `--schema public,finance`, NOT THE DEFAULT. `db dump` takes `public` alone unless told
+      # otherwise, and this database has a second schema with tables in it: `finance`, 10 tables,
+      # which `20261029153952_family_fund_safety.sql` alters. A public-only baseline builds a
+      # database where that migration dies on `relation "finance.family_accounts" does not
+      # exist`, which looks like a broken migration and is a missing schema. Counted on 4 Nov:
+      # public 52 tables, finance 10; `auth`, `storage` and `realtime` are Supabase's own and
+      # `supabase start` creates them.
       #
-      # ⚠️ EXACTLY TWO STATEMENTS IN ONE FILE WOULD FAIL, counted rather than guessed:
-      # `20261030032833_suspension_reaches_the_social_tables.sql` has two bare `create policy`
-      # statements, and a policy that already exists is an error rather than a no-op. (The
-      # `create trigger` in `20261030134148_...` looks like a third and is not — it is preceded
-      # by `drop trigger if exists`.)
+      # ── AND WHAT THEN HAPPENS TO THE MIGRATIONS ────────────────────────────────────────────
+      # The dump is the schema AS IT IS TODAY, so it already contains everything they did. On a
+      # fresh database they replay on top of it, and nearly all do not mind: `create or replace
+      # function`, `add column if not exists`, `create ... if not exists`, `drop ... if exists`,
+      # grants, revokes, and data updates that are no-ops on empty tables.
       #
-      # Two ways to resolve it, and they trade different things:
+      # ⚠️ THE COUNT THIS COMMENT USED TO GIVE WAS WRONG BY THE TIME ANYBODY READ IT, which is
+      # the §2 rule turned on a workflow file. It said "exactly two statements in one file would
+      # fail — two bare `create policy` in 20261030032833". Re-counted on 4 Nov across all 79
+      # migrations (it was 37 when that sentence was written):
       #
-      #   a) MAKE THOSE TWO IDEMPOTENT — add `drop policy if exists` above each `create policy`.
-      #      Two lines. Keeps one migrations directory, keeps all 37 headers where they are, and
-      #      the repo still builds. The cost is that this one file stops matching the statement
-      #      recorded in `schema_migrations` byte for byte, which is a convention this project
-      #      keeps deliberately; it would need a note in its own header saying what diverged and
-      #      why. RECOMMENDED — the divergence is two lines and explainable, and squashing is
-      #      not.
+      #   * those two `create policy` statements are ALREADY guarded, each by a `drop policy if
+      #     exists ... on ...` directly above it. Fixed at some point after the note was written
+      #     and the note never caught up.
+      #   * the real remainder was SIX bare `create trigger` statements in
+      #     `20261103200333_a_list_goes_when_its_item_leaves_certain.sql`, a file that did not
+      #     exist when this was written. Each now has a `drop trigger if exists` above it, and
+      #     that file's header records the md5 divergence that creates.
+      #   * everything else that looked unguarded is guarded in a style a naive grep misses:
+      #     `add constraint` inside `if not exists (select 1 from pg_constraint ...)`.
       #
-      #   b) SQUASH — keep only the baseline and move the 37 into a subdirectory (the CLI reads
-      #      `*.sql` in the migrations directory and ignores folders), or delete them. Clean
-      #      directory; loses nothing from git history but takes the migration headers out of
-      #      the place people look, and those headers are where this project keeps its reasoning.
+      # So the count is zero today. Re-derive it rather than trusting this paragraph — the scan
+      # has to understand BOTH guard styles, and two earlier attempts at it were wrong in both
+      # directions before the third agreed with reading the files.
+      #
+      # The alternative was to SQUASH — keep only the baseline and move the rest into a
+      # subdirectory (the CLI reads `*.sql` in the migrations directory and ignores folders).
+      # Rejected: it takes the migration headers out of the place people look, and those headers
+      # are where this project keeps its reasoning.
       #
       # Either way the baseline must sort FIRST, hence the all-zero timestamp: `db reset` applies
-      # files in filename order, so a baseline dated after the 37 would let them run first
-      # against an empty database and fail exactly as today.
+      # files in filename order, so a baseline dated after them would let them run first against
+      # an empty database and fail exactly as today.
       - name: Check the migrations can build the schema
         run: |
           if ! grep -rqiE 'create[[:space:]]+table[[:space:]]+(if[[:space:]]+not[[:space:]]+exists[[:space:]]+)?("?public"?\.)?"?profiles"?([[:space:](]|$)' supabase/migrations/; then

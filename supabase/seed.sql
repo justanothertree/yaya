@@ -91,3 +91,21 @@ on conflict do nothing;
 insert into public.circuit_logs (id, person_id, date, entries)
 values ('seed-log-1', 'seed-person-1', current_date, '[]'::jsonb)
 on conflict (id) do nothing;
+
+-- ⚠️ A SECOND LOG, AND IT IS BLOCK L OF THE GUARD SUITE THAT NEEDS IT. That block proves a
+-- minor's things stay out of both feed tabs until their guardian opts in, and the only way to
+-- tell that rule apart from an empty feed is to show the SAME items coming back when the tick
+-- goes on. Block L's cast rule picks the member with the most accepted friendships, ties by
+-- username, which on these three fixtures is `seedfriend` — and seedfriend owned nothing that
+-- reaches a feed, so every assertion in that block would have passed against nothing.
+--
+-- It hangs on `seed-person-2`, which is `private` and therefore invisible to the stranger, and
+-- reaches `seedowner` only through the group they share: `get_member_activity`'s circuit branch
+-- admits a person either by `can_see_item` or by shared group membership. That is the shape the
+-- block wants — visible to the friend, invisible to the non-friend — without widening anything.
+--
+-- `current_date` so it lands inside the feed's fourteen-day window. Empty `entries` is enough:
+-- the branch left-joins its aggregate, so a log with nothing in it is still an event worth 0.
+insert into public.circuit_logs (id, person_id, date, entries)
+values ('seed-log-2', 'seed-person-2', current_date, '[]'::jsonb)
+on conflict (id) do nothing;

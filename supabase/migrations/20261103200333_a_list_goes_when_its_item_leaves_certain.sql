@@ -1,5 +1,21 @@
 -- ✅ APPLIED 3 Nov 2026 as `a_list_goes_when_its_item_leaves_certain`.
 --
+-- ⚠️ THIS FILE NO LONGER md5-MATCHES `schema_migrations`, ON PURPOSE AND ALONE AMONG THE 79.
+-- Six `drop trigger if exists` lines were added on 4 Nov, one above each `create trigger`, so the
+-- file can be replayed onto a database that already has them — which is what `supabase db reset`
+-- does in CI once a schema baseline exists, and what `docs/ci/db-guards.yml` is for. A bare
+-- `create trigger` against an existing trigger is an error rather than a no-op, and these six
+-- were the only unguarded statements left in the whole directory.
+--
+-- What ran in production is the version WITHOUT those six lines:
+--   version 20261103200333 · md5 fcc233bc07d4e735cd2f15353c0b833c · 4,212 characters
+-- The added lines are drops of triggers this same file then creates, so replaying the new text
+-- against production would end in exactly the state the old text left. Nothing else changed.
+--
+-- The convention is otherwise unbroken — see the note in CLAUDE.md §4 and the md5 recorded in
+-- every other header. If a second file ever needs this, the cheaper answer is probably squashing
+-- rather than a second divergence.
+--
 -- ⚠️ A LIST LEFT BEHIND IS AN AUDIENCE THAT LETS ITSELF BACK IN. The delete triggers
 -- clear an item's list when the ROW goes, which was the whole rule while nothing could change
 -- tier. It can now: move an activity Certain -> Friends and the list sits there granting nothing,
@@ -59,21 +75,25 @@ $$;
 
 revoke all on function public.visibility_certain_forget_on_leaving() from public, anon, authenticated;
 
+drop trigger if exists chronicle_activities_drop_certain on public.chronicle_activities;
 create trigger chronicle_activities_drop_certain
   after update of visibility on public.chronicle_activities
   for each row execute function
   public.visibility_certain_forget_on_leaving('chronicle_activity', 'id', 'visibility');
 
+drop trigger if exists chronicle_goals_drop_certain on public.chronicle_goals;
 create trigger chronicle_goals_drop_certain
   after update of visibility on public.chronicle_goals
   for each row execute function
   public.visibility_certain_forget_on_leaving('chronicle_goal', 'id', 'visibility');
 
+drop trigger if exists circuit_people_drop_certain on public.circuit_people;
 create trigger circuit_people_drop_certain
   after update of visibility on public.circuit_people
   for each row execute function
   public.visibility_certain_forget_on_leaving('circuit_person', 'id', 'visibility');
 
+drop trigger if exists player_registry_drop_certain on public.player_registry;
 create trigger player_registry_drop_certain
   after update of visibility on public.player_registry
   for each row execute function
@@ -83,11 +103,13 @@ create trigger player_registry_drop_certain
    which is why the rule had to live inside `save_my_profile_blocks` in the first place. The
    trigger is here anyway, because "no caller does that" is the kind of claim that stops being
    true without anybody noticing, and a direct PATCH is a caller. */
+drop trigger if exists profile_blocks_drop_certain on public.profile_blocks;
 create trigger profile_blocks_drop_certain
   after update of visibility on public.profile_blocks
   for each row execute function
   public.visibility_certain_forget_on_leaving('profile_block', 'id', 'visibility');
 
+drop trigger if exists profiles_drop_certain_activity on public.profiles;
 create trigger profiles_drop_certain_activity
   after update of activity_visibility on public.profiles
   for each row execute function
