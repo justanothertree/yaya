@@ -6,10 +6,13 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 *.js text eol=lf
+*.mjs text eol=lf
 *.css text eol=lf
 # .sql is pinned for a reason beyond tidiness: a migration file's body must md5-match
 # `schema_migrations.statements`, and that hash is over LF bytes. Without this line
 # `* text=auto` plus core.autocrlf=true checks .sql out as CRLF on Windows, and the check
 # that proves a recorded migration is the one that ran fails for every file at once.
 *.sql text eol=lf
+# and `applied.md5` is the other half of that same check — a record of those hashes.
+*.md5 text eol=lf
 *.html text eol=lf

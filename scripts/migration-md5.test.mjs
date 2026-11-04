@@ -65,6 +65,14 @@ describe('readManifest', () => {
     expect(rows.get('2026')).toMatchObject({ applied: 'aaa', file: null, reason: null })
     expect(rows.get('2027')).toMatchObject({ applied: 'bbb', file: 'ccc', reason: 'comments' })
   })
+
+  /* the manifest is pinned to LF in .gitattributes for the same reason the .sql files are, but
+     the reasons here must survive a CRLF checkout rather than becoming `comments\r` — which the
+     check would then refuse as a reason it does not recognise, about a file that is fine */
+  it('survives a CRLF checkout of itself', () => {
+    const rows = readManifest('# note\r\n2027  bbb  ccc  comments\r\n')
+    expect(rows.get('2027')).toMatchObject({ file: 'ccc', reason: 'comments' })
+  })
 })
 
 describe('check, made to fail', () => {
