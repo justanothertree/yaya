@@ -183,8 +183,16 @@ from (values
 -- `visibility_certain` -- so a comparison of the two tables could not see it, and adding the
 -- field to the arrays below would have reported "not checked" about a value the import really
 -- does restore. Both snapshots carry the lists now and part 2 compares rows AND lists together.
--- Measured 3 Nov 2026: `certain` reports `carried` for both kinds, 28 of 30 fields carried, and
--- the two exceptions are the `shared` pair below.
+-- Measured 3 Nov 2026: `certain` reports `carried` for both kinds, and the only two exceptions
+-- are the `shared` pair below.
+--
+-- ⚠️ THIS SAID "28 of 30 fields carried" AND THE LOOP HAS ONLY EVER HAD 27 IN IT — 11 activity
+-- fields and 16 goal ones, counted off the two arrays below. Re-measured 3 Nov: **25 carried of
+-- 27**. Nobody would have caught it by reading, because the shape of the claim was right and only
+-- the figure was wrong, and it was quoted onward into a commit message before anybody counted the
+-- rows it came from. It is the §2 rule turned on this file: a total written beside a loop is a
+-- claim about that loop, and the loop is the thing to ask. Prefer the SHAPE — every field carried
+-- except the derived pair — which stays true as fields are added, over a total that does not.
 --
 -- ⚠️ `shared` IS EXPECTED TO REPORT "not checked", AND THAT IS CORRECT RATHER THAN A GAP. It is
 -- a derived column: the trigger computes it from `visibility`, so dropping it from the file

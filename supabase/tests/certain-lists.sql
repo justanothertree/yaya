@@ -306,6 +306,82 @@ begin
 end
 $chron$;
 
+-- ── the card's goal COUNTS follow each goal's level ─────────────────────────────────────────
+--
+-- ⚠️ THE COUNTS WERE THE ONE THING ON THE CARD THAT NO LEVEL GOVERNED, and the titles two inches
+-- above them were gated twice. `get_member_chronicle` counted `reached` and `open` over every goal
+-- the owner had, so a member whose only goal was Only me told each of their friends they had one
+-- on the go. Fixed 3 Nov 2026; this is what stops it coming back.
+--
+-- ⚠️ A DELTA, NOT AN ABSOLUTE, because the owner is a real member with goals of their own and a
+-- fixture that assumed otherwise would be measuring the database rather than the rule.
+--
+-- ⚠️ AND THE SECOND ASSERTION IS THE ONE THAT MAKES THE FIRST MEAN ANYTHING. "Adding a private
+-- goal did not move the count" is also what a count stuck at zero says, and what a card nobody
+-- can see says — the same shape as the `.park-field` and empty-room traps in CLAUDE.md §2. So a
+-- goal the viewer MAY see has to move the same number by exactly one, through the same call.
+--
+-- Made to fail once, by restoring the unfiltered count inside the same rolled-back transaction:
+-- 2 of the 4 assertions went red — `1 -> 2` where the private goal must not move it, and `1 -> 3`
+-- where the shared one must move it to 2, the second failing because the first already inflated
+-- the base. The live function was untouched; the substitution rolled back with everything else.
+do $counts$
+declare
+  v_owner   uuid := (select uid from cast_ where part = 'owner');
+  v_owner_u text := (select u   from cast_ where part = 'owner');
+  v_on      uuid := (select uid from cast_ where part = 'on_list');
+  v_base int; v_after_priv int; v_after_shared int; v_owner_base int; v_owner_after int;
+begin
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_on::text, 'role', 'authenticated')::text, true);
+  v_base := ((public.get_member_chronicle(v_owner_u, 7))->>'open')::int;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner::text, 'role', 'authenticated')::text, true);
+  v_owner_base := ((public.get_member_chronicle(v_owner_u, 7))->>'open')::int;
+  insert into public.chronicle_goals
+    (owner, title, scope, repeat_every, target, unit, counts, visibility)
+  values (v_owner, 'certain-lists only-me goal', 'week', 1, 5, 'times', 'minutes', 'private');
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_on::text, 'role', 'authenticated')::text, true);
+  v_after_priv := ((public.get_member_chronicle(v_owner_u, 7))->>'open')::int;
+  if v_after_priv <> v_base then
+    insert into fails values ('an Only-me goal is counted on somebody else''s card',
+      v_base || ' -> ' || v_after_priv);
+  end if;
+  /* and it must not appear by name either -- the two halves of the same answer */
+  if exists (select 1 from jsonb_array_elements(
+               (public.get_member_chronicle(v_owner_u, 7))->'goals') g
+              where g->>'title' = 'certain-lists only-me goal') then
+    insert into fails values ('an Only-me goal is listed on somebody else''s card', null);
+  end if;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner::text, 'role', 'authenticated')::text, true);
+  insert into public.chronicle_goals
+    (owner, title, scope, repeat_every, target, unit, counts, visibility)
+  values (v_owner, 'certain-lists friends goal', 'week', 1, 5, 'times', 'minutes', 'friends');
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_on::text, 'role', 'authenticated')::text, true);
+  v_after_shared := ((public.get_member_chronicle(v_owner_u, 7))->>'open')::int;
+  if v_after_shared <> v_base + 1 then
+    insert into fails values ('a goal the viewer may see is not counted on the card',
+      v_base || ' -> ' || v_after_shared || ' (expected ' || (v_base + 1) || ')');
+  end if;
+
+  -- the owner's own card counts everything, which is the reading that must NOT change
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner::text, 'role', 'authenticated')::text, true);
+  v_owner_after := ((public.get_member_chronicle(v_owner_u, 7))->>'open')::int;
+  if v_owner_after <> v_owner_base + 2 then
+    insert into fails values ('the owner stopped counting their own goals',
+      v_owner_base || ' -> ' || v_owner_after || ' (expected ' || (v_owner_base + 2) || ')');
+  end if;
+end
+$counts$;
+
 -- ── the save test: editing one block must not disturb another block's list ──────────────────
 --
 -- ⚠️ LAST, BECAUSE IT EMPTIES THE OWNER'S PAGE. `save_my_profile_blocks` deletes every

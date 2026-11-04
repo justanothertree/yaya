@@ -915,11 +915,20 @@ function LooksPicker({
  * uses THIS BLOCK'S OWN visibility as the only gate, and answers nothing at all when the block is
  * not there — so taking it off the page is a revocation rather than a hiding.
  *
- * ⚠️ AND IT SHOWS NO GOAL TITLES, deliberately. A goal is free text somebody wrote about their
- * own life. Agreeing to show how many hours went into drawing is a different act from agreeing to
- * show what you are trying to fix about yourself, and one card collecting both consents while
- * asking for the first is the kind of thing this site should not do. Counts only: reached, and
- * still going. See docs/2026-10-14-chronicle-profile-block.sql.
+ * ⚠️ AND IT SHOWS NO GOAL TITLES BY DEFAULT, deliberately. A goal is free text somebody wrote
+ * about their own life. Agreeing to show how many hours went into drawing is a different act from
+ * agreeing to show what you are trying to fix about yourself, and one card collecting both
+ * consents while asking for the first is the kind of thing this site should not do. Titles need
+ * two switches, both deliberate: this block's "Show the goals I've picked", and a level on the
+ * goal itself. See docs/2026-10-14-chronicle-profile-block.sql.
+ *
+ * ⚠️ THE COUNTS FOLLOW EACH GOAL'S LEVEL TOO, SINCE 3 Nov 2026, and they did not before. "Counts,
+ * never titles" was read as "the counts are the block's payload", so `reached` and `open` were
+ * computed over every goal the owner had — a member whose only goal was Only me told each of
+ * their friends they had one on the go. That was a defensible reading while a goal's level was a
+ * boolean nobody could find; it stopped being one when the Sharing panel gave goals a level and a
+ * room to set it in. `get_member_chronicle` filters both counts through `can_see_item` now, in
+ * SQL, so a hidden goal never leaves the server.
  */
 /** The three the room names, in the order it names them. */
 const CHRON_CATS: ReadonlyArray<[keyof MemberChronicle['time'], string]> = [
@@ -1097,12 +1106,27 @@ function ChronicleBlock({
               ))}
             </ul>
           )}
-          {/* ⚠️ counts, never titles — see the note on this component */}
-          <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
-            {has.reached > 0
-              ? `${has.reached} goal${has.reached === 1 ? '' : 's'} reached, ${has.open} still going`
-              : `${has.open} goal${has.open === 1 ? '' : 's'} on the go`}
-          </p>
+          {/**
+           * ⚠️ counts, never titles — see the note on this component. They follow each goal's own
+           * level as of 3 Nov 2026, which is why the line can now be about NOTHING.
+           *
+           * ⚠️ AND IT GOES AWAY AT ZERO, which this file's own doctrine is usually against: a
+           * figure that hides itself at zero is how a tab with work in it says nothing about that
+           * work. The difference is whose fact it is. Before, zero could only mean "they have no
+           * goals", and the line said so truthfully; now zero also means "none of them are yours
+           * to see", and `0 goals on the go` would be this card asserting something false about
+           * somebody else. There is nothing to tell this viewer, so it tells them nothing.
+           *
+           * The owner is never in that branch — `can_see` answers true for them at every tier, so
+           * their own card still counts everything they have.
+           */}
+          {has.reached + has.open > 0 && (
+            <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
+              {has.reached > 0
+                ? `${has.reached} goal${has.reached === 1 ? '' : 's'} reached, ${has.open} still going`
+                : `${has.open} goal${has.open === 1 ? '' : 's'} on the go`}
+            </p>
+          )}
         </>
       )}
     </div>

@@ -109,27 +109,48 @@ const span = (
   }
 }
 
-const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): Goal => ({
-  anchor: null,
-  every: null,
-  /* ⚠️ private unless a fixture says otherwise, which is what the column's default does.
-     Both, because `shared` cannot say `certain` -- the real row keeps them in step with a
-     trigger and a CHECK, so a double that sets only one invents a state the server refuses. */
-  shared: false,
-  visibility: 'private',
-  target: null,
-  unit: null,
-  progress: 0,
-  done: false,
-  note: null,
-  sort: 0,
-  activity: null,
-  cat: null,
-  counts: 'minutes',
-  est: null,
-  priority: 0,
-  ...g,
-})
+const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): Goal => {
+  const base: Goal = {
+    anchor: null,
+    every: null,
+    /* ⚠️ private unless a fixture says otherwise, which is what the column's default does.
+       Both, because `shared` cannot say `certain` -- the real row keeps them in step with a
+       trigger and a CHECK, so a double that sets only one invents a state the server refuses. */
+    shared: false,
+    visibility: 'private',
+    target: null,
+    unit: null,
+    progress: 0,
+    done: false,
+    note: null,
+    sort: 0,
+    activity: null,
+    cat: null,
+    counts: 'minutes',
+    est: null,
+    priority: 0,
+    ...g,
+  }
+  /**
+   * ⚠️ AND THE PARAGRAPH ABOVE WAS TRUE AND NOT ENFORCED, so every fixture it was written for
+   * broke it. `goal({ shared: true })` spread the boolean over a default `visibility: 'private'`
+   * and produced the exact row `chronicle_goals_tier_agrees` refuses — three of them, since the
+   * tier column was added. Nothing noticed because every reader here asked for `shared`; the first
+   * one to ask for `visibility` got "no goals at all" from a seed with three shared ones in it,
+   * and the card's counts line vanished.
+   *
+   * So the pair is reconciled rather than described, the way `chronicle_tier_sync` does it on the
+   * real table: the TIER decides, and `shared` is derived from it. A fixture naming only `shared`
+   * is read as the tier `chronicle_goal_share` would have written for it, which is how that
+   * function has always behaved — friends, or private.
+   */
+  const visibility = g.visibility ?? (g.shared ? 'friends' : base.visibility)
+  return {
+    ...base,
+    visibility,
+    shared: visibility === 'friends' || visibility === 'members' || visibility === 'public',
+  }
+}
 
 type Store = {
   acts: Activity[]
@@ -1721,18 +1742,46 @@ export const pvMemberChronicle = (
             mins: Math.round((to - Date.parse(open.start)) / 60_000),
           }
         : null,
-    /* ⚠️ BOTH switches, the way the SQL does it — the block must ask AND the goal must be
-       shared. A double honouring only one makes the other untestable where it is easiest to look */
+    /* ⚠️ BOTH switches, the way the SQL does it — the block must ask AND the goal must reach the
+       viewer. A double honouring only one makes the other untestable where it is easiest to look */
     goals: wantsGoals
       ? db()
-          .goals.filter((g) => g.shared)
+          .goals.filter(reachesAFriend)
           .slice(0, 6)
           .map((g) => ({ title: g.title, target: g.target, unit: g.unit, done: g.done }))
       : [],
-    reached: db().goals.filter((g) => g.done).length,
-    open: db().goals.filter((g) => !g.done).length,
+    /* ⚠️ THE COUNTS TAKE THE SAME FILTER AS THE LIST, because the server does and because it did
+       not until 3 Nov 2026. `get_member_chronicle` counted every goal the owner had, so somebody
+       whose only goal was Only me told each of their friends they had one on the go; a double
+       still counting them all would hide that in the one place this card can be looked at without
+       an account. Deliberately NOT gated on `wantsGoals` — that switch governs titles, and the
+       counts have never answered to it. */
+    reached: db().goals.filter((g) => reachesAFriend(g) && g.done).length,
+    open: db().goals.filter((g) => reachesAFriend(g) && !g.done).length,
   }
 }
+
+/**
+ * Whether a goal reaches the person looking, for a double that has no idea who that is.
+ *
+ * ⚠️ THE VIEWER IS MODELLED AS A FRIEND, which is who the profile preview shows the page to, and
+ * the one reading that makes both switches exercisable from the seed. It is `visibility` and not
+ * `shared` because the two are only equal by a CHECK constraint today — `chronicle_goals_tier_
+ * agrees` pins `shared` to the three open tiers — and a double built on the derived column would
+ * agree with the server right up until somebody changes which column is derived.
+ *
+ * ⚠️ `certain` READS AS HIDDEN HERE, AND THAT IS FAITHFUL RATHER THAN LAZY. The harness has no
+ * list store at all: `CertainForItem` talks to Supabase directly, so every preview list is empty,
+ * and an empty list reaches nobody on the server either. What it does mean is that the workbench
+ * cannot show a goal shared with certain friends — a real gap, not a passing one, and worth
+ * knowing before concluding from this room that the tier does nothing.
+ *
+ * One further divergence, which cannot be closed from here: the server counts `reached` only for
+ * goals finished INSIDE the window, and the preview Goal carries `done` as a boolean with no
+ * timestamp to compare.
+ */
+const reachesAFriend = (g: Goal): boolean =>
+  g.visibility === 'friends' || g.visibility === 'members' || g.visibility === 'public'
 
 /** the earliest sitting in the seed, so the Years view has a real span to draw */
 export const pvSince = (): number | null => {

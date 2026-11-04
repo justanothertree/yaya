@@ -51,6 +51,17 @@
 -- room already names, plus the top five activities with their colours, plus two counts: goals
 -- reached in that window and goals still open.
 --
+-- ⚠️ SUPERSEDED IN ONE RESPECT, 3 Nov 2026 — `the_cards_goal_counts_follow_each_goals_level`.
+-- Those two counts were computed over EVERY goal the owner had, with no visibility test, which is
+-- what "counts, never titles" was taken to license: the counts were the block's own payload,
+-- gated by the block's own visibility. The reasoning held while a goal's audience was a boolean
+-- nobody could find. It stopped holding the day the Sharing panel gave goals the full ladder and
+-- a room built for setting it — at which point a member whose only goal was Only me was still
+-- telling each of their friends they had one on the go. Both counts now run through
+-- `can_see_item`, the same predicate as the titles beside them, so a goal is counted exactly when
+-- it could be listed. An owner's own card is unchanged, because `can_see` answers true for them
+-- at every tier. Everything else on this page still stands.
+--
 -- ⚠️ THE WINDOW IS A PARAMETER, AND THE SECOND MIGRATION IS WHY. It was read off the first
 -- chronicle block's config, which is fine until somebody adds a second one — the server answered
 -- both from block #1, so block #2's "How far back" picker silently did nothing. A control that
