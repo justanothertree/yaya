@@ -95,6 +95,10 @@ that render nothing at zero first**.
   When something important is unreachable, move the decision out rather than concluding it cannot
   be tested — that is what `server/lib/settings.mjs`, `supabase/functions/pictures/verdict.ts` and
   `src/finance/designation.ts` all are.
+  `scripts/*.test.mjs` joined them on 4 Nov, and it is the clearest case yet of the same
+  sentence: "never edit an applied migration" was a rule in prose, and prose cannot be run.
+  `scripts/migration-md5.test.mjs` asks the directory instead, which is why it found eleven
+  files out of step rather than the one that was written down.
 - **Write the expectation from the world's SHAPE, never from the code's sum.** This is the same
   rule as the note below about `across(PARK_TALL)`, and it is the difference between a test and
   a second copy of the bug: `outBy(n) * PARK.across * ASPECT === n * PARK_TALL` says "a creature
@@ -655,6 +659,19 @@ Assume real users and sensitive data, because there are and it is.
   not an `alter table`.
 - Use `apply_migration` for DDL and record the reasoning in `docs/YYYY-MM-DD-*.sql`, marked
   ✅ APPLIED with the migration name. Those files are the project's memory of _why_.
+- **NEVER EDIT A MIGRATION PRODUCTION HAS ALREADY APPLIED.** Put the fix in a new timestamped
+  migration. A migration file is not source code that can be corrected; it is the record of an
+  event, and the database it describes has already moved on — `schema_migrations.statements[1]`
+  keeps the text that ran whatever the file later says.
+  `scripts/migration-md5.mjs` checks this on every `npm run test`, against
+  `supabase/migrations/applied.md5`; that file's header has the body rule and the regenerating
+  query. **It is a pin, not an exemption**: a divergence records the exact text allowed, so a
+  second edit to a diverging file fails like a first edit to any other.
+  ⚠️ **The rule had been broken three times before anything could say so**, and only one of the
+  three said so in its own header. All three were the same well-meant edit — adding
+  `drop … if exists` so the file could replay — which is exactly the kind that looks like
+  tidying. The safe annotation is the HEADER: the body rule strips the contiguous `--` lines at
+  the top, so a note can always be added above an applied migration without moving its md5.
 - **Before replacing a live function, take a behavioural baseline** — `md5()` of its output in a
   simulated session — and compare afterwards. Replacing `get_member_activity` was provably a no-op
   for members because of this.

@@ -1,0 +1,128 @@
+# ⚠️ WHAT PRODUCTION ACTUALLY RAN. One line per migration file, checked by
+# `scripts/migration-md5.mjs` on every `npm run test` and by `docs/ci/db-guards.yml`.
+#
+#     version         md5 of the statement production ran    [md5 of the file now]  [reason]
+#
+# Two columns means the file is byte for byte the SQL that ran. Four means it has been changed
+# since, on purpose, and the third column pins exactly which changed text is allowed — so a
+# SECOND edit still fails. The reason is one of the words in REASONS in that script.
+#
+# ── THE RULE THIS EXISTS FOR ──────────────────────────────────────────────────────────────────
+# Never edit a migration production has already applied. Put the fix in a new timestamped
+# migration. A migration file is not source code that can be corrected; it is the record of an
+# event, and the database it describes has already moved on.
+#
+# ⚠️ THE RULE HAD BEEN BROKEN THREE TIMES BEFORE ANYTHING COULD SAY SO, which is why the first
+# run of this check found eleven files out of step rather than none. Three of them had gained
+# re-run guards after the fact (`re-run-guard` below), and only one of those three said so in its
+# own header. The other eight predate the body-md5 protocol being worked out at all: seven differ
+# only in comments, and `20261027004612` was written back out of the live database with
+# `pg_get_functiondef` instead of from what was sent, so it carries that function's own casing and
+# is missing one `do $$ … end $$` assertion that did run. All eleven are frozen as they stand —
+# the point of the check is the NEXT edit, not an archaeology project on the last one.
+#
+# ⚠️ AND NOTE WHAT IS NOT PINNED: the file's HEADER. The body rule strips the contiguous `--`
+# lines at the top, so a note can always be added above an applied migration without disturbing
+# anything here. That is the honest way to annotate one.
+#
+# ── REGENERATING IT ───────────────────────────────────────────────────────────────────────────
+# There are no database credentials in CI and there must not be, so this is committed rather than
+# fetched. After applying a migration, ask production for its record:
+#
+#     select version || '  ' || md5(statements[1]) as line
+#     from supabase_migrations.schema_migrations
+#     where version >= '20261027'
+#     order by version;
+#
+# save the lines to a file, then `node scripts/migration-md5.mjs --record <that file>`. Reasons
+# already written here are carried over; a divergence nobody has explained is written
+# `unexplained`, and the check refuses that word by name rather than letting it pass as a note.
+#
+# Measured 4 Nov 2026: production holds 362 applied migrations and this directory holds 79 of
+# them. Two versions in the record have no file here at all — 20261027002305 and 20261027003416,
+# from the day before the practice of committing them started.
+#
+# A file with no line here is REPORTED, not failed: a migration nobody has applied has no record
+# to contradict, and failing on it would be the check answering a question it was not built for.
+# The schema baseline `00000000000000_baseline.sql`, when it arrives, is permanently in that
+# bucket — it is a dump, not a statement anybody ran.
+#
+20261027004612  f0d5c21c964a76b9ce1a12e7f6a218d5  c82878bad30113ea3e8db9b6da43c404  rebuilt
+20261027104647  9626b14ff5357bad6ca174ec574d87f8  df9c87d832b92fa5021898c8554920db  comments
+20261029004825  05b08317482384053efc620a131085ad  9ac68106398d9d00af8862f0605cea9c  comments
+20261029010541  b4fbd68fb7f66488d1cd0298c2ce89de  3bb7a62f5f248757725dcfd38f76ff5f  comments
+20261029152157  19fa7fb9050b0dbff8f2aec5e113615e  bf50db4168aa20956601c15f1eb35404  comments
+20261029153249  b66a5f477da991e379729f90cc55ceb5  a42fbe2fc59573e232617303665059dd  comments
+20261029153649  fa520c2a7dfc7bfb9ccfc343f68dcc43  532001a02b5a9cff7505758afcd59b2c  comments
+20261029153952  5d4b58270f420d1e91d5057a0dea8355  3636d8a722be49956721935dfba38697  re-run-guard
+20261029154129  4e8efc5a4c148302411dbf9a09c68884
+20261029154440  199c226851e82171f324355010c84ab4
+20261029154808  4773fab52815cf4763751eaec718927c
+20261029155118  dbc9dd6552825505adedf87eef16a7d0
+20261029192212  b6d751bdf61e478c508d9261799c3f0d
+20261029192422  ce47c1139d626a7899e1e7ceef3db7cf
+20261029192607  3af429a78e9277994b328e5e85f7661b  626dcb9eeb2cf540eab7d02756c35f20  comments
+20261029201634  21c7d13daf762412e9bddabe33fbe761
+20261029204934  fa62ec50892144e307c3f1d03d9ccd50
+20261029223251  d8187755c92180c4b3123f84fd453a34
+20261029223533  b1051f59e8d2d27d3fde63efdd55919c
+20261029223824  f4b0d515b4eed6f16751ed9e0fc5bcf2
+20261029224924  e2d97179d325f8d91ed9c8ec866018eb
+20261030024047  7e0c7759f67acae41c391eb76e64436e
+20261030024318  8af1a7de8dde2007c6c894c89c5365b3
+20261030030027  519008a2414e3cc21e65017c9302b9db
+20261030030153  3002a1aef0c2684a27f19d25b77ad049
+20261030032833  fe990c83e88840f3847aae700db831f1  c777d1fa7fa7ff8c2320218a83a488e9  re-run-guard
+20261030033005  e275128d5ba3225f35b08bc8ea16d2c2
+20261030033043  b3e752aa00c6d13e56a9594acde17c66
+20261030051645  5b0211b1ddf2e462dc01355f9fb5ea81
+20261030051739  be86ac8141a02e9f78b50d9df98e4928
+20261030052024  82fbd3cd72d162161dad1efb12f4072a
+20261030052245  2a03ab2b09afb94a0874fd163c8b89a7
+20261030134148  b36b2b803f509a7ff8e47f186fe01ffc
+20261030134306  f1386ee3c30188053ebd49b1ccf7d9f2
+20261030134518  c0c3cec117303fb6b3166bf19b359fa1
+20261030140919  7b53a17fdd499a040cd794a3a9d523c7
+20261030141136  933a393c84652dc87d53d12d48a75641
+20261030202312  2a17458e25c5e576bc60ea59d22a01d9
+20261030202903  e89d28a1f1f37eae3b2e34f9178d41d5
+20261030215227  c51113643188c1d3ad2bfd286317b4d5
+20261030231056  0a449fe5774e24b9f179a960101f7879
+20261030231519  836a965613160e4191866a0ea96ca32d
+20261031014737  31e8ecca3d2c1ecc2565b04c8b7f8626
+20261031023703  5b2a2783d9be1dc2341490542bea4337
+20261031032224  161119a9e80c87591bd5c7a4ad1aebad
+20261103170718  a246b89b589611152a49203a3dbc5639
+20261103171032  15a18a61878c5a709acc5da409f8cac0
+20261103171127  733f0567f78bd2d0be48d7578c81ae6b
+20261103171148  4fda0d5348320ce71e94ee2bcfe20fd1
+20261103171258  2e47f7f2c180ae9e521ad446c10243bb
+20261103173019  8350f976d9b6e961bd4b9eb993978df0
+20261103173227  6bbdf65a9034c0bfd1da662caa67c96b
+20261103173426  6c4d692b087cc63185f33e169b67f23f
+20261103173919  0c35178060040c9cd523fb2ddb5b8be9
+20261103180008  7b03564dd428e96a3964ff54b4afebcc
+20261103180040  cbb2e44bcdb400a1919bd80cc04487da
+20261103182421  7059648cf18ffe2c792f5cd969c2d766
+20261103182532  0b4238b3bad71d4c70b23004b5da5531
+20261103182610  f7c0ca8d5a856f39ec20eb1d003a1ff5
+20261103182914  b405b5cc310e188ae4a66a7b252c6397
+20261103183145  871e761c53009050e577b11470626cda
+20261103183900  8ae46d5bd61e26f72131fd08f9cd1a74
+20261103183959  6b5ea8bbc94d87aacde87c36567782d3
+20261103192457  e44801d6d00291cdb38982079ee124ea
+20261103192703  a5d54e0dfa488f0e455d071eed42119c
+20261103192810  c8f0a88e66fca0f988f693b6e0bd6bc6
+20261103194709  f854cc138ab0896d32298f11cfe7bd5b
+20261103194839  c2eeaa3e83bfbe15f6204d8d327c896d
+20261103200137  0ed432f3b3d6dd16b383f5d401f79e1d
+20261103200333  fcc233bc07d4e735cd2f15353c0b833c  d0144ba0ee3ad6682f6e74da083124f7  re-run-guard
+20261103200705  dcf7bf2abff7973dc9a825ab30641501
+20261103201018  41b7c1dc5058d00ca78016638c4a889b
+20261103201257  73a155e078007afbf7a2886271210e2c
+20261103202405  2352bd8a51c11a6a6012254f0e6a441f
+20261103203525  fd0002ba3b41e0e2065543cac0fddb0d
+20261103211426  20782e34682ad31138f9339d9d7522a6
+20261104010816  fb9440f766f8f1c7c5bf2180e77f7617
+20261104011910  c2e58808944351ca5b636a3b87c4f2b0
+20261104044807  ae99d23b62eb8c9a0d18f27d445fa975

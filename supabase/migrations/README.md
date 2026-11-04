@@ -1,9 +1,9 @@
 # ⚠️ This is NOT a complete schema history. Do not `db reset` from it.
 
-The live database has **300 applied migrations** (15 Jun 2026 → 29 Oct 2026). This
-directory holds **17** — only the ones captured since the practice of committing them started, on
+The live database has **362 applied migrations** (15 Jun 2026 → 4 Nov 2026). This
+directory holds **79** — only the ones captured since the practice of committing them started, on
 27 Oct 2026. That gap is the whole warning. Every migration applied ON or AFTER 29 Oct has a file
-here; the 283 before it do not.
+here; the 283 before it do not, and nor do two from 27 Oct (20261027002305, 20261027003416).
 
 ⚠️ Both figures are measured and both rot. Ask rather than trust them:
 
@@ -67,18 +67,40 @@ comments are its own and need not match — but a comment INSIDE a function body
 stored definition, so it does: `pg_get_functiondef` returns it, and a file that differs there
 builds a different function on replay.
 
-⚠️ **TWO FILES NOW DIVERGE ON PURPOSE, AND THE EXCEPTION IS NAMED SO IT CANNOT BE MISTAKEN FOR
-DRIFT.** `20261029153952_family_fund_safety.sql` and
-`20261030032833_suspension_reaches_the_social_tables.sql` were edited after they were applied, to
-add guards — a `do $$ … if not exists … $$` around one `add constraint`, and `drop policy if
-exists` above two `create policy` statements. Nothing they do to the database changed; what
-changed is that they can now run a SECOND time without failing, which is what lets this directory
-rebuild the schema from a baseline (see `docs/ci/db-guards.yml`). Three statements, in two files,
-each noted in its own header.
+## ✅ The md5 check is no longer something a person remembers to run — 4 Nov 2026
 
-The distinction worth holding onto: a file may diverge in what makes it **re-runnable**, never in
-what it **does**. The first is a property of the repository; the second is the thing the md5 check
-exists to protect. A third file appearing in this list without a header note is drift.
+**Never edit a migration production has already applied.** Put the fix in a new timestamped
+migration. A migration file is not source code that can be corrected; it is the record of an
+event, and the database it describes has already moved on.
+
+`supabase/migrations/applied.md5` holds, per file, the md5 of the statement production actually
+ran, and `scripts/migration-md5.mjs` compares every file against it. It runs on `npm run test`,
+so it runs on pre-push and in `.github/workflows/test.yml` — the edit is refused on the machine
+that made it. The manifest's own header has the body rule, the regenerating query and what the
+columns mean.
+
+⚠️ **ELEVEN FILES DIVERGE, NOT THE TWO THIS SECTION USED TO NAME, and the extra nine are the
+reason a check beats a paragraph.** The first run of it measured:
+
+- **68** are byte for byte the statement that ran.
+- **3** are `re-run-guard`: they gained `drop … if exists` or `if not exists … add constraint`
+  after being applied, so the file can replay. `20261029153952`, `20261030032833` and
+  `20261103200333` — and only the last of the three says so in its own header.
+- **7** are `comments`: identical SQL once comments and whitespace are normalised away, from
+  before the body-md5 protocol had been worked out.
+- **1** is `rebuilt`: `20261027004612`, written back out of the database with
+  `pg_get_functiondef` rather than from what was sent, so it carries that function's own casing
+  and is missing one `do $$ … end $$` assertion that did run.
+
+The distinction worth holding onto is unchanged: a file may diverge in what makes it
+**re-runnable**, never in what it **does**. What changed is that the list is now machine-checked
+and pinned — a divergence records the exact text that is allowed, so a SECOND edit to a diverging
+file fails like any other. A twelfth file joining the list without a reason beside it is drift,
+and the check says the word `unexplained` out loud rather than letting it pass.
+
+⚠️ **AND THE HEADER IS NOT PINNED, WHICH IS THE ONE EDIT THAT IS ALWAYS SAFE.** The body rule
+strips the contiguous `--` lines at the top, so a note can be added above any applied migration
+without touching its md5. That is how to annotate one — not by correcting the SQL under it.
 
 ⚠️ **The reason the suffix was never a guard is still worth knowing.** The Supabase CLI matches
 `<timestamp>_<name>.sql`, and `*.DRAFT.sql` matches that too — so a `db push` would have tried to

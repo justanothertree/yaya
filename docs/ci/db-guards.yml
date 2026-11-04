@@ -11,7 +11,13 @@
 #     git mv docs/ci/db-guards.yml .github/workflows/db-guards.yml && git commit && git push
 #
 # It will fail on its first run until a schema baseline exists; the reason, the one command that
-# fixes it, and what has to happen to the 37 existing migrations are all in the first step below.
+# fixes it, and what then happens to the migrations already here are all in the baseline step.
+#
+# ⚠️ ONE STEP IN HERE DOES NOT NEED ANY OF THAT. The migration md5 check needs no Docker, no CLI
+# and no credentials, so it is first and it passes today. It is also already running for real:
+# `npm run test` calls it through `scripts/migration-md5.test.mjs`, and .github/workflows/test.yml
+# runs that on every push. It is repeated here because this is the job about the migrations
+# directory, and a failure named in the job about migrations is the one somebody will read.
 #
 name: db guards
 
@@ -45,6 +51,28 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # ⚠️ NEVER EDIT A MIGRATION PRODUCTION HAS ALREADY APPLIED. A migration file is not source
+      # code that can be corrected; it is the record of an event, and the database it describes
+      # has moved on. The fix goes in a new timestamped migration.
+      #
+      # `supabase/migrations/applied.md5` holds, per file, the md5 of the statement production
+      # actually ran — committed rather than fetched, because this job has no credentials and
+      # must not be given any (see the note at the top about what a connection string here would
+      # mean). The script recomputes each file's body and compares.
+      #
+      # ⚠️ IT IS A PIN, NOT AN EXEMPTION, and that distinction is the whole design. Eleven files
+      # already diverge: three gained re-run guards after being applied — including the two the
+      # step below depends on — and eight predate the body-md5 protocol existing. A manifest that
+      # merely listed those eleven as "allowed to differ" would hand a permanent licence to
+      # exactly the files most likely to be edited again. Instead the line pins the one text that
+      # is allowed, so a second edit to a diverging file fails like any other.
+      - name: Check no applied migration has been edited
+        run: node scripts/migration-md5.mjs
 
       # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
       # so in one sentence rather than letting `db reset` fail three minutes later with
@@ -101,7 +129,7 @@ jobs:
       - name: Check the migrations can build the schema
         run: |
           if ! grep -rqiE 'create[[:space:]]+table[[:space:]]+(if[[:space:]]+not[[:space:]]+exists[[:space:]]+)?("?public"?\.)?"?profiles"?([[:space:](]|$)' supabase/migrations/; then
-            echo "::error title=No schema baseline::supabase/migrations cannot build this schema from scratch — nothing in it creates public.profiles, so the migrations that ALTER it will fail. Generate a baseline once: supabase db dump --linked -f supabase/migrations/00000000000000_baseline.sql (see this workflow's comments for what then happens to the 37 existing migrations)"
+            echo "::error title=No schema baseline::supabase/migrations cannot build this schema from scratch — nothing in it creates public.profiles, so the migrations that ALTER it will fail. Generate a baseline once: supabase db dump --linked --schema public,finance -f supabase/migrations/00000000000000_baseline.sql (see this workflow's comments for what then happens to the migrations already here)"
             exit 1
           fi
 
