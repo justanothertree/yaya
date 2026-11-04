@@ -391,6 +391,77 @@ somebody simplifies two near-identical checks into one.
 
 ## 6 · Still open
 
+### Swept 4 Nov 2026 — each line checked against the live database and the tree
+
+⚠️ **MOST OF THIS SECTION HAD CLOSED WITHOUT BEING CROSSED OFF**, which is CLAUDE.md §12 applied
+to a plan rather than to a testing note. Seven items below were written as outstanding and are
+not. They were checked one at a time — a grep or a catalogue query each — rather than re-read.
+
+| Written as open                                                  | Today                                                                                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `save_my_profile_blocks` cannot store `certain` at all           | It can. `profile_blocks_tier_accepted` admits the level and the lists ride along in the page save               |
+| `certain` is absent from `VisibilityTier`, `TIER_ORDER`, `REACH` | All three carry it. `REACH` ranks it 3, between `friends` and `private`                                         |
+| "what does _view as_ mean for Certain friends?"                  | Answered: `tierSees(viewer, block, onList)`. Membership is a third argument, never a rung                       |
+| three copies of `TIER_LABEL` that disagree                       | One, in `src/components/visibilityLabels.ts`. Both private copies are gone                                      |
+| the one shared picker                                            | `VisibilityPicker` on five surfaces — Profile, ProfileBlocks, AccountSettings, CircuitsPanel, chronicle Sharing |
+| the circles UI for naming and filling a circle                   | `CirclesCard.tsx` — create, rename, fill, delete                                                                |
+| Phase 6, the feed's scope                                        | Shipped 31 Oct as `the_feed_gets_its_scope`; given a guard 4 Nov (block L)                                      |
+
+⚠️ **AND THE DECISION THIS SECTION CALLS "STILL OUTSTANDING" HAS BEEN TAKEN BY IMPLEMENTATION
+RATHER THAN BY ANYBODY CHOOSING IT.** "How does an item point at a circle?" was posed as two
+readings. What shipped is neither: a per-item list, `visibility_certain (owner, item_kind,
+item_id, friend)`, with circles as a FILL-FROM source in the chooser rather than as the thing an
+item points at. Checked: `circle_id` exists on `visibility_circle_members` and on nothing else —
+no item table carries one, and `can_see_item` takes a kind and an id rather than a circle.
+
+That is closer to the first reading, and it keeps the cost the first reading promised. What it
+gives up is the second reading's actual request: a circle renamed or refilled does **not** change
+who can see an item that was filled from it, because the fill copies names in and the link ends
+there. Whether that is the intended meaning of "reusable named circles" is Evan's to say.
+
+⚠️ **It is still cheap to change course, and this is the moment.** Measured 4 Nov: **0 circles
+defined and 0 `certain` rows in production** — the whole level is built, tested and unused, so
+nobody's choices would be rewritten by changing how it is stored. That stops being true the first
+time somebody picks it.
+
+### Open, and each of these is Evan's to decide
+
+1. **The chronicle goal glyph.** The ◍/◉/○ button in the Aims row moves a goal between `private`
+   and `friends` only, and narrows from `certain` rather than widening — three glyphs, two
+   reachable states. `certain` can be chosen only from the Sharing panel on the Friends tab. Two
+   doors to one setting, one of which cannot express the middle level. Leave it (the glyph is a
+   quick on/off and the panel is the full control), or make it open the panel.
+2. **The admin is not capped by the minor rule.** `visibility_ceiling` answers `public` for an
+   admin before it looks at `age_band`, so an admin marked `minor` keeps a public ceiling. Found
+   while writing block L, where it is the reason the production cast measures cleanly. Theoretical
+   today — the only admin is an adult — and it touches minors, so it is not something to change
+   on my own judgement.
+3. **An unknown age is excluded from the feed entirely.** `feed_may_show` is `adult OR
+feed_opt_in`, so `age_band is null` — what every new signup starts as — reaches nobody's feed
+   until marked. Fail-closed and probably intended, but it means a new member is invisible in the
+   feed until Evan marks them, which nothing on screen tells them.
+4. **The schema baseline**, and moving both workflow files out of `docs/ci/`. See the Part 2
+   commit: the dump needs `--schema public,finance`, and the CLI needs Docker and a password
+   this machine does not have.
+
+### Deliberately left, with the reason
+
+- **The preview harness cannot show a goal at `certain`.** `CertainForItem` talks to Supabase
+  directly and there is no list store in `chroniclePreview`, so every preview list is empty and
+  the workbench can only show the level reaching nobody. A real gap in what can be looked at
+  without an account, not a passing one.
+- **A long goal title ellipses at 375.** It takes the room that is there now rather than a flat
+  180px cap, but a sentence-length goal still cuts on a phone. The full title is in the picker's
+  label one line below.
+- **`previewMember` strings still ship in the bundle** — `preview-me` and `Preview You` are in
+  `index-*.js`. Pre-existing, measured, and explained in CLAUDE.md: the binding is re-exported
+  across a chunk boundary, which no `import.meta.env.DEV` guard folds away.
+- **Firefox and Safari are unverified** for everything in this plan. The Browser pane is Chromium.
+- **The signed-out film board stays empty**, and **history scrubbing waits** — both Evan's calls,
+  taken earlier and unchanged.
+
+---
+
 **Phases 1–4 are done** (Phase 4's import half excepted, above). The ceiling is live on every
 read path including the three anonymous ones, the admin's ambient read bypasses are gone, and
 chronicle sharing is a capped tier with the old boolean kept in lockstep.
