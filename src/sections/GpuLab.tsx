@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { COUNTS, DEFAULT_COUNT, countLabel, countsFor, stepSeconds, toWorld } from '../gpu/swarm'
+import {
+  COUNTS,
+  DEFAULT_COUNT,
+  TOUCH_CEILING,
+  countLabel,
+  countsFor,
+  stepSeconds,
+  toWorld,
+} from '../gpu/swarm'
 import { createSwarm, type Swarm, type SwarmInput } from '../gpu/swarmEngine'
 import { motionReduced, onMotionChange } from '../ui/motion'
+import { touchOnly } from '../ui/pointerKind'
 import '../gpu/lab.css'
 
 /**
@@ -98,6 +107,7 @@ export function GpuLab() {
     /** set when the device reports an error: the veil is up, and the loop must stop feeding it */
     let broken = false
     let device: GPUDevice | null = null
+    let context: GPUCanvasContext | null = null
     let raf = 0
     let observer: ResizeObserver | null = null
 
@@ -114,10 +124,6 @@ export function GpuLab() {
       }
       const format = navigator.gpu.getPreferredCanvasFormat()
       setReport(reportOf(adapter, format))
-      const offered = countsFor(adapter.limits)
-      setCounts(offered)
-      const first = offered.includes(countRef.current) ? countRef.current : offered[0]
-      if (first !== countRef.current) setCount(first)
 
       const dev = await adapter.requestDevice()
       if (cancelled) {
@@ -125,6 +131,12 @@ export function GpuLab() {
         return
       }
       device = dev
+      /* the DEVICE's limits, which are what every buffer and dispatch is checked against — see
+         countsFor */
+      const offered = countsFor(dev.limits, touchOnly() ? TOUCH_CEILING : Infinity)
+      setCounts(offered)
+      const first = offered.includes(countRef.current) ? countRef.current : offered[0]
+      if (first !== countRef.current) setCount(first)
       dev.lost.then((info) => {
         // 'destroyed' is this effect's own cleanup, not something to report
         if (cancelled || info.reason === 'destroyed') return
@@ -137,7 +149,7 @@ export function GpuLab() {
         setPhase({ kind: 'failed', why: e.error.message })
       })
 
-      const context = canvas.getContext('webgpu')
+      context = canvas.getContext('webgpu')
       if (!context) {
         setPhase({ kind: 'failed', why: 'the canvas would not give a WebGPU context' })
         return
@@ -202,6 +214,8 @@ export function GpuLab() {
       observer?.disconnect()
       swarmRef.current?.destroy()
       swarmRef.current = null
+      // let go of the canvas's textures before the device that owns them goes
+      context?.unconfigure()
       device?.destroy()
       setFps(null)
     }
