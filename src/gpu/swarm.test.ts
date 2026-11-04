@@ -6,6 +6,7 @@ import {
   DEFAULT_COUNT,
   PARAMS,
   PARTICLE_BYTES,
+  TOUCH_CEILING,
   WORKGROUP,
   countLabel,
   countsFor,
@@ -132,6 +133,11 @@ describe('what a device can hold', () => {
     const narrow = { ...DEFAULTS, maxComputeWorkgroupsPerDimension: 8192 }
     // 8192 groups of 64 is 524,288: exactly the third count, and not one more
     expect(countsFor(narrow)).toEqual([1 << 15, 1 << 17, 1 << 19])
+  })
+
+  it('keeps a touch-only device to the ceiling, and its default within it', () => {
+    expect(countsFor(DEFAULTS, TOUCH_CEILING)).toEqual([1 << 15, 1 << 17, 1 << 19])
+    expect(DEFAULT_COUNT).toBeLessThanOrEqual(TOUCH_CEILING)
   })
 
   it('names each count the way a person reads it', () => {

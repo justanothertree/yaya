@@ -73,17 +73,34 @@ type CountLimits = Pick<
 >
 
 /**
- * The counts this device can actually hold.
+ * The most a touch-only device is offered.
+ *
+ * ⚠️ A PHONE CAN HOLD 2M AND STILL LOSE THE DEVICE DOING IT. Its limits say the buffer fits and
+ * the dispatch launches, and neither says anything about how long a frame takes: a weak mobile GPU
+ * that cannot finish a frame in time is reset by the OS, which reaches this room as a lost device.
+ * Touch-only is a rough proxy for "may be a weak GPU", and getting it wrong costs one button.
+ */
+export const TOUCH_CEILING = 1 << 19
+
+/**
+ * The counts this device can actually hold, at most `ceiling`.
+ *
+ * ⚠️ PASS THE DEVICE'S LIMITS, NOT THE ADAPTER'S. The adapter's say what it COULD grant; a device
+ * requested without `requiredLimits` gets the spec defaults, and those are what any buffer or
+ * dispatch is checked against. Every count fits the defaults today, which is exactly why asking
+ * the adapter would go on looking right until somebody added a bigger one.
  *
  * ⚠️ TWO DIFFERENT CEILINGS, and the second is the one that is easy to forget. The buffer has to
  * fit, and so does the DISPATCH: one dimension of workgroups stops at 65,535 by default, which at
  * 64 a group is 4,194,240 particles — so 4M (2²²) would fit in memory and fail to launch.
  */
-export function countsFor(limits: CountLimits): number[] {
+export function countsFor(limits: CountLimits, ceiling = Infinity): number[] {
   const bytes = Math.min(limits.maxStorageBufferBindingSize, limits.maxBufferSize)
   return COUNTS.filter(
     (n) =>
-      n * PARTICLE_BYTES <= bytes && workgroupsFor(n) <= limits.maxComputeWorkgroupsPerDimension,
+      n <= ceiling &&
+      n * PARTICLE_BYTES <= bytes &&
+      workgroupsFor(n) <= limits.maxComputeWorkgroupsPerDimension,
   )
 }
 
