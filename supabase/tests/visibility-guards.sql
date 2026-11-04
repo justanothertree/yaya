@@ -442,6 +442,197 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
                      '--[^' || chr(10) || ']*', ' ', 'g')
         !~* '^\s*(declare\s.*?)?\s*begin\s*if\s+not\s*\(?\s*(public\.)?is_admin\s*\(\)';
 
+-- ── L. a minor's things stay out of BOTH feed tabs until their guardian opts in ─────────────
+-- The one rule in this file that protects a person rather than a preference, and the only one
+-- that had no test. `feed_may_show(owner)` is `owner = auth.uid() or adult or feed_opt_in`, and
+-- `feed_recent` applies it twice — once to the list of members it walks, once to the sittings
+-- block. Neither application was checked, in either scope.
+--
+-- ⚠️ IT IS A DIFFERENTIAL, BECAUSE "A MINOR'S THINGS ARE ABSENT" IS ALSO WHAT AN EMPTY FEED
+-- SAYS. A feed with nothing in it, a window with nothing in it, a cast with no activity in it and
+-- a genuinely working rule are indistinguishable from the zero alone — the empty-room trap in
+-- CLAUDE.md §2. So the baseline must be non-zero before anything is flipped, and the guardian
+-- opt-in must bring the SAME COUNT BACK. The zero in the middle only means something between two
+-- numbers that are not zero.
+--
+-- ⚠️ AND IT ASSERTS THAT THE CEILING DID NOT MOVE, which is a guard on the guard. `age_band`
+-- feeds two rules — this one and `visibility_ceiling`, which caps a minor at Friends — so a cast
+-- whose subject is capped by the flip would hide their items for a second reason and this block
+-- would pass while measuring the wrong thing. Measured on today's cast: the ceiling reads
+-- `public` in every state, because the subject is the admin and `visibility_ceiling` answers for
+-- that first. That is luck rather than design, so it is checked rather than assumed: if the cast
+-- ever picks a non-admin, this block says it is now measuring two rules instead of quietly
+-- agreeing with itself.
+--
+-- ⚠️ ORDERING HAZARD, NAMED ON PURPOSE: block F suspends a member and never puts them back, and
+-- its `limit 1` has no ORDER BY. Today that is somebody outside this cast. If it ever lands on
+-- the subject or a viewer, the cast excludes them as suspended and the FIXTURE lines below go
+-- red naming it, rather than this block passing against nobody.
+--
+-- Costs about seven `feed_recent` calls, ~1.6s measured. The window is frozen once so the three
+-- states are compared over the same span.
+--
+-- Measured green on 4 Nov 2026, and the three numbers are the whole argument:
+--   a non-friend, All members        24 -> 0 -> 24
+--   a friend, You + friends          88 -> 0 -> 88
+--   a friend, All members, as minor  0
+--   the subject's ceiling            public in both states, so only one rule moved
+--
+-- Made to fail once, by deleting `and public.feed_may_show(p.user_id)` from the member loop
+-- inside the same rolled-back transaction: 3 assertions red, naming 24 items to a non-friend and
+-- 2 to a friend in each tab.
+--
+-- ⚠️ AND THE SHAPE OF THAT FAILURE SAYS SOMETHING THE GREEN RUN CANNOT: 2, not 88. `feed_recent`
+-- applies `feed_may_show` in TWO places, and deleting one leaves the other holding — the friend's
+-- other 86 items are sittings, gated separately in the `chronicle_friends_log` block. So the two
+-- applications are independent and both load-bearing, and a future edit that removes either one
+-- is caught by these assertions rather than by only the first.
+do $$
+declare
+  v_sub uuid; v_sub_u text; v_far uuid; v_near uuid;
+  v_from timestamptz := clock_timestamp() - interval '14 days';
+  v_to   timestamptz := clock_timestamp();
+  v_band text; v_opt boolean;            -- the subject's real values, put back at the end
+  v_ceil_adult text; v_ceil_minor text;
+  n_far_base int; n_near_base int;
+  n_far_minor int; n_near_minor int; n_near_all_minor int;
+  n_far_opt int; n_near_opt int;
+begin
+  /* the same cast rule as certain-lists.sql: the member with the most accepted friendships is
+     the one most likely to have activity worth seeing, and the suite stays consistent */
+  select p.user_id, p.username::text into v_sub, v_sub_u
+    from public.profiles p
+   where coalesce(p.suspended, false) = false
+   order by (select count(*) from public.friendships f
+              where f.status = 'accepted'
+                and (f.user_a = p.user_id or f.user_b = p.user_id)) desc,
+            p.username
+   limit 1;
+
+  select p.user_id into v_far
+    from public.profiles p
+   where coalesce(p.suspended, false) = false and p.user_id <> v_sub
+     and not exists (select 1 from public.friendships f
+                      where f.status = 'accepted'
+                        and f.user_a = least(v_sub, p.user_id)
+                        and f.user_b = greatest(v_sub, p.user_id))
+   order by p.username limit 1;
+
+  select p.user_id into v_near
+    from public.profiles p
+   where coalesce(p.suspended, false) = false and p.user_id <> v_sub
+     and exists (select 1 from public.friendships f
+                  where f.status = 'accepted'
+                    and f.user_a = least(v_sub, p.user_id)
+                    and f.user_b = greatest(v_sub, p.user_id))
+   order by p.username limit 1;
+
+  if v_sub is null or v_far is null or v_near is null then
+    insert into fails values ('FIXTURE: the feed cast is incomplete',
+      'need a subject with both a non-friend and an accepted friend, none of them suspended');
+    return;
+  end if;
+
+  select age_band::text, coalesce(feed_opt_in, false) into v_band, v_opt
+    from public.profiles where user_id = v_sub;
+
+  -- ── the baseline, as an adult: both viewers must actually be seeing something ──
+  update public.profiles set age_band = 'adult', feed_opt_in = false where user_id = v_sub;
+  v_ceil_adult := public.visibility_ceiling(v_sub)::text;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_far_base from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_near_base from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
+
+  if n_far_base = 0 then
+    insert into fails values ('FIXTURE: the subject reaches nobody in All members',
+      'nothing to hide, so every assertion below would pass against an empty feed');
+  end if;
+  if n_near_base = 0 then
+    insert into fails values ('FIXTURE: the subject reaches no friend in You + friends',
+      'nothing to hide, so every assertion below would pass against an empty feed');
+  end if;
+
+  -- ── a minor, with no guardian opt-in: gone from both tabs, for both viewers ──
+  update public.profiles set age_band = 'minor', feed_opt_in = false where user_id = v_sub;
+  v_ceil_minor := public.visibility_ceiling(v_sub)::text;
+
+  if public.feed_may_show(v_sub) then
+    insert into fails values ('feed_may_show admits a minor whose guardian has not opted in',
+      v_sub_u);
+  end if;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_far_minor from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_near_minor from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
+  select count(*) into n_near_all_minor from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
+
+  if n_far_minor <> 0 then
+    insert into fails values ('a minor reaches All members with no guardian opt-in',
+      n_far_minor || ' item(s) of ' || v_sub_u || ' to a non-friend');
+  end if;
+  if n_near_all_minor <> 0 then
+    insert into fails values ('a minor reaches All members with no guardian opt-in',
+      n_near_all_minor || ' item(s) of ' || v_sub_u || ' to a friend');
+  end if;
+  if n_near_minor <> 0 then
+    insert into fails values ('a minor reaches You + friends with no guardian opt-in',
+      n_near_minor || ' item(s) of ' || v_sub_u);
+  end if;
+
+  -- ── the guardian opts in: the same items come back, which is what makes the zeros mean
+  --    something rather than describing an empty feed ──
+  update public.profiles set feed_opt_in = true where user_id = v_sub;
+
+  if not public.feed_may_show(v_sub) then
+    insert into fails values ('feed_may_show refuses a minor whose guardian HAS opted in', v_sub_u);
+  end if;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_far::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_far_opt from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'all_members')) e where e->>'who' = v_sub_u;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_near::text, 'role', 'authenticated')::text, true);
+  select count(*) into n_near_opt from jsonb_array_elements(
+    public.feed_recent(v_from, v_to, 40, 'you_and_friends')) e where e->>'who' = v_sub_u;
+
+  if n_far_opt <> n_far_base then
+    insert into fails values ('the guardian opt-in did not restore All members',
+      n_far_base || ' -> 0 -> ' || n_far_opt);
+  end if;
+  if n_near_opt <> n_near_base then
+    insert into fails values ('the guardian opt-in did not restore You + friends',
+      n_near_base || ' -> 0 -> ' || n_near_opt);
+  end if;
+
+  /* the guard on the guard -- see the note above this block */
+  if v_ceil_minor is distinct from v_ceil_adult then
+    insert into fails values ('this block now measures two rules at once',
+      'flipping age_band moved the subject''s ceiling ' || v_ceil_adult || ' -> ' || v_ceil_minor
+      || ', so a zero above could be the cap rather than the feed rule');
+  end if;
+
+  /* put the subject back as found. The file rolls back regardless, so this is for the blocks
+     that might one day be added after it rather than for the database. `age_band` is text and
+     may legitimately be null — "unknown", which is what a new signup starts as. */
+  update public.profiles set age_band = v_band, feed_opt_in = v_opt where user_id = v_sub;
+end $$;
+
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
 declare n int; msg text;

@@ -66,6 +66,24 @@ rollback;
 
 -- ── the record ────────────────────────────────────────────────────────────────────
 --
+-- 4 Nov 2026, after the feed's minor guard was given a test: UNCHANGED.
+--
+--   cells 196 · blocks 539 · activity 6,945 · trophies 130
+--   md5   b89fc62c856482e4e5b248651da62fa0
+--
+-- ⚠️ A MOVE WAS EXPECTED HERE AND WOULD HAVE BEEN WRONG, which is worth writing down because the
+-- expectation was reasonable. "Phase 6, the feed gets its scope" sounds like a read-path change,
+-- and a read-path change is exactly what this file is for. But Phase 6 shipped on 31 Oct as
+-- `the_feed_gets_its_scope`; all that was added on 4 Nov is block L of visibility-guards.sql, and
+-- a test changes nothing. The §12 rule — the notes are a log, not a backlog — applied to a whole
+-- phase rather than to a single item.
+--
+-- And it could not have moved even if the feed HAD changed: this matrix walks
+-- `get_profile_blocks`, `get_member_activity` and `get_member_trophies`, and `feed_recent` is
+-- none of them. It CONSUMES `get_member_activity` rather than being consumed by it, so a feed
+-- scope is invisible here by construction. If the feed ever needs a hash of its own, it needs its
+-- own file.
+--
 -- 3 Nov 2026, after the snake handle tier was honoured: CHANGED.
 --
 --   cells 196 · blocks 539 · activity 6,945 · trophies 130
