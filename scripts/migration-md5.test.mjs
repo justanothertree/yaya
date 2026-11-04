@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { bodyOf, check, md5, readManifest } from './migration-md5.mjs'
+import { bodyOf, check, exitCode, md5, readManifest } from './migration-md5.mjs'
 
 /**
  * The rule is "never edit a migration production has already applied", and this is the thing
@@ -17,6 +17,14 @@ import { bodyOf, check, md5, readManifest } from './migration-md5.mjs'
  * asserts the checker names that fault — an edited body, an edit on top of a recorded
  * divergence, a divergence with no reason, a CRLF file, a file with no line at all.
  *
+ * ⚠️ AND THE SUITE WAS STRICTER THAN THE GATE UNTIL 4 Nov, which is the opposite of the way round
+ * anybody checks for. `check` had always reported a file with no manifest line and the real-
+ * directory test below had always asserted there were none — but the CLI exited 0 on it, so the
+ * step in `docs/ci/db-guards.yml` would have gone green over a migration applied without its hash
+ * recorded. That is `npm run test` carrying a guarantee the thing named "check no applied
+ * migration has been edited" did not. `exitCode` is exported for this: `main` returns it, so
+ * asserting it here asserts the gate rather than a second copy of its rule.
+ *
  * ⚠️ AND THE ONE THAT MATTERS MOST IS `an edit on top of a recorded divergence`. The obvious
  * way to write a manifest is version → "allowed to differ", which is an exemption: once a file
  * is on the list it can be edited for ever and nothing says so. Three of this repository's
@@ -27,6 +35,9 @@ import { bodyOf, check, md5, readManifest } from './migration-md5.mjs'
  * Made to fail on purpose, 4 Nov 2026: a single character appended to the body of
  * `20261031014737_setters_clamp_to_the_ceiling.sql` turned the real-directory test red with
  * `edited after production applied it`, and restoring the file from a copy turned it green.
+ * The new rule was proved on the real CLI the same way rather than only in a sandbox: a planted
+ * `20261104999999_nobody_applied_this.sql` made `node scripts/migration-md5.mjs` exit **1** and
+ * name it, and a planted `00000000000000_baseline.sql` exited **0** and named itself as a dump.
  */
 
 const GOOD = ['-- a header', '-- it says things', '', 'select 1;', ''].join('\n')
@@ -82,6 +93,7 @@ describe('check, made to fail', () => {
     )
     expect(r.failed).toEqual([])
     expect(r.matched).toHaveLength(1)
+    expect(exitCode(r)).toBe(0)
   })
 
   it('names a file edited after production applied it', () => {
@@ -90,6 +102,7 @@ describe('check, made to fail', () => {
     )
     expect(r.failed).toHaveLength(1)
     expect(r.failed[0].why).toMatch(/edited after production applied it/)
+    expect(exitCode(r)).toBe(1)
   })
 
   it('accepts a recorded divergence, and only the exact text that was recorded', () => {
@@ -134,10 +147,27 @@ describe('check, made to fail', () => {
     expect(r.failed[0].why).toMatch(/carries CR/)
   })
 
-  it('says when a file has no line yet, and when a line has no file', () => {
+  it('fails a file with no line at all, and reports a line with no file', () => {
     const r = check(sandbox({ '20260101000000_a.sql': GOOD }, '20251212121212  aaa'))
     expect(r.unlisted.map((u) => u.version)).toEqual(['20260101000000'])
+    expect(exitCode(r)).toBe(1)
+
+    /* the other direction is only ever a report: two versions production ran have no file here
+       at all, from the day before the practice of committing them started, and that is a fact
+       about this directory rather than something anybody can fix */
     expect(r.missing.map((m) => m.version)).toEqual(['20251212121212'])
+  })
+
+  it('reports the schema baseline instead, because nobody ever ran it as a migration', () => {
+    const r = check(
+      sandbox(
+        { '00000000000000_baseline.sql': GOOD, '20260101000000_a.sql': GOOD },
+        `20260101000000  ${md5('select 1;')}`,
+      ),
+    )
+    expect(r.dumps.map((d) => d.version)).toEqual(['00000000000000'])
+    expect(r.unlisted).toEqual([])
+    expect(exitCode(r)).toBe(0)
   })
 })
 
@@ -150,6 +180,10 @@ describe('supabase/migrations as it stands', () => {
 
   it('has a line in applied.md5 for every migration file', () => {
     expect(r.unlisted.map((u) => u.name)).toEqual([])
+  })
+
+  it('would exit 0, which is what the db-guards step runs on', () => {
+    expect(exitCode(r)).toBe(0)
   })
 
   it('accounts for all 79 files, 11 of them divergences that are written down', () => {

@@ -666,7 +666,10 @@ Assume real users and sensitive data, because there are and it is.
   `scripts/migration-md5.mjs` checks this on every `npm run test`, against
   `supabase/migrations/applied.md5`; that file's header has the body rule and the regenerating
   query. **It is a pin, not an exemption**: a divergence records the exact text allowed, so a
-  second edit to a diverging file fails like a first edit to any other.
+  second edit to a diverging file fails like a first edit to any other. **Every file needs a
+  line**, and one with none fails as well — a migration applied without its hash recorded is the
+  same gap from the other side. The schema baseline is the only exception, named in the script
+  rather than inferred, because it is a `db dump` and not a statement anybody ran.
   ⚠️ **The rule had been broken three times before anything could say so**, and only one of the
   three said so in its own header. All three were the same well-meant edit — adding
   `drop … if exists` so the file could replay — which is exactly the kind that looks like

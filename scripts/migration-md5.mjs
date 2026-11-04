@@ -11,6 +11,14 @@
  * edits a migration AND re-records the manifest passes this check. What they cannot do is edit a
  * migration quietly — the manifest line moves in the same diff, under a column named for it.
  *
+ * ⚠️ A FILE WITH NO LINE IN THE MANIFEST IS A FAULT, NOT A NOTE — tightened 4 Nov 2026, the day
+ * after this was written. It used to be reported while the run still exited 0, which left
+ * `npm run test` STRICTER than the script: the suite asserted the directory had a line for every
+ * file, and the thing `docs/ci/db-guards.yml` actually runs only mentioned it. A gate quieter
+ * than the suite behind it is the shape CLAUDE.md §2 keeps warning about — a clean exit code that
+ * is about less than it appears to be. So a migration applied without its hash recorded now stops
+ * the build, and the one real exception is NAMED in DUMPS below rather than inferred.
+ *
  * ── THE BODY RULE, MEASURED RATHER THAN ASSUMED ───────────────────────────────────────────────
  * `apply_migration` stores the SQL it was sent as `statements[1]`, and the file on disk is that
  * text with a header bolted on top. Three things have to come off to get back to it, and the
@@ -46,6 +54,16 @@ export const REASONS = {
   rebuilt: 'read back out of the database with pg_get_functiondef rather than what was sent',
 }
 
+/**
+ * The one file production's record will never hold a row for. `00000000000000_baseline.sql` is
+ * `supabase db dump` of the whole schema, committed so `db reset` can build a database for the
+ * real migrations to replay onto — nobody ever ran it as a migration, so there is nothing for it
+ * to disagree with. Every OTHER file with no line is a migration that was applied without its
+ * hash being recorded, which is the gap this check exists to close. One name, not a pattern:
+ * "has no record" is the normal state of exactly this file and of nothing else.
+ */
+export const DUMPS = new Set(['00000000000000'])
+
 export function bodyOf(text) {
   const lines = text.split('\n')
   let i = 0
@@ -79,7 +97,7 @@ export function migrationFiles(dir = MIGRATIONS) {
 export function check({ dir = MIGRATIONS, manifest = MANIFEST } = {}) {
   const rows = readManifest(readFileSync(manifest, 'utf8'))
   const seen = new Set()
-  const out = { matched: [], diverged: [], failed: [], unlisted: [], missing: [] }
+  const out = { matched: [], diverged: [], failed: [], unlisted: [], dumps: [], missing: [] }
 
   for (const name of migrationFiles(dir)) {
     const version = name.slice(0, 14)
@@ -87,7 +105,8 @@ export function check({ dir = MIGRATIONS, manifest = MANIFEST } = {}) {
     const raw = readFileSync(join(dir, name), 'utf8')
     const row = rows.get(version)
     if (!row) {
-      out.unlisted.push({ name, version })
+      const bucket = DUMPS.has(version) ? out.dumps : out.unlisted
+      bucket.push({ name, version })
       continue
     }
     if (raw.includes('\r')) {
@@ -118,6 +137,9 @@ export function check({ dir = MIGRATIONS, manifest = MANIFEST } = {}) {
   return out
 }
 
+/** What the command exits with. `main` returns this, so a test of it is a test of the gate. */
+export const exitCode = (r) => (r.failed.length || r.unlisted.length ? 1 : 0)
+
 /**
  * Rewrite the manifest from a dump of production's record — `version md5 [anything]` per line,
  * from the query in the manifest's own header. Existing reasons are carried over; a divergence
@@ -143,7 +165,7 @@ export function record({ dump, dir = MIGRATIONS, manifest = MANIFEST }) {
   for (const name of migrationFiles(dir)) {
     const version = name.slice(0, 14)
     const ran = applied.get(version)
-    if (!ran) continue /* not applied yet, so there is nothing to record about it */
+    if (!ran) continue /* no record to write — the check then names it, the baseline aside */
     const got = md5(bodyOf(readFileSync(join(dir, name), 'utf8')))
     if (got === ran) {
       lines.push(`${version}  ${ran}`)
@@ -166,13 +188,12 @@ function main(argv) {
   const r = check()
   console.log(
     `migration md5: ${r.matched.length} match production, ${r.diverged.length} diverge on ` +
-      `record, ${r.failed.length} fail, ${r.unlisted.length} not yet recorded`,
+      `record, ${r.failed.length} fail, ${r.unlisted.length} with no record`,
   )
   for (const d of r.diverged) console.log(`  . ${d.name}  (${d.reason})`)
+  for (const d of r.dumps) console.log(`  . ${d.name} is a dump; production has no record of it`)
   for (const m of r.missing) console.log(`  ? ${m.version} is recorded but has no file here`)
-  for (const u of r.unlisted) {
-    console.log(`  ? ${u.name} has no line in applied.md5; add one once it is applied`)
-  }
+  for (const u of r.unlisted) console.log(`  x ${u.name}\n      has no line in applied.md5`)
   for (const f of r.failed) console.log(`  x ${f.name}\n      ${f.why}`)
   if (r.failed.length) {
     console.log(
@@ -180,9 +201,15 @@ function main(argv) {
         'timestamped migration. If an edit was deliberate and does not change what the file DOES,\n' +
         'record it: the header of supabase/migrations/applied.md5 says how.',
     )
-    return 1
   }
-  return 0
+  if (r.unlisted.length) {
+    console.log(
+      '\nEvery migration file needs a line in supabase/migrations/applied.md5 saying what\n' +
+        'production ran. Apply it, then regenerate the manifest: the query is in that file’s\n' +
+        'header, and `node scripts/migration-md5.mjs --record <the lines it returns>` writes it.',
+    )
+  }
+  return exitCode(r)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

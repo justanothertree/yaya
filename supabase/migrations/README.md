@@ -98,6 +98,13 @@ and pinned — a divergence records the exact text that is allowed, so a SECOND 
 file fails like any other. A twelfth file joining the list without a reason beside it is drift,
 and the check says the word `unexplained` out loud rather than letting it pass.
 
+⚠️ **AND A FILE WITH NO LINE IN THE MANIFEST FAILS TOO — 4 Nov, the day after the check landed.**
+It was reported at first, which left `npm run test` stricter than the script: the suite asserted
+every file had a line while the gate that runs in CI only mentioned it. A migration applied
+without its hash recorded is this same gap seen from the other side, so it stops the build. The
+schema baseline is the one exception, and it is named in the script rather than inferred — it is a
+`db dump`, not a statement anybody ran, so the record will never hold a row for it.
+
 ⚠️ **AND THE HEADER IS NOT PINNED, WHICH IS THE ONE EDIT THAT IS ALWAYS SAFE.** The body rule
 strips the contiguous `--` lines at the top, so a note can be added above any applied migration
 without touching its md5. That is how to annotate one — not by correcting the SQL under it.

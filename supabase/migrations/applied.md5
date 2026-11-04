@@ -42,10 +42,19 @@
 # them. Two versions in the record have no file here at all — 20261027002305 and 20261027003416,
 # from the day before the practice of committing them started.
 #
-# A file with no line here is REPORTED, not failed: a migration nobody has applied has no record
-# to contradict, and failing on it would be the check answering a question it was not built for.
-# The schema baseline `00000000000000_baseline.sql`, when it arrives, is permanently in that
-# bucket — it is a dump, not a statement anybody ran.
+# ⚠️ A FILE WITH NO LINE HERE FAILS THE CHECK — tightened 4 Nov 2026, the day after this was
+# written. It was merely REPORTED at first and the run still exited 0, which left `npm run test`
+# stricter than the script itself: the suite asserted every file had a line, while the gate in
+# `docs/ci/db-guards.yml` only mentioned it. A migration applied without its hash recorded is the
+# very gap this exists to close, so it stops the build now.
+#
+# The order that keeps that quiet is: apply the migration, commit the file, regenerate below. A
+# file committed BEFORE it has been applied has no record to compare and fails too — which is the
+# same rule read from the other end, since `apply_migration` is how DDL reaches this project.
+#
+# The one exception is the schema baseline `00000000000000_baseline.sql`, which is a `db dump`
+# rather than a statement anybody ran, so this record will never hold a row for it. It is named in
+# DUMPS in that script rather than inferred from anything — one filename, not a pattern.
 #
 20261027004612  f0d5c21c964a76b9ce1a12e7f6a218d5  c82878bad30113ea3e8db9b6da43c404  rebuilt
 20261027104647  9626b14ff5357bad6ca174ec574d87f8  df9c87d832b92fa5021898c8554920db  comments

@@ -71,7 +71,13 @@ jobs:
       # merely listed those eleven as "allowed to differ" would hand a permanent licence to
       # exactly the files most likely to be edited again. Instead the line pins the one text that
       # is allowed, so a second edit to a diverging file fails like any other.
-      - name: Check no applied migration has been edited
+      #
+      # ⚠️ IT ALSO FAILS ON A MIGRATION FILE WITH NO LINE IN THE MANIFEST, from 4 Nov. That was
+      # reported with an exit code of 0 to begin with, so THIS STEP would have gone green over a
+      # migration applied without its hash being recorded — the suite behind it was the stricter
+      # of the two, which is the wrong way round for the thing with the word "check" on it. The
+      # schema baseline is the one exception and is named in the script, not inferred.
+      - name: Check every migration file matches production's record
         run: node scripts/migration-md5.mjs
 
       # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
