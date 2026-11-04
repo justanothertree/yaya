@@ -1,6 +1,6 @@
 -- ✅ APPLIED 3 Nov 2026 as `a_list_goes_when_its_item_leaves_certain`.
 --
--- ⚠️ THIS FILE NO LONGER md5-MATCHES `schema_migrations`, ON PURPOSE AND ALONE AMONG THE 79.
+-- ⚠️ THIS FILE NO LONGER md5-MATCHES `schema_migrations`, ON PURPOSE.
 -- Six `drop trigger if exists` lines were added on 4 Nov, one above each `create trigger`, so the
 -- file can be replayed onto a database that already has them — which is what `supabase db reset`
 -- does in CI once a schema baseline exists, and what `docs/ci/db-guards.yml` is for. A bare
@@ -12,9 +12,14 @@
 -- The added lines are drops of triggers this same file then creates, so replaying the new text
 -- against production would end in exactly the state the old text left. Nothing else changed.
 --
--- The convention is otherwise unbroken — see the note in CLAUDE.md §4 and the md5 recorded in
--- every other header. If a second file ever needs this, the cheaper answer is probably squashing
--- rather than a second divergence.
+-- ⚠️ CORRECTED 4 Nov: "and alone among the 79" is what this line said, and it was wrong when it
+-- was written. The md5 check built the next day measured ELEVEN divergent files — three with
+-- re-run guards added after the fact, including this one, and eight from before the body-md5
+-- protocol existed. `supabase/migrations/applied.md5` has the list and pins each one. The
+-- convention is the rule in CLAUDE.md §4, not a claim about this directory's history.
+--
+-- Editing these header lines is itself the demonstration: the body rule strips the contiguous
+-- `--` lines at the top, so this correction does not move the md5 this file is pinned at.
 --
 -- ⚠️ A LIST LEFT BEHIND IS AN AUDIENCE THAT LETS ITSELF BACK IN. The delete triggers
 -- clear an item's list when the ROW goes, which was the whole rule while nothing could change

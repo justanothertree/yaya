@@ -66,6 +66,18 @@ rollback;
 
 -- ── the record ────────────────────────────────────────────────────────────────────
 --
+-- 4 Nov 2026, after the admin's unknown-age notice: UNCHANGED.
+--
+--   cells 196 · blocks 539 · activity 6,945 · trophies 130
+--   md5   b89fc62c856482e4e5b248651da62fa0
+--
+-- `20261104171728_admin_sees_who_has_no_age_band` adds one SECURITY DEFINER function that reads
+-- `profiles` and refuses everybody but the admin. It could not move this hash, and that is by
+-- construction rather than by luck: this matrix walks `get_profile_blocks`,
+-- `get_member_activity` and `get_member_trophies`, the new function is none of them and is
+-- called by none of them, and nothing about the ceiling, the feed rule or any stored tier
+-- changed. Run anyway, because "it cannot have moved" is how the 8,175 figure below went stale.
+--
 -- 4 Nov 2026, after the feed's minor guard was given a test: UNCHANGED.
 --
 --   cells 196 · blocks 539 · activity 6,945 · trophies 130

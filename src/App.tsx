@@ -157,6 +157,18 @@ const TradeReviewPreview = import.meta.env.DEV
       (m) => m.TradeReviewPreview,
     )
   : null
+/**
+ * The unknown-age notice, for the same reason again: it is empty on production by design, and
+ * `#dev-admin` has no token, so the one surface that says "a member is invisible to everybody"
+ * could not be looked at at all. It joins the #dev-admin bench rather than taking a hash of its
+ * own, because that is where somebody would go looking for it.
+ */
+const AgeNoticePreview = import.meta.env.DEV
+  ? lazyRetry(
+      () => import('./dev/AgeNoticePreview'),
+      (m) => m.AgeNoticePreview,
+    )
+  : null
 const AcceptInvite = lazyRetry(
   () => import('./sections/AcceptInvite'),
   (m) => m.AcceptInvite,
@@ -2113,6 +2125,7 @@ export default function App() {
                 dev preview — #dev-admin
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
+                {AgeNoticePreview && <AgeNoticePreview />}
                 <AdminPanel />
               </Suspense>
             </section>

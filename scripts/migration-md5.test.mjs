@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { bodyOf, check, exitCode, md5, readManifest } from './migration-md5.mjs'
+import { bodyOf, check, exitCode, md5, migrationFiles, readManifest } from './migration-md5.mjs'
 
 /**
  * The rule is "never edit a migration production has already applied", and this is the thing
@@ -186,8 +186,22 @@ describe('supabase/migrations as it stands', () => {
     expect(exitCode(r)).toBe(0)
   })
 
-  it('accounts for all 79 files, 11 of them divergences that are written down', () => {
-    expect(r.matched.length + r.diverged.length).toBe(79)
+  /**
+   * ⚠️ NOT "79 FILES" ANY MORE, AND THE REASON IS THE RULE IN CLAUDE.md §11. This said
+   * `toBe(79)` for one day, and the first migration applied after it — 20261104171728 — turned
+   * it red about nothing: the file was recorded correctly and the gate was green. A count of a
+   * growing directory is a list maintained by hand to stay true, and its failure mode is noise
+   * on a correct tree, which is how a check stops being believed.
+   *
+   * So the invariant is stated instead: every file landed in a GOOD bucket. That is not
+   * tautological, because `failed`, `unlisted` and `dumps` are asserted empty above and beside
+   * it — what it adds is that nothing fell out of the sweep altogether. The floor is the
+   * empty-directory guard: these numbers would all be a contented zero against no files at all.
+   */
+  it('accounts for every migration file, 11 of them divergences that are written down', () => {
+    expect(migrationFiles().length).toBeGreaterThan(70)
+    expect(r.matched.length + r.diverged.length).toBe(migrationFiles().length)
+    expect(r.dumps).toEqual([])
     expect(r.diverged).toHaveLength(11)
   })
 })

@@ -621,6 +621,111 @@ begin
   update public.profiles set age_band = v_band, feed_opt_in = v_opt where user_id = v_sub;
 end $$;
 
+-- ── M. the unknown-age notice is admin-only, and so is the column under it ──────────────────
+-- `admin_members_without_age_band` is the only thing on the site that says "these members are
+-- invisible to everybody but themselves". It is a list of who has no age recorded, which is a
+-- fact about children, so it is admin-only in the server rather than in the panel.
+--
+-- ⚠️ IT NEEDS A SEEDED MEMBER OR IT PROVES NOTHING, and production is the awkward case: every
+-- one of the 14 members has an age band today, so the honest answer to the admin is an empty
+-- list. Against that, a function that returned `{"count":0,"handles":[]}` to EVERYBODY would
+-- pass a refusal test by accident — the empty-room trap in CLAUDE.md §2, in the one place where
+-- the thing being hidden is a child's. So one member is moved to a null age band first, the
+-- admin's answer must NAME them, and the refusals are only meaningful beside that.
+--
+-- ⚠️ AND THE SECOND HALF IS THE TABLE, NOT THE FUNCTION. `authenticated` holds SELECT on
+-- `profiles.age_band` and `profiles.feed_opt_in` — the schema's default ACL again — so a
+-- member-callable PostgREST read is the obvious way round this function. What makes it inert is
+-- the row policy: `profiles_select` is self-only, measured as a member on 4 Nov as **1 row** of
+-- `profiles`, their own. That is what makes "non-admins get nothing" a claim about the DATA
+-- rather than about one RPC, so it is asserted here. If members are ever meant to read each
+-- other's profile rows directly, these two columns need a column-level revoke on the same day.
+create temp table agefx as
+  select p.user_id as uid, p.username::text as u, p.age_band::text as was
+  from public.profiles p
+  where p.user_id = (select member from subject);
+grant select on agefx to authenticated, anon;
+
+insert into fails select 'unknown-age fixture is empty', 'no non-admin member to seed'
+where not exists (select 1 from agefx);
+
+update public.profiles set age_band = null where user_id = (select uid from agefx);
+
+do $$
+declare v_answer jsonb; v_u text := (select u from agefx);
+begin
+  /* the admin, who must be able to see it, or the two refusals below mean nothing */
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', (select admin::text from subject), 'role', 'authenticated')::text,
+    true);
+  begin
+    v_answer := public.admin_members_without_age_band();
+    if not (v_answer->'handles') @> to_jsonb(v_u) then
+      insert into fails values ('the notice does not name a member with no age band',
+        'seeded one and got ' || v_answer::text);
+    end if;
+    if (v_answer->>'count')::int is distinct from jsonb_array_length(v_answer->'handles') then
+      insert into fails values ('the notice count disagrees with its own list', v_answer::text);
+    end if;
+    /* count + handle and nothing else: a key beyond these two is personal data travelling for
+       no reason, and this is the check that notices one being added */
+    if (select count(*) from jsonb_object_keys(v_answer) k where k not in ('count', 'handles')) > 0
+    then
+      insert into fails values ('the notice answers with more than count and handles',
+        (select string_agg(k, ', ') from jsonb_object_keys(v_answer) k));
+    end if;
+  exception when others then
+    insert into fails values ('the notice refuses the admin', sqlerrm);
+  end;
+
+  /* a signed-in non-admin: past the privilege check, stopped by is_admin() in the body */
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', (select uid::text from agefx), 'role', 'authenticated')::text, true);
+  begin
+    v_answer := public.admin_members_without_age_band();
+    insert into fails values ('a non-admin member can read the unknown-age notice',
+      v_answer::text);
+  exception when others then null; end;
+end $$;
+
+/* the claims are still the member's -- now as the member's ROLE, so RLS applies */
+set local role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from public.profiles where user_id <> auth.uid();
+  if n > 0 then
+    insert into fails values ('a member can read other members'' profile rows directly',
+      n || ' row(s); age_band and feed_opt_in are readable columns, so this is the notice '
+        || 'as a PostgREST query');
+  end if;
+exception when others then null;   -- refused outright is the stricter answer, not a failure
+end $$;
+reset role;
+
+/* anon. ⚠️ THE CLAIMS HAVE TO BE CLEARED FIRST, and the first draft of this block did not do it:
+   the do block above leaves the MEMBER's JWT in place, so `set local role anon` alone tests a
+   signed-in member calling from the anon role, which `is_admin()` refuses for its own reason.
+   The test passed and was about the wrong thing. Measured by granting anon execute inside a
+   rolled-back transaction: with the member's claims still set it came back `admin only`, so a
+   stray grant would not have shown up here at all.
+   It does not need to: a grant is block H's job, which enumerates every anon-callable SECURITY
+   DEFINER function. What this asserts is the OUTCOME — anon gets nothing — and that outcome is
+   held twice over, by the revoke and by `auth.uid() is null` in the body. */
+select set_config('request.jwt.claims', '{}', true);
+set local role anon;
+do $$
+begin
+  perform public.admin_members_without_age_band();
+  insert into fails values ('anon can read the unknown-age notice', 'it answered');
+exception when others then null; end $$;
+reset role;
+
+/* put the age band back as found. The file rolls back regardless; this is so a block added
+   after this one cannot inherit a member who is quietly invisible. */
+update public.profiles set age_band = (select was from agefx)
+ where user_id = (select uid from agefx);
+
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
 declare n int; msg text;

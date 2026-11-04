@@ -6,6 +6,7 @@ import { FundPanel } from '../components/FundPanel'
 import { MessagesPanel } from '../components/MessagesPanel'
 import { ImportPanel } from '../components/ImportPanel'
 import { ReconcilePanel } from '../components/ReconcilePanel'
+import { AgeBandNotice, type AgeBand } from '../components/AgeBandNotice'
 
 type Invite = {
   id: string
@@ -133,13 +134,23 @@ export function AdminPanel() {
   } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deletingMember, setDeletingMember] = useState(false)
+  /**
+   * Who has no age band, which decides whether the feed shows them to anybody at all.
+   *
+   * Separate from `attention` above on purpose: those three are counts that badge a tab whose
+   * CONTENTS are the explanation, and this one has to name the members, because the fix is per
+   * person and the handle is the only way to know which person. The server sends count and
+   * handle and nothing else.
+   */
+  const [ageUnset, setAgeUnset] = useState<string[]>([])
 
   async function loadAll() {
-    const [invRes, memRes, snakeRes, attnRes] = await Promise.all([
+    const [invRes, memRes, snakeRes, attnRes, ageRes] = await Promise.all([
       sb.rpc('list_invites'),
       sb.rpc('list_members'),
       sb.rpc('admin_list_snake_handles'),
       sb.rpc('admin_attention'),
+      sb.rpc('admin_members_without_age_band'),
     ])
     if (invRes.error) throw invRes.error
     if (memRes.error) throw memRes.error
@@ -156,6 +167,28 @@ export function AdminPanel() {
     // for, and letting the newest/least critical query take the whole page down with it would
     // mean one bad RPC costs you member management too. An empty tab is a much better failure.
     setHandles(snakeRes.error ? [] : ((snakeRes.data as SnakeHandle[]) ?? []))
+    // Same reasoning, with one difference worth being explicit about: an error here hides a
+    // SAFETY notice, so it empties rather than throws, and the members tab is still the place
+    // the answer would appear. If this ever starts failing quietly, the guard block in
+    // supabase/tests/visibility-guards.sql is what still asks the question.
+    setAgeUnset(ageRes.error ? [] : ((ageRes.data as { handles?: string[] } | null)?.handles ?? []))
+  }
+
+  /**
+   * Record a member's age band, which is what clears the notice.
+   *
+   * Through `admin_set_feed_consent`, which already existed, already refuses non-admins and
+   * already turns 'unknown' back into null — rather than a second writer for the same column.
+   * A rule only one path keeps is one you get around, and this column decides whether a child
+   * is visible to the house.
+   */
+  async function setAgeBand(username: string, band: AgeBand) {
+    const { error } = await sb.rpc('admin_set_feed_consent', {
+      p_username: username,
+      p_age_band: band,
+    })
+    if (error) throw error
+    await loadAll()
   }
 
   /**
@@ -384,7 +417,10 @@ export function AdminPanel() {
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         {tabBtn('invites', `Invites (${pending.length} pending)`)}
-        {tabBtn('members', `Members (${members.length})`)}
+        {tabBtn(
+          'members',
+          ageUnset.length ? `⚠️ Members (${members.length})` : `Members (${members.length})`,
+        )}
         {tabBtn(
           'snake',
           `Snake names (${handles.filter((h) => !h.owner_user_id).length} unclaimed)`,
@@ -834,6 +870,7 @@ export function AdminPanel() {
 
       {tab === 'members' && (
         <div>
+          <AgeBandNotice handles={ageUnset} onSet={setAgeBand} />
           {(['family', 'friend', 'admin'] as const).map((cls) => {
             const group = members.filter((m) => m.role === cls)
             if (!group.length) return null

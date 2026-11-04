@@ -436,10 +436,20 @@ time somebody picks it.
    while writing block L, where it is the reason the production cast measures cleanly. Theoretical
    today — the only admin is an adult — and it touches minors, so it is not something to change
    on my own judgement.
-3. **An unknown age is excluded from the feed entirely.** `feed_may_show` is `adult OR
-feed_opt_in`, so `age_band is null` — what every new signup starts as — reaches nobody's feed
-   until marked. Fail-closed and probably intended, but it means a new member is invisible in the
-   feed until Evan marks them, which nothing on screen tells them.
+3. ✅ **DECIDED 4 Nov — an unknown age stays excluded, and the admin gets told.** `feed_may_show`
+   is `adult OR feed_opt_in`, so `age_band is null` — what every new signup starts as — reaches
+   nobody's feed until marked. Evan's answer: the rule is right and does not change; what was
+   missing was any way to SEE it. Shipped as `20261104171728_admin_sees_who_has_no_age_band`:
+   `admin_members_without_age_band()` answers `{count, handles}` to an admin and refuses
+   everybody else, and the Members tab carries a notice with an Adult/Minor button per handle
+   that writes through the existing `admin_set_feed_consent`.
+   ⚠️ **Note which half was fixed.** The member still is not told — the notice is the ADMIN's,
+   and a new member's own screen says nothing about being invisible, because their own posts
+   appear in their own feed. That half is open and is a different decision: telling somebody
+   they are hidden means telling a child's account something about a guardian's choice.
+   Guarded by block M of `visibility-guards.sql`, which also asserts the half that is easy to
+   miss: `authenticated` holds SELECT on `profiles.age_band`, and what makes that inert is the
+   self-only `profiles_select` row policy — measured as a member, **1 row** of `profiles`.
 4. **The schema baseline**, and moving both workflow files out of `docs/ci/`. See the Part 2
    commit: the dump needs `--schema public,finance`, and the CLI needs Docker and a password
    this machine does not have.
