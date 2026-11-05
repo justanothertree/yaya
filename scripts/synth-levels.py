@@ -16,6 +16,36 @@ Reported as "the layer volume is almost not loud enough for some of the instrume
 
 Some spread is deliberate — a bass patch is meant to sit under a bell, and low frequencies read
 louder than their amplitude. Even up the ones that are quiet in BOTH columns and leave the rest.
+
+⚠️⚠️ PEAK DOES NOT PREDICT LOUDNESS, MEASURED 2026-11-05. Before gating a test on this column I
+put an analyser on the synth's own output tap, held one note for three seconds and took the
+maximum. Against what this script prints:
+
+      preset    PEAK here   measured   ratio
+      reed          0.550      0.349    0.63
+      keys          0.650      0.297    0.46
+      organ         0.636      0.144    0.23
+      strings       0.603      0.079    0.13
+      accordion     0.512      0.069    0.13
+      drone         0.590      0.026    0.04
+
+This script says those six are within 1.3x of each other. They are THIRTEEN TIMES apart, and
+the traces had plateaued, so that is steady state rather than a slow attack caught early.
+
+`sum(gains)` assumes every partial adds IN PHASE and that nothing is removed afterwards. Neither
+holds: a detuned unison pair beats rather than sums, a sawtooth stack behind a lowpass loses most
+of what the sum counted, and every preset's filter takes a different amount. The ratio column
+tracks exactly that — square and triangle voices with a single fundamental come nearest, detuned
+sawtooth voices behind a filter are furthest.
+
+So the September rebalance evened out this MODEL, and the complaint it came from is still true of
+the SOUND. Re-levelling the table against measurement would change every saved song and loop, so
+it is Evan's call and is not being guessed at here.
+
+Until then: this table is a map of the patch DATA and a useful way to see the shape of a preset.
+It is not a loudness meter, and `src/audio/presets.test.ts` deliberately asserts no band because
+of it — the accordion added the same day sits beside the organ by ear (0.144 against 0.140) and
+prints 1.07 in this column, the loudest row in the table.
 """
 # What each instrument actually puts out, from the preset data rather than from `level` alone.
 #

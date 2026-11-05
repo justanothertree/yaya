@@ -25,6 +25,7 @@ import { storedNumber } from '../ui/storedNumber'
 
 export type InstrumentId =
   | 'keys'
+  | 'rhodes'
   | 'pluck'
   | 'bell'
   | 'pad'
@@ -32,6 +33,7 @@ export type InstrumentId =
   | 'organ'
   | 'brass'
   | 'reed'
+  | 'accordion'
   | 'marimba'
   | 'choir'
   | 'sub'
@@ -44,6 +46,7 @@ export type InstrumentId =
   | 'lead'
   | 'box'
   | 'steelpan'
+  | 'handpan'
   | 'vibes'
   | 'koto'
   | 'drone'
@@ -55,6 +58,7 @@ export type InstrumentId =
 
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['keys', '🎹', 'Keys'],
+  ['rhodes', '🎛', 'Rhodes'],
   ['pluck', '🪕', 'Pluck'],
   ['bell', '🔔', 'Bell'],
   ['pad', '🌊', 'Pad'],
@@ -62,6 +66,7 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['organ', '🎼', 'Organ'],
   ['brass', '🎺', 'Brass'],
   ['reed', '🎷', 'Reed'],
+  ['accordion', '🪗', 'Accordion'],
   ['marimba', '🪘', 'Marimba'],
   ['choir', '🗣️', 'Choir'],
   ['sub', '🔊', 'Sub'],
@@ -74,6 +79,7 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['lead', '⚡', 'Lead'],
   ['box', '🎁', 'Music box'],
   ['steelpan', '🛢', 'Steel pan'],
+  ['handpan', '🛸', 'Handpan'],
   ['vibes', '🎐', 'Vibes'],
   ['koto', '🏯', 'Koto'],
   ['drone', '🕉', 'Drone'],
@@ -121,7 +127,15 @@ type Shape = {
   level: number
 }
 
-const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
+/**
+ * ⚠️ EXPORTED SO SOMETHING CAN CHECK IT. `scripts/synth-levels.py` has carried the loudness
+ * doctrine since September — peak is `level x sum(gains)`, held is that times sustain, and the
+ * two disagreed once in a way that hid a 12x imbalance — but a script somebody has to remember
+ * to run is a rule nobody checks. `presets.test.ts` asks the table the same questions on every
+ * `npm run test`. Nothing outside this module may USE it to make a sound; the test imports it
+ * to measure it.
+ */
+export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
   // struck and held: quick on, long tail, an octave of thickness underneath
   keys: {
     a: 0.004,
@@ -448,6 +462,52 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
    * are close enough to a scale to sound tuned and far enough off it to sound hammered — which is
    * exactly what an oil drum with dents in it is.
    */
+  /**
+   * An electric piano's tine: a struck metal rod beside a pickup.
+   *
+   * ⚠️ THE 4.2 IS THE WHOLE SOUND. A Rhodes is not a dark piano — what makes one recognisable
+   * in two notes is a high INHARMONIC partial that belongs to no scale, the same trick the bell
+   * uses at 2.76, sitting over an otherwise ordinary stack. Take it out and this is `keys` with
+   * a longer tail. The detune on the octave is the pickup's beat against the tine.
+   */
+  rhodes: {
+    a: 0.005,
+    d: 1.1,
+    s: 0.22,
+    r: 0.7,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 5, gain: 0.34 },
+      { ratio: 4.2, detune: 0, gain: 0.13 },
+      { ratio: 7, detune: 0, gain: 0.04 },
+    ],
+    filter: { from: 4200, to: 900, q: 0.8 },
+    level: 0.4,
+  },
+  /**
+   * Two reeds a few cents apart, which is what an accordion IS.
+   *
+   * ⚠️ A PAIR AT RATIO 1, NOT A DETUNED SINGLE. The instrument has two or three reeds per note
+   * tuned slightly apart on purpose — the slow beat between them is the sound, and it is the
+   * same construction `choir` uses for a different reason. The slow attack is the bellows
+   * taking up; without it this is just a filtered saw.
+   */
+  accordion: {
+    a: 0.05,
+    d: 0.09,
+    s: 0.95,
+    r: 0.14,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -8, gain: 1 },
+      { ratio: 1, detune: 8, gain: 0.9 },
+      { ratio: 2, detune: 0, gain: 0.38 },
+      { ratio: 3, detune: 0, gain: 0.16 },
+    ],
+    filter: { from: 3000, to: 2300, q: 0.6 },
+    level: 0.44,
+  },
   steelpan: {
     a: 0.002,
     d: 0.55,
@@ -484,6 +544,30 @@ const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
    * amplitude anywhere in this synth, and two detuned partials beating against each other produce
    * the same slow pulse for nothing. Same trick the Choir uses, at a different depth.
    */
+  /**
+   * A handpan: the sweet cousin of the steel pan.
+   *
+   * ⚠️ HARMONIC WHERE THE STEEL PAN IS NOT, and that one difference is the entire character.
+   * `steelpan` is bright and clangy because its partials sit at 2.4 and 3.7 — deliberately
+   * inharmonic. A handpan is hammered so its overtones land on the octave and the fifth above
+   * it, which is why it sounds consonant with itself and why people play them in parks.
+   * Everything else here — soft strike, long tail, no sustain — the two share.
+   */
+  handpan: {
+    a: 0.004,
+    d: 1.3,
+    s: 0,
+    r: 0.9,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: -4, gain: 0.5 },
+      { ratio: 3, detune: 3, gain: 0.22 },
+      { ratio: 5.4, detune: 0, gain: 0.05 },
+    ],
+    filter: { from: 2600, to: 700, q: 1 },
+    level: 0.35,
+  },
   vibes: {
     a: 0.002,
     d: 1.5,
