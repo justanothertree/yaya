@@ -6,6 +6,7 @@ import { HarmonographDemo } from '../gpu/HarmonographDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { LoomDemo } from '../gpu/LoomDemo'
 import { MarblesDemo } from '../gpu/MarblesDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { RainDemo } from '../gpu/RainDemo'
@@ -82,6 +83,12 @@ const DEMOS = [
     name: 'Rain on glass',
     line: 'Rain on glass — write in the mist, breathe it back, and tilt the window to make the rain run.',
     Demo: RainDemo,
+  },
+  {
+    id: 'loom',
+    name: 'Loom',
+    line: 'Loom — thread the warp, tie up the treadles, treadle a tune, and watch the cloth weave.',
+    Demo: LoomDemo,
   },
 ] as const
 
@@ -186,6 +193,7 @@ export function GpuLab() {
       {demo === 'glass' && <GlassDemo key="glass" {...props} />}
       {demo === 'harmonograph' && <HarmonographDemo key="harmonograph" {...props} />}
       {demo === 'rain' && <RainDemo key="rain" {...props} />}
+      {demo === 'loom' && <LoomDemo key="loom" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

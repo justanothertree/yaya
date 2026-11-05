@@ -229,12 +229,13 @@ add about another row; this batch on `main` alone makes about 5, and batches 5, 
 would make about 10 — most of a phone's screen of buttons above the canvas. Land #19's picker
 first. A third picker would only make the merge worse.
 
-| Toy           | Interaction                                                                                                                       | GPU technique                                                                                                                                                                                                                                          | Pattern to reuse                                                                                        |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                          | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing  | "thousands of things that touch each other" — any crowd, any granular toy                               |
-| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone) | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                 |
-| Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                        | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                     | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for |
-| Rain on glass | TOUCH (write in the mist), BREATH — the MIC's loudness, or a held button — fogs it back, and TILT turns which way the water runs  | SCREEN-SPACE METABALLS: drops splatted as instanced quads with ADDITIVE BLENDING into a float field, thresholded and REFRACTED through the slope; a PERSISTENT MIST in two textures that take turns, cleared by fingers and water                      | "blobs that join" and "a surface that remembers" — paint that dries, frost, condensation, any metaballs |
+| Toy           | Interaction                                                                                                                                                                      | GPU technique                                                                                                                                                                                                                                                       | Pattern to reuse                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                                                                         | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing               | "thousands of things that touch each other" — any crowd, any granular toy                                     |
+| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone)                                                | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window              | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                       |
+| Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                                                                       | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                                  | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for       |
+| Rain on glass | TOUCH (write in the mist), BREATH — the MIC's loudness, or a held button — fogs it back, and TILT turns which way the water runs                                                 | SCREEN-SPACE METABALLS: drops splatted as instanced quads with ADDITIVE BLENDING into a float field, thresholded and REFRACTED through the slope; a PERSISTENT MIST in two textures that take turns, cleared by fingers and water                                   | "blobs that join" and "a surface that remembers" — paint that dries, frost, condensation, any metaballs       |
+| Loom          | TOOLS on a draft — draw the threading and treadling, tap the tie-up — or TAP THE CLOTH and a whole family of crossings flips; it WEAVES ITSELF pick by pick, each treadle a note | PROCEDURAL MATERIAL from a bit-packed draft: every pixel looks up its crossing (a bit of the tie-up), its neighbours' (to bend each thread where it dives), and optionally walks its float, then lights the thread as a twisted cylinder — no geometry, no textures | "a rule-built pattern drawn as a real material" — knitting, tiles, brickwork, basketry, any grid of crossings |
 
 - **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
   you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
@@ -380,6 +381,49 @@ first. A third picker would only make the merge worse.
      holding 🌬 breathes 0.89 and letting go falls back; the keys turn, rain and dry; the mic button
      opens the (fake) mic. Audit clean at both.
 
+- **Loom** — a weaver's draft on squared paper beside the cloth it makes. The squares along the top
+  are the THREADING (which of eight shafts each warp end goes through — drag across them to
+  rethread), the corner is the TIE-UP (which shafts each treadle lifts — tap to tie or untie), and
+  the column on the right is the TREADLING (which treadle each pick presses — drag down it). Tap the
+  cloth itself and the one tie-up bit that crossing reads flips, so every crossing that shares its
+  shaft and its treadle flips with it, all through the cloth. ▶ Weave runs the loom: pick by pick the
+  shuttle crosses (left to right, then back), the cloth scrolls up, and each treadle plays its note —
+  a pentatonic run on the kalimba, so the treadling is a tune. Six drafts (Log cabin, Houndstooth,
+  Herringbone, Rosepath, Satin, Tartan), 🎨 four colourways, 🔍 Long floats marks every float longer
+  than three threads in red hatching (the hint gives the longest), ↺ Weave again starts from bare
+  warp, Speed, Size, sound. Keys: Space weave, 1–6 draft, C colours, F floats, U weave again, − +
+  size, M sound.
+  Technique: there is no geometry and no texture. The draft is 264 u32s in one storage buffer — each
+  part repeated out to 64, so the shader has one modulus — and every pixel finds which part of the
+  draft it is on, then for the cloth: its crossing (bit `threading[end]` of `tieup[treadling[pick]]`),
+  its neighbours' along each thread, to bend a thread on top down where it dives under, and, with
+  floats marked, the run of its float (a walk of up to 16 each way). The thread on top is lit as a
+  twisted cylinder — normal from across its width, tilted where it dives, ply ridges slanting along
+  it, a sheen that drifts as the light moves; the one beneath is shadowed. Unwoven picks show bare
+  warp over the loom's dark, and the pick being woven has weft only as far as the shuttle has got.
+  ⚠️ What was wrong first:
+  1. **The pack test was green with the tie-up packer stopped at four treadles**, because the twill
+     it was fed ties only four — a fixture sitting on its defaults, exactly CLAUDE.md's warning. It
+     also checks the satin now, whose eight treadles are all tied.
+  2. **Choosing a draft unwove the cloth**, leaving bare warp for ten seconds — a button that seemed
+     to do nothing. A draft shows on the cloth at once now, and only ↺ Weave again starts bare.
+  3. **`woven` started at 10⁹** to mean "already woven", and the shader gets it as an f32, where a
+     pick's fraction is below precision: the shuttle could never move. It starts at 400.
+  4. A `select(x < f, …)` parsed as a template list (the known WGSL trap), and the 375 audit caught
+     a slider's value clipped ("medium", "3 a second") — shorter words now.
+     Measured on the GPU: the cloth's colour at every cell centre (589 cells) says warp or weft exactly
+     as the CPU's drawdown does, for a twill, the satin and rosepath, and scrolled by five picks; every
+     square of the threading, tie-up and treadling (464) is inked exactly where the draft says; the
+     shuttle's pick has weft on the left only and the unwoven ones none; long floats are marked on
+     exactly the 515 cells of 589 the CPU says (satin, over 6) and none in plain weave. The tests hold
+     the drawdown to what weavers know (plain is a checkerboard, a 2/2 twill a diagonal, herringbone
+     turns with a clean break, satin crosses once a row never beside the last, rosepath mirrors about
+     its point), floats (1, 2 and 7), a tap flipping exactly its shaft-and-treadle family, the layout,
+     and the packing. Ten perturbations each fail a test. In the page, at 1024 and on an emulated phone:
+     it weaves (~3 picks a second), the tie-up ties by click and by touch, a drag rethreads and
+     retreadles (with a note a pick), a cloth tap flips one tie-up bit, the drafts, colourways, floats,
+     size and keys all reach the GPU. Audit clean at both.
+
 ### Phone checklist — batch 7
 
 - [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
@@ -393,3 +437,6 @@ first. A third picker would only make the merge worse.
 - [ ] Rain on glass — does writing in the mist feel like a finger on a cold window? Does blowing into
       the mic fog it (and does the mic prompt feel worth it)? Do drops cling, gather and run like
       rain, and do their little upside-down streets read? Smooth in a downpour?
+- [ ] Loom — at 375 the draft's squares are about 11px: can a finger thread, tie and treadle them,
+      or does it need a bigger Size? Is tapping the cloth to flip a family delightful or baffling?
+      Is the woven cloth convincing as cloth? Does the treadling-as-a-tune earn its sound?
