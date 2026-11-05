@@ -1,6 +1,9 @@
 -- Schema baseline dumped from production (public + finance) for CI db-guards.
 -- Generated so supabase db reset can build the schema from scratch.
 -- Regenerate: supabase db dump --remote --schema public,finance
+--
+-- ⚠️ AND THEN PUT THE EXTENSION PROLOGUE BACK -- see the block below the SETs. A regenerated
+-- dump has no `create extension` in it and dies on its own 673rd statement.
 
 
 
@@ -15,6 +18,34 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+-- ⚠️ HAND-ADDED PROLOGUE, AND REGENERATING THE DUMP DROPS IT. `db dump --schema public,finance`
+-- emits no `create extension`: an extension belongs to the database rather than to either named
+-- schema, so it falls outside what was asked for. Two things below need one anyway, and need it
+-- at DDL time rather than at call time:
+--
+--   * `profiles.username` and `player_registry.player_name` are `extensions.citext` columns, and
+--     a column's type is resolved when the table is created. Measured: db-guards run 41951750375
+--     died on statement 673 with `type "extensions.citext" does not exist` -- the first citext
+--     COLUMN, which is not the file's first citext mention.
+--   * `circuit_groups.join_code` defaults to `encode(extensions.gen_random_bytes(6), 'hex')`, and
+--     a DEFAULT is parsed along with the column. That one did NOT fail, because the local stack
+--     already carries pgcrypto in `extensions`. It is created here anyway, as insurance that
+--     costs nothing where it is already present.
+--
+-- Everything else this schema borrows -- `extensions.http_get`, `extensions.urlencode`,
+-- `vault.decrypted_secrets` -- is reached only from inside a function body, which the
+-- `check_function_bodies = false` above lets through unresolved. Those functions exist in CI's
+-- copy of the schema and would fail if called; nothing in supabase/tests calls them.
+--
+-- `scripts/baseline.test.mjs` is what notices if this prologue ever goes missing again.
+
+CREATE SCHEMA IF NOT EXISTS "extensions";
+
+CREATE EXTENSION IF NOT EXISTS "citext" WITH SCHEMA "extensions";
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
 
 
 CREATE SCHEMA IF NOT EXISTS "finance";
