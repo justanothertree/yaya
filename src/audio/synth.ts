@@ -766,6 +766,20 @@ export type Fx = {
    * instrument would make it a property of the sound instead of a property of the playing.
    */
   glide: number
+  /**
+   * Darker or brighter, 0.5 being the preset as written.
+   *
+   * ⚠️ IT IS IN Fx AND NOT BESIDE THE INSTRUMENT, for the reason glide gives directly above: it
+   * belongs to the PART. A recorded layer keeps the tone it was played with, a peer's notes
+   * arrive with the tone they chose, and the live part follows the slider — all of which the
+   * other five already do for free by living here.
+   *
+   * ⚠️ AND IT MAY BE MISSING. Every layer saved before this existed has an `fx` without it, so
+   * every read is `?? 0.5`. A `tone: undefined` reaching a shelf's gain is NaN, which in the
+   * Web Audio graph is not an error — it is a bus that outputs silence, for a song somebody
+   * recorded last week.
+   */
+  tone: number
 }
 
 type Bus = {
@@ -1061,13 +1075,14 @@ const RING_TAIL = 4
  */
 const SAFE_START = 0.006
 
-export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato' | 'glide'
+export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato' | 'glide' | 'tone'
 const KNOB_KEY: Record<Knob, string> = {
   echo: 'synth_echo_v1',
   echoTime: 'synth_echo_time_v1',
   space: 'synth_space_v1',
   vibrato: 'synth_vibrato_v1',
   glide: 'synth_glide_v1',
+  tone: 'synth_tone_v1',
 }
 /** Dry by default: an instrument that arrives drenched in reverb is a toy, not an instrument. */
 const knobs: Record<Knob, number> = {
@@ -1076,6 +1091,10 @@ const knobs: Record<Knob, number> = {
   space: 0.18,
   vibrato: 0,
   glide: 0,
+  /* ⚠️ THE ONE KNOB WHOSE NEUTRAL IS THE MIDDLE. The other five are effects and 0 means off;
+     this one shapes what is already there, so 0.5 is "as the preset was written" and the slider
+     has somewhere to go in both directions. */
+  tone: 0.5,
 }
 // ⚠️ the same zero trap the mixer hit — these ranges start at 0, so a missing key must mean
 // "keep the default", not "the default is 0"
@@ -1102,6 +1121,7 @@ export function fxSnapshot(): Fx {
     space: knobs.space,
     vibrato: knobs.vibrato,
     glide: knobs.glide,
+    tone: knobs.tone,
   }
 }
 
@@ -1148,7 +1168,24 @@ function makeBus(c: AudioContext): Bus {
      not at 1, or a layer joining a busy arrangement would jump in 3dB too loud. */
   const poly = c.createGain()
   poly.gain.value = polyTarget()
-  poly.connect(input)
+  /**
+   * Tone: one shelf, between the polyphony node and everything else.
+   *
+   * ⚠️ HERE AND NOT AFTER THE SPLIT, which is the whole reason this is one node. `input` fans
+   * out to the dry path, the delay and the convolver; shaping before the fan-out means the echo
+   * and the reverb carry the same tone as the note, which is what a tone control means. Put it
+   * on `dry` alone and darkening a part would leave a bright echo of itself behind.
+   *
+   * ⚠️ A HIGHSHELF RATHER THAN A LOWPASS, because the knob has to go both ways. A lowpass can
+   * only ever take away, so a "tone" built from one is a Darken slider with a misleading name —
+   * and the presets are already filtered, so brightening is the half people reach for first.
+   * At 0.5 the gain is 0dB and the node is transparent.
+   */
+  const tone = c.createBiquadFilter()
+  tone.type = 'highshelf'
+  tone.frequency.value = 1500
+  tone.gain.value = 0
+  poly.connect(tone).connect(input)
   const dry = c.createGain()
   const delay = c.createDelay(1.2)
   const wet = c.createGain()
@@ -1294,6 +1331,11 @@ function makeBus(c: AudioContext): Bus {
       ramp(vib.gain, fx.vibrato * 70)
       // dry backs off only slightly, so turning effects up thickens rather than swaps
       ramp(dry.gain, 1 - Math.min(0.35, fx.space * 0.35))
+      /* ⚠️ `?? 0.5` — a layer saved before Tone existed has no `tone`, and undefined here is
+         NaN on the shelf's gain, which Web Audio answers with silence rather than an error.
+         ±10dB: enough to hear on every preset, short of the point where a bright saw turns
+         harsh or the limiter starts doing the deciding. */
+      ramp(tone.gain, ((fx.tone ?? 0.5) - 0.5) * 20)
     },
     dispose() {
       if (echoOff) clearTimeout(echoOff)
@@ -1303,7 +1345,7 @@ function makeBus(c: AudioContext): Bus {
       } catch {
         /* already stopped */
       }
-      for (const n of [poly, input, dry, delay, wet, fb, verb, verbWet, vib]) n.disconnect()
+      for (const n of [poly, tone, input, dry, delay, wet, fb, verb, verbWet, vib]) n.disconnect()
     },
   }
 }

@@ -121,6 +121,7 @@ function readFx(v: unknown): Fx {
     echoTime: num(o.echoTime, 0, 1, 0.26),
     space: num(o.space, 0, 1, 0),
     vibrato: num(o.vibrato, 0, 1, 0),
+    tone: num(o.tone, 0, 1, 0.5),
     glide: num(o.glide, 0, 1, 0),
   }
 }
@@ -248,11 +249,11 @@ export type PackedSong = {
     pb?: number
     d: number
     /**
-     * ⚠️ [echo, echoTime, space, vibrato, glide] — and any future one goes on the END. A reader
+     * ⚠️ [echo, echoTime, space, vibrato, glide, tone] — and any future one goes on the END. A reader
      * takes these by position, so appending is invisible to an old file and inserting would
      * re-label every value after it.
      */
-    f: [number, number, number, number, number]
+    f: [number, number, number, number, number, number]
     m: 0 | 1
     n: number[]
   }>
@@ -305,9 +306,17 @@ export function packSong(song: Song): PackedSong {
         /* ⚠️ glide is APPENDED, never inserted. This array is positional, so a fifth entry is
            invisible to an older reader and a missing one simply defaults — where putting it in
            the middle would silently turn every saved song's reverb into its vibrato. */
-        f: [layer.fx.echo, layer.fx.echoTime, layer.fx.space, layer.fx.vibrato, layer.fx.glide].map(
-          (x) => Math.round(x * 100) / 100,
-        ) as [number, number, number, number, number],
+        f: [
+          layer.fx.echo,
+          layer.fx.echoTime,
+          layer.fx.space,
+          layer.fx.vibrato,
+          layer.fx.glide,
+          /* ⚠️ APPENDED, like glide before it. Positional, so a sixth entry is invisible to an
+             older reader and its absence simply defaults — where inserting it would silently
+             relabel every value after it. */
+          layer.fx.tone,
+        ].map((x) => Math.round(x * 100) / 100) as [number, number, number, number, number, number],
         m: layer.muted ? 1 : 0,
         n,
       }
@@ -335,6 +344,8 @@ function readPacked(v: Record<string, unknown>): Song | null {
       vibrato: num(fxArr[3], 0, 1, 0),
       /* absent in songs saved before glide existed, which is exactly what the default is for */
       glide: num(fxArr[4], 0, 1, 0),
+      /* a file written before Tone existed has five entries; undefined defaults to neutral */
+      tone: num(fxArr[5], 0, 1, 0.5),
     }
     // ⚠️ budget is in EVENTS and each note becomes two, so the triple count is halved against it
     const notes: Note[] = []

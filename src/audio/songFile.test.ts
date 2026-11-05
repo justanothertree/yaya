@@ -29,7 +29,7 @@ const songFrom = (over: Record<string, unknown> = {}): Song =>
         instrument: 'keys',
         len: 2,
         muted: false,
-        fx: { echo: 0.5, echoTime: 0.3, space: 0.2, vibrato: 0.1, glide: 0.4 },
+        fx: { echo: 0.5, echoTime: 0.3, space: 0.2, vibrato: 0.1, glide: 0.4, tone: 0.8 },
         events: [
           { t: 0, midi: 60, on: true },
           { t: 0.5, midi: 60, on: false },
@@ -372,5 +372,55 @@ describe('counting what is in a song', () => {
     expect(songNotes(s), 'every note-off was counted as a note').toBeLessThan(
       s.layers.reduce((n, l) => n + l.events.length, 0),
     )
+  })
+})
+
+describe('tone, the sixth effect', () => {
+  /**
+   * ⚠️ THE FX ARRAY IS POSITIONAL, which is why this has its own block. `f` is
+   * `[echo, echoTime, space, vibrato, glide, tone]` and a reader takes them by index, so a value
+   * appended on the END is invisible to an older reader and a missing one defaults — where
+   * inserting one in the middle would silently relabel every value after it. The file format's
+   * own comment says so; these are the tests that make it true rather than stated.
+   */
+
+  it('survives the round trip at a value that is not its default', () => {
+    /* 0.8, because a fixture sitting on the default passes whether the field is carried or
+       dropped — the trap this repository has paid for in three separate round trips */
+    const after = readSong(packSong(songFrom()))!
+    expect(after.layers[0].fx.tone).toBeCloseTo(0.8, 2)
+  })
+
+  it('goes on the end of the array, where an older reader cannot see it', () => {
+    const packed = packSong(songFrom()) as { l: Array<{ f: number[] }> }
+    expect(packed.l[0].f).toHaveLength(6)
+    /* the five that were there keep their positions — that is the whole property */
+    expect(packed.l[0].f.slice(0, 5)).toEqual([0.5, 0.3, 0.2, 0.1, 0.4])
+    expect(packed.l[0].f[5]).toBeCloseTo(0.8, 2)
+  })
+
+  it('comes back neutral from a file written before it existed', () => {
+    /* five entries, which is every song anybody has saved so far. Neutral means those songs
+       sound exactly as they always did. */
+    const packed = packSong(songFrom()) as { l: Array<{ f: number[] }> }
+    packed.l[0].f = packed.l[0].f.slice(0, 5)
+    const after = readSong(packed)!
+    expect(after.layers[0].fx.tone).toBe(0.5)
+    expect(after.layers[0].fx.echo).toBeCloseTo(0.5, 2)
+    expect(after.layers[0].fx.glide).toBeCloseTo(0.4, 2)
+  })
+
+  it('is clamped rather than trusted', () => {
+    /* a shared file is somebody else's data — see the rest of this suite */
+    for (const [given, want] of [
+      [5, 1],
+      [-3, 0],
+      ['bright', 0.5],
+      [null, 0.5],
+    ] as Array<[unknown, number]>) {
+      const packed = packSong(songFrom()) as { l: Array<{ f: unknown[] }> }
+      packed.l[0].f[5] = given
+      expect(readSong(packed)!.layers[0].fx.tone, String(given)).toBe(want)
+    }
   })
 })

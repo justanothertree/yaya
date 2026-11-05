@@ -204,6 +204,11 @@ const KNOBS: Array<[Knob, string, string]> = [
   /* the only one that is about PLAYING rather than about the sound, and it applies to all of
      them — see Fx.glide for why it lives with the effects rather than with the instruments */
   ['glide', 'Glide', 'Each note slides from the one before it'],
+  /* ⚠️ THE ONE WHOSE MIDDLE IS "OFF". The other five add something and read 0 when they are
+     doing nothing; this one shapes what is already there, so the preset as written sits at the
+     halfway mark and the slider has somewhere to go both ways. The hint says so, because a
+     slider resting at 50 with no explanation looks like a setting somebody left on. */
+  ['tone', 'Tone', 'Darker to the left, brighter to the right — the middle is the sound as it is'],
 ]
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
 const noteName = (midi: number) => NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1)

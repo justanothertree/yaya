@@ -208,6 +208,8 @@ function cleanFx(v: unknown): Fx {
     echoTime: n('echoTime', 0.26),
     space: n('space', 0),
     vibrato: n('vibrato', 0),
+    /* 0.5 is neutral, so a peer on an older build arrives sounding as they always did */
+    tone: n('tone', 0.5),
     glide: n('glide', 0),
   }
 }

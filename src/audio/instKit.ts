@@ -50,6 +50,7 @@ export function readInstKit(v: unknown, scaleIds: readonly string[]): InstKit | 
       echoTime: kitNum(fx.echoTime, 0, 1, 0.26),
       space: kitNum(fx.space, 0, 1, 0),
       vibrato: kitNum(fx.vibrato, 0, 1, 0),
+      tone: kitNum(fx.tone, 0, 1, 0.5),
       glide: kitNum(fx.glide, 0, 1, 0),
     },
   }

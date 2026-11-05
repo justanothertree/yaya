@@ -67,7 +67,7 @@ const NARROW = '(max-width: 480px)'
 const INSTRUMENT: InstrumentId = 'marimba'
 /** its own part, so the hero never inherits whatever the instrument room was left set to */
 const PART = 'home-hero'
-const FX = { echo: 0.16, echoTime: 0.26, space: 0.3, vibrato: 0, glide: 0 }
+const FX = { echo: 0.16, echoTime: 0.26, space: 0.3, vibrato: 0, glide: 0, tone: 0.5 }
 const GAIN = 0.5
 
 const ROWS = 4

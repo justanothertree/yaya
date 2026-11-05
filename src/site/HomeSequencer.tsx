@@ -43,7 +43,7 @@ const QUIET_AFTER = 15000
 const INSTRUMENT: InstrumentId = 'marimba'
 /** its own part, so this never inherits whatever the instrument room was left set to */
 const PART = 'home-seq'
-const FX = { echo: 0.18, echoTime: 0.28, space: 0.32, vibrato: 0, glide: 0 }
+const FX = { echo: 0.18, echoTime: 0.28, space: 0.32, vibrato: 0, glide: 0, tone: 0.5 }
 const GAIN = 0.38
 
 /** where the line starts — a phrase rather than a scatter, so it sounds like something */
