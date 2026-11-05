@@ -20,6 +20,8 @@ export type SwarmInput = {
   direction: 1 | -1
   /** how hard the current carries, 0–2 */
   flow: number
+  /** 0 speed, 1 rainbow by heading, 2 fire */
+  palette: number
 }
 
 export type Swarm = {
@@ -167,6 +169,7 @@ export async function createSwarm(
       size: dotSize(px, canvas.height),
       glow: glowFor(count, px, canvas.width * canvas.height),
       count,
+      palette: input.palette,
     }
     device.queue.writeBuffer(uniform, 0, packParams(params, staging))
 

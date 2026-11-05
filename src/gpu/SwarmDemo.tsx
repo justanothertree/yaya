@@ -10,6 +10,9 @@ type Props = {
   onAdapter: (adapter: GPUAdapter, format: GPUTextureFormat) => void
 }
 
+/** the colourings on offer, in the order of `palette` in swarm-types.wgsl */
+const PALETTES = ['Speed', 'Rainbow', 'Fire'] as const
+
 /** Particles carried by a swirling current; a press pulls them in or pushes them away. */
 export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
   const swarmRef = useRef<Swarm | null>(null)
@@ -18,10 +21,12 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
   const [count, setCount] = useState(DEFAULT_COUNT)
   const [flow, setFlow] = useState(1)
   const [direction, setDirection] = useState<1 | -1>(1)
+  const [palette, setPalette] = useState(0)
 
-  const input = useRef<SwarmInput>({ pointer: null, direction: 1, flow: 1 })
+  const input = useRef<SwarmInput>({ pointer: null, direction: 1, flow: 1, palette: 0 })
   input.current.direction = direction
   input.current.flow = flow
+  input.current.palette = palette
   const countRef = useRef(count)
   countRef.current = count
   const runningRef = useRef(running)
@@ -103,6 +108,23 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
             >
               Push
             </button>
+          </div>
+
+          <div className="lab-group" role="group" aria-label="Colour">
+            {PALETTES.map((name, i) => (
+              <button
+                key={name}
+                className="btn btn-ghost"
+                aria-pressed={palette === i}
+                onClick={() => {
+                  setPalette(i)
+                  input.current.palette = i
+                  if (!runningRef.current) swarmRef.current?.frame(0, input.current)
+                }}
+              >
+                {name}
+              </button>
+            ))}
           </div>
 
           <div className="lab-group" role="group" aria-label="How many particles">

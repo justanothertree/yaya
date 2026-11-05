@@ -42,6 +42,7 @@ describe('the uniform the shader reads is the one JavaScript writes', () => {
       size: 0.003,
       glow: 0.6,
       count: 131072,
+      palette: 2,
     }
     const view = new DataView(packParams(p))
     const f = (name: string) => view.getFloat32(wgsl.offsets[name], true)
@@ -54,6 +55,7 @@ describe('the uniform the shader reads is the one JavaScript writes', () => {
     expect(f('size')).toBeCloseTo(0.003, 6)
     expect(f('glow')).toBeCloseTo(0.6, 6)
     expect(view.getUint32(wgsl.offsets.count, true)).toBe(131072)
+    expect(view.getUint32(wgsl.offsets.palette, true)).toBe(2)
   })
 
   it('sizes a particle the way the shader does', () => {
