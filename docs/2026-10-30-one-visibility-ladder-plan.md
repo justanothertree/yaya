@@ -450,11 +450,14 @@ true the first time somebody picks it, and from now on the test is what says so.
    reachable states. `certain` can be chosen only from the Sharing panel on the Friends tab. Two
    doors to one setting, one of which cannot express the middle level. Leave it (the glyph is a
    quick on/off and the panel is the full control), or make it open the panel.
-2. **The admin is not capped by the minor rule.** `visibility_ceiling` answers `public` for an
-   admin before it looks at `age_band`, so an admin marked `minor` keeps a public ceiling. Found
-   while writing block L, where it is the reason the production cast measures cleanly. Theoretical
-   today — the only admin is an adult — and it touches minors, so it is not something to change
-   on my own judgement.
+2. ✅ **DECIDED 4 Nov — left as it is.** `visibility_ceiling` answers `public` for an admin before
+   it looks at `age_band`, so an admin marked `minor` keeps a public ceiling. Evan's answer: he is
+   the only admin, so the cap has nothing to bite on.
+   ⚠️ **It is closed on a FACT, not on a rule**, which is the kind that reopens itself without
+   anybody deciding anything. The fact is "there is one admin and he is an adult". The day a
+   second admin is added — or an existing member is made one — this is live again, and nothing in
+   the code will say so, because the ordering inside `visibility_ceiling` is what it is. Block L
+   of `visibility-guards.sql` depends on the same fact for its clean production cast.
 3. ✅ **DECIDED 4 Nov — an unknown age stays excluded, and the admin gets told.** `feed_may_show`
    is `adult OR feed_opt_in`, so `age_band is null` — what every new signup starts as — reaches
    nobody's feed until marked. Evan's answer: the rule is right and does not change; what was
@@ -462,10 +465,12 @@ true the first time somebody picks it, and from now on the test is what says so.
    `admin_members_without_age_band()` answers `{count, handles}` to an admin and refuses
    everybody else, and the Members tab carries a notice with an Adult/Minor button per handle
    that writes through the existing `admin_set_feed_consent`.
-   ⚠️ **Note which half was fixed.** The member still is not told — the notice is the ADMIN's,
-   and a new member's own screen says nothing about being invisible, because their own posts
-   appear in their own feed. That half is open and is a different decision: telling somebody
-   they are hidden means telling a child's account something about a guardian's choice.
+   ✅ **And the other half is decided too, 4 Nov: the member is NOT told.** A new member's own
+   screen says nothing about being invisible, because their own posts appear in their own feed.
+   Evan's answer: the admin notice covers it, and it is the right place — telling somebody they
+   are hidden means telling a child's account something about a guardian's choice. The gap this
+   leaves is a short one by design: the notice is unmissable from any tab, and setting an age
+   clears it.
    Guarded by block M of `visibility-guards.sql`, which also asserts the half that is easy to
    miss: `authenticated` holds SELECT on `profiles.age_band`, and what makes that inert is the
    self-only `profiles_select` row policy — measured as a member, **1 row** of `profiles`.

@@ -52,6 +52,19 @@ In the client, set `VITE_WS_URL=ws://localhost:10000` (e.g., in `.env.local`).
 - Start command: `npm start`
 - Root directory: `server` (if using a monorepo)
 
+⚠️ **The Node version is pinned in `engines` here, and Render is not the only thing that reads
+it.** `package.json` says `>=22.12 <23`: the major matches what CI installs (`node-version: 22`
+in all four workflows, and the repo's own `.nvmrc`), and the floor is the one the root
+`package.json` already sets. It said `>=18` until 4 Nov 2026, which let Render pick a runtime
+nothing else in this repository has ever run — the relay is the one piece of this project that
+is deployed from somewhere other than the Pages workflow, so it is the one piece whose runtime
+could drift without a single check going red.
+
+⚠️ **AND `engines` IS NOT THE LAST WORD ON RENDER.** A `NODE_VERSION` environment variable set
+on the service takes precedence over this file, and there is no way to see that from inside the
+repository. If the deployed version ever disagrees with the pin, look at the service's
+environment before doubting this line.
+
 3. Environment variables (multiplayer leaderboard):
 
 - `SUPABASE_URL`
