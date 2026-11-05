@@ -63,6 +63,12 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.lab-text input {
+  min-width: 9rem;
+  max-width: 100%;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
 .lab-group {
   display: inline-flex;
   flex-wrap: wrap;

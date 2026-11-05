@@ -8,6 +8,7 @@ import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { LightDemo } from '../gpu/LightDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
+import { NeonDemo } from '../gpu/NeonDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
@@ -99,6 +100,12 @@ const DEMOS: readonly {
     Demo: HarpDemo,
     name: 'Harp',
     line: 'Harp — strum the strings with as many fingers as you like; they swing and sing.',
+  },
+  {
+    id: 'neon',
+    Demo: NeonDemo,
+    name: 'Neon',
+    line: 'Neon — type a word and it becomes a neon sign. Letters stutter on; tap it to knock it.',
   },
 ]
 

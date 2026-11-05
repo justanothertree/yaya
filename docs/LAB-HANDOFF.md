@@ -228,6 +228,7 @@ for the same reason: #19 adds its own section further up, and the two should not
 | Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays                                           | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy                                     |
 | Light   | ARRANGE a scene: drag lamps, pillars and walls; tap for a lamp; turn a wall with a second finger or the wheel; 🌀 Drift              | 2D global illumination: the scene's distance field BAKED into a texture once per change, then Monte Carlo rays sphere-traced through it from every texel, averaged over frames                                              | "light that works itself out" — soft shadows, glows and colour bleeding from one loop; and "bake the scene, then query it cheaply" |
 | Harp    | PLAY an instrument: strum with any number of fingers, tap a string, keys; ✨ Play by itself; it makes SOUND through the site's synth | analytic motion: each point of each string is the sum of its standing waves since its last pluck, worked out in the vertex shader — no simulation state                                                                     | "motion with an exact answer needs no simulation" — anything that rings, wobbles or decays                                         |
+| Neon    | TYPE: a real text box (a phone brings up its keyboard); tap the sign to knock it; letters stutter on and one is faulty               | the JUMP FLOOD: a distance field in log₂(size) passes, each texel learning its nearest seed and carrying that seed's payload (which letter) with it                                                                         | "distance to anything, fast" — glows, outlines, Voronoi, soft shapes from a mask                                                   |
 
 - **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
   in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
@@ -305,6 +306,30 @@ for the same reason: #19 adds its own section further up, and the two should not
   crossed it, sounding it twice — the press still sounds at once (an instrument cannot wait to see
   whether a press becomes a stroke), and the finger skips that string the first time it leaves it.
 
+- **Neon** — type a word and it becomes a neon sign on a brick wall. Each new letter stutters on
+  as real neon does; the letters already there stay lit; one letter is always a little faulty and
+  buzzes off now and then; a tap on the sign knocks it and everything flickers. Tube (glass bent
+  along the letters' outlines) or Solid; Pink, Ice, Gold or Mixed. Keys, with the sign focused:
+  K knock, S style, 1–4 colours — and typing in the box never triggers them (checked: an "s"
+  typed there is just an "s").
+  Technique: the text is drawn into a mask with each letter in its own red, and the JUMP FLOOD
+  (Rong & Tan) finds every texel's nearest seed — the outline's texels for a tube, all of the
+  glyph for a solid sign — in one pass per halving step plus one more at step 1: nine passes for
+  this field, rather than every texel asking every seed. Each seed carries which letter it is, so
+  every texel knows both how far it is from the nearest tube and whose tube that is, and each
+  letter flickers on its own. The display turns that into a white-hot core, a coloured near glow,
+  and the whole sign's light on the wall. All of it runs once per change of text; a frame only
+  reads it.
+  ⚠️ Two things were wrong first. Letters drawn 1 apart in red (1, 2, 3…) came back as the wrong
+  letter on 18% of texels: a canvas keeps colour premultiplied by alpha, so at an antialiased edge
+  a red of 1 reads back as 2. Spaced 15 apart, a rounding error cannot cross. And the wide glow
+  was taken from each pixel's nearest letter, which carved the wall into one region per letter — a
+  dark column behind an unlit one; the far glow is now the whole sign's.
+  Measured: the GPU's flood equals a CPU copy of the same flood on every texel, and that flood is
+  exact on all but 2 of 122,880 texels of scattered seeds (worst 0.36px) — 34 (worst 0.92px)
+  without the extra pass at step 1, which is the test that holds the pass to its job. In the page,
+  typing "NEON LAB" over "NEON" leaves the first four letters steady while the new ones stutter.
+
 ### Phone checklist — batch 4
 
 - [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
@@ -316,3 +341,5 @@ for the same reason: #19 adds its own section further up, and the two should not
 - [ ] Harp — is the sound in time with the finger, or does it lag? (The synth's own latency, which
       the Instrument already tuned.) Strum with several fingers; try Koto and Hirajoshi together;
       does ✨ Play by itself sound musical or random? Is it loud enough next to everything else?
+- [ ] Neon — does the phone's keyboard cover the sign while you type (it should scroll)? Does the
+      stutter-on read as neon? Is the faulty letter charming or annoying? Try a long word.
