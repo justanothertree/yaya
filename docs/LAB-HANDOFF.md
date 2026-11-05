@@ -209,3 +209,81 @@ Roughly in order of how much they would teach:
   round. Fixed in `fac6325`: 28px with a mouse, 44px under a finger.
 - The Lab's own wording ("Experiments with WebGPU…") is in `App.tsx` beside the room's heading,
   not in `GpuLab.tsx`.
+
+## Batch 6 — more mixes
+
+Its own draft PR, branch `claude/lab-toys-6`, from `main`. Not live. Every toy is chosen to
+differ from the seven live ones, from #19 (Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons),
+#20 (Fractal, Light, Harp, Neon, Sand, Pond) and #21 (Slime, Mirror, Bubbles, Clay, Fireflies,
+Black hole), in both how you play it and what the GPU does.
+
+⚠️ **No picker was cherry-picked, and none was invented.** As in batch 5, each toy is one entry in
+`main`'s `DEMOS` list plus one render line; each entry also carries its component (`Demo:`), which
+`main`'s list ignores and #19's registry reads. Merged after #19, the conflicts in `GpuLab.tsx` are
+all "both sides added": keep both, keep one closing `]`, and delete this batch's `demo === …`
+render lines. This section sits at the end of the file for the same reason.
+
+⚠️ **THE PICKER ON A PHONE.** `main`'s picker is a row of buttons that wraps. Measured at 375
+on this branch with one toy added: 8 buttons in **3 rows, 119px** of buttons above the canvas,
+about 2.7 to a row (one row at 820 and 1440). So every three toys that land before #19's dropdown
+add roughly another row at 375: this batch's six on `main` would be about 5 rows, and batches 5
+and 6 together about 8. That is a reason to land #19 (or at least its picker commit) first, not a
+reason for a third picker — the dropdown already exists, and two dropdowns would be the conflict
+nobody can resolve by keeping both sides.
+
+`wgslLayout.ts` gained one line, `mat4x4f` (four `vec4f` columns: size 64, align 16), because
+Erosion's uniform carries a camera matrix. It is additive; if another branch has added a type to
+the same table, keep both lines.
+
+| Toy     | Interaction                                                                                                            | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                         |
+| ------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Erosion | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate |
+
+- **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
+  into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
+  coloured: sand where ground was laid down, raw earth where it was cut); ⛰ Raise a ridge across a
+  river and it pools into a lake until it spills; ⛏ Dig a channel and it follows it. ⛈ Storm rains
+  everywhere; 🌊 Drains to the sea lets water off the edges, and without it the land fills like a
+  basin. Three lands — Hills, Ridge, Mesa (whose cliffs slump and gully) — each new every press.
+  Two fingers (or 🔄 Turn, or the wheel) look round it. Keys: R, U, D, T tools, S storm, E edges,
+  1–3 new land, arrows turn, + − zoom.
+  Technique: a 256² grid of cells holding ground, water, sediment and the ground it started as.
+  Each step is five compute passes, each mirrored by a function in `erosion.ts`: paint (rain, and
+  the finger), flux (each cell's four pipe flows, pushed by the difference in water SURFACE height
+  and scaled so it never sends more than it holds), water (in less out, and the velocity that
+  makes), erode (water that could carry more than it does picks ground up; carrying more than it
+  could, it puts some down — ground plus sediment unchanged), settle (sediment carried
+  semi-Lagrangian along the flow; ground steeper than a talus slope slides, each pair of
+  neighbours trading exactly what the other loses). The finger's ray is met with the land ON THE
+  GPU, as Clay does, and the paint pass reads the hit. Drawn as a 255²-quad mesh whose vertices
+  are read straight from the simulation buffer, plus a see-through water surface over it.
+  ⚠️ Four things were wrong first:
+  1. **Water never came to rest.** The pipe model as published keeps every flow's momentum, so a
+     heap of water on flat ground sloshed as a standing wave for good — max − min depth 0.38
+     against a mean of 0.31 after a minute. Pipes have friction now.
+  2. **Erosion was five times too fast.** A storm carved 20 cells deep in 24 seconds and the land
+     was finished before anybody had watched it; now a river takes a minute or two to cut.
+  3. **Rain as drops pocked the land with spikes** — every drop dug its own pit. A storm falls
+     evenly now (with a little unevenness so streams have somewhere to start); the finger is the
+     downpour.
+  4. **Hills started as a flat green table** (its peaks were 24–37 against Ridge's 76).
+     Measured on the GPU over 60 steps from the same land and water: it matches `erosion.ts` to
+     5.7×10⁻⁶ in ground, 3.8×10⁻⁵ in water and 1.1×10⁻⁵ in sediment; 40 steps of storm put down
+     4,092.597 of water against 4,092.599 from the same hash; the finger's ray meets the land within
+     0.15 of a cell of a CPU march, and finds nothing past the edge on both. The tests hold the CPU
+     copy to the physics: water conserved exactly in a closed basin, a still lake stays still, a heap
+     spreads flat, water runs downhill and off an open edge, slumping conserves ground and brings a
+     cliff under the talus slope, rain on a ramp carves its top and lays sand at its foot, a long
+     storm stays finite. In the page, at 1024 and on an emulated phone: Raise adds ground and moves
+     the start-height with it (so it is not coloured as sand), Dig takes it, Rain adds water and the
+     ground under it starts to wear; Turn moves the eye and paints nothing; the wheel zooms without
+     scrolling the page; two fingers orbit and pinch; Storm, edges, lands and keys all reach the
+     shader; no sideways scroll, nothing undersized or clipped.
+
+### Phone checklist — batch 6
+
+- [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
+      moot.
+- [ ] Erosion — smooth on a phone (four steps of a 256² simulation a frame, and a 130,000-triangle
+      mesh)? Does rain from a finger feel like it lands where you touch? Is a minute or two to cut
+      a valley the right pace, or too slow to notice? Two fingers to turn — natural?

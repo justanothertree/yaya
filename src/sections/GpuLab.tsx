@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { ErosionDemo } from '../gpu/ErosionDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
@@ -52,6 +53,14 @@ const DEMOS = [
     id: 'galaxy',
     name: 'Galaxy',
     line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
+  },
+  /* batch 6 (draft): each carries its component as well, which this list does not read yet — the
+     registry in draft #19 does, and with it these merge as they are */
+  {
+    id: 'erosion',
+    name: 'Erosion',
+    line: 'Erosion — rain on a landscape and watch it carve valleys, rivers and lakes. Raise and dig to steer it.',
+    Demo: ErosionDemo,
   },
 ] as const
 
@@ -152,6 +161,7 @@ export function GpuLab() {
       {demo === 'kaleido' && <KaleidoDemo key="kaleido" {...props} />}
       {demo === 'lava' && <LavaDemo key="lava" {...props} />}
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
+      {demo === 'erosion' && <ErosionDemo key="erosion" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

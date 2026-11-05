@@ -15,6 +15,8 @@ const WGSL: Record<string, { size: number; align: number }> = {
   vec2u: { size: 8, align: 8 },
   vec3f: { size: 12, align: 16 },
   vec4f: { size: 16, align: 16 },
+  /* four vec4f columns */
+  mat4x4f: { size: 64, align: 16 },
 }
 const roundUp = (n: number, k: number) => Math.ceil(n / k) * k
 
