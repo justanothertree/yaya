@@ -24,8 +24,18 @@ import { INSTRUMENTS, SHAPES } from './synth'
 
 type Shape = (typeof SHAPES)[keyof typeof SHAPES]
 
-const peakOf = (sh: Shape) => sh.level * sh.partials.reduce((t, p) => t + p.gain, 0)
-const heldOf = (sh: Shape) => peakOf(sh) * sh.s
+/**
+ * ⚠️ `level`, NOT `level x Σgains` — AND THIS FILE SHIPPED WITH THE WRONG ONE.
+ *
+ * `noteOn` normalises the partials (`const share = part.gain / partialSum`) and then says
+ * `const peak = sh.level` in as many words, so a partial's `gain` is its share of the TIMBRE
+ * and has nothing to do with loudness: adding a fifth partial changes what a patch sounds like,
+ * not how loud it is. `scripts/synth-levels.py` had been multiplying by that sum since before
+ * the normalisation was added to stop pads clipping, and I copied the formula out of it without
+ * reading the code it claimed to describe.
+ */
+const peakOf = (sh: Shape) => sh.level
+const heldOf = (sh: Shape) => sh.level * sh.s
 const named = Object.entries(SHAPES) as Array<[string, Shape]>
 
 describe('every instrument on the picker can make a sound', () => {
@@ -63,54 +73,67 @@ describe('every instrument on the picker can make a sound', () => {
   })
 })
 
-describe('how loud', () => {
+describe('how loud a preset asks to be', () => {
   /**
-   * ⚠️ THERE IS NO BAND ASSERTED HERE, AND THAT IS THE POINT OF THIS BLOCK.
+   * ⚠️ THIS BLOCK SHIPPED ONCE WITH THE WRONG FORMULA AND THE WRONG MORAL, both corrected here.
    *
-   * This file was written to turn `scripts/synth-levels.py` into a gate — its PEAK column,
-   * `level × Σgains`, is the number the repository's loudness doctrine has been built on since
-   * September. Before shipping the gate I measured what the presets actually put out, with an
-   * analyser on the synth's own tap, holding one note for three seconds and taking the maximum:
+   * It computed peak as `level × Σgains`, copied out of `scripts/synth-levels.py` without
+   * reading the code the script claims to describe. `noteOn` NORMALISES the partials —
+   * `const share = part.gain / partialSum` — and then says `const peak = sh.level` in as many
+   * words. So a partial's gain is its share of the TIMBRE: adding a fifth partial changes what
+   * a patch sounds like, not how loud it is. The script had been multiplying by a number the
+   * audio code divides out, ever since the normalisation was added to stop pads clipping.
    *
-   *       preset    modelled   measured   ratio
-   *       Reed         0.550      0.349    0.63
-   *       Keys         0.650      0.297    0.46
-   *       Organ        0.636      0.144    0.23
-   *       Strings      0.603      0.079    0.13
-   *       Drone        0.590      0.026    0.04
+   * The first version of this file concluded from that bad formula that no band could be
+   * asserted at all, and offered the accordion as proof — "modelled 1.074, the loudest row in
+   * the table, yet correct by ear". With the real formula the accordion is 0.44 and sits
+   * unremarkably among the others. The evidence for the conclusion was an artefact of the
+   * mistake.
    *
-   * The model says those are within 1.3x of each other. They are THIRTEEN TIMES apart. The
-   * traces had plateaued, so this is steady state and not a slow attack caught early.
+   * ⚠️ WHAT REMAINS TRUE is that `level` is not loudness either. Measured the same day through
+   * an analyser on the synth's own tap, one note held three seconds:
    *
-   * The reason is that `Σgains` assumes every partial adds in phase and nothing is removed:
-   * detuned unison pairs beat rather than sum, a sawtooth stack through a lowpass loses most of
-   * what the sum counted, and each preset's filter takes a different amount. The ratio tracks
-   * exactly that — square and triangle voices with one fundamental are nearest the model, and
-   * detuned sawtooth voices behind a filter are furthest.
+   *       preset     level   measured   ratio
+   *       reed        0.42      0.349    0.83
+   *       keys        0.50      0.297    0.59
+   *       organ       0.30      0.144    0.48
+   *       strings     0.26      0.079    0.30
+   *       drone       0.20      0.026    0.13
    *
-   * So the September rebalance evened out the MODEL, and the complaint it came from — "the
-   * layer volume is almost not loud enough for some of the instruments" — is still true of the
-   * sound. ⚠️ WRITTEN DOWN FOR EVAN RATHER THAN FIXED: re-levelling thirty presets against
-   * measurement changes the sound of every song and loop anybody has saved, which is his call.
-   *
-   * Asserting the band would have been worse than asserting nothing, because it reads as
-   * authority. The proof is in this very commit: the accordion is levelled to sit beside the
-   * organ BY EAR (0.144 against 0.140, measured) and its modelled peak is 1.07, the highest in
-   * the table — a voice that is right in the room and would have failed the gate.
-   *
-   * What is still worth asserting is what the arithmetic can actually answer.
+   * `level` is where the envelope PEAKS, which a slow-attack patch behind a lowpass never
+   * reaches in the shape an ear integrates. So the band below is a sanity check on what a
+   * preset ASKS for — enough to catch a voice added at double everybody else's — and is not a
+   * promise about what you hear. Re-levelling the table against measurement would change every
+   * saved song and loop, which is Evan's call and is written down rather than guessed.
    */
+
+  it('asks for a level in the range the others occupy', () => {
+    /* measured across the table when this was written: 0.20 to 0.62. A little wider, so tuning
+       an existing voice is free and adding an outlier is not. */
+    for (const [id, sh] of named) {
+      expect(sh.level, `${id} level`).toBeGreaterThanOrEqual(0.15)
+      expect(sh.level, `${id} level`).toBeLessThanOrEqual(0.75)
+    }
+  })
+
+  it('keeps the quietest and loudest request within 4x', () => {
+    /* stated as a ratio so it still means something if the whole table is raised or lowered
+       together — which an absolute band alone would quietly allow to drift */
+    const peaks = named.map(([, sh]) => peakOf(sh))
+    expect(Math.max(...peaks) / Math.min(...peaks)).toBeLessThanOrEqual(4)
+  })
 
   it('never sustains louder than it peaks', () => {
     for (const [id, sh] of named) expect(heldOf(sh), id).toBeLessThanOrEqual(peakOf(sh) + 1e-9)
   })
 
   it('gives every voice a level that could make a sound at all', () => {
-    /* the one loudness claim the model is sound for: a zero or negative level is silence, and
-       no amount of phase cancellation explains that */
     for (const [id, sh] of named) {
       expect(sh.level, `${id} is silent`).toBeGreaterThan(0)
-      expect(peakOf(sh), `${id} has no partial gain`).toBeGreaterThan(0)
+      expect(
+        sh.partials.reduce((t, x) => t + x.gain, 0),
+        `${id} has no gain`,
+      ).toBeGreaterThan(0)
     }
   })
 })

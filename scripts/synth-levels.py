@@ -17,41 +17,50 @@ Reported as "the layer volume is almost not loud enough for some of the instrume
 Some spread is deliberate — a bass patch is meant to sit under a bell, and low frequencies read
 louder than their amplitude. Even up the ones that are quiet in BOTH columns and leave the rest.
 
-⚠️⚠️ PEAK DOES NOT PREDICT LOUDNESS, MEASURED 2026-11-05. Before gating a test on this column I
-put an analyser on the synth's own output tap, held one note for three seconds and took the
-maximum. Against what this script prints:
+⚠️⚠️ THIS SCRIPT MULTIPLIED BY A NUMBER THE AUDIO CODE DIVIDES OUT. Corrected 2026-11-05.
 
-      preset    PEAK here   measured   ratio
-      reed          0.550      0.349    0.63
-      keys          0.650      0.297    0.46
-      organ         0.636      0.144    0.23
-      strings       0.603      0.079    0.13
-      accordion     0.512      0.069    0.13
-      drone         0.590      0.026    0.04
+PEAK was `level x sum(gains)`, and the sentence under it — "a four-partial patch at 0.30 is
+louder than a one-partial patch at 0.50" — stopped being true when `noteOn` started NORMALISING
+the partials. synth.ts does this, and names the variable:
 
-This script says those six are within 1.3x of each other. They are THIRTEEN TIMES apart, and
-the traces had plateaued, so that is steady state rather than a slow attack caught early.
+    const partialSum = sh.partials.reduce((n, x) => n + x.gain, 0) || 1
+    ...
+    const share = part.gain / partialSum
+    ...
+    const peak = sh.level
 
-`sum(gains)` assumes every partial adds IN PHASE and that nothing is removed afterwards. Neither
-holds: a detuned unison pair beats rather than sums, a sawtooth stack behind a lowpass loses most
-of what the sum counted, and every preset's filter takes a different amount. The ratio column
-tracks exactly that — square and triangle voices with a single fundamental come nearest, detuned
-sawtooth voices behind a filter are furthest.
+So a partial's `gain` is its SHARE OF THE TIMBRE and nothing else; adding a fifth partial changes
+what a patch sounds like and not how loud it is. The normalisation was added to stop pads
+clipping — "four pad notes reached 1.008 and clipped, where one bell note reached 0.28" — and
+from that day this column was measuring a quantity that no longer existed. It is the shape
+CLAUDE.md warns about by name: a measured claim whose falsifier landed in a different file.
 
-So the September rebalance evened out this MODEL, and the complaint it came from is still true of
-the SOUND. Re-levelling the table against measurement would change every saved song and loop, so
-it is Evan's call and is not being guessed at here.
+PEAK is `level` now and HELD is `level x sustain`. sumG is kept because it still says something
+about the patch — just not about its loudness.
 
-Until then: this table is a map of the patch DATA and a useful way to see the shape of a preset.
-It is not a loudness meter, and `src/audio/presets.test.ts` deliberately asserts no band because
-of it — the accordion added the same day sits beside the organ by ear (0.144 against 0.140) and
-prints 1.07 in this column, the loudest row in the table.
+⚠️ AND EVEN CORRECTED, THIS IS NOT A LOUDNESS METER. Measured the same day with an analyser on
+the synth's own output tap, one note held three seconds, maximum taken:
+
+      preset    level   measured   ratio
+      reed       0.42      0.349    0.83
+      keys       0.50      0.297    0.59
+      organ      0.30      0.144    0.48
+      accordion  0.44      0.144    0.33
+      strings    0.26      0.079    0.30
+      drone      0.20      0.026    0.13
+
+`level` is where the envelope PEAKS, which a slow-attack patch behind a lowpass never reaches in
+the shape the ear integrates. The remaining ~6x is attack, filter and detuned partials beating
+rather than summing. So the table tells you what a patch is ASKING for; the analyser tells you
+what it gets.
+
+The imbalance is real either way: the complaint this script came from — "the layer volume is
+almost not loud enough for some of the instruments" — is still true of the sound, and the layer
+fader is capped at 2x against a measured 13x spread. Re-levelling thirty presets against
+measurement changes every saved song and loop, so it is Evan's call and is not guessed at here.
 """
-# What each instrument actually puts out, from the preset data rather than from `level` alone.
-#
-# level is PER-PARTIAL gain, and the partials sum — so a patch with four of them is four times
-# the amplitude of a single-partial patch at the same level. That is the number the ear hears
-# and the one nobody has been reading.
+# What each preset ASKS for, read out of the patch data. See the header for why that is not the
+# same as what it gets, and for why PEAK is `level` rather than `level x sum(gains)`.
 import io, re, statistics
 
 s = io.open('src/audio/synth.ts', encoding='utf-8').read()
@@ -66,7 +75,7 @@ for m in re.finditer(r'\n  (\w+): \{(.*?)\n  \},', body, re.S):
     lvl = float(lvl.group(1))
     gains = [float(g) for g in re.findall(r'gain:\s*([0-9.]+)', b)]
     sus = float(re.search(r'\n\s*s:\s*([0-9.]+)', b).group(1)) if re.search(r'\n\s*s:\s*([0-9.]+)', b) else 0.0
-    peak = lvl * sum(gains)          # all partials at full envelope
+    peak = lvl                       # noteOn normalises the partials: `const peak = sh.level`
     hold = peak * sus                # what a held note settles to
     rows.append((name, lvl, len(gains), sum(gains), peak, sus, hold))
 
@@ -78,5 +87,9 @@ peaks = [r[4] for r in rows]
 print('\npeak amplitude: min %.3f  median %.3f  max %.3f  -> %.1fx spread (%.1f dB)'
       % (min(peaks), statistics.median(peaks), max(peaks), max(peaks)/min(peaks),
          20*__import__('math').log10(max(peaks)/min(peaks))))
-lv = [r[1] for r in rows]
-print('level alone   : min %.2f  max %.2f  -> %.1fx spread' % (min(lv), max(lv), max(lv)/min(lv)))
+holds = [r[6] for r in rows if r[5] > 0]
+print('held, sustaining: min %.3f  max %.3f  -> %.1fx spread'
+      % (min(holds), max(holds), max(holds)/min(holds)))
+print()
+print('PEAK is what a preset ASKS for. Measured output ran 0.026-0.349 across six presets')
+print('on 2026-11-05 -- a 13x spread against this table\'s 3.1x. See the header.')
