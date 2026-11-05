@@ -3,13 +3,14 @@
 The state of `#lab`, the WebGPU room, at the end of the autonomous demo loop. The commits carry
 the reasoning; this is the map.
 
-**Nothing here is live until it is merged**, and evancook.dev deploys from `main`. There are two
-batches:
+Three batches. evancook.dev deploys from `main`.
 
-- **Batch 1 — PR #17**, branch `claude/relaxed-archimedes-oqxxq0`: the room, Swarm, Life, Fluid
-  and Music, and the round that made them playful. Being tried on a phone.
-- **Batch 2 — its own draft PR**, branch `claude/lab-toys-2`: new toys, below. It starts from
-  `main` and merges #17's branch in, so it shows #17's commits too until #17 lands.
+- **Batch 1 — #17, merged and live**: the room, Swarm, Life, Fluid and Music, and the round that
+  made them playful.
+- **Batch 2 — #18, merged and live**: Kaleidoscope, Lava lamp, Galaxy.
+- **Batch 3 — its own draft PR**, branch `claude/lab-toys-3`, from `main`: new toys chosen to be
+  different from the seven above in what they do, how you touch them and how the GPU draws them.
+  Not live. See "Batch 3 — a toolbox" below.
 
 ## What shipped
 
@@ -22,7 +23,9 @@ batches:
 
 Swarm was already live from #16; `a3d48a5` moved it into its own component without changing it.
 
-A picker sits at the top of the room and remembers the last demo (`localStorage.lab_demo_v1`).
+A picker sits at the top of the room and remembers the last demo (`localStorage.lab_demo_v1`):
+a row of buttons where there is room, and below 640px a native dropdown with ‹ › to step through.
+Every demo is one entry in `DEMOS` in `GpuLab.tsx` — id, name, line and component.
 Every demo opens still under reduced motion and moves when Run is pressed.
 
 ### How each is played
@@ -181,9 +184,8 @@ Batch 2:
       watch it rise
 - [ ] Galaxy — do the arms read as arms on a phone at 128K? Drag to tilt it nearly edge on; play
       a song in Music and come back to watch it flare on the beat
-- [ ] with seven demos the picker is two rows on a phone, and on a first load at 375 only 275 of the
-      canvas's 412 px (two thirds) shows above the bottom bar — is that enough, or should the
-      picker become a select?
+- [ ] the picker on a phone: a dropdown with ‹ › either side (batch 3) — measured at 375 it lets
+      328 of the canvas's 412 px show on the first screen, where seven buttons in two rows let 275
 
 ## What to try next
 
