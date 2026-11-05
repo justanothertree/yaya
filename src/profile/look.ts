@@ -401,14 +401,27 @@ export const TEXT_ALIGNS: ReadonlyArray<{ id: TextAlign; label: string }> = [
   { id: 'right', label: '☱ Right' },
 ]
 
+/**
+ * ⚠️ THE READERS BELOW ASK THEIR OWN LIST, and three of them used to hold a copy of it instead
+ * -- `v === 'small' || v === 'big' || v === 'huge'` beside a `TEXT_SIZES` that already said so.
+ * That is the mistake this file's own REACH comment is about: a union mirroring another union is
+ * a claim with no check behind it. Nothing was wrong with any of the three copies, which is the
+ * point -- the pickers are built from these lists, so the day an id is added to a list and
+ * missed in a copy, the control offers a choice and choosing it does nothing at all. Silent, in
+ * a settings panel, about somebody's own page.
+ *
+ * The default is excluded from each search so that a stored default reads as "no choice made"
+ * and `*Attrs` can leave the attribute off, which is what every caller here expects.
+ * `look.test.ts` sweeps every id of every list through its reader.
+ */
 export function textSize(config: Record<string, unknown> | null | undefined): TextSize {
   const v = config?.textSize
-  return v === 'small' || v === 'big' || v === 'huge' ? v : 'normal'
+  return TEXT_SIZES.some((s) => s.id === v && s.id !== 'normal') ? (v as TextSize) : 'normal'
 }
 
 export function textAlign(config: Record<string, unknown> | null | undefined): TextAlign {
   const v = config?.align
-  return v === 'center' || v === 'right' ? v : 'left'
+  return TEXT_ALIGNS.some((a) => a.id === v && a.id !== 'left') ? (v as TextAlign) : 'left'
 }
 
 /**
@@ -477,7 +490,7 @@ export function blockFont(config: Record<string, unknown> | null | undefined): B
 /** A block's edge, defaulting to whatever the card already looked like. */
 export function blockEdge(config: Record<string, unknown> | null | undefined): BlockEdge {
   const v = config?.edge
-  return v === 'hair' || v === 'heavy' || v === 'lift' || v === 'inset' ? v : 'plain'
+  return BLOCK_EDGES.some((e) => e.id === v && e.id !== 'plain') ? (v as BlockEdge) : 'plain'
 }
 
 /** A block's saved heading, or null for the one its type prints by default. */
