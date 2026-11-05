@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { VisibilityTier } from '../circuit/types'
 import {
   ASKS_AT_ONCE,
+  profileGlyph,
   inBatches,
   derived,
   finished,
@@ -1253,5 +1255,48 @@ describe('a one-off goal whose window has closed', () => {
   /** the lifecycle, asserted so it is a decision: done and the window gone means gone */
   it('lets a goal you finished roll off once its window has closed', () => {
     expect(listedIn(goal({ scope: 'day', anchor: yesterday, done: true }))).toEqual([])
+  })
+})
+
+/**
+ * The goal glyph in the Aims row.
+ *
+ * ⚠️ IT IS A FUNCTION BECAUSE THE THIRD STATE WAS A ONE-PRESS DELETE. Measured against
+ * production: a goal at `certain` with one friend chosen went to `private` on the first press
+ * with its list deleted, and to `friends` on the second — so two taps on a quick on/off turned
+ * "this one person" into "everybody I am friends with", with the chosen list gone in between.
+ * The deletion is correct (see migration 20261103200333: a list left behind is an audience that
+ * lets itself back in); offering it as the first press of an unconfirmed toggle was not.
+ */
+describe('profileGlyph', () => {
+  const TIERS: VisibilityTier[] = ['private', 'certain', 'friends', 'members', 'public']
+
+  it('shows the three states', () => {
+    expect(profileGlyph('private')).toEqual({ glyph: '○', press: 'share' })
+    expect(profileGlyph('friends')).toEqual({ glyph: '◉', press: 'unshare' })
+    expect(profileGlyph('certain')).toEqual({ glyph: '◍', press: 'open-sharing' })
+  })
+
+  /** ⚠️ THE RULE IN ONE SENTENCE: nothing may narrow out of `certain` by being pressed. */
+  it('sends certain to the panel, and only certain', () => {
+    for (const t of TIERS)
+      expect([t, profileGlyph(t).press === 'open-sharing']).toEqual([t, t === 'certain'])
+  })
+
+  it('never answers unshare for certain, which is the press that deleted the list', () => {
+    expect(profileGlyph('certain').press).not.toBe('unshare')
+  })
+
+  it('treats a missing tier as private rather than as on your profile', () => {
+    /* fail closed: a goal whose tier has not loaded yet must not draw itself as shared */
+    expect(profileGlyph(null)).toEqual({ glyph: '○', press: 'share' })
+    expect(profileGlyph(undefined)).toEqual({ glyph: '○', press: 'share' })
+  })
+
+  it('reads a tier above the chronicle cap as on your profile', () => {
+    /* chronicle clamps at friends, so these should not occur — but if one ever does, the honest
+       glyph is "on your profile", not "off" */
+    expect(profileGlyph('members').press).toBe('unshare')
+    expect(profileGlyph('public').press).toBe('unshare')
   })
 })

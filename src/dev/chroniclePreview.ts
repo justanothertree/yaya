@@ -325,6 +325,23 @@ function seed(): Store {
         activity: 'pv-draw',
         shared: true,
       }),
+      /**
+       * ⚠️ THE THIRD GLYPH STATE, WHICH NOTHING COULD SHOW UNTIL NOW. Every seeded goal was
+       * `private` or `friends`, so ◍ — a goal shared with chosen friends — was a branch in the
+       * Aims row that no preview could reach, on the one state whose button used to destroy
+       * something. The list behind it is still unreachable here (CertainForItem reads Supabase
+       * directly and there is no list store), and that is fine: the glyph is decided by the
+       * TIER, which this row has.
+       */
+      goal({
+        id: 'pv-g-certain',
+        title: 'Swim on Tuesdays',
+        scope: 'day',
+        every: 1,
+        target: 20,
+        unit: 'minutes',
+        visibility: 'certain',
+      }),
       /* ⚠️ a guess AND a flag, so the row shows both chips at once and they have to fit */
       goal({
         id: 'pv-g2',

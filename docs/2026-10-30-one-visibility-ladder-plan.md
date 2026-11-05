@@ -445,11 +445,28 @@ true the first time somebody picks it, and from now on the test is what says so.
 
 ### Open, and each of these is Evan's to decide
 
-1. **The chronicle goal glyph.** The ◍/◉/○ button in the Aims row moves a goal between `private`
-   and `friends` only, and narrows from `certain` rather than widening — three glyphs, two
-   reachable states. `certain` can be chosen only from the Sharing panel on the Friends tab. Two
-   doors to one setting, one of which cannot express the middle level. Leave it (the glyph is a
-   quick on/off and the panel is the full control), or make it open the panel.
+1. ✅ **DONE 4 Nov — the glyph keeps the quick on/off, and `certain` opens the panel.** Both of
+   the options this item offered, each where it fits: ◉/○ still toggles between `private` and
+   `friends` in one press, and ◍ no longer toggles at all — it switches to the Friends half,
+   where the Sharing panel can say all three levels and show the list.
+   ⚠️ **It stopped being a style question once it was measured.** Against production, a goal at
+   `certain` with one friend chosen:
+
+   | press | tier      | rows on its Certain list    |
+   | ----- | --------- | --------------------------- |
+   | —     | `certain` | 1                           |
+   | one   | `private` | **0 — deleted, not hidden** |
+   | two   | `friends` | 0                           |
+
+   So two taps on what reads as a quick on/off turned "this one person" into "everybody I am
+   friends with", with the chosen list destroyed in between and nothing but a `title` to warn —
+   and a tooltip does not exist on a phone. The deletion itself is right and stays:
+   `chronicle_goals_drop_certain` exists because a list left behind is an audience that lets
+   itself back in. What was wrong was offering it as a first press.
+   The three-state rule is `profileGlyph` in `src/chronicle/goal.ts` with five tests, one of
+   which pins the invariant in a sentence: `open-sharing` is returned for `certain` and for
+   nothing else, so no tier can quietly narrow out of it.
+
 2. ✅ **DECIDED 4 Nov — left as it is.** `visibility_ceiling` answers `public` for an admin before
    it looks at `age_band`, so an admin marked `minor` keeps a public ceiling. Evan's answer: he is
    the only admin, so the cap has nothing to bite on.

@@ -343,6 +343,42 @@ export function lateIn(
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
 
+/** What the ◍/◉/○ button in the Aims row shows, and what pressing it should do. */
+export type ProfileGlyph = { glyph: string; press: 'share' | 'unshare' | 'open-sharing' }
+
+/**
+ * The goal glyph: three states, and only two of them are a toggle.
+ *
+ * ⚠️ THE THIRD STATE USED TO DESTROY A LIST IN ONE PRESS, which is why this is a function with a
+ * test rather than three ternaries in the JSX. Measured against production on 4 Nov 2026, with a
+ * goal at `certain` and one friend chosen:
+ *
+ *   choose certain friends        certain · 1 row on the list
+ *   ONE press of the glyph        private · 0 rows  ← the list is deleted, not hidden
+ *   press it again                friends · 0 rows  ← now every friend can see it
+ *
+ * Nothing there is a bug on its own. `chronicle_goals_drop_certain` deletes the list when the
+ * tier leaves `certain` deliberately — a list left behind is an audience that lets itself back
+ * in, which is what migration 20261103200333 exists to prevent. The button was the problem: a
+ * quick on/off offering, as its FIRST press, an irreversible narrowing; and as its second, a
+ * widening from "these two people" to "everybody I am friends with". The only warning was a
+ * `title`, which CLAUDE.md §6 says does not exist on a phone.
+ *
+ * So `certain` is not a toggle here. It opens the Sharing panel, which is the control that can
+ * express all three levels and show the list itself. The invariant the test pins: `open-sharing`
+ * is returned for `certain` and for nothing else, so no tier can quietly narrow out of it.
+ *
+ * ⚠️ AND IT READS THE TIER, NEVER `shared`. A goal at `certain` has `shared = false` by check
+ * constraint, so the boolean says "not on your profile" about a goal its owner's chosen friends
+ * can see on it. That half was fixed in the markup once already; keeping both readings in one
+ * place is what stops it coming back.
+ */
+export function profileGlyph(v: VisibilityTier | null | undefined): ProfileGlyph {
+  if (v === 'certain') return { glyph: '◍', press: 'open-sharing' }
+  if (v && v !== 'private') return { glyph: '◉', press: 'unshare' }
+  return { glyph: '○', press: 'share' }
+}
+
 /**
  * What the number on a goal counts, when the box was left empty.
  *

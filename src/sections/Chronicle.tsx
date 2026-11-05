@@ -13,6 +13,7 @@ import {
   reached,
   repeats,
   homeFor,
+  profileGlyph,
   tallyAsks,
   unitFor,
   weight,
@@ -923,6 +924,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     /* an activity that has been archived; a category source cannot be, so `cat` is never
                  gone and only a goal pointing at an activity can say this */
                     const srcGone = !!act?.archived
+                    /* the ◍/◉/○ button's state and what pressing it does — see profileGlyph,
+                 which holds the rule that `certain` is not a toggle */
+                    const onProfile = profileGlyph(g.visibility)
                     return (
                       <Fragment key={g.id}>
                         {i === mine.length ? (
@@ -1095,33 +1099,46 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                * ⚠️ IT READS THE TIER, NOT `shared`, AND THE THIRD STATE IS WHY. A
                                * goal at `certain` has `shared = false` by check constraint — so
                                * on the boolean this button showed ○, "not on your profile",
-                               * above a goal its owner's chosen friends can see on it. Pressing
-                               * it then went private → friends and widened the thing. Three
-                               * glyphs, three states, and the certain one is not a press away
-                               * from being widened: it narrows.
+                               * above a goal its owner's chosen friends can see on it.
+                               *
+                               * ⚠️ AND THE THIRD STATE IS NOT A TOGGLE AT ALL, 4 Nov. It used to
+                               * narrow: one press on a goal at `certain` set it private, and
+                               * `chronicle_goals_drop_certain` DELETED the chosen list — then a
+                               * second press, which anyone would read as undo, widened it to
+                               * every friend. Measured on production: certain·1 → private·0 →
+                               * friends·0. The deletion is right (a list left behind is an
+                               * audience that lets itself back in); a quick on/off offering it
+                               * as a first press was not. So `certain` opens Sharing, which is
+                               * the one control that can say all three levels and show the list.
+                               * The rule lives in `profileGlyph` with a test, because it is the
+                               * kind that gets re-derived wrongly in JSX.
                                */}
                               <button
                                 className={
                                   'btn btn-ghost chron-x' +
-                                  (g.visibility !== 'private' ? ' is-on' : '')
+                                  (onProfile.press === 'share' ? '' : ' is-on')
                                 }
-                                onClick={() => void putOnProfile(g)}
+                                onClick={() =>
+                                  onProfile.press === 'open-sharing'
+                                    ? setHalf('friends')
+                                    : void putOnProfile(g)
+                                }
                                 aria-label={
-                                  g.visibility === 'certain'
-                                    ? `${g.title} is on your profile for certain friends — take it off`
-                                    : g.visibility !== 'private'
+                                  onProfile.press === 'open-sharing'
+                                    ? `${g.title} is on your profile for the friends you chose — open Sharing to change who`
+                                    : onProfile.press === 'unshare'
                                       ? `${g.title} is on your profile — take it off`
                                       : `Put ${g.title} on your profile`
                                 }
                                 title={
-                                  g.visibility === 'certain'
-                                    ? 'On your profile for the friends you chose. Pressing this takes it off entirely.'
-                                    : g.visibility !== 'private'
+                                  onProfile.press === 'open-sharing'
+                                    ? 'On your profile for the friends you chose. Opens Sharing, where that list is.'
+                                    : onProfile.press === 'unshare'
                                       ? 'On your profile, if your Chronicle block is showing goals'
                                       : 'Put this on your profile'
                                 }
                               >
-                                {g.visibility === 'certain' ? '◍' : g.shared ? '◉' : '○'}
+                                {onProfile.glyph}
                               </button>
                               <button
                                 className="btn btn-ghost chron-x"
