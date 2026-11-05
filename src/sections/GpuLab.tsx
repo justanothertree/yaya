@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { GlassDemo } from '../gpu/GlassDemo'
+import { HarmonographDemo } from '../gpu/HarmonographDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
@@ -68,6 +69,12 @@ const DEMOS = [
     name: 'Stained glass',
     line: 'Stained glass — draw lead, tap panes to glaze them, and move the sun to throw the colours across the floor.',
     Demo: GlassDemo,
+  },
+  {
+    id: 'harmonograph',
+    name: 'Harmonograph',
+    line: 'Harmonograph — flick the paper to swing the pendulums, and the pen draws their figure as they slow.',
+    Demo: HarmonographDemo,
   },
 ] as const
 
@@ -170,6 +177,7 @@ export function GpuLab() {
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
       {demo === 'marbles' && <MarblesDemo key="marbles" {...props} />}
       {demo === 'glass' && <GlassDemo key="glass" {...props} />}
+      {demo === 'harmonograph' && <HarmonographDemo key="harmonograph" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

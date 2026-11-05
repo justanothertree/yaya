@@ -229,10 +229,11 @@ add about another row; this batch on `main` alone makes about 5, and batches 5, 
 would make about 10 — most of a phone's screen of buttons above the canvas. Land #19's picker
 first. A third picker would only make the merge worse.
 
-| Toy           | Interaction                                                                                                                       | GPU technique                                                                                                                                                                                                                                          | Pattern to reuse                                                                        |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                          | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing  | "thousands of things that touch each other" — any crowd, any granular toy               |
-| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone) | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew |
+| Toy           | Interaction                                                                                                                       | GPU technique                                                                                                                                                                                                                                          | Pattern to reuse                                                                                        |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                          | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing  | "thousands of things that touch each other" — any crowd, any granular toy                               |
+| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone) | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                 |
+| Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                        | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                     | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for |
 
 - **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
   you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
@@ -296,6 +297,37 @@ first. A third picker would only make the merge worse.
   gap joins them so Cobalt fills the whole window; the swatches choose and switch to Fill; the sun
   follows a drag, the keys and synthetic phone tilt.
 
+- **Harmonograph** — the Victorian drawing machine. Flick the paper and the pendulums swing — the
+  flick's strength the swing, its direction the phase between them, which is the shape — and the
+  pen draws their figure as they slow, each drawing in a new ink over the last. Five ratios, each
+  sounded as an interval when it starts (1:1, 1:2 an octave, 2:3 a fifth, 3:4 a fourth, 3:5 a major
+  sixth); Detune puts each axis's second pendulum a little off its first, and the figure turns as
+  it fades; Steady or Quick; ✕ Clean paper; sound on or off. Keys: Space swings, 1–5 ratio, S
+  speed, C clean.
+  Technique: the pen's path is analytic — two pendulums across, two up and down, each a decaying
+  sine — and the GPU draws it without its rasteriser: each frame thousands of segments get a thread
+  each, which walks its own pixels (a step a pixel of its longer side) and adds each step's ink
+  into the four pixels round it with `atomicAdd`, in integers, so the order threads add in changes
+  nothing and the ink is exactly conserved (the four shares always add to a whole step). Four
+  channels a pixel — red, green and blue ink and the total — and the paper pass draws coverage from
+  the total and colour from the mix.
+  ⚠️ Two things were wrong first:
+  1. **Every figure was a squashed spiral.** Each axis had a share of both frequencies, so x and y
+     moved almost together. A lateral harmonograph swings one frequency across and the other up and
+     down, with a smaller, detuned partner on each — and then the figures are harmonographs.
+  2. **I wrapped the angle before `sin`, expecting it to close the GPU's gap to the CPU, and it did
+     not** (worst pixel 59 → 61 units). Measured instead: the gap is SwiftShader's sin moving the pen
+     ~0.005 px, a unit of ink a step, over the dozens of steps that cross a pixel — 3.3%, now 1.9%,
+     and invisible. The wrap stayed, because WGSL only promises sin on −π..π.
+     Measured on the GPU, a whole figure of 40,000 segments: 10,979,840 units of ink against the CPU's
+     10,980,608 (the difference is 3 steps, a segment's step count rounding the other way at a whole
+     pixel); every well-inked pixel within 1.9%. The tests hold the pen to the machine (a whole ratio
+     without damping closes its figure; with damping it spirals in at the decay's rate) and the ink to
+     its promises (exactly INK a step however the pen lands, no pixel skipped, two halves of a line
+     ink what the whole line does, the colour split in whole units). In the page, at 1024 and on an
+     emulated phone: a flick starts a new drawing in the next ink with two notes; the ratios and the
+     detune reach the pendulums; Quick draws faster; Clean paper wipes the ink; the keys work.
+
 ### Phone checklist — batch 7
 
 - [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
@@ -304,3 +336,5 @@ first. A third picker would only make the merge worse.
       plinks get annoying?
 - [ ] Stained glass — is drawing lead with a finger precise enough to make the panes you meant? Does
       a pane fill feel instant? Does the light on the floor read as light through a window?
+- [ ] Harmonograph — does a flick feel like giving the pendulums a push? Are the intervals' notes a
+      nice touch or noise? Does a figure take about the right time to draw?
