@@ -5,6 +5,7 @@ import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { LightDemo } from '../gpu/LightDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -85,6 +86,12 @@ const DEMOS: readonly {
     Demo: FractalDemo,
     name: 'Fractal',
     line: 'Fractal — pinch into the Mandelbrot set, or let it dive, a hundred million times deeper than the GPU’s own numbers reach.',
+  },
+  {
+    id: 'light',
+    Demo: LightDemo,
+    name: 'Light',
+    line: 'Light — move lamps, pillars and walls round a dark room; the soft shadows and mixed colours work themselves out.',
   },
 ]
 

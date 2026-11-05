@@ -223,9 +223,10 @@ Tunnel, Cloth, Ribbons) in what it does, how you touch it and how the GPU draws 
 identical, so it merges cleanly whichever PR lands first. This section sits at the END of the file
 for the same reason: #19 adds its own section further up, and the two should not touch.
 
-| Toy     | Interaction                                                                                | GPU technique                                                                                                                                                                                                               | Reusable pattern                                                                               |
-| ------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy |
+| Toy     | Interaction                                                                                                             | GPU technique                                                                                                                                                                                                               | Reusable pattern                                                                                                                   |
+| ------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays                              | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy                                     |
+| Light   | ARRANGE a scene: drag lamps, pillars and walls; tap for a lamp; turn a wall with a second finger or the wheel; 🌀 Drift | 2D global illumination: the scene's distance field BAKED into a texture once per change, then Monte Carlo rays sphere-traced through it from every texel, averaged over frames                                              | "light that works itself out" — soft shadows, glows and colour bleeding from one loop; and "bake the scene, then query it cheaply" |
 
 - **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
   in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
@@ -256,8 +257,35 @@ for the same reason: #19 adds its own section further up, and the two should not
   240px apart zooms exactly 3×, a wheel zooms without scrolling the page, a double-click doubles,
   and a dive goes 2× deeper every 0.7 s.
 
+- **Light** — a dark room lit by coloured lamps. Drag the lamps, pillars and walls about; tap an
+  empty spot for a new lamp (up to six); double-tap anything to take it away. A second finger
+  swung round a held wall turns it (the wheel or Q/E with a mouse). Three rooms: Pillars, Mixing
+  (red, green and blue round one pillar — where two shadows overlap the third colour remains) and
+  Window (beams through slits). 🌀 Drift lets the lamps wander. Keys: L lamp, W wall, Q/E turn,
+  D drift, 1–3 rooms.
+  Technique: nothing draws the shadows. Once per change, a bake pass writes every texel's distance
+  to the nearest surface (and that surface's light, if it is a lamp) into an rgba16float texture —
+  the room's whole geometry, one fetch away. Then every texel, at half the canvas's resolution,
+  casts 16 rays a frame at angles spread evenly round it and turned by a random amount each
+  frame, and sphere-traces each through the baked field until it lands on a lamp (bringing its
+  light back) or anything else (bringing nothing). Each frame's answer is blended into the
+  picture so far: an exact running average while the room is still, so the grain falls as 1/√n,
+  and a short memory (at least a fifth) while anything moves, so a moving lamp's light does not
+  smear across everywhere it has been. A still room stops tracing once its picture has settled
+  (600 frames), and a paused one gathers 24 frames at once on every change, so it is never left
+  grainy — including when it opens paused under reduced motion.
+  Measured on the real shaders: the bake matches the CPU's distances to 4.6×10⁻⁴ (f16); behind a
+  pillar is fully dark (0) where the same distance in the open is 0.15; light falls off as
+  1/distance, as 2D light should (twice as far: 2.00× dimmer, against 2.01 from the angle the lamp
+  covers); and the grain halves for every 4× more frames (2.01, 1.97). One test went green when it
+  should not have: a wall turned a quarter looks the same either way round, so it could not tell
+  which way walls turn — an eighth can, and does.
+
 ### Phone checklist — batch 4
 
 - [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
       finding detail, and does it stay smooth (it recomputes every frame while diving, at a
       quarter of the pixels)? Is 〰 Morph worth having?
+- [ ] Light — does the grain settle quickly enough to read as light rather than noise? Drag a lamp
+      behind a pillar and watch the shadow swing; turn a wall with two fingers; is 🌀 Drift too
+      grainy (it never settles while lamps move)? Is it smooth on a phone (16 rays a texel a frame)?
