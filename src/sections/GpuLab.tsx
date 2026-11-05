@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
+import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -34,6 +35,11 @@ const DEMOS = [
     id: 'music',
     name: 'Music',
     line: 'Music visual — your mic, a file or the instrument as bars or a ring, drawn into a trail.',
+  },
+  {
+    id: 'kaleido',
+    name: 'Kaleidoscope',
+    line: 'Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.',
   },
 ] as const
 
@@ -131,6 +137,7 @@ export function GpuLab() {
       {demo === 'life' && <LifeDemo key="life" {...props} />}
       {demo === 'fluid' && <FluidDemo key="fluid" {...props} />}
       {demo === 'music' && <MusicDemo key="music" {...props} />}
+      {demo === 'kaleido' && <KaleidoDemo key="kaleido" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

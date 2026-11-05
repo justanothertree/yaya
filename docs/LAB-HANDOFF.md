@@ -3,8 +3,13 @@
 The state of `#lab`, the WebGPU room, at the end of the autonomous demo loop. The commits carry
 the reasoning; this is the map.
 
-**Nothing here is live until PR #17 is merged** — every commit below is on
-`claude/relaxed-archimedes-oqxxq0`, and evancook.dev deploys from `main`.
+**Nothing here is live until it is merged**, and evancook.dev deploys from `main`. There are two
+batches:
+
+- **Batch 1 — PR #17**, branch `claude/relaxed-archimedes-oqxxq0`: the room, Swarm, Life, Fluid
+  and Music, and the round that made them playful. Being tried on a phone.
+- **Batch 2 — its own draft PR**, branch `claude/lab-toys-2`: new toys, below. It starts from
+  `main` and merges #17's branch in, so it shows #17's commits too until #17 lands.
 
 ## What shipped
 
@@ -41,6 +46,20 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   picture and punches the trail outward. Drag to steer the trail: across turns it, up and down grows it. Keys:
   Space, M bars/ring, 0 hold still, B beat on/off. Leaving releases the mic and leaves music playing, as the
   Visualiser does.
+
+## Batch 2 — new toys
+
+| Toy          | One line on the page                                                                  |
+| ------------ | ------------------------------------------------------------------------------------- |
+| Kaleidoscope | Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go. |
+
+- **Kaleidoscope** — draw anywhere and it repeats 4, 6, 8 or 12 ways round the middle, with
+  Mirror reflecting each wedge too. Tap for a dot; ✨ Doodle draws a rose curve by itself (and
+  opens the toy, so it is never an empty black box). Each finger is its own pen. The palettes are
+  Fluid's, now shared in `palettes.ts`; Fine / Medium / Bold brushes; Fade from keep-everything
+  to quick. Keys: Space, S symmetry, M mirror, D doodle, C clear, 1–4 colour. The painting is kept
+  as drawn and the SCREEN samples it at every turn — so a stroke across a wedge's edge just works,
+  because nothing was folded.
 
 ### How the room is built
 
@@ -116,6 +135,29 @@ The "What your GPU reports" fold on the page shows the visitor's own adapter, li
 - Safari and Firefox
 - real-GPU frame rates (the fps badge on the page will say)
 - multi-touch beyond Fluid: Swarm, Life and Music follow one pointer
+
+## Phone checklist
+
+Nobody has seen any of this on a real screen: headless Chromium cannot present a WebGPU canvas.
+
+Batch 1 (#17):
+
+- [ ] every demo appears at all
+- [ ] Swarm — fps at 128K and 512K; Rainbow reads as coloured streams; with 🎵 Listen on and a
+      song playing, does a steady kick leave the middle too hollow?
+- [ ] Life — tap Glider gun and gliders stream out; patterns land under the finger
+- [ ] Fluid — two or three fingers stir at once; a tap blossoms; the page still scrolls when a
+      swipe starts off the canvas
+- [ ] Music — 🎤 Mic asks, the bars move, and the mic light goes off on leaving the Lab; with a
+      song playing, kicks flash in time and Stop music works
+- [ ] the AudioDock's ⏸ and ⏹ are comfortable under a thumb
+
+Batch 2:
+
+- [ ] Kaleidoscope — the opening doodle draws itself; two fingers draw two patterns; 12-fold with
+      Mirror on stays smooth (it samples the painting 24 times a pixel)
+- [ ] with five demos the picker wraps to two rows on a phone, pushing the canvas lower: is enough
+      of it on screen without scrolling?
 
 ## What to try next
 

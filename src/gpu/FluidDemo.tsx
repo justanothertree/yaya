@@ -1,7 +1,8 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
-import { bloom, dragForce, gridSize, hue, isTap, SIM_LONG } from './fluid'
+import { bloom, dragForce, gridSize, isTap, SIM_LONG } from './fluid'
+import { PALETTES, type Palette } from './palettes'
 import { createFluid, type FluidInput, type FluidSim, type Splat } from './fluidEngine'
 
 type Props = {
@@ -9,15 +10,6 @@ type Props = {
   setRunning: (r: boolean | ((r: boolean) => boolean)) => void
   onAdapter: (adapter: GPUAdapter, format: GPUTextureFormat) => void
 }
-
-/** what a stroke is painted in: a hue that wanders, or a fixed one */
-const PALETTES = {
-  rainbow: { name: 'Rainbow', at: (t: number) => hue(t * 0.15) },
-  fire: { name: 'Fire', at: (t: number) => hue(0.02 + 0.08 * (0.5 + 0.5 * Math.sin(t * 2))) },
-  sea: { name: 'Sea', at: (t: number) => hue(0.5 + 0.12 * (0.5 + 0.5 * Math.sin(t * 1.5))) },
-  ink: { name: 'Ink', at: () => [0.8, 0.8, 0.85] as [number, number, number] },
-} as const
-type Palette = keyof typeof PALETTES
 
 /** how much a drag covers per frame at its centre: a few frames in one place and it is solid */
 const DRAG_INK = 0.35
