@@ -9,6 +9,7 @@ import { LifeDemo } from '../gpu/LifeDemo'
 import { LightDemo } from '../gpu/LightDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { NeonDemo } from '../gpu/NeonDemo'
+import { SandDemo } from '../gpu/SandDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
@@ -106,6 +107,12 @@ const DEMOS: readonly {
     Demo: NeonDemo,
     name: 'Neon',
     line: 'Neon — type a word and it becomes a neon sign. Letters stutter on; tap it to knock it.',
+  },
+  {
+    id: 'sand',
+    Demo: SandDemo,
+    name: 'Sand',
+    line: 'Sand — pour sand and water, wall it in, and turn the box over (or tilt the phone).',
   },
 ]
 

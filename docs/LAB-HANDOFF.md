@@ -229,6 +229,7 @@ for the same reason: #19 adds its own section further up, and the two should not
 | Light   | ARRANGE a scene: drag lamps, pillars and walls; tap for a lamp; turn a wall with a second finger or the wheel; 🌀 Drift              | 2D global illumination: the scene's distance field BAKED into a texture once per change, then Monte Carlo rays sphere-traced through it from every texel, averaged over frames                                              | "light that works itself out" — soft shadows, glows and colour bleeding from one loop; and "bake the scene, then query it cheaply" |
 | Harp    | PLAY an instrument: strum with any number of fingers, tap a string, keys; ✨ Play by itself; it makes SOUND through the site's synth | analytic motion: each point of each string is the sum of its standing waves since its last pluck, worked out in the vertex shader — no simulation state                                                                     | "motion with an exact answer needs no simulation" — anything that rings, wobbles or decays                                         |
 | Neon    | TYPE: a real text box (a phone brings up its keyboard); tap the sign to knock it; letters stutter on and one is faulty               | the JUMP FLOOD: a distance field in log₂(size) passes, each texel learning its nearest seed and carrying that seed's payload (which letter) with it                                                                         | "distance to anything, fast" — glows, outlines, Voronoi, soft shapes from a mask                                                   |
+| Sand    | POUR with any number of fingers; wall it in; TURN THE BOX (⟲ ⟳, arrows) or tilt the phone and gravity follows                        | a MARGOLUS block automaton: 2×2 blocks, shifted every other step, each rearranged by one thread — no races, and grains conserved by construction; integer rules a CPU copy matches cell for cell                            | "particles that never collide on the GPU" — falling sand, crowds, anything that must not double up                                 |
 
 - **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
   in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
@@ -330,6 +331,34 @@ for the same reason: #19 adds its own section further up, and the two should not
   without the extra pass at step 1, which is the test that holds the pass to its job. In the page,
   typing "NEON LAB" over "NEON" leaves the first four letters steady while the new ones stutter.
 
+- **Sand** — a box of sand and water. Hold a finger down to pour (several at once); draw walls;
+  erase. Turn the box with ⟲ and ⟳ (or the arrow keys) and everything falls the new way; on a
+  phone, 📱 Tilt makes down wherever the phone says it is. Three boxes: an Hourglass (turn it over
+  and it pours back through the neck), Shelves, and an empty one. Keys: arrows, S/W/B/E tools, 1–3
+  boxes.
+  Technique: falling sand written the usual way — every grain looks below itself and moves — is a
+  race on a GPU, since two grains can see the same empty cell and both move in. A MARGOLUS
+  neighbourhood avoids it: each step the grid is cut into 2×2 blocks (shifted one cell on
+  alternate steps) and one thread owns a whole block, reading its four cells and writing the same
+  four, only ever swapping them. So nothing races, and no grain can be lost or doubled. Gravity's
+  four directions are the same rule read through a turned block. The rules are integers and a
+  hash, so a CPU copy matches the GPU exactly.
+  ⚠️ Water first spread by stepping left or right at random — a random walk, spreading as the
+  square root of time: a block left 1,500 steps still sloped 29 cells deep to 1. Now each drop
+  remembers which way it is going (one bit of its shade) and turns round when stopped, so it
+  spreads in a line, one cell a step thanks to the shifting blocks; it levels in a few thousand
+  steps (six a frame). There is no pressure in a cellular automaton, so it is slightly thick
+  water, and that is the honest limit.
+  And a comment was wrong: it said sand toppling only three times in four is what makes a pile
+  stand at a slope. Forced to always, the pile test still passed — the slope (about 45°) comes
+  from grains moving one across for one down; the odds only make the face grainy.
+  Measured: after 300 steps with gravity turned through all four directions, the GPU and the CPU
+  copy differ in 0 cells, and grains, water and walls are all exactly conserved. An hourglass
+  drains at about 65 grains a second and pours back when turned over; a poured pile stands at a
+  slope of 1.24. In the page, a mouse pours, two touch fingers pour at once (507 grains), ⟲ from
+  down gives right as a clock face says it should, every grain survives the turns, and a tilt onto
+  the phone's right edge sends everything right.
+
 ### Phone checklist — batch 4
 
 - [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
@@ -343,3 +372,5 @@ for the same reason: #19 adds its own section further up, and the two should not
       does ✨ Play by itself sound musical or random? Is it loud enough next to everything else?
 - [ ] Neon — does the phone's keyboard cover the sign while you type (it should scroll)? Does the
       stutter-on read as neon? Is the faulty letter charming or annoying? Try a long word.
+- [ ] Sand — 📱 Tilt: does it ask, and does the sand fall to the edge that is lowest — in
+      landscape too? Does the water feel too thick? Is the hourglass satisfying to turn?
