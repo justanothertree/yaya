@@ -1,6 +1,3 @@
--- Schema baseline dumped from production (public + finance) for CI db-guards.
--- Generated so supabase db reset can build the schema from scratch.
--- Regenerate: supabase db dump --remote --schema public,finance
 
 
 
