@@ -16,6 +16,7 @@ import {
   DRUMS,
   outputTap,
 } from '../audio/synth'
+import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
   captureSamples,
   downloadSamples,
@@ -859,8 +860,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      * focus, so a key you were holding when you pressed Keep never delivers its keyup.
      */
     hushScheduled()
-    stopLive()
-    setHeld([])
+    hush()
     const name =
       window.prompt(kind === 'loop' ? 'Name this loop' : 'Name this song', '')?.trim() ?? ''
     if (!name) return
@@ -904,18 +904,47 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   for (const p of Object.values(jamming.players))
     for (const m of p.held) theirNotes.set(m, hueFor(p.id))
 
-  const press = useCallback((id: string, midi: number) => {
-    noteOn(id, live.current.inst, midi)
-    capture(midi, true, live.current.inst)
-    // ⚠️ the same call site as capture(), for the same reason: a no-op unless you are jamming,
-    // so there is no mode branch here and no way for what you heard and what they heard to be
-    // produced by different code
-    jam.play(midi, true, live.current.inst)
-    // …and into the rolling history, so Capture can find it later. Same funnel again: what you
-    // heard, what they heard, what was recorded and what can be captured are one call site.
-    remember(sharedCtx().currentTime, midi, true, live.current.inst)
-    setHeld((h) => (h.includes(midi) ? h : [...h, midi]))
+  /**
+   * One book of what is sounding, for the whole room.
+   *
+   * ⚠️ THE LAZY FORM, because `useRef(soundingBook())` builds a book on every render and throws
+   * all but the first away — a Map per keystroke, in the room where keystrokes are the point.
+   */
+  const bookRef = useRef<SoundingBook | null>(null)
+  const book = (bookRef.current ??= soundingBook())
+
+  /**
+   * A note starting or stopping, told to everything that is not the synth.
+   *
+   * ⚠️ ONE CALL SITE, WHICH IS THE WHOLE POINT, and it is the shape the old `press` already had
+   * spelled out in three comments. capture() is a no-op unless a take is running and jam.play()
+   * is a no-op unless you are jamming, so there is no "recording mode" branch anywhere here and
+   * no way for what you heard, what your friends heard, what was recorded and what Capture can
+   * reach to have been produced by different code.
+   */
+  const report = useCallback((midi: number, on: boolean) => {
+    capture(midi, on, live.current.inst)
+    jam.play(midi, on, live.current.inst)
+    remember(sharedCtx().currentTime, midi, on, live.current.inst)
   }, [])
+
+  /** A press: several notes, because one key is not always one note. */
+  const press = useCallback(
+    (id: string, notes: number[]) => {
+      const { stop, play } = book.start(id, notes)
+      /* a retrigger on a live id — the book hands back what it was holding so none is left open */
+      for (const v of stop) {
+        noteOff(v.voice)
+        report(v.midi, false)
+      }
+      for (const v of play) {
+        noteOn(v.voice, live.current.inst, v.midi)
+        report(v.midi, true)
+      }
+      setHeld(book.notes())
+    },
+    [book, report],
+  )
 
   /**
    * ⚠️ A POINTER OWNS EXACTLY ONE NOTE, and re-entering the key it already owns does
@@ -937,11 +966,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     (pointerId: number, midi: number | null) => {
       const now = owned.current.get(pointerId)
       if (now === midi) return // the jitter case: same finger, same key, nothing to do
-      if (now !== undefined) lift('p:' + pointerId, now)
+      if (now !== undefined) lift('p:' + pointerId)
       if (midi == null) owned.current.delete(pointerId)
       else {
         owned.current.set(pointerId, midi)
-        press('p:' + pointerId, midi)
+        press('p:' + pointerId, [midi])
       }
     },
     // press and lift are stable useCallbacks with no deps
@@ -967,13 +996,54 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     }
   }, [setOwned])
 
-  const lift = useCallback((id: string, midi: number) => {
-    noteOff(id)
-    capture(midi, false, live.current.inst)
-    jam.play(midi, false, live.current.inst)
-    remember(sharedCtx().currentTime, midi, false, live.current.inst)
-    setHeld((h) => h.filter((m) => m !== midi))
-  }, [])
+  /**
+   * ⚠️ IT TAKES NO PITCH, AND THAT IS THE FIX.
+   *
+   * It used to take one, and the keyboard handler supplied it by WORKING IT OUT AGAIN —
+   * `lift('k:' + key, live.current.noteAt(off))`, a fresh computation from the octave, scale and
+   * key as they stood at release time. Those agree with the press only while nothing moves
+   * underneath them, and the octave buttons move one of them: measured in the pane, hold `z`,
+   * press Octave up, let go and come back to octave 4, and **C4 is lit with nothing pressed**.
+   *
+   * The sound was always right, because the synth releases by voice id rather than by pitch —
+   * which is precisely what let it go unnoticed. What was wrong were the four things fed from
+   * that recomputed pitch: the lit key, the note-off written into a take, the note-off sent to
+   * everyone jamming with you, and the rolling history Capture reads. A stuck highlight is the
+   * only one of the four you can see.
+   *
+   * The scale and key pickers had each been given `stopLive(); setHeld([])` to dodge this, which
+   * is §4's "a rule only one path keeps is one you get around" wearing a UI hat — two paths
+   * patched, one missed, and the patched ones cut your note off to do it. Now nobody computes a
+   * pitch twice, so changing the octave mid-hold simply keeps sounding.
+   */
+  const lift = useCallback(
+    (id: string) => {
+      for (const v of book.end(id)) {
+        noteOff(v.voice)
+        report(v.midi, false)
+      }
+      setHeld(book.notes())
+    },
+    [book, report],
+  )
+
+  /**
+   * Let go of everything — the panic paths, where no keyup is ever coming.
+   *
+   * ⚠️ IT REPORTS THE NOTE-OFFS, which the seven `stopLive(); setHeld([])` pairs it replaces did
+   * not. Alt-tabbing mid-hold silenced your speakers and left the note open in the take being
+   * recorded and open on the screen of everyone jamming with you. The book knows exactly what
+   * was sounding, so saying so costs one loop.
+   */
+  const hush = useCallback(
+    (mode: 'live' | 'all' = 'live') => {
+      for (const v of book.clear()) report(v.midi, false)
+      if (mode === 'all') allNotesOff()
+      else stopLive()
+      setHeld([])
+    },
+    [book, report],
+  )
 
   /**
    * Computer keyboard.
@@ -1044,19 +1114,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
       e.preventDefault()
-      press('k:' + e.key.toLowerCase(), live.current.noteAt(off))
+      press('k:' + e.key.toLowerCase(), [live.current.noteAt(off)])
     }
     const up = (e: KeyboardEvent) => {
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
-      lift('k:' + e.key.toLowerCase(), live.current.noteAt(off))
+      lift('k:' + e.key.toLowerCase())
     }
     // a key still down when the window loses focus never gets its keyup — that is the classic
     // stuck note, and it hangs until you press the same key again
-    const blur = () => {
-      stopLive()
-      setHeld([])
-    }
+    const blur = () => hush()
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
@@ -1065,7 +1132,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
     }
-  }, [press, lift])
+    /* all three are referentially stable — `book` is one object per mount and `report` has no
+       deps — so this binds once, which is what the comments above about a listener capturing a
+       stale `playing` are relying on */
+  }, [press, lift, hush])
 
   // leaving the page must not leave a note ringing forever
   useEffect(
@@ -1227,8 +1297,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               onClick={() => {
                 // ⚠️ stopLive, not allNotesOff: your held keys must let go of the old sound, but
                 // a loop playing underneath is not yours to interrupt
-                stopLive()
-                setHeld([])
+                hush()
                 setInst(id)
                 /* closes on a phone, where it is a menu; ignored on a desktop, where the grid is
                    always open and this flag is not read */
@@ -1250,8 +1319,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           placeholder="Name this rig"
           capture={(name) => ({ name, inst, octave, scale, root, fx: captureFx() })}
           apply={(k: InstKit) => {
-            stopLive()
-            setHeld([])
+            hush()
             setInst(k.inst)
             setOctave(k.octave)
             setScale(k.scale)
@@ -2098,8 +2166,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           className="btn"
           onClick={() => {
             stopLoop()
-            allNotesOff()
-            setHeld([])
+            hush('all')
           }}
           title="Silence everything and stop the loop"
         >
@@ -2115,8 +2182,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           <select
             value={scale}
             onChange={(e) => {
-              stopLive()
-              setHeld([])
+              hush()
               setScale(e.target.value)
               e.target.blur()
             }}
@@ -2137,8 +2203,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             <select
               value={root}
               onChange={(e) => {
-                stopLive()
-                setHeld([])
+                hush()
                 setRoot(Number(e.target.value))
                 /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
                    staying here would change the key again the moment you played a note */
