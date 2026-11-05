@@ -297,6 +297,34 @@ const looseWords = (node) => {
   return got.trim()
 }
 
+/**
+ * Is this control one a person cannot read?
+ *
+ * No word of its own, nothing but a tooltip to explain it, no `aria-label`, and no group label
+ * standing in for it. Lifted out of the sweep so it can be asked directly: it is four conditions
+ * and every one of them is a judgement, which is the shape that quietly goes wrong inside a loop
+ * nobody can call.
+ *
+ * ⚠️ `aria-hidden` IS NOT A MISSING NAME. It is a control deliberately kept OUT of the
+ * accessibility tree, so there is nothing for a name to be announced by, and the thing it
+ * duplicates has to be reachable another way or the mistake is somewhere else entirely. The
+ * nav's `‹` and `›` are exactly that pair — both `aria-hidden` with `tabIndex={-1}`, because
+ * touch swipes the strip and the keyboard reaches the links by tabbing, which scrolls them into
+ * view. They were reported in every room until this line, one false positive per room in the one
+ * list whose whole value is being short enough for a person to read.
+ */
+export const needsAName = (el) => {
+  const label = (el.textContent || '').trim()
+  const meaning = el.getAttribute('title') || ''
+  return (
+    !/[a-z]{2}/i.test(label) &&
+    meaning.length > 3 &&
+    !el.getAttribute('aria-label') &&
+    !el.closest('[aria-hidden="true"]') &&
+    !groupSays(el)
+  )
+}
+
 const groupSays = (el) => {
   const row = el.parentElement
   if (!row) return ''
@@ -413,15 +441,13 @@ export function mobileAudit(root = document) {
       keep(out.tooSmall, hit, { name, size })
     else if (r.width < COMFY || r.height < COMFY) keep(out.snug, hit, { name, size })
     /* a control carrying no word, explained only by a tooltip nobody on a phone can open */
-    const label = (el.textContent || '').trim()
-    const meaning = el.getAttribute('title') || ''
-    if (
-      !/[a-z]{2}/i.test(label) &&
-      meaning.length > 3 &&
-      !el.getAttribute('aria-label') &&
-      !groupSays(el)
-    )
-      keep(out.wordless, el, { name: label || '(nothing)', means: meaning.slice(0, 44) })
+    if (needsAName(el)) {
+      const label = (el.textContent || '').trim()
+      keep(out.wordless, el, {
+        name: label || '(nothing)',
+        means: (el.getAttribute('title') || '').slice(0, 44),
+      })
+    }
   }
 
   /* the element itself counts when it is a scope — a bench whose own box runs off the edge is
