@@ -1,8 +1,8 @@
 -- Seed for a THROWAWAY LOCAL DATABASE. Never run against production.
 --
--- `supabase db reset` applies the files in `[db.seed] sql_paths` -- the schema baseline, then
--- this one; the migrations themselves are deliberately not replayed, see that config block --
--- which is what CI needs:
+-- `supabase db reset` applies the files in `[db.seed] sql_paths` -- extensions, the schema
+-- dump, the triggers, then this one; the migrations themselves are deliberately not replayed,
+-- see that config block -- which is what CI needs:
 -- supabase/tests/visibility-guards.sql tests who can see whose things, and on a freshly migrated
 -- database there is nobody and nothing. Every check that needs a session would then succeed
 -- against an empty set and the suite would report "0 failures" in green — the exact clean zero

@@ -20,7 +20,22 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+# ⚠️ FALSE, AND IT IS A CI FIDELITY SETTING RATHER THAN A PREFERENCE. Left unset this is true,
+# matching the cloud: `alter default privileges ... grant` hands anon, authenticated and
+# service_role their privileges on every new object in `public`. That is right for a project
+# being developed and wrong for one being RESTORED, because pg_dump describes an ACL by what it
+# holds and not by what it lacks: a function production revoked from anon has no anon entry to
+# dump, so the restore re-grants anon from the local default and nothing takes it away again.
+#
+# Measured on db-guards run 41954680315: ~30 findings of `new SECURITY DEFINER function is
+# anon-callable`, `a tier column is writable` and `a member-callable writer does not refuse a
+# suspended member` -- including `picture_ready`, which a migration called
+# `picture_ready_as_service` had made service-role-only. All of them artefacts of the restore
+# being MORE permissive than the database it came from, which is the direction that reads as a
+# real finding. With this false the CLI revokes those defaults before the restore, so the dump's
+# own 269 REVOKEs and its explicit GRANTs are the only source of an ACL and CI is asking about
+# production.
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -100,10 +115,18 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-# ⚠️ THE BASELINE IS FIRST AND IT IS NOT DECORATION: with [db.migrations] disabled above, this
-# list is the only thing that builds the schema. seed.sql's fixtures are meaningless without it
-# and will fail on the first insert, which is the failure you want if this line is ever trimmed.
-sql_paths = ["./migrations/00000000000000_baseline.sql", "./seed.sql"]
+# ⚠️ THIS LIST IS THE WHOLE SCHEMA, AND ITS ORDER IS LOAD-BEARING. With [db.migrations]
+# disabled above, nothing else builds anything: the extensions the dump's own column types need,
+# then the dump, then the 24 triggers the dump turned out not to contain, then the fixtures.
+# Trim any of the first three and seed.sql fails on its first insert -- or worse, succeeds
+# against a schema with no enforcement in it, which is what run 41954680315 did.
+# supabase/baseline/*.sql say why each exists; scripts/baseline.test.mjs asserts this order.
+sql_paths = [
+  "./baseline/01-extensions.sql",
+  "./migrations/00000000000000_baseline.sql",
+  "./baseline/02-triggers.sql",
+  "./seed.sql",
+]
 
 [db.network_restrictions]
 # Enable management of network restrictions.

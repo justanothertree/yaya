@@ -19,10 +19,19 @@ node scripts/migration-md5.mjs             # how many of them production has a r
 ```
 
 ⚠️ **AND THE CLI NO LONGER APPLIES THEM AT ALL.** `[db.migrations] enabled = false` in
-`supabase/config.toml`, and `00000000000000_baseline.sql` — a schema-only dump of production —
-is applied as a seed file instead, so `supabase db reset` builds today's schema and then seeds
-it. `supabase db push` is skipped by the same switch, and that config block has the whole
-reasoning with the measurement behind it.
+`supabase/config.toml`, and the schema is built by `[db.seed] sql_paths` instead, in this order:
+
+| file                                     | what it is                                                                               |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `baseline/01-extensions.sql`             | citext and pgcrypto, which the dump's own column types need and the dump does not create |
+| `migrations/00000000000000_baseline.sql` | the schema-only dump of production, **exactly as the dump tool produced it**             |
+| `baseline/02-triggers.sql`               | the 24 triggers the dump turned out not to contain                                       |
+| `seed.sql`                               | the fixtures the guards need                                                             |
+
+`supabase db push` is skipped by the same switch, and that config block has the whole reasoning
+with the measurement behind it. The two hand-written files are BESIDE the dump rather than inside
+it on purpose: regenerating the dump is a fresh file, so anything hand-written in the old one goes
+without a word. `scripts/baseline.test.mjs` asserts the three still fit together.
 
 The short version: **these files cannot replay, and that is a property of how they are written
 rather than a fault in any of them.** Most are surgery on function bodies that assert the state
