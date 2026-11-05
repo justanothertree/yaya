@@ -34,6 +34,8 @@ import {
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
+import { useMediaQuery } from '../ui/media'
+import { PHONE_KEYBOARD, keysToShow } from '../audio/keyboardSpan'
 import {
   healthOn,
   labOn,
@@ -221,9 +223,6 @@ const ROOT_KEY = 'instrument_root_v1'
 const CHORD_KEY = 'instrument_chord_v1'
 const STRUM_KEY = 'instrument_strum_v1'
 const ARP_KEY = 'instrument_arp_v1'
-
-/** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
-const SPAN = 25
 
 /**
  * Tempos as words, because "how fast?" is not a question about numbers.
@@ -878,6 +877,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const [lifted, setLifted] = useState<{ id: string; bar: number } | null>(null)
   /* a finger cannot start an HTML5 drag, so the tap-to-lift path is the real one on a phone */
   const touch = useTouchOnly()
+  /* must agree with the stylesheet about what a phone is — the query is shared, not retyped */
+  const narrowBoard = useMediaQuery(PHONE_KEYBOARD)
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
   const [capMsg, setCapMsg] = useState<string | null>(null)
   const [libOpen, setLibOpen] = useState(false)
@@ -1295,7 +1296,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * shoved to the left of a wide empty gap. Hidden has to mean the room is one column again.
    */
   const visualsShown = showViz && !inCanvas && !vizFloating
-  const keys = Array.from({ length: SPAN }, (_, i) => noteAt(i))
+  /**
+   * ⚠️ ONE OCTAVE ON A PHONE, TWO ON A DESKTOP. At 375 the two-octave row is 1021px inside a
+   * 325px window and a finger could not pan it — sixteen keys drawn and untouchable. Drawing
+   * what fits is the half of the fix that needs no gesture at all: Major is eight keys and
+   * 307px, Pentatonic is six. See keyboardSpan.ts for why it is degrees + 1 rather than
+   * degrees, and the stylesheet for the panning half that Chromatic still needs.
+   */
+  const keys = Array.from({ length: keysToShow(degrees.length, narrowBoard) }, (_, i) => noteAt(i))
 
   return (
     <section

@@ -3151,7 +3151,25 @@ section[id] {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: color-mix(in oklab, var(--text), transparent 96%);
-  touch-action: none;
+  /**
+   * ⚠️ `pan-x` HERE AND `none` ON THE KEYS, and the split is the whole fix.
+   *
+   * This said `none`, which is right about the keys and was being asked of the board. Dragging
+   * across keys is how a glissando works, and `none` is what stops the browser deciding that
+   * drag was a scroll — but applied to the container it also meant a finger could not pan the
+   * row at all. Confirmed on a phone: the scrollbar is there, and nothing moves it. At 375 the
+   * row is 1021px inside a 325px window, so sixteen keys were drawn and untouchable.
+   *
+   * Touch-action is resolved by intersecting the hit element with its ancestors up to the
+   * scroller, so a gesture that STARTS ON A KEY is `none` and glissandos exactly as before,
+   * while one that starts on the board's own padding gets `pan-x` and scrolls the keys. The
+   * padding below the keys is grown into a real strip at the phone breakpoint, because 0.4rem
+   * is not a thumb.
+   *
+   * The other half of the fix is in `keyboardSpan.ts`: on a phone the room draws one octave
+   * instead of two, so every scale but Chromatic has nothing left to pan.
+   */
+  touch-action: pan-x;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -3171,6 +3189,10 @@ section[id] {
   cursor: pointer;
   /* the browser's own tap highlight fights the held state and looks like a bug on iOS */
   -webkit-tap-highlight-color: transparent;
+  /* ⚠️ THE KEYS OWN THE GESTURE. A drag that begins on a key is a glissando and must never be
+     taken over by the scroller — see the long note on `.inst-keys` for why this moved down
+     here from there. */
+  touch-action: none;
   user-select: none;
   transition:
     background 0.06s ease,
@@ -7887,9 +7909,30 @@ a.cz-msg-author:focus-visible {
   }
 
   /* Thumbs, not cursors: 25 keys at 25px are slivers. Below this the row scrolls
-     sideways, which it already knew how to do. */
+     sideways, which it already knew how to do.
+
+     ⚠️ 2.3rem, NOT 2.4 — nine pixels, and they decide whether a scale needs panning at all.
+     The room draws one octave on a phone now, which is eight keys for Major and every other
+     seven-note mode. At 2.4rem those eight came to 334px inside a 325px window, so one key sat
+     off the edge of the most-used scale on the site; at 2.3rem they fit with room to spare and
+     the keys end up 37.2px rather than 38.4px, because `flex: 1 1 0` grows them back into the
+     space. This is a FLOOR, so it changes nothing wherever there was already room — Pentatonic
+     is still 50.3px. Measured at 375; below 2.3rem buys nothing for these scales and only
+     shrinks Chromatic's. Well clear of the 24px tap floor even at the smallest root size this
+     site uses (2.3 × 13.6 = 31px). */
   .inst-key {
-    min-width: 2.4rem;
+    min-width: 2.3rem;
+  }
+
+  /* A strip under the keys you can put a thumb on.
+     ⚠️ IT IS PADDING, NOT AN ELEMENT, so the native scroller does the panning — there is no
+     drag handler to get wrong, no pointer capture, and nothing that can fight the glissando.
+     The board's own `touch-action: pan-x` applies here because this band is board and not key.
+     Tinted so it reads as a strip rather than as dead space; it only exists at this
+     breakpoint, where the row can still overflow on Chromatic. */
+  .inst-keys {
+    padding-bottom: 1rem;
+    box-shadow: inset 0 -0.8rem 0 color-mix(in oklab, var(--text), transparent 93%);
   }
 
   /* The page ends above the fixed bottom nav rather than behind it — "Bars 2" was
