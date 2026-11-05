@@ -2290,6 +2290,13 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
                 setPanel(!showPanel)
               }}
               aria-expanded={showPanel}
+              /* ⚠️ A NAME AS WELL AS A TITLE. `▾` is not a word, so without this the control is
+                 announced as its own glyph and explained only by a tooltip — which does not
+                 exist on a phone. The shortcut stays in the title and out of the name, because
+                 "(H)" read aloud on every focus is noise; `viz-controls-shut` below already
+                 splits them exactly this way. Found by scripts/mobile-audit.js, which reported
+                 both of these in every room the visualiser floats over. */
+              aria-label={showPanel ? 'Hide the controls' : 'Show the controls'}
               title={showPanel ? 'Hide the controls (H)' : 'Show the controls (H)'}
             >
               {showPanel ? '▴' : '▾'}
@@ -2297,6 +2304,7 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
             <button
               className="btn viz-icon"
               onClick={goFull}
+              aria-label={full ? 'Leave fullscreen' : 'Fullscreen'}
               title={full ? 'Leave fullscreen (F)' : 'Fullscreen (F)'}
             >
               {full ? '⤡' : '⛶'}

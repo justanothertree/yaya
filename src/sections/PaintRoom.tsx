@@ -3325,6 +3325,18 @@ export function PaintRoom() {
                    what you are looking at while you work on it. Marking would push a step that
                    restores nothing, so Undo would appear to do nothing at all. */
                 onClick={() => runLayerOp({ k: 'hide', i, on: !hidden.includes(i) }, true)}
+                /**
+                 * ⚠️ A NAME, AND IT NAMES THE LAYER RATHER THAN THE ACTION. `👁` is not a word,
+                 * so this was announced as its own glyph and explained only by a `title` — which
+                 * is nothing on a phone. Reported by scripts/mobile-audit.js.
+                 *
+                 * The name is STATIC and `aria-pressed` carries the state, which is the way
+                 * round the APG asks for: a toggle whose name flips to "Show" / "Hide" while
+                 * also reporting pressed says the same thing twice and contradicts itself half
+                 * the time. And it says WHICH layer, because a list of five identical eyes is
+                 * five controls called "Hide this layer".
+                 */
+                aria-label={`${nameOf(i)} visible`}
                 title={hidden.includes(i) ? 'Show this layer' : 'Hide this layer'}
               >
                 {hidden.includes(i) ? '🚫' : '👁'}
@@ -3335,6 +3347,10 @@ export function PaintRoom() {
                 <button
                   className={'paint-layer-eye paint-layer-hold' + (layerHolds(i) ? ' is-on' : '')}
                   aria-pressed={layerHolds(i)}
+                  /* same again, and the sweep could NOT have found this one — it only exists
+                     while an animation is open, and a control behind a state is a control the
+                     audit never reaches. Worth remembering when a clean report feels complete. */
+                  aria-label={`Keep ${nameOf(i)} in every frame`}
                   onClick={() => holdLayer(i, !layerHolds(i))}
                   disabled={!strokes.some((k) => (k.l ?? 0) === i)}
                   title={
