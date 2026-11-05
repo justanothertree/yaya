@@ -2389,7 +2389,14 @@ function spiral(): Visual {
   }
 }
 
-const MAKERS: Record<VisualId, () => Visual> = {
+/**
+ * ⚠️ EXPORTED SO THE PICKER AND THE IMPLEMENTATIONS CAN BE COMPARED. `Record<VisualId, …>` makes
+ * the compiler insist every id in the type has a maker — but `VISUALS` is a plain ARRAY of
+ * tuples, and an array does not have to be exhaustive. So a mode can exist, be typed, have a
+ * maker, and simply never appear in the picker: present, working, and unchoosable, with nothing
+ * to notice it but somebody counting. `pickers.test.ts` counts.
+ */
+export const MAKERS: Record<VisualId, () => Visual> = {
   bars,
   warp,
   landscape,

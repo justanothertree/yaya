@@ -1708,7 +1708,8 @@ function magnet(host: HTMLElement, x: number, y: number) {
   track(host, nodes, anims)
 }
 
-const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
+/** Exported for the same reason as visualModes' MAKERS — see `pickers.test.ts`. */
+export const BUILDERS: Record<FxStyle, (host: HTMLElement, x: number, y: number) => void> = {
   sparks,
   sonar,
   pop,
