@@ -91,15 +91,84 @@ export function progressionEvents(
     return { events: [], len: Math.max(0, loopLen) }
   const slot = loopLen / p.degrees.length
   const events: LoopEvent[] = []
-  p.degrees.forEach((degree, i) => {
-    /* 1-based in the table because that is how musicians write them; 0-based here */
-    const step = Math.max(0, Math.round(degree) - 1)
-    const midi = BASS + root + Math.floor(step / L) * 12 + scaleDegrees[step % L]
+  p.degrees.forEach((_, i) => {
     const t = i * slot
-    for (const note of chordNotes('triad', midi, scaleDegrees, root)) {
+    for (const note of triadAt(p, i, scaleDegrees, root, BASS)) {
       events.push({ t, midi: note, on: true })
       events.push({ t: t + slot * HOLD, midi: note, on: false })
     }
+  })
+  events.sort((a, b) => a.t - b.t)
+  return { events, len: loopLen }
+}
+
+/**
+ * The chord on step `i`, from `base`.
+ *
+ * ⚠️ SHARED BY THE PAD AND THE BASS, which is the whole reason it is a function. A bassline
+ * that worked out its own roots would be a second copy of this arithmetic, free to disagree the
+ * first time either changed — and the way it would disagree is the bass playing a different
+ * chord from the pad above it, which is the single most audible wrong thing a backing can do.
+ */
+function triadAt(
+  p: ChordPattern,
+  i: number,
+  scaleDegrees: readonly number[],
+  root: number,
+  base: number,
+): number[] {
+  const L = scaleDegrees.length
+  /* 1-based in the table because that is how musicians write them; 0-based here */
+  const step = Math.max(0, Math.round(p.degrees[i]) - 1)
+  const midi = base + root + Math.floor(step / L) * 12 + scaleDegrees[step % L]
+  return chordNotes('triad', midi, scaleDegrees, root)
+}
+
+/** Where a bassline sits — an octave below the pad, which is where a bass is. */
+const BASS_LOW = 36
+
+/**
+ * A bassline that follows the same progression.
+ *
+ * ⚠️ IT TAKES THE PATTERN, NOT THE LAYER, so it cannot disagree with the chords: the room looks
+ * up which progression is currently loaded and hands the same one here. The alternative — a
+ * second picker letting somebody choose Fifties for the bass and Wistful for the pad — is a
+ * backing track at war with itself, and nothing on screen would explain why it sounded wrong.
+ *
+ * ⚠️ ROOT THEN FIFTH, which is the oldest bassline there is and the reason it is not just the
+ * pad's bottom note an octave down. A held root doubles what the pad already says; moving to
+ * the fifth halfway through the bar is what makes it a PART — and it lands on the chord changes
+ * at any tempo, because it is measured in the slot rather than in beats.
+ */
+export function basslineEvents(
+  p: ChordPattern,
+  loopLen: number,
+  scaleDegrees: readonly number[],
+  root: number,
+): { events: LoopEvent[]; len: number } {
+  if (!scaleDegrees.length || !(loopLen > 0) || p.degrees.length === 0)
+    return { events: [], len: Math.max(0, loopLen) }
+  const slot = loopLen / p.degrees.length
+  const events: LoopEvent[] = []
+  p.degrees.forEach((_, i) => {
+    const triad = triadAt(p, i, scaleDegrees, root, BASS_LOW)
+    /**
+     * The root, then the chord's top note dropped an octave — its fifth in a plain triad, and
+     * whatever the scale made of that otherwise, so the bass is always inside the harmony.
+     *
+     * ⚠️ THE `- 12` IS NOT TIDINESS. Without it the second note is the fifth ABOVE the root,
+     * which for the sixth degree lands at 52 while the pad's lowest note is 48 — the bass
+     * crossing above the chords it is supposed to sit under. Caught by a test asserting
+     * exactly that and failing with `expected 52 to be less than 48`. Dropping the octave is
+     * also the more idiomatic line: root, then the fifth below it, which is what a bass player
+     * does without thinking.
+     */
+    const notes = [triad[0], triad[triad.length - 1] - 12]
+    notes.forEach((midi, half) => {
+      const t = i * slot + half * (slot / 2)
+      events.push({ t, midi, on: true })
+      events.push({ t: t + (slot / 2) * HOLD, midi, on: false })
+    })
   })
   events.sort((a, b) => a.t - b.t)
   return { events, len: loopLen }

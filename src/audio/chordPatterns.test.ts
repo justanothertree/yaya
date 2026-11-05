@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_PATTERNS, progressionEvents } from './chordPatterns'
+import { CHORD_PATTERNS, basslineEvents, progressionEvents } from './chordPatterns'
 import { nameChord } from './chordName'
 import { SCALES, degreesOf } from './scales'
 
@@ -190,5 +190,75 @@ describe('the edges', () => {
     const penta = degreesOf('penta')
     const { events } = progressionEvents(CHORD_PATTERNS.find((p) => p.id === 'four')!, 8, penta, 0)
     expect(chordsAt(events).every((n) => n !== null)).toBe(true)
+  })
+})
+
+describe('a bassline that follows the chords', () => {
+  /**
+   * ⚠️ THE PROPERTY THAT MATTERS IS AGREEMENT. A bass playing a different chord from the pad
+   * above it is the single most audible wrong thing a backing can do, and it is exactly what a
+   * second copy of the degree arithmetic would eventually produce. Both come from `triadAt`,
+   * and these tests check the result rather than trusting that.
+   */
+  it('plays the root of each chord the pad is playing', () => {
+    const p = CHORD_PATTERNS.find((x) => x.id === 'four')!
+    const pad = progressionEvents(p, 8, major, 0).events.filter((e) => e.on)
+    const bass = basslineEvents(p, 8, major, 0).events.filter((e) => e.on)
+    const padRootAt = (t: number) => Math.min(...pad.filter((e) => e.t === t).map((e) => e.midi))
+    for (const slot of [0, 2, 4, 6]) {
+      const low = Math.min(...bass.filter((e) => e.t === slot).map((e) => e.midi))
+      /* same pitch class as the chord above it, just lower */
+      expect((low % 12) + 12, `slot ${slot}`).toBe((padRootAt(slot) % 12) + 12)
+      expect(low, `slot ${slot}`).toBeLessThan(padRootAt(slot))
+    }
+  })
+
+  it('agrees with the pad in every key and every seven-note scale', () => {
+    for (const [sid, label, degrees] of SCALES) {
+      if (sid === 'chromatic' || degrees.length < 7) continue
+      for (const p of CHORD_PATTERNS)
+        for (let root = 0; root < 12; root += 4) {
+          const pad = progressionEvents(p, 8, degrees, root).events.filter((e) => e.on)
+          const bass = basslineEvents(p, 8, degrees, root).events.filter((e) => e.on)
+          const slot = 8 / p.degrees.length
+          for (let i = 0; i < p.degrees.length; i++) {
+            const t = i * slot
+            const padPcs = new Set(
+              pad.filter((e) => e.t === t).map((e) => ((e.midi % 12) + 12) % 12),
+            )
+            for (const e of bass.filter((x) => x.t >= t && x.t < t + slot))
+              expect(padPcs, `${p.name} ${label} key ${root} at ${t}`).toContain(
+                ((e.midi % 12) + 12) % 12,
+              )
+          }
+        }
+    }
+  })
+
+  it('moves rather than holding, so it is a part and not a doubled root', () => {
+    const p = CHORD_PATTERNS[0]
+    const on = basslineEvents(p, 8, major, 0).events.filter((e) => e.on)
+    /* two notes per chord, not one */
+    expect(on).toHaveLength(p.degrees.length * 2)
+    const firstSlot = on.filter((e) => e.t < 2).map((e) => e.midi)
+    expect(new Set(firstSlot).size, 'the second note is a different pitch').toBe(2)
+  })
+
+  it('sits below the chords it follows', () => {
+    const p = CHORD_PATTERNS[0]
+    const pad = progressionEvents(p, 8, major, 0).events.map((e) => e.midi)
+    const bass = basslineEvents(p, 8, major, 0).events.map((e) => e.midi)
+    expect(Math.max(...bass)).toBeLessThan(Math.min(...pad))
+  })
+
+  it('pairs every note-on with a note-off, and stays inside the lap', () => {
+    const { events, len } = basslineEvents(CHORD_PATTERNS[0], 8, major, 0)
+    expect(events.filter((e) => e.on)).toHaveLength(events.filter((e) => !e.on).length)
+    expect(Math.max(...events.map((e) => e.t))).toBeLessThan(len)
+  })
+
+  it('gives nothing for a loop with no length or a scale with no degrees', () => {
+    expect(basslineEvents(CHORD_PATTERNS[0], 0, major, 0).events).toEqual([])
+    expect(basslineEvents(CHORD_PATTERNS[0], 8, [], 0).events).toEqual([])
   })
 })

@@ -56,7 +56,7 @@ import {
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
 import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
-import { CHORD_PATTERNS, progressionEvents } from '../audio/chordPatterns'
+import { CHORD_PATTERNS, basslineEvents, progressionEvents } from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import {
@@ -126,6 +126,7 @@ import {
   MAX_LAYERS,
   splitDrumLayer,
   beatPatternOf,
+  bassPatternOf,
   chordPatternOf,
   soleDrumPiece,
   setBars,
@@ -2132,6 +2133,57 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 </button>
               )
             })}
+          </div>
+          {/**
+           * ⚠️ ONE BUTTON THAT FOLLOWS, NOT A SECOND PICKER. A bassline has to play the same
+           * progression as the pad above it — a bass on Fifties under chords on Wistful is a
+           * backing track at war with itself, and nothing on screen would explain why it
+           * sounded wrong. So this reads whichever progression is loaded rather than offering
+           * a choice that could disagree, and it has nothing to follow until there is one.
+           */}
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Bass</span>
+            {(() => {
+              const live = loop.layers.map((l) => chordPatternOf(l)).find((x) => x) ?? null
+              const p = CHORD_PATTERNS.find((x) => x.id === live)
+              const on = loop.layers.some((l) => bassPatternOf(l) !== null)
+              return (
+                <button
+                  className={'btn' + (on ? '' : ' btn-ghost')}
+                  aria-pressed={on}
+                  disabled={
+                    !p ||
+                    (loop.layers.length >= MAX_LAYERS &&
+                      !loop.layers.some((l) => bassPatternOf(l) !== null))
+                  }
+                  onClick={() => {
+                    if (!p) return
+                    const { events, len } = basslineEvents(
+                      p,
+                      loopLength(),
+                      scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+                      scale === 'chromatic' ? 0 : root,
+                    )
+                    if (
+                      !addPatternLayer(events, len, p.id, {
+                        mark: '-bass:',
+                        instrument: 'bass',
+                        gain: 0.5,
+                      })
+                    )
+                      return
+                    if (!loop.playing) startLoop()
+                  }}
+                  title={
+                    p
+                      ? `A root-and-fifth bass under ${p.name}`
+                      : 'Pick some chords first — the bass follows them'
+                  }
+                >
+                  Follow the chords
+                </button>
+              )
+            })()}
           </div>
           <p className="muted inst-beats-lede">
             {/* ⚠️ THE LEDE HAD TO CHANGE WITH THE PANEL. It said "picking one swaps the

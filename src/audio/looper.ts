@@ -1701,12 +1701,14 @@ const BEAT_MARK = '-beat:'
  * live side by side, and auditioning either leaves the other alone.
  */
 const CHORD_MARK = '-chords:'
+const BASS_MARK = '-bass:'
 const markedWith = (l: Layer, mark: string): string | null => {
   const at = l.id.indexOf(mark)
   return at === -1 ? null : l.id.slice(at + mark.length)
 }
 export const beatPatternOf = (l: Layer): string | null => markedWith(l, BEAT_MARK)
 export const chordPatternOf = (l: Layer): string | null => markedWith(l, CHORD_MARK)
+export const bassPatternOf = (l: Layer): string | null => markedWith(l, BASS_MARK)
 
 /**
  * ⚠️ PICKING A BEAT SWAPS THE BEAT, it does not add one.
