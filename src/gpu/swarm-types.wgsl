@@ -20,6 +20,7 @@ struct Params {
   size: f32, // a dot's half-width in clip units
   glow: f32, // per-dot brightness, so a million dots do not burn the screen white
   count: u32,
+  palette: u32, // 0 speed, 1 rainbow by heading, 2 fire
 }
 
 struct Particle {

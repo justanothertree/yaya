@@ -161,10 +161,14 @@ export function AudioDock({ onOpen }: { onOpen: () => void }) {
   /* ⚠️ clamped on every render, not only on drop: the window can be resized between visits */
   /* a spot you chose always wins over the one measured from the nav */
   const at = spot ?? navSpot
+  /* ⚠️ by the dock's REAL height once it has one. This said 44, which was its height once; with
+     touch-sized controls it is taller than that, and a spot saved low on a tall window would have
+     left its bottom edge — and its buttons — under the screen's. */
+  const tall = dock.current?.offsetHeight || 44
   const placed = at
     ? {
         x: Math.max(4, Math.min(window.innerWidth - 120, at.x)),
-        y: Math.max(4, Math.min(window.innerHeight - 44, at.y)),
+        y: Math.max(4, Math.min(window.innerHeight - tall - 4, at.y)),
       }
     : null
   const dockProps = {

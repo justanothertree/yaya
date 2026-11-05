@@ -12,7 +12,7 @@
 struct Dot {
   @builtin(position) clip: vec4f,
   @location(0) uv: vec2f,
-  @location(1) heat: f32,
+  @location(1) color: vec3f,
 }
 
 // two triangles per dot
@@ -29,8 +29,25 @@ fn dot_vertex(@builtin(vertex_index) v: u32) -> Dot {
   var o: Dot;
   o.clip = vec4f((q.pos.x + c.x * P.size) / P.aspect, q.pos.y + c.y * P.size, 0.0, 1.0);
   o.uv = c;
-  o.heat = clamp(length(q.vel) / 1.5, 0.0, 1.0);
+  o.color = shade(q.vel);
   return o;
+}
+
+// A dot's colour, worked out once per vertex rather than per pixel: it depends only on the
+// particle, and a dot is a few pixels across.
+fn shade(vel: vec2f) -> vec3f {
+  let heat = clamp(length(vel) / 1.5, 0.0, 1.0);
+  if (P.palette == 1u) {
+    // rainbow by heading: the hue is the direction of travel, so every stream in the current
+    // shows as one colour and a whirl as the whole wheel
+    let a = atan2(vel.y, vel.x) / 6.2831853;
+    return (0.55 + 0.45 * cos(6.2831853 * (a + vec3f(0.0, 0.33, 0.67)))) * (0.45 + 0.55 * heat);
+  }
+  if (P.palette == 2u) {
+    // fire: slow is a dark ember, fast burns through orange to near white
+    return vec3f(1.0, 0.25 + 0.65 * heat, 0.05 + 0.6 * heat * heat) * (0.35 + 0.65 * heat);
+  }
+  return mix(vec3f(0.25, 0.4, 1.0), vec3f(1.0, 0.5, 0.22), heat);
 }
 
 @fragment
@@ -40,7 +57,5 @@ fn dot_fragment(d: Dot) -> @location(0) vec4f {
     discard;
   }
   let fall = (1.0 - r) * (1.0 - r);
-  let cool = vec3f(0.25, 0.4, 1.0);
-  let warm = vec3f(1.0, 0.5, 0.22);
-  return vec4f(mix(cool, warm, d.heat) * fall * P.glow, 1.0);
+  return vec4f(d.color * fall * P.glow, 1.0);
 }
