@@ -14753,7 +14753,14 @@ a.cz-msg-author:focus-visible {
   outline-offset: 3px;
   border-radius: 4px;
 }
-@media (max-width: 40rem) {
+/* ⚠️ A WIDTH QUERY IS NOT A POINTER, and this rule had the same hole the fields rule had until
+   16 Oct. The comment below is right about why the link needs a fingertip -- it is the only way
+   out of a demo -- and `max-width: 40rem` gave that fingertip to a phone and to nobody else.
+   Measured at 810 with the coarse-pointer rules applied: all SEVEN of these links were 21px
+   tall, under the WCAG 2.5.8 floor of 24, on a tablet held in the hand. The rows already stand
+   40px tall below 640, so nothing here is a new look; it is the same look reaching the device
+   the gate forgot. */
+@media (max-width: 40rem), (pointer: coarse) {
   /* the only way out of a demo, so it gets a fingertip rather than an 0.84rem line of text */
   .demo-go {
     min-height: 40px;
