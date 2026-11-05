@@ -1,4 +1,7 @@
 import { INSTRUMENTS, fxSnapshot, setKnob, type Fx, type InstrumentId } from './synth'
+import { CHORDS, type ChordId } from './chords'
+import { STRUMS, type StrumId } from './strum'
+import { ARPS, type ArpId } from './arp'
 import { kitName, kitNum, kitPick, kitStore } from '../ui/savedKits'
 
 /**
@@ -21,9 +24,29 @@ export type InstKit = {
   scale: string
   root: number
   fx: Fx
+  /**
+   * How a key is played, as opposed to what it sounds like.
+   *
+   * ⚠️ FOUR SETTINGS THAT ARRIVED AFTER THIS TYPE DID, and a rig quietly stopped describing the
+   * sound the day the first of them shipped. "The same instrument, dry" and "the same
+   * instrument, drenched" were the two things a kit was built to tell apart; "the same
+   * instrument, as a swung arpeggiated seventh" is a bigger difference than either and was not
+   * being saved at all. Applying a rig set the scale and the effects and left the chord and the
+   * arpeggio wherever they happened to be, so the rig did not reproduce what you kept.
+   *
+   * ⚠️ OPTIONAL ON THE WAY IN. Every kit saved before today has none of them, and the honest
+   * default is off — which is exactly how those kits sounded when they were saved.
+   */
+  chord: ChordId
+  strum: StrumId
+  arp: ArpId
+  swing: boolean
 }
 
 const INST_IDS = INSTRUMENTS.map(([id]) => id)
+const CHORD_IDS = CHORDS.map(([id]) => id)
+const STRUM_IDS = STRUMS.map(([id]) => id)
+const ARP_IDS = ARPS.map(([id]) => id)
 
 /**
  * Read a kit without ever throwing.
@@ -53,6 +76,12 @@ export function readInstKit(v: unknown, scaleIds: readonly string[]): InstKit | 
       tone: kitNum(fx.tone, 0, 1, 0.5),
       glide: kitNum(fx.glide, 0, 1, 0),
     },
+    /* validated against the real lists, so a kit naming a shape that has since been removed
+       becomes "off" rather than a value nothing handles */
+    chord: kitPick(CHORD_IDS, o.chord, 'off'),
+    strum: kitPick(STRUM_IDS, o.strum, 'off'),
+    arp: kitPick(ARP_IDS, o.arp, 'off'),
+    swing: o.swing === true,
   }
 }
 
@@ -71,9 +100,16 @@ export const captureFx = (): Fx => fxSnapshot()
 
 /** Put a kit's effects on the synth, through the same setter the sliders use. */
 export function applyFx(fx: Fx) {
-  setKnob('echo', fx.echo)
-  setKnob('echoTime', fx.echoTime)
-  setKnob('space', fx.space)
-  setKnob('vibrato', fx.vibrato)
-  setKnob('glide', fx.glide)
+  /**
+   * ⚠️ `tone` WAS MISSING HERE FOR AS LONG AS IT EXISTED, which is the whole reason this
+   * function now has a test. `fxSnapshot` saved it and `readInstKit` validated it, so a rig
+   * carried the tone faithfully in storage and then silently ignored it on the way back out —
+   * two of the three paths updated and the third forgotten. Measured: save at 0.85, move the
+   * slider to 0, apply the rig, and the knob is still 0 while echo comes back correctly.
+   *
+   * The loop below is deliberate. A list of five setKnob calls is a list somebody has to
+   * remember to extend; walking the object means the next knob added to `Fx` is applied by
+   * this function the moment it exists.
+   */
+  for (const k of Object.keys(fx) as Array<keyof Fx>) setKnob(k, fx[k])
 }

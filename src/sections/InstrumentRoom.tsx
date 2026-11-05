@@ -1577,7 +1577,20 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         <KitBar
           store={instKits}
           placeholder="Name this rig"
-          capture={(name) => ({ name, inst, octave, scale, root, fx: captureFx() })}
+          capture={(name) => ({
+            name,
+            inst,
+            octave,
+            scale,
+            root,
+            fx: captureFx(),
+            /* ⚠️ HOW IT IS PLAYED, NOT ONLY WHAT IT SOUNDS LIKE. A rig that remembered the
+               reverb and forgot the arpeggio did not reproduce the thing you kept. */
+            chord,
+            strum,
+            arp,
+            swing,
+          })}
           apply={(k: InstKit) => {
             hush()
             setInst(k.inst)
@@ -1585,13 +1598,23 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             setScale(k.scale)
             setRoot(k.root)
             applyFx(k.fx)
+            setChord(k.chord)
+            setStrum(k.strum)
+            setArp(k.arp)
+            setSwing(k.swing)
           }}
           describe={(k) =>
             [
               INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
               SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
+              /* only when it is doing something — "One note" on every rig is a word that
+                 distinguishes nothing */
+              k.chord !== 'off' ? (CHORDS.find(([id]) => id === k.chord)?.[1] ?? k.chord) : null,
+              k.arp !== 'off' ? (ARPS.find(([id]) => id === k.arp)?.[1] ?? k.arp) : null,
               fxWord(k.fx),
-            ].join(' · ')
+            ]
+              .filter(Boolean)
+              .join(' · ')
           }
         />
       </div>
