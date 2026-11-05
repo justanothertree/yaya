@@ -80,6 +80,33 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   are a density wave: every star follows an ellipse turned a little further the further out it is,
   so the arms hold their shape while every star moves through them.
 
+## Batch 3 — a toolbox
+
+Each toy here is chosen to be different from the seven above, and from each other, in three ways:
+what it does, how you touch it, and how the GPU draws it — so the batch reads as a set of
+interactions and GPU patterns that can be lifted into the rest of the site.
+
+| Toy      | Interaction                                                              | GPU technique                                                                                          | Reusable pattern                                                                      |
+| -------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets | "every action is a warp of the whole image" — any number of edits per frame, in order |
+
+- **Marbling** — paper marbling after Jaffer's _Mathematical Marbling_. Tap to float a drop of ink
+  in the next colour of the set; hold, and it keeps spreading, pushing everything round it outward.
+  Stylus and Comb drag the ink into feathers and chevrons; the comb's tines reach right across the
+  tray, as a real one does. ✨ Marble plays the classic recipe — rows of drops, a rake one way, a
+  comb back, a stylus wave — in front of you; four ink sets. Keys: D, S, C tools, M marble, X
+  clean sheet, 1–4 inks.
+  Technique: every action is an exact, area-preserving warp of the whole tray, written INVERTED —
+  for each pixel, where did the ink here come from — so nothing tears. A drop's inverse is
+  `a + (q − a)·√(1 − r²/|q − a|²)`; a tine shears along its stroke by `|b − a|·λ/(dist + λ)`.
+  Actions queue into a list, each gets its own 256-byte uniform slot (a dynamic offset), and a
+  frame applies up to 32 of them in order, ping-ponging two textures — which is also why many
+  fingers just work. Beyond the tray's edge is clean paper, not the edge's colour (clamping smeared
+  the last column of ink inward as a solid block).
+  Measured on the real shader: a red drop covers 3,217 px of ink against πr² = 3,217; a blue drop
+  beside it pushes it aside and leaves it at 3,206; a stylus and a comb keep about 90% — what is
+  lost is ink stretched thinner than a pixel and ink pushed past the tray's edge.
+
 ### How the room is built
 
 - `src/gpu/LabStage.tsx` owns everything that is not a demo: the adapter and device, a sentence for
@@ -184,6 +211,8 @@ Batch 2:
       watch it rise
 - [ ] Galaxy — do the arms read as arms on a phone at 128K? Drag to tilt it nearly edge on; play
       a song in Music and come back to watch it flare on the beat
+- [ ] Marbling — does a held drop feel like ink spreading? Comb across a marbled sheet; two
+      fingers with the stylus; does the paper stay crisp, or soften too fast after many strokes?
 - [ ] the picker on a phone: a dropdown with ‹ › either side (batch 3) — measured at 375 it lets
       328 of the canvas's 412 px show on the first screen, where seven buttons in two rows let 275
 

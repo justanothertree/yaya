@@ -4,6 +4,7 @@ import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { MarbleDemo } from '../gpu/MarbleDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -78,6 +79,12 @@ const DEMOS: readonly {
     Demo: GalaxyDemo,
     name: 'Galaxy',
     line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
+  },
+  {
+    id: 'marble',
+    Demo: MarbleDemo,
+    name: 'Marbling',
+    line: 'Marbling — float drops of ink on water, then pull them into feathered patterns with a stylus or comb.',
   },
 ]
 
