@@ -3,8 +3,13 @@
 The state of `#lab`, the WebGPU room, at the end of the autonomous demo loop. The commits carry
 the reasoning; this is the map.
 
-**Nothing here is live until PR #17 is merged** — every commit below is on
-`claude/relaxed-archimedes-oqxxq0`, and evancook.dev deploys from `main`.
+**Nothing here is live until it is merged**, and evancook.dev deploys from `main`. There are two
+batches:
+
+- **Batch 1 — PR #17**, branch `claude/relaxed-archimedes-oqxxq0`: the room, Swarm, Life, Fluid
+  and Music, and the round that made them playful. Being tried on a phone.
+- **Batch 2 — its own draft PR**, branch `claude/lab-toys-2`: new toys, below. It starts from
+  `main` and merges #17's branch in, so it shows #17's commits too until #17 lands.
 
 ## What shipped
 
@@ -42,6 +47,36 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   Space, M bars/ring, 0 hold still, B beat on/off. Leaving releases the mic and leaves music playing, as the
   Visualiser does.
 
+## Batch 2 — new toys
+
+| Toy          | One line on the page                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| Kaleidoscope | Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.    |
+| Lava lamp    | Lava lamp — wax heated by the bulb rises, cools at the top and sinks. Reach in and stir. |
+| Galaxy       | Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.    |
+
+- **Kaleidoscope** — draw anywhere and it repeats 4, 6, 8 or 12 ways round the middle, with
+  Mirror reflecting each wedge too. Tap for a dot; ✨ Doodle draws a rose curve by itself (and
+  opens the toy, so it is never an empty black box). Each finger is its own pen. The palettes are
+  Fluid's, now shared in `palettes.ts`; Fine / Medium / Bold brushes; Fade from keep-everything
+  to quick. Keys: Space, S symmetry, M mirror, D doodle, C clear, 1–4 colour. The painting is kept
+  as drawn and the SCREEN samples it at every turn — so a stroke across a wedge's edge just works,
+  because nothing was folded.
+- **Lava lamp** — the bulb heats wax at the bottom; warm wax rises, cools at the top and sinks
+  (tested as exactly that: a lone blob makes four round trips a minute). Tap a blob to warm it,
+  grab one and fling it, 🫨 Shake, Heat from off to double, Little / Some / Lots of wax, and four
+  colours. Keys: Space, K shake, 1–4 colour. The physics is a dozen blobs on the CPU; the GPU
+  draws them as metaballs, so two blobs that meet grow a neck and merge — every pixel asks every
+  blob, which is the expensive part.
+- **Galaxy** — a spiral of up to 256K stars (128K on a touch screen). Drag across to turn it, up
+  and down to tilt it; Face on; Spin; Arms (how tightly they wind — 0 shows the bar they come
+  from). With 🎵 Listen on (the default — it only reads what the site is already playing, it never
+  asks for the mic) the galaxy breathes with the loudness and every kick flares the stars, through
+  the same `ear.ts` as Music and the Swarm. Keys: Space, arrows, 0 face on, L listen. Each star is
+  worked out in the vertex shader from its own index — there are no buffers at all — and the arms
+  are a density wave: every star follows an ellipse turned a little further the further out it is,
+  so the arms hold their shape while every star moves through them.
+
 ### How the room is built
 
 - `src/gpu/LabStage.tsx` owns everything that is not a demo: the adapter and device, a sentence for
@@ -70,6 +105,11 @@ GPU will be one to two orders of magnitude faster, and I have not measured one.
 | Life, one generation, 5K cells |            2.2 |
 | Fluid, whole pipeline          |           51.8 |
 | Music                          |           11.8 |
+| Kaleidoscope, 8-fold           |           21.2 |
+| Kaleidoscope, 12-fold mirrored |           38.2 |
+| Lava lamp, 16 blobs            |           11.8 |
+| Galaxy, 64K stars              |           51.6 |
+| Galaxy, 128K stars             |          107.1 |
 
 - **Swarm scales with count, as expected**, and its draw dominates. The draw is deliberately NOT
   instanced: 32K four-vertex instances took 870 ms where one plain draw of 6 × count vertices took
@@ -116,6 +156,34 @@ The "What your GPU reports" fold on the page shows the visitor's own adapter, li
 - Safari and Firefox
 - real-GPU frame rates (the fps badge on the page will say)
 - multi-touch beyond Fluid: Swarm, Life and Music follow one pointer
+
+## Phone checklist
+
+Nobody has seen any of this on a real screen: headless Chromium cannot present a WebGPU canvas.
+
+Batch 1 (#17):
+
+- [ ] every demo appears at all
+- [ ] Swarm — fps at 128K and 512K; Rainbow reads as coloured streams; with 🎵 Listen on and a
+      song playing, does a steady kick leave the middle too hollow?
+- [ ] Life — tap Glider gun and gliders stream out; patterns land under the finger
+- [ ] Fluid — two or three fingers stir at once; a tap blossoms; the page still scrolls when a
+      swipe starts off the canvas
+- [ ] Music — 🎤 Mic asks, the bars move, and the mic light goes off on leaving the Lab; with a
+      song playing, kicks flash in time and Stop music works
+- [ ] the AudioDock's ⏸ and ⏹ are comfortable under a thumb
+
+Batch 2:
+
+- [ ] Kaleidoscope — the opening doodle draws itself; two fingers draw two patterns; 12-fold with
+      Mirror on stays smooth (it samples the painting 24 times a pixel)
+- [ ] Lava lamp — does it look like wax rather than fog? Grab a blob and fling it; tap one and
+      watch it rise
+- [ ] Galaxy — do the arms read as arms on a phone at 128K? Drag to tilt it nearly edge on; play
+      a song in Music and come back to watch it flare on the beat
+- [ ] with seven demos the picker is two rows on a phone, and on a first load at 375 only 275 of the
+      canvas's 412 px (two thirds) shows above the bottom bar — is that enough, or should the
+      picker become a select?
 
 ## What to try next
 

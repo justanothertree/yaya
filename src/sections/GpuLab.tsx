@@ -1,5 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
+import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { KaleidoDemo } from '../gpu/KaleidoDemo'
+import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -34,6 +37,21 @@ const DEMOS = [
     id: 'music',
     name: 'Music',
     line: 'Music visual — your mic, a file or the instrument as bars or a ring, drawn into a trail.',
+  },
+  {
+    id: 'kaleido',
+    name: 'Kaleidoscope',
+    line: 'Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.',
+  },
+  {
+    id: 'lava',
+    name: 'Lava lamp',
+    line: 'Lava lamp — wax heated by the bulb rises, cools at the top and sinks. Reach in and stir.',
+  },
+  {
+    id: 'galaxy',
+    name: 'Galaxy',
+    line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
   },
 ] as const
 
@@ -131,6 +149,9 @@ export function GpuLab() {
       {demo === 'life' && <LifeDemo key="life" {...props} />}
       {demo === 'fluid' && <FluidDemo key="fluid" {...props} />}
       {demo === 'music' && <MusicDemo key="music" {...props} />}
+      {demo === 'kaleido' && <KaleidoDemo key="kaleido" {...props} />}
+      {demo === 'lava' && <LavaDemo key="lava" {...props} />}
+      {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
