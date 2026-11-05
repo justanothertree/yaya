@@ -100,9 +100,19 @@ export function toSong(
 }
 
 /**
- * ⚠️ Every entry checked, and anything unrecognised becomes silence rather than a bar index the
- * take does not have. A plan is a list of numbers from a file; pointing one at bar 900 of a
- * two-bar take would schedule nothing and look like a bug in the sequencer.
+ * ⚠️ Every entry checked: anything that is not a non-negative whole number becomes silence.
+ *
+ * ⚠️ CORRECTED — THIS DOES NOT BOUND THE INDEX AGAINST THE TAKE, AND USED TO CLAIM IT DID. The
+ * note here read "anything unrecognised becomes silence rather than a bar index the take does not
+ * have", and `plan: [0, 900, 7]` was measured coming back out of both forms as `[0, 900, 7]`. It
+ * could not do otherwise: how many parts a take holds depends on the ROOM'S TEMPO, which a file
+ * does not carry and this module has no business knowing. A plan saved at 120bpm is a different
+ * number of parts at 60.
+ *
+ * So the bound lives where the tempo does — `partAt` in arrange.ts, asked by the scheduler and by
+ * the track view, which is the fix for the half of this that WAS a bug: the picture drew every
+ * stored index as a filled cell and titled itself "plays part 2 of 1" while the scheduler played
+ * silence.
  */
 function readPlan(v: unknown): (number | null)[] | undefined {
   if (!Array.isArray(v)) return undefined

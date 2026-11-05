@@ -12353,6 +12353,21 @@ a.cz-msg-author:focus-visible {
   outline: 2px solid var(--accent, #7c6af7);
   outline-offset: 1px;
 }
+/**
+ * ⚠️ A SLOT HOLDING A PART THE TAKE NO LONGER HAS — see arrange.ts. It is silent, so it must not
+ * read as filled; it still holds a number somebody wrote, so it must not read as empty either.
+ * A dashed outline and the part number dimmed: visibly "there is something here that is not
+ * playing", which is the one thing the row could not previously say.
+ *
+ * ⚠️ NOT COLOUR ALONE. The number stays on the face and the border style changes, so this is
+ * legible without distinguishing hues — the cells are 12px and the row is read at a glance.
+ */
+.inst-bar-cell.is-lost {
+  border-style: dashed;
+  border-color: var(--muted, #8b8b9a);
+  color: var(--muted, #8b8b9a);
+  background: transparent;
+}
 @media (hover: none) and (pointer: coarse) {
   .inst-bar-cell {
     min-width: 1.9rem;

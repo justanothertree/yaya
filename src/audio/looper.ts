@@ -7,6 +7,7 @@ import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
+import { partAt, partsIn } from './arrange'
 
 /**
  * A loop you play into, and then play over.
@@ -619,7 +620,10 @@ function scheduleWindow(from: number, to: number) {
        * moves to the second one when somebody arranges it.
        */
       if (layer.plan) {
-        const takeBars = Math.max(1, Math.round(own / barLen))
+        /* ⚠️ the SAME call the track view draws from — see arrange.ts. These two numbers used to
+           be worked out separately, and when they disagreed the picture showed a bar playing
+           that the scheduler was skipping. */
+        const takeBars = partsIn(own, state.bpm, BEATS_PER_BAR)
         /**
          * ⚠️ WHICH BAR AN EVENT BELONGS TO IS THE BAR ITS NOTE STARTED IN, not the bar the
          * event itself falls in — and getting that wrong is why arranged takes held notes for
@@ -655,8 +659,8 @@ function scheduleWindow(from: number, to: number) {
           }
         }
         for (let b = 0; b < state.bars; b++) {
-          const src = layer.plan[b]
-          if (src == null || src < 0 || src >= takeBars) continue
+          const src = partAt(layer.plan, b, takeBars)
+          if (src == null) continue
           const slot = base + b * barLen
           if (slot > to || slot + barLen < from) continue
           for (let i = 0; i < layer.events.length; i++) {
@@ -1446,8 +1450,7 @@ export function toggleLayerBar(id: string, bar: number) {
  * How many bars of its own a take holds — the blocks there are to arrange.
  */
 export function takeBars(l: Layer): number {
-  const barLen = (60 / state.bpm) * BEATS_PER_BAR
-  return Math.max(1, Math.round(Math.max(0.05, l.len) / barLen))
+  return partsIn(l.len, state.bpm, BEATS_PER_BAR)
 }
 
 /**
@@ -1462,6 +1465,40 @@ export function layerPlan(l: Layer): (number | null)[] {
   const tb = takeBars(l)
   if (l.plan) return Array.from({ length: n }, (_, i) => l.plan?.[i] ?? null)
   return Array.from({ length: n }, (_, i) => (l.play?.[i] === false ? null : i % tb))
+}
+
+/**
+ * The same row, as it will actually SOUND.
+ *
+ * ⚠️ TWO FUNCTIONS BECAUSE THE BOUND MUST NOT REACH THE EDITORS. `layerPlan` is the arrangement
+ * somebody wrote, and `moveLayerBar` and `toggleLayerSlot` both build the next plan from it — so
+ * applying the bound there would COMMIT a silence, and the first drag after a tempo change would
+ * permanently delete every slot whose part had gone out of range. A display fix that eats data is
+ * worse than the display bug.
+ *
+ * So the stored plan keeps its indices and this answers what comes out of the speakers, through
+ * the same `partAt` the scheduler uses. Draw from this; edit from `layerPlan`.
+ */
+export function layerHeard(l: Layer): (number | null)[] {
+  const tb = takeBars(l)
+  const plan = layerPlan(l)
+  return plan.map((_, i) => partAt(plan, i, tb))
+}
+
+/**
+ * Which slots are holding a part this take no longer has.
+ *
+ * ⚠️ So the row can say "this bar's part is gone" rather than drawing it as an ordinary empty
+ * slot. The two silences look identical and are not: one is a bar somebody switched off, the
+ * other is a bar holding a part this take does not have — which a song file can carry, since
+ * `readPlan` has no tempo to bound an index against. Told apart, the arrangement can be got back;
+ * drawn the same, it is quietly lost. (Not the tempo and not ⏺ — see arrange.ts, where I wrote
+ * both of those down before checking and the room contradicted them.)
+ */
+export function layerLost(l: Layer): boolean[] {
+  const tb = takeBars(l)
+  const plan = layerPlan(l)
+  return plan.map((src) => src != null && src >= tb)
 }
 
 /** Put a layer's bars in a given order. Releases first: moving a bar must not leave it sounding. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { packSong, readSong, songNotes, type Song } from './songFile'
+import { packSong, readSong, songNotes, songToLayers, type Song } from './songFile'
 
 /**
  * The song format, and the one path a stranger's file takes into the instrument.
@@ -71,6 +71,69 @@ describe('a song survives being written down', () => {
     for (const key of ['echo', 'echoTime', 'space', 'vibrato', 'glide'] as const) {
       expect(b.fx[key], `fx.${key} did not survive`).toBeCloseTo(a.fx[key], 2)
     }
+  })
+
+  /**
+   * ⚠️ EVERY FIELD SOMETHING OTHER THAN ITS DEFAULT, which the fixture above is not.
+   *
+   * The round trip was checked with `muted: false` — the default — and with `gain`, `play` and
+   * `plan` absent from the layer entirely, so four of the format's fields were carried by code
+   * nothing asked about. CLAUDE.md names this exact trap after paying for it three times: "a
+   * round trip, a serialiser, a copy constructor or a migration must be fed a row where every
+   * field is something other than its default, and then each field dropped in turn to watch it go
+   * red". Dropping `v` from packSong, or `m`, or `q`, or `pb`, left the whole file green.
+   *
+   * They all do survive — probed before this was written, so this closes a hole in the TEST
+   * rather than recording a fix. `songToLayers` is included because that is where `gain` and
+   * `plan` were once dropped on the way in, with the file right the whole time.
+   */
+  it('and every field it carries, not just the ones with interesting defaults', () => {
+    const loud = readSong({
+      v: 1,
+      name: 'Everything',
+      bpm: 143,
+      bars: 4,
+      layers: [
+        {
+          instrument: 'bass',
+          len: 3,
+          muted: true,
+          gain: 0.35,
+          play: [true, false, true],
+          plan: [1, null, 0, 2],
+          fx: { echo: 0.5, echoTime: 0.3, space: 0.2, vibrato: 0.1, glide: 0.4, tone: 0.8 },
+          events: [
+            { t: 0, midi: 41, on: true },
+            { t: 0.5, midi: 41, on: false },
+          ],
+        },
+      ],
+    })!
+    const a = loud.layers[0]
+    expect(
+      { inst: a.instrument, muted: a.muted, gain: a.gain, play: a.play, plan: a.plan },
+      'the fixture itself has to be off its defaults or this test proves nothing',
+    ).toEqual({
+      inst: 'bass',
+      muted: true,
+      gain: 0.35,
+      play: [true, false, true],
+      plan: [1, null, 0, 2],
+    })
+
+    const b = readSong(packSong(loud))!.layers[0]
+    expect(b.instrument, 'instrument').toBe(a.instrument)
+    expect(b.muted, 'muted').toBe(a.muted)
+    expect(b.gain, 'gain').toBeCloseTo(a.gain!, 2)
+    expect(b.play, 'play — and its LENGTH, which is what `pb` is for').toEqual(a.play)
+    expect(b.plan, 'plan').toEqual(a.plan)
+    expect(b.fx.tone, 'tone').toBeCloseTo(0.8, 2)
+
+    const l = songToLayers(readSong(packSong(loud))!)[0]
+    expect(
+      { muted: l.muted, gain: l.gain, play: l.play, plan: l.plan },
+      'the last step before the looper used to drop gain and plan',
+    ).toEqual({ muted: a.muted, gain: a.gain, play: a.play, plan: a.plan })
   })
 
   it('and the notes land where they were', () => {
@@ -343,8 +406,19 @@ describe('a song file from somebody else', () => {
     }
   })
 
-  /** ⚠️ a bar index the take does not have schedules nothing and reads as a broken sequencer */
-  it('and an arrangement never points at a bar that is not there', () => {
+  /**
+   * ⚠️ RENAMED, BECAUSE THE OLD NAME CLAIMED MORE THAN THE BODY CHECKS. It read "an arrangement
+   * never points at a bar that is not there", and the assertions below are `Number.isInteger` and
+   * `>= 0` — nothing about the take at all. Measured, `plan: [0, 900, 7]` comes back out of this
+   * reader unchanged, so the old name was false and nothing said so.
+   *
+   * It is not a hole in this module: how many bars a take holds depends on the room's tempo, which
+   * a file does not carry. The bound belongs to `partAt` in arrange.ts, where both the scheduler
+   * and the track view ask it, and arrange.test.ts is where "never points at a bar that is not
+   * there" is actually checked. What this file is responsible for is that every entry is a bar
+   * index or silence, and that is what it now says.
+   */
+  it('and every entry in an arrangement is a bar index or nothing', () => {
     const s = readSong({
       layers: [
         layerOf(

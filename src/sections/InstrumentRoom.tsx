@@ -132,6 +132,8 @@ import {
   setBars,
   setBpm,
   setLayerInstrument,
+  layerHeard,
+  layerLost,
   layerPlan,
   moveLayerBar,
   setMetronome,
@@ -2248,6 +2250,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
              * reach the fader. So the edit travels instead (see canonicalId), and the name below
              * stays only to say whose playing it is.
              */
+            /**
+             * ⚠️ WHAT IS WRITTEN DOWN AND WHAT IS HEARD ARE TWO DIFFERENT ROWS — see arrange.ts.
+             * `plan` is the arrangement somebody made and is what the drag and the pick-up work
+             * on; `heard` is what the scheduler will actually play, which is `plan` with every
+             * part the take no longer has removed. Drawing from `plan` is what let a cell read
+             * "plays part 2 of 1" while sounding nothing.
+             */
+            const plan = layerPlan(l)
+            const heard = layerHeard(l)
+            const lost = layerLost(l)
+            const parts = takeBars(l)
             return (
               <li
                 key={l.id}
@@ -2343,19 +2356,24 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                  * dragging on a small screen even where dragging works.
                  */}
                 <span className="inst-arrange" role="group" aria-label="The bars this layer plays">
-                  {layerPlan(l).map((src, b) => {
+                  {plan.map((src, b) => {
                     /* has this layer actually been rearranged, or is it just playing in order? */
                     const arranged = !!l.plan
                     const held = lifted?.id === l.id && lifted.bar === b
+                    /* ⚠️ `heard`, not `src`: a slot can hold a part and still be silent */
+                    const sounds = heard[b] != null
+                    const gone = lost[b]
                     return (
                       <button
                         key={b}
                         className={
                           'inst-bar-cell' +
-                          (src != null ? ' is-on' : '') +
+                          (sounds ? ' is-on' : '') +
+                          (gone ? ' is-lost' : '') +
                           (held ? ' is-lifted' : '')
                         }
-                        aria-pressed={src != null}
+                        aria-pressed={sounds}
+                        /* a lost part is still theirs to move, so it stays draggable */
                         draggable={!touch && src != null}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/bar', String(b))
@@ -2387,7 +2405,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                             ? `Bar ${b + 1}: silent — tap to fill it`
                             : lifted && lifted.id === l.id
                               ? `Put bar ${lifted.bar + 1} here`
-                              : `Bar ${b + 1} plays part ${src + 1} of ${takeBars(l)} — tap to pick it up`
+                              : gone
+                                ? /* ⚠️ names WHICH part, because that is the recoverable half of
+                                     it — the slot can be moved or switched off deliberately,
+                                     where an unexplained empty cell just loses the arrangement */
+                                  `Bar ${b + 1} holds part ${src + 1}, which this take does not have — silent`
+                                : `Bar ${b + 1} plays part ${src + 1} of ${parts} — tap to pick it up`
                         }
                       >
                         {/**
