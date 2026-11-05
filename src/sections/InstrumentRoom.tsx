@@ -16,7 +16,8 @@ import {
   DRUMS,
   outputTap,
 } from '../audio/synth'
-import { CHORDS, chordNotes, type ChordId } from '../audio/chords'
+import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
+import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
   captureSamples,
@@ -189,26 +190,6 @@ const KEY_MAP: Record<string, number> = {
 
 const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
 
-/**
- * Scale lock — the thing that lets somebody who does not play still sound good.
- *
- * ⚠️ It remaps the KEYS, it does not filter the notes. Greying out the wrong keys would leave
- * gaps and still demand you know which ones to avoid; handing every key the next note of the
- * scale means there is no wrong key left to press. On Pentatonic in particular it is genuinely
- * hard to play something that sounds bad, which is the entire point of offering it.
- *
- * Chromatic is first and is the honest default: every semitone, black keys and all, exactly like
- * a piano. The others are for when you would rather noodle than practise.
- */
-const SCALES: Array<[string, string, number[]]> = [
-  ['chromatic', 'Chromatic', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]],
-  ['major', 'Major', [0, 2, 4, 5, 7, 9, 11]],
-  ['minor', 'Minor', [0, 2, 3, 5, 7, 8, 10]],
-  ['penta', 'Pentatonic', [0, 2, 4, 7, 9]],
-  ['blues', 'Blues', [0, 3, 5, 6, 7, 10]],
-  ['dorian', 'Dorian', [0, 2, 3, 5, 7, 9, 10]],
-]
-
 /** The five things you can bend about the sound, as sliders rather than a patch editor. */
 const KNOBS: Array<[Knob, string, string]> = [
   ['echo', 'Echo', 'How much of the note comes back'],
@@ -236,14 +217,6 @@ const OCT_KEY = 'instrument_octave_v1'
 const SCALE_KEY = 'instrument_scale_v1'
 const ROOT_KEY = 'instrument_root_v1'
 const CHORD_KEY = 'instrument_chord_v1'
-
-/**
- * Chromatic cannot answer "two degrees up" — every semitone is in it — so chords there are
- * resolved against Major with the pressed note as the root, which makes them all major and
- * predictable. Read out of SCALES rather than written again, for the reason instKits gives: a
- * second copy is a copy that goes stale.
- */
-const MAJOR_DEGREES = SCALES.find(([id]) => id === 'major')?.[2] ?? SCALES[0][2]
 
 /** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
 const SPAN = 25
@@ -757,7 +730,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * whenever the pattern runs out — so a five-note scale gives you five keys per octave and more
    * range across the same seventeen keys.
    */
-  const degrees = SCALES.find(([id]) => id === scale)?.[2] ?? SCALES[0][2]
+  const degrees = degreesOf(scale)
   const noteAt = useCallback(
     (i: number) => {
       if (scale === 'chromatic') return base + i
@@ -2291,17 +2264,40 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         </label>
       </div>
 
-      {/* The one-line explanation of whichever shape is chosen, because "Seventh" is a word you
-          either know or do not, and a `title` is nothing on a phone. Silent on One note, which
-          needs no explaining and would otherwise put a line of text under an untouched room. */}
-      {chord !== 'off' && (
+      {/**
+       * What the two pickers above actually chose, in a sentence.
+       *
+       * ⚠️ IT IS NOT IN THE OPTION LABELS, and that is a layout decision. A `<select>` is as
+       * wide as its longest option and three of them share one row at 375px, so "Harmonic
+       * minor — dramatic and a little eastern" in the list is horizontal scroll on a phone.
+       * Here it wraps.
+       *
+       * ⚠️ AND IT IS ONE PARAGRAPH, NOT TWO. Two muted lines stacked under a row of pickers is
+       * the "don't make the UI noisy by default" rule broken by exactly the feature that was
+       * supposed to make things clearer. Silent on Chromatic + One note, which is where an
+       * untouched room starts and needs no explaining.
+       */}
+      {(scale !== 'chromatic' || chord !== 'off') && (
         <p className="muted inst-note">
-          {inst === 'drums'
-            ? 'The drum kit plays one sound per pad — chords come back when you pick an instrument.'
-            : CHORDS.find(([id]) => id === chord)?.[2] +
-              (scale === 'chromatic'
-                ? '. On Chromatic every chord is major — pick a scale to hear it follow the key.'
-                : '.')}
+          {[
+            scale !== 'chromatic' ? SCALES.find(([id]) => id === scale)?.[3] : null,
+            chord === 'off'
+              ? null
+              : inst === 'drums'
+                ? 'The drum kit plays one sound per pad, so chords come back when you pick an instrument'
+                : CHORDS.find(([id]) => id === chord)?.[2],
+            /* ⚠️ `usesScale`, not `chord !== 'off'`. Fifth is a power chord — no third — so
+               telling somebody it comes out major on Chromatic is the opposite of what they can
+               hear. Octave is the same. Only the shapes that step through the scale care. */
+            scale === 'chromatic' && usesScale(chord)
+              ? 'On Chromatic every chord is major, so pick a scale to hear it follow the key'
+              : null,
+          ]
+            .filter(Boolean)
+            /* ⚠️ TWO SENTENCES, so both start with a capital. Joining them as one clause reads
+               "spare and still. three notes from the scale you chose" — which is what the first
+               version did, and it looks like a rendering bug rather than a style choice. */
+            .join('. ') + '.'}
         </p>
       )}
 

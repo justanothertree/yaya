@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHORDS, chordNotes, type ChordId } from './chords'
+import { CHORDS, chordNotes, usesScale, type ChordId } from './chords'
 
 /**
  * What a chord button owes the key you are in.
@@ -242,5 +242,35 @@ describe('the picker', () => {
        shape silently falls back to one note */
     for (const [id] of CHORDS) expect(chordNotes(id, C4, MAJOR, 0).length).toBeGreaterThan(0)
     expect(chordNotes('octave', C4, MAJOR, 0)).toHaveLength(2)
+  })
+})
+
+describe('usesScale', () => {
+  it('is true only of the shapes whose notes come from the scale', () => {
+    /**
+     * ⚠️ THE ROOM PRINTS COPY OFF THIS. "On Chromatic every chord is major" is true of a triad
+     * and a seventh, and flatly false of a fifth — a power chord has no third, which is the
+     * whole reason it is offered. Getting this wrong told somebody the opposite of what their
+     * ears were telling them.
+     */
+    expect(usesScale('triad')).toBe(true)
+    expect(usesScale('seventh')).toBe(true)
+    expect(usesScale('fifth')).toBe(false)
+    expect(usesScale('octave')).toBe(false)
+    expect(usesScale('off')).toBe(false)
+  })
+
+  it('agrees with what the shapes actually do', () => {
+    /* the property rather than the table: a shape that consults the scale gives different notes
+       in different scales, and one that does not gives the same ones everywhere */
+    for (const [id] of CHORDS) {
+      const inMajor = chordNotes(id, 60, MAJOR, 0).join()
+      const inPenta = chordNotes(id, 60, PENTA, 0).join()
+      expect(inMajor !== inPenta, id).toBe(usesScale(id))
+    }
+  })
+
+  it('is false for a shape it has never heard of', () => {
+    expect(usesScale('nonsense' as ChordId)).toBe(false)
   })
 })

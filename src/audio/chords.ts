@@ -60,8 +60,33 @@ export const CHORDS: Array<[ChordId, string, string]> = [
   ['seventh', 'Seventh', 'Four notes — warmer, and a little jazzy'],
 ]
 
+/**
+ * Does this shape take its notes from the scale?
+ *
+ * ⚠️ THE ROOM NEEDS THIS AND GOT IT WRONG BY GUESSING. The hint under the picker said "on
+ * Chromatic every chord is major" for whatever was chosen — which is true of Triad and Seventh
+ * and false of Fifth, a shape whose entire selling point is having no third to be major or minor
+ * about. The copy was telling somebody the opposite of what they could hear. Which shapes consult
+ * the scale is a fact about SHAPES, so it is answered here rather than re-derived from a list of
+ * ids somewhere else that would fall out of step the first time a shape was added.
+ */
+export const usesScale = (id: ChordId): boolean => SHAPES[id]?.kind === 'degrees'
+
 /** The highest note the synth is asked for; above this a key would be inaudible anyway. */
 const TOP = 127
+
+/**
+ * The pressed note, then whichever of the rest the synth can play.
+ *
+ * ⚠️ THE FIRST NOTE IS NEVER DROPPED, and a plain `.filter()` over the whole list does drop it.
+ * Found by the sweep in `scales.test.ts` rather than by reading: at the top of the keyboard a
+ * five-note scale can put the pressed key itself above 127 — a high octave and a long roll-over
+ * gets there, and the room has reached past the top of MIDI since long before chords existed. An
+ * empty list is the one answer that must never come back, because `book.start(id, [])` stores
+ * nothing and the key then plays no sound AND cannot be released. One inaudible note is a
+ * harmless edge; a dead key is a bug.
+ */
+const playable = (notes: number[]) => [notes[0], ...notes.slice(1).filter((m) => m <= TOP)]
 
 /**
  * The notes one key plays.
@@ -79,7 +104,7 @@ export function chordNotes(
   rootPc: number,
 ): number[] {
   const shape = SHAPES[id] ?? SHAPES.off
-  if (shape.kind === 'semitones') return shape.at.map((s) => midi + s).filter((m) => m <= TOP)
+  if (shape.kind === 'semitones') return playable(shape.at.map((s) => midi + s))
 
   /* a scale with no degrees cannot be stepped through; one note is the only honest answer */
   if (degrees.length === 0) return [midi]
@@ -98,5 +123,5 @@ export function chordNotes(
   /** the nth degree above the root, carrying the octave when the pattern rolls over */
   const deg = (n: number) => degrees[((n % L) + L) % L] + 12 * Math.floor(n / L)
 
-  return shape.at.map((s) => midi + deg(from + s) - degrees[from]).filter((m) => m <= TOP)
+  return playable(shape.at.map((s) => midi + deg(from + s) - degrees[from]))
 }
