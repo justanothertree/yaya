@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { FluidDemo } from '../gpu/FluidDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -22,6 +23,11 @@ const DEMOS = [
     id: 'life',
     name: 'Life',
     line: 'Conway’s Game of Life — every cell’s next generation worked out at once, on the GPU.',
+  },
+  {
+    id: 'fluid',
+    name: 'Fluid',
+    line: 'Fluid painting — drag to stir colour into a simulated fluid that swirls, spreads and fades.',
   },
 ] as const
 
@@ -117,6 +123,7 @@ export function GpuLab() {
       {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
       {demo === 'swarm' && <SwarmDemo key="swarm" {...props} />}
       {demo === 'life' && <LifeDemo key="life" {...props} />}
+      {demo === 'fluid' && <FluidDemo key="fluid" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
