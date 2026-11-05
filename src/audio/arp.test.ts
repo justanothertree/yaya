@@ -1,0 +1,321 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ARPS, STEP_BEATS, arpIndex, arpRunner, stepSeconds, type ArpId, type ArpNote } from './arp'
+
+/**
+ * A sequencer, asked questions without a browser.
+ *
+ * ⚠️ THIS IS THE WHOLE REASON `now` AND `every` ARE PARAMETERS. A scheduler built on a bare
+ * `setInterval` can only be checked by waiting, in real time, in a pane — which in this
+ * repository means it would not be checked, and the park's boss fight is the standing example of
+ * what shipping on reasoning alone costs. Here the clock is a variable and the timer is a
+ * function this file calls by hand, so a four-minute figure is eight lines and no seconds pass.
+ *
+ * The property that matters most is the one a sequencer fails at: a note-off that never arrives.
+ * Every test that schedules anything checks that every note has an end, and that the end is
+ * after the start.
+ */
+
+/** A clock and a timer under this file's control. */
+const rig = () => {
+  let t = 0
+  let fire: (() => void) | null = null
+  const played: ArpNote[] = []
+  const r = arpRunner({
+    now: () => t,
+    play: (n) => played.push(n),
+    every: (fn) => {
+      fire = fn
+      return () => {
+        fire = null
+      }
+    },
+  })
+  return {
+    runner: r,
+    played,
+    /** advance the clock and run the timer the way a browser would */
+    tickTo(to: number, by = 0.025) {
+      while (t < to) {
+        t = Math.min(to, t + by)
+        fire?.()
+      }
+    },
+    at: () => t,
+    running: () => fire !== null,
+  }
+}
+
+afterEach(() => vi.restoreAllMocks())
+
+describe('which note of the chord', () => {
+  it('climbs and wraps', () => {
+    expect([0, 1, 2, 3, 4, 5].map((s) => arpIndex('up', 3, s))).toEqual([0, 1, 2, 0, 1, 2])
+  })
+
+  it('falls and wraps', () => {
+    expect([0, 1, 2, 3, 4, 5].map((s) => arpIndex('down', 3, s))).toEqual([2, 1, 0, 2, 1, 0])
+  })
+
+  it('goes up and comes back without playing the ends twice', () => {
+    /**
+     * ⚠️ THE MISTAKE EVERY FIRST IMPLEMENTATION MAKES. The naive cycle is 0,1,2,2,1,0 — up
+     * through the notes then back down through them — which plays the top and the bottom twice
+     * and is the difference between a figure that breathes and one that limps.
+     */
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((s) => arpIndex('updown', 3, s))).toEqual([
+      0, 1, 2, 1, 0, 1, 2, 1,
+    ])
+  })
+
+  it('goes up and comes back over four notes too', () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((s) => arpIndex('updown', 4, s))).toEqual([
+      0, 1, 2, 3, 2, 1, 0, 1,
+    ])
+  })
+
+  it('stays in range for every pattern, size and step', () => {
+    /* the property under the four examples: an index off the end is an undefined note, which
+       reaches the synth as NaN and plays silence nobody can explain */
+    for (const [id] of ARPS)
+      for (let count = 1; count <= 8; count++)
+        for (let step = 0; step < 40; step++)
+          for (const roll of [0, 0.5, 0.999]) {
+            const i = arpIndex(id as ArpId, count, step, roll)
+            expect(i, `${id} ${count}@${step}`).toBeGreaterThanOrEqual(0)
+            expect(i, `${id} ${count}@${step}`).toBeLessThan(count)
+          }
+  })
+
+  it('reaches every note of the chord, in every pattern', () => {
+    /* a pattern that never plays the third note of a triad is a pattern with a bug in it */
+    for (const [id] of ARPS) {
+      if (id === 'off') continue
+      const seen = new Set<number>()
+      for (let s = 0; s < 60; s++) seen.add(arpIndex(id as ArpId, 4, s, (s % 10) / 10))
+      expect([...seen].sort(), id).toEqual([0, 1, 2, 3])
+    }
+  })
+
+  it('has nothing to choose from an empty or single-note chord', () => {
+    for (const [id] of ARPS) {
+      expect(arpIndex(id as ArpId, 0, 7)).toBe(0)
+      expect(arpIndex(id as ArpId, 1, 7)).toBe(0)
+    }
+  })
+
+  it('clamps a roll of exactly 1 rather than indexing off the end', () => {
+    /* Math.random() never returns 1, so nothing in the app would ever have shown this */
+    expect(arpIndex('random', 3, 0, 1)).toBe(2)
+    expect(arpIndex('random', 3, 0, 0)).toBe(0)
+  })
+})
+
+describe('how fast', () => {
+  it('is an eighth note of the loop tempo', () => {
+    /* stated from the world: at 120bpm a beat is half a second and an eighth is a quarter */
+    expect(stepSeconds(120)).toBeCloseTo(0.25, 6)
+    expect(stepSeconds(60)).toBeCloseTo(0.5, 6)
+    expect(STEP_BEATS).toBe(0.5)
+  })
+
+  it('gets faster as the tempo rises', () => {
+    expect(stepSeconds(200)).toBeLessThan(stepSeconds(40))
+  })
+
+  it('refuses to divide by a tempo of zero', () => {
+    expect(Number.isFinite(stepSeconds(0))).toBe(true)
+  })
+})
+
+describe('the runner', () => {
+  it('plays the first note immediately, not a beat later', () => {
+    /* ⚠️ a short press must make a sound. An arpeggiator that waits one step before its first
+       note reads as a dead key on anything shorter than a beat. */
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120)
+    expect(r.played).toHaveLength(1)
+    expect(r.played[0].midi).toBe(60)
+    expect(r.played[0].at).toBe(0)
+  })
+
+  it('gives every note an end, after its start', () => {
+    /**
+     * ⚠️ THE ONE A SEQUENCER FAILS AT. A note-off that never arrives is a drone nobody can
+     * stop, and it is why `play` is handed both moments in one call — there is no second half
+     * to miss.
+     */
+    const r = rig()
+    r.runner.update([60, 64, 67], 'updown', 96)
+    r.tickTo(4)
+    expect(r.played.length).toBeGreaterThan(10)
+    for (const n of r.played) {
+      expect(n.until, `note at ${n.at}`).toBeGreaterThan(n.at)
+      expect(n.until - n.at).toBeLessThanOrEqual(stepSeconds(96))
+    }
+  })
+
+  it('keeps an even pulse at the tempo it was given', () => {
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    r.tickTo(2)
+    const gaps = r.played.slice(1).map((n, i) => n.at - r.played[i].at)
+    for (const g of gaps) expect(g).toBeCloseTo(0.25, 6)
+  })
+
+  it('gives every note its own voice, so none stops another', () => {
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120)
+    r.tickTo(3)
+    expect(new Set(r.played.map((n) => n.voice)).size).toBe(r.played.length)
+  })
+
+  it('plays the chord in order', () => {
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120)
+    r.tickTo(1.4)
+    expect(r.played.slice(0, 6).map((n) => n.midi)).toEqual([60, 64, 67, 60, 64, 67])
+  })
+})
+
+describe('holding and letting go', () => {
+  it('stops when the last key is released', () => {
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    r.tickTo(1)
+    const n = r.played.length
+    r.runner.update([], 'up', 120)
+    r.tickTo(3)
+    expect(r.played).toHaveLength(n)
+    expect(r.running()).toBe(false)
+  })
+
+  it('widens the figure without restarting it when a key is added', () => {
+    /**
+     * ⚠️ THE STEP COUNTER SURVIVES. A pulse that jumped back to the first note every time a
+     * finger landed would make it impossible to play along with anything — and the symptom
+     * would be a stutter rather than an error.
+     */
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    r.tickTo(0.6)
+    const before = r.played.length
+    const lastAt = r.played[r.played.length - 1].at
+    r.runner.update([60, 64, 67], 'up', 120)
+    r.tickTo(1.4)
+    const after = r.played.slice(before)
+    expect(after.length).toBeGreaterThan(0)
+    /* the pulse did not skip or double back: the next note lands one step after the last */
+    expect(after[0].at - lastAt).toBeCloseTo(0.25, 6)
+    expect(r.played.map((n) => n.midi)).toContain(67)
+  })
+
+  it('says what is still sounding when it is stopped mid-note', () => {
+    /* ⚠️ `stopLive()` only kills `k:` and `p:` voices, so Panic cannot reach an `arp:` one —
+       the runner has to hand them over itself or a note rings on after "make it stop" */
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120)
+    r.tickTo(0.3)
+    const open = r.runner.stop()
+    expect(open.length).toBeGreaterThan(0)
+    for (const n of open) expect(n.until).toBeGreaterThan(r.at())
+  })
+
+  it('has nothing still sounding when stopped long after the last note', () => {
+    const r = rig()
+    r.runner.update([60], 'up', 120)
+    r.tickTo(0.3)
+    r.runner.update([], 'up', 120)
+    r.tickTo(9)
+    expect(r.runner.stop()).toEqual([])
+  })
+
+  it('stops its timer so nothing runs on in the background', () => {
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    expect(r.running()).toBe(true)
+    r.runner.stop()
+    expect(r.running()).toBe(false)
+  })
+
+  it('can be started again after being stopped', () => {
+    const r = rig()
+    r.runner.update([60], 'up', 120)
+    r.runner.stop()
+    const n = r.played.length
+    r.runner.update([67], 'up', 120)
+    r.tickTo(1)
+    expect(r.played.length).toBeGreaterThan(n)
+    expect(r.played[r.played.length - 1].midi).toBe(67)
+  })
+
+  it('never starts for the off pattern', () => {
+    const r = rig()
+    r.runner.update([60, 64], 'off', 120)
+    r.tickTo(2)
+    expect(r.played).toEqual([])
+    expect(r.running()).toBe(false)
+  })
+})
+
+describe('a timer that misbehaves', () => {
+  it('catches up rather than crawling when ticks are missed', () => {
+    /**
+     * ⚠️ A WHILE, NOT AN IF. A backgrounded tab comes back with several steps already due.
+     * Committing one per tick would make the figure crawl until it caught up — and the pulse
+     * would be wrong for exactly as long as the tab was away, which is the hardest kind of bug
+     * to reproduce on purpose.
+     */
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120)
+    r.tickTo(2, 2) // one single enormous tick: two seconds in one go
+    /* eight steps of 0.25s fit in two seconds, plus whatever the look-ahead reaches */
+    expect(r.played.length).toBeGreaterThanOrEqual(8)
+    const gaps = r.played.slice(1).map((n, i) => n.at - r.played[i].at)
+    for (const g of gaps) expect(g).toBeCloseTo(0.25, 6)
+  })
+
+  it('does not commit for ever if the clock stands still', () => {
+    /* a frozen clock is the one way the while could spin: the look-ahead is finite, so it
+       commits what fits and stops */
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    const first = r.played.length
+    r.tickTo(0, 0)
+    for (let i = 0; i < 50; i++) r.tickTo(0.0001, 0.0001)
+    expect(r.played.length).toBeLessThan(first + 10)
+  })
+})
+
+describe('the picker', () => {
+  it('offers Held first, because that is what the room did before', () => {
+    expect(ARPS[0][0]).toBe('off')
+  })
+
+  it('gives every pattern a distinct id, a label and a sentence', () => {
+    for (const [id, label, hint] of ARPS) {
+      expect(label.length, id).toBeGreaterThan(0)
+      expect(hint.length, id).toBeGreaterThan(0)
+      expect(hint.endsWith('.'), id).toBe(false)
+    }
+    expect(new Set(ARPS.map(([id]) => id)).size).toBe(ARPS.length)
+  })
+
+  it('offers no two patterns that play the same figure', () => {
+    const seen = new Map<string, string>()
+    for (const [id] of ARPS) {
+      if (id === 'off' || id === 'random') continue
+      const sig = Array.from({ length: 12 }, (_, s) => arpIndex(id as ArpId, 4, s)).join(',')
+      expect(seen.has(sig), `${id} is the same figure as ${seen.get(sig)}`).toBe(false)
+      seen.set(sig, id)
+    }
+  })
+
+  it('makes Wander actually wander', () => {
+    /* it is the one pattern whose point is not being predictable, so it has to be shown not to
+       be a fourth copy of Up */
+    const rolls = [0.1, 0.9, 0.4, 0.7, 0.2, 0.99, 0.05]
+    const got = rolls.map((roll, s) => arpIndex('random', 4, s, roll))
+    expect(new Set(got).size).toBeGreaterThan(2)
+    expect(got.join(',')).not.toBe([0, 1, 2, 3, 0, 1, 2].join(','))
+  })
+})

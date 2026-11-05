@@ -18,6 +18,7 @@ import {
 } from '../audio/synth'
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
+import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
@@ -219,6 +220,7 @@ const SCALE_KEY = 'instrument_scale_v1'
 const ROOT_KEY = 'instrument_root_v1'
 const CHORD_KEY = 'instrument_chord_v1'
 const STRUM_KEY = 'instrument_strum_v1'
+const ARP_KEY = 'instrument_arp_v1'
 
 /** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
 const SPAN = 25
@@ -716,6 +718,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       return 'off'
     }
   })
+  const [arp, setArp] = useState<ArpId>(() => {
+    try {
+      const v = localStorage.getItem(ARP_KEY)
+      return ARPS.some(([id]) => id === v) ? (v as ArpId) : 'off'
+    } catch {
+      return 'off'
+    }
+  })
   const [held, setHeld] = useState<number[]>([])
   /**
    * Which of the lit keys a finger is actually on.
@@ -778,8 +788,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   // ⚠️ a ref as well as state: the key handlers are bound once and would otherwise capture the
   // instrument and octave from the render that installed them, so changing either mid-play would
   // be ignored until something else re-rendered
-  const live = useRef({ inst, noteAt, notesFor, strum })
-  live.current = { inst, noteAt, notesFor, strum }
+  const live = useRef({ inst, noteAt, notesFor, strum, arp, bpm: loop.bpm })
+  live.current = { inst, noteAt, notesFor, strum, arp, bpm: loop.bpm }
 
   useEffect(() => {
     try {
@@ -789,10 +799,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(ROOT_KEY, String(root))
       localStorage.setItem(CHORD_KEY, chord)
       localStorage.setItem(STRUM_KEY, strum)
+      localStorage.setItem(ARP_KEY, arp)
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root, chord, strum])
+  }, [inst, octave, scale, root, chord, strum, arp])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -965,6 +976,25 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     remember(at, midi, on, live.current.inst)
   }, [])
 
+  /**
+   * The arpeggiator, one per mount, lazily for the same reason the book is.
+   *
+   * ⚠️ IT READS `live.current`, NOT THE RENDER'S VALUES. The runner is built once and its
+   * `play` closure outlives every render, so capturing `inst` here would freeze the sound at
+   * whatever was chosen when the room mounted — the same trap the key handlers have a comment
+   * about two screens down.
+   */
+  const arpRef = useRef<ArpRunner | null>(null)
+  const arping = (arpRef.current ??= arpRunner({
+    now: () => sharedCtx().currentTime,
+    play: (n) => {
+      noteOn(n.voice, live.current.inst, n.midi, n.at)
+      noteOff(n.voice, n.until)
+      report(n.midi, true, n.at)
+      report(n.midi, false, n.until)
+    },
+  }))
+
   /** Show what the book holds. The ONE place either of the two lit-key states is written. */
   const show = useCallback(() => {
     setHeld(book.notes())
@@ -986,6 +1016,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * after you let go, and the book holds every voice from the moment you press — which is
        * what lets `lift` release a chord that has not finished arriving.
        */
+      /**
+       * ⚠️ WITH AN ARPEGGIO RUNNING, NOTHING IS SOUNDED HERE. The book still records what is
+       * HELD — which is what the lit keys and `lift` need — but the notes are handed to the
+       * runner, which plays them one at a time. Hence the two branches rather than a flag: a
+       * held chord and an arpeggiated one are different things happening, and pretending
+       * otherwise is how `press` ends up sounding a chord the runner is also playing.
+       */
+      if (live.current.arp !== 'off') {
+        arping.update(book.notes(), live.current.arp, live.current.bpm)
+        show()
+        return
+      }
       const now = sharedCtx().currentTime
       const delays = strumDelays(live.current.strum, play.length)
       play.forEach((v, i) => {
@@ -995,7 +1037,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       })
       show()
     },
-    [book, report, show],
+    /* `arping` is one runner per mount, so this stays referentially stable */
+    [book, report, show, arping],
   )
 
   /**
@@ -1071,12 +1114,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const lift = useCallback(
     (id: string) => {
       for (const v of book.end(id)) {
+        /* ⚠️ a no-op while arpeggiating, because these voices were never started — `noteOff`
+           returns early for an id the synth does not know. That is what lets one `lift` serve
+           both branches instead of growing a mode of its own. */
         noteOff(v.voice)
         report(v.midi, false)
       }
+      if (live.current.arp !== 'off')
+        arping.update(book.notes(), live.current.arp, live.current.bpm)
       show()
     },
-    [book, report, show],
+    /* `arping` is one runner per mount, so this stays referentially stable */
+    [book, report, show, arping],
   )
 
   /**
@@ -1090,11 +1139,19 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const hush = useCallback(
     (mode: 'live' | 'all' = 'live') => {
       for (const v of book.clear()) report(v.midi, false)
+      /* ⚠️ `stopLive()` only kills `k:` and `p:` voices, so it cannot reach an `arp:` one —
+         Panic would silence your hands and leave the arpeggio ringing. The runner hands over
+         whatever is still sounding so it can be stopped by name. */
+      for (const n of arping.stop()) {
+        noteOff(n.voice)
+        report(n.midi, false)
+      }
       if (mode === 'all') allNotesOff()
       else stopLive()
       show()
     },
-    [book, report, show],
+    /* `arping` is one runner per mount, so this stays referentially stable */
+    [book, report, show, arping],
   )
 
   /**
@@ -1192,10 +1249,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   // leaving the page must not leave a note ringing forever
   useEffect(
     () => () => {
+      /* ⚠️ THE RUNNER FIRST, AND IT IS THE ONLY THING HERE WITH A TIMER IN IT. `closeSynth`
+         silences the audio, which is not the same as stopping a `setInterval` that will go on
+         committing notes to a context that has gone — the one leak this feature could have,
+         and the reason the runner owns a `stop` at all. */
+      arping.stop()
       stopLoop()
       closeSynth()
     },
-    [],
+    [arping],
   )
 
   /**
@@ -2329,6 +2391,36 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         </label>
 
         {/**
+         * One key, a part.
+         *
+         * ⚠️ THIS ONE DOES `hush()`, UNLIKE Chord and Arrives, and the asymmetry is the point.
+         * Those two change what the NEXT press will do and leave what is sounding alone, which
+         * the book makes safe. This changes who is playing: switching it on mid-hold would
+         * leave the sustained chord ringing underneath the arpeggio it just started, and
+         * switching it off would strand the runner's last note. Dropping what you are holding
+         * is the honest answer, and it is the same one the Scale picker gives.
+         */}
+        {chord !== 'off' && (
+          <label className="inst-pick">
+            <span className="muted">Arpeggio</span>
+            <select
+              value={arp}
+              onChange={(e) => {
+                hush()
+                setArp(e.target.value as ArpId)
+                e.target.blur()
+              }}
+            >
+              {ARPS.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/**
          * How the chord arrives: together, or one note at a time like a hand does it.
          *
          * ⚠️ ONLY ONCE A CHORD IS CHOSEN, the same rule the Key picker follows on Chromatic. A
@@ -2338,7 +2430,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
          * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
          * because the book releases what was actually sounded rather than recomputing it.
          */}
-        {chord !== 'off' && (
+        {chord !== 'off' && arp === 'off' && (
           <label className="inst-pick">
             <span className="muted">Arrives</span>
             <select
@@ -2388,7 +2480,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               : null,
             /* only when it is doing something — "Every note at once" under a chord that arrives
                all at once is a sentence describing the absence of a feature */
-            chord !== 'off' && strum !== 'off' && inst !== 'drums'
+            chord !== 'off' && arp !== 'off' && inst !== 'drums'
+              ? ARPS.find(([id]) => id === arp)?.[2]
+              : null,
+            chord !== 'off' && arp === 'off' && strum !== 'off' && inst !== 'drums'
               ? STRUMS.find(([id]) => id === strum)?.[2]
               : null,
           ]
