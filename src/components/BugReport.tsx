@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useDialogContract } from '../ui/dialogContract'
 import { getSupabaseClient } from '../finance/client'
 
 /**
@@ -20,6 +21,14 @@ export function BugReport({ open, onClose }: { open: boolean; onClose: () => voi
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  /* Escape closes it, focus moves in and is trapped, and whatever opened it gets focus back.
+     ⚠️ The form carried `role="dialog" aria-modal="true"` and none of that: Escape did nothing,
+     focus stayed on the control behind the overlay, and Tab walked the page underneath an overlay
+     that had just told a screen reader the page was inert. See src/ui/dialogContract.ts.
+     The flag is `open` because this component renders null rather than being unmounted, and a
+     hook cannot be called conditionally. */
+  useDialogContract(cardRef, onClose, open)
 
   /* what was happening, gathered when the dialog opens rather than when it sends: by the time you
      have finished typing you may have resized the window or navigated away */
@@ -73,6 +82,7 @@ export function BugReport({ open, onClose }: { open: boolean; onClose: () => voi
     <div className="modal-back" onClick={onClose} role="presentation">
       <div
         className="card bug-card"
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label="Report a bug"

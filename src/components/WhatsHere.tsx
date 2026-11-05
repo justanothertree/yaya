@@ -14,7 +14,9 @@
 // write "your profile is in the menu under your initial", but a sentence about where a button
 // lives goes stale the moment the button moves, and it still leaves you hunting. These do the
 // thing. The account menu keeps its own copies because it is a menu; this is the index.
+import { useRef } from 'react'
 import { navFor, type Section, type Viewer } from '../nav/places'
+import { useDialogContract } from '../ui/dialogContract'
 
 export function WhatsHere({
   viewer,
@@ -40,6 +42,12 @@ export function WhatsHere({
   canvasCapable: boolean
   desktop: boolean
 }) {
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  /* Escape closes it, focus moves in and is trapped, and whatever opened it gets focus back.
+     ⚠️ This overview carried `role="dialog" aria-modal="true"` and none of that: Escape did nothing,
+     focus stayed on the control behind the overlay, and Tab walked the page underneath an overlay
+     that had just told a screen reader the page was inert. See src/ui/dialogContract.ts. */
+  useDialogContract(cardRef, onClose)
   const rooms = navFor(viewer)
 
   /** one row of the "beyond the rooms" list; `null` entries are dropped */
@@ -105,6 +113,7 @@ export function WhatsHere({
     >
       <div
         className="card wh-card"
+        ref={cardRef}
         style={{ maxWidth: 560, width: '100%', cursor: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >

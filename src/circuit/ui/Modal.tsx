@@ -1,7 +1,8 @@
 // Modal overlay used by the movie/person sheets. The header (✕) and footer stay
 // pinned while only the body scrolls, so tall content wraps cleanly and the close
 // button is always reachable. Caps at 92vh / 96vw so it always fits the screen.
-import { useEffect, useId, useRef } from 'react'
+import { useId, useRef } from 'react'
+import { useDialogContract } from '../../ui/dialogContract'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 
@@ -22,90 +23,15 @@ export function Modal({
   const boxRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
   /**
-   * ⚠️ onClose THROUGH A REF, AND THIS IS THE WHOLE FIX FOR "IT ONLY TAKES ONE LETTER".
-   *
-   * The effect below moves focus to the dialog's first control when it opens, and it used to
-   * depend on `onClose`. Every one of the seventeen places that opens a Modal passes an inline
-   * arrow — `onClose={() => setAdding(false)}` — which is a NEW function on every render of the
-   * parent. So typing a character re-rendered the parent, handed the Modal a different onClose,
-   * re-ran the "open" effect, and moved focus to the Close button. One letter, then you had to
-   * click back into the field, in every dialog in the app with a text box in it.
-   *
-   * Opening is a mount concern; only the Escape handler needs a CURRENT onClose. A ref gives it
-   * one without making the effect depend on identity.
+   * Escape, focus in, Tab trapped, focus handed back -- all of it in `src/ui/dialogContract.ts`
+   * now, because three other dialogs on this site promised `aria-modal` and kept none of it.
+   * This component is where the contract was worked out, including the two things a reading
+   * never gets right: onClose has to go through a REF (every one of the seventeen callers
+   * passes an inline arrow, so an effect depending on it re-ran on every keystroke and threw
+   * focus back to the Close button after one letter), and the restore has to treat `body` as
+   * lost focus. Both are in there, with the measurements.
    */
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
-
-  /**
-   * The rest of the dialog contract: Escape already worked, but focus did not.
-   *
-   * Without this, opening a sheet left focus wherever it was — on the button behind the
-   * overlay — so Tab walked through the page underneath instead of the dialog, and a
-   * keyboard or screen-reader user could be typing into something they cannot see. On close,
-   * focus was simply lost, dumping you back at the top of the document.
-   *
-   * Focus moves in on open, is trapped while open, and is handed back to whatever opened the
-   * dialog on close.
-   */
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    const box = boxRef.current
-    // the close button is the safe default: it is always present, and landing there means
-    // Escape and Enter both do the obvious thing
-    const focusables = () =>
-      Array.from(
-        box?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
-    ;(focusables()[0] ?? box)?.focus()
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeRef.current()
-        return
-      }
-      if (e.key !== 'Tab') return
-      const list = focusables()
-      if (list.length === 0) {
-        e.preventDefault()
-        return
-      }
-      const first = list[0]
-      const last = list[list.length - 1]
-      const active = document.activeElement
-      // wrap at both ends, and pull focus back in if it has escaped the dialog entirely
-      if (e.shiftKey && (active === first || !box?.contains(active))) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && (active === last || !box?.contains(active))) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      /**
-       * ⚠️ The test for "focus is still ours" has to include document.body.
-       *
-       * By the time this cleanup runs React has already detached the dialog, so the element
-       * that had focus is gone and the browser has dropped focus to <body>. Checking only
-       * `box.contains(activeElement)` is therefore false exactly when a restore is most
-       * needed — measured: closing with Escape left focus on BODY instead of the name that
-       * opened it.
-       *
-       * Restore when focus was lost (body/null) or is somehow still inside the old subtree,
-       * but not when something else has legitimately taken it since.
-       */
-      const active = document.activeElement
-      const focusIsLoose = !active || active === document.body || !!box?.contains(active)
-      if (focusIsLoose && opener?.isConnected) opener.focus?.()
-    }
-    /* ⚠️ empty on purpose: this runs when the dialog OPENS and cleans up when it closes. See
-       closeRef above — depending on onClose made every keystroke re-open it. */
-  }, [])
+  useDialogContract(boxRef, onClose)
 
   const divider = '1px solid var(--border, rgba(127,127,127,0.18))'
 

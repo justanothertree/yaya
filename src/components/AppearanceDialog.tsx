@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { useDialogContract } from '../ui/dialogContract'
 import { createPortal } from 'react-dom'
 import { moveTab } from '../ui/tabStrip'
 import { PalettePicker } from '../theme/PalettePicker'
@@ -427,6 +428,12 @@ export function AppearanceDialog({
      so nothing here collides today — but the id costs a line and the next place that mounts this
      is not something a name chosen here can know about. */
   const tabsId = useId()
+  const sheetRef = useRef<HTMLDivElement | null>(null)
+  /* Escape closes it, focus moves in and is trapped, and whatever opened it gets focus back.
+     ⚠️ The tray carried `role="dialog" aria-modal="true"` and none of that: Escape did nothing,
+     focus stayed on the control behind the overlay, and Tab walked the page underneath an overlay
+     that had just told a screen reader the page was inert. See src/ui/dialogContract.ts. */
+  useDialogContract(sheetRef, onClose)
   const panel: PanelAttrs = {
     id: `${tabsId}-panel`,
     role: 'tabpanel',
@@ -443,7 +450,7 @@ export function AppearanceDialog({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="pal-sheet appearance-sheet">
+      <div className="pal-sheet appearance-sheet" ref={sheetRef}>
         <div className="pal-sheet-head">
           <strong>Appearance</strong>
           <button className="btn" onClick={onClose} aria-label="Close">
