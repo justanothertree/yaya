@@ -1603,18 +1603,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             setArp(k.arp)
             setSwing(k.swing)
           }}
+          /**
+           * ⚠️ THREE SEGMENTS, AND I BRIEFLY MADE IT FIVE. Adding the chord and the arpeggio
+           * here looked free — the rig had just learned to save them — and it overflowed the
+           * chip: `.kitbar-desc` is 158px wide and the text became 266px, so the audit found a
+           * clipped element and what a phone actually showed was "Rhodes · Harmonic minor ·
+           * Seve…". The two things I had added were the exact part that never appeared.
+           *
+           * The clamp is not the problem and must not be lifted: its own comment says a long
+           * name would otherwise make one chip twice the height of its neighbours and break
+           * the row. At 0.68rem in 158px there is room for about twenty-six characters, which
+           * three segments already spend.
+           *
+           * So the rig still SAVES the chord and the arpeggio — that was the fix — and the
+           * place to tell two rigs apart is the name on the line above, which the person wrote
+           * themselves and which is as long as they want it.
+           */
           describe={(k) =>
             [
               INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
               SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
-              /* only when it is doing something — "One note" on every rig is a word that
-                 distinguishes nothing */
-              k.chord !== 'off' ? (CHORDS.find(([id]) => id === k.chord)?.[1] ?? k.chord) : null,
-              k.arp !== 'off' ? (ARPS.find(([id]) => id === k.arp)?.[1] ?? k.arp) : null,
               fxWord(k.fx),
-            ]
-              .filter(Boolean)
-              .join(' · ')
+            ].join(' · ')
           }
         />
       </div>
