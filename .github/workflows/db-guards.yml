@@ -1,24 +1,3 @@
-# ⚠️ THIS FILE BELONGS AT .github/workflows/db-guards.yml AND IS PARKED HERE.
-# GitHub refuses a push that creates or edits a workflow file unless the pushing credential
-# holds the `workflow` scope, and the one I push with does not:
-#
-#     ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update
-#       workflow `.github/workflows/db-guards.yml` without `workflow` scope)
-#
-# So it is committed here instead of being silently dropped. To enable it, move it and push
-# yourself -- or paste it into GitHub's web editor, which creates the file with your own scope:
-#
-#     git mv docs/ci/db-guards.yml .github/workflows/db-guards.yml && git commit && git push
-#
-# It will fail on its first run until a schema baseline exists; the reason, the one command that
-# fixes it, and what then happens to the migrations already here are all in the baseline step.
-#
-# ⚠️ ONE STEP IN HERE DOES NOT NEED ANY OF THAT. The migration md5 check needs no Docker, no CLI
-# and no credentials, so it is first and it passes today. It is also already running for real:
-# `npm run test` calls it through `scripts/migration-md5.test.mjs`, and .github/workflows/test.yml
-# runs that on every push. It is repeated here because this is the job about the migrations
-# directory, and a failure named in the job about migrations is the one somebody will read.
-#
 name: db guards
 
 # Runs supabase/tests/visibility-guards.sql against a throwaway local database on every push.
@@ -80,58 +59,6 @@ jobs:
       - name: Check every migration file matches production's record
         run: node scripts/migration-md5.mjs
 
-      # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
-      # so in one sentence rather than letting `db reset` fail three minutes later with
-      # `relation "public.profiles" does not exist`. supabase/migrations holds the changes made
-      # since late October; the 283 before them live only in the live database, so nothing here
-      # creates the tables the recent ones alter.
-      #
-      # ── GENERATING THE BASELINE (still the one thing standing between this job and green) ──
-      #     supabase link --project-ref <ref>
-      #     supabase db dump --linked --schema public,finance \
-      #       -f supabase/migrations/00000000000000_baseline.sql
-      #
-      # ⚠️ `--schema public,finance`, NOT THE DEFAULT. `db dump` takes `public` alone unless told
-      # otherwise, and this database has a second schema with tables in it: `finance`, 10 tables,
-      # which `20261029153952_family_fund_safety.sql` alters. A public-only baseline builds a
-      # database where that migration dies on `relation "finance.family_accounts" does not
-      # exist`, which looks like a broken migration and is a missing schema. Counted on 4 Nov:
-      # public 52 tables, finance 10; `auth`, `storage` and `realtime` are Supabase's own and
-      # `supabase start` creates them.
-      #
-      # ── AND WHAT THEN HAPPENS TO THE MIGRATIONS ────────────────────────────────────────────
-      # The dump is the schema AS IT IS TODAY, so it already contains everything they did. On a
-      # fresh database they replay on top of it, and nearly all do not mind: `create or replace
-      # function`, `add column if not exists`, `create ... if not exists`, `drop ... if exists`,
-      # grants, revokes, and data updates that are no-ops on empty tables.
-      #
-      # ⚠️ THE COUNT THIS COMMENT USED TO GIVE WAS WRONG BY THE TIME ANYBODY READ IT, which is
-      # the §2 rule turned on a workflow file. It said "exactly two statements in one file would
-      # fail — two bare `create policy` in 20261030032833". Re-counted on 4 Nov across all 79
-      # migrations (it was 37 when that sentence was written):
-      #
-      #   * those two `create policy` statements are ALREADY guarded, each by a `drop policy if
-      #     exists ... on ...` directly above it. Fixed at some point after the note was written
-      #     and the note never caught up.
-      #   * the real remainder was SIX bare `create trigger` statements in
-      #     `20261103200333_a_list_goes_when_its_item_leaves_certain.sql`, a file that did not
-      #     exist when this was written. Each now has a `drop trigger if exists` above it, and
-      #     that file's header records the md5 divergence that creates.
-      #   * everything else that looked unguarded is guarded in a style a naive grep misses:
-      #     `add constraint` inside `if not exists (select 1 from pg_constraint ...)`.
-      #
-      # So the count is zero today. Re-derive it rather than trusting this paragraph — the scan
-      # has to understand BOTH guard styles, and two earlier attempts at it were wrong in both
-      # directions before the third agreed with reading the files.
-      #
-      # The alternative was to SQUASH — keep only the baseline and move the rest into a
-      # subdirectory (the CLI reads `*.sql` in the migrations directory and ignores folders).
-      # Rejected: it takes the migration headers out of the place people look, and those headers
-      # are where this project keeps its reasoning.
-      #
-      # Either way the baseline must sort FIRST, hence the all-zero timestamp: `db reset` applies
-      # files in filename order, so a baseline dated after them would let them run first against
-      # an empty database and fail exactly as today.
       - name: Check the migrations can build the schema
         run: |
           if ! grep -rqiE 'create[[:space:]]+table[[:space:]]+(if[[:space:]]+not[[:space:]]+exists[[:space:]]+)?("?public"?\.)?"?profiles"?([[:space:](]|$)' supabase/migrations/; then
@@ -149,7 +76,7 @@ jobs:
       - name: Start a throwaway database
         run: supabase start
 
-      # applies every migration in order, then supabase/seed.sql
+      # applies [db.seed] sql_paths: privileges, extensions, the dump, triggers, then seed
       - name: Apply migrations and seed
         run: supabase db reset
 
