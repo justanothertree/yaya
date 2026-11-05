@@ -146,3 +146,36 @@
   border-radius: 6px;
   font-size: 0.85rem;
 }
+
+/* which experiment: a row of buttons, then one line saying what the chosen one is */
+.lab-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.lab-picker .btn {
+  min-height: 36px;
+  padding: 0.45rem 0.9rem;
+}
+.lab-picker .btn.btn-ghost[aria-pressed='true'] {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
+.lab-line {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+/* a demo that takes keys: the wrapper holds focus, and shows it only when it came from a key */
+.lab-keys {
+  display: grid;
+  gap: 0.75rem;
+  border-radius: 12px;
+}
+.lab-keys:focus {
+  outline: none;
+}
+.lab-keys:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

@@ -2979,11 +2979,43 @@ section[id] {
   padding: 0.1rem 0.45rem;
   font-size: 0.85rem;
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .audio-dock-vol {
   width: 4.5rem;
   flex: none;
   accent-color: var(--accent);
+}
+/* ⚠️ EVERY CONTROL ON THE DOCK WAS UNDER THE 24px FLOOR, and on a phone it was worse, not better.
+   Measured with a file playing: ⏸ and ⏹ 24×22 at 1440 and 21×19 at 375, the title 18px and 15px
+   tall, the handle 13×21, the volume 16px tall. Nothing here had a touch size at all — the site's
+   `(pointer: coarse)` rules never name the dock, so a phone got the desktop's sizes shrunk by the
+   fluid root. An audit at 375 had reported it clean only because nothing was playing, and a dock
+   that is not on screen has nothing to measure.
+   28px with a mouse keeps the pill slim; 44px under a finger, because these are pressed while
+   walking about with music on, and ⏹ is the one that cannot be taken back. Only the boxes grow:
+   the glyphs, the title and the range's track stay the size they were. */
+.audio-dock-btn,
+.audio-dock-name,
+.audio-dock-vol {
+  min-height: 28px;
+}
+.audio-dock-btn {
+  min-width: 28px;
+  /* round, to belong to the pill they sit in — at 44px a square button reads as a block */
+  border-radius: 999px;
+}
+@media (pointer: coarse) {
+  .audio-dock-btn,
+  .audio-dock-name,
+  .audio-dock-vol {
+    min-height: 44px;
+  }
+  .audio-dock-btn {
+    min-width: 44px;
+  }
 }
 @media (max-width: 30rem) {
   /* the slider is the first thing to go on a narrow screen: the page it came from still has one,
@@ -12612,6 +12644,18 @@ a.cz-msg-author:focus-visible {
   touch-action: none;
   user-select: none;
   opacity: 0.6;
+  /* a target, not a glyph: the ⠿ alone was 13×21 — see the note on the dock's controls */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 28px;
+}
+@media (pointer: coarse) {
+  .audio-dock-move {
+    min-width: 32px;
+    min-height: 44px;
+  }
 }
 .audio-dock-move:active {
   cursor: grabbing;

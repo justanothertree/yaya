@@ -28,7 +28,8 @@ export const PARAMS = {
   size: 28,
   glow: 32,
   count: 36,
-  bytes: 40,
+  palette: 40,
+  bytes: 48,
 } as const
 
 export type Params = {
@@ -41,6 +42,7 @@ export type Params = {
   size: number
   glow: number
   count: number
+  palette: number
 }
 
 /** Write `p` into `into` (reused each frame, so the loop allocates nothing). */
@@ -57,6 +59,7 @@ export function packParams(p: Params, into = new ArrayBuffer(PARAMS.bytes)): Arr
   f[PARAMS.size / 4] = p.size
   f[PARAMS.glow / 4] = p.glow
   u[PARAMS.count / 4] = p.count
+  u[PARAMS.palette / 4] = p.palette
   return into
 }
 

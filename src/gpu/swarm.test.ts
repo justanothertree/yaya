@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import types from './swarm-types.wgsl?raw'
+import { wgslLayout } from './wgslLayout'
 import step from './swarm-step.wgsl?raw'
 import {
   COUNTS,
@@ -19,41 +20,8 @@ import {
   type Params,
 } from './swarm'
 
-/**
- * WGSL's own layout rules for the types the shader uses: each member sits on a multiple of its
- * alignment, and the struct's size rounds up to its largest alignment. Written from the spec's
- * table, not from PARAMS — the point is to have a second opinion that shares nothing with it.
- */
-const WGSL: Record<string, { size: number; align: number }> = {
-  f32: { size: 4, align: 4 },
-  u32: { size: 4, align: 4 },
-  i32: { size: 4, align: 4 },
-  vec2f: { size: 8, align: 8 },
-  vec3f: { size: 12, align: 16 },
-  vec4f: { size: 16, align: 16 },
-}
-const roundUp = (n: number, k: number) => Math.ceil(n / k) * k
-
-function layoutOf(struct: string) {
-  const body = types.match(new RegExp(`struct ${struct} \\{([^}]*)\\}`))?.[1]
-  if (!body) throw new Error(`no struct ${struct} in swarm-types.wgsl`)
-  const fields = [...body.replace(/\/\/.*$/gm, '').matchAll(/(\w+)\s*:\s*(\w+)\s*,/g)]
-  let at = 0
-  let widest = 1
-  const offsets: Record<string, number> = {}
-  for (const [, name, type] of fields) {
-    const t = WGSL[type]
-    if (!t) throw new Error(`layoutOf does not know ${type}`)
-    at = roundUp(at, t.align)
-    offsets[name] = at
-    at += t.size
-    widest = Math.max(widest, t.align)
-  }
-  return { offsets, bytes: roundUp(at, widest), names: fields.map((f) => f[1]) }
-}
-
 describe('the uniform the shader reads is the one JavaScript writes', () => {
-  const wgsl = layoutOf('Params')
+  const wgsl = wgslLayout(types, 'Params')
 
   it('agrees with the shader about where every field lives', () => {
     const { bytes, ...table } = PARAMS
@@ -74,6 +42,7 @@ describe('the uniform the shader reads is the one JavaScript writes', () => {
       size: 0.003,
       glow: 0.6,
       count: 131072,
+      palette: 2,
     }
     const view = new DataView(packParams(p))
     const f = (name: string) => view.getFloat32(wgsl.offsets[name], true)
@@ -86,10 +55,11 @@ describe('the uniform the shader reads is the one JavaScript writes', () => {
     expect(f('size')).toBeCloseTo(0.003, 6)
     expect(f('glow')).toBeCloseTo(0.6, 6)
     expect(view.getUint32(wgsl.offsets.count, true)).toBe(131072)
+    expect(view.getUint32(wgsl.offsets.palette, true)).toBe(2)
   })
 
   it('sizes a particle the way the shader does', () => {
-    expect(layoutOf('Particle').bytes).toBe(PARTICLE_BYTES)
+    expect(wgslLayout(types, 'Particle').bytes).toBe(PARTICLE_BYTES)
   })
 
   it('dispatches in the group size the shader declares', () => {
