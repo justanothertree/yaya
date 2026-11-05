@@ -230,6 +230,7 @@ for the same reason: #19 adds its own section further up, and the two should not
 | Harp    | PLAY an instrument: strum with any number of fingers, tap a string, keys; ✨ Play by itself; it makes SOUND through the site's synth | analytic motion: each point of each string is the sum of its standing waves since its last pluck, worked out in the vertex shader — no simulation state                                                                     | "motion with an exact answer needs no simulation" — anything that rings, wobbles or decays                                         |
 | Neon    | TYPE: a real text box (a phone brings up its keyboard); tap the sign to knock it; letters stutter on and one is faulty               | the JUMP FLOOD: a distance field in log₂(size) passes, each texel learning its nearest seed and carrying that seed's payload (which letter) with it                                                                         | "distance to anything, fast" — glows, outlines, Voronoi, soft shapes from a mask                                                   |
 | Sand    | POUR with any number of fingers; wall it in; TURN THE BOX (⟲ ⟳, arrows) or tilt the phone and gravity follows                        | a MARGOLUS block automaton: 2×2 blocks, shifted every other step, each rearranged by one thread — no races, and grains conserved by construction; integer rules a CPU copy matches cell for cell                            | "particles that never collide on the GPU" — falling sand, crowds, anything that must not double up                                 |
+| Pond    | TOUCH the water: tap, drag for a wake, many fingers; 🌧 Rain plays by itself                                                         | the wave equation on a height field, and CAUSTICS: a mesh refracted onto the floor, each pixel lit by the surface area that lands on it (screen-space derivatives) — light moved, never made                                | "light through anything that ripples" — water, glass, heat haze; and "conserve it, then test the conservation"                     |
 
 - **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
   in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
@@ -359,6 +360,29 @@ for the same reason: #19 adds its own section further up, and the two should not
   down gives right as a clock face says it should, every grain survives the turns, and a tilt onto
   the phone's right edge sends everything right.
 
+- **Pond** — a pond seen from above, over a pool's tiles, pebbles or rippled sand. Tap it for a
+  drop; drag through it and it leaves a wake; several fingers at once. 🌧 Rain lets it rain by
+  itself, 💦 Splash drops a handful; Shallow or Deep (deep water focuses the light more sharply).
+  It opens with a few drops already spreading. Keys: R rain, X splash, D depth, 1–3 floors.
+  Technique: the water is a height field, each cell pulled towards its neighbours' average (the
+  wave equation) and keeping a little less of its speed each step. The floor is seen through it:
+  each pixel's line of sight is bent by the surface (Snell, 1.33) and lands somewhere a little off.
+  The CAUSTICS are the clever part, after Evan Wallace's WebGL Water: a mesh as fine as the water
+  is laid on it, and every vertex moved to where light through that point reaches the floor.
+  Where the mesh is squeezed light is gathered, where stretched it is thinned — so a pixel's
+  brightness is the area of surface that lands on it, measured with the fragment shader's own
+  screen-space derivatives, and folds add up. Light is only moved, never made.
+  ⚠️ Rings came out as rounded squares: four neighbours carry short ripples 11.5% further along
+  the diagonals. Nine, edges weighted 4 and corners 1, make them round to 1%. The first test of it
+  passed WITH the bug, because it measured a big drop's height — round either way — rather than a
+  small drop's slope, which is what the eye sees; it now goes red without the fix.
+  ⚠️ And the opening splash vanished: the first frame takes no step, and was emptying the queue of
+  drops anyway. Drops now wait for a step to land on (found by counting them in the page).
+  Measured: flat water lights the floor at exactly 1.000 everywhere; rippled, the light ranges
+  0.81–1.37 and still averages 1.0026 — conserved to a quarter of a percent; the GPU's waves match
+  the CPU's to 1.4×10⁻⁶ after 200 steps. In the page: a tap is a drop, a drag leaves 41, two
+  fingers make two, the rain is about seven a second.
+
 ### Phone checklist — batch 4
 
 - [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
@@ -374,3 +398,5 @@ for the same reason: #19 adds its own section further up, and the two should not
       stutter-on read as neon? Is the faulty letter charming or annoying? Try a long word.
 - [ ] Sand — 📱 Tilt: does it ask, and does the sand fall to the edge that is lowest — in
       landscape too? Does the water feel too thick? Is the hourglass satisfying to turn?
+- [ ] Pond — do the caustics read as light on a floor? Drag a finger for a wake; try Deep with
+      rain. Smooth on a phone (two wave steps and a caustic mesh a frame)?

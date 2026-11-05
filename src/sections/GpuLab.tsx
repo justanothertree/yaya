@@ -9,6 +9,7 @@ import { LifeDemo } from '../gpu/LifeDemo'
 import { LightDemo } from '../gpu/LightDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { NeonDemo } from '../gpu/NeonDemo'
+import { PondDemo } from '../gpu/PondDemo'
 import { SandDemo } from '../gpu/SandDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -113,6 +114,12 @@ const DEMOS: readonly {
     Demo: SandDemo,
     name: 'Sand',
     line: 'Sand — pour sand and water, wall it in, and turn the box over (or tilt the phone).',
+  },
+  {
+    id: 'pond',
+    Demo: PondDemo,
+    name: 'Pond',
+    line: 'Pond — touch the water and watch the ripples bend the light on the floor beneath.',
   },
 ]
 
