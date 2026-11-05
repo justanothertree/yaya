@@ -717,6 +717,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     }
   })
   const [held, setHeld] = useState<number[]>([])
+  /**
+   * Which of the lit keys a finger is actually on.
+   *
+   * ⚠️ TWO STATES THAT CANNOT DRIFT, because both are written from the same book in the same
+   * statement — `show()` is the only thing that sets either, and it is called from exactly the
+   * three places that change what is sounding. Keeping them apart is what lets `held` stay a
+   * plain `number[]` for the keyboard and for TakesPanel, which is what it has always been.
+   */
+  const [lead, setLead] = useState<number[]>([])
   /* only read on narrow screens, where the instrument grid becomes a menu */
   const [picksOpen, setPicksOpen] = useState(false)
   const loop = useSyncExternalStore(subscribeLoop, loopState, loopState)
@@ -956,6 +965,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     remember(at, midi, on, live.current.inst)
   }, [])
 
+  /** Show what the book holds. The ONE place either of the two lit-key states is written. */
+  const show = useCallback(() => {
+    setHeld(book.notes())
+    setLead(book.leads())
+  }, [book])
+
   /** A press: several notes, because one key is not always one note. */
   const press = useCallback(
     (id: string, notes: number[]) => {
@@ -978,9 +993,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         noteOn(v.voice, live.current.inst, v.midi, at)
         report(v.midi, true, at)
       })
-      setHeld(book.notes())
+      show()
     },
-    [book, report],
+    [book, report, show],
   )
 
   /**
@@ -1059,9 +1074,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         noteOff(v.voice)
         report(v.midi, false)
       }
-      setHeld(book.notes())
+      show()
     },
-    [book, report],
+    [book, report, show],
   )
 
   /**
@@ -1077,9 +1092,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       for (const v of book.clear()) report(v.midi, false)
       if (mode === 'all') allNotesOff()
       else stopLive()
-      setHeld([])
+      show()
     },
-    [book, report],
+    [book, report, show],
   )
 
   /**
@@ -1257,8 +1272,32 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               // semitones, so a "black" one would be a shorter key in an arbitrary place —
               // piano furniture on something that is no longer a piano.
               (scale === 'chromatic' && isBlack(midi) ? ' is-black' : '') +
-              (scale !== 'chromatic' && midi % 12 === root ? ' is-root' : '') +
+              /**
+               * ⚠️ `&& !held`, AND THAT IS A FIX RATHER THAN A TIDY-UP. `.inst-key.is-root` and
+               * `.inst-key.is-held` are both two classes, so they tie on specificity and the
+               * later one in the stylesheet wins — which is `.is-root`. Pressing the root of
+               * any non-chromatic scale has therefore never shown the held fill at all; it kept
+               * its faint root tint, measured at 0.18 alpha against the accent's 1.0.
+               *
+               * It went unnoticed for as long as every lit key looked the same. Chords made it
+               * glaring in the other direction: the notes the chord ADDED render at 0.45, so
+               * the key under your finger was the DIMMEST thing on the keyboard.
+               *
+               * Fixed here rather than in CSS because the two are genuinely exclusive — the
+               * root tint means "home is here" and is for finding your place when you are not
+               * playing it. Saying so in the markup beats a third rule at a higher specificity,
+               * which is the ordering trick the `.is-theirs` comment next door warns against.
+               */
+              (scale !== 'chromatic' && midi % 12 === root && !held.includes(midi)
+                ? ' is-root'
+                : '') +
               (held.includes(midi) ? ' is-held' : '') +
+              /* ⚠️ A SOFTER FILL FOR A NOTE THE CHORD ADDED, so you can see which key your own
+                 finger is on. Four keys lighting identically is what chords did to this row.
+                 With Chord off every held note is a lead and this never applies, so a plain
+                 keyboard looks exactly as it did. A finger beats a chord tone: a key that is
+                 both is drawn as the one you are touching. */
+              (held.includes(midi) && !lead.includes(midi) ? ' is-added' : '') +
               (theirNotes.has(midi) ? ' is-theirs' : '')
             }
             style={

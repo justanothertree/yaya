@@ -54,6 +54,15 @@ export type SoundingBook = {
   /** Everything currently sounding, as voices. */
   open: () => Voice[]
   /**
+   * The first note of each open press — the key a finger is actually on.
+   *
+   * ⚠️ IT EXISTS BECAUSE CHORDS MADE `notes()` AMBIGUOUS. Before chords, every lit key was one
+   * somebody was touching; now four light up and only one of them was pressed, so the keyboard
+   * could no longer say which. That is a question only the book can answer, because only the
+   * book knows which notes arrived together and in what order.
+   */
+  leads: () => number[]
+  /**
    * The distinct notes sounding, for the keyboard's lit keys.
    *
    * Distinct because two fingers on one key, or a chord that doubles a note at the octave, are
@@ -88,6 +97,11 @@ export function soundingBook(): SoundingBook {
       return v
     },
     open,
+    leads() {
+      const seen: number[] = []
+      for (const v of held.values()) if (v.length && !seen.includes(v[0].midi)) seen.push(v[0].midi)
+      return seen
+    },
     notes() {
       const seen: number[] = []
       for (const { midi } of open()) if (!seen.includes(midi)) seen.push(midi)

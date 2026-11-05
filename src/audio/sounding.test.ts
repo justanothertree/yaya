@@ -171,3 +171,59 @@ describe('two books', () => {
     expect(b.end('k:z')).toEqual([])
   })
 })
+
+describe('which key is under a finger', () => {
+  /**
+   * ⚠️ CHORDS MADE THE LIT KEYS AMBIGUOUS. Before them, every highlighted key was one somebody
+   * was touching. A triad lights three and only one was pressed — so the keyboard needs to tell
+   * the two apart, and the book is the only thing that can, because only it knows which notes
+   * arrived together and in which order.
+   */
+  it('is the first note of the press, not the lowest note sounding', () => {
+    const book = soundingBook()
+    /* a chord rooted above a note held by the other hand: the lead is 64, not 60 */
+    book.start('p:1', [60])
+    book.start('p:2', [64, 67, 71])
+    expect(book.leads()).toEqual([60, 64])
+    expect(book.notes()).toEqual([60, 64, 67, 71])
+  })
+
+  it('is every note when nothing is a chord, so a plain keyboard is unchanged', () => {
+    const book = soundingBook()
+    book.start('k:z', [60])
+    book.start('k:x', [62])
+    expect(book.leads()).toEqual(book.notes())
+  })
+
+  it('stops being a lead when that press ends', () => {
+    const book = soundingBook()
+    book.start('p:1', [60, 64, 67])
+    expect(book.leads()).toEqual([60])
+    book.end('p:1')
+    expect(book.leads()).toEqual([])
+  })
+
+  it('counts a note once when two presses lead with it', () => {
+    const book = soundingBook()
+    book.start('p:1', [60, 64])
+    book.start('p:2', [60, 67])
+    expect(book.leads()).toEqual([60])
+  })
+
+  it('still names the lead when another press ADDED the same note', () => {
+    /* press A's chord reaches 67; press B is a finger on 67. It is a lead — a finger beats a
+       chord tone, or the key you are touching would draw as one you are not. */
+    const book = soundingBook()
+    book.start('p:1', [60, 64, 67])
+    book.start('p:2', [67, 71, 74])
+    expect(book.leads()).toEqual([60, 67])
+  })
+
+  it('has no leads when nothing is sounding', () => {
+    const book = soundingBook()
+    expect(book.leads()).toEqual([])
+    book.start('p:1', [60])
+    book.clear()
+    expect(book.leads()).toEqual([])
+  })
+})

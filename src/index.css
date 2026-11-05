@@ -3190,6 +3190,22 @@ section[id] {
   transform: translateY(2px);
 }
 /**
+ * A note the CHORD put there, rather than the key under your finger.
+ *
+ * ⚠️ THE SAME PROPERTY, WEAKER — unlike `.is-theirs` below, which deliberately uses a different
+ * one. The reasoning is opposite in each case and both are right: a note you and a friend are
+ * both playing has to show BOTH, so those must not compete; a note that is under your finger is
+ * not also a note the chord added, so here one answer is wanted and the stronger fill should
+ * win. Two classes beats one, so it does, without an !important or an ordering trick.
+ *
+ * It also sinks 1px instead of 2 — the keys the chord filled in look pressed, but less hard than
+ * the one you pressed. With Chord off nothing ever carries this class.
+ */
+.inst-key.is-held.is-added {
+  background: color-mix(in oklab, var(--accent), transparent 55%);
+  transform: translateY(1px);
+}
+/**
  * A key somebody ELSE is holding, in their colour.
  *
  * ⚠️ A RING, where your own press is a FILL — different properties on purpose, so a note you
