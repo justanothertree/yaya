@@ -223,11 +223,12 @@ are all "both sides added": keep both, and delete this batch's `demo === …` re
 the registry renders every entry by itself. This section is at the end of the file for the same
 reason.
 
-| Toy     | Interaction                                                                                 | GPU technique                                                                                                                                                                                                                   | Pattern to reuse                                                               |
-| ------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Slime   | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch              | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                                                              | "many writers, one grid" — any scatter where several threads land on one cell  |
-| Mirror  | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames                                              | "time as a texture" — slit-scan, echoes, any effect that needs the recent past |
-| Bubbles | HOLD to blow (the longer, the bigger), let go to THROW, TAP to pop — and each pop sounds    | PHYSICAL THIN-FILM INTERFERENCE per pixel on sphere impostors (no geometry): for red, green and blue, whether the film's two reflections strengthen or cancel at its thickness; reflection ADDED through premultiplied blending | "colour from physics" — oil slicks, beetles, anything iridescent               |
+| Toy     | Interaction                                                                                                   | GPU technique                                                                                                                                                                                                                    | Pattern to reuse                                                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Slime   | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch                                | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                                                               | "many writers, one grid" — any scatter where several threads land on one cell                     |
+| Mirror  | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back                   | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames                                               | "time as a texture" — slit-scan, echoes, any effect that needs the recent past                    |
+| Bubbles | HOLD to blow (the longer, the bigger), let go to THROW, TAP to pop — and each pop sounds                      | PHYSICAL THIN-FILM INTERFERENCE per pixel on sphere impostors (no geometry): for red, green and blue, whether the film's two reflections strengthen or cancel at its thickness; reflection ADDED through premultiplied blending  | "colour from physics" — oil slicks, beetles, anything iridescent                                  |
+| Clay    | SCULPT in 3D: add, carve, smooth with a finger; Turn, two fingers or the wheel to look round; mirror symmetry | a signed-distance field in a 64³ `texture_3d`, edited by smooth unions in compute and RAY-MARCHED to draw; GPU-side PICKING — a one-thread pass finds where the finger's ray meets the clay and the edit reads it, no round trip | "a solid you can change" — any editable 3D shape; and "let the GPU tell itself where you touched" |
 
 - **Slime** — a slime mould, after Jeff Jones's physarum model. Lay food (🍯) and it grows a
   glowing network to it, joining the pieces up the way a real one solves a maze; draw walls and it
@@ -299,6 +300,32 @@ reason.
   a thrown one flies the way the hand went, a tap pops and sounds once, Sound off sounds none, and
   two fingers blow two at once.
 
+- **Clay** — a lump of glazed clay on a turning wheel. Hold a finger on it and it grows there
+  (➕ Add), hollows (➖ Carve) or smooths (〰); 🪞 Mirror makes every stroke on both sides at once
+  (on by default — faces come easily); three brush sizes, three glazes, 🏺 the wheel turning it
+  slowly, ↺ a new lump. On a phone two fingers turn it and pinch to come closer; with a mouse,
+  🔄 Turn and the wheel. Keys: A, C, S, T tools, [ ] brush, M mirror, W wheel, R new lump, 1–3.
+  Technique: the clay is a signed distance field in a 64³ `rgba16float` 3D texture — every voxel
+  how far it is from the surface. It is drawn by RAY-MARCHING: every pixel steps through the
+  volume by the distance it samples until it reaches the surface, lit off the field's own gradient,
+  with shadow in the creases from how much clay sits just outside. A stroke folds a sphere in with
+  a SMOOTH union or subtraction (Quilez's polynomial smooth minimum), so edges blend rather than
+  seam, at 30% a frame so a held stroke builds rather than slaps. And where the finger meets the
+  clay is found ON THE GPU: the CPU never holds the clay, so a one-thread pass marches the finger's
+  ray through the volume and writes the hit into a small buffer, and the edit in the same
+  submission reads it — no readback, no frame of lag.
+  ⚠️ One bug, and one wrong diagnosis of it first. The starting lump read back as all zeros, while
+  a reset later worked; the first theory was lazy texture clearing, and the fix written for it
+  (zeros written in first) changed nothing. The cause was the uniform: `start` skips every voxel
+  past its size, and before the first frame the size was 0. It is written before the first
+  reset now, and the wrong fix came out.
+  Measured: the starting lump matches the CPU's to 4.9×10⁻⁴ (f16); the GPU's pick lands 0.0018
+  from the true surface — a seventeenth of a voxel; adding grows the clay with nothing 0.6 away
+  touched; carving takes it back; a mirrored stroke grows both sides by exactly 583 voxels each. In
+  the page: a held mouse sculpts (the hit buffer reports a hit), Turn turns, the wheel comes closer
+  without scrolling the page, and on an emulated phone two fingers turn and pinch with no sculpting
+  while they do.
+
 ### Phone checklist — batch 5
 
 - [ ] Slime — does the network read as alive? Lay food in a few places and watch it link them; draw
@@ -310,3 +337,6 @@ reason.
       leave the toy? Smooth on a phone (a 64-frame history)?
 - [ ] Bubbles — do they read as soap rather than glass? Blow a big one slowly; throw one; pop a
       few. Is the pop sound charming, and quiet enough? Do the colours drift nicely as they age?
+- [ ] Clay — does sculpting feel like clay (fast enough, not too fast)? Is it smooth on a phone (it
+      ray-marches a 3D texture per pixel)? Is Mirror on by default the right call? Two fingers to
+      turn — natural?
