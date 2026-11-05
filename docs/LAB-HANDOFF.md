@@ -86,12 +86,13 @@ Each toy here is chosen to be different from the seven above, and from each othe
 what it does, how you touch it, and how the GPU draws it — so the batch reads as a set of
 interactions and GPU patterns that can be lifted into the rest of the site.
 
-| Toy      | Interaction                                                                                                                              | GPU technique                                                                                                                                   | Reusable pattern                                                                      |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                                                                 | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                          | "every action is a warp of the whole image" — any number of edits per frame, in order |
-| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern                                                   | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient | "a simulation the user steers by its parameters" — the map is the UI                  |
-| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint                                             | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing      | "agents that look at each other" — flocking, crowds, anything with neighbours         |
-| Tunnel   | a STICK: press and drag, and the distance from where you pressed is how hard you turn; or tilt the phone; a little game (catch the orbs) | sphere tracing: no geometry, one full-screen pass, every pixel marches a ray through two distance functions; domain repetition for the orbs     | "a world that is only a function" — any SDF scene, and a camera somebody steers       |
+| Toy      | Interaction                                                                                                                              | GPU technique                                                                                                                                                                                                 | Reusable pattern                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                                                                 | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                                                                                        | "every action is a warp of the whole image" — any number of edits per frame, in order |
+| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern                                                   | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient                                                               | "a simulation the user steers by its parameters" — the map is the UI                  |
+| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint                                             | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing                                                                    | "agents that look at each other" — flocking, crowds, anything with neighbours         |
+| Tunnel   | a STICK: press and drag, and the distance from where you pressed is how hard you turn; or tilt the phone; a little game (catch the orbs) | sphere tracing: no geometry, one full-screen pass, every pixel marches a ray through two distance functions; domain repetition for the orbs                                                                   | "a world that is only a function" — any SDF scene, and a camera somebody steers       |
+| Cloth    | HANDLE an object: grab with several fingers, pull, tear, throw; a scissors tool cuts along a stroke                                      | position-based dynamics: Verlet integration and distance constraints in compute, GRAPH-COLOURED into 8 phases so no two threads write one particle; the mesh is built in the vertex shader from the particles | "a soft body you can hold" — ropes, jelly, flags, anything that stretches             |
 
 - **Marbling** — paper marbling after Jaffer's _Mathematical Marbling_. Tap to float a drop of ink
   in the next colour of the set; hold, and it keeps spreading, pushing everything round it outward.
@@ -169,6 +170,35 @@ interactions and GPU patterns that can be lifted into the rest of the site.
   counts as no, and two seconds without an event says "No tilt is arriving". Calling
   `requestPermission` lifted off the class throws Illegal invocation, which looked exactly like
   the phone refusing; it is called on the class.
+
+- **Cloth** — a curtain gathered on its rail, or a cloth pegged on a line. Grab it anywhere
+  (several fingers at once on a touch screen) and pull; pull hard enough and it tears, let go
+  mid-swing and it flies. ✂️ Cut slices along your stroke, and a piece cut free falls and crumples
+  on the floor. A breeze (on by default), four fabrics — Gingham, Silk, Stripes, Denim — and
+  🧵 New cloth. Keys: G grab, X cut, H hang it the other way, N new cloth, W breeze, 1–4 fabric.
+  Technique: position-based dynamics (Jakobsen's Hitman cloth; Müller et al.). Each step, every
+  particle moves on by its own velocity, gravity and the wind (Verlet), then every edge — across,
+  down and both diagonals — is pulled back towards its length, ten passes over. The GPU part is
+  the COLOURING: the edges are split into eight phases by kind and by the parity of one
+  coordinate, so no two edges in a phase share a particle and every edge in a phase can be its own
+  thread with no two threads writing the same particle. That also makes the parallel solve exactly
+  the sequential one in the same order — so a CPU copy checks it: 6.6×10⁻⁷ apart after 120 steps,
+  against 1.1×10⁻² with the CPU's phases reversed. A finger takes hold of every particle within
+  reach on the frame it goes down, and a held particle follows it spread over the frame's steps,
+  so letting go leaves it with the finger's velocity — which is the throw. Tearing is an edge past
+  2.4× its length; a hole is a square with a torn side, not drawn. The mesh is built in the vertex
+  shader from the particle buffer (six vertices a square), lit from both sides.
+  ⚠️ There is no "two corners", and it was tried: ten passes move a correction about ten
+  particles, so the middle of a 64-wide sheet held at two points never learns it is held — it
+  falls, and the pinned edges stretch 1.01 → 3.05 of their length in 30 steps and tear, untouched.
+  Pegs every 9 columns keep every particle within reach of something holding it.
+  ⚠️ The floor is a constraint inside the solver, not only a clamp after it: clamping just the
+  next position turned relaxation pushing particles under the floor into an upward kick, and a
+  piece cut loose tore 128 more edges landing. Now it tears none.
+  Measured: untouched in a strong breeze for ten seconds, nothing tears in either hanging (worst
+  stretch 1.2× curtain, 1.33× pegs); a stroke across cuts exactly the 190 edges it crosses; in the
+  page, one frame carries a press, two touch fingers hold at once, and the real rendered frames
+  show a pull, a tear and a cut piece on the floor.
 
 ### How the room is built
 
@@ -289,6 +319,9 @@ Batch 2:
       drag-as-a-stick feel right, or would "the craft follows your finger" be better? Turn on
       📱 Tilt: does it ask (iPhone), does tilting steer the way you expect — and in landscape,
       which is the one direction nobody has tried?
+- [ ] Cloth — does it tear too easily? (A brisk drag across a curtain tears where it is held;
+      TEAR is 2.4× an edge's length.) Two fingers pulling apart; cut across and watch the piece
+      fall; is it smooth on a phone (44 columns, up to 3 steps × 80 constraint passes a frame)?
 
 ## What to try next
 

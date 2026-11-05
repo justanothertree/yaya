@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { AquariumDemo } from '../gpu/AquariumDemo'
+import { ClothDemo } from '../gpu/ClothDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { GrowthDemo } from '../gpu/GrowthDemo'
@@ -106,6 +107,12 @@ const DEMOS: readonly {
     Demo: TunnelDemo,
     name: 'Tunnel',
     line: 'Tunnel — fly down an endless tunnel and catch the orbs. Drag to steer, or tilt the phone.',
+  },
+  {
+    id: 'cloth',
+    Demo: ClothDemo,
+    name: 'Cloth',
+    line: 'Cloth — grab it, pull it, tear it, cut it. Let go mid-swing and it flies.',
   },
 ]
 
