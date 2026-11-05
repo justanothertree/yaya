@@ -1,7 +1,16 @@
 import types from './life-types.wgsl?raw'
 import stepCode from './life-step.wgsl?raw'
 import drawCode from './life-draw.wgsl?raw'
-import { LIFE, TILE, generationsDue, packLife, type LifeParams } from './life'
+import {
+  LIFE,
+  TILE,
+  generationsDue,
+  packLife,
+  patternCells,
+  stampRuns,
+  type LifeParams,
+  type PatternId,
+} from './life'
 
 export type LifeInput = {
   /** the press, in cells, or null */
@@ -18,6 +27,8 @@ export type Life = {
   clear(): void
   /** Run exactly one generation on the next frame, running or not. */
   stepOnce(): void
+  /** Put a pattern on the board as it stands, centred on cell (cx, cy). */
+  stamp(id: PatternId, cx: number, cy: number): void
   frame(dt: number, input: LifeInput): void
   destroy(): void
 }
@@ -207,6 +218,13 @@ export async function createLife(
     },
     stepOnce: () => {
       pendingSteps++
+    },
+    /* written straight into the board on screen: queued writes land before the next frame's
+       commands, which is the frame that will read them */
+    stamp: (id, cx, cy) => {
+      if (!boards) return
+      for (const run of stampRuns(patternCells(id), cols, rows, cx, cy))
+        device.queue.writeBuffer(boards[cur], run.at * 4, run.cells as Uint32Array<ArrayBuffer>)
     },
     frame,
     destroy() {

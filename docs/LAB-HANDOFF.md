@@ -24,8 +24,11 @@ Every demo opens still under reduced motion and moves when Run is pressed.
 
 - **Swarm** — press and drag to pull particles in (or Push them away). Counts 32K / 128K / 512K /
   2M; touch-only devices stop at 512K.
-- **Life** — drag to draw living cells, or switch to Erase. Speed 1–60 generations a second, three
-  cell sizes. Keys with the board focused: Space run/pause, N step, R scatter, C clear, E draw/erase.
+- **Life** — drag to draw living cells, or switch to Erase, or pick a pattern and tap to drop it:
+  Glider, Spaceship, Pulsar, Glider gun, Acorn (each tested to do what it is famous for — the gun
+  fires a glider every 30 generations, on the GPU too). Speed 1–60 generations a second, three cell
+  sizes. Keys with the board focused: Space run/pause, N step, R scatter, C clear, E draw/erase,
+  1–5 pick a pattern.
 - **Fluid** — drag through it; the pointer's speed is the push. Splash, Clear, four palettes, Swirl
   and Fade. Keys: Space, S splash, C clear, 1–4 palette.
 - **Music** — 🎤 Mic or 🎵 Play a file… (the file never leaves the device), or play the Instrument

@@ -119,3 +119,85 @@ export function lifeStep(cells: Uint32Array, cols: number, rows: number): Uint32
   }
   return next
 }
+
+/**
+ * Patterns to stamp, in the plain-text form Life people write them in: `O` alive, `.` dead.
+ * Each is a classic, and life.test.ts checks each one DOES what it is famous for — a typo in a
+ * glider gun is a gun that never fires, and nothing on screen would say why.
+ */
+export const PATTERNS = {
+  glider: { name: 'Glider', rows: ['.O.', '..O', 'OOO'] },
+  spaceship: { name: 'Spaceship', rows: ['.O..O', 'O....', 'O...O', 'OOOO.'] },
+  pulsar: {
+    name: 'Pulsar',
+    rows: [
+      '..OOO...OOO..',
+      '.............',
+      'O....O.O....O',
+      'O....O.O....O',
+      'O....O.O....O',
+      '..OOO...OOO..',
+      '.............',
+      '..OOO...OOO..',
+      'O....O.O....O',
+      'O....O.O....O',
+      'O....O.O....O',
+      '.............',
+      '..OOO...OOO..',
+    ],
+  },
+  gun: {
+    name: 'Glider gun',
+    rows: [
+      '........................O...........',
+      '......................O.O...........',
+      '............OO......OO............OO',
+      '...........O...O....OO............OO',
+      'OO........O.....O...OO..............',
+      'OO........O...O.OO....O.O...........',
+      '..........O.....O.......O...........',
+      '...........O...O....................',
+      '............OO......................',
+    ],
+  },
+  acorn: { name: 'Acorn', rows: ['.O.....', '...O...', 'OO..OOO'] },
+} as const
+export type PatternId = keyof typeof PATTERNS
+
+/** A pattern as cells: ALIVE or 0, row by row. */
+export function patternCells(id: PatternId) {
+  const rows = PATTERNS[id].rows
+  const w = rows[0].length
+  const h = rows.length
+  const cells = new Uint32Array(w * h)
+  rows.forEach((r, y) => [...r].forEach((ch, x) => (cells[y * w + x] = ch === 'O' ? ALIVE : 0)))
+  return { w, h, cells }
+}
+
+/**
+ * Where a pattern centred on cell (cx, cy) lands in a board, as runs of consecutive cells — one
+ * `queue.writeBuffer` each. ⚠️ THE BOARD WRAPS, so a pattern stamped at an edge comes in at the
+ * other side, the same as anything that walks off it; a row that crosses the right edge is two
+ * runs. A pattern bigger than the board is cropped rather than wrapped onto itself.
+ */
+export function stampRuns(
+  p: { w: number; h: number; cells: Uint32Array },
+  cols: number,
+  rows: number,
+  cx: number,
+  cy: number,
+): { at: number; cells: Uint32Array }[] {
+  const w = Math.min(p.w, cols)
+  const h = Math.min(p.h, rows)
+  const x0 = (((Math.floor(cx) - Math.floor(w / 2)) % cols) + cols) % cols
+  const y0 = (((Math.floor(cy) - Math.floor(h / 2)) % rows) + rows) % rows
+  const runs: { at: number; cells: Uint32Array }[] = []
+  for (let y = 0; y < h; y++) {
+    const row = p.cells.subarray(y * p.w, y * p.w + w)
+    const by = (y0 + y) % rows
+    const first = Math.min(w, cols - x0)
+    runs.push({ at: by * cols + x0, cells: row.slice(0, first) })
+    if (first < w) runs.push({ at: by * cols, cells: row.slice(first) })
+  }
+  return runs
+}

@@ -12,8 +12,11 @@ import {
   gridFor,
   lifeStep,
   packLife,
+  patternCells,
+  stampRuns,
   toCell,
   type LifeParams,
+  type PatternId,
 } from './life'
 import { wgslLayout } from './wgslLayout'
 
@@ -148,5 +151,88 @@ describe('time', () => {
 
   it('slows down rather than jumping when a frame is slow', () => {
     expect(generationsDue(0, 1, 60)).toEqual({ run: 4, carry: 0 })
+  })
+})
+
+describe('the patterns do what they are famous for', () => {
+  /** a pattern alone in the middle of an empty board big enough not to meet itself */
+  const alone = (id: PatternId, cols = 90, rows = 60) => {
+    let cells: Uint32Array = new Uint32Array(cols * rows)
+    for (const run of stampRuns(patternCells(id), cols, rows, cols / 2, rows / 2))
+      cells.set(run.cells, run.at)
+    const pop = () => cells.filter((v) => v === ALIVE).length
+    const run = (n: number) => {
+      for (let i = 0; i < n; i++) cells = lifeStep(cells, cols, rows)
+    }
+    return {
+      pop,
+      run,
+      get cells() {
+        return cells
+      },
+    }
+  }
+
+  it('a glider keeps its five cells while it travels', () => {
+    const g = alone('glider')
+    g.run(40)
+    expect(g.pop()).toBe(5)
+  })
+
+  it('a spaceship keeps its nine cells while it travels', () => {
+    const g = alone('spaceship')
+    g.run(40)
+    expect(g.pop()).toBe(9)
+  })
+
+  it('a pulsar comes back every three generations', () => {
+    const g = alone('pulsar')
+    const start = aliveAt(g.cells, 90)
+    g.run(3)
+    expect(aliveAt(g.cells, 90)).toEqual(start)
+  })
+
+  it('the gun fires a glider every thirty generations', () => {
+    const g = alone('gun', 120, 80)
+    const at0 = g.pop()
+    g.run(30)
+    const at30 = g.pop()
+    g.run(30)
+    expect(at0).toBe(36)
+    expect(at30 - at0).toBe(5)
+    expect(g.pop() - at30).toBe(5)
+  })
+
+  it('an acorn of seven cells grows into something far bigger', () => {
+    const g = alone('acorn', 200, 140)
+    g.run(200)
+    expect(g.pop()).toBeGreaterThan(100)
+  })
+})
+
+describe('stamping', () => {
+  it('centres the pattern on the cell asked for', () => {
+    const runs = stampRuns(patternCells('glider'), 20, 20, 10, 10)
+    expect(runs.map((r) => r.at)).toEqual([9 * 20 + 9, 10 * 20 + 9, 11 * 20 + 9])
+  })
+
+  it('wraps a pattern across the edge, losing no cells', () => {
+    const p = patternCells('spaceship')
+    const runs = stampRuns(p, 16, 16, 15, 0)
+    const board = new Uint32Array(16 * 16)
+    for (const r of runs) {
+      expect(r.at + r.cells.length).toBeLessThanOrEqual(board.length)
+      // a run never crosses a row's end — that would be wrapping the wrong way
+      expect(Math.floor(r.at / 16)).toBe(Math.floor((r.at + r.cells.length - 1) / 16))
+      board.set(r.cells, r.at)
+    }
+    expect(board.filter((v) => v === ALIVE).length).toBe(9)
+    expect(runs.length).toBeGreaterThan(p.h)
+  })
+
+  it('crops a pattern bigger than the board rather than folding it onto itself', () => {
+    const runs = stampRuns(patternCells('gun'), 16, 16, 8, 8)
+    for (const r of runs) expect(r.cells.length).toBeLessThanOrEqual(16)
+    expect(new Set(runs.map((r) => Math.floor(r.at / 16))).size).toBe(9)
   })
 })

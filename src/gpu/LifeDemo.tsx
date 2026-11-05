@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
-import { CELL_SIZES, gridFor, toCell, type CellSize } from './life'
+import { CELL_SIZES, PATTERNS, gridFor, toCell, type CellSize, type PatternId } from './life'
 import { createLife, type Life, type LifeInput } from './lifeEngine'
 
 type Props = {
@@ -25,6 +25,10 @@ export function LifeDemo({ running, setRunning, onAdapter }: Props) {
   const [size, setSize] = useState<CellSize>('medium')
   const [speed, setSpeed] = useState(15)
   const [erase, setErase] = useState(false)
+  /** a pattern to drop where you tap, or null to draw and erase by hand */
+  const [stamp, setStamp] = useState<PatternId | null>(null)
+  const stampRef = useRef(stamp)
+  stampRef.current = stamp
   const sizeRef = useRef(size)
   sizeRef.current = size
   const runningRef = useRef(running)
@@ -53,19 +57,25 @@ export function LifeDemo({ running, setRunning, onAdapter }: Props) {
     redraw()
   }, [size])
 
-  const press = (e: PointerEvent<HTMLCanvasElement>) => {
+  const cellAt = (e: PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
     const { cols, rows } = gridRef.current
-    input.current.brush = toCell(
-      e.clientX - r.left,
-      e.clientY - r.top,
-      r.width,
-      r.height,
-      cols,
-      rows,
-    )
+    return toCell(e.clientX - r.left, e.clientY - r.top, r.width, r.height, cols, rows)
+  }
+  const press = (e: PointerEvent<HTMLCanvasElement>) => {
+    input.current.brush = cellAt(e)
     redraw()
   }
+  /* a stamp is a tap, not a stroke: one pattern where the finger lands, and a drag does nothing
+     more — dragging a glider gun across the board would lay a wall of them */
+  const down = (e: PointerEvent<HTMLCanvasElement>) => {
+    const id = stampRef.current
+    if (!id) return press(e)
+    const [x, y] = cellAt(e)
+    lifeRef.current?.stamp(id, x, y)
+    redraw()
+  }
+  const patternIds = Object.keys(PATTERNS) as PatternId[]
 
   const act = {
     toggle: () => setRunning((r) => !r),
@@ -101,7 +111,15 @@ export function LifeDemo({ running, setRunning, onAdapter }: Props) {
         act.clear()
         break
       case 'e':
+        setStamp(null)
         setErase((v) => !v)
+        break
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5':
+        setStamp(patternIds[Number(e.key) - 1])
         break
       default:
         return
@@ -138,7 +156,7 @@ export function LifeDemo({ running, setRunning, onAdapter }: Props) {
             },
           }
         }}
-        onPointerDown={press}
+        onPointerDown={down}
         onPointerMove={(e) => {
           if (input.current.brush) press(e)
         }}
@@ -162,12 +180,38 @@ export function LifeDemo({ running, setRunning, onAdapter }: Props) {
             Clear
           </button>
           <div className="lab-group" role="group" aria-label="What a press does">
-            <button className="btn btn-ghost" aria-pressed={!erase} onClick={() => setErase(false)}>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={!stamp && !erase}
+              onClick={() => {
+                setStamp(null)
+                setErase(false)
+              }}
+            >
               Draw
             </button>
-            <button className="btn btn-ghost" aria-pressed={erase} onClick={() => setErase(true)}>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={!stamp && erase}
+              onClick={() => {
+                setStamp(null)
+                setErase(true)
+              }}
+            >
               Erase
             </button>
+          </div>
+          <div className="lab-group" role="group" aria-label="Pattern to stamp">
+            {patternIds.map((id) => (
+              <button
+                key={id}
+                className="btn btn-ghost"
+                aria-pressed={stamp === id}
+                onClick={() => setStamp(id)}
+              >
+                {PATTERNS[id].name}
+              </button>
+            ))}
           </div>
           <div className="lab-group" role="group" aria-label="Cell size">
             {(Object.keys(CELL_SIZES) as CellSize[]).map((s) => (
@@ -198,11 +242,15 @@ export function LifeDemo({ running, setRunning, onAdapter }: Props) {
 
       {live && (
         <p className="muted lab-hint">
-          {erase ? 'Drag to wipe cells out.' : 'Drag to draw living cells.'}{' '}
+          {stamp
+            ? `Tap to drop a ${PATTERNS[stamp].name.toLowerCase()}.`
+            : erase
+              ? 'Drag to wipe cells out.'
+              : 'Drag to draw living cells.'}{' '}
           {grid.cols.toLocaleString()} × {grid.rows.toLocaleString()} cells.
           {/* a phone has no keys to press, so it is not told about them */}
           {!touchOnly() &&
-            ' Keys, once the board has focus: Space runs or pauses, N steps, R scatters, C clears, E switches draw and erase.'}
+            ' Keys, once the board has focus: Space runs or pauses, N steps, R scatters, C clears, E switches draw and erase, 1–5 pick a pattern.'}
         </p>
       )}
     </div>
