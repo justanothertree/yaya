@@ -229,9 +229,10 @@ add about another row; this batch on `main` alone makes about 5, and batches 5, 
 would make about 10 — most of a phone's screen of buttons above the canvas. Land #19's picker
 first. A third picker would only make the merge worse.
 
-| Toy         | Interaction                                                                                              | GPU technique                                                                                                                                                                                                                                         | Pattern to reuse                                                          |
-| ----------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Marble maze | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing | "thousands of things that touch each other" — any crowd, any granular toy |
+| Toy           | Interaction                                                                                                                       | GPU technique                                                                                                                                                                                                                                          | Pattern to reuse                                                                        |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                          | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing  | "thousands of things that touch each other" — any crowd, any granular toy               |
+| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone) | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew |
 
 - **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
   you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
@@ -269,9 +270,37 @@ first. A third picker would only make the merge worse.
      and Level work, a stroke draws walls and Erase takes them out, a click digs a hole, Pour streams
      marbles, New maze resets, and synthetic orientation tips the phone's board by sin of the angle.
 
+- **Stained glass** — a stained-glass window you make, and the light it throws. ✏️ Lead draws lead
+  lines; 🎨 Fill and a colour (Ruby, Amber, Gold, Emerald, Cobalt, Violet, Sky, Clear) glaze the
+  pane you tap — the whole pane, whatever shape the lead made it, and nothing past it; 🧽 Erase
+  lifts lead, and a gap joins two panes into one. ☀️ Sun (or the arrow keys, or 📱 Tilt the sun on a
+  phone) moves the sun, and the window's colours slide across the stone floor below it. ✿ Rose
+  window starts from a glazed rose; ▢ Empty frame from nothing. Keys: arrows sun, 1–4 tool,
+  C colour, R rose, N empty.
+  Technique: CONNECTED-COMPONENT LABELLING. Every cell of glass starts with its own index as its
+  label; each pass every cell takes the smallest label among itself and its four glass neighbours —
+  lead stops it — and then JUMPS, taking the label its new label has. Thirty-two passes a frame for
+  eight frames after the lead moves; a tap that comes sooner finishes the labelling first. A fill
+  colours every cell whose label is the tapped cell's — all on the GPU, no readback. The floor is
+  drawn by sending each of its pixels back along the sun's ray to the window plane and taking the
+  glass's colour there.
+  ⚠️ What was wrong first: 24 passes a frame was the guess; the rose window needs 28 (measured), so
+  it is 32, and the engine keeps going for eight frames — a 1,740-cell spiral corridor needs 115
+  passes, where a label crossing one cell a pass would need 1,740. Two of the probe's taps first
+  landed on lead (the middle of a rose window is a spoke) and filled nothing, correctly.
+  Measured on the GPU: its labels equal the CPU's on all 58,240 cells of a rose window (38 panes);
+  a tap fills all 893 cells of its pane and none outside; after a lead line is drawn across that
+  pane, a tap above it fills only the 173 cells above. The tests hold the CPU copy to a plain flood
+  fill (a rose window and five scribbles) and count the passes. In the page, at 1024 and on an
+  emulated phone: a line drawn across the empty frame splits it so Ruby fills one side; erasing a
+  gap joins them so Cobalt fills the whole window; the swatches choose and switch to Fill; the sun
+  follows a drag, the keys and synthetic phone tilt.
+
 ### Phone checklist — batch 7
 
 - [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
 - [ ] Marble maze — does 📱 Tilt feel like tipping a real board (and ask, on iPhone)? Smooth with a
       few thousand marbles poured? Is the board's stay-tilted drag natural with a mouse? Do the
       plinks get annoying?
+- [ ] Stained glass — is drawing lead with a finger precise enough to make the panes you meant? Does
+      a pane fill feel instant? Does the light on the floor read as light through a window?

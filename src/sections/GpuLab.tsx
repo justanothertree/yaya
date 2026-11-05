@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { GlassDemo } from '../gpu/GlassDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
@@ -61,6 +62,12 @@ const DEMOS = [
     name: 'Marble maze',
     line: 'Marble maze — tilt a wooden maze full of marbles; draw walls, dig holes, pour in more.',
     Demo: MarblesDemo,
+  },
+  {
+    id: 'glass',
+    name: 'Stained glass',
+    line: 'Stained glass — draw lead, tap panes to glaze them, and move the sun to throw the colours across the floor.',
+    Demo: GlassDemo,
   },
 ] as const
 
@@ -162,6 +169,7 @@ export function GpuLab() {
       {demo === 'lava' && <LavaDemo key="lava" {...props} />}
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
       {demo === 'marbles' && <MarblesDemo key="marbles" {...props} />}
+      {demo === 'glass' && <GlassDemo key="glass" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
