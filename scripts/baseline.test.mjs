@@ -41,6 +41,7 @@ const SUPABASE = join(MIGRATIONS, '..')
 const read = (...p) => readFileSync(join(SUPABASE, ...p), 'utf8')
 
 const dump = readFileSync(join(MIGRATIONS, dumpName), 'utf8')
+const privileges = read('baseline', '00-privileges.sql')
 const extensions = read('baseline', '01-extensions.sql')
 const triggers = read('baseline', '02-triggers.sql')
 const toml = read('config.toml')
@@ -108,6 +109,32 @@ describe('the schema baseline and the files that complete it', () => {
     )
     expect(creates.length).toBeGreaterThan(0)
     expect(creates.filter((c) => !/IF NOT EXISTS/i.test(c))).toEqual([])
+  })
+})
+
+describe('the privileges a restore cannot reproduce', () => {
+  /**
+   * ⚠️ `auto_expose_new_tables = false` STOPS FOUR PRIVILEGES SHORT, and the four it covers are
+   * the four anybody would think to check. Its SQL revokes `select, insert, update, delete` on
+   * tables and leaves TRUNCATE, REFERENCES and TRIGGER handed out — so run 41956008931 reported
+   * eight `a deny-all table is not deny-all`, every one of them TRUNCATE, on the four tables the
+   * house pattern keeps at RLS-on / zero-policies / no-grants. TRUNCATE is the privilege RLS
+   * cannot cover: there is no TRUNCATE policy type.
+   */
+  const sql = ddlOnly(privileges)
+
+  it('revokes every privilege, not the four the config flag names', () => {
+    for (const kind of ['TABLES', 'SEQUENCES', 'FUNCTIONS'])
+      expect(sql, `nothing revokes the default privileges on ${kind}`).toMatch(
+        new RegExp(`REVOKE ALL ON ${kind} FROM`, 'i'),
+      )
+  })
+
+  it('names all three roles the Data API uses', () => {
+    /* service_role included on purpose: the dump grants it back explicitly wherever production
+       grants it, and a restore that keeps it by default is as unfaithful as one that keeps anon. */
+    for (const role of ['anon', 'authenticated', 'service_role'])
+      expect(sql, `${role} keeps its default privileges`).toMatch(new RegExp(`\\b${role}\\b`))
   })
 })
 
@@ -202,10 +229,13 @@ describe('config.toml, which is the other half of all of it', () => {
 
   it('applies extensions, then the dump, then the triggers, then the fixtures', () => {
     const paths = setting('db.seed', 'sql_paths')
-    const order = ['01-extensions.sql', dumpName, '02-triggers.sql', 'seed.sql'].map((n) => [
-      n,
-      paths.indexOf(n),
-    ])
+    const order = [
+      '00-privileges.sql',
+      '01-extensions.sql',
+      dumpName,
+      '02-triggers.sql',
+      'seed.sql',
+    ].map((n) => [n, paths.indexOf(n)])
     for (const [n, at] of order) expect(at, `${n} is not in sql_paths`).toBeGreaterThan(-1)
     const places = order.map(([, at]) => at)
     expect(places, 'sql_paths is out of order').toEqual([...places].sort((a, b) => a - b))

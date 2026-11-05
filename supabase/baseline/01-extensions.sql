@@ -22,8 +22,8 @@
 -- ⚠️ THIS FILE IS DELIBERATELY NOT PART OF THE DUMP, for the reason 02-triggers.sql gives at
 -- length: the dump's header says how to regenerate it, and a regeneration is a fresh file that
 -- silently drops anything hand-written inside the old one. `[db.seed] sql_paths` in config.toml
--- applies this first, then the dump, then the triggers, then the fixtures; the ORDER is the
--- whole point of the numbering and `scripts/baseline.test.mjs` asserts it.
+-- applies the privileges, then this, then the dump, then the triggers, then the fixtures; the
+-- ORDER is the whole point of the numbering and `scripts/baseline.test.mjs` asserts it.
 
 CREATE SCHEMA IF NOT EXISTS "extensions";
 

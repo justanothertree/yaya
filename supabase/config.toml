@@ -116,12 +116,14 @@ enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 # ⚠️ THIS LIST IS THE WHOLE SCHEMA, AND ITS ORDER IS LOAD-BEARING. With [db.migrations]
-# disabled above, nothing else builds anything: the extensions the dump's own column types need,
-# then the dump, then the 24 triggers the dump turned out not to contain, then the fixtures.
-# Trim any of the first three and seed.sql fails on its first insert -- or worse, succeeds
-# against a schema with no enforcement in it, which is what run 41954680315 did.
+# disabled above, nothing else builds anything: the default privileges a restore cannot
+# reproduce, the extensions the dump's own column types need, the dump, the 24 triggers the dump
+# turned out not to contain, then the fixtures. Trim any of the first four and seed.sql fails on
+# its first insert -- or worse, succeeds against a schema that grants or enforces the wrong
+# things, which is what runs 41954680315 and 41956008931 did.
 # supabase/baseline/*.sql say why each exists; scripts/baseline.test.mjs asserts this order.
 sql_paths = [
+  "./baseline/00-privileges.sql",
   "./baseline/01-extensions.sql",
   "./migrations/00000000000000_baseline.sql",
   "./baseline/02-triggers.sql",

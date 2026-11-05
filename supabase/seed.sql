@@ -59,14 +59,27 @@ values (least('00000000-0000-4000-a000-000000000001'::uuid, '00000000-0000-4000-
         '00000000-0000-4000-a000-000000000001', 'accepted', now())
 on conflict do nothing;
 
--- blocks at three tiers, so a clamp has something to cut
+-- blocks at four tiers, so a clamp has something to cut
+--
+-- ⚠️ THE FOURTH ROW USED TO BE `public` ON THE STRANGER, AND BLOCK J FAILS ON EXACTLY THAT. Its
+-- comment said "the row Phase 2 exists to clamp" -- true of the day it was written, when J was
+-- still a REPORT. J became a failure on 3 Nov once production's five such rows were brought
+-- down, and the setters clamp now, so a stored tier above its owner's ceiling is a state this
+-- product can no longer reach. The two files were written days apart and nothing ran them
+-- together until db-guards worked: the fixture was asking the suite to accept an illegal state,
+-- which is worse than a thin fixture, because the check it defeats is the one that keeps the
+-- real data clean.
+--
+-- A fixture has to be a state the product could actually be in. The stranger's `age_band` is
+-- null, so their ceiling is Friends and anything above it is unreachable; `private` adds a
+-- fourth tier instead and costs nothing, since nothing in the suite reads these rows -- only
+-- block J counts them.
 insert into public.profile_blocks (user_id, block_type, position, size, config, visibility)
 values
   ('00000000-0000-4000-a000-000000000001', 'bio', 1, 'medium', '{}'::jsonb, 'public'),
   ('00000000-0000-4000-a000-000000000002', 'bio', 1, 'medium', '{}'::jsonb, 'members'),
   ('00000000-0000-4000-a000-000000000003', 'bio', 1, 'medium', '{}'::jsonb, 'friends'),
-  -- stored 'public' by somebody whose ceiling is not public: the row Phase 2 exists to clamp
-  ('00000000-0000-4000-a000-000000000003', 'status', 2, 'small', '{}'::jsonb, 'public')
+  ('00000000-0000-4000-a000-000000000003', 'status', 2, 'small', '{}'::jsonb, 'private')
 on conflict do nothing;
 
 -- a circuit person with an owner, in a group, with a log. The suspension checks need a log whose
