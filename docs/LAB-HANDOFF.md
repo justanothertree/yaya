@@ -235,10 +235,11 @@ nobody can resolve by keeping both sides.
 Erosion's uniform carries a camera matrix. It is additive; if another branch has added a type to
 the same table, keep both lines.
 
-| Toy       | Interaction                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                              |
-| --------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Erosion   | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                      |
-| Snowflake | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule |
+| Toy        | Interaction                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                                 |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Erosion    | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                                                         |
+| Snowflake  | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule                                    |
+| Pixel sort | YOUR PHOTO, and GESTURES AS COMMANDS: the direction you swipe is the direction it sorts; a tap drips                        | A BITONIC SORTING NETWORK, a stage per dispatch (k and j by dynamic uniform offset), over COMPOSITE KEYS — span, level, place — whose spans come from a PREFIX SCAN in workgroup memory; the picture is a GATHER through the sorted keys                                                        | "sort millions of things on the GPU, stably, in segments" — any ranking, any per-row ordering; and the dynamic-offset trick for many small passes in one encoder |
 
 - **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
   into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
@@ -320,6 +321,53 @@ the same table, keep both lines.
      shader draws there, Chromium's fake microphone reads as breath on the meter, the microphone's
      track has ended after leaving the toy, every weather, speed, toggle and key reaches the shader.
 
+- **Pixel sort** — the glitch-art effect, done properly. Swipe across the picture and every run
+  of pixels under your finger is sorted the way you swiped, brightest last, so it melts into
+  streaks; a tap drips downwards; ✨ Melt it all sorts the whole picture down. Sort by Brightness,
+  Hue or Warmth; Gentle, Glitch (the default) or Everything decides which pixels join a sorted run.
+  🖼 Your photo loads one from the device (fitted so its longer side is 1,024 pixels; it never
+  leaves the device), ↺ Start again puts it back unsorted. The built-in picture — a sunset over a
+  city and the sea — is painted in code, and painted upright on a phone held upright. Keys: arrows
+  melt it all that way, 1–3 sort by, S which pixels, O start again.
+  Technique: pixel sorting sorts RUNS, not rows — only pixels in the stroke and in the chosen
+  range join a run, and the rest stay put, which is what keeps the picture recognisable. A sorting
+  network cannot stop at a run's edge, so the run goes in the key: `run · 2²⁰ + level · 2¹⁰ +
+place`. Sorting a whole line by that key sorts every run within itself, never moves a pixel out
+  of its run, and is stable, and the low bits say where each pixel came from — the picture is a
+  GATHER through the sorted keys. Each line's runs are numbered by a prefix scan in workgroup
+  memory (one workgroup a line, 256 threads, 1,024 places). The sort is a bitonic network: 55
+  stages for 1,024 keys, each pairing every key with exactly one other, run two a frame so the
+  pixels can be seen streaming, each stage's k and j a 256-byte slot of one uniform buffer chosen
+  by dynamic offset — all the stages in one encoder. When it finishes the gather is baked into the
+  photo, so swipes build on each other.
+  ⚠️ Four things were wrong first:
+  1. **Half-way through, half of every column was upside down.** The textbook bitonic network
+     sorts alternate blocks downwards until the very last merge, and drawn live that flickered in
+     flipped bands. The variant whose first stage of each merge compares MIRRORED pairs leaves every
+     block sorted the same way after every level: the picture melts in runs of two, then four, then
+     whole lines.
+  2. **On the frame a sort finished, the picture was sorted twice**: the uniform had already said
+     "draw through the keys" when the photo became the sorted one. Whether a frame bakes is decided
+     before the uniform is written now.
+  3. **The first built-in picture did nothing when melted** — its sky was dark at the top and bright
+     at the horizon, already in order going down. It has lit clouds and a city of windows now, and
+     the spans were chosen by sorting it every way with every range (Gentle barely moves the
+     clouds, Glitch is the classic look, Everything leaves stripes).
+  4. **A span preset called "Melt" sat beside "✨ Melt it all"**, and the probe clicking one hit the
+     other — so would a person. It is called Everything.
+     Measured on the GPU, sorting a 300×200 picture of noise and stripes the whole way in each
+     direction and comparing every pixel with the same sort done on the CPU (keys, network, gather):
+     right, left and down by brightness or warmth agree on all 60,000 pixels; up by hue differs on 40
+     — computing the hue in single precision on the CPU brings that to 7, the rest within WGSL's
+     2.5-ulp division, so it is rounding at level boundaries and not the sort. One dab of radius 20
+     marks 1,264 pixels against π·20² = 1,257. The tests hold the network to an ordinary sort (ties
+     included, 1,024 keys), every stage to pairing each key with exactly one other, every finished
+     level to blocks sorted the same way round, the keys to never moving a pixel out of its run and to
+     agreeing with a plain stable sort of each run on a long random line. In the page, at 1024 and on
+     an emulated phone: a swipe left sorts rows the other way, a tap drips down, a swipe down on a
+     touch screen sorts columns, Melt it all, sort-by, spans and keys reach the shader, a chosen photo
+     is fitted and sorted, and Start again restores it unsorted.
+
 ### Phone checklist — batch 6
 
 - [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
@@ -331,3 +379,6 @@ the same table, keep both lines.
       breath, but any loud sound counts)? Is forty seconds to grow a crystal the right wait? Does a
       finger's breath read as breath? Does the browser ask for the microphone, and does its
       recording light go off when you leave the toy?
+- [ ] Pixel sort — does a swipe feel like it pushes the pixels the way you swiped? Try your own
+      photo (does the picker open the camera roll?). Is the melt quick enough, or should it run
+      faster than two stages a frame? Is Glitch the right default?
