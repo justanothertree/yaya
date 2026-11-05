@@ -126,8 +126,8 @@ Roughly in order of how much they would teach:
 
 ## Loose ends
 
-- **The AudioDock has five controls under 24px** at 1440 (drag handle 13×21, track name 89×18, two
-  buttons 24×22, volume 81×16), found by the audit while Music played a file. It appears over every
-  page and is not the Lab's; it is queued as its own task.
+- **The AudioDock's controls were all under 24px** — found by the audit while Music played a
+  file, and worse on a phone (21×19) than at 1440, which the first note here had the wrong way
+  round. Fixed in `fac6325`: 28px with a mouse, 44px under a finger.
 - The Lab's own wording ("Experiments with WebGPU…") is in `App.tsx` beside the room's heading,
   not in `GpuLab.tsx`.
