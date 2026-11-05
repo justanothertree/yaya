@@ -16,6 +16,7 @@ import {
   DRUMS,
   outputTap,
 } from '../audio/synth'
+import { CHORDS, chordNotes, type ChordId } from '../audio/chords'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
   captureSamples,
@@ -234,6 +235,15 @@ const INST_KEY = 'instrument_v1'
 const OCT_KEY = 'instrument_octave_v1'
 const SCALE_KEY = 'instrument_scale_v1'
 const ROOT_KEY = 'instrument_root_v1'
+const CHORD_KEY = 'instrument_chord_v1'
+
+/**
+ * Chromatic cannot answer "two degrees up" — every semitone is in it — so chords there are
+ * resolved against Major with the pressed note as the root, which makes them all major and
+ * predictable. Read out of SCALES rather than written again, for the reason instKits gives: a
+ * second copy is a copy that goes stale.
+ */
+const MAJOR_DEGREES = SCALES.find(([id]) => id === 'major')?.[2] ?? SCALES[0][2]
 
 /** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
 const SPAN = 25
@@ -713,6 +723,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     const v = Number(localStorage.getItem(ROOT_KEY))
     return Number.isFinite(v) && v >= 0 && v <= 11 ? v : 0
   })
+  /* ⚠️ asked of CHORDS rather than cast, so a shape removed from the picker cannot come back
+     out of somebody's localStorage as a value nothing handles */
+  const [chord, setChord] = useState<ChordId>(() => {
+    try {
+      const v = localStorage.getItem(CHORD_KEY)
+      return CHORDS.some(([id]) => id === v) ? (v as ChordId) : 'off'
+    } catch {
+      return 'off'
+    }
+  })
   const [held, setHeld] = useState<number[]>([])
   /* only read on narrow screens, where the instrument grid becomes a menu */
   const [picksOpen, setPicksOpen] = useState(false)
@@ -746,11 +766,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     },
     [scale, base, root, degrees],
   )
+
+  /**
+   * What one key plays — a note, or a chord built from the scale you chose.
+   *
+   * ⚠️ DRUMS ARE NOT HARMONY. Stacking two degrees of a twelve-piece kit is a kick with a snare
+   * on top, which is a mistake rather than a chord — so the kit ignores the setting rather than
+   * the picker having to be hidden and the choice forgotten.
+   */
+  const notesFor = useCallback(
+    (midi: number) => {
+      if (chord === 'off' || inst === 'drums') return [midi]
+      return scale === 'chromatic'
+        ? chordNotes(chord, midi, MAJOR_DEGREES, midi % 12)
+        : chordNotes(chord, midi, degrees, root)
+    },
+    [chord, inst, scale, degrees, root],
+  )
   // ⚠️ a ref as well as state: the key handlers are bound once and would otherwise capture the
   // instrument and octave from the render that installed them, so changing either mid-play would
   // be ignored until something else re-rendered
-  const live = useRef({ inst, noteAt })
-  live.current = { inst, noteAt }
+  const live = useRef({ inst, noteAt, notesFor })
+  live.current = { inst, noteAt, notesFor }
 
   useEffect(() => {
     try {
@@ -758,10 +795,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(OCT_KEY, String(octave))
       localStorage.setItem(SCALE_KEY, scale)
       localStorage.setItem(ROOT_KEY, String(root))
+      localStorage.setItem(CHORD_KEY, chord)
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root])
+  }, [inst, octave, scale, root, chord])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -970,7 +1008,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       if (midi == null) owned.current.delete(pointerId)
       else {
         owned.current.set(pointerId, midi)
-        press('p:' + pointerId, [midi])
+        press('p:' + pointerId, live.current.notesFor(midi))
       }
     },
     // press and lift are stable useCallbacks with no deps
@@ -1114,7 +1152,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
       e.preventDefault()
-      press('k:' + e.key.toLowerCase(), [live.current.noteAt(off)])
+      press('k:' + e.key.toLowerCase(), live.current.notesFor(live.current.noteAt(off)))
     }
     const up = (e: KeyboardEvent) => {
       const off = KEY_MAP[e.key.toLowerCase()]
@@ -2218,7 +2256,54 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             </select>
           </label>
         )}
+
+        {/**
+         * One key, a chord.
+         *
+         * ⚠️ NO `hush()` HERE, unlike its two neighbours, and the difference is the point. They
+         * cut your notes off because the keys were about to mean something else; changing this
+         * does not need to, because the book remembers what each press actually sounded and
+         * releases that — so you can widen a chord you are already holding and the note you let
+         * go of is the note you played.
+         *
+         * ⚠️ AND NOT HIDDEN ON THE DRUM KIT. It would be a control appearing and disappearing as
+         * you browsed the instruments, and your choice would be silently forgotten; the kit
+         * ignores it instead and the hint below says so.
+         */}
+        <label className="inst-pick">
+          <span className="muted">Chord</span>
+          <select
+            value={chord}
+            onChange={(e) => {
+              setChord(e.target.value as ChordId)
+              /* ⚠️ hand the keyboard back, for the reason the Key picker gives: a focused
+                 select eats letters as type-ahead, so staying here would change the chord again
+                 the moment you played a note */
+              e.target.blur()
+            }}
+          >
+            {CHORDS.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
+      {/* The one-line explanation of whichever shape is chosen, because "Seventh" is a word you
+          either know or do not, and a `title` is nothing on a phone. Silent on One note, which
+          needs no explaining and would otherwise put a line of text under an untouched room. */}
+      {chord !== 'off' && (
+        <p className="muted inst-note">
+          {inst === 'drums'
+            ? 'The drum kit plays one sound per pad — chords come back when you pick an instrument.'
+            : CHORDS.find(([id]) => id === chord)?.[2] +
+              (scale === 'chromatic'
+                ? '. On Chromatic every chord is major — pick a scale to hear it follow the key.'
+                : '.')}
+        </p>
+      )}
 
       {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
           library is where it belongs — but the library row collapses, and a recording you can
