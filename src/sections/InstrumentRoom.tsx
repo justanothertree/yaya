@@ -37,7 +37,13 @@ import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit
 import { KitBar } from '../ui/KitBar'
 import { useTouchOnly } from '../ui/pointerKind'
 import { useMediaQuery } from '../ui/media'
-import { PHONE_KEYBOARD, keysToShow } from '../audio/keyboardSpan'
+import {
+  OCTAVE_HIGH,
+  OCTAVE_LOW,
+  PHONE_KEYBOARD,
+  keysToShow,
+  shiftOctave,
+} from '../audio/keyboardSpan'
 import {
   healthOn,
   labOn,
@@ -730,6 +736,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      where the pedal is silently down means your first chord never stops and nothing on screen
      says why — the one setting whose wrong state is indistinguishable from a broken synth. */
   const [hold, setHold] = useState(false)
+  /** whether the pedal currently down was put there by Shift rather than by the button */
+  const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
      effect when there is nothing to swing — which is what makes hiding it honest rather than
      the trap the arp picker was. See the note on its own `&&` below. */
@@ -1330,12 +1338,61 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         else startLoop()
         return
       }
+      /**
+       * ⚠️ THE OCTAVE AND THE PEDAL BELONG ON THE KEYBOARD, because the keyboard is how most
+       * people play this. Everything else in the room grew a control and left the typing rows
+       * able to do one thing — sound a note — so playing a line that crosses two octaves, or
+       * letting a chord ring while you move your hands, meant reaching for the mouse in the
+       * middle of it.
+       *
+       * `-` and `=` because they sit together, are not in KEY_MAP, and are the pair trackers
+       * and DAWs have used for this for thirty years. The shifted `_` and `+` are accepted too,
+       * so a caps-lock or a stray thumb does not make the control vanish. NOT the arrow keys:
+       * this listener is on `window`, so capturing them would stop the page scrolling for
+       * anybody driving the site from the keyboard — a real loss to avoid a small reach.
+       */
+      if (e.key === '-' || e.key === '_') {
+        e.preventDefault()
+        setOctave((o) => shiftOctave(o, -1))
+        return
+      }
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault()
+        setOctave((o) => shiftOctave(o, 1))
+        return
+      }
+      /**
+       * ⚠️ SHIFT IS A MOMENTARY PEDAL, AND IT MUST NOT UNLATCH THE BUTTON. Hold is a latch you
+       * can leave on; Shift is a pedal you lean on — a real instrument has both and they do not
+       * fight. So Shift only turns Hold on when it was off, and only turns it off again if
+       * Shift is what turned it on. Without that, tapping Shift once while the button was
+       * latched would silently switch the latch off.
+       */
+      if (e.key === 'Shift') {
+        if (!live.current.hold) {
+          shiftPedal.current = true
+          setHold(true)
+        }
+        return
+      }
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
       e.preventDefault()
       press('k:' + e.key.toLowerCase(), live.current.notesFor(live.current.noteAt(off)))
     }
     const up = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        /* only if the pedal is the thing that put it down — see the note on the way in */
+        if (shiftPedal.current) {
+          shiftPedal.current = false
+          setHold(false)
+          for (const v of pedal.release()) {
+            noteOff(v.voice)
+            report(v.midi, false)
+          }
+        }
+        return
+      }
       const off = KEY_MAP[e.key.toLowerCase()]
       if (off === undefined) return
       lift('k:' + e.key.toLowerCase())
@@ -1351,10 +1408,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
     }
-    /* all three are referentially stable — `book` is one object per mount and `report` has no
-       deps — so this binds once, which is what the comments above about a listener capturing a
-       stale `playing` are relying on */
-  }, [press, lift, hush])
+    /* all of them are referentially stable — `book`, `pedal` and `arping` are one object per
+       mount and `report` has no deps — so this binds once, which is what the comments above
+       about a listener capturing a stale `playing` are relying on */
+  }, [press, lift, hush, pedal, report])
 
   // leaving the page must not leave a note ringing forever
   useEffect(
@@ -1427,8 +1484,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         <input
           type="range"
           className="inst-keyslide no-print"
-          min={1}
-          max={6}
+          /* the third place this range lived; now the same constants the buttons and the
+             keyboard shortcuts use, so none of them can stop one step short of another */
+          min={OCTAVE_LOW}
+          max={OCTAVE_HIGH}
           step={1}
           value={octave}
           onChange={(e) => setOctave(Number(e.target.value))}
@@ -2399,7 +2458,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           Octave
           <button
             className="btn"
-            onClick={() => setOctave((o) => Math.max(1, o - 1))}
+            onClick={() => setOctave((o) => shiftOctave(o, -1))}
             disabled={octave <= 1}
             aria-label="Octave down"
           >
@@ -2408,7 +2467,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           <strong>{octave}</strong>
           <button
             className="btn"
-            onClick={() => setOctave((o) => Math.min(6, o + 1))}
+            onClick={() => setOctave((o) => shiftOctave(o, 1))}
             disabled={octave >= 6}
             aria-label="Octave up"
           >
@@ -2755,6 +2814,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         octaves of white keys, <kbd>S</kbd> and the number row are the black ones
         {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
         slide.{' '}
+        {/* ⚠️ A SHORTCUT NOBODY IS TOLD ABOUT IS A SHORTCUT NOBODY HAS. These two are the only
+            way to change octave or sustain without reaching for the mouse, and the keyboard is
+            how most people play this — so the sentence goes next to the one that already
+            explains the typing rows, not into a title attribute that a phone cannot show. */}
+        <kbd>−</kbd> and <kbd>=</kbd> move an octave, and holding <kbd>Shift</kbd> lets the notes
+        ring.{' '}
         {jamming.on
           ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
           : 'Nothing is recorded or sent anywhere.'}

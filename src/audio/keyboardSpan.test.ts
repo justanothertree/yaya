@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { FULL_SPAN, PHONE_KEYBOARD, keysToShow } from './keyboardSpan'
+import {
+  FULL_SPAN,
+  OCTAVE_HIGH,
+  OCTAVE_LOW,
+  PHONE_KEYBOARD,
+  keysToShow,
+  shiftOctave,
+} from './keyboardSpan'
 import { SCALES } from './scales'
 
 /**
@@ -120,5 +127,31 @@ describe('the breakpoint', () => {
     expect(PHONE_KEYBOARD).toContain('max-width')
     expect(PHONE_KEYBOARD).toContain('max-height')
     expect(PHONE_KEYBOARD).toContain('landscape')
+  })
+})
+
+describe('moving the octave', () => {
+  it('steps by one in each direction', () => {
+    expect(shiftOctave(4, 1)).toBe(5)
+    expect(shiftOctave(4, -1)).toBe(3)
+  })
+
+  it('stops at the ends rather than wrapping or running off', () => {
+    /* ⚠️ a wrap would be the worst answer: pressing "up" at the top and landing five octaves
+       lower is a jump nobody asked for, in the middle of playing */
+    expect(shiftOctave(OCTAVE_HIGH, 1)).toBe(OCTAVE_HIGH)
+    expect(shiftOctave(OCTAVE_LOW, -1)).toBe(OCTAVE_LOW)
+    expect(shiftOctave(OCTAVE_HIGH, 99)).toBe(OCTAVE_HIGH)
+    expect(shiftOctave(OCTAVE_LOW, -99)).toBe(OCTAVE_LOW)
+  })
+
+  it('clamps a stored octave that is out of range', () => {
+    /* localStorage is somebody's old value, or a rig from a future version */
+    expect(shiftOctave(99, 0)).toBe(OCTAVE_HIGH)
+    expect(shiftOctave(-4, 0)).toBe(OCTAVE_LOW)
+  })
+
+  it('agrees with the range the buttons and the number input use', () => {
+    expect([OCTAVE_LOW, OCTAVE_HIGH]).toEqual([1, 6])
   })
 })

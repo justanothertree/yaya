@@ -57,3 +57,19 @@ export function keysToShow(degreeCount: number, narrow: boolean): number {
      if one arrived the phone should not get a longer keyboard than the desktop */
   return Math.min(FULL_SPAN, Math.floor(degreeCount) + 1)
 }
+
+/**
+ * How far the octave buttons can go.
+ *
+ * ⚠️ ONE PLACE, because there were three. The two buttons each carried their own
+ * `Math.max(1, …)` / `Math.min(6, …)` and the number input carried the bounds again — fine
+ * while nothing else moved the octave, and three things to keep in step the moment the computer
+ * keyboard learned to. A range that disagrees with itself is a key that stops working one step
+ * before the button does.
+ */
+export const OCTAVE_LOW = 1
+export const OCTAVE_HIGH = 6
+
+/** Move the octave by `by`, staying inside the range the room offers. */
+export const shiftOctave = (from: number, by: number): number =>
+  Math.max(OCTAVE_LOW, Math.min(OCTAVE_HIGH, Math.round(from) + by))
