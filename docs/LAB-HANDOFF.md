@@ -223,9 +223,10 @@ are all "both sides added": keep both, and delete this batch's `demo === …` re
 the registry renders every entry by itself. This section is at the end of the file for the same
 reason.
 
-| Toy   | Interaction                                                                    | GPU technique                                                                                                                      | Pattern to reuse                                                              |
-| ----- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Slime | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays | "many writers, one grid" — any scatter where several threads land on one cell |
+| Toy    | Interaction                                                                                 | GPU technique                                                                                                                                                                      | Pattern to reuse                                                               |
+| ------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Slime  | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch              | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                 | "many writers, one grid" — any scatter where several threads land on one cell  |
+| Mirror | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames | "time as a texture" — slit-scan, echoes, any effect that needs the recent past |
 
 - **Slime** — a slime mould, after Jeff Jones's physarum model. Lay food (🍯) and it grows a
   glowing network to it, joining the pieces up the way a real one solves a maze; draw walls and it
@@ -251,9 +252,35 @@ reason.
   59), spores reach the shader, and frames read back from the page show the network linking the
   food that was laid.
 
+- **Mirror** — your camera, with time you can paint. Brush over the picture with 🐢 Slow time and
+  that part falls up to two seconds behind; ⚡ Bring back returns it; several fingers at once.
+  Start from Falling (the classic slit-scan: the past pours down the picture), Ripple, Split or
+  Now; 🎨 Show time tints what you have painted. Until the camera is turned on — or if it is
+  refused, or there is none — a stand-in scene of drifting circles and a sweeping hand shows the
+  same trick. The camera stays on the device; the picture is mirrored, as a mirror is; and leaving
+  the toy stops every track, so the light goes off (checked). Keys: C camera, S, N brushes, T show
+  time, 1–4 start from.
+  Technique: the last 64 frames are layers of one `texture_2d_array`, written as a ring — each new
+  frame over the oldest, a `head` saying which is newest, nothing ever copied along. A per-pixel
+  delay map (0..1) says how far back each pixel looks, and the display blends the two frames
+  either side of that moment, so a smooth map is a smooth smear rather than steps. The brush is a
+  compute pass easing the map towards the past or now. The history is shaped like the canvas (about
+  49,000 texels whatever the shape), so a phone held upright is not stretched.
+  ⚠️ One bug the linter led to: the drawing loop is built once, with the device, so it was reading
+  the camera state from the first render — off, for ever — and would never have shown the camera.
+  It reads a ref now.
+  Measured, with a stand-in where frame n is a flat red of n so a pixel's red says which moment it
+  shows: a delay of ½ everywhere shows 118 against 117.5 expected (31.5 frames back, blended); the
+  Falling map shows each row the frame its height says, within half a frame; the GPU brush matches a
+  CPU copy to 1.3×10⁻⁷. In the page, with Chromium's fake camera: it goes live, the brush paints
+  under a mouse and under two fingers, and leaving the toy ends the camera's track.
+
 ### Phone checklist — batch 5
 
 - [ ] Slime — does the network read as alive? Lay food in a few places and watch it link them; draw
       a wall across a vein and watch it reroute. Smooth on a phone (two steps a frame, a cell every
       2 CSS px)? On `main`'s picker this batch's toys make a third row on a phone — #19's dropdown
       fixes that when it lands.
+- [ ] Mirror — does the camera ask, and does the picture look like a mirror (moving left moves
+      left)? Paint 🐢 over your face and turn your head. Does the camera light go off when you
+      leave the toy? Smooth on a phone (a 64-frame history)?

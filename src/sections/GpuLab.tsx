@@ -4,6 +4,7 @@ import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { MirrorDemo } from '../gpu/MirrorDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -61,6 +62,12 @@ const DEMOS = [
     name: 'Slime',
     line: 'Slime — lay food and a slime mould grows a glowing network to it, routing round your walls.',
     Demo: SlimeDemo,
+  },
+  {
+    id: 'mirror',
+    name: 'Mirror',
+    line: 'Mirror — your camera, with time you can paint: brush part of the picture and it lags behind.',
+    Demo: MirrorDemo,
   },
 ] as const
 
@@ -162,6 +169,7 @@ export function GpuLab() {
       {demo === 'lava' && <LavaDemo key="lava" {...props} />}
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
       {demo === 'slime' && <SlimeDemo key="slime" {...props} />}
+      {demo === 'mirror' && <MirrorDemo key="mirror" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
