@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { FractalDemo } from '../gpu/FractalDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { HarpDemo } from '../gpu/HarpDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
@@ -92,6 +93,12 @@ const DEMOS: readonly {
     Demo: LightDemo,
     name: 'Light',
     line: 'Light — move lamps, pillars and walls round a dark room; the soft shadows and mixed colours work themselves out.',
+  },
+  {
+    id: 'harp',
+    Demo: HarpDemo,
+    name: 'Harp',
+    line: 'Harp — strum the strings with as many fingers as you like; they swing and sing.',
   },
 ]
 

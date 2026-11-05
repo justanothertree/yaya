@@ -223,10 +223,11 @@ Tunnel, Cloth, Ribbons) in what it does, how you touch it and how the GPU draws 
 identical, so it merges cleanly whichever PR lands first. This section sits at the END of the file
 for the same reason: #19 adds its own section further up, and the two should not touch.
 
-| Toy     | Interaction                                                                                                             | GPU technique                                                                                                                                                                                                               | Reusable pattern                                                                                                                   |
-| ------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays                              | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy                                     |
-| Light   | ARRANGE a scene: drag lamps, pillars and walls; tap for a lamp; turn a wall with a second finger or the wheel; 🌀 Drift | 2D global illumination: the scene's distance field BAKED into a texture once per change, then Monte Carlo rays sphere-traced through it from every texel, averaged over frames                                              | "light that works itself out" — soft shadows, glows and colour bleeding from one loop; and "bake the scene, then query it cheaply" |
+| Toy     | Interaction                                                                                                                          | GPU technique                                                                                                                                                                                                               | Reusable pattern                                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays                                           | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy                                     |
+| Light   | ARRANGE a scene: drag lamps, pillars and walls; tap for a lamp; turn a wall with a second finger or the wheel; 🌀 Drift              | 2D global illumination: the scene's distance field BAKED into a texture once per change, then Monte Carlo rays sphere-traced through it from every texel, averaged over frames                                              | "light that works itself out" — soft shadows, glows and colour bleeding from one loop; and "bake the scene, then query it cheaply" |
+| Harp    | PLAY an instrument: strum with any number of fingers, tap a string, keys; ✨ Play by itself; it makes SOUND through the site's synth | analytic motion: each point of each string is the sum of its standing waves since its last pluck, worked out in the vertex shader — no simulation state                                                                     | "motion with an exact answer needs no simulation" — anything that rings, wobbles or decays                                         |
 
 - **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
   in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
@@ -281,6 +282,29 @@ for the same reason: #19 adds its own section further up, and the two should not
   should not have: a wall turned a quarter looks the same either way round, so it could not tell
   which way walls turn — an eighth can, and does.
 
+- **Harp** — strings of light that sound. Strum across them with as many fingers as you like, or
+  tap one; a stroke sounds each string it crosses in the order it crossed them, spaced by how far
+  into the stroke each was, as a hand spaces them. How fast you strum is how hard, and which way
+  is which way the string swings. ✨ Play by itself rolls chords and runs. Harp, Koto, Pluck or
+  Kalimba; Pentatonic, Minor or Hirajoshi tunings (any strum sounds good). It plays through the
+  site's own synth (`noteOn`), so it is on the Instrument's volume and heard by Music, Ribbons'
+  Listen and the visualiser like anything else played. Keys: Z… and A… play the strings, P plays
+  by itself, 1–3 tunings.
+  Technique: no simulation. A plucked string's motion is the sum of its modes — mode n starts at
+  2·sin(nπp)/(n²π²p(1−p)) for a pluck at p, swings n times as fast as the first, and dies n times
+  as fast — so the vertex shader works out every point of every string from the time since its
+  last pluck, 16 modes, 96 segments a string, drawn as a glowing ribbon added onto the dark.
+  Plucked in the middle the even modes vanish (round); near the end the high ones are strong
+  (bright) — and you can see it. A string is SEEN to swing a few times a second, an octave faster
+  for every two octaves up, since 220Hz drawn at 220Hz is a blur.
+  Measured: summed far enough, the modes rebuild the exact triangle the finger pulled the string
+  into (the Fourier series, checked against the shape at four points) — and with the 16 drawn, the
+  pluck's corner still reaches 0.9 of its height. In the page: two fingers strumming opposite ways
+  across all twelve strings at once sound exactly 24 notes; a stroke across five strings plucks
+  those five, in order. One bug first: a stroke starting 8px beside a string pressed it AND
+  crossed it, sounding it twice — the press still sounds at once (an instrument cannot wait to see
+  whether a press becomes a stroke), and the finger skips that string the first time it leaves it.
+
 ### Phone checklist — batch 4
 
 - [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
@@ -289,3 +313,6 @@ for the same reason: #19 adds its own section further up, and the two should not
 - [ ] Light — does the grain settle quickly enough to read as light rather than noise? Drag a lamp
       behind a pillar and watch the shadow swing; turn a wall with two fingers; is 🌀 Drift too
       grainy (it never settles while lamps move)? Is it smooth on a phone (16 rays a texel a frame)?
+- [ ] Harp — is the sound in time with the finger, or does it lag? (The synth's own latency, which
+      the Instrument already tuned.) Strum with several fingers; try Koto and Hirajoshi together;
+      does ✨ Play by itself sound musical or random? Is it loud enough next to everything else?
