@@ -194,14 +194,14 @@ describe('supabase/migrations as it stands', () => {
    * on a correct tree, which is how a check stops being believed.
    *
    * So the invariant is stated instead: every file landed in a GOOD bucket. That is not
-   * tautological, because `failed`, `unlisted` and `dumps` are asserted empty above and beside
+   * tautological, because `failed` and `unlisted` are asserted empty above, and `dumps` is pinned to the one named baseline beside
    * it — what it adds is that nothing fell out of the sweep altogether. The floor is the
    * empty-directory guard: these numbers would all be a contented zero against no files at all.
    */
   it('accounts for every migration file, 11 of them divergences that are written down', () => {
     expect(migrationFiles().length).toBeGreaterThan(70)
-    expect(r.matched.length + r.diverged.length).toBe(migrationFiles().length)
-    expect(r.dumps).toEqual([])
+    expect(r.matched.length + r.diverged.length + r.dumps.length).toBe(migrationFiles().length)
+    expect(r.dumps.map((d) => d.version)).toEqual(['00000000000000'])
     expect(r.diverged).toHaveLength(11)
   })
 })
