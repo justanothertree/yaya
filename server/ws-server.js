@@ -18,6 +18,7 @@ import { parseTrades } from './lib/parseTrades.mjs'
    socket — see the header of that file */
 import { DEFAULT_SETTINGS, boardModeFor, sanitizeSettings } from './lib/settings.mjs'
 import { r2Operations, r2Storage } from './lib/r2ops.mjs'
+import { clientAddr, makeConnGate } from './lib/connGate.mjs'
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080
 const WS_DEBUG = process.env.WS_DEBUG === '1' || process.env.WS_DEBUG === 'true'
@@ -1307,23 +1308,29 @@ const server = createServer((req, res) => {
           /**
            * What the proxy in front of us actually sends, and what the rate limiter makes of it.
            *
-           * Here because assuming the shape of this header already cost one silently dead rate
-           * limit: the ceiling keyed on the rightmost entry, which turned out to vary per
-           * connection on Render, so every caller got a fresh budget and nothing was ever
-           * refused. Admin-only, and it only ever reveals the caller's own chain.
+           * ⚠️ CORRECTED 4 Nov 2026: this said the ceiling had keyed on the rightmost entry,
+           * "which turned out to vary per connection on Render, so every caller got a fresh
+           * budget and nothing was ever refused" — the same claim the note over clientAddr
+           * below retracts, sitting 240 lines away from its own retraction. What was measured
+           * is that Render sends a SINGLE entry, so leftmost and rightmost are the same value
+           * and nothing was ever bounding nothing.
+           *
+           * The block earns its place anyway, for the reason the retraction gives: this is one
+           * of the two places that report what actually arrives, rather than what somebody
+           * reasoned. Admin-only, and it only ever reveals the caller's own chain.
            */
           xff: {
             raw: req.headers['x-forwarded-for'] ?? null,
             socket: req.socket?.remoteAddress ?? null,
             trustProxy: TRUST_PROXY,
-            usedAsKey: clientAddr(req),
+            usedAsKey: clientAddr(req, TRUST_PROXY),
           },
           connections: {
             perAddressPerWindow: CONN_BURST,
             globalPerWindow: CONN_BURST_GLOBAL,
             windowMs: CONN_WINDOW_MS,
-            addressesTracked: connLog.size,
-            inWindow: connLogAll.length,
+            addressesTracked: connGate.addresses,
+            inWindow: connGate.inWindow,
             open: wss.clients.size,
           },
           has: {
@@ -1536,91 +1543,28 @@ process.on('unhandledRejection', (err) => {
 })
 
 /**
- * Which X-Forwarded-For entry identifies the caller.
+ * The flood gate now lives in ./lib/connGate.mjs — `clientAddr` and `makeConnGate`, imported
+ * above, with the measured notes about what Render's proxy actually sends.
  *
- * MEASURED, not reasoned about: Render sends a SINGLE entry containing the client address and
- * nothing else — no appended hops — with the socket address showing as 127.0.0.1 because the
- * proxy reaches us over loopback. So on this deployment the leftmost and rightmost entries are
- * the same value and the choice does not matter today.
+ * ⚠️ IT MOVED SO THAT SOMETHING COULD ASK IT A QUESTION. This file opens a listening socket at
+ * import, so the one decision whose own comment said it "cannot be verified from the client
+ * side" was also the one nothing could call without starting a server. server/lib/connGate.
+ * test.mjs now sweeps both window boundaries, the shared-fuse behaviour of the global cap, and
+ * the forged-address property that cap exists for. The arithmetic moved line for line: same
+ * `<=` on the verdict, same `<` on the per-address filter and `>=` on the global shift.
  *
- * It is the leftmost here because that is the conventional client address, and because it stays
- * correct if Render ever starts appending hops. The cost is that it is forgeable — a client
- * that sends its own XFF prepends whatever it likes and gets a fresh budget per connection —
- * which is why the TOTAL rate is bounded as well, below.
- *
- * ⚠️ An earlier version of this comment claimed the rightmost entry varied per connection and
- * that the ceiling was therefore doing nothing. That was wrong, and it was wrong because the
- * ceiling was being verified from the CLIENT side; see the note over connectionAllowed. Do not
- * change this line on reasoning alone — the `xff` block on the admin-only /relay-config and the
- * [relay][addr] lines below both report what actually arrives.
+ * What stayed here is what belongs to the server rather than to the decision: the diagnostic
+ * budget below, and `process.pid` on the log line — an in-memory counter bounds nothing once
+ * there is more than one process, so those lines are how a second instance would announce
+ * itself.
  */
-function clientAddr(req) {
-  // ⚠️ And only when something in front of us actually writes it. Render terminates TLS and
-  // proxies, so it does; a relay exposed directly would be reading a header the client typed,
-  // and should set TRUST_PROXY=false so the socket address is used instead.
-  const xff = TRUST_PROXY ? req?.headers?.['x-forwarded-for'] : null
-  if (typeof xff === 'string') {
-    const parts = xff
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    if (parts.length) return parts[0]
-  }
-  return req?.socket?.remoteAddress || 'unknown'
-}
-
-/**
- * addr -> recent connection timestamps. Pruned by the heartbeat sweep below.
- *
- * ⚠️ This map is itself a leak if nothing empties it — one entry per address, forever, which is
- * precisely the shape of the room leak fixed above. Do not let the thing that bounds a flood
- * become the thing a flood grows.
- */
-const connLog = new Map()
-/**
- * Every recent connection, regardless of who claimed to open it.
- *
- * ⚠️ The per-address ceiling is best-effort, because the address comes from a header the client
- * can prepend to (see clientAddr). Anyone rotating a forged X-Forwarded-For gets a fresh
- * per-address budget every time, so without this there is no bound on them at all.
- *
- * Deliberately far above real use — the busiest hour this relay has ever seen is one player
- * finishing 13 rounds — because a global ceiling is a SHARED FUSE: whoever trips it locks
- * everyone else out too. Same reasoning as the global backstop on submit_score. It exists to
- * stop a flood from being unbounded, not to police normal traffic, and a single honest client
- * hits its own per-address limit eight times over before it gets near this.
- */
-const connLogAll = []
+const connGate = makeConnGate({
+  windowMs: CONN_WINDOW_MS,
+  perAddr: CONN_BURST,
+  globalCap: CONN_BURST_GLOBAL,
+})
 /** How many connections still get to describe their address on the log. See the block below. */
 let addrDiag = Number(process.env.ADDR_DIAG || 8)
-
-function connectionAllowed(addr) {
-  const now = Date.now()
-  const recent = (connLog.get(addr) || []).filter((t) => now - t < CONN_WINDOW_MS)
-  recent.push(now)
-  connLog.set(addr, recent)
-
-  while (connLogAll.length && now - connLogAll[0] >= CONN_WINDOW_MS) connLogAll.shift()
-  connLogAll.push(now)
-
-  /**
-   * ⚠️ THIS CEILING CANNOT BE VERIFIED FROM THE CLIENT SIDE. Render's proxy completes the
-   * WebSocket handshake with the caller and does not pass our close through: a refused socket
-   * sees `open`, then no close frame and no error, for at least twelve seconds. Three deploys
-   * went into "fixing" a limiter that was working correctly the whole time, because the test
-   * counted close code 4029 and that code never left the building.
-   *
-   * The counts come back with the verdict so the SERVER can say what it decided. The
-   * [relay][addr] lines are the only sound way to check this — one line per decision, with the
-   * running totals and the pid that made them.
-   */
-  return {
-    ok: recent.length <= CONN_BURST && connLogAll.length <= CONN_BURST_GLOBAL,
-    perAddr: recent.length,
-    global: connLogAll.length,
-    pid: process.pid,
-  }
-}
 
 /* ⚠️ `maxPayload` REFUSES AN OVERSIZED FRAME BEFORE BUFFERING IT. The length check further down
    is still there and still right, but it runs on a message `ws` has already assembled in memory —
@@ -1645,7 +1589,7 @@ wss.on('connection', (ws, req) => {
     }
     return
   }
-  const addr = clientAddr(req)
+  const addr = clientAddr(req, TRUST_PROXY)
   /**
    * The first few connections after a restart say what the proxy actually sends.
    *
@@ -1661,13 +1605,15 @@ wss.on('connection', (ws, req) => {
    * Bounded to a handful per process so it can stay in permanently — a deploy prints them and
    * then goes quiet.
    */
-  const verdict = connectionAllowed(addr)
+  const verdict = connGate.allow(addr)
   /**
    * The decision, on the log, where it can actually be read.
    *
    * Measured on the real deployment: one pid, perAddr climbing 1..40 against a ceiling of 30,
    * ACCEPT through 30 and REFUSE from 31. The ceiling works. It could not be seen working from
-   * outside, because the close never reaches the caller — see connectionAllowed.
+   * outside, because the close never reaches the caller — see the header of ./lib/connGate.mjs,
+   * where that decision now lives and where a test asserts the same accept-N-refuse-N+1 shape
+   * against a window it can move without waiting.
    *
    * pid stays on the line because an in-memory counter bounds nothing once there is more than
    * one process: if this relay is ever scaled past a single instance, these lines will show it
@@ -1678,14 +1624,14 @@ wss.on('connection', (ws, req) => {
     if (addrDiag > 0) addrDiag--
     console.log(
       '[relay][addr] pid=%d xff=%j key=%j perAddr=%d/%d global=%d/%d tracked=%d %s',
-      verdict.pid,
+      process.pid,
       req?.headers?.['x-forwarded-for'] ?? null,
       addr,
       verdict.perAddr,
       CONN_BURST,
       verdict.global,
       CONN_BURST_GLOBAL,
-      connLog.size,
+      connGate.addresses,
       verdict.ok ? 'ACCEPT' : 'REFUSE',
     )
   }
@@ -2885,13 +2831,8 @@ const heartbeat = setInterval(() => {
       /* the next sweep will terminate it */
     }
   })
-  // and drop connection-rate entries that have aged out, so connLog cannot grow without bound
-  const now = Date.now()
-  for (const [addr, times] of connLog) {
-    const live = times.filter((t) => now - t < CONN_WINDOW_MS)
-    if (live.length) connLog.set(addr, live)
-    else connLog.delete(addr)
-  }
+  // and drop connection-rate entries that have aged out, so the gate cannot grow without bound
+  connGate.prune()
 }, HEARTBEAT_MS)
 // unref so the interval never keeps the process alive on its own during a shutdown
 heartbeat.unref?.()
