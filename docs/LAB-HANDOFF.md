@@ -86,11 +86,12 @@ Each toy here is chosen to be different from the seven above, and from each othe
 what it does, how you touch it, and how the GPU draws it — so the batch reads as a set of
 interactions and GPU patterns that can be lifted into the rest of the site.
 
-| Toy      | Interaction                                                                                  | GPU technique                                                                                                                                   | Reusable pattern                                                                      |
-| -------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                     | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                          | "every action is a warp of the whole image" — any number of edits per frame, in order |
-| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern       | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient | "a simulation the user steers by its parameters" — the map is the UI                  |
-| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing      | "agents that look at each other" — flocking, crowds, anything with neighbours         |
+| Toy      | Interaction                                                                                                                              | GPU technique                                                                                                                                   | Reusable pattern                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                                                                 | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                          | "every action is a warp of the whole image" — any number of edits per frame, in order |
+| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern                                                   | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient | "a simulation the user steers by its parameters" — the map is the UI                  |
+| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint                                             | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing      | "agents that look at each other" — flocking, crowds, anything with neighbours         |
+| Tunnel   | a STICK: press and drag, and the distance from where you pressed is how hard you turn; or tilt the phone; a little game (catch the orbs) | sphere tracing: no geometry, one full-screen pass, every pixel marches a ray through two distance functions; domain repetition for the orbs     | "a world that is only a function" — any SDF scene, and a camera somebody steers       |
 
 - **Marbling** — paper marbling after Jaffer's _Mathematical Marbling_. Tap to float a drop of ink
   in the next colour of the set; hold, and it keeps spreading, pushing everything round it outward.
@@ -142,6 +143,32 @@ interactions and GPU patterns that can be lifted into the rest of the site.
   quarter of it went 69 → 0, and with a pellet down the fish near it went 31 → 647. One step of
   1,536 fish costs about 32 ms in SwiftShader, which is a CPU pretending; a phone's GPU is the
   question.
+
+- **Tunnel** — fly down an endless, winding tunnel and catch the orbs that hang in it. Press and
+  drag to steer like a stick — the further from where you pressed, the harder you turn — and the
+  view banks into the turn and looks a little where you are going. On a phone, 📱 Tilt to steer
+  takes the phone's tilt instead, measured from however it was held when tilt went on. Cruise,
+  Fast and Warp (the view widens as you speed up), four colourings, a score with a streak, Start
+  over. Keys: arrows or WASD, Space, 1–3 speed, C colours, R start over.
+  Technique: sphere tracing. There are no triangles; one full-screen pass casts a ray per pixel
+  and steps it along by the distance to the nearest surface, which can never step through
+  anything. The wall is `radius − distance from the centreline`, rippled, and scaled by 0.7
+  because a bending tube's distance is overstated on the outside of a turn. The orbs are DOMAIN
+  REPETITION: each hangs in its own 6-unit slice, so a point only ever asks about the orb in its
+  slice; their places come from an integer hash written identically in TypeScript and WGSL, so
+  the CPU decides what you caught and the GPU draws the same orbs. Light gathered on the way past
+  an orb is the glow. The path repeats exactly every 240 units, which lets the camera's z be
+  wrapped and keeps the shader's sines on small numbers however far you fly.
+  Measured on the real shader: an orb is drawn at exactly the pixel the CPU camera projects it to,
+  vanishes when caught, and is still found 37 laps in (orb 1,488). A perfect pilot catches every
+  orb at Cruise and Fast and not at Warp, which is the point of Warp (a test). In the page, a drag
+  right-and-up moved the craft right and up and banked the view; the left key moved it back; a
+  synthetic tilt steered.
+  ⚠️ Tilt has three answers, not two: Chromium answers `requestPermission()` with `'prompt'`
+  where it has nobody to ask, and a device can say yes and then send nothing — so only `'denied'`
+  counts as no, and two seconds without an event says "No tilt is arriving". Calling
+  `requestPermission` lifted off the class throws Illegal invocation, which looked exactly like
+  the phone refusing; it is called on the class.
 
 ### How the room is built
 
@@ -258,6 +285,10 @@ Batch 2:
 - [ ] Aquarium — do the three kinds read as separate schools? Tap to feed and watch a ball form;
       drag through a school — does it scatter like fish from a shark, or just part? Try 1.5K for
       smoothness
+- [ ] Tunnel — is it smooth on a phone (every pixel marches a ray; it renders at 1× there)? Does
+      drag-as-a-stick feel right, or would "the craft follows your finger" be better? Turn on
+      📱 Tilt: does it ask (iPhone), does tilting steer the way you expect — and in landscape,
+      which is the one direction nobody has tried?
 
 ## What to try next
 

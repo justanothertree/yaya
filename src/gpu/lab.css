@@ -58,6 +58,11 @@
   gap: 0.5rem;
   align-items: center;
 }
+.lab-score {
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .lab-group {
   display: inline-flex;
   flex-wrap: wrap;

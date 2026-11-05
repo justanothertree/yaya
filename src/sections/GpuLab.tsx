@@ -9,6 +9,7 @@ import { LifeDemo } from '../gpu/LifeDemo'
 import { MarbleDemo } from '../gpu/MarbleDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
+import { TunnelDemo } from '../gpu/TunnelDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 
@@ -99,6 +100,12 @@ const DEMOS: readonly {
     Demo: AquariumDemo,
     name: 'Aquarium',
     line: 'Aquarium — fish that school with their own kind. Tap to feed them; drag and you are the shark.',
+  },
+  {
+    id: 'tunnel',
+    Demo: TunnelDemo,
+    name: 'Tunnel',
+    line: 'Tunnel — fly down an endless tunnel and catch the orbs. Drag to steer, or tilt the phone.',
   },
 ]
 
