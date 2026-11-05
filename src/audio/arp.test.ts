@@ -319,3 +319,73 @@ describe('the picker', () => {
     expect(got.join(',')).not.toBe([0, 1, 2, 3, 0, 1, 2].join(','))
   })
 })
+
+describe('a very long hold', () => {
+  /**
+   * ⚠️ THE FIRST VERSION HAD A TIME BOMB IN IT, and it read as a safety feature. The runner kept
+   * every note it had ever committed and stopped at 4,096 of them "in case the clock goes
+   * backwards" — which at an eighth note of 96bpm is about twenty-one minutes of continuous
+   * play, after which the arpeggiator was dead for the rest of the session, because the list was
+   * never emptied and the very next tick tripped the guard again.
+   *
+   * Nobody holds one key for twenty-one minutes, which is precisely why it would have sat there
+   * for ever. These two tests are cheap only because the clock is a variable: twenty minutes of
+   * music passes in a few milliseconds.
+   */
+  it('is still playing after half an hour', () => {
+    /**
+     * ⚠️ THIS SAID "TWENTY MINUTES" AND DID NOT CATCH THE BUG IT IS NAMED AFTER. Twenty minutes
+     * at an eighth of 96bpm is 3,840 steps and the old cap was 4,096 — so with the time bomb
+     * put back deliberately, this test stayed GREEN while the one about hoarding went red. A
+     * test written against a threshold has to go PAST it, and the arithmetic that says where it
+     * is belongs in the test rather than in the author's head: 4096 × 0.3125s is 21.3 minutes.
+     */
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 96)
+    r.tickTo(1800, 1) // half an hour, a second at a time — 5,760 steps, well past 4,096
+    const n = r.played.length
+    expect(n).toBeGreaterThan(5000)
+    r.tickTo(1830, 1)
+    expect(r.played.length, 'notes kept coming after the half-hour mark').toBeGreaterThan(n)
+  })
+
+  it('does not hoard the notes it has already played', () => {
+    /* the everyday half of the same mistake: an array growing all evening */
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 96)
+    r.tickTo(600, 1)
+    expect(r.played.length).toBeGreaterThan(1000)
+    expect(r.runner.scheduled().length, 'only what is still to come').toBeLessThan(20)
+  })
+})
+
+describe('what is sounding right now', () => {
+  it('names the note the keyboard should be lighting', () => {
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120) // a step is 0.25s
+    r.tickTo(0.1)
+    expect(r.runner.soundingAt(0.01)?.midi).toBe(60)
+    r.tickTo(0.6)
+    expect(r.runner.soundingAt(0.26)?.midi).toBe(64)
+    expect(r.runner.soundingAt(0.51)?.midi).toBe(67)
+  })
+
+  it('names nothing in the gap between two notes', () => {
+    /* a step is held for 90% of its length, so there is a real silence before the next —
+       the keyboard should go dark in it rather than smearing one note into the next */
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    r.tickTo(0.6)
+    expect(r.runner.soundingAt(0.24)).toBeNull()
+  })
+
+  it('names nothing before it starts or after it stops', () => {
+    const r = rig()
+    expect(r.runner.soundingAt(0)).toBeNull()
+    r.runner.update([60], 'up', 120)
+    r.tickTo(0.5)
+    r.runner.stop()
+    r.tickTo(5)
+    expect(r.runner.soundingAt(5)).toBeNull()
+  })
+})

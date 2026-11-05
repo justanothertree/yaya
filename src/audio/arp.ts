@@ -85,7 +85,9 @@ export type ArpRunner = {
   update(notes: number[], pattern: ArpId, bpm: number): void
   /** Stop at once, and say which notes are still sounding so the caller can silence them. */
   stop(): ArpNote[]
-  /** Everything committed so far, for tests. */
+  /** What is sounding now, if anything — for showing the figure on the keyboard. */
+  soundingAt(t: number): ArpNote | null
+  /** What is still sounding or still to come. Past notes are forgotten. */
   scheduled(): ArpNote[]
 }
 
@@ -114,13 +116,30 @@ export function arpRunner(opts: {
   let nextAt: number | null = null
   let step = 0
   let cancel: (() => void) | null = null
-  const out: ArpNote[] = []
+  /**
+   * ⚠️ ONLY WHAT IS STILL TO COME, AND THE FIRST VERSION KEPT EVERYTHING.
+   *
+   * It appended every note for the life of the runner and leaned on
+   * `if (out.length > 4096) stop` as a "runaway guard". That is not a runaway guard, it is a
+   * TIME BOMB: at an eighth note of 96bpm it trips after about twenty-one minutes of continuous
+   * play, and because the list was never emptied the arpeggiator was then dead for the rest of
+   * the session — `update` restarts it and the very next tick trips the guard again. Nobody
+   * holds one key for twenty-one minutes, which is exactly why it would have sat there; the
+   * array growing all evening is the everyday half of the same mistake.
+   *
+   * Pruned every tick the list holds a handful, the guard means what its name says, and
+   * `soundingAt` is a cheap question rather than a scan over the whole night.
+   */
+  let out: ArpNote[] = []
   let seq = 0
 
   const live = () => out.filter((n) => n.until > opts.now())
 
   const tick = () => {
     if (nextAt === null || notes.length === 0) return
+    /* forget what has finished, with a grace so `soundingAt` is not raced by the prune */
+    const cut = opts.now() - 0.25
+    if (out.length > 8) out = out.filter((n) => n.until > cut)
     const gap = stepSeconds(bpm)
     /* ⚠️ A WHILE, NOT AN IF. A tab that was throttled comes back with several steps already due;
        committing only one per tick would make the figure crawl until it caught up. */
@@ -136,8 +155,9 @@ export function arpRunner(opts: {
       opts.play(n)
       step++
       nextAt += gap
-      /* a runaway guard: if `now` ever goes backwards, stop rather than commit forever */
-      if (out.length > 4096) {
+      /* a true runaway guard now: with pruning the list holds a handful, so reaching this
+         means the clock is not advancing and committing more would never end */
+      if (out.length > 512) {
         nextAt = null
         break
       }
@@ -174,6 +194,13 @@ export function arpRunner(opts: {
       halt()
       notes = []
       return sounding
+    },
+    soundingAt(t) {
+      /* the last one that has started and not finished — steps do not overlap, so there is at
+         most one, and taking the last is the right answer if they ever do */
+      let now: ArpNote | null = null
+      for (const n of out) if (n.at <= t && n.until > t) now = n
+      return now
     },
     scheduled: () => [...out],
   }

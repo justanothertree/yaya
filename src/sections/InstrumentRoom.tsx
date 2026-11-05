@@ -995,6 +995,34 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     },
   }))
 
+  /**
+   * The note the arpeggiator is sounding right now, so the keyboard can show the figure.
+   *
+   * ⚠️ POLLED, NOT PUSHED, and that is the right way round here. The runner commits notes to
+   * the audio clock up to 120ms BEFORE they sound — that is what the look-ahead is for — so
+   * lighting a key when `play` is called would light it early and out of time with what you
+   * hear. Asking "what is sounding now" on a short interval is in step with the ear.
+   *
+   * 25Hz is a quarter of a step at the fastest tempo the room allows. The state only changes
+   * when the answer does, which at an eighth note is five or six times a second — the same rate
+   * playing fast by hand already re-renders this room at.
+   */
+  const [nowNote, setNowNote] = useState<number | null>(null)
+  const arpLit = arp !== 'off' && held.length > 0
+  useEffect(() => {
+    if (!arpLit) {
+      setNowNote(null)
+      return
+    }
+    const h = window.setInterval(() => {
+      setNowNote(arping.soundingAt(sharedCtx().currentTime)?.midi ?? null)
+    }, 40)
+    return () => {
+      window.clearInterval(h)
+      setNowNote(null)
+    }
+  }, [arpLit, arping])
+
   /** Show what the book holds. The ONE place either of the two lit-key states is written. */
   const show = useCallback(() => {
     setHeld(book.notes())
@@ -1359,7 +1387,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                  With Chord off every held note is a lead and this never applies, so a plain
                  keyboard looks exactly as it did. A finger beats a chord tone: a key that is
                  both is drawn as the one you are touching. */
-              (held.includes(midi) && !lead.includes(midi) ? ' is-added' : '') +
+              /* ⚠️ EXCLUSIVE IN THE MARKUP, not by CSS ordering — the same call the root tint
+                 above makes. `.is-held.is-added` and `.is-held.is-now` are both three classes,
+                 so whichever came later in the stylesheet would win, and which one that is is
+                 not something anybody should have to know. */
+              (nowNote === midi ? ' is-now' : '') +
+              (held.includes(midi) && !lead.includes(midi) && nowNote !== midi ? ' is-added' : '') +
               (theirNotes.has(midi) ? ' is-theirs' : '')
             }
             style={
