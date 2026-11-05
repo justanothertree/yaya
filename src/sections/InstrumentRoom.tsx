@@ -20,6 +20,7 @@ import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
 import { nameChord } from '../audio/chordName'
+import { pedalBook, type PedalBook } from '../audio/pedal'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
@@ -724,6 +725,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       return 'off'
     }
   })
+  /* ⚠️ NOT REMEMBERED ACROSS VISITS, unlike every other control here. Coming back to a room
+     where the pedal is silently down means your first chord never stops and nothing on screen
+     says why — the one setting whose wrong state is indistinguishable from a broken synth. */
+  const [hold, setHold] = useState(false)
   const [arp, setArp] = useState<ArpId>(() => {
     try {
       const v = localStorage.getItem(ARP_KEY)
@@ -794,8 +799,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   // ⚠️ a ref as well as state: the key handlers are bound once and would otherwise capture the
   // instrument and octave from the render that installed them, so changing either mid-play would
   // be ignored until something else re-rendered
-  const live = useRef({ inst, noteAt, notesFor, strum, arp, bpm: loop.bpm })
-  live.current = { inst, noteAt, notesFor, strum, arp, bpm: loop.bpm }
+  const live = useRef({ inst, noteAt, notesFor, strum, arp, bpm: loop.bpm, hold })
+  live.current = { inst, noteAt, notesFor, strum, arp, bpm: loop.bpm, hold }
 
   useEffect(() => {
     try {
@@ -962,6 +967,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   const bookRef = useRef<SoundingBook | null>(null)
   const book = (bookRef.current ??= soundingBook())
+  /**
+   * What is still ringing with nobody holding it.
+   *
+   * ⚠️ A SECOND BOOK, DELIBERATELY. `book` answers "what is somebody holding", which the lit
+   * keys and `lift` both read; this one answers "what is still making a sound". The pedal
+   * exists precisely because those stop being the same question — merging them would leave a
+   * key lit after the finger had gone.
+   */
+  const pedalRef = useRef<PedalBook | null>(null)
+  const pedal = (pedalRef.current ??= pedalBook())
 
   /**
    * A note starting or stopping, told to everything that is not the synth.
@@ -1058,6 +1073,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         report(v.midi, false)
       }
       /**
+       * ⚠️ THE PEDAL FORGETS WHAT IS BEING STRUCK AGAIN, and this is the subtle half of the
+       * whole feature. `noteOn` retriggers by id, so pressing a key whose last note is still
+       * pedalled replaces that voice under the same name. Leaving the stale entry in the pedal
+       * means lifting the pedal later sends a note-off to the NEW note — cutting off a key the
+       * person is still holding down, from a control they have just released.
+       */
+      pedal.forget(play.map((v) => v.voice))
+      /**
        * ⚠️ DELAYS, NOT A TIMER. Every note is started by this one call with its own `when`, so
        * a rolled chord has no process behind it: nothing to tear down, nothing still firing
        * after you let go, and the book holds every voice from the moment you press — which is
@@ -1085,7 +1108,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       show()
     },
     /* `arping` is one runner per mount, so this stays referentially stable */
-    [book, report, show, arping, gridNow],
+    [book, report, show, arping, gridNow, pedal],
   )
 
   /**
@@ -1160,19 +1183,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   const lift = useCallback(
     (id: string) => {
-      for (const v of book.end(id)) {
-        /* ⚠️ a no-op while arpeggiating, because these voices were never started — `noteOff`
-           returns early for an id the synth does not know. That is what lets one `lift` serve
-           both branches instead of growing a mode of its own. */
-        noteOff(v.voice)
-        report(v.midi, false)
+      const gone = book.end(id)
+      if (live.current.hold && live.current.arp === 'off') {
+        /* ⚠️ THE NOTE-OFF IS NOT REPORTED EITHER. The note has not stopped, so telling the
+           recorder and the jam that it has would write a short note into a take that sounds
+           long — the take and the room would disagree about the thing you just played. It is
+           reported when the pedal comes up, which is when it actually ends. */
+        pedal.hold(gone)
+      } else {
+        for (const v of gone) {
+          /* ⚠️ a no-op while arpeggiating, because these voices were never started — `noteOff`
+             returns early for an id the synth does not know. That is what lets one `lift` serve
+             both branches instead of growing a mode of its own. */
+          noteOff(v.voice)
+          report(v.midi, false)
+        }
       }
       if (live.current.arp !== 'off')
         arping.update(book.notes(), live.current.arp, live.current.bpm, gridNow())
       show()
     },
     /* `arping` is one runner per mount, so this stays referentially stable */
-    [book, report, show, arping, gridNow],
+    [book, report, show, arping, gridNow, pedal],
   )
 
   /**
@@ -1186,6 +1218,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const hush = useCallback(
     (mode: 'live' | 'all' = 'live') => {
       for (const v of book.clear()) report(v.midi, false)
+      /* ⚠️ Panic has to reach the pedal or "make it stop" does not. These are `k:`/`p:` ids so
+         `stopLive` would catch them anyway, but the recorder and the jam would never hear that
+         they ended — and the book would still think they were ringing. */
+      for (const v of pedal.release()) {
+        noteOff(v.voice)
+        report(v.midi, false)
+      }
       /* ⚠️ `stopLive()` only kills `k:` and `p:` voices, so it cannot reach an `arp:` one —
          Panic would silence your hands and leave the arpeggio ringing. The runner hands over
          whatever is still sounding so it can be stopped by name. */
@@ -1197,8 +1236,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       else stopLive()
       show()
     },
-    /* `arping` is one runner per mount, so this stays referentially stable */
-    [book, report, show, arping],
+    /* `arping` and `pedal` are one per mount, so this stays referentially stable */
+    [book, report, show, arping, pedal],
   )
 
   /**
@@ -2359,6 +2398,41 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
          * you were panicking about came straight back — you had to hit it, then find Stop, and
          * in between the thing was still playing. "Make it stop" has one meaning.
          */}
+        {/**
+         * The pedal every keyboard has and this one did not.
+         *
+         * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
+         * the only safe answer anyway: notes ringing with no finger and no pedal would be
+         * unreachable by anything except Panic.
+         *
+         * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
+         * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
+         * that visibly does nothing is worse than one that is not offered. The title says so
+         * rather than the button vanishing, which would make the setting hard to find again.
+         */}
+        <button
+          className={'btn' + (hold ? ' is-on' : '')}
+          aria-pressed={hold}
+          disabled={arp !== 'off'}
+          onClick={() => {
+            if (hold)
+              for (const v of pedal.release()) {
+                noteOff(v.voice)
+                report(v.midi, false)
+              }
+            setHold(!hold)
+          }}
+          title={
+            arp !== 'off'
+              ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
+              : hold
+                ? 'Notes keep ringing after you let go — click to let them stop'
+                : 'Keep notes ringing after you let go, like a piano pedal'
+          }
+        >
+          🦶 Hold
+        </button>
+
         <button
           className="btn"
           onClick={() => {
@@ -2459,25 +2533,40 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
          * switching it off would strand the runner's last note. Dropping what you are holding
          * is the honest answer, and it is the same one the Scale picker gives.
          */}
-        {chord !== 'off' && (
-          <label className="inst-pick">
-            <span className="muted">Arpeggio</span>
-            <select
-              value={arp}
-              onChange={(e) => {
-                hush()
-                setArp(e.target.value as ArpId)
-                e.target.blur()
-              }}
-            >
-              {ARPS.map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        {/**
+         * ⚠️ ALWAYS SHOWN, AND IT USED TO BE GATED ON `chord !== 'off'`. That hid the control
+         * without stopping the thing it controls, which is the worst of both: the setting is
+         * remembered across visits, so anybody who tried an arpeggio once and then put Chord
+         * back to One note came back to a keyboard where HOLDING A KEY REPEATS IT FOR EVER and
+         * nothing on screen said why or offered a way out. Measured before the fix — one key
+         * held for 1.5s gave six notes, all C4, 313ms apart, with the picker not rendered.
+         *
+         * Showing it is the right fix rather than suppressing the arp without a chord, because
+         * arpeggiating notes you are holding YOURSELF is the normal use of one: hold C and E
+         * and it alternates them. A single held key repeating is what every arpeggiator does;
+         * it is only alarming when you cannot see that one is switched on.
+         *
+         * `Arrives` stays hidden without a chord, and that is not the same call — a roll across
+         * one note genuinely does nothing, so it is a control with no effect rather than an
+         * effect with no control.
+         */}
+        <label className="inst-pick">
+          <span className="muted">Arpeggio</span>
+          <select
+            value={arp}
+            onChange={(e) => {
+              hush()
+              setArp(e.target.value as ArpId)
+              e.target.blur()
+            }}
+          >
+            {ARPS.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         {/**
          * How the chord arrives: together, or one note at a time like a hand does it.
