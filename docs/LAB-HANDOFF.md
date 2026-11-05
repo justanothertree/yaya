@@ -223,13 +223,14 @@ are all "both sides added": keep both, and delete this batch's `demo === …` re
 the registry renders every entry by itself. This section is at the end of the file for the same
 reason.
 
-| Toy       | Interaction                                                                                                      | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Slime     | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch                                   | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                                                                                      | "many writers, one grid" — any scatter where several threads land on one cell                     |
-| Mirror    | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back                      | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames                                                                      | "time as a texture" — slit-scan, echoes, any effect that needs the recent past                    |
-| Bubbles   | HOLD to blow (the longer, the bigger), let go to THROW, TAP to pop — and each pop sounds                         | PHYSICAL THIN-FILM INTERFERENCE per pixel on sphere impostors (no geometry): for red, green and blue, whether the film's two reflections strengthen or cancel at its thickness; reflection ADDED through premultiplied blending                         | "colour from physics" — oil slicks, beetles, anything iridescent                                  |
-| Clay      | SCULPT in 3D: add, carve, smooth with a finger; Turn, two fingers or the wheel to look round; mirror symmetry    | a signed-distance field in a 64³ `texture_3d`, edited by smooth unions in compute and RAY-MARCHED to draw; GPU-side PICKING — a one-thread pass finds where the finger's ray meets the clay and the edit reads it, no round trip                        | "a solid you can change" — any editable 3D shape; and "let the GPU tell itself where you touched" |
-| Fireflies | TAP A RHYTHM, or let the MUSIC lead (🎵 Listen); how much they follow each other; then watch them fall into step | COUPLED OSCILLATORS (Kuramoto) with each firefly feeling its patch and the patches beside it, the patches' sums gathered by a REDUCTION in FIXED-POINT INTEGER ATOMICS (WGSL has no float atomics), and read back each 0.4s to say how in step they are | "sum many floats from many threads, exactly" — any per-cell average, histogram or centre of mass  |
+| Toy        | Interaction                                                                                                                  | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Slime      | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch                                               | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                                                                                      | "many writers, one grid" — any scatter where several threads land on one cell                                            |
+| Mirror     | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back                                  | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames                                                                      | "time as a texture" — slit-scan, echoes, any effect that needs the recent past                                           |
+| Bubbles    | HOLD to blow (the longer, the bigger), let go to THROW, TAP to pop — and each pop sounds                                     | PHYSICAL THIN-FILM INTERFERENCE per pixel on sphere impostors (no geometry): for red, green and blue, whether the film's two reflections strengthen or cancel at its thickness; reflection ADDED through premultiplied blending                         | "colour from physics" — oil slicks, beetles, anything iridescent                                                         |
+| Clay       | SCULPT in 3D: add, carve, smooth with a finger; Turn, two fingers or the wheel to look round; mirror symmetry                | a signed-distance field in a 64³ `texture_3d`, edited by smooth unions in compute and RAY-MARCHED to draw; GPU-side PICKING — a one-thread pass finds where the finger's ray meets the clay and the edit reads it, no round trip                        | "a solid you can change" — any editable 3D shape; and "let the GPU tell itself where you touched"                        |
+| Fireflies  | TAP A RHYTHM, or let the MUSIC lead (🎵 Listen); how much they follow each other; then watch them fall into step             | COUPLED OSCILLATORS (Kuramoto) with each firefly feeling its patch and the patches beside it, the patches' sums gathered by a REDUCTION in FIXED-POINT INTEGER ATOMICS (WGSL has no float atomics), and read back each 0.4s to say how in step they are | "sum many floats from many threads, exactly" — any per-cell average, histogram or centre of mass                         |
+| Black hole | DRAG and THROW it (it glides and bounces), PINCH or scroll for its mass, TILT THE PHONE to look along the disk or down on it | PER-PIXEL GEODESIC INTEGRATION: every pixel steps its own ray of light through Schwarzschild spacetime (velocity Verlet, adaptive steps) to the sky, the disk or the hole — an ODE solved per fragment, not a shape marched                             | "solve a small ODE per pixel" — any bent, refracted or curved-space ray; and DeviceOrientation with its permission dance |
 
 - **Slime** — a slime mould, after Jeff Jones's physarum model. Lay food (🍯) and it grows a
   glowing network to it, joining the pieces up the way a real one solves a maze; draw walls and it
@@ -373,6 +374,50 @@ reason.
      "100% … following the music's beat, 121/min"; mood and count buttons and every key reach the
      shader; no sideways scroll, nothing undersized or clipped.
 
+- **Black hole** — a black hole you can pick up. Drag it across a starry sky and the stars behind
+  it bend round it; throw it and it glides, slows and comes softly back off the edges; pinch (or
+  scroll) to make it heavier. Its glowing accretion disk shows the famous shape: the far side lifted
+  over the top by gravity and seen again underneath, the side coming towards you brighter and bluer.
+  📱 Tilt (on phones) looks along the disk or down on it as you tilt the phone, and rolls it as you
+  lean — measured from however you were holding it; View does the same everywhere. Skies: Stars,
+  Grid (which shows the bending plainly — Einstein rings, nested), Nebula; 💫 Disk on and off. Keys:
+  Space, ↑ ↓ view, + − mass, D disk, C centre, 1–3 sky.
+  Technique: nothing is drawn and warped. Every pixel starts a ray at the eye and steps it through
+  curved space — Schwarzschild's bending, written as ray tracers write it, a pull of
+  −(3/2)·rs·h²·p/|p|⁵ with h = |p × v| kept all the way — until it falls in (black), escapes (the
+  sky it ends up pointing at) or crosses the disk (its glow: a thin disk's temperature profile,
+  shifted by the gas's orbit and by gravity, so the approaching side shines). Velocity Verlet,
+  with steps in proportion to the distance far out and shrinking as its square near the hole. About
+  90 steps a pixel on average, up to ~300; the canvas is held to 1 device pixel per CSS pixel.
+  `blackhole.ts` has the same stepping in TypeScript, so the tests hold it to numbers that share no
+  arithmetic with it: the exact deflection integral, and the shadow's size.
+  ⚠️ What the tests caught, in my own physics and code:
+  1. **The step was too coarse for the light that matters most.** 0.06·r all the way in is a third
+     of a percent off for most rays but drifts for the ones grazing the shadow — 0.12 of a radian at
+     1% outside its edge, 0.89 at 0.1%, against the exact integral. Those rays draw the photon ring.
+     Shrinking the step as r² inside r = 4 brings them to 0.001 and 0.03 for about a dozen more
+     steps on a ray that comes close.
+  2. **The disk's redshift counted the orbit's slow clock twice.** √(1 − 3M/r) already is gravity
+     and time dilation together for light leaving an orbit sideways; I had divided by γ as well.
+  3. **A throw took its speed from the hole, not the finger.** The hole eases after the finger, so a
+     hole still catching up was flung on release even when the finger had stopped, and lifting one
+     finger of a pinch threw it at the other. It is the finger's last 100ms now, nothing if it had
+     rested 80ms, and a pinch latches until both fingers are up.
+  4. **Chromium now has `DeviceOrientationEvent.requestPermission`** — only iOS used to — and,
+     undecided, it answers `'prompt'`. The first version read anything but `'granted'` as a no and
+     hid the button for good; it stays now, with a line saying View does the same.
+     Measured: the stepping agrees with the exact integral to 0.1% from just outside the shadow
+     (b = 2.65) to b = 20, to the weak-field series at b = 50 and 100, captures every ray inside
+     3√3/2 rs and frees every one outside; on the GPU, sampled across a 512×320 frame, all 1,632 rays
+     have the same fate as the TypeScript stepping and leave in the same direction to 0.005 (the
+     8-bit colour they are read back in), and the shadow's radius in pixels is 25.08, 42.04 and 86.4
+     against 25.03, 41.98 and 86.4 from the formula, at three masses; the approaching side of the
+     disk is 3.6× brighter than the receding. In the page, at 1024 and on an emulated phone: drag,
+     throw (it glides to the edge and back), wheel (no page scroll), pinch (mass 1 → 2.5, the hole
+     not moving), Tilt (undecided: unpressed with the note; granted: 30° of tilt and 20° of lean read
+     as a 38° view and 12° of roll, the slider disabled meanwhile; off: roll back to 0), every
+     button, the slider and every key; no sideways scroll, nothing undersized or clipped.
+
 ### Phone checklist — batch 5
 
 - [ ] Slime — does the network read as alive? Lay food in a few places and watch it link them; draw
@@ -391,3 +436,7 @@ reason.
       phone in daylight? Tap a slow rhythm — does it feel like they answer? Put a song on in Music,
       come back and 🎵 Listen — do they flash on the beat? Are the waves a Crowd falls into lovely
       or confusing — and does "nearby / across" explain them?
+- [ ] Black hole — is it smooth on a phone? This is the heaviest toy in the batch: ~90 light-ray
+      steps per pixel, at 1× pixel density. If it stutters, the cheapest lever is the step count or a
+      lower pixel density, not the physics. Does 📱 Tilt ask (iOS) and feel natural? Does throwing it
+      feel good? Is the Grid sky interesting or just busy?
