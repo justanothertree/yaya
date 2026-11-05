@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ErosionDemo } from '../gpu/ErosionDemo'
 import { PixelSortDemo } from '../gpu/PixelSortDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
+import { SquishDemo } from '../gpu/SquishDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
@@ -75,6 +76,12 @@ const DEMOS = [
     name: 'Pixel sort',
     line: 'Pixel sort — swipe across a picture and its pixels sort themselves that way, melting into streaks.',
     Demo: PixelSortDemo,
+  },
+  {
+    id: 'squish',
+    name: 'Squish',
+    line: 'Squish — a picture made of jelly. Grab it with as many fingers as you like, pin it, let go and it wobbles.',
+    Demo: SquishDemo,
   },
 ] as const
 
@@ -178,6 +185,7 @@ export function GpuLab() {
       {demo === 'erosion' && <ErosionDemo key="erosion" {...props} />}
       {demo === 'snowflake' && <SnowflakeDemo key="snowflake" {...props} />}
       {demo === 'pixelsort' && <PixelSortDemo key="pixelsort" {...props} />}
+      {demo === 'squish' && <SquishDemo key="squish" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

@@ -240,6 +240,7 @@ the same table, keep both lines.
 | Erosion    | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                                                         |
 | Snowflake  | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule                                    |
 | Pixel sort | YOUR PHOTO, and GESTURES AS COMMANDS: the direction you swipe is the direction it sorts; a tap drips                        | A BITONIC SORTING NETWORK, a stage per dispatch (k and j by dynamic uniform offset), over COMPOSITE KEYS — span, level, place — whose spans come from a PREFIX SCAN in workgroup memory; the picture is a GATHER through the sorted keys                                                        | "sort millions of things on the GPU, stably, in segments" — any ranking, any per-row ordering; and the dynamic-offset trick for many small passes in one encoder |
+| Squish     | MANY FINGERS AT ONCE as handles on a picture, PINS that hold it, and a jelly WOBBLE (with a boing) when you let go          | MOVING-LEAST-SQUARES DEFORMATION: every vertex of a mesh solves its own small weighted fit (a rotation, or an affine map) from the handles in a compute pass; the picture rides the mesh. Inverse by Newton on the CPU, so a finger takes hold of what is under it                              | "bend an image by its points" — warping, puppeteering, any handle-driven deformation                                                                             |
 
 - **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
   into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
@@ -368,6 +369,38 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
      touch screen sorts columns, Melt it all, sort-by, spans and keys reach the shader, a chosen photo
      is fitted and sorted, and Start again restores it unsorted.
 
+- **Squish** — a picture made of jelly: a cheerful green face on a checked cloth (painted in code,
+  upright on an upright phone), or 🖼 your own photo. Grab it anywhere and pull; two fingers stretch
+  and turn it between them; more, and it bends to all of them at once. 📌 Pin holds a spot still
+  (tap a pin again to take it out) so one cheek can be pulled while the other stays put. Let go and
+  it springs back, wobbling, with a marimba boing — low for a big stretch, high for a small one
+  (🔊 Sound on/off). Rigid bends it like rubber and never shears; Stretchy smears it like dough.
+  Keys: P pin, M bend, U unpin all, B boing.
+  Technique: moving-least-squares image deformation (Schaefer, McPhail & Warren, 2006). The
+  handles are pairs — where a point of the picture was, and where it is held. A compute pass gives
+  each vertex of a 97×65 mesh its own best transformation from them, weighting each handle by
+  1/distance²: the best ROTATION (Rigid, a closed form from Σw(p̂·q̂, p̂×q̂)) or the best linear map
+  (Stretchy, a 2×2 solve). The picture is drawn on the bent mesh. A let-go handle springs home on
+  the EXACT solution of a damped spring, so a slow frame cannot add energy to the wobble. A finger
+  landing on jelly that is already bent takes hold of the point of the picture under it, found by
+  inverting the bend with Newton's method on the CPU's copy of the same sum.
+  ⚠️ Two things were wrong first:
+  1. **A finger on bent jelly grabbed the wrong place.** The inverse was a plain fixed-point
+     iteration, which only converges while the bend is nearly a slide; with a twist in it the
+     tests found it 15 pixels out. Newton with the bend's own Jacobian is within half a pixel.
+  2. **`struct Squish` is 40 bytes, not the 48 I typed beside it** — it ends at 36 and rounds to its
+     8-byte alignment. The layout test caught the table before anything packed it.
+     Measured on the GPU with two pins and two pulled handles: every vertex of the mesh lands where
+     the CPU's `deform` puts it, to 1.5×10⁻⁴ px in Rigid and 2.3×10⁻⁴ in Stretchy. The tests hold
+     the method to its promises: nothing moved leaves the picture alone; every handle moved by one
+     rigid motion moves the whole picture by it, exactly, in both modes; a point under a handle goes
+     exactly where it is held; Rigid's local move is always a rotation (unit, orthogonal, determinant
+  1) while Stretchy's stretches; the spring overshoots and settles, and one long step equals many
+     short ones. In the page, at 1024 and on an emulated phone: a held mouse makes a handle that
+     follows it and wobbles home on release, with one boing (none with sound off); pins go in and come
+     out; two fingers make two handles from their own points of the picture; Stretchy, Unpin all, a
+     photo and the keys all reach the shader.
+
 ### Phone checklist — batch 6
 
 - [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
@@ -382,3 +415,5 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
 - [ ] Pixel sort — does a swipe feel like it pushes the pixels the way you swiped? Try your own
       photo (does the picker open the camera roll?). Is the melt quick enough, or should it run
       faster than two stages a frame? Is Glitch the right default?
+- [ ] Squish — does it feel like jelly? Three or four fingers at once? Is the wobble too much or
+      too little, and is the boing charming? Try it on your own photo — a face is the obvious test.
