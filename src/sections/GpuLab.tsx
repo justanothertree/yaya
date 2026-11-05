@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { FerroDemo } from '../gpu/FerroDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { GlassDemo } from '../gpu/GlassDemo'
@@ -89,6 +90,12 @@ const DEMOS = [
     name: 'Loom',
     line: 'Loom — thread the warp, tie up the treadles, treadle a tune, and watch the cloth weave.',
     Demo: LoomDemo,
+  },
+  {
+    id: 'ferro',
+    name: 'Ferrofluid',
+    line: 'Ferrofluid — press and hold under a dish of black liquid and it bristles into spikes; or let it dance to the music.',
+    Demo: FerroDemo,
   },
 ] as const
 
@@ -194,6 +201,7 @@ export function GpuLab() {
       {demo === 'harmonograph' && <HarmonographDemo key="harmonograph" {...props} />}
       {demo === 'rain' && <RainDemo key="rain" {...props} />}
       {demo === 'loom' && <LoomDemo key="loom" {...props} />}
+      {demo === 'ferro' && <FerroDemo key="ferro" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

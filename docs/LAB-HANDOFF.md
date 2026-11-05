@@ -229,13 +229,14 @@ add about another row; this batch on `main` alone makes about 5, and batches 5, 
 would make about 10 — most of a phone's screen of buttons above the canvas. Land #19's picker
 first. A third picker would only make the merge worse.
 
-| Toy           | Interaction                                                                                                                                                                      | GPU technique                                                                                                                                                                                                                                                       | Pattern to reuse                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                                                                         | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing               | "thousands of things that touch each other" — any crowd, any granular toy                                     |
-| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone)                                                | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window              | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                       |
-| Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                                                                       | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                                  | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for       |
-| Rain on glass | TOUCH (write in the mist), BREATH — the MIC's loudness, or a held button — fogs it back, and TILT turns which way the water runs                                                 | SCREEN-SPACE METABALLS: drops splatted as instanced quads with ADDITIVE BLENDING into a float field, thresholded and REFRACTED through the slope; a PERSISTENT MIST in two textures that take turns, cleared by fingers and water                                   | "blobs that join" and "a surface that remembers" — paint that dries, frost, condensation, any metaballs       |
-| Loom          | TOOLS on a draft — draw the threading and treadling, tap the tie-up — or TAP THE CLOTH and a whole family of crossings flips; it WEAVES ITSELF pick by pick, each treadle a note | PROCEDURAL MATERIAL from a bit-packed draft: every pixel looks up its crossing (a bit of the tie-up), its neighbours' (to bend each thread where it dives), and optionally walks its float, then lights the thread as a twisted cylinder — no geometry, no textures | "a rule-built pattern drawn as a real material" — knitting, tiles, brickwork, basketry, any grid of crossings |
+| Toy           | Interaction                                                                                                                                                                      | GPU technique                                                                                                                                                                                                                                                                                | Pattern to reuse                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                                                                         | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing                                        | "thousands of things that touch each other" — any crowd, any granular toy                                                         |
+| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone)                                                | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window                                       | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                                           |
+| Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                                                                       | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                                                           | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for                           |
+| Rain on glass | TOUCH (write in the mist), BREATH — the MIC's loudness, or a held button — fogs it back, and TILT turns which way the water runs                                                 | SCREEN-SPACE METABALLS: drops splatted as instanced quads with ADDITIVE BLENDING into a float field, thresholded and REFRACTED through the slope; a PERSISTENT MIST in two textures that take turns, cleared by fingers and water                                                            | "blobs that join" and "a surface that remembers" — paint that dries, frost, condensation, any metaballs                           |
+| Loom          | TOOLS on a draft — draw the threading and treadling, tap the tie-up — or TAP THE CLOTH and a whole family of crossings flips; it WEAVES ITSELF pick by pick, each treadle a note | PROCEDURAL MATERIAL from a bit-packed draft: every pixel looks up its crossing (a bit of the tie-up), its neighbours' (to bend each thread where it dives), and optionally walks its float, then lights the thread as a twisted cylinder — no geometry, no textures                          | "a rule-built pattern drawn as a real material" — knitting, tiles, brickwork, basketry, any grid of crossings                     |
+| Ferrofluid    | PRESS AND HOLD — a magnet gathers while held, so time is the control — with MULTI-TOUCH (a magnet a finger), and AUDIO: the bass of whatever plays drives a magnet               | A SPECTRAL PDE SOLVER: Swift–Hohenberg, its stiff part solved exactly in Fourier space, with a GPU FFT done a row (then a column) per WORKGROUP IN SHARED MEMORY, twiddles from a table, direction an OVERRIDE CONSTANT; the pattern (hexagonal spikes) is chosen by the equation, not drawn | "solve it in Fourier space" — blur and sharpen at any radius, diffusion with big steps, wave equations, convolution, any spectrum |
 
 - **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
   you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
@@ -424,6 +425,51 @@ first. A third picker would only make the merge worse.
      retreadles (with a note a pick), a cloth tap flips one tie-up bit, the drafts, colourways, floats,
      size and keys all reach the GPU. Audit clean at both.
 
+- **Ferrofluid** — a dish of black magnetic liquid. Press and hold on it and a magnet gathers
+  underneath (about a second to full strength, so the spikes come up as you hold rather than
+  appearing); the pool bristles into a hexagonal field of glossy spikes; drag and they follow; let
+  go and they sink flat. Several fingers are several magnets (four at most). Magnet sets how strong
+  a full magnet is: at the low end hexagons of spikes, at the top mazes, as real ferrofluid does in
+  a strong field. 🎵 Dance to the music puts a magnet under the middle that pulses with the bass of
+  whatever is playing anywhere on the site (🎤 Mic for the room). Settle it flattens the pool. Keys:
+  hold Space for a magnet, arrows move it, D dance, C settle, P pause.
+  Technique: the surface is the Swift–Hohenberg equation, `∂u/∂t = r(x)u − ((k₀²+∇²)/k₀²)²u + gu² − u³`,
+  the textbook model of a surface that must choose a pattern: flat where `r < 0`, patterned at
+  wavelength 2π/k₀ where `r > 0`, and with `g > 0` upward spikes on hexagons. `r` is the magnets'
+  field. Each step (three a frame): the growth, quadratic and cubic terms in real space; a forward 2D
+  FFT; every mode multiplied by its exact damping; an inverse FFT. The FFT is 256 points a line, one
+  workgroup of 128 threads a row, then a column, with the line in workgroup memory — bit-reversed
+  load, eight butterfly stages with a barrier each, twiddles read from a table rather than computed —
+  and its direction is a pipeline OVERRIDE constant, so two entry points make four pipelines. The
+  liquid is drawn top-down: height from the pool's heap and the spikes, normal from its slope, and a
+  studio reflected in it with a Fresnel term, so the steep sides of the spikes catch the softboxes.
+  ⚠️ What was wrong first:
+  1. **The whole pool rose as one lump.** With spikes 11 cells apart (k₀ ≈ 0.57) the textbook
+     operator `(k₀² + ∇²)²` damps the flat mode by k₀⁴ ≈ 0.1, weaker than the field's growth. It is
+     scaled by k₀² now, so the flat mode is damped by 1 and only k₀ is free; the test that the
+     pattern's spectrum peaks at k₀ caught it.
+  2. **"Spikes" were stripes.** Hexagons need a modest growth: measured on a 64² grid, r = 0.2
+     settles into spikes (peaks twice as far up as troughs go down, skew 0.8), r = 0.5 into stripes
+     (skew 0.05). A full magnet gives r = 0.25 now; the Magnet slider goes past it into mazes on
+     purpose.
+  3. **A magnet's patch was four spikes wide** (REACH 34); it is 60 cells, about ten spikes across.
+  4. A flat pool reflected nothing (the studio's lights were all off to the sides of straight up);
+     it has a soft light overhead now.
+     Measured on the GPU: the shared-memory FFT of 65,536 random complex values matches the CPU's to
+     2.5×10⁻⁷ of the largest; forward and back returns the input to 3.3×10⁻⁷; a pure tone lands in
+     exactly its two bins (32,768 each, the rest under 0.0011); one whole step of the surface — noise,
+     growth, both FFTs, damping — matches the CPU doing the same arithmetic to 3.6×10⁻⁸; under a held
+     magnet the spikes' spacing (the spectrum's peak) is 10.94 cells against 11 designed, the dry dish
+     stays exactly 0, and released it settles to 0.0007. The tests hold the FFT to the DFT term by term
+     and to Parseval, the damping to leaving k₀ alone, the surface to going flat with no field and
+     rising at its own wavelength with one, spikes up rather than pits (and symmetric with g = 0), and
+     stability at a large step; and the magnets, the pool, the ramp, the bass. Twelve perturbations
+     each fail a test. In the page, at 1024 and on an emulated phone: a held mouse gathers a magnet to
+     full and raises spikes (rms 0.18, peaks 1.47), a drag moves it, letting go removes it and the
+     surface goes flat; held Space and the arrows make and move one; two touches are two magnets;
+     Settle it flattens; a strong Magnet makes mazes; the mic's (fake) sound drives the speaker magnet.
+     Audit clean at both.
+
 ### Phone checklist — batch 7
 
 - [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
@@ -440,3 +486,6 @@ first. A third picker would only make the merge worse.
 - [ ] Loom — at 375 the draft's squares are about 11px: can a finger thread, tie and treadle them,
       or does it need a bigger Size? Is tapping the cloth to flip a family delightful or baffling?
       Is the woven cloth convincing as cloth? Does the treadling-as-a-tune earn its sound?
+- [ ] Ferrofluid — does holding feel like a magnet gathering (is a second too slow)? Smooth on a
+      phone — three FFT round trips of 256² a frame? Do two fingers make two clean fields? Does
+      it dance to music convincingly, and does it look like glossy black liquid?
