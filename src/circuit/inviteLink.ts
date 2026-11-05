@@ -72,6 +72,30 @@ export function hasJoinCodeInUrl(): boolean {
   return !!new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('join')
 }
 
+/**
+ * Is there a code waiting anywhere -- still in the URL, or already parked by a signed-out
+ * arrival?
+ *
+ * ⚠️ THE TOAST PROMISED SOMETHING ONLY THE URL COULD KEEP. A signed-out tap parks the code and
+ * says "Sign in and you'll join that circuit", which moves it OUT of the hash on purpose. Coming
+ * back signed in, the only question anybody asked was `hasJoinCodeInUrl()` -- false by then --
+ * so the Circuit opened on the Log, `CircuitsPanel` never mounted, and the one thing that spends
+ * the stash never ran. The code sat in sessionStorage until the tab was closed and the invite
+ * quietly did nothing.
+ *
+ * So the question is "is there a code", not "is there a code in the URL". `takeJoinCode()` still
+ * spends it exactly once, so this goes false as soon as the panel has had it.
+ */
+export function hasPendingJoinCode(): boolean {
+  if (hasJoinCodeInUrl()) return true
+  try {
+    return !!sessionStorage.getItem(STASH_KEY)
+  } catch {
+    /* private mode: nothing can have been parked, so there is nothing waiting */
+    return false
+  }
+}
+
 /** Move a code out of the URL and into the stash. Safe to call repeatedly. */
 export function parkJoinCode(): void {
   const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')

@@ -16,7 +16,7 @@ import { Chat } from '../circuit/ui/Chat'
 import { onLogIntent, requestLog, requestLogToday, takePendingLog } from '../circuit/logIntent'
 import { useScrollFade } from '../hooks/useScrollFade'
 import { previewMember, PREVIEW_GROUPS } from '../dev/previewMember'
-import { hasJoinCodeInUrl, parkJoinCode } from '../circuit/inviteLink'
+import { hasJoinCodeInUrl, hasPendingJoinCode, parkJoinCode } from '../circuit/inviteLink'
 
 type Tab = 'board' | 'log' | 'feed' | 'charts' | 'chat' | 'circuits'
 
@@ -46,7 +46,19 @@ function initialTab(authed: boolean): Tab {
   if (fromLink && valid.includes(fromLink)) return fromLink
   // Followed a circuit invite from a DM: open where the join actually happens and is reported,
   // rather than dropping them on the Log with a circuit they can't tell they joined.
-  if (authed && hasJoinCodeInUrl()) return 'circuits'
+  //
+  // ⚠️ PENDING, NOT IN-THE-URL. A signed-out tap parks the code out of the hash and promises
+  // "Sign in and you'll join that circuit" -- and then nothing spent it, because this line asked
+  // the URL, which by then no longer had it. Coming back signed in opened the Log, CircuitsPanel
+  // never mounted, and the stash sat there until the tab closed. Asking "is there a code" instead
+  // is what makes the toast true; see hasPendingJoinCode.
+  //
+  // Not handled on purpose: signing in while this room is still MOUNTED. It needs an effect, and
+  // an effect that redirects has to depend on the setter, which is memoised on `tab` -- so it
+  // would re-snap the tab on every switch for as long as a code is unspent. The realistic path is
+  // a fresh mount (signing in lives in another section, which unmounts this one), and that is the
+  // path this line is on.
+  if (authed && hasPendingJoinCode()) return 'circuits'
   // Members land on the Log: logging is the daily reason to open the Circuit, and now that
   // the bottom bar carries Ratings instead of a Log shortcut, this IS the quick-log path.
   // (The signed-out demo still opens on the Board — a visitor wants the story, not a form.)
