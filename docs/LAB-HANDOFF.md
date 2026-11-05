@@ -49,9 +49,10 @@ Every demo opens still under reduced motion and moves when Run is pressed.
 
 ## Batch 2 — new toys
 
-| Toy          | One line on the page                                                                  |
-| ------------ | ------------------------------------------------------------------------------------- |
-| Kaleidoscope | Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go. |
+| Toy          | One line on the page                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| Kaleidoscope | Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.    |
+| Lava lamp    | Lava lamp — wax heated by the bulb rises, cools at the top and sinks. Reach in and stir. |
 
 - **Kaleidoscope** — draw anywhere and it repeats 4, 6, 8 or 12 ways round the middle, with
   Mirror reflecting each wedge too. Tap for a dot; ✨ Doodle draws a rose curve by itself (and
@@ -60,6 +61,12 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   to quick. Keys: Space, S symmetry, M mirror, D doodle, C clear, 1–4 colour. The painting is kept
   as drawn and the SCREEN samples it at every turn — so a stroke across a wedge's edge just works,
   because nothing was folded.
+- **Lava lamp** — the bulb heats wax at the bottom; warm wax rises, cools at the top and sinks
+  (tested as exactly that: a lone blob makes four round trips a minute). Tap a blob to warm it,
+  grab one and fling it, 🫨 Shake, Heat from off to double, Little / Some / Lots of wax, and four
+  colours. Keys: Space, K shake, 1–4 colour. The physics is a dozen blobs on the CPU; the GPU
+  draws them as metaballs, so two blobs that meet grow a neck and merge — every pixel asks every
+  blob, which is the expensive part.
 
 ### How the room is built
 
@@ -156,7 +163,9 @@ Batch 2:
 
 - [ ] Kaleidoscope — the opening doodle draws itself; two fingers draw two patterns; 12-fold with
       Mirror on stays smooth (it samples the painting 24 times a pixel)
-- [ ] with five demos the picker wraps to two rows on a phone, pushing the canvas lower: is enough
+- [ ] Lava lamp — does it look like wax rather than fog? Grab a blob and fling it; tap one and
+      watch it rise
+- [ ] with six demos the picker wraps to two rows on a phone, pushing the canvas lower: is enough
       of it on screen without scrolling?
 
 ## What to try next
