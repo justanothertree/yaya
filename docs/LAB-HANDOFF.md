@@ -209,3 +209,69 @@ Roughly in order of how much they would teach:
   round. Fixed in `fac6325`: 28px with a mouse, 44px under a finger.
 - The Lab's own wording ("Experiments with WebGPU…") is in `App.tsx` beside the room's heading,
   not in `GpuLab.tsx`.
+
+## Batch 7 — the toolbox, again
+
+Its own draft PR, branch `claude/lab-toys-7`, from `main`. Not live. Every toy is chosen to differ
+from the seven live ones and from #19 (Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons), #20
+(Fractal, Light, Harp, Neon, Sand, Pond), #21 (Slime, Mirror, Bubbles, Clay, Fireflies, Black hole)
+and #22 (Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint), in both how you play it and
+what the GPU does.
+
+⚠️ **No picker was cherry-picked, and none was invented.** As in batches 5 and 6, each toy is one
+entry in `main`'s `DEMOS` list plus one render line, and each entry carries its component (`Demo:`)
+for #19's registry. Merged after #19, the conflicts in `GpuLab.tsx` are all "both sides added": keep
+both, one closing `]`, and delete this batch's `demo === …` render lines.
+
+⚠️ **THE PICKER ON A PHONE.** Measured in batch 6: at 375, `main`'s button picker fits about 2.7
+buttons a row, and was 3 rows (119px) with eight. Every three toys that land before #19's dropdown
+add about another row; this batch on `main` alone makes about 5, and batches 5, 6 and 7 together
+would make about 10 — most of a phone's screen of buttons above the canvas. Land #19's picker
+first. A third picker would only make the merge worse.
+
+| Toy         | Interaction                                                                                              | GPU technique                                                                                                                                                                                                                                         | Pattern to reuse                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Marble maze | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing | "thousands of things that touch each other" — any crowd, any granular toy |
+
+- **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
+  you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
+  ✏️ Wall draws walls, 🕳 Hole digs holes, 🧽 Erase rubs either out, ⚪ Pour streams marbles from a
+  finger (up to 4,096). A count says how many are in the holes, with a marimba plink for each one
+  that drops. ↺ New maze carves another. Keys: arrows tilt, L level, N new maze, 1–5 tool.
+  Technique: each step, every marble guesses where gravity takes it and is pushed out of the walls
+  along the distance field; then the marbles are SORTED INTO CELLS a marble across — count with
+  `atomicAdd`, prefix-sum the counts in one workgroup's memory, scatter into each cell's run — so a
+  marble only reads the nine cells round it, not all 4,095 others; each gathers half of every
+  overlap from its neighbours (gathered, so no thread's order matters); the velocity is the move.
+  The walls' field is a chamfer distance worked out from both sides, so it is negative inside a
+  wall and its slope always points out.
+  ⚠️ Four things were wrong first:
+  1. **The pipeline layout was refused**: one layout for every pass used 10 storage buffers, and a
+     stage may use 8 — WebGPU's default, and what phones have. The board's passes and the marbles'
+     now have a layout each (4 and 8).
+  2. **Marbles left the board.** Started crowded, they were pushed into the walls, and the field was
+     0 inside a wall — no slope to climb out on — so the probe watched them leave altogether, on the
+     CPU copy as well as the GPU. The field is signed now; pushes are capped at a radius a step and
+     speeds at 250 cells a second (slower than a radius a step, so nothing tunnels); and a marble is
+     clamped inside the board whatever the crowd does — a board can be poured fuller than it holds.
+  3. **One of my own tests packed 200 marbles into a box that holds about 180** — a fixture that
+     could not pass, rather than a bug. 100, and a separate over-packed test for the clamp.
+  4. **Holes were drawn cell by cell**, a staircase; their edge is read between cells now.
+     Measured on the GPU, from the same 300 marbles: one step matches the CPU's to 8×10⁻⁵ cells with the
+     same marbles alive. Twenty steps of a crowd do not match, and should not — collisions amplify the
+     10⁻⁷ differences in summing order the way any chaotic crowd does — so the long check is one marble
+     alone, rolled off walls for 60 frames: 8.6×10⁻⁵. The GPU's sort holds every live marble exactly
+     once, with starts in order. The tests hold the CPU copy to the counting sort (every marble once,
+     grouped by cell), the field (within 9% of Euclid, negative inside a wall, pointing out), the
+     physics (two marbles end just touching, momentum even; none ever left in a wall or off the board,
+     however crowded; they roll downhill and come to rest; holes swallow them) and the maze (every open
+     place reachable from the start). In the page, at 1024 and on an emulated phone: a drag tilts, keys
+     and Level work, a stroke draws walls and Erase takes them out, a click digs a hole, Pour streams
+     marbles, New maze resets, and synthetic orientation tips the phone's board by sin of the angle.
+
+### Phone checklist — batch 7
+
+- [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
+- [ ] Marble maze — does 📱 Tilt feel like tipping a real board (and ask, on iPhone)? Smooth with a
+      few thousand marbles poured? Is the board's stay-tilted drag natural with a mouse? Do the
+      plinks get annoying?

@@ -4,6 +4,7 @@ import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { MarblesDemo } from '../gpu/MarblesDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -52,6 +53,14 @@ const DEMOS = [
     id: 'galaxy',
     name: 'Galaxy',
     line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
+  },
+  /* batch 7 (draft): each carries its component as well, which this list does not read yet — the
+     registry in draft #19 does, and with it these merge as they are */
+  {
+    id: 'marbles',
+    name: 'Marble maze',
+    line: 'Marble maze — tilt a wooden maze full of marbles; draw walls, dig holes, pour in more.',
+    Demo: MarblesDemo,
   },
 ] as const
 
@@ -152,6 +161,7 @@ export function GpuLab() {
       {demo === 'kaleido' && <KaleidoDemo key="kaleido" {...props} />}
       {demo === 'lava' && <LavaDemo key="lava" {...props} />}
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
+      {demo === 'marbles' && <MarblesDemo key="marbles" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
