@@ -87,17 +87,40 @@ export function useDialogContract(
   const closeRef = useRef(onClose)
   closeRef.current = onClose
 
+  /**
+   * ⚠️ CAPTURED DURING RENDER, AND AN EFFECT IS TOO LATE. React runs a CHILD's effects before
+   * its parent's, so by the time this hook's effect ran, a dialog whose content focuses
+   * something on mount had already moved focus inside -- and `document.activeElement` was that
+   * control, not the button somebody pressed to get here. The opener was then an element inside
+   * the dialog, disconnected the moment it closed, so `opener?.isConnected` was false and the
+   * restore never fired.
+   *
+   * Measured on the review sheet before this: `HTMLElement.prototype.focus` patched to log every
+   * call showed the order `opener → INPUT (the content) → ✕ (this hook)`, and after Escape, zero
+   * calls -- focus sat on BODY. Render runs before every effect in the tree, so this sees the
+   * page as it was.
+   */
+  const openerRef = useRef<HTMLElement | null | undefined>(undefined)
+  if (openerRef.current === undefined && enabled) {
+    openerRef.current =
+      typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null)
+  }
+
   useEffect(() => {
     if (!enabled) return
-    const opener = document.activeElement as HTMLElement | null
+    const opener = openerRef.current
     const el = box.current
     const focusables = () =>
       Array.from(el?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
         (n) => n.offsetParent !== null || n === document.activeElement,
       )
     /* the close button is the safe default: it is always present, and landing there means Escape
-       and Enter both do the obvious thing */
-    ;(focusables()[0] ?? el)?.focus()
+       and Enter both do the obvious thing.
+       ⚠️ UNLESS THE CONTENT HAS ALREADY CHOSEN. A child's effects run before this one, so a
+       dialog that focuses its own first field on mount has done it by now -- and the field is a
+       better place to land than the ✕ for a form somebody opened in order to type. Only move
+       focus when it is still outside. */
+    if (!el?.contains(document.activeElement)) (focusables()[0] ?? el)?.focus()
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
