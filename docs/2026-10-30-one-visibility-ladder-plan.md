@@ -491,9 +491,13 @@ true the first time somebody picks it, and from now on the test is what says so.
    Guarded by block M of `visibility-guards.sql`, which also asserts the half that is easy to
    miss: `authenticated` holds SELECT on `profiles.age_band`, and what makes that inert is the
    self-only `profiles_select` row policy — measured as a member, **1 row** of `profiles`.
-4. **The schema baseline**, and moving both workflow files out of `docs/ci/`. See the Part 2
-   commit: the dump needs `--schema public,finance`, and the CLI needs Docker and a password
-   this machine does not have.
+4. ✅ **DONE 5 Nov 2026 — the schema baseline, the workflow files, and db-guards itself.** Evan
+   generated the dump and moved both workflows into `.github/workflows/` on 4 Nov; the job then
+   failed four times in a row, each on something different and none of it in the guards. It is
+   green now — run 41957399407, `all visibility guards hold | 0 failures`, the first time
+   `visibility-guards.sql` has ever run anywhere but by hand against production.
+   `docs/2026-11-05-db-guards-green.md` has the four failures, what each one really was, and
+   what the job does and does not prove. The parked copies under `docs/ci/` are deleted.
 
 ### Deliberately left, with the reason
 

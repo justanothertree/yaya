@@ -7,7 +7,8 @@ import { bodyOf, check, exitCode, md5, migrationFiles, readManifest } from './mi
 /**
  * The rule is "never edit a migration production has already applied", and this is the thing
  * that notices. It runs on `npm run test`, which runs on pre-push — so the edit is refused on
- * the machine that made it rather than in a workflow file that is still parked in `docs/ci`.
+ * the machine that made it rather than in CI, where the same script runs again as the db-guards
+ * job's first step.
  *
  * ⚠️ THE REAL-DIRECTORY CHECK AT THE BOTTOM IS A ZERO, AND A ZERO IS WHAT CLAUDE.md WARNS
  * ABOUT. `mobileAudit` once reported a flawless zero of everything for three rooms running
@@ -20,7 +21,7 @@ import { bodyOf, check, exitCode, md5, migrationFiles, readManifest } from './mi
  * ⚠️ AND THE SUITE WAS STRICTER THAN THE GATE UNTIL 4 Nov, which is the opposite of the way round
  * anybody checks for. `check` had always reported a file with no manifest line and the real-
  * directory test below had always asserted there were none — but the CLI exited 0 on it, so the
- * step in `docs/ci/db-guards.yml` would have gone green over a migration applied without its hash
+ * db-guards step would have gone green over a migration applied without its hash
  * recorded. That is `npm run test` carrying a guarantee the thing named "check no applied
  * migration has been edited" did not. `exitCode` is exported for this: `main` returns it, so
  * asserting it here asserts the gate rather than a second copy of its rule.
