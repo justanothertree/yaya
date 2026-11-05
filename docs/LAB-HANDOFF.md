@@ -211,3 +211,53 @@ Roughly in order of how much they would teach:
   round. Fixed in `fac6325`: 28px with a mouse, 44px under a finger.
 - The Lab's own wording ("Experiments with WebGPU…") is in `App.tsx` beside the room's heading,
   not in `GpuLab.tsx`.
+
+## Batch 4 — a bigger toolbox
+
+Its own draft PR, branch `claude/lab-toys-4`, from `main`. Not live. Every toy is chosen to be
+different from the seven live ones and from batch 3's six (#19: Marbling, Growth, Aquarium,
+Tunnel, Cloth, Ribbons) in what it does, how you touch it and how the GPU draws it.
+
+⚠️ **This branch carries batch 3's picker commit** (`72444ac`, cherry-picked unchanged as
+`69b3f03`) because the old button row does not hold twenty demos on a phone. The patch is
+identical, so it merges cleanly whichever PR lands first. This section sits at the END of the file
+for the same reason: #19 adds its own section further up, and the two should not touch.
+
+| Toy     | Interaction                                                                                | GPU technique                                                                                                                                                                                                               | Reusable pattern                                                                               |
+| ------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy |
+
+- **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
+  in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
+  for the point that escapes LATEST, which is the one nearest the set's edge, so it never lands
+  somewhere flat and needs no coordinates written down. ◎ Julia from here switches to the Julia
+  set of the point in the middle (one map read two ways), and 〰 Morph walks its `c` round a small
+  circle. Four colourings that keep turning. Keys: arrows, + −, D dive, J Julia, M morph, H all of
+  it, 1–4.
+  Technique: f32 runs out at a view about 10⁻⁵ wide (neighbouring pixels become the same number —
+  measured: 3 distinct columns of 256 at 10⁻⁸, 1 at 10⁻¹¹). So one point, the centre, is iterated
+  in f64 on the CPU, and every pixel iterates only its DIFFERENCE from that orbit on the GPU,
+  δ ← 2Zδ + δ² + δc — tiny, but f32 keeps its exponent, so precise. When a pixel strays nearer the
+  reference's start than to where the reference has got to, it REBASES (Zhuoran's method), which
+  is what keeps it free of the glitches older perturbation renderers patched by hand. The limit is
+  the centre's own f64: about 10⁻¹³. The iteration writes a smooth count per pixel into a buffer
+  ONLY when the view changes; a cheap pass colours it every frame, so the colours flow with no
+  iteration redone. While the view moves it works out one pixel in four (2×2 blocks, about a third
+  of the time), and in full once it comes to rest.
+  ⚠️ Two things were wrong first. A Julia rebase measured from zero rather than from the
+  reference's start — the same for Mandelbrot, whose orbit starts at 0, and off by 0.12 in every
+  pixel's count for Julia. And a √n palette turned every jump of hundreds of steps between
+  neighbouring pixels at the edge into a new colour — speckle; a logarithm spaces a colour band
+  per doubling.
+  Measured against plain f64 escape-time, on pixels where f64 itself is stable (a hundredth of a
+  pixel either way gives the same count — at the edge, roughly half the pixels are not, and there
+  is no right answer to compare with): 100% within 2% at every depth from the whole set to
+  10⁻¹¹, along a real dive. In the page: a 100px drag moves the plane 100px, a pinch from 80 to
+  240px apart zooms exactly 3×, a wheel zooms without scrolling the page, a double-click doubles,
+  and a dive goes 2× deeper every 0.7 s.
+
+### Phone checklist — batch 4
+
+- [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
+      finding detail, and does it stay smooth (it recomputes every frame while diving, at a
+      quarter of the pixels)? Is 〰 Morph worth having?

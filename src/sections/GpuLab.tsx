@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
+import { FractalDemo } from '../gpu/FractalDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
@@ -78,6 +79,12 @@ const DEMOS: readonly {
     Demo: GalaxyDemo,
     name: 'Galaxy',
     line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
+  },
+  {
+    id: 'fractal',
+    Demo: FractalDemo,
+    name: 'Fractal',
+    line: 'Fractal — pinch into the Mandelbrot set, or let it dive, a hundred million times deeper than the GPU’s own numbers reach.',
   },
 ]
 
