@@ -223,11 +223,18 @@ entry in `main`'s `DEMOS` list plus one render line, and each entry carries its 
 for #19's registry. Merged after #19, the conflicts in `GpuLab.tsx` are all "both sides added": keep
 both, one closing `]`, and delete this batch's `demo === …` render lines.
 
+Trial-merged on 5 Nov in order — `main`, #19, #20, #21, #22, then this — every conflict was "both
+added" (`GpuLab.tsx`, this file, and `lab.css` between #19 and #20). One shape needs care: where
+two batches each append an entry inside the same shared `{ … }`, one side stops mid-entry and the
+other starts one, so a `},` and a `{` have to go between them. Merged that way: typecheck and lint
+clean, and the 441 tests in `src/gpu` green with 37 toys registered.
+
 ⚠️ **THE PICKER ON A PHONE.** Measured in batch 6: at 375, `main`'s button picker fits about 2.7
 buttons a row, and was 3 rows (119px) with eight. Every three toys that land before #19's dropdown
-add about another row; this batch on `main` alone makes about 5, and batches 5, 6 and 7 together
-would make about 10 — most of a phone's screen of buttons above the canvas. Land #19's picker
-first. A third picker would only make the merge worse.
+add about another row. Measured on this branch (all six toys, iPhone 13 emulation, 390 wide):
+**13 buttons in 5 rows, 202px** above the canvas. Batches 5, 6 and 7 together would be about ten
+rows — most of a phone's screen of buttons. Land #19's picker first. A third picker would only
+make the merge worse.
 
 | Toy           | Interaction                                                                                                                                                                      | GPU technique                                                                                                                                                                                                                                                                                | Pattern to reuse                                                                                                                  |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
