@@ -34,6 +34,37 @@ export const ARPS: Array<[ArpId, string, string]> = [
   ['random', 'Wander', 'Picks its way around the chord'],
 ]
 
+/**
+ * Swing: the off-beats land late, which is most of what separates a groove from a metronome.
+ *
+ * ⚠️ AT FULL SWING THE DELAY IS A THIRD OF A STEP, because that is what swing IS. Two eighth
+ * notes played straight split the beat 1:1; swung, they split it 2:1 — the first lasts twice as
+ * long as the second, which puts the off-beat two thirds of the way through instead of halfway.
+ * Two thirds minus one half is one sixth of the BEAT, which is one third of a STEP. Writing the
+ * constant as 1/3 with that sentence beside it is the difference between a number somebody can
+ * check and a number somebody tuned by ear and cannot.
+ *
+ * ⚠️ AND IT DISPLACES, IT DOES NOT ACCUMULATE. The offset is computed from the step's own
+ * position every time rather than added to a running clock, so a hundred swung steps are still
+ * exactly a hundred gaps from the start — which is what lets swing and the loop-grid lock
+ * coexist. Accumulating would drift away from the loop at a third of a step per pair.
+ */
+export const FULL_SWING = 1 / 3
+
+/**
+ * How late this step should be.
+ *
+ * @param step which step of the figure, from 0
+ * @param gap how long one step lasts
+ * @param amount 0 straight, 1 fully swung
+ */
+export function swingOffset(step: number, gap: number, amount: number): number {
+  if (!(gap > 0) || !(amount > 0)) return 0
+  /* only the off-beats move — a swing that moved both would just be a slower tempo */
+  if (Math.floor(step) % 2 === 0) return 0
+  return gap * FULL_SWING * Math.min(1, amount)
+}
+
 /** Eighth notes: four steps to the bar, which reads as playing rather than as a machine. */
 export const STEP_BEATS = 0.5
 
@@ -106,7 +137,7 @@ export type ArpRunner = {
    * widen the figure, not restart it — a pulse that jumped back to the first note every time a
    * finger landed would make it impossible to play along with anything.
    */
-  update(notes: number[], pattern: ArpId, bpm: number, grid?: number | null): void
+  update(notes: number[], pattern: ArpId, bpm: number, grid?: number | null, swing?: number): void
   /** Stop at once, and say which notes are still sounding so the caller can silence them. */
   stop(): ArpNote[]
   /** What is sounding now, if anything — for showing the figure on the keyboard. */
@@ -137,6 +168,7 @@ export function arpRunner(opts: {
   let notes: number[] = []
   let pattern: ArpId = 'off'
   let bpm = 120
+  let swing = 0
   let nextAt: number | null = null
   /** the loop's start, when there is a loop to be in time with */
   let align: number | null = null
@@ -171,11 +203,15 @@ export function arpRunner(opts: {
        committing only one per tick would make the figure crawl until it caught up. */
     while (nextAt !== null && nextAt <= opts.now() + LOOKAHEAD) {
       const i = arpIndex(pattern, notes.length, step, Math.random())
+      /* ⚠️ ADDED HERE AND NOT TO `nextAt`. The pulse must keep advancing by exactly one gap
+         or the figure drifts away from the loop at a third of a step every pair; the swing is
+         a displacement of this one note, computed from its own step number. */
+      const at = nextAt + swingOffset(step, gap, swing)
       const n: ArpNote = {
         voice: `arp:${seq++}`,
         midi: notes[i],
-        at: nextAt,
-        until: nextAt + gap * HOLD,
+        at,
+        until: at + gap * HOLD,
       }
       out.push(n)
       opts.play(n)
@@ -201,10 +237,11 @@ export function arpRunner(opts: {
   }
 
   return {
-    update(next, p, tempo, grid) {
+    update(next, p, tempo, grid, feel) {
       notes = next
       pattern = p
       bpm = tempo
+      swing = feel ?? 0
       if (notes.length === 0 || p === 'off') {
         halt()
         return

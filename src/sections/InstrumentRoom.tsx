@@ -231,6 +231,7 @@ const ROOT_KEY = 'instrument_root_v1'
 const CHORD_KEY = 'instrument_chord_v1'
 const STRUM_KEY = 'instrument_strum_v1'
 const ARP_KEY = 'instrument_arp_v1'
+const SWING_KEY = 'instrument_swing_v1'
 
 /**
  * Tempos as words, because "how fast?" is not a question about numbers.
@@ -729,6 +730,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      where the pedal is silently down means your first chord never stops and nothing on screen
      says why — the one setting whose wrong state is indistinguishable from a broken synth. */
   const [hold, setHold] = useState(false)
+  /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
+     effect when there is nothing to swing — which is what makes hiding it honest rather than
+     the trap the arp picker was. See the note on its own `&&` below. */
+  const [swing, setSwing] = useState(() => {
+    try {
+      return localStorage.getItem(SWING_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [arp, setArp] = useState<ArpId>(() => {
     try {
       const v = localStorage.getItem(ARP_KEY)
@@ -799,8 +810,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   // ⚠️ a ref as well as state: the key handlers are bound once and would otherwise capture the
   // instrument and octave from the render that installed them, so changing either mid-play would
   // be ignored until something else re-rendered
-  const live = useRef({ inst, noteAt, notesFor, strum, arp, bpm: loop.bpm, hold })
-  live.current = { inst, noteAt, notesFor, strum, arp, bpm: loop.bpm, hold }
+  const live = useRef({ inst, noteAt, notesFor, strum, arp, bpm: loop.bpm, hold, swing })
+  live.current = { inst, noteAt, notesFor, strum, arp, bpm: loop.bpm, hold, swing }
 
   useEffect(() => {
     try {
@@ -811,10 +822,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(CHORD_KEY, chord)
       localStorage.setItem(STRUM_KEY, strum)
       localStorage.setItem(ARP_KEY, arp)
+      localStorage.setItem(SWING_KEY, swing ? '1' : '0')
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root, chord, strum, arp])
+  }, [inst, octave, scale, root, chord, strum, arp, swing])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -1094,7 +1106,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * otherwise is how `press` ends up sounding a chord the runner is also playing.
        */
       if (live.current.arp !== 'off') {
-        arping.update(book.notes(), live.current.arp, live.current.bpm, gridNow())
+        arping.update(
+          book.notes(),
+          live.current.arp,
+          live.current.bpm,
+          gridNow(),
+          live.current.swing ? 1 : 0,
+        )
         show()
         return
       }
@@ -1200,7 +1218,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         }
       }
       if (live.current.arp !== 'off')
-        arping.update(book.notes(), live.current.arp, live.current.bpm, gridNow())
+        arping.update(
+          book.notes(),
+          live.current.arp,
+          live.current.bpm,
+          gridNow(),
+          live.current.swing ? 1 : 0,
+        )
       show()
     },
     /* `arping` is one runner per mount, so this stays referentially stable */
@@ -2578,6 +2602,29 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
          * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
          * because the book releases what was actually sounded rather than recomputing it.
          */}
+        {/**
+         * ⚠️ HIDDEN WHEN THERE IS NO ARPEGGIO, AND THAT IS NOT THE TRAP THE ARPEGGIO PICKER
+         * WAS. Swing displaces arpeggio STEPS and nothing else — with no figure running there
+         * is nothing for it to move, so this is a control with no effect rather than an effect
+         * with no control. The arp picker was the other way round, which is why it is always
+         * shown now.
+         */}
+        {arp !== 'off' && (
+          <label className="inst-pick">
+            <span className="muted">Feel</span>
+            <select
+              value={swing ? 'swing' : 'straight'}
+              onChange={(e) => {
+                setSwing(e.target.value === 'swing')
+                e.target.blur()
+              }}
+            >
+              <option value="straight">Straight</option>
+              <option value="swing">Swing</option>
+            </select>
+          </label>
+        )}
+
         {chord !== 'off' && arp === 'off' && (
           <label className="inst-pick">
             <span className="muted">Arrives</span>
@@ -2650,9 +2697,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               : null,
             /* only when it is doing something — "Every note at once" under a chord that arrives
                all at once is a sentence describing the absence of a feature */
-            chord !== 'off' && arp !== 'off' && inst !== 'drums'
-              ? ARPS.find(([id]) => id === arp)?.[2]
-              : null,
+            arp !== 'off' && inst !== 'drums' ? ARPS.find(([id]) => id === arp)?.[2] : null,
+            arp !== 'off' && swing && inst !== 'drums' ? 'Swung, so the off-beats land late' : null,
             chord !== 'off' && arp === 'off' && strum !== 'off' && inst !== 'drums'
               ? STRUMS.find(([id]) => id === strum)?.[2]
               : null,

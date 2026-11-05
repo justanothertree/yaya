@@ -5,6 +5,8 @@ import {
   alignTo,
   arpIndex,
   arpRunner,
+  swingOffset,
+  FULL_SWING,
   stepSeconds,
   type ArpId,
   type ArpNote,
@@ -493,5 +495,105 @@ describe('playing in time with a loop', () => {
       expect(first, `phase ${phase}`).toBeGreaterThan(0)
       expect(first, `phase ${phase}`).toBeLessThanOrEqual(0.25 + 1e-9)
     }
+  })
+})
+
+describe('swing', () => {
+  /**
+   * ⚠️ THE EXPECTATIONS ARE THE DEFINITION OF SWING, not a re-run of the formula. Two eighth
+   * notes played straight split the beat 1:1; swung, they split it 2:1 — so the off-beat sits
+   * two thirds of the way through the beat instead of halfway, which is one third of a STEP
+   * later. That is where 1/3 comes from, and it is checkable against any drummer.
+   */
+  it('moves the off-beats and leaves the beats alone', () => {
+    for (const s of [0, 2, 4, 6, 100]) expect(swingOffset(s, 0.3, 1), `step ${s}`).toBe(0)
+    for (const s of [1, 3, 5, 99]) expect(swingOffset(s, 0.3, 1), `step ${s}`).toBeGreaterThan(0)
+  })
+
+  it('puts a fully swung off-beat two thirds through the beat', () => {
+    /* a step is half a beat, so a beat is 2 gaps. Straight, the off-beat is at 1 gap = 1/2 of
+       the beat. Swung it must be at 2/3 of the beat. */
+    const gap = 0.3
+    const beat = gap * 2
+    const offBeatAt = gap + swingOffset(1, gap, 1)
+    expect(offBeatAt / beat).toBeCloseTo(2 / 3, 9)
+    expect(FULL_SWING).toBeCloseTo(1 / 3, 9)
+  })
+
+  it('does nothing at all when it is off', () => {
+    for (const s of [0, 1, 2, 3]) expect(swingOffset(s, 0.3, 0)).toBe(0)
+  })
+
+  it('is proportional in between', () => {
+    expect(swingOffset(1, 0.3, 0.5)).toBeCloseTo(swingOffset(1, 0.3, 1) / 2, 9)
+  })
+
+  it('never pushes a note onto or past the next step', () => {
+    /**
+     * ⚠️ THE ONE THAT WOULD BE A BUG RATHER THAN A TASTE. A swing deeper than half a step
+     * would put the off-beat at or after the note that follows it — the figure would reorder
+     * itself, and the two notes would arrive together or backwards.
+     */
+    for (const amount of [0.5, 1, 2, 99]) expect(swingOffset(1, 0.3, amount)).toBeLessThan(0.3)
+  })
+
+  it('refuses a nonsense gap rather than producing one', () => {
+    for (const gap of [0, -1, NaN]) expect(swingOffset(1, gap, 1)).toBe(0)
+  })
+})
+
+describe('a swung figure', () => {
+  it('alternates long and short, and keeps the long one first', () => {
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120, null, 1) // a step is 0.25s
+    r.tickTo(2)
+    const gaps = r.played.slice(1).map((n, i) => +(n.at - r.played[i].at).toFixed(6))
+    /* 2:1 — the on-beat note lasts twice as long as the off-beat one */
+    for (let i = 0; i < gaps.length - 1; i += 2) {
+      expect(gaps[i], `gap ${i}`).toBeCloseTo(0.25 + 0.25 / 3, 6)
+      expect(gaps[i + 1], `gap ${i + 1}`).toBeCloseTo(0.25 - 0.25 / 3, 6)
+    }
+  })
+
+  it('does not drift, however long it runs', () => {
+    /**
+     * ⚠️ THE REASON THE OFFSET IS A DISPLACEMENT RATHER THAN AN ADDITION. Adding it to the
+     * running clock would push the figure a third of a step later on every pair — a quarter of
+     * a bar adrift inside eight bars, and slowly, which is the hardest kind to notice.
+     */
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120, null, 1)
+    r.tickTo(120, 0.5)
+    const evens = r.played.filter((_, i) => i % 2 === 0)
+    const last = evens[evens.length - 1]
+    /* every on-beat is still an exact number of whole steps from the start */
+    expect(
+      Math.abs(last.at / 0.25 - Math.round(last.at / 0.25)),
+      `after ${r.played.length} notes`,
+    ).toBeLessThan(1e-6)
+  })
+
+  it('stays on the loop grid on the beats, swinging only between them', () => {
+    const r = rig()
+    r.runner.update([60, 64, 67], 'up', 120, 0.17, 1)
+    r.tickTo(3)
+    for (let i = 1; i < r.played.length; i++) {
+      const off = (r.played[i].at - 0.17) / 0.25
+      const near = Math.round(off)
+      /* on-beats land on the grid; off-beats land a third of a step after it */
+      const slip = off - near
+      expect(
+        Math.abs(slip) < 1e-6 || Math.abs(slip - 1 / 3) < 1e-6,
+        `note at ${r.played[i].at}`,
+      ).toBe(true)
+    }
+  })
+
+  it('is straight when nothing asks for swing, exactly as before', () => {
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    r.tickTo(1.5)
+    for (let i = 1; i < r.played.length; i++)
+      expect(r.played[i].at - r.played[i - 1].at).toBeCloseTo(0.25, 9)
   })
 })
