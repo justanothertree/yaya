@@ -883,7 +883,14 @@ export function GameManager({
     }
     const renderer = new GameRenderer(canvas, settings.grid)
     rendererRef.current = renderer
-    renderer.resize(wrap, viewSizeRef.current)
+    /* ⚠️ THE RETURN VALUE IS THE SIZE THE BOARD CAME OUT AS, and discarding it here left the
+       slider's label lying on every first load. `boardPx` is only otherwise set by the effect
+       on `viewSize`, which is declared ABOVE this one -- so on mount it runs before the
+       renderer exists, finds `rendererRef.current` null and sets nothing, and the label falls
+       back to `viewSize`. Measured in the built bundle on a fresh origin: the board was 360px
+       and the label said "640px" until the slider was touched, which is the one reading its own
+       comment promises ("show the truth when it's clamped"). */
+    setBoardPx(renderer.resize(wrap, viewSizeRef.current))
     renderer.draw(engine.snapshot())
     // In multiplayer, keep gameplay paused on settings changes until a countdown starts
     if (mode === 'versus') setPaused(true)
