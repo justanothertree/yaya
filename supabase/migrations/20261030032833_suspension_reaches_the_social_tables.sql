@@ -5,7 +5,12 @@
 -- that lets it run a SECOND time without failing, so the repository can rebuild its own schema
 -- from a baseline (see docs/ci/db-guards.yml). The md5 check in supabase/migrations/README.md
 -- will report this file as changed, which is the intended and documented exception rather than
--- drift -- the SQL that touches the database is identical.
+-- drift -- the SQL that touches the database is identical.--
+-- ⚠️ CORRECTED 5 Nov 2026: CI DOES NOT REPLAY THIS FILE, so the sentence above is why the guard
+-- was added rather than what happens now. supabase/migrations cannot replay at all -- too many
+-- of its files assert a pre-state a dump has already moved past -- so `[db.migrations] enabled
+-- = false` and the schema is built from the dump plus supabase/baseline/. The guard stays, and
+-- is still why this file diverges. `docs/ci/db-guards.yml` is now `.github/workflows/`.
 --
 -- A suspended member could still comment on and react to workout logs.
 --

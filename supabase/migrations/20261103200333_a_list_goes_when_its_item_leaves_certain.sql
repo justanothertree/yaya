@@ -5,7 +5,12 @@
 -- file can be replayed onto a database that already has them — which is what `supabase db reset`
 -- does in CI once a schema baseline exists, and what `docs/ci/db-guards.yml` is for. A bare
 -- `create trigger` against an existing trigger is an error rather than a no-op, and these six
--- were the only unguarded statements left in the whole directory.
+-- were the only unguarded statements left in the whole directory.--
+-- ⚠️ CORRECTED 5 Nov 2026: CI DOES NOT REPLAY THIS FILE, so the sentence above is why the guard
+-- was added rather than what happens now. supabase/migrations cannot replay at all -- too many
+-- of its files assert a pre-state a dump has already moved past -- so `[db.migrations] enabled
+-- = false` and the schema is built from the dump plus supabase/baseline/. The guard stays, and
+-- is still why this file diverges. `docs/ci/db-guards.yml` is now `.github/workflows/`.
 --
 -- What ran in production is the version WITHOUT those six lines:
 --   version 20261103200333 · md5 fcc233bc07d4e735cd2f15353c0b833c · 4,212 characters

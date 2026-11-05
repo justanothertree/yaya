@@ -23,15 +23,21 @@ node scripts/migration-md5.mjs             # how many of them production has a r
 
 | file                                     | what it is                                                                               |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `baseline/00-privileges.sql`             | the default-privilege revokes a restore cannot reproduce                                 |
 | `baseline/01-extensions.sql`             | citext and pgcrypto, which the dump's own column types need and the dump does not create |
 | `migrations/00000000000000_baseline.sql` | the schema-only dump of production, **exactly as the dump tool produced it**             |
 | `baseline/02-triggers.sql`               | the 24 triggers the dump turned out not to contain                                       |
 | `seed.sql`                               | the fixtures the guards need                                                             |
 
+⚠️ **THE DUMP IS NOT THE SCHEMA, and `supabase/baseline/README.md` is the regeneration note.**
+Re-running the dump command replaces the dump and nothing else: a fresh one has no extensions,
+no privilege revokes, and — produced the way this one was — no triggers. That is survivable only
+because the three hand-written files sit BESIDE the dump rather than inside it, so a regeneration
+cannot silently delete them. What it can still miss is a trigger added to production since the
+dump was taken, which is why that README's step 3 exists.
+
 `supabase db push` is skipped by the same switch, and that config block has the whole reasoning
-with the measurement behind it. The two hand-written files are BESIDE the dump rather than inside
-it on purpose: regenerating the dump is a fresh file, so anything hand-written in the old one goes
-without a word. `scripts/baseline.test.mjs` asserts the three still fit together.
+with the measurement behind it. `scripts/baseline.test.mjs` asserts the four still fit together.
 
 The short version: **these files cannot replay, and that is a property of how they are written
 rather than a fault in any of them.** Most are surgery on function bodies that assert the state

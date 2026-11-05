@@ -56,10 +56,13 @@ state they expect to find and refuse to run against anything else. `[db.migratio
 false` says so, with the measurement.
 
 **So the job is only as current as the dump.** A migration applied after 4 Nov is not in CI's
-schema until somebody regenerates `00000000000000_baseline.sql`. That failure is loud rather than
-silent — a guard written for a new rule fails against the old schema — and the first instance is
-already here: `20261105023835_one_unique_index_on_the_snake_registry` dropped a duplicate index
-that CI's copy still has.
+schema until somebody regenerates `00000000000000_baseline.sql` — and a regeneration is four
+steps rather than one, written down in `supabase/baseline/README.md`, because the dump alone is
+not the schema. That failure is loud rather than silent for anything a guard asks about — a guard
+written for a new rule fails against the old schema — and the first instance is already here:
+`20261105023835_one_unique_index_on_the_snake_registry` dropped a duplicate index that CI's copy
+still has. The one quiet case is a trigger added after the dump: it would be in neither the dump
+nor `02-triggers.sql`, which is step 3 of that README.
 
 ## Left for Evan, because this session's token has no `workflow` scope
 
@@ -74,7 +77,8 @@ true, and they are the first thing anybody reads when the job fails:
    "Check the migrations can build the schema" step, with the `db dump` command to run once. The
    baseline exists; that step passes; and the paragraph below it about what then happens to the
    migrations already here is the thing that turned out to be wrong — they are not replayed at
-   all now.
+   all now. ⚠️ That block also prints the dump command on its own, which is the naive
+   regeneration: whatever replaces it should point at `supabase/baseline/README.md` instead.
 3. `# applies every migration in order, then supabase/seed.sql`, above the `db reset` step. It
    applies `[db.seed] sql_paths`: the privileges, the extensions, the dump, the triggers, then
    the seed.

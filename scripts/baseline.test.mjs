@@ -248,4 +248,26 @@ describe('config.toml, which is the other half of all of it', () => {
        does not have. Run 41954680315 did exactly that, ~30 times. */
     expect(setting('api', 'auto_expose_new_tables')).toBe('false')
   })
+
+  /**
+   * ⚠️ THE REGENERATION NOTE ROTTED WITHIN ONE COMMIT OF BEING WRITTEN, which is the argument
+   * for this being a test rather than a habit. `supabase/baseline/README.md` and the table in
+   * `supabase/migrations/README.md` both list what builds the schema; `00-privileges.sql` was
+   * added a few hours later and neither list gained it. A list of files maintained by hand is
+   * the thing CLAUDE.md §11 refuses, and the fix is to ask `sql_paths` instead of asking a
+   * person to remember. Nothing here checks the prose — only that no file silently drops out
+   * of the documents that tell somebody how to regenerate.
+   */
+  it('is described by both READMEs, file for file', () => {
+    const paths = setting('db.seed', 'sql_paths')
+    const names = [...paths.matchAll(/([A-Za-z0-9_.-]+\.sql)/g)].map((m) => m[1])
+    expect(names.length).toBeGreaterThan(3)
+    for (const doc of ['baseline/README.md', 'migrations/README.md']) {
+      const text = read(...doc.split('/'))
+      expect(
+        names.filter((n) => !text.includes(n)),
+        `${doc} does not mention every file in sql_paths`,
+      ).toEqual([])
+    }
+  })
 })

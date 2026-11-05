@@ -56,9 +56,11 @@ export const REASONS = {
 
 /**
  * The one file production's record will never hold a row for. `00000000000000_baseline.sql` is
- * `supabase db dump` of the whole schema, committed so `db reset` can build a database for the
- * real migrations to replay onto — nobody ever ran it as a migration, so there is nothing for it
- * to disagree with. Every OTHER file with no line is a migration that was applied without its
+ * a `supabase db dump` of production's schema, committed so `db reset` can build a database for
+ * the guards to run against — nobody ever ran it as a migration, so there is nothing for it to
+ * disagree with. ⚠️ It is not the whole schema and the migrations do NOT replay onto it: the
+ * extensions, the default-privilege revokes and the triggers are three more files applied around
+ * it, and supabase/baseline/README.md is why. Every OTHER file with no line is a migration that was applied without its
  * hash being recorded, which is the gap this check exists to close. One name, not a pattern:
  * "has no record" is the normal state of exactly this file and of nothing else.
  */
