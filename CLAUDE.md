@@ -836,10 +836,19 @@ document.head.appendChild(Object.assign(document.createElement('style'), { textC
 ```
 
 27 blocks, 4 kB of declarations. ⚠️ **AND IT FOUND SOMETHING THE 375 SWEEP STRUCTURALLY COULD
-NOT**: every `input`, `select` and `textarea` on the site takes its touch size from
-`@media (max-width: 640px)` alone, with no `(pointer: coarse)` alternative — so a control that is
-40px on a phone is **21px on a tablet held in the hand**, under the 24px floor. The 375 sweep
+NOT**: every `input`, `select` and `textarea` on the site took its touch size from
+`@media (max-width: 640px)` alone, with no `(pointer: coarse)` alternative — so a control that was
+40px on a phone was **21px on a tablet held in the hand**, under the 24px floor. The 375 sweep
 passes it because the width query matches there. A width query is not a pointer.
+
+✅ **FIXED the same day — `76eb155`, 16 Oct 2026**, "a width query is not a pointer, so no tablet
+had a touch-sized field". The gate is `@media (max-width: 640px), (pointer: coarse)` now and
+`src/index.css` carries 31 of those; the block's own comment has the measurement, including why
+that one rule had to leave the Circuit's phone-layout block rather than widen with it. Said here
+because the paragraph above reads as an open bug and is a RECORD of what the technique found —
+§12's "the notes are a log, not a backlog" applied to this file, which had not applied it to
+itself. The technique is still the point: a width query is not a pointer, and the snippet above is
+how you ask.
 
 **Browsers this cannot reach.** The Browser pane is Chromium, so responsive behaviour and touch
 emulation are testable and **Firefox and Safari are not**. This project has already been bitten by
