@@ -1119,7 +1119,7 @@ export function CircuitCanvas({
       d.zone = zone
       setSnap(zone ? snapGeom(zone) : null)
     },
-    [hostBox, snapGeom, zoneFor, showGuides],
+    [worldBox, snapGeom, zoneFor, showGuides],
   )
 
   const onDragUp = useCallback(() => {
@@ -1171,7 +1171,7 @@ export function CircuitCanvas({
       return { ...prev, [d.id]: { ...w, x: nx, y: ny, max: false } }
     })
     drag.current = null
-  }, [onDragMove, snapGeom, settle, hostBox, reducedMotion, showGuides])
+  }, [onDragMove, snapGeom, settle, worldBox, reducedMotion, showGuides])
 
   // ── resize from any edge / corner ──
   const onResizeMove = useCallback(
@@ -1217,7 +1217,7 @@ export function CircuitCanvas({
       const body = el.querySelector<HTMLElement>('.cz-body')
       if (body) body.style.zoom = String(scaleFor(w))
     },
-    [hostBox],
+    [worldBox],
   )
 
   const onResizeUp = useCallback(() => {

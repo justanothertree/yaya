@@ -57,7 +57,9 @@ export function AcceptInvite() {
         setLoading(false)
       }
     })()
-  }, [token])
+    /* `sb` is a memoised singleton -- `getSupabaseClient` returns the same client every
+       render -- so listing it is the dep list telling the truth rather than a re-run. */
+  }, [token, sb])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()

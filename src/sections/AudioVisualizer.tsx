@@ -2093,7 +2093,12 @@ export function AudioVisualizer({ embedded = false }: { embedded?: boolean } = {
       window.removeEventListener('pointerdown', onDownPos, true)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [mode, src, gain, reduced, trail, mirror, palette])
+    /* ⚠️ `embedded` IS IN HERE BECAUSE THE pointerup HANDLER READS IT. It is fixed per mount
+       in practice -- the page renders <AudioVisualizer /> and the instrument room renders it
+       `embedded` -- so this costs nothing today. What it buys is that the double-tap-to-
+       fullscreen gesture cannot be left switched the wrong way by a prop change nobody
+       expected, which is a thing no screen would show. */
+  }, [mode, src, gain, reduced, trail, mirror, palette, embedded])
 
   const pickMode = (id: VisualId) => {
     setMode(id)

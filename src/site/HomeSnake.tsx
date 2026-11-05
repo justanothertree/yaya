@@ -94,15 +94,20 @@ export function HomeSnake() {
   }, [place])
 
   /** would this move kill us on the very next step? */
-  const fatal = (d: P) => {
+  /* ⚠️ MEMOISED, AND SO IS `autopilot` BELOW, BECAUSE `step` NAMES THEM AND THE LOOP NAMES
+     `step`. Both read refs only -- the snake, the apple, the column count -- so an empty dep
+     list is the truth rather than a shortcut. Left as plain functions they would be a new
+     identity every render, `step` with them, and the rAF loop that depends on `step` would be
+     torn down and rebuilt every render: CLAUDE.md §7's own example. */
+  const fatal = useCallback((d: P) => {
     const h = snake.current[0]
     const n = { x: h.x + d.x, y: h.y + d.y }
     if (n.x < 0 || n.y < 0 || n.x >= cols.current || n.y >= ROWS) return true
     // the tail vacates as we move, so the last cell is not an obstacle
     return snake.current.slice(0, -1).some((s) => s.x === n.x && s.y === n.y)
-  }
+  }, [])
 
-  const autopilot = () => {
+  const autopilot = useCallback(() => {
     const h = snake.current[0]
     const a = apple.current
     const want: P[] = []
@@ -112,7 +117,7 @@ export function HomeSnake() {
     want.push(dir.current, { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 })
     for (const d of want) if (!fatal(d)) return d
     return dir.current
-  }
+  }, [fatal])
 
   const step = useCallback(() => {
     const auto = !humanAt.current || performance.now() - humanAt.current > HANDBACK_MS
@@ -132,7 +137,7 @@ export function HomeSnake() {
     snake.current.unshift(n)
     if (n.x === apple.current.x && n.y === apple.current.y) place()
     else snake.current.pop()
-  }, [place, reset])
+  }, [place, reset, autopilot, fatal])
 
   const draw = useCallback(() => {
     const c = ref.current

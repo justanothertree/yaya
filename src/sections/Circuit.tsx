@@ -1,6 +1,6 @@
 // The Circuit — in-site module shell. Sub-tabs mirror the standalone app.
 // Backed by the shared store (localStorage now → Supabase realtime later, no UI change).
-import { useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { connectCircuit } from '../circuit/connect'
 import { circuitStore, useCircuit, useCircuitHistory } from '../circuit/store'
@@ -91,19 +91,29 @@ export function Circuit({
   onOpenCanvasPane?: (pane: CanvasPane) => void
 } = {}) {
   const [tab, setTabRaw] = useState<Tab>(() => initialTab(authed))
-  const setTab = (t: Tab) => {
-    setTabRaw(t)
-    // Switching sub-tabs is a page-level change, but it doesn't change the section, so
-    // App's scroll-to-top never covered it — you'd land on a new tab still scrolled part
-    // way down the previous one. Done here rather than in an effect on `tab` so it fires
-    // on the actual navigation, including hash-driven ones (which route through here too).
-    if (t !== tab) window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    try {
-      localStorage.setItem(TAB_KEY, t)
-    } catch {
-      /* ignore */
-    }
-  }
+  /* ⚠️ MEMOISED BECAUSE THE hashchange LISTENER BELOW HOLDS IT, and a plain function here
+     would freeze that listener on the FIRST render's `tab`. The scroll-to-top then compares a
+     deep link's tab against whatever was open when the component mounted -- so a hash-driven
+     switch away from a tab the visitor had since changed would silently not scroll, which is
+     the one thing this function exists to do. Re-created on `tab`, so the effect re-registers
+     the listener per tab change: two DOM calls, and the comparison is always against what is
+     actually open. */
+  const setTab = useCallback(
+    (t: Tab) => {
+      setTabRaw(t)
+      // Switching sub-tabs is a page-level change, but it doesn't change the section, so
+      // App's scroll-to-top never covered it — you'd land on a new tab still scrolled part
+      // way down the previous one. Done here rather than in an effect on `tab` so it fires
+      // on the actual navigation, including hash-driven ones (which route through here too).
+      if (t !== tab) window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      try {
+        localStorage.setItem(TAB_KEY, t)
+      } catch {
+        /* ignore */
+      }
+    },
+    [tab],
+  )
   /**
    * A circuit invite tapped while signed out.
    *
@@ -135,7 +145,7 @@ export function Circuit({
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [authed])
+  }, [authed, setTab])
   const tabsRef = useScrollFade<HTMLSpanElement>()
 
   const [logTarget, setLogTarget] = useState<{ personId: string; date: string } | null>(null)

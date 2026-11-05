@@ -1,7 +1,7 @@
 // Ratings — the standalone home for shared experience ratings: Reviews (movies, food, beer,
 // anything) + the Watchlist of things to try. Pulled out of the Circuit so the Circuit can be
 // fitness-only; both boards stay group/circuit-scoped and synced through the same shared store.
-import { useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { connectCircuit } from '../circuit/connect'
 import { useCircuit } from '../circuit/store'
 import { Movies } from '../circuit/ui/Movies'
@@ -43,16 +43,26 @@ export function Ratings({ authed = false }: { authed?: boolean }) {
   const tabsRef = useScrollFade<HTMLSpanElement>()
 
   const [tab, setTabRaw] = useState<RTab>(() => initialTab())
-  const setTab = (t: RTab) => {
-    setTabRaw(t)
-    // land at the top of the new tab (see the same note in Circuit)
-    if (t !== tab) window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    try {
-      localStorage.setItem(TAB_KEY, t)
-    } catch {
-      /* ignore */
-    }
-  }
+  /* ⚠️ MEMOISED BECAUSE THE hashchange LISTENER BELOW HOLDS IT, and a plain function here
+     would freeze that listener on the FIRST render's `tab`. The scroll-to-top then compares a
+     deep link's tab against whatever was open when the component mounted -- so a hash-driven
+     switch away from a tab the visitor had since changed would silently not scroll, which is
+     the one thing this function exists to do. Re-created on `tab`, so the effect re-registers
+     the listener per tab change: two DOM calls, and the comparison is always against what is
+     actually open. */
+  const setTab = useCallback(
+    (t: RTab) => {
+      setTabRaw(t)
+      // land at the top of the new tab (see the same note in Circuit)
+      if (t !== tab) window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      try {
+        localStorage.setItem(TAB_KEY, t)
+      } catch {
+        /* ignore */
+      }
+    },
+    [tab],
+  )
 
   // ensure the shared store is wired even if the visitor lands here before the Circuit
   useEffect(() => {
@@ -68,7 +78,7 @@ export function Ratings({ authed = false }: { authed?: boolean }) {
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+  }, [setTab])
 
   // one shared circuit filter across the whole app (same key the Circuit uses)
   const [viewGroup, setViewGroup] = useState<string>(() => {

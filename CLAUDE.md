@@ -115,8 +115,9 @@ that render nothing at zero first**.
   never `park`, so a test creature never appears on somebody's screen — and it grants nothing,
   because ParkRoom's `authed` is a courtesy rather than a lock (the relay socket is
   unauthenticated regardless). Walking the park used to need the `requestAnimationFrame`
-  stand-in above; rAF fires in the pane now (~89fps, measured 28 Oct 2026), so the loop runs
-  on its own and a park that does not move is a park that is broken.
+  stand-in above, and needs it again: rAF fired in the pane on 28 Oct 2026 (~89fps) and did
+  NOT on 5 Nov (a 500ms frame count never settled, pane hidden) — so ask it before believing
+  either, and a park that does not move may be a park nothing is driving.
 - **A test built from the same sum as the code confirms the mistake.** The park's `across()` and
   `down()` take SCREEN-heights while nearly everything is written in PET-heights, so the correct
   call is `across(v * PARK_TALL)` — and the factor went missing three times: a dodge that crossed
@@ -521,6 +522,18 @@ test` and `npm run build` all green. A reload fetched the same stale source, and
   `?r=1`. Only stopping and restarting the dev server fixed it. **A pane error that contradicts a
   green build is a question about the server, not about the code** — restart it before spending
   any time on the diagnosis it is suggesting.
+- **`grep -c $'
+'` ANSWERS "EVERY LINE" IN THIS BASH TOOL, whatever the file holds.** The
+  escape does not survive the way the command is passed, so the pattern arrives empty and
+  matches everything — and the count it prints is the file's line count, which looks exactly
+  like "every line ends CRLF". Measured 5 Nov 2026 on the schema baseline: `grep -c $'
+'` said
+  **14,471 of 14,471** while `tr -cd '
+' | wc -c` said **0 bytes**, and `od -c` agreed with
+  `tr`. That matters here because `.gitattributes` pins every `.sql` to LF for the md5 protocol,
+  so "does this file carry CR" is a question somebody asks on purpose. Count the BYTES:
+  `tr -cd '
+' < f | wc -c`.
 - **Measurement lies more often than code does.** `.card` transitions `box-shadow`, so
   `getComputedStyle` reports interpolated values — inject `*{transition:none!important}` before
   measuring. `performance.now()` cannot see canvas work. The Browser pane collapses to 0×0 between
@@ -534,6 +547,20 @@ test` and `npm run build` all green. A reload fetched the same stale source, and
     this dangerous is gone with it — a blank canvas after a hot reload is now evidence of a
     broken renderer rather than evidence of nothing. The `setTimeout` stand-in is no longer
     needed; where it is still wired in it is harmless and no longer proves anything by itself.
+
+    ⚠️ **AND THAT ONE WENT BACK THE OTHER WAY ON 5 Nov 2026 — rAF DOES NOT FIRE WHILE THE PANE IS
+    HIDDEN.** Measured: a probe that counted frames for 500ms and then resolved **never settled
+    at all**, killed by the tool's own 45-second limit, with `document.hidden` false the whole
+    time. Which is the lesson this bullet was written to teach, now demonstrated twice in nine
+    days and in both directions: **a limitation of a tool is a measured claim, it is re-measured
+    by somebody else without telling you, and it can come BACK.** The cost today was nearly a
+    wrong diagnosis — the home page's snake sat motionless and the obvious reading was that the
+    change under test had broken its loop. The stand-in works and is needed again:
+    `window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 16)`
+    — patch it, then remount the component (a hash change is enough, a reload wipes the patch),
+    and the loop runs. With it, the snake's painted pixels moved while its length stayed put,
+    which is what "it is playing itself" looks like as a number.
+
   - `ResizeObserver` **fires**, both the initial callback on `observe()` and an element-only
     resize with no window involved (probed directly: a div taken 100px → 300px, two callbacks,
     widths `[100, 300]`). The investments chart's sizing is built on this and was verified

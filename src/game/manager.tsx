@@ -335,7 +335,15 @@ export function GameManager({
     }
     return 640
   })
+  /** ⚠️ READABLE FROM THE WINDOW-RESIZE LISTENER, which outlives any one render. That listener
+   *  is registered by the big setup effect below, whose deps are the things that START A GAME --
+   *  and it called `renderer.resize(wrap, viewSize)` with whatever viewSize was when the game
+   *  began. So moving the slider and then rotating the phone put the board back to the old size.
+   *  Adding viewSize to that effect's deps is NOT the fix: it resets alive, score and apples, so
+   *  the slider would restart the game. */
+  const viewSizeRef = useRef(viewSize)
   useEffect(() => {
+    viewSizeRef.current = viewSize
     try {
       localStorage.setItem('snake.viewPx.v1', String(viewSize))
     } catch {
@@ -875,7 +883,7 @@ export function GameManager({
     }
     const renderer = new GameRenderer(canvas, settings.grid)
     rendererRef.current = renderer
-    renderer.resize(wrap, viewSize)
+    renderer.resize(wrap, viewSizeRef.current)
     renderer.draw(engine.snapshot())
     // In multiplayer, keep gameplay paused on settings changes until a countdown starts
     if (mode === 'versus') setPaused(true)
@@ -938,7 +946,7 @@ export function GameManager({
       const h = Math.round(r.height)
       const last = lastWrapSizeRef.current
       if (!last || Math.abs(w - last.w) > 12 || Math.abs(h - last.h) > 12) {
-        renderer.resize(wrap, viewSize)
+        renderer.resize(wrap, viewSizeRef.current)
         lastWrapSizeRef.current = { w, h }
       }
     }
@@ -1318,7 +1326,11 @@ export function GameManager({
     return () => {
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings, applesEaten, paused, mode, myId, registerFinish, isHost, playerName])
+    /* `saveScoreAs` is a useCallback with an empty dep list, so naming it here cannot restart
+       the loop -- which is the only reason it is safe to name. An effect that owns a timer and
+       depends on something rebuilt every render tears the timer down and rebuilds it every
+       render, which is the shape CLAUDE.md §7 warns about. */
+  }, [settings, applesEaten, paused, mode, myId, registerFinish, isHost, playerName, saveScoreAs])
 
   // Redraw when theme attributes change (so paused frames still update colors)
   useEffect(() => {
@@ -2080,12 +2092,15 @@ export function GameManager({
       setConn('connecting')
       net.connect(roomOverride ?? room, { create, settings: settingsRef.current })
     },
-    // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint
+    // 'countdown' removed from deps (not referenced inside connectVs) to satisfy lint.
+    // `pushChat` is listed and costs nothing: it is useCallback([wakeChat]) over a wakeChat
+    // that is useCallback([]), so the identity never moves and this socket is not rebuilt.
     [
       wsUrl,
       room,
       roomName,
       playerName,
+      pushChat,
       myId,
       conn,
       hostId,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { errText } from '../ui/errText'
 import { getSupabaseClient } from '../finance/client'
 import { UsagePanel } from '../components/UsagePanel'
@@ -144,7 +144,11 @@ export function AdminPanel() {
    */
   const [ageUnset, setAgeUnset] = useState<string[]>([])
 
-  async function loadAll() {
+  /* ⚠️ MEMOISED SO THE MOUNT EFFECT CAN NAME IT. A plain function here is a new identity every
+     render, which is why the effect below listed nothing -- and a dep list that omits the only
+     thing the effect calls is one nobody can read. It closes over `sb` (a memoised singleton)
+     and the setters, so this is stable for the life of the panel and the effect still runs once. */
+  const loadAll = useCallback(async () => {
     const [invRes, memRes, snakeRes, attnRes, ageRes] = await Promise.all([
       sb.rpc('list_invites'),
       sb.rpc('list_members'),
@@ -172,7 +176,7 @@ export function AdminPanel() {
     // the answer would appear. If this ever starts failing quietly, the guard block in
     // supabase/tests/visibility-guards.sql is what still asks the question.
     setAgeUnset(ageRes.error ? [] : ((ageRes.data as { handles?: string[] } | null)?.handles ?? []))
-  }
+  }, [sb])
 
   /**
    * Record a member's age band, which is what clears the notice.
@@ -224,7 +228,7 @@ export function AdminPanel() {
     loadAll()
       .catch((e: unknown) => setError(String((e as { message?: string })?.message ?? e)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [loadAll])
 
   async function createInvite() {
     setCreating(true)
