@@ -209,3 +209,51 @@ Roughly in order of how much they would teach:
   round. Fixed in `fac6325`: 28px with a mouse, 44px under a finger.
 - The Lab's own wording ("Experiments with WebGPU…") is in `App.tsx` beside the room's heading,
   not in `GpuLab.tsx`.
+
+## Batch 5 — new mixes
+
+Its own draft PR, branch `claude/lab-toys-5`, from `main`. Not live. Every toy is chosen to differ
+from the seven live ones, from #19 (Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons) and from
+#20 (Fractal, Light, Harp, Neon, Sand, Pond), in both how you play it and what the GPU does.
+
+⚠️ **No picker was cherry-picked.** This branch adds its toys to `main`'s own list, one entry and
+one render line each — and each entry also carries its component (`Demo:`), which `main`'s list
+does not read but #19's registry does. Merged after #19 or #20, the conflicts in `GpuLab.tsx`
+are all "both sides added": keep both, and delete this batch's `demo === …` render lines, since
+the registry renders every entry by itself. This section is at the end of the file for the same
+reason.
+
+| Toy   | Interaction                                                                    | GPU technique                                                                                                                      | Pattern to reuse                                                              |
+| ----- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Slime | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays | "many writers, one grid" — any scatter where several threads land on one cell |
+
+- **Slime** — a slime mould, after Jeff Jones's physarum model. Lay food (🍯) and it grows a
+  glowing network to it, joining the pieces up the way a real one solves a maze; draw walls and it
+  routes round them; erase; blow ✨ spores to start it somewhere new. Three starts (Cities — a
+  scatter of towns it links up —, Maze, Wild), three habits (Veins, Web, Coral — classic parameter
+  sets), three colours. Keys: F, W, E, S tools, H habit, 1–3 start again.
+  Technique: each agent smells the trail ahead and to either side, turns towards the strongest,
+  steps, and adds 1 to its cell. Many land on one cell in a step, so the add is ATOMIC — a plain
+  read-add-write loses all but one, and the probe measures it: a step's deposits always total
+  exactly the number of agents with `atomicAdd` (300,000 of 300,000), while the same step with a
+  plain load and store counted 59,979 and 59,996 of 60,000 on two runs. Then the trail moves part
+  of the way to its 3×3 mean, decays, and food feeds it.
+  ⚠️ Three things were wrong first, all found by looking: agents starting in an inward ring all
+  arrived at the middle together and the mould was one blob that never broke out (they start
+  scattered now); a full 3×3 blur each step settled the network into a few thick smooth loops (it
+  moves only part of the way — `diffuse` — and keeps fine veins); and food that could only be
+  smelled on the spot was passed by — the network formed beautifully beside the towns. Food now
+  feeds the trail like any scent and the mould finds it from afar: trail near food went from 1.2–1.5×
+  elsewhere to 5–6× on Cities, and 10–11× along the way through the Maze.
+  Measured: the trail step on the GPU matches a CPU copy to 1.5×10⁻⁵ (on a peak of 140) over 50
+  steps, food and walls included. In the page, at 1024 and on an emulated phone: food is laid under
+  a mouse (158 cells) and under two fingers at once, a wall drawn (87 cells) and partly erased (to
+  59), spores reach the shader, and frames read back from the page show the network linking the
+  food that was laid.
+
+### Phone checklist — batch 5
+
+- [ ] Slime — does the network read as alive? Lay food in a few places and watch it link them; draw
+      a wall across a vein and watch it reroute. Smooth on a phone (two steps a frame, a cell every
+      2 CSS px)? On `main`'s picker this batch's toys make a third row on a phone — #19's dropdown
+      fixes that when it lands.
