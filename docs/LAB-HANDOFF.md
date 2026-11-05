@@ -31,7 +31,8 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   fires a glider every 30 generations, on the GPU too). Speed 1–60 generations a second, three cell
   sizes. Keys with the board focused: Space run/pause, N step, R scatter, C clear, E draw/erase,
   1–5 pick a pattern.
-- **Fluid** — drag through it; the pointer's speed is the push. Splash, Clear, four palettes, Swirl
+- **Fluid** — drag through it; the pointer's speed is the push. Tap for a blossom of colour.
+  Several fingers stir at once on a touch screen, each its own stroke. Splash, Clear, four palettes, Swirl
   and Fade. Keys: Space, S splash, C clear, 1–4 palette.
 - **Music** — 🎤 Mic or 🎵 Play a file… (the file never leaves the device), or play the Instrument
   and come back. Bars or Ring. Drag to steer the trail: across turns it, up and down grows it. Keys:
@@ -111,7 +112,7 @@ The "What your GPU reports" fold on the page shows the visitor's own adapter, li
   screen through the normal path
 - Safari and Firefox
 - real-GPU frame rates (the fps badge on the page will say)
-- multi-touch: every demo follows one pointer
+- multi-touch beyond Fluid: Swarm, Life and Music follow one pointer
 
 ## What to try next
 
@@ -127,7 +128,8 @@ Roughly in order of how much they would teach:
 4. **Audio-reactive swarm** — feed Music's bands into the Swarm's current. Both halves exist.
 5. **A ray-marched SDF scene** — one fragment shader, no buffers, the opposite end of what the GPU
    is good at to everything above.
-6. **Multi-touch** for Fluid and Life — `pointerId`-keyed brushes; the uniform would need an array.
+6. **Multi-touch** for Life and the Swarm — Fluid has it now (`pointerId`-keyed strokes taking turns
+   at the one-splat uniform); the same shape would work for Life's brush.
 
 ## Loose ends
 

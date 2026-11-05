@@ -101,3 +101,31 @@ export function hue(h: number): [number, number, number] {
 
 /** a splat's size: a fraction of the screen's height, squared, as `dab` in the shader wants it */
 export const splatRadius = (fractionOfHeight: number) => fractionOfHeight * fractionOfHeight
+
+/**
+ * A press that barely moved and was soon let go is a tap, not a drag. 8 CSS px is a finger's own
+ * wobble; 300 ms is longer than any tap and shorter than a deliberate hold.
+ */
+export const isTap = (movedCss: number, heldMs: number) => movedCss < 8 && heldMs < 300
+
+/**
+ * A tap's blossom: `n` splats at one point, pushing outward evenly round the circle, so the
+ * colour opens like a flower rather than streaking one way. Their pushes cancel — a blossom
+ * spreads colour without setting the pool drifting.
+ */
+export function bloom(
+  point: readonly [number, number],
+  color: readonly [number, number, number],
+  n = 6,
+  push = 600,
+): {
+  point: readonly [number, number]
+  force: [number, number]
+  color: readonly [number, number, number]
+  ink: number
+}[] {
+  return Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2
+    return { point, force: [Math.cos(a) * push, Math.sin(a) * push], color, ink: 0.9 }
+  })
+}

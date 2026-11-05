@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import code from './fluid.wgsl?raw'
-import { FLUID, MAX_FORCE, dragForce, gridSize, hue, packFluid, type FluidParams } from './fluid'
+import {
+  FLUID,
+  MAX_FORCE,
+  bloom,
+  dragForce,
+  gridSize,
+  hue,
+  isTap,
+  packFluid,
+  type FluidParams,
+} from './fluid'
 import { wgslLayout } from './wgslLayout'
 
 describe('the uniform the shader reads is the one JavaScript writes', () => {
@@ -100,5 +110,28 @@ describe('colour', () => {
     expect(near(1 / 2)).toEqual([0, 1, 1])
     expect(near(2 / 3)).toEqual([0, 0, 1])
     expect(near(5 / 6)).toEqual([1, 0, 1])
+  })
+})
+
+describe('a tap', () => {
+  it('is a press that barely moved and was soon let go', () => {
+    expect(isTap(0, 80)).toBe(true)
+    expect(isTap(7, 250)).toBe(true)
+    expect(isTap(12, 80)).toBe(false) // a short flick is a drag
+    expect(isTap(2, 600)).toBe(false) // a hold is not a tap
+  })
+
+  it('blossoms evenly round the point, so the pool is not set drifting', () => {
+    const b = bloom([0.3, 0.6], [1, 0, 0], 6, 600)
+    expect(b).toHaveLength(6)
+    for (const s of b) {
+      expect(s.point).toEqual([0.3, 0.6])
+      expect(Math.hypot(...s.force)).toBeCloseTo(600, 9)
+    }
+    const net = b.reduce((n, s) => [n[0] + s.force[0], n[1] + s.force[1]], [0, 0])
+    expect(Math.hypot(net[0], net[1])).toBeLessThan(1e-9)
+    // and no two petals share a direction
+    const angles = new Set(b.map((s) => Math.round(Math.atan2(s.force[1], s.force[0]) * 1000)))
+    expect(angles.size).toBe(6)
   })
 })

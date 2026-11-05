@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
-import { dragForce, gridSize, hue, SIM_LONG } from './fluid'
+import { bloom, dragForce, gridSize, hue, isTap, SIM_LONG } from './fluid'
 import { createFluid, type FluidInput, type FluidSim, type Splat } from './fluidEngine'
 
 type Props = {
@@ -37,7 +37,17 @@ export function FluidDemo({ running, setRunning, onAdapter }: Props) {
   input.current.fade = fade
   /** splats waiting their turn — the uniform holds one a frame */
   const queue = useRef<Splat[]>([])
-  const last = useRef<{ x: number; y: number; t: number } | null>(null)
+  /**
+   * ⚠️ ONE ENTRY PER FINGER, keyed by pointerId. With a single "last position", a second finger
+   * on a phone took over the first one's stroke: every move measured its push from wherever the
+   * OTHER finger had been, so two fingers made one stroke that jumped between them and flung the
+   * fluid across the gap. Now each finger remembers itself.
+   */
+  const fingers = useRef(
+    new Map<number, { x: number; y: number; t: number; x0: number; y0: number; t0: number }>(),
+  )
+  /** each finger's newest stroke, waiting for a frame; frames take them in turn */
+  const strokes = useRef(new Map<number, Splat>())
   const colorOf = (t: number) => PALETTES[palette].at(t)
 
   /** a handful of bursts from random points in random directions */
@@ -56,24 +66,33 @@ export function FluidDemo({ running, setRunning, onAdapter }: Props) {
   }
 
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
-    const prev = last.current
+    const prev = fingers.current.get(e.pointerId)
     if (!prev) return
     const r = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - r.left
     const y = e.clientY - r.top
     const t = performance.now() / 1000
     const sim = gridSize(r.width, r.height, SIM_LONG)
-    /* the newest stroke wins the frame; a move that lands in the same frame as another adds its
-       push rather than being lost */
+    /* a finger that moves twice before its turn comes adds its push rather than losing it */
     const force = dragForce(x - prev.x, y - prev.y, Math.max(t - prev.t, 1 / 240), r.width, sim.w)
-    const held = input.current.splat
-    input.current.splat = {
+    const held = strokes.current.get(e.pointerId)
+    strokes.current.set(e.pointerId, {
       point: [x / r.width, y / r.height],
       force: held ? [held.force[0] + force[0], held.force[1] + force[1]] : force,
       color: colorOf(t),
       ink: DRAG_INK,
-    }
-    last.current = { x, y, t }
+    })
+    fingers.current.set(e.pointerId, { ...prev, x, y, t })
+  }
+
+  const lift = (e: PointerEvent<HTMLCanvasElement>) => {
+    const f = fingers.current.get(e.pointerId)
+    fingers.current.delete(e.pointerId)
+    if (!f) return
+    const r = e.currentTarget.getBoundingClientRect()
+    const moved = Math.hypot(f.x - f.x0, f.y - f.y0)
+    if (isTap(moved, (performance.now() / 1000 - f.t0) * 1000))
+      queue.current.push(...bloom([f.x0 / r.width, f.y0 / r.height], colorOf(f.t0)))
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -101,8 +120,12 @@ export function FluidDemo({ running, setRunning, onAdapter }: Props) {
           splash(5)
           return {
             frame: (dt) => {
-              if (!input.current.splat && queue.current.length)
-                input.current.splat = queue.current.shift() ?? null
+              /* fingers first, in turn, so two of them stir at once; then any burst queued */
+              const next = strokes.current.keys().next()
+              if (!next.done) {
+                input.current.splat = strokes.current.get(next.value) ?? null
+                strokes.current.delete(next.value)
+              } else if (queue.current.length) input.current.splat = queue.current.shift() ?? null
               sim.frame(dt, input.current)
             },
             resize: () => sim.resize(),
@@ -114,17 +137,14 @@ export function FluidDemo({ running, setRunning, onAdapter }: Props) {
         }}
         onPointerDown={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
-          last.current = {
-            x: e.clientX - r.left,
-            y: e.clientY - r.top,
-            t: performance.now() / 1000,
-          }
+          const x = e.clientX - r.left
+          const y = e.clientY - r.top
+          const t = performance.now() / 1000
+          fingers.current.set(e.pointerId, { x, y, t, x0: x, y0: y, t0: t })
           if (!runningRef.current) setRunning(true)
         }}
         onPointerMove={move}
-        onPointerUp={() => {
-          last.current = null
-        }}
+        onPointerUp={lift}
       />
 
       {live && (
@@ -179,8 +199,9 @@ export function FluidDemo({ running, setRunning, onAdapter }: Props) {
 
       {live && (
         <p className="muted lab-hint">
-          Drag through it to stir colour in — the faster you move, the harder it pushes. Swirl feeds
-          the small eddies; Fade is how quickly the colour goes.
+          Drag through it to stir colour in — the faster you move, the harder it pushes — or tap for
+          a blossom. {touchOnly() ? 'Several fingers stir at once. ' : ''}Swirl feeds the small
+          eddies; Fade is how quickly the colour goes.
           {!touchOnly() &&
             ' Keys, once it has focus: Space pauses, S splashes, C clears, 1–4 pick a colour.'}
         </p>
