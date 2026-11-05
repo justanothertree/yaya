@@ -194,6 +194,19 @@ export function sendRoll(poolId: string | null | undefined, roll: Roll): void {
  * championed can still come up. That is the point of a randomiser — it settles the argument
  * without pretending the vote was unanimous.
  */
+/**
+ * How much one option's votes tilt the wheel.
+ *
+ * ⚠️ THE `1 +` IS THE WHOLE RULE AND IT USED TO LIVE IN A COMPONENT. `weightedPick` cannot
+ * return an item of weight 0 while anything else has a positive weight -- the running total
+ * never reaches it -- so a bare vote count would mean **an option nobody has voted for can
+ * never come up**, which is the opposite of what a randomiser is for and the opposite of what
+ * the comment below promises. The base of 1 is what keeps every option reachable; the `* 2` is
+ * what makes a vote worth something. Both were a literal inside `roll()` in Watchlist.tsx,
+ * where nothing could ask them a question.
+ */
+export const rollWeight = (votes: number): number => 1 + Math.max(0, votes) * 2
+
 export function weightedPick<T>(items: readonly T[], weightOf: (item: T) => number): T | null {
   if (items.length === 0) return null
   const weights = items.map((i) => Math.max(0, weightOf(i)))

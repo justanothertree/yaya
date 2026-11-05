@@ -38,7 +38,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
 import { kindEmoji, kindsPresent } from '../reviewKinds'
 import { buildLibrary, filterLibrary, libraryKinds, type LibraryEntry } from '../poolLibrary'
-import { buildReel, reelStep, ROLL_MS, sendRoll, watchRolls, weightedPick } from '../poolRoll'
+import {
+  buildReel,
+  reelStep,
+  rollWeight,
+  ROLL_MS,
+  sendRoll,
+  watchRolls,
+  weightedPick,
+} from '../poolRoll'
 import { useScrollFade } from '../../hooks/useScrollFade'
 import { getSupabaseClientOrNull } from '../../finance/client'
 import { peekPersistedUserId } from '../../finance/auth'
@@ -426,7 +434,7 @@ export function Watchlist() {
 
   function roll() {
     if (watchlist.length === 0 || spin || !pool) return
-    const winner = weightedPick(watchlist, (w) => 1 + votersOf(w.id).length * 2)
+    const winner = weightedPick(watchlist, (w) => rollWeight(votersOf(w.id).length))
     if (!winner) return
     const label = (w: WatchlistItem) => `${kindEmoji(w.kind)} ${w.title}`
     const reel = buildReel(watchlist.map(label), label(winner))
