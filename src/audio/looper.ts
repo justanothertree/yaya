@@ -1090,11 +1090,23 @@ export function cancelRecord() {
 }
 
 /** Called by the keyboard for every note played, recorded or not. */
-export function capture(midi: number, on: boolean, instrument: InstrumentId) {
+/**
+ * @param when the audio-clock time the note actually sounds at, when that is not now.
+ *
+ * ⚠️ ADDED FOR THE STRUM, AND IT IS THE DIFFERENCE BETWEEN A FEATURE AND AN ILLUSION. A rolled
+ * chord hands each note its own `when` to `noteOn`, so the notes genuinely arrive 22ms apart —
+ * but this function stamped every one of them with `currentTime`, which is the instant the KEY
+ * went down. The roll would have been audible live and recorded as a block chord, so playing a
+ * take back would quietly undo it and the setting would look broken in exactly the place
+ * somebody went to hear it again.
+ *
+ * Optional, and every existing caller passes three arguments and behaves as it always did.
+ */
+export function capture(midi: number, on: boolean, instrument: InstrumentId, when?: number) {
   if (!state.recording) return
   const c = sharedCtx()
   const len = loopLength()
-  let t = (c.currentTime - loopStart) % len
+  let t = ((when ?? c.currentTime) - loopStart) % len
   if (t < 0) t += len
   takeInstrument = instrument
   if (on) heldInTake.set(midi, t)

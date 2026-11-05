@@ -17,6 +17,7 @@ import {
   outputTap,
 } from '../audio/synth'
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
+import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
@@ -217,6 +218,7 @@ const OCT_KEY = 'instrument_octave_v1'
 const SCALE_KEY = 'instrument_scale_v1'
 const ROOT_KEY = 'instrument_root_v1'
 const CHORD_KEY = 'instrument_chord_v1'
+const STRUM_KEY = 'instrument_strum_v1'
 
 /** Two octaves, matching the four typing rows exactly so every key on screen has a key to press. */
 const SPAN = 25
@@ -706,6 +708,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       return 'off'
     }
   })
+  const [strum, setStrum] = useState<StrumId>(() => {
+    try {
+      const v = localStorage.getItem(STRUM_KEY)
+      return STRUMS.some(([id]) => id === v) ? (v as StrumId) : 'off'
+    } catch {
+      return 'off'
+    }
+  })
   const [held, setHeld] = useState<number[]>([])
   /* only read on narrow screens, where the instrument grid becomes a menu */
   const [picksOpen, setPicksOpen] = useState(false)
@@ -759,8 +769,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   // ⚠️ a ref as well as state: the key handlers are bound once and would otherwise capture the
   // instrument and octave from the render that installed them, so changing either mid-play would
   // be ignored until something else re-rendered
-  const live = useRef({ inst, noteAt, notesFor })
-  live.current = { inst, noteAt, notesFor }
+  const live = useRef({ inst, noteAt, notesFor, strum })
+  live.current = { inst, noteAt, notesFor, strum }
 
   useEffect(() => {
     try {
@@ -769,10 +779,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(SCALE_KEY, scale)
       localStorage.setItem(ROOT_KEY, String(root))
       localStorage.setItem(CHORD_KEY, chord)
+      localStorage.setItem(STRUM_KEY, strum)
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root, chord])
+  }, [inst, octave, scale, root, chord, strum])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -933,10 +944,16 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * no way for what you heard, what your friends heard, what was recorded and what Capture can
    * reach to have been produced by different code.
    */
-  const report = useCallback((midi: number, on: boolean) => {
-    capture(midi, on, live.current.inst)
+  const report = useCallback((midi: number, on: boolean, at = sharedCtx().currentTime) => {
+    /* ⚠️ `at`, NOT `currentTime`, and all three take it. A rolled chord's notes genuinely sound
+       22ms apart, so stamping them all with the instant the key went down would record a roll
+       as a block chord and send your friends a block chord — the setting would be audible here
+       and nowhere else. jam.play has no time to give, so peers hear the chord together; that is
+       a limitation of the wire format rather than a decision, and it is written down in the
+       commit rather than papered over here. */
+    capture(midi, on, live.current.inst, at)
     jam.play(midi, on, live.current.inst)
-    remember(sharedCtx().currentTime, midi, on, live.current.inst)
+    remember(at, midi, on, live.current.inst)
   }, [])
 
   /** A press: several notes, because one key is not always one note. */
@@ -948,10 +965,19 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         noteOff(v.voice)
         report(v.midi, false)
       }
-      for (const v of play) {
-        noteOn(v.voice, live.current.inst, v.midi)
-        report(v.midi, true)
-      }
+      /**
+       * ⚠️ DELAYS, NOT A TIMER. Every note is started by this one call with its own `when`, so
+       * a rolled chord has no process behind it: nothing to tear down, nothing still firing
+       * after you let go, and the book holds every voice from the moment you press — which is
+       * what lets `lift` release a chord that has not finished arriving.
+       */
+      const now = sharedCtx().currentTime
+      const delays = strumDelays(live.current.strum, play.length)
+      play.forEach((v, i) => {
+        const at = now + delays[i]
+        noteOn(v.voice, live.current.inst, v.midi, at)
+        report(v.midi, true, at)
+      })
       setHeld(book.notes())
     },
     [book, report],
@@ -2262,6 +2288,35 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             ))}
           </select>
         </label>
+
+        {/**
+         * How the chord arrives: together, or one note at a time like a hand does it.
+         *
+         * ⚠️ ONLY ONCE A CHORD IS CHOSEN, the same rule the Key picker follows on Chromatic. A
+         * single note cannot be rolled, so on an untouched room this would be a control that
+         * visibly does nothing — and the row already carries three.
+         *
+         * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
+         * because the book releases what was actually sounded rather than recomputing it.
+         */}
+        {chord !== 'off' && (
+          <label className="inst-pick">
+            <span className="muted">Arrives</span>
+            <select
+              value={strum}
+              onChange={(e) => {
+                setStrum(e.target.value as StrumId)
+                e.target.blur()
+              }}
+            >
+              {STRUMS.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       {/**
@@ -2291,6 +2346,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                hear. Octave is the same. Only the shapes that step through the scale care. */
             scale === 'chromatic' && usesScale(chord)
               ? 'On Chromatic every chord is major, so pick a scale to hear it follow the key'
+              : null,
+            /* only when it is doing something — "Every note at once" under a chord that arrives
+               all at once is a sentence describing the absence of a feature */
+            chord !== 'off' && strum !== 'off' && inst !== 'drums'
+              ? STRUMS.find(([id]) => id === strum)?.[2]
               : null,
           ]
             .filter(Boolean)
