@@ -87,6 +87,57 @@ describe('the schema baseline', () => {
     expect(uses[0].index).toBeGreaterThan(made)
   })
 
+  /**
+   * ⚠️ AND THE OTHER HALF OF THE SAME DECISION LIVES IN config.toml, WHERE NOTHING WOULD HAVE
+   * CONTRADICTED IT. The CLI is told to skip migrations — this directory cannot replay, and the
+   * reasoning with the measurement behind it is in that config block — so the ONLY thing that
+   * builds the schema in CI is this file, applied as a seed. Trim it out of `sql_paths` and
+   * `db reset` produces an EMPTY database: every guard that needs a session then succeeds
+   * against an empty set and the job reports a green zero, which is the shape CLAUDE.md §2 keeps
+   * describing. The two settings are one decision, and this is what notices if one of them moves
+   * without the other.
+   */
+  it('is applied by exactly one of the two mechanisms the CLI has', () => {
+    const toml = readFileSync('supabase/config.toml', 'utf8')
+    /* a line scan rather than a TOML dependency: the section header on its own line, the lines
+       under it up to the next header, and a key read off those. */
+    const section = (name) => {
+      const all = toml.split(/\r?\n/)
+      const at = all.findIndex((l) => l.trim() === `[${name}]`)
+      if (at < 0) return []
+      const rest = all.slice(at + 1)
+      const end = rest.findIndex((l) => l.trim().startsWith('['))
+      return end === -1 ? rest : rest.slice(0, end)
+    }
+    const setting = (sec, key) =>
+      section(sec)
+        .find((l) => l.trimStart().startsWith(`${key} =`))
+        ?.split('=')
+        .slice(1)
+        .join('=')
+        .trim()
+
+    const replayed = setting('db.migrations', 'enabled')
+    const paths = setting('db.seed', 'sql_paths')
+    expect(replayed, 'config.toml has no [db.migrations] enabled').toBeDefined()
+    expect(paths, 'config.toml has no [db.seed] sql_paths').toBeDefined()
+
+    const schema = paths.indexOf(file)
+    expect(
+      replayed === 'true' || schema > -1,
+      'migrations are skipped and the baseline is not a seed path: CI would build an empty database',
+    ).toBe(true)
+
+    if (schema > -1) {
+      expect(setting('db.seed', 'enabled'), 'the baseline is a seed path and seeding is off').toBe(
+        'true',
+      )
+      const fixtures = paths.indexOf('seed.sql')
+      expect(fixtures, 'seed.sql is not in sql_paths').toBeGreaterThan(-1)
+      expect(schema, 'the fixtures are applied before the schema they need').toBeLessThan(fixtures)
+    }
+  })
+
   it('creates each one `if not exists`, so the file replays on a database that has them', () => {
     const creates = [...ddl.matchAll(/CREATE EXTENSION(?: IF NOT EXISTS)?/gi)].map((m) => m[0])
     expect(creates.length).toBeGreaterThan(0)

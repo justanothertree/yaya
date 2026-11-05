@@ -1,19 +1,39 @@
-# ⚠️ This is NOT a complete schema history. Do not `db reset` from it.
+# ⚠️ This is a RECORD of what ran, not a script that rebuilds it.
 
 The live database has **362 applied migrations** (15 Jun 2026 → 4 Nov 2026). This
-directory holds **79** — only the ones captured since the practice of committing them started, on
-27 Oct 2026. That gap is the whole warning. Every migration applied ON or AFTER 29 Oct has a file
-here; the 283 before it do not, and nor do two from 27 Oct (20261027002305, 20261027003416).
+directory holds **81 files**: a schema baseline, and the **80** applied migrations captured since
+the practice of committing them started on 27 Oct 2026. That gap is the whole warning. Every
+migration applied ON or AFTER 29 Oct has a file here; the 283 before it do not, and nor do two
+from 27 Oct (20261027002305, 20261027003416) — which is what the baseline is for.
 
-⚠️ Both figures are measured and both rot. Ask rather than trust them:
+⚠️ Every figure in that paragraph is measured and all of them rot. Ask rather than trust them —
+the first for the database, the second for this directory, and they are not meant to agree:
 
 ```sql
 select count(*), min(version), max(version) from supabase_migrations.schema_migrations;
 ```
 
-Running `supabase db reset` or `supabase db push` against this directory would build a database
-missing most of the schema — and it would look like it had worked. That is the one thing to know
-before using anything in here.
+```bash
+ls supabase/migrations/*.sql | wc -l       # files, baseline included
+node scripts/migration-md5.mjs             # how many of them production has a record of
+```
+
+⚠️ **AND THE CLI NO LONGER APPLIES THEM AT ALL.** `[db.migrations] enabled = false` in
+`supabase/config.toml`, and `00000000000000_baseline.sql` — a schema-only dump of production —
+is applied as a seed file instead, so `supabase db reset` builds today's schema and then seeds
+it. `supabase db push` is skipped by the same switch, and that config block has the whole
+reasoning with the measurement behind it.
+
+The short version: **these files cannot replay, and that is a property of how they are written
+rather than a fault in any of them.** Most are surgery on function bodies that assert the state
+they expect to find and refuse to run against anything else; on top of a dump taken afterwards
+they raise, because the state they are looking for has already gone. One of them simulates an
+admin session and asserts a row count of the live fund. Editing them so they replay is what
+CLAUDE.md §4 forbids outright — a migration is the record of an event.
+
+Before the baseline existed, a `db reset` here built a database missing most of the schema and
+looked like it had worked. That was the one thing to know about this directory; now it is the
+sentence above.
 
 ## ✅ The four drafts are applied — 29 Oct 2026
 

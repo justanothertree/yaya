@@ -58,8 +58,39 @@ max_client_conn = 100
 # secret_key = "env(SECRET_VALUE)"
 
 [db.migrations]
-# If disabled, migrations will be skipped during a db push or reset.
-enabled = true
+# ⚠️ OFF ON PURPOSE, AND THE BASELINE IS SEEDED INSTEAD -- the two settings below are one
+# decision. With migrations skipped and no baseline in `sql_paths`, `db reset` builds an EMPTY
+# database and everything run against it passes by testing nothing, which is the clean zero
+# CLAUDE.md §2 is about. `scripts/baseline.test.mjs` asserts the pair agrees.
+#
+# ⚠️ THIS DIRECTORY CANNOT REPLAY, and that is a property of how its migrations are written
+# rather than a fault in any of them. `00000000000000_baseline.sql` is a dump of production's
+# schema AS IT IS TODAY; most of the files after it are surgery on function bodies that assert
+# the state they expect to find and refuse to run against anything else -- which is the right
+# way to write them. On top of the dump they raise, because the dump has already moved past the
+# pre-state they are looking for.
+#
+# Measured on db-guards run 41953140628, the first run that got this far: twelve files in,
+# `20261029155118_ktos_pep_are_family.sql` died on `not authenticated`. It designates two
+# symbols through the admin RPC rather than by hand, so it simulates a session from a uuid in
+# `admin_users` -- empty until the seed runs, two steps later -- and then asserts that
+# `finance.allocations` still holds production's 14,223 rows. Several more are waiting behind
+# it: `20261103192703` guards 44 functions and ends `if v_done <> 44 then raise exception`,
+# and against the dump its loop selects none of them, because all 44 are guarded already.
+#
+# Editing those files so they replay is the one thing CLAUDE.md §4 forbids outright: a migration
+# is the record of an event, not source code that can be corrected. So CI builds the schema from
+# the dump and does not pretend to rebuild its history. What it costs is that a migration applied
+# AFTER the dump was taken is not exercised in CI until the dump is regenerated -- and that is
+# loud rather than silent, because a guard written for a new rule fails against the old schema.
+#
+# ⚠️ AND IT REACHES `supabase db push`, which is the real price. The CLI skips migrations there
+# too, so a push would report success having applied nothing. This project applies DDL through
+# the management API (`apply_migration`, see CLAUDE.md §4) rather than the CLI, which is why the
+# trade is worth making -- but if you ever do want a push, turn it back on for that one command:
+#
+#     SUPABASE_DB_MIGRATIONS_ENABLED=true supabase db push
+enabled = false
 # Specifies an ordered list of schema files, directories, or glob patterns that describe your database.
 # Supports paths relative to supabase directory: "./schemas/*.sql", "./database".
 schema_paths = []
@@ -69,7 +100,10 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# ⚠️ THE BASELINE IS FIRST AND IT IS NOT DECORATION: with [db.migrations] disabled above, this
+# list is the only thing that builds the schema. seed.sql's fixtures are meaningless without it
+# and will fail on the first insert, which is the failure you want if this line is ever trimmed.
+sql_paths = ["./migrations/00000000000000_baseline.sql", "./seed.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
