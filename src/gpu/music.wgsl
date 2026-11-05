@@ -16,6 +16,7 @@ struct Music {
   mode: u32, // 0 bars, 1 ring
   bands: u32, // how many bands precede the waveform in `data`
   wave: u32, // how many waveform samples follow them
+  kick: f32, // 1 on a beat, falling away after it — see beat() in music.ts
 }
 
 @group(0) @binding(0) var<uniform> M: Music;
@@ -93,7 +94,8 @@ fn trail(p: Px) -> @location(0) vec4f {
   var back = vec2f(c.x * k - c.y * s, c.x * s + c.y * k) / M.zoom;
   back.x /= M.aspect;
   let old = textureSampleLevel(prev, lin, back + 0.5, 0.0).rgb * M.decay;
-  return vec4f(max(old, shape(c)), 1.0);
+  // a beat flashes the new shape brighter; the trail's outward punch is in the zoom
+  return vec4f(max(old, shape(c) * (1.0 + 0.7 * M.kick)), 1.0);
 }
 
 @fragment

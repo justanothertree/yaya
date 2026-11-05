@@ -15,7 +15,8 @@ export const MUSIC = {
   mode: 24,
   bands: 28,
   wave: 32,
-  bytes: 36,
+  kick: 36,
+  bytes: 40,
 } as const
 
 export type MusicParams = {
@@ -28,6 +29,7 @@ export type MusicParams = {
   mode: 0 | 1
   bands: number
   wave: number
+  kick: number
 }
 
 export function packMusic(p: MusicParams, into = new ArrayBuffer(MUSIC.bytes)): ArrayBuffer {
@@ -42,6 +44,7 @@ export function packMusic(p: MusicParams, into = new ArrayBuffer(MUSIC.bytes)): 
   u[MUSIC.mode / 4] = p.mode
   u[MUSIC.bands / 4] = p.bands
   u[MUSIC.wave / 4] = p.wave
+  f[MUSIC.kick / 4] = p.kick
   return into
 }
 
@@ -106,4 +109,48 @@ export function foldWave(
   const step = waveform.length / n
   for (let i = 0; i < n; i++) into[i] = (waveform[Math.floor(i * step)] - 128) / 128
   return into
+}
+
+/** the bands that make up the kick: everything below about 110 Hz */
+export const BASS_BANDS = bandEdges(BANDS).findIndex((hz) => hz > 110)
+
+export type BeatState = { last: number; floor: number; peak: number; armed: boolean; since: number }
+export const QUIET: BeatState = { last: 0, floor: 0, peak: 0, armed: true, since: 1 }
+
+/**
+ * Has a beat just landed? A beat is the bass RISING sharply from where it has lately been — not a
+ * loud bass, which a held organ note also is.
+ *
+ * ⚠️ MEASURED AGAINST A FLOOR, BECAUSE THE BANDS ARE DECIBELS. An analyser's byte spectrum is a log
+ * scale, smoothed, so a real kick drum never goes quiet between hits: off the site's own music
+ * analyser a 120 BPM kick swung the bass between 0.72 and 0.99 and never lower. Two earlier rules
+ * failed on that shape. "A third above the average" asked for 1.15 of a 0..1 band and found one
+ * beat in three seconds of six; "0.1 above the average" missed too, because any average lags
+ * ABOVE a falling signal, and the bass sags for the whole gap between two kicks. So `floor`
+ * follows the bass straight down and eases back up towards it, a hit is a rise of 0.15
+ * (about 10 dB) over it, and the 180 ms wait is faster than any kick drum (333 BPM).
+ *
+ * ⚠️ AND IT RE-ARMS ONLY ONCE THE BASS HAS FALLEN 0.1 FROM ITS PEAK. Without that a held bass note
+ * fired over and over for as long as the floor took to climb up to it; now its onset is one beat
+ * and holding it is none, because a held note never falls. Re-arming on "back near the floor"
+ * was tried first and lost the second kick of every song: coming out of silence the floor is still
+ * climbing towards the trough when that kick lands. A kick's own decay is the reliable signal.
+ */
+export function beat(
+  state: BeatState,
+  bass: number,
+  dt: number,
+): { state: BeatState; hit: boolean } {
+  const since = state.since + dt
+  /* straight down with the bass, and back up towards it over about half a second — so a held note
+     is caught up with, and the floor sits in the trough between kicks rather than far below it */
+  const floor =
+    bass < state.floor ? bass : state.floor + (bass - state.floor) * (1 - Math.exp(-dt / 0.5))
+  const rise = bass - floor
+  /* and only while the bass is CLIMBING: a kick's decay can sit well above a floor that is still
+     catching up out of silence, and a beat is never on the way down */
+  const hit = state.armed && bass > state.last && rise > 0.15 && bass > 0.3 && since > 0.18
+  const peak = hit ? bass : Math.max(state.peak, bass)
+  const armed = hit ? false : state.armed || bass < peak - 0.1
+  return { state: { last: bass, floor, peak, armed, since: hit ? 0 : since }, hit }
 }

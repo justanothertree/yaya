@@ -35,8 +35,9 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   Several fingers stir at once on a touch screen, each its own stroke. Splash, Clear, four palettes, Swirl
   and Fade. Keys: Space, S splash, C clear, 1–4 palette.
 - **Music** — 🎤 Mic or 🎵 Play a file… (the file never leaves the device), or play the Instrument
-  and come back. Bars or Ring. Drag to steer the trail: across turns it, up and down grows it. Keys:
-  Space, M bars/ring, 0 hold still. Leaving releases the mic and leaves music playing, as the
+  and come back. Bars or Ring. With 🥁 Beat on (the default), every kick drum flashes the
+  picture and punches the trail outward. Drag to steer the trail: across turns it, up and down grows it. Keys:
+  Space, M bars/ring, 0 hold still, B beat on/off. Leaving releases the mic and leaves music playing, as the
   Visualiser does.
 
 ### How the room is built

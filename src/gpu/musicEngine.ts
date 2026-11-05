@@ -11,6 +11,8 @@ export type MusicInput = {
   spin: number
   /** how fast the trail grows outward, per second; 0 holds it still */
   zoom: number
+  /** 1 on a beat, falling away after it */
+  kick: number
 }
 
 export type MusicVis = {
@@ -110,10 +112,12 @@ export async function createMusicVis(
         {
           aspect: canvas.width / canvas.height,
           spin: input.spin * dt,
-          zoom: 1 + input.zoom * dt,
+          /* a beat punches the trail outward on top of whatever the drag set */
+          zoom: 1 + (input.zoom + input.kick * 2.5) * dt,
           decay: TRAIL_PER_SECOND ** dt,
           time,
           level: input.level,
+          kick: input.kick,
           mode: input.mode,
           bands: BANDS,
           wave: WAVE,

@@ -21,7 +21,18 @@ import { localMicOn, startLocalMic, stopLocalMic } from '../audio/localMic'
 import { playFile, stopMusic } from '../audio/musicSource'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
-import { BANDS, WAVE, bandEdges, ease, foldBands, foldWave } from './music'
+import {
+  BANDS,
+  BASS_BANDS,
+  QUIET,
+  WAVE,
+  bandEdges,
+  beat,
+  ease,
+  foldBands,
+  foldWave,
+  type BeatState,
+} from './music'
 import { createMusicVis, type MusicInput, type MusicVis } from './musicEngine'
 
 type Props = {
@@ -78,7 +89,12 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
     mode: 0,
     spin: 0.15,
     zoom: 0.25,
+    kick: 0,
   })
+  /** whether a beat punches the picture — some music wants it, a slow piano piece does not */
+  const [pulse, setPulse] = useState(true)
+  const pulseRef = useRef(pulse)
+  pulseRef.current = pulse
   input.current.mode = mode
   input.current.spin = spin
   input.current.zoom = zoom
@@ -110,6 +126,7 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
     const k = e.key.toLowerCase()
     if (k === ' ') setRunning((r) => !r)
     else if (k === 'm') setMode((m) => (m ? 0 : 1))
+    else if (k === 'b') setPulse((v) => !v)
     else if (k === '0') {
       setSpin(0)
       setZoom(0)
@@ -142,6 +159,7 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
           const target = new Float32Array(BANDS)
           const bands = input.current.data.subarray(0, BANDS)
           const wave = input.current.data.subarray(BANDS)
+          let beats: BeatState = QUIET
           return {
             frame: (dt) => {
               const bins = binCountAll()
@@ -162,6 +180,16 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
                 sum += bands[i]
               }
               input.current.level = sum / BANDS
+              /* the beat reads the RAW bass, not the eased bands: easing is what makes the bars
+                 look smooth, and it is also a delay a kick drum should not have to wait out */
+              if (dt > 0) {
+                let bass = 0
+                for (let i = 0; i < BASS_BANDS; i++) bass += target[i]
+                const b = beat(beats, bass / BASS_BANDS, dt)
+                beats = b.state
+                input.current.kick =
+                  b.hit && pulseRef.current ? 1 : input.current.kick * Math.exp(-dt * 6)
+              }
               vis.frame(dt, input.current)
             },
             resize: () => vis.resize(),
@@ -230,6 +258,13 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
           >
             Hold still
           </button>
+          <button
+            className="btn btn-ghost"
+            aria-pressed={pulse}
+            onClick={() => setPulse((v) => !v)}
+          >
+            🥁 Beat
+          </button>
         </div>
       )}
 
@@ -239,10 +274,10 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
             (names
               ? `Listening to: ${names}.`
               : 'Nothing is playing yet — turn the mic on, play a file, or play something on the Instrument and come back.')}{' '}
-          Drag on it to steer the trail: across turns it, up and down grows or shrinks it. A file
-          stays on this device and is never uploaded.
+          Drag on it to steer the trail: across turns it, up and down grows or shrinks it. With Beat
+          on, every kick drum punches it outward. A file stays on this device and is never uploaded.
           {!touchOnly() &&
-            ' Keys, once it has focus: Space pauses, M switches bars and ring, 0 holds it still.'}
+            ' Keys, once it has focus: Space pauses, M switches bars and ring, 0 holds it still, B turns the beat on or off.'}
         </p>
       )}
     </div>
