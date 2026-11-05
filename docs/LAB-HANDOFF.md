@@ -53,6 +53,7 @@ Every demo opens still under reduced motion and moves when Run is pressed.
 | ------------ | ---------------------------------------------------------------------------------------- |
 | Kaleidoscope | Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.    |
 | Lava lamp    | Lava lamp — wax heated by the bulb rises, cools at the top and sinks. Reach in and stir. |
+| Galaxy       | Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.    |
 
 - **Kaleidoscope** — draw anywhere and it repeats 4, 6, 8 or 12 ways round the middle, with
   Mirror reflecting each wedge too. Tap for a dot; ✨ Doodle draws a rose curve by itself (and
@@ -67,6 +68,14 @@ Every demo opens still under reduced motion and moves when Run is pressed.
   colours. Keys: Space, K shake, 1–4 colour. The physics is a dozen blobs on the CPU; the GPU
   draws them as metaballs, so two blobs that meet grow a neck and merge — every pixel asks every
   blob, which is the expensive part.
+- **Galaxy** — a spiral of up to 256K stars (128K on a touch screen). Drag across to turn it, up
+  and down to tilt it; Face on; Spin; Arms (how tightly they wind — 0 shows the bar they come
+  from). With 🎵 Listen on (the default — it only reads what the site is already playing, it never
+  asks for the mic) the galaxy breathes with the loudness and every kick flares the stars, through
+  the same `ear.ts` as Music and the Swarm. Keys: Space, arrows, 0 face on, L listen. Each star is
+  worked out in the vertex shader from its own index — there are no buffers at all — and the arms
+  are a density wave: every star follows an ellipse turned a little further the further out it is,
+  so the arms hold their shape while every star moves through them.
 
 ### How the room is built
 
@@ -96,6 +105,11 @@ GPU will be one to two orders of magnitude faster, and I have not measured one.
 | Life, one generation, 5K cells |            2.2 |
 | Fluid, whole pipeline          |           51.8 |
 | Music                          |           11.8 |
+| Kaleidoscope, 8-fold           |           21.2 |
+| Kaleidoscope, 12-fold mirrored |           38.2 |
+| Lava lamp, 16 blobs            |           11.8 |
+| Galaxy, 64K stars              |           51.6 |
+| Galaxy, 128K stars             |          107.1 |
 
 - **Swarm scales with count, as expected**, and its draw dominates. The draw is deliberately NOT
   instanced: 32K four-vertex instances took 870 ms where one plain draw of 6 × count vertices took
@@ -165,8 +179,11 @@ Batch 2:
       Mirror on stays smooth (it samples the painting 24 times a pixel)
 - [ ] Lava lamp — does it look like wax rather than fog? Grab a blob and fling it; tap one and
       watch it rise
-- [ ] with six demos the picker wraps to two rows on a phone, pushing the canvas lower: is enough
-      of it on screen without scrolling?
+- [ ] Galaxy — do the arms read as arms on a phone at 128K? Drag to tilt it nearly edge on; play
+      a song in Music and come back to watch it flare on the beat
+- [ ] with seven demos the picker is two rows on a phone, and on a first load at 375 only 275 of the
+      canvas's 412 px (two thirds) shows above the bottom bar — is that enough, or should the
+      picker become a select?
 
 ## What to try next
 
