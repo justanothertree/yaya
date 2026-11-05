@@ -8,6 +8,7 @@ import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { MarblesDemo } from '../gpu/MarblesDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
+import { RainDemo } from '../gpu/RainDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
@@ -75,6 +76,12 @@ const DEMOS = [
     name: 'Harmonograph',
     line: 'Harmonograph — flick the paper to swing the pendulums, and the pen draws their figure as they slow.',
     Demo: HarmonographDemo,
+  },
+  {
+    id: 'rain',
+    name: 'Rain on glass',
+    line: 'Rain on glass — write in the mist, breathe it back, and tilt the window to make the rain run.',
+    Demo: RainDemo,
   },
 ] as const
 
@@ -178,6 +185,7 @@ export function GpuLab() {
       {demo === 'marbles' && <MarblesDemo key="marbles" {...props} />}
       {demo === 'glass' && <GlassDemo key="glass" {...props} />}
       {demo === 'harmonograph' && <HarmonographDemo key="harmonograph" {...props} />}
+      {demo === 'rain' && <RainDemo key="rain" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

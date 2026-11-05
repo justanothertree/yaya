@@ -234,6 +234,7 @@ first. A third picker would only make the merge worse.
 | Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                          | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing  | "thousands of things that touch each other" — any crowd, any granular toy                               |
 | Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone) | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                 |
 | Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                        | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                     | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for |
+| Rain on glass | TOUCH (write in the mist), BREATH — the MIC's loudness, or a held button — fogs it back, and TILT turns which way the water runs  | SCREEN-SPACE METABALLS: drops splatted as instanced quads with ADDITIVE BLENDING into a float field, thresholded and REFRACTED through the slope; a PERSISTENT MIST in two textures that take turns, cleared by fingers and water                      | "blobs that join" and "a surface that remembers" — paint that dries, frost, condensation, any metaballs |
 
 - **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
   you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
@@ -328,6 +329,57 @@ first. A third picker would only make the merge worse.
      emulated phone: a flick starts a new drawing in the next ink with two notes; the ratios and the
      detune reach the pendulums; Quick draws faster; Clean paper wipes the ink; the keys work.
 
+- **Rain on glass** — a misted window at dusk with a city blurred behind it. Rain lands and clings;
+  a drop grows as rain joins it until it is heavy enough to run, runs in fits and starts, leaves a
+  clean trail through the mist and a line of droplets, and swallows whatever it meets. ☝️ Wipe
+  writes in the mist, which fogs slowly back; 🌬 Hold to breathe — or 🎤 Blow into the mic — mists
+  it over low in the middle, where a face would be; 💧 Drip adds your own water (a tap a drop, a
+  drag a line of it that gathers and runs); ↻ Tilt turns the glass (on a phone, 📱 Tilt) and the
+  water runs the new way. A Rain slider from none to a downpour; Fog it; Dry it. Keys: ← → turn,
+  ↓ straight, − + rain, F fog, C dry, 1–3 tool, Space pause.
+  Technique: a few hundred drops live on the CPU (their physics is the testable part); the picture
+  is three passes. **Splat**: every drop is an instanced quad, and its fragment ADDS a smooth bump to
+  an `rg16float` field — the bump, and the bump times the radius, so a pixel knows how big the water
+  over it is. A running drop's quad stretches back along the fall into a tail that thins as it goes.
+  Where two bumps overlap they sum past the threshold between them, so touching drops are one shape
+  with a neck: screen-space metaballs, with blending doing the summing instead of a loop over every
+  drop in every pixel. **Fog**: an `r8unorm` mist that remembers — two textures taking turns — fogs
+  back unevenly a little each frame, faster under a breath, and is cleared under a finger (a capsule
+  per stroke segment) and under the water. **Show**: the street sharp through clean glass, blurred
+  and pale through the mist, and through water bent by the surface the field's slope gives: the drop
+  looks back past its own middle, so the street in it is small and upside down. One more pattern
+  worth reusing: the three passes use `layout: 'auto'`, because the field is drawn into by one pass
+  and read by the next two, and a single shared layout would bind it as a texture in the very pass
+  rendering to it — a usage conflict WebGPU refuses.
+  ⚠️ What was wrong first:
+  1. **Every trail droplet was swallowed straight back up.** It was left where the drop had been a
+     frame earlier, a few px behind and well inside merging reach, so a running drop left nothing.
+     They are left a body-length behind now, on an odometer rather than a guess.
+  2. **A still drop's back half was thinner than its front.** The tail's taper was applied to
+     everything behind the centre, tail or not; the probe's comparison of one drop against the
+     formula went from 2×10⁻⁴ to 0.3 and caught it. The taper scales with how much tail there is.
+  3. **The first storm was columns**: 15% of new raindrops were heavy enough to run at once, and the
+     tails were full-width capsules. Fewer big drops, and tails that thin and shallow.
+  4. **A stroke made while paused did nothing, and there was no way to unpause by sight.** The redraw
+     asked `running` from inside `make`, which runs once, so it was always the value at the start —
+     measured: 0 frames drawn while paused and the mist untouched, against 7 frames and a cleared
+     stroke with it read from a ref. And with reduced motion the Lab starts paused, so a rain toy
+     with no ▶ Run button could only be started from a key; it has one now.
+     Measured on the GPU: one drop's field matches the formula to 2.4×10⁻⁴ across 10,000 pixels (1,264
+     pixels inside it against πr² = 1,257); two drops 2px apart join (0.585 at the neck against
+     0.586 wanted) and 10px apart do not; a running drop's tail is behind it whichever way down is; the
+     mist is 0.85 where fogged, 0 under water and under a stroke and its ends, softened at the edge; a
+     second of regrowth adds 0.0996 against 0.1; a breath fogs the middle 0.498 (0.5 wanted) and the
+     corner 0.035; a paused frame changes no mist at all. The tests hold the drops to keeping the water
+     — a merge and a trail neither make nor lose any, through 200 steps of a storm — and to clinging,
+     running downhill whichever way down is, merging at the water's middle, running off the glass, the
+     cap, a finger taking exactly the drops it touches, and a breath that rises slowly and is not
+     fooled by a knock. Each was made to fail once (ten perturbations, every one caught). In the page,
+     at 1024 and on an emulated phone (touch): a stroke clears the mist under it and not beside it;
+     Fog it and Dry it; a tap drips one drop and a drag a line that runs; a Tilt drag turns the fall;
+     holding 🌬 breathes 0.89 and letting go falls back; the keys turn, rain and dry; the mic button
+     opens the (fake) mic. Audit clean at both.
+
 ### Phone checklist — batch 7
 
 - [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
@@ -338,3 +390,6 @@ first. A third picker would only make the merge worse.
       a pane fill feel instant? Does the light on the floor read as light through a window?
 - [ ] Harmonograph — does a flick feel like giving the pendulums a push? Are the intervals' notes a
       nice touch or noise? Does a figure take about the right time to draw?
+- [ ] Rain on glass — does writing in the mist feel like a finger on a cold window? Does blowing into
+      the mic fog it (and does the mic prompt feel worth it)? Do drops cling, gather and run like
+      rain, and do their little upside-down streets read? Smooth in a downpour?
