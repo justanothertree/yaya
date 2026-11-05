@@ -25,7 +25,9 @@ Every demo opens still under reduced motion and moves when Run is pressed.
 - **Swarm** — press and drag to pull particles in (or Push them away). Counts 32K / 128K / 512K /
   2M; touch-only devices stop at 512K.
   Colour by Speed, Rainbow (hue follows each particle's heading, so every stream is one colour)
-  or Fire.
+  or Fire. 🎵 Listen makes it move to whatever the site is playing: the current swells with the
+  loudness and every kick drum bursts the swarm out from the middle (a finger on the field always
+  wins). Under a steady kick the middle stays more hollow than full — worth a look on the phone.
 - **Life** — drag to draw living cells, or switch to Erase, or pick a pattern and tap to drop it:
   Glider, Spaceship, Pulsar, Glider gun, Acorn (each tested to do what it is famous for — the gun
   fires a glider every 30 generations, on the GPU too). Speed 1–60 generations a second, three cell

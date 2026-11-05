@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
 import { COUNTS, DEFAULT_COUNT, TOUCH_CEILING, countLabel, countsFor, toWorld } from './swarm'
+import { createEar } from './ear'
 import { createSwarm, type Swarm, type SwarmInput } from './swarmEngine'
 
 type Props = {
@@ -13,6 +14,9 @@ type Props = {
 /** the colourings on offer, in the order of `palette` in swarm-types.wgsl */
 const PALETTES = ['Speed', 'Rainbow', 'Fire'] as const
 
+/** how long a beat pushes the swarm outward from the middle, in seconds */
+const BURST = 0.2
+
 /** Particles carried by a swirling current; a press pulls them in or pushes them away. */
 export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
   const swarmRef = useRef<Swarm | null>(null)
@@ -22,6 +26,16 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
   const [flow, setFlow] = useState(1)
   const [direction, setDirection] = useState<1 | -1>(1)
   const [palette, setPalette] = useState(0)
+  /** whether the swarm moves to whatever the site is playing */
+  const [listen, setListen] = useState(false)
+  const listenRef = useRef(listen)
+  listenRef.current = listen
+  /** the press itself — kept apart from the input, because a beat borrows the pointer too */
+  const held = useRef<readonly [number, number] | null>(null)
+  const directionRef = useRef(direction)
+  directionRef.current = direction
+  const flowRef = useRef(flow)
+  flowRef.current = flow
 
   const input = useRef<SwarmInput>({ pointer: null, direction: 1, flow: 1, palette: 0 })
   input.current.direction = direction
@@ -42,7 +56,7 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
 
   const press = (e: PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
-    input.current.pointer = toWorld(e.clientX - r.left, e.clientY - r.top, r.width, r.height)
+    held.current = toWorld(e.clientX - r.left, e.clientY - r.top, r.width, r.height)
   }
 
   return (
@@ -61,8 +75,21 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
           if (first !== countRef.current) setCount(first)
           const swarm = await createSwarm(device, context, format, canvas, first)
           swarmRef.current = swarm
+          const ear = createEar()
+          /** seconds left of a beat's burst */
+          let burst = 0
           return {
-            frame: (dt) => swarm.frame(dt, input.current),
+            frame: (dt) => {
+              /* listening: the current swells with the loudness, and every kick pushes the swarm
+                 out from the middle for a moment — unless a finger is on it, which always wins */
+              const heard = listenRef.current ? ear.hear(dt) : null
+              burst = heard?.hit ? BURST : Math.max(0, burst - dt)
+              const i = input.current
+              i.flow = flowRef.current * (heard ? 0.4 + 2 * heard.level : 1)
+              i.pointer = held.current ?? (burst > 0 ? [0, 0] : null)
+              i.direction = held.current ? directionRef.current : -1
+              swarm.frame(dt, i)
+            },
             destroy: () => {
               swarm.destroy()
               swarmRef.current = null
@@ -71,10 +98,10 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
         }}
         onPointerDown={press}
         onPointerMove={(e) => {
-          if (input.current.pointer) press(e)
+          if (held.current) press(e)
         }}
         onPointerUp={() => {
-          input.current.pointer = null
+          held.current = null
         }}
       />
 
@@ -91,6 +118,16 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
             }}
           >
             ↺ Scatter
+          </button>
+          <button
+            className="btn btn-ghost"
+            aria-pressed={listen}
+            onClick={() => {
+              setListen(!listen)
+              if (!listen && !running) setRunning(true)
+            }}
+          >
+            🎵 Listen
           </button>
 
           <div className="lab-group" role="group" aria-label="What a press does">
@@ -162,6 +199,8 @@ export function SwarmDemo({ running, setRunning, onAdapter }: Props) {
             : 'Press and drag to push them away.'}{' '}
           {countLabel(count)} particles, every one moved by your graphics card each frame — the page
           itself never touches them.
+          {listen &&
+            ' Listening: the current swells with whatever this site is playing, and every kick drum bursts the swarm out from the middle. Start a song in Music or the Visualiser and come back.'}
         </p>
       )}
     </>

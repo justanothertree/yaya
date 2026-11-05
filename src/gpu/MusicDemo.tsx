@@ -6,33 +6,13 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react'
-import {
-  binCountAll,
-  fftSizeAll,
-  liveTaps,
-  readLevel,
-  readSpectrumAll,
-  readWaveformAll,
-  subscribeTaps,
-  tapFormat,
-  TAPS,
-} from '../audio/audioTap'
+import { TAPS, liveTaps, readLevel, subscribeTaps } from '../audio/audioTap'
 import { localMicOn, startLocalMic, stopLocalMic } from '../audio/localMic'
 import { playFile, stopMusic } from '../audio/musicSource'
 import { touchOnly } from '../ui/pointerKind'
 import { LabStage } from './LabStage'
-import {
-  BANDS,
-  BASS_BANDS,
-  QUIET,
-  WAVE,
-  bandEdges,
-  beat,
-  ease,
-  foldBands,
-  foldWave,
-  type BeatState,
-} from './music'
+import { BANDS, WAVE } from './music'
+import { createEar } from './ear'
 import { createMusicVis, type MusicInput, type MusicVis } from './musicEngine'
 
 type Props = {
@@ -152,44 +132,14 @@ export function MusicDemo({ running, setRunning, onAdapter }: Props) {
         make={async ({ device, context, format, canvas }) => {
           const vis = await createMusicVis(device, context, format, canvas)
           visRef.current = vis
-          const edges = bandEdges(BANDS)
-          const spectrum = new Uint8Array(SCRATCH)
-          const waveform = new Uint8Array(SCRATCH)
-          const scratch = new Uint8Array(SCRATCH)
-          const target = new Float32Array(BANDS)
-          const bands = input.current.data.subarray(0, BANDS)
-          const wave = input.current.data.subarray(BANDS)
-          let beats: BeatState = QUIET
+          const ear = createEar(input.current.data)
           return {
             frame: (dt) => {
-              const bins = binCountAll()
-              const fft = fftSizeAll()
-              const first = liveTaps()[0]
-              const rate = first ? (tapFormat(first)?.rate ?? 48000) : 48000
-              if (bins > 0 && readSpectrumAll(spectrum.subarray(0, bins), scratch)) {
-                foldBands(spectrum.subarray(0, bins), rate, fft, edges, target)
-                readWaveformAll(waveform.subarray(0, fft), scratch)
-                foldWave(waveform.subarray(0, fft), WAVE, wave)
-              } else {
-                target.fill(0)
-                wave.fill(0)
-              }
-              let sum = 0
-              for (let i = 0; i < BANDS; i++) {
-                bands[i] = ease(bands[i], target[i], dt)
-                sum += bands[i]
-              }
-              input.current.level = sum / BANDS
-              /* the beat reads the RAW bass, not the eased bands: easing is what makes the bars
-                 look smooth, and it is also a delay a kick drum should not have to wait out */
-              if (dt > 0) {
-                let bass = 0
-                for (let i = 0; i < BASS_BANDS; i++) bass += target[i]
-                const b = beat(beats, bass / BASS_BANDS, dt)
-                beats = b.state
+              const heard = ear.hear(dt)
+              input.current.level = heard.level
+              if (dt > 0)
                 input.current.kick =
-                  b.hit && pulseRef.current ? 1 : input.current.kick * Math.exp(-dt * 6)
-              }
+                  heard.hit && pulseRef.current ? 1 : input.current.kick * Math.exp(-dt * 6)
               vis.frame(dt, input.current)
             },
             resize: () => vis.resize(),
