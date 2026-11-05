@@ -17,13 +17,32 @@ Each file's own header has the reasoning and the measurement behind it.
 
 ## Regenerating
 
-⚠️ **A dump command is step one of four.** The dump's own header carries the command that made
-it; running it replaces the dump and nothing else, and a regenerated dump has no `create
-extension`, no privilege revokes, and — if it is produced the same way as this one — no triggers.
+⚠️ **A dump command is step one of four.** Running it replaces the dump and nothing else: a
+regenerated dump has no `create extension`, no privilege revokes, and — if it is produced the
+way this one was — no triggers.
 The files here are what make that survivable: they are applied around the dump, not inside it, so
 a regeneration cannot silently delete them.
 
-1. **Dump the schema** with the command in the dump's own header, over the same file.
+1. **Dump the schema** over the same file:
+
+   ```bash
+   supabase db dump --linked --schema public,finance -f supabase/migrations/00000000000000_baseline.sql
+   ```
+
+   ⚠️ **The command lives here because the dump has no header to keep it in.** It had three
+   comment lines on top until 4 Nov 2026 and they were removed, correctly — they claimed the file
+   was the whole schema. A regeneration overwrites the file anyway, so a command stored inside it
+   is a command that survives exactly until it is next needed.
+
+   ⚠️ **AND THE FILE THAT IS HERE WAS NOT MADE WITH THAT COMMAND.** It came from a hand-rolled
+   `pg_dump` pipeline on a machine with no Docker, and that pipeline's filtering is what dropped
+   the triggers. Read against the CLI's own script, the tool does NOT drop them: it runs
+   `pg_dump --schema-only --quote-all-identifier --role postgres` and then rewrites
+   `CREATE TRIGGER "` to `CREATE OR REPLACE TRIGGER "` — which is also why this file's statements
+   are quoted the way they are, and why a CLI dump makes `02-triggers.sql` a harmless no-op
+   rather than a conflict. **So a fresh dump with no `CREATE TRIGGER` in it means the pipeline,
+   never the database.**
+
 2. **Count it against production, by object kind.** This is the check that would have caught the
    missing triggers on the day the dump was made — every other kind matched exactly, which is why
    nothing looked wrong:
