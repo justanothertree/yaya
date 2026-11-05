@@ -3293,6 +3293,19 @@ section[id] {
   border-color: var(--accent);
   background: color-mix(in oklab, var(--accent), transparent 82%);
 }
+/**
+ * The name of whatever is being held.
+ *
+ * ⚠️ A FIXED HEIGHT AND A NON-BREAKING SPACE WHEN IT IS EMPTY. The line appears and disappears
+ * with every press, and without a reserved row the whole keyboard would jump a line up and down
+ * as you play — which is both horrible and, on a phone, enough to move a key out from under a
+ * thumb mid-glissando.
+ */
+.inst-chord-name {
+  min-height: 1.3em;
+  margin: 0.15rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
 .inst-pick {
   display: inline-flex;
   align-items: center;

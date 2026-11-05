@@ -19,6 +19,7 @@ import {
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
+import { nameChord } from '../audio/chordName'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
 import {
@@ -2507,6 +2508,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           </label>
         )}
       </div>
+
+      {/**
+       * What you are holding, named.
+       *
+       * ⚠️ IT READS `held`, WHICH IS THE BOOK, so it names what is actually SOUNDING rather
+       * than what the pickers would produce — a chord clipped at the top of the keyboard, two
+       * fingers making something the chord picker never offered, and the note an arpeggio is
+       * on are all the same question answered the same way.
+       *
+       * ⚠️ AND IT GOES QUIET RATHER THAN GUESSING. `nameChord` answers null for a handful of
+       * keys that is not a shape worth naming, and a readout inventing something for every
+       * cluster would be noise — wrong in a way nobody could check. Blank half the time is
+       * honest; confident half the time is not.
+       *
+       * ⚠️ NOT ON THE DRUM KIT, where a pad is a sound and not a pitch. Naming a kick and a
+       * snare "C and its fifth" is true of the MIDI and false about the room.
+       */}
+      {inst !== 'drums' && (
+        <p className="muted inst-note inst-chord-name" aria-live="polite">
+          {(held.length > 0 && nameChord(held)) || ' '}
+        </p>
+      )}
 
       {/**
        * What the two pickers above actually chose, in a sentence.
