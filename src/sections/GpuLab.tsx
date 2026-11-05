@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ErosionDemo } from '../gpu/ErosionDemo'
+import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
@@ -61,6 +62,12 @@ const DEMOS = [
     name: 'Erosion',
     line: 'Erosion — rain on a landscape and watch it carve valleys, rivers and lakes. Raise and dig to steer it.',
     Demo: ErosionDemo,
+  },
+  {
+    id: 'snowflake',
+    name: 'Snowflake',
+    line: 'Snowflake — a crystal of ice grows six arms in damp air. Blow on the microphone, or breathe on it with a finger.',
+    Demo: SnowflakeDemo,
   },
 ] as const
 
@@ -162,6 +169,7 @@ export function GpuLab() {
       {demo === 'lava' && <LavaDemo key="lava" {...props} />}
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
       {demo === 'erosion' && <ErosionDemo key="erosion" {...props} />}
+      {demo === 'snowflake' && <SnowflakeDemo key="snowflake" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>

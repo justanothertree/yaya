@@ -235,9 +235,10 @@ nobody can resolve by keeping both sides.
 Erosion's uniform carries a camera matrix. It is additive; if another branch has added a type to
 the same table, keep both lines.
 
-| Toy     | Interaction                                                                                                            | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                         |
-| ------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Erosion | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate |
+| Toy       | Interaction                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Erosion   | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                      |
+| Snowflake | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule |
 
 - **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
   into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
@@ -280,6 +281,45 @@ the same table, keep both lines.
      scrolling the page; two fingers orbit and pinch; Storm, edges, lands and keys all reach the
      shader; no sideways scroll, nothing undersized or clipped.
 
+- **Snowflake** — a speck of ice in cold, damp air, growing six feathered arms. 🎤 Breathe opens
+  the microphone (the site's own `localMic`, which analyses and never records) and blowing on it
+  makes the air damper, so it grows faster and wilder; hold a finger on it to breathe on one spot —
+  with ❄ Six-fold on (the default) the breath lands six ways round, as still air round a real
+  crystal does; turn it off and one breath makes it lopsided. Four weathers grow four different
+  crystals: Fern (long arms with side branches), Star, Sector (broad arms) and Feather (thick with
+  branches). Calm, Brisk and Blizzard set the speed; ↺ New flake starts again. Leaving the toy
+  turns the microphone off. Keys: N, M breathe, X six-fold, 1–4 weather.
+  Technique: Clifford Reiter's model (2005) on a 401-wide lattice of hexagons held as axial
+  coordinates — six neighbours at (±1, 0), (0, ±1), (1, −1), (−1, 1). A cell that is ice (holds
+  ≥ 1 of water) or touches ice is RECEPTIVE: it keeps its water and gains γ; everybody's free vapour
+  diffuses (a receptive cell's counting as none, so vapour drawn into the ice stays there). The tips
+  reach furthest into the damp, get the most, grow fastest, and branch. Two compute passes a step:
+  mark the receptive cells, then grow. Drawn by reading the lattice linearly across the triangle of
+  the three nearest cell centres, so the ice's edge is smooth where the value crosses 1, and lit
+  from the field's own gradient, so older, thicker ice catches the light.
+  ⚠️ Three things were wrong first:
+  1. **Every weather grew a plain hexagonal plate.** I had left receptive cells out of the
+     diffusion; with nothing drawing vapour into the ice, nothing was starved of it and no tip
+     could outrun a face. With the inflow back the same weathers branch — fill of the hexagon their
+     tips span went from about 1.0 to 0.2–0.55.
+  2. **The speeds were a fixed number of steps a frame**, and the weathers grow ten times apart:
+     Feather filled the whole disc in a quarter of a second at "Brisk". Each weather has its own
+     pace now, and all take about forty seconds.
+  3. **I wrote a test claiming every crystal starts as a little plate**, as real ones do. In this
+     model at these weathers it does not — Star is already branching four cells out — so the claim
+     came out rather than being tuned until it passed.
+     Weathers were chosen by a sweep on the CPU (201-wide lattice, crystals grown 80 cells out): at
+     β 0.35 γ 0.0001 a fern, 0.4/0.001 a star, 0.3/0.003 broad sectors, 0.65/0.001 feathers,
+     0.5/0.01 a fat star, 0.8/0.002 long blades. Measured on the GPU over 120 steps of the full
+     lattice: matches `stepFlake` to 1.1×10⁻⁶ with the same 673 cells of ice; its own crystal is
+     six-fold to 4×10⁻⁷; a finger's breath lands equally at all six turned places with Six-fold on
+     and at one with it off. The tests hold the CPU copy to the lattice (six neighbours one cell
+     apart at 60° steps, six turns come home) and the model (still air stays still, vapour is moved
+     but never made, ice never melts, growth is six-fold, damper air grows faster, and the tips
+     outgrow the faces). In the page, at 1024 and on an emulated phone: a press maps to the cell the
+     shader draws there, Chromium's fake microphone reads as breath on the meter, the microphone's
+     track has ended after leaving the toy, every weather, speed, toggle and key reaches the shader.
+
 ### Phone checklist — batch 6
 
 - [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
@@ -287,3 +327,7 @@ the same table, keep both lines.
 - [ ] Erosion — smooth on a phone (four steps of a 256² simulation a frame, and a 130,000-triangle
       mesh)? Does rain from a finger feel like it lands where you touch? Is a minute or two to cut
       a valley the right pace, or too slow to notice? Two fingers to turn — natural?
+- [ ] Snowflake — does blowing on the phone's microphone feel like it does something (it is
+      breath, but any loud sound counts)? Is forty seconds to grow a crystal the right wait? Does a
+      finger's breath read as breath? Does the browser ask for the microphone, and does its
+      recording light go off when you leave the toy?
