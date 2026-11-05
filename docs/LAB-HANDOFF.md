@@ -86,9 +86,10 @@ Each toy here is chosen to be different from the seven above, and from each othe
 what it does, how you touch it, and how the GPU draws it — so the batch reads as a set of
 interactions and GPU patterns that can be lifted into the rest of the site.
 
-| Toy      | Interaction                                                              | GPU technique                                                                                          | Reusable pattern                                                                      |
-| -------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets | "every action is a warp of the whole image" — any number of edits per frame, in order |
+| Toy      | Interaction                                                                            | GPU technique                                                                                                                                   | Reusable pattern                                                                      |
+| -------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once               | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                          | "every action is a warp of the whole image" — any number of edits per frame, in order |
+| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient | "a simulation the user steers by its parameters" — the map is the UI                  |
 
 - **Marbling** — paper marbling after Jaffer's _Mathematical Marbling_. Tap to float a drop of ink
   in the next colour of the set; hold, and it keeps spreading, pushing everything round it outward.
@@ -106,6 +107,20 @@ interactions and GPU patterns that can be lifted into the rest of the site.
   Measured on the real shader: a red drop covers 3,217 px of ink against πr² = 3,217; a blue drop
   beside it pushes it aside and leaves it at 3,206; a stylus and a comb keep about 90% — what is
   lost is ink stretched thinner than a pixel and ink pushed past the tray's edge.
+
+- **Growth** — reaction–diffusion: two chemicals on a grid, A fed in everywhere, B eating A to
+  make more of itself and slowly dying. Drag to seed B (or Erase to wipe it), and depending on how
+  fast A is fed and B dies it grows into Coral, dividing cells (Mitosis), Worms, a Maze or Spots.
+  🗺 Map sweeps feed across the screen and kill down it, so every pattern grows somewhere at once
+  (Pearson's map, live) — and a tap on the map picks the rates under the finger and grows that
+  pattern on its own. Speed 2–48 steps a frame, four colourings, Reseed. Keys: Space, 1–5
+  patterns, M map, E erase, R reseed.
+  Technique: a compute pass per step over a grid of `vec2f` (A, B) ping-ponging between two
+  storage buffers, with a nine-point Laplacian; a brush is a list of dabs applied as the first
+  step of a frame writes, so the step never overwrites it. The draw reads B between cells
+  (bilinear, by hand from the storage buffer) and lights it off its own slope, so it reads as
+  something grown rather than printed. Measured: the real shader matches a CPU copy of the
+  equations to 1.3×10⁻⁶ over 60 steps of a 61×37 grid, and every preset grows from its seeds.
 
 ### How the room is built
 
@@ -213,6 +228,8 @@ Batch 2:
       a song in Music and come back to watch it flare on the beat
 - [ ] Marbling — does a held drop feel like ink spreading? Comb across a marbled sheet; two
       fingers with the stylus; does the paper stay crisp, or soften too fast after many strokes?
+- [ ] Growth — does it keep up on a phone (136×164 cells, 16 steps a frame)? Turn the map on and
+      tap around it; does coral read as coral?
 - [ ] the picker on a phone: a dropdown with ‹ › either side (batch 3) — measured at 375 it lets
       328 of the canvas's 412 px show on the first screen, where seven buttons in two rows let 275
 

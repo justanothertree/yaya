@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { GrowthDemo } from '../gpu/GrowthDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
@@ -85,6 +86,12 @@ const DEMOS: readonly {
     Demo: MarbleDemo,
     name: 'Marbling',
     line: 'Marbling — float drops of ink on water, then pull them into feathered patterns with a stylus or comb.',
+  },
+  {
+    id: 'growth',
+    Demo: GrowthDemo,
+    name: 'Growth',
+    line: 'Growth — two chemicals reacting on a grid grow coral, dividing cells, worms or mazes. Seed it and watch.',
   },
 ]
 
