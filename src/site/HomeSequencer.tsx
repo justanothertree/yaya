@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { InstrumentId } from '../audio/synth'
 import { onStopAll, withSynth } from './homeSynth'
+import { motionReduced } from '../ui/motion'
 
 /**
  * A little sequencer on the front page: a line already playing, that you can add notes to.
@@ -98,9 +99,7 @@ export function HomeSequencer({ onNote }: { onNote?: (n: SeqNote) => void } = {}
   }
   const visible = useRef(false)
 
-  const still =
-    typeof window !== 'undefined' &&
-    (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+  const still = motionReduced()
 
   /* ⚠️ A ref, so `play` keeps its empty dependency list and the interval below is never torn
      down and rebuilt just because a parent re-rendered with a new closure. */

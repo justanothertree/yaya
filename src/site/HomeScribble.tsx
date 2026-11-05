@@ -5,6 +5,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { motionReduced } from '../ui/motion'
 
 /**
  * The front door's second toy: a pad you can actually draw on — and which draws by itself.
@@ -150,9 +151,7 @@ export function HomeScribble() {
    * ⚠️ A reader who asked for less motion gets a pad that does nothing until they touch it. The
    * whole point of the setting is that things do not move on their own.
    */
-  const still =
-    typeof window !== 'undefined' &&
-    (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+  const still = motionReduced()
 
   const ctx = () => ref.current?.getContext('2d') ?? null
 

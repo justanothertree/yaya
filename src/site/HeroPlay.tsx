@@ -9,6 +9,7 @@ import {
 import type { InstrumentId } from '../audio/synth'
 import { HomeSequencer, type SeqNote } from './HomeSequencer'
 import { withSynth } from './homeSynth'
+import { motionReduced } from '../ui/motion'
 
 /**
  * The front door's one toy: twelve keys that actually play, with strings above them that ring.
@@ -108,9 +109,7 @@ export function HeroPlay() {
     return () => mq.removeEventListener('change', on)
   }, [])
 
-  const still =
-    typeof window !== 'undefined' &&
-    (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+  const still = motionReduced()
 
   /* ── the strings ─────────────────────────────────────────────────────────── */
   useEffect(() => {

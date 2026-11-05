@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { PetView } from './PetView'
 import { companion, cornerSize, setCompanion, subscribeCompanion } from './companion'
 import { pets, subscribePets } from './pets'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * One of your pets, hanging about in the corner.
@@ -57,16 +58,7 @@ export function PetCompanion() {
   const mine = useSyncExternalStore(subscribePets, pets, pets)
   const shortSide = useShortSide()
 
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
 
   const [awake, setAwake] = useState(false)
   useEffect(() => {

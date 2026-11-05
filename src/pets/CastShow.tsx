@@ -10,6 +10,7 @@ import { footSpan, PARK_TALL } from '../park/strike'
 import { petWide } from './attack'
 import { shapeOf } from '../park/castShape'
 import { VIEW } from '../park/walk'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * What your creature's three BIG moves actually look like.
@@ -118,16 +119,7 @@ export function CastShow({
   const kind = casts[pick] ?? casts[0]
   /* ⚠️ asked here rather than passed in, so this cannot be dropped into a room that forgot
      about it — and unverifiable in the Browser pane, which cannot emulate the setting */
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
 
   /**
    * The first moment anything is dangerous, for the one frame reduced motion gets.

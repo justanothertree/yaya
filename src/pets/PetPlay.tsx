@@ -20,6 +20,7 @@ import {
   type Input,
   type Traits,
 } from './play'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * Somewhere to actually play with the things you drew.
@@ -132,16 +133,7 @@ export function PetPlay({ pets, startAt = 0 }: { pets: PlayPet[]; startAt?: numb
    * breathing, no wings — and the camera arrives at once instead of gliding, while walking,
    * jumping and the followers keeping up are all left exactly as they are.
    */
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
   const stillRef = useRef(still)
   stillRef.current = still
   const pounceRef = useRef(pounce)

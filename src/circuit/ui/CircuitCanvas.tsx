@@ -21,6 +21,7 @@ import { AmbientBackdrop } from '../../components/AmbientBackdrop'
 import { SiteBackdrop } from '../../profile/SiteBackdrop'
 import type { BackdropId } from '../../profile/backdrops'
 import { GAP, SNAP_PX, snapAxis } from './snapping'
+import { motionReduced } from '../../ui/motion'
 
 export type CanvasPane = { id: string; title: string; node: ReactNode }
 
@@ -418,8 +419,8 @@ export function CircuitCanvas({
   }, [])
   // ── weight: programmatic box changes settle into place instead of teleporting ──
   const settleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  const reducedMotion =
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  /* the site's own switch as well as the OS — see ui/motion.ts */
+  const reducedMotion = motionReduced()
   // Arm a one-shot eased transition on a window, then disarm so pointer drags stay 1:1.
   // The bezier overshoots a touch (1.35) — enough to read as mass, tight enough to
   // never read as broken.
@@ -898,7 +899,7 @@ export function CircuitCanvas({
       if (visible) return
       const to = clampPan({ x: w.x + w.w / 2 - vw / 2, y: w.y + w.h / 2 - vh / 2 })
       if (Math.abs(to.x - from.x) < 1 && Math.abs(to.y - from.y) < 1) return
-      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      const reduce = motionReduced()
       const start = performance.now()
       const dur = reduce ? 0 : 320
       const step = (t: number) => {

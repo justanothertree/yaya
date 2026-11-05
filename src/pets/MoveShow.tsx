@@ -5,6 +5,7 @@ import { bodyRatio, petCanvas } from './rig'
 import { lungeOf, phaseOf } from './fight'
 import { HIT_SHAPES, hurtHalf, posedAt, stagesOf, type Attack, type HitShape } from './attack'
 import { PARK_DEEP } from '../park/strike'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * What your creature's moves actually look like.
@@ -144,16 +145,7 @@ export function MoveShow({
   const want = useRef<string | null>(null)
   /* ⚠️ asked here rather than taken as a prop, so this cannot be dropped into a room that
      forgot about it — and unverifiable in the Browser pane, which cannot emulate the setting */
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
   const [gone, setGone] = useState(0)
   const a = moves[pick] ?? moves[0]
 

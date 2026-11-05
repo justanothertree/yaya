@@ -70,6 +70,7 @@ import {
   type Steer,
   type Way,
 } from './walk'
+import { useMotionReduced } from '../ui/useMotion'
 import {
   doorMeans,
   joinPark,
@@ -2162,16 +2163,7 @@ export function ParkRoom({
   /* the same clock, where the loop can reach it without depending on a render */
   const clockRef = useRef(0)
 
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
   const stillRef = useRef(still)
   stillRef.current = still
 

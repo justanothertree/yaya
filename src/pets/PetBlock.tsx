@@ -3,6 +3,7 @@ import { CONFIG_LIMIT, configSize } from '../profile/blockSize'
 import { PetView } from './PetView'
 import { fitDrawing } from '../draw/strokes'
 import { packPet, pets, readPet, subscribePets, type Pet } from './pets'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * ⚠️ THE FIXED TOLERANCE WENT, AND WHY IT EXISTED IS WORTH KEEPING. It was 0.0018 — a third of
@@ -60,16 +61,7 @@ export function PetBlock({ cfg }: { cfg: Record<string, unknown> }) {
 
   /* ⚠️ Live, not read once — somebody's setting can change while the page is open, and a page
      with three moving things on it is the one to obey it fastest. Same as the art block. */
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
 
   const [awake, setAwake] = useState<number | null>(null)
   useEffect(() => {

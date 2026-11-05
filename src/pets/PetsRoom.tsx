@@ -13,6 +13,7 @@ import { fileNameFor, save, sizeLabel } from '../draw/export'
 import { packDrawing } from '../draw/strokes'
 import { paintSession } from '../draw/session'
 import { packPet } from './pets'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * The room the pets live in.
@@ -54,16 +55,7 @@ export function PetsRoom({ onControlChange }: { onControlChange?: (on: boolean) 
 
   /* ⚠️ Live, not read once — the same rule the art block follows. Somebody can turn the setting
      on while the page is open, and a room full of moving things is the one to obey it fastest. */
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
 
   const chosen: Pet | undefined = mine.find((p) => p.id === openId) ?? mine[0]
 

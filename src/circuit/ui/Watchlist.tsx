@@ -53,6 +53,7 @@ import { peekPersistedUserId } from '../../finance/auth'
 import { PoolSheet } from './PoolSheet'
 import { voteId, type Pool, type WatchlistItem } from '../types'
 import { todayISO } from '../dates'
+import { motionReduced } from '../../ui/motion'
 
 type SortW = 'votes' | 'alpha' | 'rt'
 
@@ -394,7 +395,7 @@ export function Watchlist() {
     /* ⚠️ Somebody who has asked for less motion gets the answer, not two seconds of flashing
        names. They still see it the moment everybody else's wheel starts, which is the part that
        matters — the reel is the flourish, the result is the point. */
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (motionReduced()) {
       setLanded(spin.winner)
       setSpin(null)
       return

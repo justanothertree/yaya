@@ -1833,7 +1833,10 @@ export function setClickFxStyle(next: FxStyle) {
  * choosing a style shows what it looks like immediately, without needing a real click.
  */
 export function previewClickFx(fxStyle: FxStyle, x: number, y: number) {
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  /* ⚠️ `motionReduced()`, not the raw query — this line read matchMedia directly while the
+     comment eleven lines above explained at length why `burst` must not. The preview ignored
+     the site's own switch, so turning motion off still played a flourish in the picker. */
+  if (motionReduced()) return
   // same reason as burst: one caller previews a style that came off a profile
   BUILDERS[fxStyle]?.(layer(), x, y)
 }

@@ -46,6 +46,7 @@ import {
   type BoutState,
 } from './boutRoom'
 import { PET_TALL, traitsOf, traitWords, type Traits } from './play'
+import { useMotionReduced } from '../ui/useMotion'
 
 /**
  * Two of the things you drew, hitting each other.
@@ -172,16 +173,7 @@ export function PetFight({
   const cpuRef = useRef(cpu)
   cpuRef.current = cpu
 
-  const [still, setStill] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    if (!mq) return
-    const on = () => setStill(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  const still = useMotionReduced()
   const stillRef = useRef(still)
   stillRef.current = still
 
