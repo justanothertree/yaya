@@ -235,12 +235,13 @@ nobody can resolve by keeping both sides.
 Erosion's uniform carries a camera matrix. It is additive; if another branch has added a type to
 the same table, keep both lines.
 
-| Toy        | Interaction                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                                 |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Erosion    | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                                                         |
-| Snowflake  | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule                                    |
-| Pixel sort | YOUR PHOTO, and GESTURES AS COMMANDS: the direction you swipe is the direction it sorts; a tap drips                        | A BITONIC SORTING NETWORK, a stage per dispatch (k and j by dynamic uniform offset), over COMPOSITE KEYS — span, level, place — whose spans come from a PREFIX SCAN in workgroup memory; the picture is a GATHER through the sorted keys                                                        | "sort millions of things on the GPU, stably, in segments" — any ranking, any per-row ordering; and the dynamic-offset trick for many small passes in one encoder |
-| Squish     | MANY FINGERS AT ONCE as handles on a picture, PINS that hold it, and a jelly WOBBLE (with a boing) when you let go          | MOVING-LEAST-SQUARES DEFORMATION: every vertex of a mesh solves its own small weighted fit (a rotation, or an affine map) from the handles in a compute pass; the picture rides the mesh. Inverse by Newton on the CPU, so a finger takes hold of what is under it                              | "bend an image by its points" — warping, puppeteering, any handle-driven deformation                                                                             |
+| Toy        | Interaction                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                                 |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Erosion    | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer                 | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                                                         |
+| Snowflake  | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule                                    |
+| Pixel sort | YOUR PHOTO, and GESTURES AS COMMANDS: the direction you swipe is the direction it sorts; a tap drips                        | A BITONIC SORTING NETWORK, a stage per dispatch (k and j by dynamic uniform offset), over COMPOSITE KEYS — span, level, place — whose spans come from a PREFIX SCAN in workgroup memory; the picture is a GATHER through the sorted keys                                                                        | "sort millions of things on the GPU, stably, in segments" — any ranking, any per-row ordering; and the dynamic-offset trick for many small passes in one encoder |
+| Squish     | MANY FINGERS AT ONCE as handles on a picture, PINS that hold it, and a jelly WOBBLE (with a boing) when you let go          | MOVING-LEAST-SQUARES DEFORMATION: every vertex of a mesh solves its own small weighted fit (a rotation, or an affine map) from the handles in a compute pass; the picture rides the mesh. Inverse by Newton on the CPU, so a finger takes hold of what is under it                                              | "bend an image by its points" — warping, puppeteering, any handle-driven deformation                                                                             |
+| Lightning  | TAP TO SUMMON, PLANT RODS it seeks out, a STORM that strikes by itself — and THUNDER synthesised for each strike            | DIELECTRIC BREAKDOWN: Laplace relaxed by Jacobi between growth steps, and the next cell chosen by an EXPONENTIAL RACE — every candidate draws −ln(u)/w, atomicMin over the float's bits finds the earliest, a second pass lets the earliest claim the win; one thread grows the channel and walks the path home | "choose one of many in proportion to a weight, on the GPU, exactly" — weighted sampling without a prefix sum; and growth driven by a solved field                |
 
 - **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
   into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
@@ -401,6 +402,40 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
      out; two fingers make two handles from their own points of the picture; Stretchy, Unpin all, a
      photo and the keys all reach the shader.
 
+- **Lightning** — a night sky that strikes. Tap anywhere to plant a lightning rod there (a mast
+  down to the ground) and call a bolt: the stepped leader feels its way down from the cloud,
+  branching; when a branch touches the ground or a rod the path it took blazes — the return
+  stroke, flickering with a re-strike — and thunder follows, made on the spot (a crack of filtered
+  noise and a rolling rumble, at the instrument channel's volume). ⚡ Strike calls one; ⛈ Storm
+  strikes by itself every few seconds; Wild, Forked and Straight are η of 1, 2 and 3.5. Keys: Space
+  strikes, S storm, C clear rods, 1–3 shape.
+  Technique: the dielectric breakdown model (Niemeyer, Pietronero & Wiesmann). φ is 0 on the
+  cloud and the channel, 1 on the ground and the rods, and relaxed by Jacobi between them — 12
+  passes after every new cell, warm-started, so the field near the tip is always fresh. The next
+  cell to break down is chosen among the air touching the channel with probability ∝ φ^η, by an
+  EXPONENTIAL RACE: every candidate draws a time −ln(u)/w and the earliest wins, which is exactly
+  weighted sampling with no running total. On the GPU the earliest is an `atomicMin` over the
+  float's bits (positive floats sort as their bits do), and a second pass lets the candidate whose
+  time equals the minimum claim the win by index. One thread then grows the channel, remembers
+  which channel cell it grew from, and when it has arrived walks those links back to the cloud,
+  marking the path that flashes. The step counter lives in a storage buffer, so every growth step
+  of a frame runs in one compute pass with no uniform written between them.
+  ⚠️ Two things were wrong first:
+  1. **The shapes grew at one rate**, and a Wild bolt needs 2,334 cells to reach the ground against
+     Forked's 586 and Straight's 300 — six and a half seconds at six a frame. Each shape has its own
+     rate now and all take a couple of seconds.
+  2. **`struct Bolt` is 40 bytes, not 36** (the same rounding as Squish's) — caught by the layout
+     test again.
+     Measured on the GPU: grown 60 cells from the same sky, the GPU breaks down exactly the same
+     cells in exactly the same order as the CPU's copy, all 60. Whole bolts at each η reach the ground
+     with a path from cloud to ground that has no gaps; a bolt with a rod at (150, 70) makes contact
+     at (149, 78), on the mast. The tests hold the CPU copy to the physics: relaxing an empty sky
+     gives the straight line Laplace says it must, a rod raises the field round it, the race wins in
+     proportion to the weights (40,000 draws), a whole bolt reaches the ground, branches more at
+     smaller η, and goes to a rod. In the page, at 1024 and on an emulated phone (where the grid
+     turns upright): the first bolt arrives, flashes and thunders once; a tap plants a rod and strikes;
+     shapes, Clear rods, the thunder switch (no thunder when off), Storm and the keys all work.
+
 ### Phone checklist — batch 6
 
 - [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
@@ -417,3 +452,6 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
       faster than two stages a frame? Is Glitch the right default?
 - [ ] Squish — does it feel like jelly? Three or four fingers at once? Is the wobble too much or
       too little, and is the boing charming? Try it on your own photo — a face is the obvious test.
+- [ ] Lightning — is the thunder satisfying through phone speakers, or just noise? Too loud? Does a
+      bolt take about the right time to come down? On a big screen the grid's cells show as dots in
+      the side branches — charming pixel-lightning, or worth a finer grid?
