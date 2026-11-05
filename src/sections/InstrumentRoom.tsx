@@ -56,6 +56,7 @@ import {
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
 import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
+import { CHORD_PATTERNS, progressionEvents } from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import {
@@ -125,6 +126,7 @@ import {
   MAX_LAYERS,
   splitDrumLayer,
   beatPatternOf,
+  chordPatternOf,
   soleDrumPiece,
   setBars,
   setBpm,
@@ -1786,7 +1788,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 onClick={() => setBeatsOpen((v) => !v)}
                 title="Drop in a drum pattern you can then change"
               >
-                🥁 Pick a beat
+                🥁 Pick a beat or some chords
               </button>
               <span className="muted inst-start-or">or just play</span>
             </span>
@@ -1839,7 +1841,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               : 'Drop in a drum pattern you can then change'
           }
         >
-          🥁 Beats
+          🥁 Beats & chords
         </button>
         <button
           className={'btn' + (libOpen ? ' is-on' : '')}
@@ -2079,10 +2081,65 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * absolutely choose between Reggae and Metal. The grouping is derived from the patterns
        * themselves so adding one never means editing a second list.
        */}
+      {/**
+       * Chords to start from, beside the beats, for the reason drumPatterns' header gives:
+       * "somebody who does not play an instrument needs a bar of something in front of them".
+       * Beats answered that for rhythm; this answers it for harmony, which is the half that
+       * makes scale lock worth having — every key is a right note, and now there is something
+       * underneath for those right notes to be right ABOUT.
+       *
+       * ⚠️ IT FOLLOWS THE ROOM'S OWN KEY AND SCALE, so the progression a person drops and the
+       * notes they then play are in the same world without anybody being asked a question.
+       * Chromatic has no degrees to build on, so it borrows the major ones exactly as the
+       * Chord picker does.
+       */}
       {beatsOpen && (
         <div className="inst-beats card">
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Chords</span>
+            {CHORD_PATTERNS.map((p) => {
+              const on = loop.layers.some((l) => chordPatternOf(l) === p.id)
+              return (
+                <button
+                  key={p.id}
+                  className={'btn' + (on ? '' : ' btn-ghost')}
+                  aria-pressed={on}
+                  onClick={() => {
+                    const { events, len } = progressionEvents(
+                      p,
+                      loopLength(),
+                      scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+                      scale === 'chromatic' ? 0 : root,
+                    )
+                    if (
+                      !addPatternLayer(events, len, p.id, {
+                        mark: '-chords:',
+                        instrument: 'pad',
+                        /* under the beat and well under a hand playing over it */
+                        gain: 0.42,
+                      })
+                    )
+                      return
+                    if (!loop.playing) startLoop()
+                  }}
+                  disabled={
+                    loop.layers.length >= MAX_LAYERS &&
+                    !loop.layers.some((l) => chordPatternOf(l) !== null)
+                  }
+                  title={`${p.name} — ${p.hint}`}
+                >
+                  {p.name}
+                </button>
+              )
+            })}
+          </div>
           <p className="muted inst-beats-lede">
-            Picking one swaps the beat rather than adding a second. Change it afterwards.
+            {/* ⚠️ THE LEDE HAD TO CHANGE WITH THE PANEL. It said "picking one swaps the
+                beat", which was the whole truth while a beat was all this held — and would
+                have been a plain lie about a panel where a progression and a beat can play at
+                once. Each row owns one slot; the two do not replace each other. */}
+            Picking one swaps that row rather than adding a second — chords and a beat play
+            together. Change either afterwards.
           </p>
           {drumGenres().map((genre) => (
             <div key={genre} className="inst-beats-row">

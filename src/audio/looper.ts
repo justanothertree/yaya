@@ -1693,10 +1693,20 @@ const BEAT_GAIN = 0.55
  * picker is allowed to replace.
  */
 const BEAT_MARK = '-beat:'
-export const beatPatternOf = (l: Layer): string | null => {
-  const at = l.id.indexOf(BEAT_MARK)
-  return at === -1 ? null : l.id.slice(at + BEAT_MARK.length)
+/**
+ * ⚠️ A SECOND MARK, NOT A SECOND MECHANISM. Chord progressions want the same "picking one swaps
+ * it rather than adding a second" behaviour the beat picker has, and for the same reason — the
+ * gesture is "what should the chords be", not "add another piano". Two marks means the two
+ * pickers each own one slot and cannot replace each other's layer: a beat and a progression
+ * live side by side, and auditioning either leaves the other alone.
+ */
+const CHORD_MARK = '-chords:'
+const markedWith = (l: Layer, mark: string): string | null => {
+  const at = l.id.indexOf(mark)
+  return at === -1 ? null : l.id.slice(at + mark.length)
 }
+export const beatPatternOf = (l: Layer): string | null => markedWith(l, BEAT_MARK)
+export const chordPatternOf = (l: Layer): string | null => markedWith(l, CHORD_MARK)
 
 /**
  * ⚠️ PICKING A BEAT SWAPS THE BEAT, it does not add one.
@@ -1710,9 +1720,17 @@ export const beatPatternOf = (l: Layer): string | null => {
  * them in a row — and it keeps the volume you set, because having to rebalance after every
  * audition is how you stop auditioning.
  */
-export function addPatternLayer(events: LoopEvent[], len: number, pattern = ''): string {
-  const at = state.layers.findIndex((l) => beatPatternOf(l) !== null)
-  const id = `${Date.now()}-beat:${pattern}`
+export function addPatternLayer(
+  events: LoopEvent[],
+  len: number,
+  pattern = '',
+  /* ⚠️ DEFAULTED TO THE DRUM KIT so every existing call behaves exactly as it did — the beat
+     picker passes three arguments and gets the same layer it always got. */
+  opts: { mark?: string; instrument?: InstrumentId; gain?: number } = {},
+): string {
+  const mark = opts.mark ?? BEAT_MARK
+  const at = state.layers.findIndex((l) => markedWith(l, mark) !== null)
+  const id = `${Date.now()}${mark}${pattern}`
   if (at !== -1) {
     const old = state.layers[at]
     releaseLayer(old.id)
@@ -1727,12 +1745,12 @@ export function addPatternLayer(events: LoopEvent[], len: number, pattern = ''):
       ...state.layers,
       {
         id,
-        instrument: 'drums' as InstrumentId,
+        instrument: opts.instrument ?? ('drums' as InstrumentId),
         events,
         muted: false,
         fx: fxSnapshot(),
         len,
-        gain: BEAT_GAIN,
+        gain: opts.gain ?? BEAT_GAIN,
       },
     ],
   })
