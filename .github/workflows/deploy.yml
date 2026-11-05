@@ -1,3 +1,24 @@
+# ⚠️ PARKED, NOT LIVE. Copy this over .github/workflows/deploy.yml yourself.
+#
+# This session's token has no `workflow` scope, so GitHub refuses the push outright:
+#
+#   ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update
+#     workflow `.github/workflows/deploy.yml` without `workflow` scope)
+#
+# Same reason db-guards.yml beside this file is parked. The change is one job and one `needs:`.
+#
+# ── what it fixes ───────────────────────────────────────────────────────────────────────────
+#
+# ⚠️ THE DEPLOY DID NOT WAIT FOR LINT OR TESTS. `deploy` needed `build`, and `build` needed
+# nothing — so lint.yml and test.yml ran BESIDE this workflow rather than in front of it. A push
+# whose tests failed still went to production as long as it compiled; the red tick arrived next
+# to a green deploy. They are separate workflows and `needs:` cannot reach across workflows, so
+# the only way to make the deploy wait is to run them here.
+#
+# They still run on their own for pull requests, where the duplication costs nothing and the
+# feedback is the point. On a push to main the cost is one extra `npm ci` and a test run, which
+# is the price of the deploy meaning something.
+
 name: Deploy to GitHub Pages
 
 on:
@@ -11,7 +32,23 @@ permissions:
   id-token: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # the only real typecheck: the root tsconfig has `files: []`, so plain `tsc --noEmit`
+      # checks nothing and passes on anything
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
   build:
+    needs: verify
     concurrency:
       group: pages-${{ github.ref }}
       cancel-in-progress: true
