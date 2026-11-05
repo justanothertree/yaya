@@ -242,6 +242,7 @@ the same table, keep both lines.
 | Pixel sort | YOUR PHOTO, and GESTURES AS COMMANDS: the direction you swipe is the direction it sorts; a tap drips                        | A BITONIC SORTING NETWORK, a stage per dispatch (k and j by dynamic uniform offset), over COMPOSITE KEYS — span, level, place — whose spans come from a PREFIX SCAN in workgroup memory; the picture is a GATHER through the sorted keys                                                                        | "sort millions of things on the GPU, stably, in segments" — any ranking, any per-row ordering; and the dynamic-offset trick for many small passes in one encoder |
 | Squish     | MANY FINGERS AT ONCE as handles on a picture, PINS that hold it, and a jelly WOBBLE (with a boing) when you let go          | MOVING-LEAST-SQUARES DEFORMATION: every vertex of a mesh solves its own small weighted fit (a rotation, or an affine map) from the handles in a compute pass; the picture rides the mesh. Inverse by Newton on the CPU, so a finger takes hold of what is under it                                              | "bend an image by its points" — warping, puppeteering, any handle-driven deformation                                                                             |
 | Lightning  | TAP TO SUMMON, PLANT RODS it seeks out, a STORM that strikes by itself — and THUNDER synthesised for each strike            | DIELECTRIC BREAKDOWN: Laplace relaxed by Jacobi between growth steps, and the next cell chosen by an EXPONENTIAL RACE — every candidate draws −ln(u)/w, atomicMin over the float's bits finds the earliest, a second pass lets the earliest claim the win; one thread grows the channel and walks the path home | "choose one of many in proportion to a weight, on the GPU, exactly" — weighted sampling without a prefix sum; and growth driven by a solved field                |
+| Voiceprint | SING INTO IT (the microphone is the brush), PAINT on the picture, and PLAY it back as sound                                 | a FAST FOURIER TRANSFORM in workgroup memory (1,024 points, ten stages of butterflies, two per thread) every frame; and ADDITIVE SYNTHESIS on the GPU — a sine per row, per sample, written into a buffer that comes back as audio                                                                              | "the GPU as an audio engine" — spectra, filters, resynthesis; and the precision traps of long phases in f32                                                      |
 
 - **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
   into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
@@ -436,6 +437,45 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
      turns upright): the first bolt arrives, flashes and thunders once; a tap plants a rod and strikes;
      shapes, Clear rods, the thunder switch (no thunder when off), Storm and the keys all work.
 
+- **Voiceprint** — a picture of sound: pitch up the side (rows spaced evenly in pitch, 80 Hz to
+  8 kHz, a faint line every octave), time along the bottom (512 columns, a sixtieth of a second
+  each), loudness as colour. ▶ Play turns the picture back into sound — a level stroke is a note, a
+  slanting one a glide; it starts with a little tune written in (an arpeggio, a glide, a chord).
+  🖌 Paint and 🧽 Erase with a finger. 🎤 Listen writes the microphone in, column by column, as you
+  sing or whistle, and played back it comes out as a ghost of itself. ♪ The tune puts the tune
+  back; ✕ Clear empties it. Leaving the toy stops the sound and turns the microphone off. Keys:
+  Space plays, L listens, 1–2 tool, T the tune, C clear.
+  Technique: listening, a compute pass of one workgroup takes the newest 1,024 samples, windows
+  them (Hann), puts each where its bits reversed say, and runs a radix-2 FFT in workgroup memory —
+  ten stages of 512 butterflies, two per thread, a barrier between — then each thread reads one
+  row's loudness off the spectrum at that row's pitch. Playing, a pass with a thread per output
+  sample sums a sine for every row at the loudness the picture gives it there, eased between
+  columns, its phase a function of the time alone so nothing clicks from column to column; 8.5
+  seconds come back in one readback and play as an AudioBuffer, normalised and at the instrument
+  channel's volume.
+  ⚠️ What was wrong first:
+  1. **Late in the picture the GPU's sound drifted from the CPU's**, 1.8×10⁻³ on a peak of 0.5. Two
+     guesses were tried and measured before the cause was found, and both stayed in because both are
+     right: the phase is split so no f32 product is large (pitch × time reaches tens of thousands of
+     turns), and the sine is read on −π..π, the only range WGSL holds it to. Neither moved the error
+     much. The cause was WGSL's `pow` — the shader computed each row's pitch with it, and pow is held
+     only loosely; a pitch a millionth out drifts the phase over seconds. Pitches are worked out once
+     on the CPU now, which took the late error to 2.5×10⁻⁴ (and removed 10⁸ pows a play).
+  2. **A quick stroke left gaps**: the brush takes 64 dabs a frame and threw the rest away. They wait
+     for the next frame now; the same swipe paints 483 where it painted 191.
+  3. **WGSL reserves `from`** — a field of the uniform was called it, and was renamed `first`.
+     Measured on the GPU: its transform puts the loudest row of a 440 Hz tone, a two-note chord and
+     noise on the same row as the CPU's (values within 0.007, 5×10⁻⁵ for noise); its synthesis of the
+     tune matches the CPU's sample for sample to 1×10⁻⁴, and 2.5×10⁻⁴ five seconds in; a brush dab
+     paints 0.75 where it lands and nothing ten columns away. The tests hold the CPU copy to the maths:
+     the FFT is the Fourier sum and keeps every bit of energy (Parseval); a tuning fork lands on its
+     own row at about full loudness; rows are even in pitch, an octave the same height everywhere; a
+     level stroke plays its row's pitch (counted by zero crossings); rendering a stretch alone gives the
+     same samples as rendering the whole; a dark picture is silent. In the page, at 1024 and on an
+     emulated phone: Play renders 8.53 seconds and the playhead moves, Stop stops, Clear, Paint and
+     Erase change the picture, Listen with Chromium's fake microphone writes columns, the keys work,
+     and the microphone's track has ended after leaving the toy.
+
 ### Phone checklist — batch 6
 
 - [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
@@ -455,3 +495,6 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
 - [ ] Lightning — is the thunder satisfying through phone speakers, or just noise? Too loud? Does a
       bolt take about the right time to come down? On a big screen the grid's cells show as dots in
       the side branches — charming pixel-lightning, or worth a finer grid?
+- [ ] Voiceprint — sing or whistle with 🎤 Listen on: does your voice show up where you would expect?
+      Played back, is it recognisably you, or just eerie (both are fine)? Is the starting tune
+      pleasant? Is the playback loud enough through phone speakers?

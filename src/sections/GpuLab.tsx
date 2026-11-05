@@ -4,6 +4,7 @@ import { LightningDemo } from '../gpu/LightningDemo'
 import { PixelSortDemo } from '../gpu/PixelSortDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
+import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
@@ -89,6 +90,12 @@ const DEMOS = [
     name: 'Lightning',
     line: 'Lightning — tap the sky to plant a lightning rod and call a bolt down to it, thunder and all.',
     Demo: LightningDemo,
+  },
+  {
+    id: 'voiceprint',
+    name: 'Voiceprint',
+    line: 'Voiceprint — a picture of sound. Sing into it, paint on it, and play it back.',
+    Demo: VoiceprintDemo,
   },
 ] as const
 
@@ -194,6 +201,7 @@ export function GpuLab() {
       {demo === 'pixelsort' && <PixelSortDemo key="pixelsort" {...props} />}
       {demo === 'squish' && <SquishDemo key="squish" {...props} />}
       {demo === 'lightning' && <LightningDemo key="lightning" {...props} />}
+      {demo === 'voiceprint' && <VoiceprintDemo key="voiceprint" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
