@@ -223,10 +223,11 @@ are all "both sides added": keep both, and delete this batch's `demo === …` re
 the registry renders every entry by itself. This section is at the end of the file for the same
 reason.
 
-| Toy    | Interaction                                                                                 | GPU technique                                                                                                                                                                      | Pattern to reuse                                                               |
-| ------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Slime  | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch              | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                 | "many writers, one grid" — any scatter where several threads land on one cell  |
-| Mirror | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames | "time as a texture" — slit-scan, echoes, any effect that needs the recent past |
+| Toy     | Interaction                                                                                 | GPU technique                                                                                                                                                                                                                   | Pattern to reuse                                                               |
+| ------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Slime   | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch              | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                                                              | "many writers, one grid" — any scatter where several threads land on one cell  |
+| Mirror  | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames                                              | "time as a texture" — slit-scan, echoes, any effect that needs the recent past |
+| Bubbles | HOLD to blow (the longer, the bigger), let go to THROW, TAP to pop — and each pop sounds    | PHYSICAL THIN-FILM INTERFERENCE per pixel on sphere impostors (no geometry): for red, green and blue, whether the film's two reflections strengthen or cancel at its thickness; reflection ADDED through premultiplied blending | "colour from physics" — oil slicks, beetles, anything iridescent               |
 
 - **Slime** — a slime mould, after Jeff Jones's physarum model. Lay food (🍯) and it grows a
   glowing network to it, joining the pieces up the way a real one solves a maze; draw walls and it
@@ -275,6 +276,29 @@ reason.
   CPU copy to 1.3×10⁻⁷. In the page, with Chromium's fake camera: it goes live, the brush paints
   under a mouse and under two fingers, and leaving the toy ends the camera's track.
 
+- **Bubbles** — soap bubbles at dusk. Hold a finger down and a bubble grows on it; let go and it
+  sails off the way you were moving; tap one and it pops with a note (kalimba, through the site's
+  synth — small bubbles high, big ones low). Several fingers blow several at once. Free bubbles
+  rise gently, nudge each other apart, and their films DRAIN: the colours sweep through as they
+  thin, and just before bursting by themselves they turn dark and clear, as real ones do. ✨ Blow
+  some, 💥 Pop them all, a sound switch. Keys: B, P, S.
+  Technique: no geometry — each bubble is a quad whose fragment shader rebuilds the sphere's
+  surface, and the colour is THIN-FILM INTERFERENCE: light reflects off both faces of the film, the
+  two meet out of step by the extra path 2·n·d·cosθ, one is flipped, so each wavelength reflects
+  sin²(2π·n·d·cosθ/λ) of itself. Done for 650, 532 and 450nm, over a thickness that is thinner at
+  the top (the soap drains down) and swirls. Fresnel brightens the rim; a glint from the sun.
+  ⚠️ Two things were wrong first. The reflection was multiplied by the film's tiny opacity, so a
+  reflection of 0.4 reached the screen as 0.05 and the bubbles were grey ghosts; it is ADDED now —
+  premultiplied blending lets colour exceed alpha, and alpha is only what the film takes away from
+  behind. And films burst at 25nm, where blue still reflects a fifth — darkening, not black; the
+  black-film stage is 5–15nm, and at 12 every colour is under 5%.
+  Measured: the centre pixel of a bubble on the GPU matches the same sums done in the probe, at five
+  thicknesses from 20 to 1,100nm, to within 0.005; the tests hold the film to the physics (black when
+  thin, a quarter-wave film fully reflects its colour, the pattern repeats every half-wave). In the
+  page: six bubbles open in the air, pop all sounds six notes, a held bubble grows from 35 to 84px,
+  a thrown one flies the way the hand went, a tap pops and sounds once, Sound off sounds none, and
+  two fingers blow two at once.
+
 ### Phone checklist — batch 5
 
 - [ ] Slime — does the network read as alive? Lay food in a few places and watch it link them; draw
@@ -284,3 +308,5 @@ reason.
 - [ ] Mirror — does the camera ask, and does the picture look like a mirror (moving left moves
       left)? Paint 🐢 over your face and turn your head. Does the camera light go off when you
       leave the toy? Smooth on a phone (a 64-frame history)?
+- [ ] Bubbles — do they read as soap rather than glass? Blow a big one slowly; throw one; pop a
+      few. Is the pop sound charming, and quiet enough? Do the colours drift nicely as they age?

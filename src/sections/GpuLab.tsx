@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { BubblesDemo } from '../gpu/BubblesDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
@@ -68,6 +69,12 @@ const DEMOS = [
     name: 'Mirror',
     line: 'Mirror — your camera, with time you can paint: brush part of the picture and it lags behind.',
     Demo: MirrorDemo,
+  },
+  {
+    id: 'bubbles',
+    name: 'Bubbles',
+    line: 'Bubbles — hold to blow a soap bubble, let go to send it off, tap one to pop it.',
+    Demo: BubblesDemo,
   },
 ] as const
 
@@ -170,6 +177,7 @@ export function GpuLab() {
       {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
       {demo === 'slime' && <SlimeDemo key="slime" {...props} />}
       {demo === 'mirror' && <MirrorDemo key="mirror" {...props} />}
+      {demo === 'bubbles' && <BubblesDemo key="bubbles" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
