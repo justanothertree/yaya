@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ARPS, STEP_BEATS, arpIndex, arpRunner, stepSeconds, type ArpId, type ArpNote } from './arp'
+import {
+  ARPS,
+  STEP_BEATS,
+  alignTo,
+  arpIndex,
+  arpRunner,
+  stepSeconds,
+  type ArpId,
+  type ArpNote,
+} from './arp'
 
 /**
  * A sequencer, asked questions without a browser.
@@ -387,5 +396,102 @@ describe('what is sounding right now', () => {
     r.runner.stop()
     r.tickTo(5)
     expect(r.runner.soundingAt(5)).toBeNull()
+  })
+})
+
+describe('playing in time with a loop', () => {
+  /**
+   * ⚠️ TWO PULSES AT THE SAME TEMPO AND A RANDOM PHASE DO NOT SOUND SLIGHTLY LATE, they sound
+   * like a mistake — and the offset never resolves, because nothing is pulling them together.
+   * A free-running arpeggiator over a recorded loop is exactly that, and it is the difference
+   * between a toy and something you can build a part with.
+   */
+  describe('alignTo', () => {
+    it('finds the next point on the grid', () => {
+      expect(alignTo(0.7, 0, 0.25)).toBeCloseTo(0.75, 9)
+      expect(alignTo(0.1, 0, 0.25)).toBeCloseTo(0.25, 9)
+    })
+
+    it('moves strictly forward, even when it is already exactly on a point', () => {
+      /* ⚠️ STRICTLY. Returning `from` for a time that is already on the grid would schedule two
+         notes at the same instant and then stall, because the pulse never advances. */
+      expect(alignTo(0.5, 0, 0.25)).toBeCloseTo(0.75, 9)
+      expect(alignTo(0, 0, 0.25)).toBeCloseTo(0.25, 9)
+    })
+
+    it('works from a grid that did not start at zero', () => {
+      /* the loop's origin is whenever somebody pressed play */
+      expect(alignTo(10.1, 3.4, 0.5)).toBeCloseTo(10.4, 9)
+      expect(alignTo(3.4, 3.4, 0.5)).toBeCloseTo(3.9, 9)
+    })
+
+    it('handles a point before the origin', () => {
+      /* a note pressed during the count-in, before the loop's start */
+      expect(alignTo(-0.6, 0, 0.25)).toBeCloseTo(-0.5, 9)
+    })
+
+    it('gives up rather than dividing by a gap of zero', () => {
+      for (const gap of [0, -1, NaN]) expect(alignTo(5, 0, gap)).toBe(5)
+      expect(alignTo(5, NaN, 0.25)).toBe(5)
+    })
+  })
+
+  it('still sounds the first note on the press', () => {
+    /* the whole reason the SECOND step is what gets snapped: a short press must make a sound */
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120, 0.17) // a grid at a deliberately awkward phase
+    expect(r.played).toHaveLength(1)
+    expect(r.played[0].at).toBe(0)
+  })
+
+  it('is on the loop grid by the second note, and stays there', () => {
+    const r = rig()
+    /* a loop that started at 0.17 — a step is 0.25s at 120bpm, so the grid is 0.17, 0.42, … */
+    r.runner.update([60, 64, 67], 'up', 120, 0.17)
+    r.tickTo(2)
+    const after = r.played.slice(1)
+    expect(after.length).toBeGreaterThan(4)
+    for (const n of after) {
+      const off = (n.at - 0.17) / 0.25
+      expect(Math.abs(off - Math.round(off)), `note at ${n.at} is off the grid`).toBeLessThan(1e-6)
+    }
+  })
+
+  it('does not drift away from the grid over a long hold', () => {
+    const r = rig()
+    r.runner.update([60, 64, 67], 'updown', 96, 1.3)
+    r.tickTo(300, 0.5)
+    const last = r.played[r.played.length - 1]
+    const off = (last.at - 1.3) / stepSeconds(96)
+    expect(
+      Math.abs(off - Math.round(off)),
+      `drifted by the ${r.played.length}th note`,
+    ).toBeLessThan(1e-6)
+  })
+
+  it('runs free when there is no loop to be in time with', () => {
+    /* unchanged behaviour: every note a whole step from the last, starting on the press */
+    const r = rig()
+    r.runner.update([60, 64], 'up', 120)
+    r.tickTo(1.2)
+    for (let i = 1; i < r.played.length; i++)
+      expect(r.played[i].at - r.played[i - 1].at).toBeCloseTo(0.25, 9)
+    expect(r.played[0].at).toBe(0)
+  })
+
+  it('shortens only the FIRST gap, never lengthens the figure', () => {
+    /**
+     * ⚠️ THE GAP THAT CLOSES THE PHASE IS SHORTER THAN A STEP, never longer. Snapping forward
+     * to the next grid point can only ever ask for less than one full step, so the figure never
+     * pauses — a hole at the start would be heard as a stumble on every press.
+     */
+    for (const phase of [0.01, 0.07, 0.12, 0.2, 0.249]) {
+      const r = rig()
+      r.runner.update([60, 64], 'up', 120, phase)
+      r.tickTo(0.9)
+      const first = r.played[1].at - r.played[0].at
+      expect(first, `phase ${phase}`).toBeGreaterThan(0)
+      expect(first, `phase ${phase}`).toBeLessThanOrEqual(0.25 + 1e-9)
+    }
   })
 })

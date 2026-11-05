@@ -102,6 +102,7 @@ import {
   cancelRecord,
   capture,
   clearLayers,
+  loopOrigin,
   loopState,
   removeLayer,
   setLayerFx,
@@ -1024,6 +1025,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     }
   }, [arpLit, arping])
 
+  /**
+   * The pulse to be in time with, or null when there is nothing to be in time with.
+   *
+   * ⚠️ `loopState()`, NOT THE `loop` FROM RENDER, for the reason the space-bar handler gives
+   * further down: these are read from callbacks that outlive the render that built them, and
+   * the store's snapshot is always current where a captured value is whatever was true at the
+   * time. Getting it wrong would mean an arpeggio locking to a loop that has since stopped, or
+   * free-running over one that has since started.
+   */
+  const gridNow = useCallback(() => (loopState().playing ? loopOrigin() : null), [])
+
   /** Show what the book holds. The ONE place either of the two lit-key states is written. */
   const show = useCallback(() => {
     setHeld(book.notes())
@@ -1053,7 +1065,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * otherwise is how `press` ends up sounding a chord the runner is also playing.
        */
       if (live.current.arp !== 'off') {
-        arping.update(book.notes(), live.current.arp, live.current.bpm)
+        arping.update(book.notes(), live.current.arp, live.current.bpm, gridNow())
         show()
         return
       }
@@ -1067,7 +1079,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       show()
     },
     /* `arping` is one runner per mount, so this stays referentially stable */
-    [book, report, show, arping],
+    [book, report, show, arping, gridNow],
   )
 
   /**
@@ -1150,11 +1162,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         report(v.midi, false)
       }
       if (live.current.arp !== 'off')
-        arping.update(book.notes(), live.current.arp, live.current.bpm)
+        arping.update(book.notes(), live.current.arp, live.current.bpm, gridNow())
       show()
     },
     /* `arping` is one runner per mount, so this stays referentially stable */
-    [book, report, show, arping],
+    [book, report, show, arping, gridNow],
   )
 
   /**

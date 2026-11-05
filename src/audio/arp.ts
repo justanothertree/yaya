@@ -71,6 +71,30 @@ export function arpIndex(id: ArpId, count: number, step: number, roll = 0): numb
   }
 }
 
+/**
+ * The next point on a grid strictly after `from`.
+ *
+ * ⚠️ WHY AN ARPEGGIO NEEDS THIS AT ALL. Free-running, the figure starts the instant you press
+ * and its pulse has no relationship to anything else — which is right when you are playing
+ * alone, and wrong the moment there is a loop underneath. Two pulses at the same tempo and a
+ * random phase offset do not sound like one is slightly late; they sound like a mistake, and
+ * the offset never resolves because nothing is pulling them together.
+ *
+ * Snapping the SECOND step to the loop's own grid fixes the phase without costing the first
+ * note: you still hear something the instant you press, and by the next step the figure is in
+ * time with the loop. The alternative — waiting for the next grid point before the first note —
+ * is what a hardware arpeggiator does, and on a short press it reads as a dead key.
+ *
+ * @param from the moment after which the next grid point is wanted
+ * @param origin any point known to be on the grid — the loop's start
+ * @param gap the spacing
+ */
+export function alignTo(from: number, origin: number, gap: number): number {
+  if (!(gap > 0) || !Number.isFinite(origin)) return from
+  const steps = Math.floor((from - origin) / gap) + 1
+  return origin + steps * gap
+}
+
 /** One note the runner has committed to the clock. */
 export type ArpNote = { voice: string; midi: number; at: number; until: number }
 
@@ -82,7 +106,7 @@ export type ArpRunner = {
    * widen the figure, not restart it — a pulse that jumped back to the first note every time a
    * finger landed would make it impossible to play along with anything.
    */
-  update(notes: number[], pattern: ArpId, bpm: number): void
+  update(notes: number[], pattern: ArpId, bpm: number, grid?: number | null): void
   /** Stop at once, and say which notes are still sounding so the caller can silence them. */
   stop(): ArpNote[]
   /** What is sounding now, if anything — for showing the figure on the keyboard. */
@@ -114,6 +138,8 @@ export function arpRunner(opts: {
   let pattern: ArpId = 'off'
   let bpm = 120
   let nextAt: number | null = null
+  /** the loop's start, when there is a loop to be in time with */
+  let align: number | null = null
   let step = 0
   let cancel: (() => void) | null = null
   /**
@@ -154,7 +180,10 @@ export function arpRunner(opts: {
       out.push(n)
       opts.play(n)
       step++
-      nextAt += gap
+      /* the first advance lands on the loop's grid if there is one; after that the pulse is
+         already aligned and plain addition keeps it there */
+      nextAt = align !== null ? alignTo(nextAt, align, gap) : nextAt + gap
+      align = null
       /* a true runaway guard now: with pruning the list holds a handful, so reaching this
          means the clock is not advancing and committing more would never end */
       if (out.length > 512) {
@@ -168,10 +197,11 @@ export function arpRunner(opts: {
     cancel?.()
     cancel = null
     nextAt = null
+    align = null
   }
 
   return {
-    update(next, p, tempo) {
+    update(next, p, tempo, grid) {
       notes = next
       pattern = p
       bpm = tempo
@@ -183,8 +213,16 @@ export function arpRunner(opts: {
         /* ⚠️ THE FIRST NOTE IS NOW, NOT ONE STEP FROM NOW. An arpeggiator that waits a beat
            before its first note feels broken on a short press — you tap a key and hear nothing.
            The step counter starts at 0 so the first thing you hear is the note you pressed. */
-        nextAt = opts.now()
+        const at = opts.now()
+        nextAt = at
         step = 0
+        /**
+         * ⚠️ THE SECOND STEP IS WHAT GETS SNAPPED, not the first. With a loop running, `grid`
+         * is its start time and the figure falls into the loop's own pulse by the next note —
+         * so you hear the key immediately AND the arpeggio is in time. Without a loop there is
+         * nothing to be in time with and the figure simply runs from the press.
+         */
+        align = typeof grid === 'number' ? grid : null
         cancel = every(tick)
       }
       tick()
