@@ -1,94 +1,167 @@
-# ⚠️ PARKED, NOT LIVE. Copy this over .github/workflows/deploy.yml yourself.
+# ⚠️ THIS FILE BELONGS AT .github/workflows/db-guards.yml AND IS PARKED HERE.
+# GitHub refuses a push that creates or edits a workflow file unless the pushing credential
+# holds the `workflow` scope, and the one I push with does not:
 #
-# This session's token has no `workflow` scope, so GitHub refuses the push outright:
+#     ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update
+#       workflow `.github/workflows/db-guards.yml` without `workflow` scope)
 #
-#   ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update
-#     workflow `.github/workflows/deploy.yml` without `workflow` scope)
+# So it is committed here instead of being silently dropped. To enable it, move it and push
+# yourself -- or paste it into GitHub's web editor, which creates the file with your own scope:
 #
-# Same reason db-guards.yml beside this file is parked. The change is one job and one `needs:`.
+#     git mv docs/ci/db-guards.yml .github/workflows/db-guards.yml && git commit && git push
 #
-# ── what it fixes ───────────────────────────────────────────────────────────────────────────
+# It will fail on its first run until a schema baseline exists; the reason, the one command that
+# fixes it, and what then happens to the migrations already here are all in the baseline step.
 #
-# ⚠️ THE DEPLOY DID NOT WAIT FOR LINT OR TESTS. `deploy` needed `build`, and `build` needed
-# nothing — so lint.yml and test.yml ran BESIDE this workflow rather than in front of it. A push
-# whose tests failed still went to production as long as it compiled; the red tick arrived next
-# to a green deploy. They are separate workflows and `needs:` cannot reach across workflows, so
-# the only way to make the deploy wait is to run them here.
+# ⚠️ ONE STEP IN HERE DOES NOT NEED ANY OF THAT. The migration md5 check needs no Docker, no CLI
+# and no credentials, so it is first and it passes today. It is also already running for real:
+# `npm run test` calls it through `scripts/migration-md5.test.mjs`, and .github/workflows/test.yml
+# runs that on every push. It is repeated here because this is the job about the migrations
+# directory, and a failure named in the job about migrations is the one somebody will read.
 #
-# They still run on their own for pull requests, where the duplication costs nothing and the
-# feedback is the point. On a push to main the cost is one extra `npm ci` and a test run, which
-# is the price of the deploy meaning something.
+name: db guards
 
-name: Deploy to GitHub Pages
+# Runs supabase/tests/visibility-guards.sql against a throwaway local database on every push.
+#
+# ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
+# `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
+# connection string to the live project would make every workflow run a thing that can read
+# members' data, which is a much larger decision than running a test.
+#
+# ⚠️ AND IT CANNOT PASS BY TESTING NOTHING. A freshly migrated database has no members, no admin
+# and no logs, so every check that needs a session would succeed against an empty set and report
+# a green zero. `supabase/seed.sql` supplies the fixtures, and the guard file refuses to run
+# without them — see its block 0, and block L, which refuses its own zeros unless an opted-in
+# minor is reaching their friend with something. The seed carries a second circuit log purely so
+# that block has a non-zero to measure against; the comment on it says so, in case it ever looks
+# redundant.
 
 on:
   push:
-    branches: [main]
+  pull_request:
   workflow_dispatch:
 
+# read-only: this job checks out code and talks to a local container, nothing else
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
-  verify:
+  guards:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
-      - run: npm ci
-      # the only real typecheck: the root tsconfig has `files: []`, so plain `tsc --noEmit`
-      # checks nothing and passes on anything
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
+          node-version: 22
 
-  build:
-    needs: verify
-    concurrency:
-      group: pages-${{ github.ref }}
-      cancel-in-progress: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-      # ⚠️ Plain `npm ci`, NOT `npm ci || npm i`.
+      # ⚠️ NEVER EDIT A MIGRATION PRODUCTION HAS ALREADY APPLIED. A migration file is not source
+      # code that can be corrected; it is the record of an event, and the database it describes
+      # has moved on. The fix goes in a new timestamped migration.
       #
-      # `npm ci` exists to verify that package-lock.json still matches package.json, and it is
-      # the only thing checking that. Falling back to `npm i` turns that check into a shrug: on
-      # lockfile drift it silently resolves different versions, rewrites the lock in CI, and
-      # DEPLOYS the result. The one workflow that publishes to production was the one not
-      # enforcing it, while build.yml — which ships nothing — used strict `npm ci`.
+      # `supabase/migrations/applied.md5` holds, per file, the md5 of the statement production
+      # actually ran — committed rather than fetched, because this job has no credentials and
+      # must not be given any (see the note at the top about what a connection string here would
+      # mean). The script recomputes each file's body and compares.
       #
-      # Verified before removing: the lockfile is in sync (deps and devDeps both match), `npm ci`
-      # succeeds locally, and build.yml already proves plain `npm ci` works in this CI. So the
-      # fallback was dead weight that could only ever fire in the case worth knowing about.
-      - run: npm ci
-      - run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_LEADERBOARD_TABLE: ${{ secrets.VITE_LEADERBOARD_TABLE }}
-          VITE_LEADERBOARD_NAME_COLUMN: ${{ secrets.VITE_LEADERBOARD_NAME_COLUMN }}
-          # Multiplayer WS endpoint (Render): set this secret to your wss:// service URL
-          VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
+      # ⚠️ IT IS A PIN, NOT AN EXEMPTION, and that distinction is the whole design. Eleven files
+      # already diverge: three gained re-run guards after being applied — including the two the
+      # step below depends on — and eight predate the body-md5 protocol existing. A manifest that
+      # merely listed those eleven as "allowed to differ" would hand a permanent licence to
+      # exactly the files most likely to be edited again. Instead the line pins the one text that
+      # is allowed, so a second edit to a diverging file fails like any other.
+      #
+      # ⚠️ IT ALSO FAILS ON A MIGRATION FILE WITH NO LINE IN THE MANIFEST, from 4 Nov. That was
+      # reported with an exit code of 0 to begin with, so THIS STEP would have gone green over a
+      # migration applied without its hash being recorded — the suite behind it was the stricter
+      # of the two, which is the wrong way round for the thing with the word "check" on it. The
+      # schema baseline is the one exception and is named in the script, not inferred.
+      - name: Check every migration file matches production's record
+        run: node scripts/migration-md5.mjs
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # ⚠️ THE REPOSITORY CANNOT CURRENTLY BUILD ITS OWN SCHEMA FROM SCRATCH, and this step says
+      # so in one sentence rather than letting `db reset` fail three minutes later with
+      # `relation "public.profiles" does not exist`. supabase/migrations holds the changes made
+      # since late October; the 283 before them live only in the live database, so nothing here
+      # creates the tables the recent ones alter.
+      #
+      # ── GENERATING THE BASELINE (still the one thing standing between this job and green) ──
+      #     supabase link --project-ref <ref>
+      #     supabase db dump --linked --schema public,finance \
+      #       -f supabase/migrations/00000000000000_baseline.sql
+      #
+      # ⚠️ `--schema public,finance`, NOT THE DEFAULT. `db dump` takes `public` alone unless told
+      # otherwise, and this database has a second schema with tables in it: `finance`, 10 tables,
+      # which `20261029153952_family_fund_safety.sql` alters. A public-only baseline builds a
+      # database where that migration dies on `relation "finance.family_accounts" does not
+      # exist`, which looks like a broken migration and is a missing schema. Counted on 4 Nov:
+      # public 52 tables, finance 10; `auth`, `storage` and `realtime` are Supabase's own and
+      # `supabase start` creates them.
+      #
+      # ── AND WHAT THEN HAPPENS TO THE MIGRATIONS ────────────────────────────────────────────
+      # The dump is the schema AS IT IS TODAY, so it already contains everything they did. On a
+      # fresh database they replay on top of it, and nearly all do not mind: `create or replace
+      # function`, `add column if not exists`, `create ... if not exists`, `drop ... if exists`,
+      # grants, revokes, and data updates that are no-ops on empty tables.
+      #
+      # ⚠️ THE COUNT THIS COMMENT USED TO GIVE WAS WRONG BY THE TIME ANYBODY READ IT, which is
+      # the §2 rule turned on a workflow file. It said "exactly two statements in one file would
+      # fail — two bare `create policy` in 20261030032833". Re-counted on 4 Nov across all 79
+      # migrations (it was 37 when that sentence was written):
+      #
+      #   * those two `create policy` statements are ALREADY guarded, each by a `drop policy if
+      #     exists ... on ...` directly above it. Fixed at some point after the note was written
+      #     and the note never caught up.
+      #   * the real remainder was SIX bare `create trigger` statements in
+      #     `20261103200333_a_list_goes_when_its_item_leaves_certain.sql`, a file that did not
+      #     exist when this was written. Each now has a `drop trigger if exists` above it, and
+      #     that file's header records the md5 divergence that creates.
+      #   * everything else that looked unguarded is guarded in a style a naive grep misses:
+      #     `add constraint` inside `if not exists (select 1 from pg_constraint ...)`.
+      #
+      # So the count is zero today. Re-derive it rather than trusting this paragraph — the scan
+      # has to understand BOTH guard styles, and two earlier attempts at it were wrong in both
+      # directions before the third agreed with reading the files.
+      #
+      # The alternative was to SQUASH — keep only the baseline and move the rest into a
+      # subdirectory (the CLI reads `*.sql` in the migrations directory and ignores folders).
+      # Rejected: it takes the migration headers out of the place people look, and those headers
+      # are where this project keeps its reasoning.
+      #
+      # Either way the baseline must sort FIRST, hence the all-zero timestamp: `db reset` applies
+      # files in filename order, so a baseline dated after them would let them run first against
+      # an empty database and fail exactly as today.
+      - name: Check the migrations can build the schema
+        run: |
+          if ! grep -rqiE 'create[[:space:]]+table[[:space:]]+(if[[:space:]]+not[[:space:]]+exists[[:space:]]+)?("?public"?\.)?"?profiles"?([[:space:](]|$)' supabase/migrations/; then
+            echo "::error title=No schema baseline::supabase/migrations cannot build this schema from scratch — nothing in it creates public.profiles, so the migrations that ALTER it will fail. Generate a baseline once: supabase db dump --linked --schema public,finance -f supabase/migrations/00000000000000_baseline.sql (see this workflow's comments for what then happens to the migrations already here)"
+            exit 1
+          fi
+
+      # ⚠️ PINNED. `version: latest` means a CLI release can change what this job does without a
+      # commit here, which is the same rot a floating dependency always is — and for a job whose
+      # whole purpose is to notice changes, a moving part nobody chose is the wrong kind.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.0
+
+      - name: Start a throwaway database
+        run: supabase start
+
+      # applies every migration in order, then supabase/seed.sql
+      - name: Apply migrations and seed
+        run: supabase db reset
+
+      - name: Run the visibility guards
+        run: |
+          DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
+          if [ -z "$DB_URL" ]; then
+            DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          fi
+          # ON_ERROR_STOP turns the suite's own RAISE into a failed job
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+
+      - name: Stop the database
+        if: always()
+        run: supabase stop --no-backup || true
