@@ -9,6 +9,7 @@ import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { MarbleDemo } from '../gpu/MarbleDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
+import { RibbonsDemo } from '../gpu/RibbonsDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -113,6 +114,12 @@ const DEMOS: readonly {
     Demo: ClothDemo,
     name: 'Cloth',
     line: 'Cloth — grab it, pull it, tear it, cut it. Let go mid-swing and it flies.',
+  },
+  {
+    id: 'ribbons',
+    Demo: RibbonsDemo,
+    name: 'Ribbons',
+    line: 'Ribbons — light that dances by itself. Lead it with a finger, or let the music move it.',
   },
 ]
 

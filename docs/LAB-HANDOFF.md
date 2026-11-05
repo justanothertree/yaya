@@ -86,13 +86,14 @@ Each toy here is chosen to be different from the seven above, and from each othe
 what it does, how you touch it, and how the GPU draws it — so the batch reads as a set of
 interactions and GPU patterns that can be lifted into the rest of the site.
 
-| Toy      | Interaction                                                                                                                              | GPU technique                                                                                                                                                                                                 | Reusable pattern                                                                      |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                                                                 | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                                                                                        | "every action is a warp of the whole image" — any number of edits per frame, in order |
-| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern                                                   | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient                                                               | "a simulation the user steers by its parameters" — the map is the UI                  |
-| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint                                             | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing                                                                    | "agents that look at each other" — flocking, crowds, anything with neighbours         |
-| Tunnel   | a STICK: press and drag, and the distance from where you pressed is how hard you turn; or tilt the phone; a little game (catch the orbs) | sphere tracing: no geometry, one full-screen pass, every pixel marches a ray through two distance functions; domain repetition for the orbs                                                                   | "a world that is only a function" — any SDF scene, and a camera somebody steers       |
-| Cloth    | HANDLE an object: grab with several fingers, pull, tear, throw; a scissors tool cuts along a stroke                                      | position-based dynamics: Verlet integration and distance constraints in compute, GRAPH-COLOURED into 8 phases so no two threads write one particle; the mesh is built in the vertex shader from the particles | "a soft body you can hold" — ropes, jelly, flags, anything that stretches             |
+| Toy      | Interaction                                                                                                                              | GPU technique                                                                                                                                                                                                 | Reusable pattern                                                                           |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                                                                 | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                                                                                        | "every action is a warp of the whole image" — any number of edits per frame, in order      |
+| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern                                                   | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient                                                               | "a simulation the user steers by its parameters" — the map is the UI                       |
+| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint                                             | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing                                                                    | "agents that look at each other" — flocking, crowds, anything with neighbours              |
+| Tunnel   | a STICK: press and drag, and the distance from where you pressed is how hard you turn; or tilt the phone; a little game (catch the orbs) | sphere tracing: no geometry, one full-screen pass, every pixel marches a ray through two distance functions; domain repetition for the orbs                                                                   | "a world that is only a function" — any SDF scene, and a camera somebody steers            |
+| Cloth    | HANDLE an object: grab with several fingers, pull, tear, throw; a scissors tool cuts along a stroke                                      | position-based dynamics: Verlet integration and distance constraints in compute, GRAPH-COLOURED into 8 phases so no two threads write one particle; the mesh is built in the vertex shader from the particles | "a soft body you can hold" — ropes, jelly, flags, anything that stretches                  |
+| Ribbons  | WATCH: it plays by itself; press to lead it, 🎵 Listen to let the music move it                                                          | a ring-buffer trail written by compute (one point a frame, nothing ever shifted); ribbon geometry built in the vertex shader, camera-facing and twisting; additive glow                                       | "a trail" — any comet, cursor trail or swoosh: one write a frame, and the geometry is free |
 
 - **Marbling** — paper marbling after Jaffer's _Mathematical Marbling_. Tap to float a drop of ink
   in the next colour of the set; hold, and it keeps spreading, pushing everything round it outward.
@@ -199,6 +200,29 @@ interactions and GPU patterns that can be lifted into the rest of the site.
   stretch 1.2× curtain, 1.33× pegs); a stroke across cuts exactly the 190 edges it crosses; in the
   page, one frame carries a press, two touch fingers hold at once, and the real rendered frames
   show a pull, a tear and a cut piece on the floor.
+
+- **Ribbons** — ribbons of light that dance by themselves through space while the camera drifts
+  round them: Loops (Lissajous), Rose (three-petalled) or Wander. Press and they swoop to your
+  finger and circle it; let go and they swoop back into their dance. 🎵 Listen moves them to
+  whatever the site is playing — louder dances faster and wider, every kick flares. 6 / 12 / 24
+  ribbons, four colourings (the shared palettes). Keys: Space, D next dance, L listen, 1–4.
+  Technique: each ribbon's trail is a RING BUFFER of 160 points in a storage buffer. A compute
+  pass writes one new point per ribbon over the oldest each frame and moves nothing else, and
+  `head` says where the newest is — so a trail costs one write a frame, not 160. The vertex shader
+  then builds the ribbon straight from it: two vertices across each point, spread square to the
+  path and the line of sight and then TWISTED slowly along it, so the strip turns edge-on and back
+  and reads as silk rather than tape; brightness follows how squarely it faces you; additive
+  blending makes crossings glow. Width follows the head's real speed, measured between slots.
+  ⚠️ A head is not a spring, and two were tried: a spring chasing the dance trailed it by up to
+  1.38, more than the figure is wide, so Rose never drew a petal (five times stiffer still left
+  0.53); a sprung displacement towards the finger lagged the same way, because the dance it is
+  measured from keeps moving. Any follower lags a moving target. A head is now its dance blended
+  towards its place round the finger by the lead's eased strength — both ends exact, and the
+  easing is the swoop.
+  Measured: the GPU's newest trail point matches the CPU's `headAt` to 3.3×10⁻⁴ (one frame out of
+  step would be 3.8×10⁻²), and the point 30 frames back is where the head was 30 frames ago. The
+  camera's own unprojection lands a point back under the finger to a millionth of a pixel. In the
+  page, holding a finger leads them there and letting go eases the lead to nothing.
 
 ### How the room is built
 
@@ -322,6 +346,8 @@ Batch 2:
 - [ ] Cloth — does it tear too easily? (A brisk drag across a curtain tears where it is held;
       TEAR is 2.4× an edge's length.) Two fingers pulling apart; cut across and watch the piece
       fall; is it smooth on a phone (44 columns, up to 3 steps × 80 constraint passes a frame)?
+- [ ] Ribbons — do they read as silk in space, or as tangled lines? Hold a finger down and move
+      it about; play a song in Music and come back with 🎵 Listen on. Is 24 ribbons smooth?
 
 ## What to try next
 
