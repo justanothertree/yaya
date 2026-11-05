@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { MusicDemo } from '../gpu/MusicDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
@@ -28,6 +29,11 @@ const DEMOS = [
     id: 'fluid',
     name: 'Fluid',
     line: 'Fluid painting — drag to stir colour into a simulated fluid that swirls, spreads and fades.',
+  },
+  {
+    id: 'music',
+    name: 'Music',
+    line: 'Music visual — your mic, a file or the instrument as bars or a ring, drawn into a trail.',
   },
 ] as const
 
@@ -124,6 +130,7 @@ export function GpuLab() {
       {demo === 'swarm' && <SwarmDemo key="swarm" {...props} />}
       {demo === 'life' && <LifeDemo key="life" {...props} />}
       {demo === 'fluid' && <FluidDemo key="fluid" {...props} />}
+      {demo === 'music' && <MusicDemo key="music" {...props} />}
 
       {report && <GpuReport report={report} />}
     </div>
