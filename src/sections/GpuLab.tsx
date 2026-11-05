@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { AquariumDemo } from '../gpu/AquariumDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { GrowthDemo } from '../gpu/GrowthDemo'
@@ -92,6 +93,12 @@ const DEMOS: readonly {
     Demo: GrowthDemo,
     name: 'Growth',
     line: 'Growth — two chemicals reacting on a grid grow coral, dividing cells, worms or mazes. Seed it and watch.',
+  },
+  {
+    id: 'aquarium',
+    Demo: AquariumDemo,
+    name: 'Aquarium',
+    line: 'Aquarium — fish that school with their own kind. Tap to feed them; drag and you are the shark.',
   },
 ]
 

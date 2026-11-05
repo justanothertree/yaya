@@ -86,10 +86,11 @@ Each toy here is chosen to be different from the seven above, and from each othe
 what it does, how you touch it, and how the GPU draws it — so the batch reads as a set of
 interactions and GPU patterns that can be lifted into the rest of the site.
 
-| Toy      | Interaction                                                                            | GPU technique                                                                                                                                   | Reusable pattern                                                                      |
-| -------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once               | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                          | "every action is a warp of the whole image" — any number of edits per frame, in order |
-| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient | "a simulation the user steers by its parameters" — the map is the UI                  |
+| Toy      | Interaction                                                                                  | GPU technique                                                                                                                                   | Reusable pattern                                                                      |
+| -------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Marbling | tap and HOLD to spread ink; drag a tool through it; many fingers at once                     | exact inverse warps of a texture, one pass per action, one uniform slot per action via dynamic offsets                                          | "every action is a warp of the whole image" — any number of edits per frame, in order |
+| Growth   | seed by drawing, then watch it grow by itself; tap the parameter map to pick a pattern       | a continuous PDE (Gray–Scott) on a grid, 2–48 compute steps a frame, ping-pong storage buffers; the draw lights the result off its own gradient | "a simulation the user steers by its parameters" — the map is the UI                  |
+| Aquarium | tap to feed, drag to BE something in the world (the shark) — the toy reacts, you don't paint | boids: all-pairs neighbour search tiled through workgroup shared memory; creatures drawn by vertex pulling, 9 vertices each, no instancing      | "agents that look at each other" — flocking, crowds, anything with neighbours         |
 
 - **Marbling** — paper marbling after Jaffer's _Mathematical Marbling_. Tap to float a drop of ink
   in the next colour of the set; hold, and it keeps spreading, pushing everything round it outward.
@@ -121,6 +122,26 @@ interactions and GPU patterns that can be lifted into the rest of the site.
   (bilinear, by hand from the storage buffer) and lights it off its own slope, so it reads as
   something grown rather than printed. Measured: the real shader matches a CPU copy of the
   equations to 1.3×10⁻⁶ over 60 steps of a 61×37 grid, and every preset grows from its seeds.
+
+- **Aquarium** — a tank of fish in three colours, and each schools only with its own kind. Tap
+  to drop a pellet of food — it sinks and fades, and every fish that notices it heads for it, so a
+  tap makes a ball of fish; drag through the water and you are the shark, and the schools split
+  round you. 512 / 1.5K / 4K fish (touch-only devices stop at 1.5K), 🐟 Restock. Keys: Space, F
+  feed, R restock.
+  Technique: boids, the three rules of separation, alignment and cohesion, with every fish
+  looking at every other one each frame. The neighbours arrive 64 at a time through
+  `var<workgroup>` memory — each workgroup loads one tile together, waits at a barrier, and every
+  fish reads the tile from there — which is the same arithmetic with a sixty-fourth of the trips
+  to memory. Separation is felt across kinds (fish do not swim through each other), alignment and
+  cohesion only within one. The fish are drawn by vertex pulling: nine vertices each, read
+  straight out of the storage buffer the compute pass wrote, with a tail that wiggles faster the
+  faster it swims. The water is one full-screen pass with caustics and the pellets as specks.
+  Measured on the real shader (SwiftShader, 1,536 fish, ten simulated seconds): a fish's
+  neighbours swimming its way went from 0.01 to 0.78, the share of its near neighbours that are
+  its own kind from 33% (chance) to 93%; with a shark parked in the middle the fish within a
+  quarter of it went 69 → 0, and with a pellet down the fish near it went 31 → 647. One step of
+  1,536 fish costs about 32 ms in SwiftShader, which is a CPU pretending; a phone's GPU is the
+  question.
 
 ### How the room is built
 
@@ -226,12 +247,17 @@ Batch 2:
       watch it rise
 - [ ] Galaxy — do the arms read as arms on a phone at 128K? Drag to tilt it nearly edge on; play
       a song in Music and come back to watch it flare on the beat
+      Batch 3:
+
 - [ ] Marbling — does a held drop feel like ink spreading? Comb across a marbled sheet; two
       fingers with the stylus; does the paper stay crisp, or soften too fast after many strokes?
 - [ ] Growth — does it keep up on a phone (136×164 cells, 16 steps a frame)? Turn the map on and
       tap around it; does coral read as coral?
 - [ ] the picker on a phone: a dropdown with ‹ › either side (batch 3) — measured at 375 it lets
       328 of the canvas's 412 px show on the first screen, where seven buttons in two rows let 275
+- [ ] Aquarium — do the three kinds read as separate schools? Tap to feed and watch a ball form;
+      drag through a school — does it scatter like fish from a shark, or just part? Try 1.5K for
+      smoothness
 
 ## What to try next
 
