@@ -1656,9 +1656,10 @@ Same rules of evidence as batch 8: _measured_ means unit tests or headless Chrom
 (a CPU stand-in for a GPU); "emulated phone" is Playwright's iPhone 13 profile with CDP touch, which
 checks layout and touch routing only. Nobody has played these on a real device.
 
-| Toy   | What you do                                                                                                                                                                                          | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                             |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Strut | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind |
+| Toy   | What you do                                                                                                                                                                                                       | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                                                                          |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strut | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep              | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind                                                                              |
+| Gust  | NEW: air hockey with no mallets — steer a fan round your half and blow; real wind carries the puck past four posts into the other goal. Against the computer (three speeds) or a friend on one device, first to 5 | a STABLE-FLUIDS solver on a 160×90 grid (advect, red-black Gauss-Seidel pressure, project) with the posts, walls and open goal mouths as boundaries; the puck is stepped ON THE GPU by the air round it and read back each frame for the score          | "the GPU owns the physics, the CPU owns the rules": a one-thread pass that is a pure CPU function line for line, read back with a serial so a stale read is never counted |
 
 - **Strut** — a creature whose step sequencer is both its gait and its song. Each row of the grid
   under the stage is a muscle, and plays that muscle's note: the muscles sorted longest first climb a
@@ -1709,8 +1710,64 @@ checks layout and touch routing only. Nobody has played these on a real device.
      Not measured: whether finding a walking groove is fun or frustrating, how in time the notes feel
      (they sound on the frame the physics reaches the step, up to a frame late), and phone speed.
 
+- **Gust** — air hockey with no mallets. Each player has a fan they move round their own half of
+  the rink; it blows straight at the puck while held, and the wind — a real fluid, swirling round
+  four posts and round the puck itself — is what moves the puck. So where you stand is your aim:
+  get behind the puck to send it at the other goal, get in front of it to stop a shot. A fan's
+  breath (the arc round it) empties in 2.2 s of blowing and refills in 3.5 s, so it is played in
+  bursts. Blue's and Orange's wind dye the ice their colours, so you can see the air you made.
+  Against the computer (🤖, Gentle / Keen / Sharp — how fast its fan moves) or 👥 two players on
+  one device: each player's finger on their half of the ice steers and blows their fan, and two
+  thumbs at once work. On a tall stage (a phone held upright) the rink stands up, Blue's goal at the
+  bottom. First to 5; a goal rings a bell and play waits 1.5 s with the puck nudged toward who
+  conceded. Keys: Blue WASD + F to blow, Orange arrows + / or Enter, P or Space pause, N new match.
+  Technique: `force` adds each blowing fan's jet (6 cells wide, fading over 20, aimed at the puck)
+  and dye; `advect` carries air and dye back along themselves; `walls` stops air at the walls
+  (but not at the goal mouths), in the posts, and sets the air inside the puck to the puck's speed;
+  `diverge`, then 24 red-black Gauss-Seidel sweeps warm-started from the last frame's pressure, then
+  `project` make it incompressible, with zero pressure outside the goal mouths so air can leave
+  through them; `step_puck` — one thread — averages the air in a ring just outside the puck and does
+  exactly what `stepPuck` in gust.ts does: drag toward that air, move, bounce off walls and posts,
+  and the last 8 cells of a goal mouth tip toward the line. The CPU reads the puck back each frame
+  for the score and the computer's eyes; every time it puts the puck back it bumps a serial the GPU
+  carries, and a reading from before that is thrown away, so a goal is never counted twice.
+  ⚠️ What was wrong first:
+  1. **Shots crawled**: a fan pushed only the air round itself, so the push faded as the puck left
+     and a 2-second blow carried it 75 cells at 33 cells/s, curling away from the goal. The wind is
+     a jet toward the puck now, fading over 20 cells: the same blow scores in 1.9 s at 71 cells/s.
+  2. **A slow puck sat in the goal mouth for ever**: with the wall open there and the air still, it
+     could stop 3 cells short of the line. That was also why the computer, against nobody, scored
+     nothing in 30 s. The last 8 cells of a mouth tip toward the goal now.
+  3. **The computer gave up at the centre line**: it guarded its goal whenever the puck was in the
+     other half, even a puck an arm's length over the line. It shoots at anything within its jet's
+     reach now, from its own side. Against an idle player it wins 5–0 in 16 s at Keen.
+  4. **A landscape rink on an upright phone was small** (about 470 × 265 device pixels); standing
+     it up gives it 45% more area, and the shader and the finger share one fit (`rinkFit`).
+     _Measured_: the tests hold the uniform layout and the shader's copies of every constant, the puck
+     (still in still air, dragged to the air's speed, bounces off walls and posts losing speed, through
+     the goal mouth but not beside it, a crept-up puck drops in and one beside the mouth does not —
+     this test was made to fail by taking the tip out), breath (empties in 2.2 s, refills in 3.5 s, no
+     blowing on empty), fans held in their half at their speed, the computer (stands in line behind
+     the puck from the goal it attacks, blows only once there and with breath, guards a far puck,
+     shoots across the line within reach), the match (scorer, kickoff, winner at 5), and the rink's fit
+     (centred, upright on a tall stage, turned not mirrored). On SwiftShader: untouched, the puck does
+     not move in 2 s; the GPU puck matches its CPU twin to 0.0000 cells per step over a whole shot;
+     600 frames of random blowing never put the puck outside the walls or inside a post. In the page at
+     1024: the computer scores against an idle player and a bell sounds; WASD moves Blue and F blows it
+     and empties its breath, letting go stops it; a held mouse brings Blue to it, blowing; in two-player
+     mode the arrows and Enter move and blow Orange and a mouse on the right half steers Orange while
+     Blue stays put. On the emulated iPhone, two simultaneous CDP touches, one on each half, each
+     steered and blew its own fan, lifting stopped both, and the drawn blue ring was centred within
+     1 px of the thumb on the upright rink. Audit clean at both.
+     Not measured: whether it is fun — the fan speed, jet strength and breath were tuned by numbers,
+     not by playing; real two-thumb play on a real phone (the multi-touch was synthetic); and speed on
+     a phone GPU (24 sweeps × 2 on 14,400 cells a substep is small, but untested).
+
 ### Real-device checklist — batch 9
 
 - [ ] Strut — can you find a groove that walks without the presets? Do notes land in time with the
       grid? Is the painting worth keeping? On a phone, is a 28 px grid cell easy to tap, and is
       scrolling the grid sideways natural?
+- [ ] Gust — play the computer on Keen: can you win, and is Sharp too sharp? Two people on one
+      phone held upright: do both thumbs work at once, and does the puck feel pushed by wind rather
+      than steered? Does it hold 60 fps on the phone?

@@ -35,6 +35,7 @@ import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
 import { StrutDemo } from '../gpu/StrutDemo'
+import { GustDemo } from '../gpu/GustDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -328,6 +329,12 @@ const DEMOS: readonly {
     name: 'Strut',
     line: 'Strut — a creature whose step sequencer is its gait and its song: find a groove that walks it to the flag.',
     Demo: StrutDemo,
+  },
+  {
+    id: 'gust',
+    name: 'Gust',
+    line: 'Gust — air hockey with no mallets: steer a fan, blow real wind through the rink and let the air carry the puck. Against the computer or a friend.',
+    Demo: GustDemo,
   },
 ]
 

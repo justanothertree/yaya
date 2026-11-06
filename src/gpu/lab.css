@@ -337,3 +337,13 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* gust: the score in each side's colour */
+.gust-score .gust-blue {
+  color: #3d74e0;
+  font-weight: 600;
+}
+.gust-score .gust-orange {
+  color: #e07a1f;
+  font-weight: 600;
+}
