@@ -40,6 +40,8 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 10 — #27, live via #29**: Möbius golf, Pinball workshop, Night crossing.
 - **Batch 11 — #28, live via #29**: two review fixes to batch 10 (and Bike trials), then Shadow
   box and Fold.
+- **Batch 12 — draft, `claude/lab-toys-12`, from `main` at `bd40884`**: Topple, Print shop. Not
+  stacked: it branches from `main` with batches 8–11 already there.
 
 The source PRs were stacked (#25 → #26 → #27 → #28); they reached `main` together through #29, so
 none of #25–#27 went live ahead of the batch 11 fixes.
@@ -2231,3 +2233,76 @@ routing only. Automated play shows the rules hold, never that anything is fun.
       enough on a phone, or do you reach for the grid?
 - [ ] Fold — fold the seven shapes without 💡; is dragging a point precise enough on a phone? Make a
       shape of your own and keep it.
+
+## Batch 12 — things to knock down and to print
+
+Branch `claude/lab-toys-12`, cut from `main` at `bd40884` (all 49 already there and deployed; see the
+status at the top). Not stacked on anything. Same rules of evidence: _measured_ means unit tests or
+headless Chromium on SwiftShader; the emulated phone is Playwright's iPhone 13 with CDP touch, for
+layout and touch routing only. Automated play shows the rules hold, never that anything is fun.
+
+| Toy    | What you do                                                                                                                                                                                                                                | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Topple | Draw lines of dominoes, paint their faces, push one: the run falls and a picture appears, because a domino's colour only shows as it tips. Five puzzles ring bells from one push — a fork, a duet that must ring together, chimes in order | every domino an INSTANCED BOX tipped in the vertex shader about its base edge by π/2·(Δt/FALL)², from its own start time and resting angle; a soft shadow quad under each that stretches as it falls; the floor (wood, walls, bells, the push arrow, the line being drawn) per pixel under them | "the CPU decides WHEN, the GPU animates HOW": an event-ordered cascade hands each instance a start time, and the shader replays any moment of it |
+
+- **Topple** — a wooden table, and dominoes. ✏️ **Line**: draw, and dominoes stand along what you drew,
+  0.6 apart, each facing along the line where it stands (a drawn corner is rounded off, because a
+  domino turned more than about 63° from the one hitting it is struck side-on and stands — a sharp
+  corner stops a run, which is true of real dominoes too). 🎨 **Paint** colours their faces (eight
+  colours), 🧽 **Erase** removes, 👉 **Push** knocks the one you tap away from your finger; ▶ Push (or
+  Space) pushes the puzzle's arrow, or in free play the first domino. A domino's face colour shows
+  only as it tips — so a field of plain ivory tiles turns into a picture as it goes down. ⏮ Stand them
+  up (R), ↶ Undo (U, thirty steps), 🧹 Clear, ⏩ 1× / 3× / 6×, 🔔 sound (a tick as they go, a bell as one
+  rings). **🧩 Puzzles**: _First run_, _Round the wall_, _Fork_ (two bells, one push: two dominoes
+  side by side in front of one are both knocked), _Duet_ (two bells within an eighth of a second, so
+  the short run has to wander — two straight branches ring 0.38 s apart), _Chimes_ (left, middle,
+  right in order, and the push goes the wrong way); each has a budget of dominoes, a failed run says
+  what happened ("rang 1.41 s apart", "2 of 3 rang"), your best (fewest dominoes) is kept, 💡 Show a
+  way builds one and is not kept. **🎨 Free table**: up to 600; 🌀 _A picture to knock down_ stands a
+  325-domino spiral with a heart on its faces; ⬇ Save table / ⬆ Open table… as a file; the free table
+  is kept in this browser too.
+  Technique: the cascade is CPU and exact — a priority queue of knocks in time order: a falling
+  domino strikes every standing one in the strip it sweeps (ahead of it by less than its height,
+  overlapping across), at the time it has tipped far enough to reach it (`tipTime`: angle grows as
+  the square of time, so FALL·√(angle/(π/2))); a hit square enough to the struck domino's axis knocks
+  it away from the striker, a side-on one leaves the striker leaning on it; bells ring when a falling
+  top sweeps over them. The GPU draws three passes into one depth buffer: the floor per pixel, a
+  shadow quad per domino, and every domino as an instanced box whose vertex shader tips it by the
+  same curve from its own start time and stops it at its resting angle.
+  ⚠️ What was wrong first:
+  1. **Every bent run stopped at its corner**: dominoes faced along the segment they stood on, so a
+     corner turned one domino all at once and it stood side-on. Lines are rounded off and each domino
+     faces along the curve where it stands now.
+  2. **A line could end up to a spacing short of where it was drawn to** — 3.0 ÷ 0.6 lands just short
+     in floating point and the last domino went, leaving a gap the run could not cross.
+  3. **Two of the first puzzle answers were impossible** — a hairpin no run survives, and a branch
+     leaving the trunk side-on. The Duet answer is now solved for (its meander's length found by
+     bisection, the bells 0.05 s apart) and Chimes is a U-turn.
+  4. **Undo restored the change instead of undoing it**: the old table was read inside a state
+     updater, which React runs after the next line had already replaced it.
+  5. **The run was judged by the first puzzle's rules** — the frame loop held the first render's
+     judge, so Duet reported "(allowed 30)" and the free spiral was judged as a puzzle.
+     _Measured_: the tests hold standing (spacing, facing, the line's own end, rounded corners turning
+     under 0.6 rad a domino, nothing where one stands, in a wall, off the table or past 600), the cascade
+     (a run carries at `tipTime` a domino; a gap wider than a domino stops it; pushed the other way it
+     falls the other way; a side-on domino stops it and the striker leans — made to fail by letting
+     side-on hits knock; a fork; a domino out of reach across stays up), the puzzles (none solved by an
+     empty table; each solved by its stored way within budget; the straight Duet not solved; Chimes in
+     the wrong order not solved), the spiral (all 325 fall from one push), a table file (round trip;
+     refusals), the uniform, the shader's copies of the sizes, the packing and the floor mapping. On
+     SwiftShader, with every domino painted blue: before the push no blue pixel anywhere; after it,
+     every one of 45 dominoes shows blue where the CPU says it lies; mid-run 16 of the 17 that should be
+     down do (the 17th's spot is hidden behind a standing domino at the fork). In the page at 1024: First
+     run drawn by mouse and solved by Space, kept as a best; a straight Duet says how far apart the bells
+     rang; Undo; Show a way at 6× solves Duet and is not kept; the spiral at 6× — 325 of 325 down; a line,
+     painted, a domino erased and Undo bringing it back; a table saved, a hostile file refused, reopened,
+     and the free table there after a reload. On the emulated iPhone, First run drawn by touch and solved
+     with ▶ Push. Audit clean at both.
+     Not measured: whether drawing a run is precise enough on a phone (a corner too sharp stops it, and a
+     finger draws sharp corners); how a 600-domino table runs on a phone GPU (one instanced draw, but 600
+     × 36 vertices and a shadow each); whether the puzzles are the right difficulty.
+
+### Real-device checklist — batch 12
+
+- [ ] Topple — draw First run with a finger and push it. Paint a picture of your own and knock it
+      down. Can you do Duet without 💡?

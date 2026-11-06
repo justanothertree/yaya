@@ -42,6 +42,7 @@ import { PinballDemo } from '../gpu/PinballDemo'
 import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
+import { ToppleDemo } from '../gpu/ToppleDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -379,6 +380,13 @@ const DEMOS: readonly {
     name: 'Fold',
     line: 'Fold — pick up a point of a square of paper and lay it down: fold it into the shape asked for, in as few folds as you can, or make your own.',
     Demo: FoldDemo,
+  },
+  // batch 12
+  {
+    id: 'topple',
+    name: 'Topple',
+    line: 'Topple — draw lines of dominoes, paint their faces and push one: a picture appears as they fall. Puzzles ring bells with one push.',
+    Demo: ToppleDemo,
   },
 ]
 
