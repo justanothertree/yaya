@@ -21,6 +21,8 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
 - **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
   studio, Critters. See its own section at the end.
+- **Batch 9 — draft, `claude/lab-toys-9`, STACKED ON BATCH 8**: remixes and new things to make —
+  see its own section at the very end.
 
 That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41. Each batch section below is that batch's
 own note, including what it measured and what it had not.
@@ -1640,3 +1642,75 @@ for a minute, 👑 watch the champion).
       within a few generations? Is ×16 smooth?
 - [ ] Critters (phone) — can a finger place joints on a 10 cm grid and drag bones between them, or
       are the joints too close together at this scale?
+
+## Batch 9 — remixes and things to make
+
+⚠️ **STACKED ON BATCH 8.** Branch `claude/lab-toys-9` was cut from `claude/lab-toys-8` at
+`7211b3e` while #25 was still an unmerged draft, because one of these toys (Strut) builds directly
+on Critters' bodies, checks and physics. Its draft PR targets the batch-8 branch, so its diff is
+only batch 9. Merge #25 first; then this PR can be retargeted to `main` unchanged. Nothing here
+edits a batch-8 file except the shared `DEMOS` list (appended to) and `lab.css` (appended to) and
+this document.
+
+Same rules of evidence as batch 8: _measured_ means unit tests or headless Chromium on SwiftShader
+(a CPU stand-in for a GPU); "emulated phone" is Playwright's iPhone 13 profile with CDP touch, which
+checks layout and touch routing only. Nobody has played these on a real device.
+
+| Toy   | What you do                                                                                                                                                                                          | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                             |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Strut | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind |
+
+- **Strut** — a creature whose step sequencer is both its gait and its song. Each row of the grid
+  under the stage is a muscle, and plays that muscle's note: the muscles sorted longest first climb a
+  pentatonic scale from the key, so a long muscle is low and a short one high (muscles of the same
+  length take neighbouring notes). Light a step and that muscle pulls in on it and sounds; its feet
+  drum where they land (kick and snare for the feet, left to right; toms if it stumbles onto a
+  joint). So a groove either walks or falls over: the goal is a groove that gets it to the
+  chequered flag 24 m away (the score shows metres, then the bars it took). As it walks, every note
+  is laid as a blot of watercolour as high up the paper as the note is up the scale, every footfall
+  a grey stamp on the floor and every few frames a faint dot under each joint, so the floor behind
+  it becomes a painted score of the walk; ⬇ Save painting keeps the whole 32 m strip as a PNG, 🧻
+  Fresh paper starts a new one. Tempo, Voice (marimba, kalimba, vibes, pluck, bell, steel pan) and
+  Key change the song; ✏️ Body opens Critters' builder (joint, bone, muscle, move, erase — the same
+  rules), and changing the body changes both how it walks and what it plays. Two presets: the
+  Stomper and the Inchworm. The creation is kept in this browser (`lab_strut_v1`) and in a file
+  (⬇ Save strut / ⬆ Open strut…). Keys: Space play, R from the start, E body, M sound, 1–5 tool.
+  Technique: the body's physics is Critters' (the same constants, run on the CPU for one creature at
+  240 Hz) with the muscles driven by the grid instead of a brain — a lit step pulls a muscle to 72%
+  of its rest, an unlit one lets it out to 108%, easing over 50 ms. Events come out of the physics in
+  order: a note when a lit step starts, a foot when a joint lands from the air faster than 0.35 m/s.
+  The GPU paints them: `blot_*` splats each event's pigment (the colour it takes OUT of the paper)
+  and wetness into an `rgba16float` sheet in world space, 48 px a metre; `bleed` lets wet paper share
+  pigment with its neighbours and dries it a little each frame; `show` lights the paper through the
+  pigment (`exp(−absorb)`), samples it between pixels, and draws the creature over it with each muscle
+  in its note's colour, brighter while it pulls; `develop` prints the whole sheet for the PNG.
+  ⚠️ What was wrong first:
+  1. **The first hand-made patterns tumbled or walked backwards** (the Stomper's top joint reached
+     2.75 m; the Inchworm went −1.1 m). The presets' patterns came from searching 400 grooves for the
+     furthest that stays upright: 14.5 m and 5.5 m in 8 bars.
+  2. **A preset edit silently did not apply** — a text replacement missed a reformatted block — and
+     the test that walks the presets forward is what caught it.
+  3. **A symmetric creature played one note**: muscles of equal length shared a pitch. They take
+     neighbouring notes now.
+  4. **The painting turned to mud**: notes laid where their muscles were stacked every colour on a
+     slow walker's spot until it dried black. Notes go up the paper by pitch now, a score.
+     _Measured_: the tests hold the music (longer is lower, pentatonic from the key, every muscle its
+     own note; the feet's drums), the sequencer (every lit step sounds once as it starts, from the first;
+     a lit muscle reaches 72% and an unlit 108%; nothing lit stands still and silent), the presets
+     (walk forward ≥ 10 m and ≥ 4 m in 8 bars without rising more than 0.4 m above their own height,
+     drumming as they go), the painting's arithmetic, and a saved strut (a round trip with every field
+     non-default; wrong row counts, non-boolean cells, too many muscles and broken bodies refused). On
+     SwiftShader a blot keeps 99% of its pigment while it blooms, is dry in about eight seconds and then
+     never changes; the printed painting is 1,536 × 192 and red where a red note was laid. In the page at
+     1024: it plays and walks with notes sounding, a cell toggles and is stored, a preset swaps the grid,
+     Save painting downloads the PNG, a file saves and reopens, a hostile file is refused, Voice and Tempo
+     are kept, mute stops the notes; on the emulated iPhone the grid scrolls sideways inside itself and a
+     touch toggles a cell. Audit clean at both.
+     Not measured: whether finding a walking groove is fun or frustrating, how in time the notes feel
+     (they sound on the frame the physics reaches the step, up to a frame late), and phone speed.
+
+### Real-device checklist — batch 9
+
+- [ ] Strut — can you find a groove that walks without the presets? Do notes land in time with the
+      grid? Is the painting worth keeping? On a phone, is a 28 px grid cell easy to tap, and is
+      scrolling the grid sideways natural?

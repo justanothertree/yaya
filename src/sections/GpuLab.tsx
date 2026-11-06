@@ -34,6 +34,7 @@ import { SandDemo } from '../gpu/SandDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
+import { StrutDemo } from '../gpu/StrutDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -320,6 +321,13 @@ const DEMOS: readonly {
     name: 'Critters',
     line: 'Critters — build a creature from joints, bones and muscles, then race 256 copies and watch them learn to walk.',
     Demo: CrittersDemo,
+  },
+  /* batch 9 — remixes and new things to make */
+  {
+    id: 'strut',
+    name: 'Strut',
+    line: 'Strut — a creature whose step sequencer is its gait and its song: find a groove that walks it to the flag.',
+    Demo: StrutDemo,
   },
 ]
 
