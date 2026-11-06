@@ -1837,3 +1837,208 @@ checks layout and touch routing only. Nobody has played these on a real device.
       than steered? Does it hold 60 fps on the phone?
 - [ ] Seedling — play all six gardens without 💡: which was too hard or too easy? On a phone held
       upright, can you plant the cell you meant? Make a garden and have somebody else solve it.
+
+## Batch 10 — new territory
+
+⚠️ **STACKED ON BATCH 9, WHICH IS STACKED ON BATCH 8.** Branch `claude/lab-toys-10` was cut from
+`claude/lab-toys-9` at `5978898` while both #25 (batch 8) and #26 (batch 9) were unmerged drafts.
+Its draft PR targets the batch-9 branch, so its diff is only batch 10. **Merge order: #25, then #26
+(retargeted to `main`), then this one (retargeted to `main`).** Nothing here edits a file of either
+earlier batch except the shared `DEMOS` list, `lab.css` (appended to) and this document. When it was
+cut, `main` had moved on by Instrument commits only, and the whole stack still merged into it cleanly
+(`git merge-tree`).
+
+The brief was different ground from everything before — no creature, no fluid routing, no cellular
+puzzle — favouring unusual things to do with your hands. Same rules of evidence as batches 8 and 9:
+_measured_ means unit tests or headless Chromium on SwiftShader (a CPU stand-in for a GPU); the
+"emulated phone" is Playwright's iPhone 13 profile with CDP touch, which checks layout and touch
+routing only. Automated play proves the rules hold, not that anything is fun; nobody has played
+these on a real device.
+
+| Toy              | What you do                                                                                                                                                                                                                                                                                                                                           | GPU technique                                                                                                                                                                                                                                                                                                                      | Pattern to reuse                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Möbius golf      | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests                                                                                    | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use    | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
+| Pinball workshop | Draw your own pinball table — walls with a finger, bumpers that kick, targets that light (all lit pays a bonus) — then play it: plunger, two flippers, three balls, a best score per table; tables kept here and as files                                                                                                                             | the table BAKED INTO A DISTANCE FIELD on the GPU whenever it changes (walls, bumpers and targets a channel each), which every frame's neon glow is read from — so a table of 160 segments costs the per-pixel shader one texture read, not 160 distances                                                                           | "bake what changes rarely, draw from the bake": a compute pass on edit, a texture read per frame; checked through the picture, not only the field  |
+| Night crossing   | A co-op for two with DIFFERENT jobs: the pilot steers a boat through a rocky channel at night; the keeper aims its searchlight and chooses narrow-and-far or wide-and-near. Only what the beam lights can be seen; rocks throw shadows and are remembered for a moment. Ring the buoys, get home, three knocks and you sink. One person can play both | a MEMORY MAP of the channel in world space: a compute pass lights each texel near the boat (in range, in the beam, no rock in the way — rock shadows by a ray test against every nearby rock) and keeps the brightest of that and its fading past; the night is drawn from the map, so per pixel it is a lookup, not a shadow test | "light into a fading world-space map, draw from the map" — fog of war, sonar, anything seen and then forgotten                                     |
+
+- **Möbius golf** — golf where the shape of the space is yours to choose. Each hole names the spaces
+  it may be played in: **Room** (walls all round), **Cylinder** (left edge glued to right), **Möbius
+  band** (left glued to right with a twist: out at the top of one side, in at the bottom of the
+  other), **Torus** (both pairs glued straight) and **Klein bottle** (sides twisted, top and bottom
+  straight). Pick one — that starts the hole from the tee in it — then pull back anywhere on the
+  stage and let go to shoot, harder the further you pull; a dotted guide shows the first 3.5 m of
+  the shot, through the edges. The stage draws the course and a ring of its copies (🔭 Wider for
+  more): where an edge is glued you see the copy it leads to, mirrored and tinted cooler across a
+  twist, with arrows on the glued edges (one on the left/right pair, two on the top/bottom, pointing
+  opposite ways across a twist); beyond a wall edge, sky. The flag leans one way and the ball has two
+  spots, so a mirrored copy, and a ball that has been through a twist, are visibly mirror images.
+  Six holes: **Round the back** (a wall right across: a cylinder takes you round), **Upside down**
+  (four rooms; only the Möbius band joins the bottom-left to the top-right), **Two doors** (only the
+  torus, through two edges), **The bottle** (the Möbius band cannot, the Klein bottle can), **Lanes**
+  (three spaces will do; which is easiest?) and **Pocket** (every space open; the cup's pocket faces
+  the edge, so the question is where a ball can arrive from). Par, strokes, an ace called out with a
+  chime, and your best (and the space you did it in) kept and ticked in the list; 💡 Show the ace
+  aims the stored ace for you, and a hole played that way is not kept. Keys: ←/→ aim (Shift for
+  10°), ↑/↓ strength, Space or Enter shoot, R from the tee, W wider, 1–5 the hole's spaces.
+  Technique: the physics is CPU and deterministic at 240 Hz — a rolling ball slowing at 2.2 m/s²,
+  capsule walls, wall edges it banks off, glued edges it `cross`es (a twist mirrors its height and
+  its vertical speed and flips its handedness), and a cup it drops into below 5.5 m/s. The GPU draws
+  the cover in one pass: `fold` (the same as in mobius.ts) maps each pixel's point of the plane to a
+  copy and a point of the course, and the course is drawn there — mown stripes, edge marks, walls,
+  cup and flag, the ball, the aim arrow and the path (the trail, or while aiming the dotted guide).
+  ⚠️ What was wrong first:
+  1. **A random search for a hard hole found nothing** — sixty courses of random posts and a pocket,
+     and none had an ace in exactly one space. The last two holes were designed by hand and then
+     counted instead.
+  2. **A tap fired the keyboard's aimed shot**: letting go of a press that never pulled back shot
+     whatever the arrow keys had last set. Only a press that pulled back shoots now.
+  3. **The "stars" beyond a wall edge drew as grey squares** a cell wide.
+     _Measured_: the tests hold the gluings (a wrap is the same way up; a twist mirrors height and
+     speed and flips the ball, and twice round a band is the right way up again; the Klein bottle's top
+     and bottom are straight; a wall edge is banked off, never crossed), the cover (a ball rolled
+     straight through the copies of the torus and the Klein bottle and the same ball crossing the
+     course's edges agree to 10⁻⁶ m and on handedness at every step of 2,000 — made to fail by dropping
+     the twist from `fold`; no copies beyond a wall edge), the ball (stops at v²/2a, drops in when slow
+     and runs over when fast, banks off a wall), the course (every hole aced by its stored shot in a
+     space it offers; for the first four, a sweep of 2,760 shots in the other space it offers finds no
+     ace at all — the space is the puzzle), the uniform's layout and the shader's copies of the sizes.
+     The design sweeps, on a finer grid of 16,560 shots: Pocket has 483 aces in the torus, 467 in the
+     Klein bottle, 25 in the Möbius band, and 2 in the room and 1 in the cylinder (bank shots nobody
+     will find on purpose). On SwiftShader, the shader's fold agrees with the CPU's on every sampled
+     pixel in all five spaces — 103,182 pixels classed as sky, cup or green, 0 disagreements. In the
+     page at 1024: the ace's shot in the room banks back and leaves stroke 2; the same shot on the
+     cylinder is an ace, chimes and is kept with a ✓; a mouse pull-back aces Upside down on the Möbius
+     band; a tap shoots nothing; a shown ace is played but not kept; the hole and bests are there after
+     a reload. On the emulated iPhone a touch pull-back aces the first hole. Audit clean at both.
+     Not measured: whether it is fun, and whether six holes is the right length; whether a beginner
+     reads the copies and the edge arrows without being told (the hints do the telling); whether
+     pulling back on a phone is precise enough for the tight holes — the arrow keys are the fine
+     control, and a phone has none. Seen in the phone screenshot: the site's own "You're playing"
+     pill (from any toy that plays the synth) floats over the controls until dragged away; that pill
+     belongs to the Instrument and is left alone.
+
+- **Pinball workshop** — make a pinball table, then play it. **🛠 Build**: ✏️ draw walls with a
+  finger or the mouse (a stroke is kept as a wall, thinned to a point every half unit), ● tap to
+  place bumpers, ◆ targets, 🧽 tap a part to erase it; name the table; ↺ back to the workshop
+  table, 🧹 an empty one, ⬇ Save table / ⬆ Open table… as a file. The frame stays put — the outer
+  walls, the plunger lane and the orbit at its top, the slopes down to the flippers and the drain —
+  and parts may not go in the lane, the orbit or down by the flippers (the toy says so). **🎮 Play**:
+  hold 🚀 (or Space, or any finger on the stage while the ball waits) to pull the plunger and let go
+  to launch — a weak pull falls back for another go — then the flippers: Z / ← / left Shift and M /
+  → / right Shift, the ◀ and ▶ pads, or a finger on the left or right of the stage (two thumbs at
+  once work). Bumpers kick the ball away and score 100, a target lights for 250, lighting every
+  target pays 2,000 and puts them out. Three balls; the best score for each table name is kept.
+  Sound: bumpers on the marimba, targets on the bell, a drain low. N new game.
+  Technique: the physics is CPU and deterministic at 960 Hz — gravity down the table, capsule walls,
+  a speed limit so no step crosses a wall, flippers as capsules swinging at 28 rad/s up and 18 down
+  whose surface speed (ω × r) is what strikes the ball, bumpers that set the ball's outward speed
+  to 13, and a plunger that catches a ball falling back down its lane. The GPU's `bake` runs only
+  when the table changes: a 160 × 288 `rgba16float` field holding, at every texel, the distance to
+  the nearest wall, bumper and target (`distanceAt`, a channel each). `show` reads it once a pixel
+  for the neon — a bright core and a soft halo — and draws what moves analytically: bumpers' rings
+  (flashing when struck), lit targets, the flippers, the ball and its trail, the plunger's pull.
+  While you draw, the stroke is baked in each frame so it glows as you go.
+  ⚠️ What was wrong first:
+  1. **The plunger could not get a ball into the table**: a ball shot straight up the lane passed
+     the top of the lane's wall and fell back down it. A straight deflector bounced it back too; the
+     top right is now a quarter-circle orbit the ball runs round into the table.
+  2. **A weak pull bounced in the lane for four seconds** before it could be plunged again. The
+     plunger catches a ball falling back now, as a real one does.
+  3. **Everything read from the baked field was drawn upside down**: the bake writes the table's
+     bottom into row 0 and the shader sampled it flipped. The check of the field against the CPU
+     passed — it read the texture with the bake's own mapping — and the picture did not: the bumper
+     discs sat below their own rings. A second check now goes through the rendered pixels.
+  4. **The outer walls glowed outward** past the edge of the field, where a sample clamps to the edge
+     texel: 798 of 6,439 bright wall pixels were off any wall. Past the edge the shader reads the
+     nearest point inside and adds the way out, and it is 0 of 4,502.
+  5. **The drawn table's segments were rebuilt 960 times a second**; they are worked out once per
+     table now.
+     _Measured_: the tests hold the flippers (swing up at 28, fall at 18, stop at their ends; mirror
+     images; a drain gap wider than a ball), a resting ball fired up the table by a flip (made to fail
+     by taking the flipper's own surface speed out of the collision), an untouched ball draining and
+     the third drain ending the game, the ball never leaving the table when fired at top speed in 24
+     directions through the workshop table with the flippers going, a full plunge going round the
+     orbit and a feeble one coming back to the plunger, bumpers (kick at their own speed, score, flash),
+     targets (light once, the last pays the bonus and puts them out), playing beating not playing (a
+     scripted flipper keeps the first ball over four times as long as doing nothing), building (where
+     parts may go, strokes thinned and clipped, the limits said, erase nearest), a table file (round
+     trip, refusals for each way one can be bad), the uniform layout, the item list, the fit and the
+     field's distances. In the simulator: idle games end in 12–25 s at a full-enough pull and nothing
+     ever stuck; over 90 s the scripted flipper scores about 5,500 on the workshop table. On
+     SwiftShader: the baked field equals `distanceAt` to a relative 5 × 10⁻⁴ (half floats) at 966
+     texels; through the picture, every bright wall pixel is on a wall by the CPU's measure and every
+     bumper's centre is pink. In the page at 1024: the plunger pad pulls to full and launches round the
+     orbit, Z and M each raise their own flipper, an idle game ends, a drawn wall / bumper / target are
+     kept and a bumper in the lane is refused saying why, erase, save, a hostile file refused, reopen,
+     and it all survives a reload. On the emulated iPhone: the three pads are 109 × 56, the plunger pad
+     held and let go launches the ball, and two simultaneous touches on the stage, one each side, raise
+     both flippers and lifting drops them. Audit clean at both.
+     Not measured: whether it plays well — the flipper strength, gravity and bumper kick are tuned by
+     numbers (a perfect scripted flipper never loses a ball, which no person is); whether the pads,
+     which sit below the stage on a phone, are needed at all with the stage's halves doing the same;
+     real-phone frame rate (the bake is cheap and only on edit; the per-frame shader is a texture read
+     plus a few dozen analytic shapes).
+
+- **Night crossing** — a game for two with different jobs, or one person with two hands. A small
+  boat crosses a channel full of rocks at night. The **pilot** steers (←/→ or A/D, ↑/W full ahead,
+  ↓/S slow — or the four helm buttons) and the boat cruises when left alone. The **keeper** aims the
+  boat's searchlight — with the mouse, a finger on the water (the beam follows it, and keeps that
+  angle off the bow when lifted), or J/L — and sets it between narrow-and-far and wide-and-near (I/K,
+  or the slider). Nothing can be seen but what the beam lights: rocks show as it touches them, throw
+  shadows behind them, and stay dimly remembered for a few seconds after. The buoys carry their own
+  small lights and mark the safe water; ringing them (passing close) turns them gold. Three knocks on
+  the rocks and the boat is lost; reach the harbour lamps at the far end to get home, timed, with the
+  best time for each crossing kept. Three crossings: **Calm harbour** (60 units, 40 rocks), **The
+  reef** (90, 90) and **Long night** (130, 150). Space casts off or heaves to, R starts again. Two
+  people on one keyboard split it (WASD/arrows and IJKL), or one on the keys and one on the mouse; on
+  a phone one thumb on the helm buttons and another on the water.
+  Technique: each crossing is generated from a seed — a corridor that wanders across the channel,
+  rocks scattered everywhere except within 1.3 units of its line, a buoy every 14 units along it —
+  and the boat, the knocks, the bells and the harbour are CPU and deterministic. The GPU's
+  `remember` pass keeps a memory map of the whole channel, 6 texels a unit, but runs only on the
+  rows within 22 units of the boat: each texel becomes the larger of the beam's light on it now
+  (`light`, the same as `lightAt` — in range, inside the beam's angle, and no rock between it and the
+  lamp, tested against every rock near the boat) and what it held before times a fade (0.55 a
+  second). `show` draws the night from that map — black water with swell the light picks out, the
+  shore, rocks lit only as much as the map says, white water round them, the buoys' blinking lights,
+  the harbour's lamps and the boat (red while shaken from a knock). So the shadow test is done once
+  a texel near the boat, not once a pixel of the screen.
+  ⚠️ What was wrong first: the shader's first rock was faintly visible unlit — enough ambient light to
+  steer by, which is the whole game given away; unlit rock is now nearly black. And two probe faults
+  worth knowing: a fixed-length key hold is not a fixed pull at an unknown frame rate, and a button
+  below the fold receives no synthetic touch.
+  _Measured_: the tests hold the courses (the same from the same seed; the corridor clear of rock
+  within 1.3 units at every tenth of a unit of all three; a pilot following the corridor gets home
+  untouched and rings every buoy at cruise and at full speed; a boat left to sail straight on is
+  wrecked on every crossing), the boat (cruises, comes up to full and down to slow, turns at its
+  rate, a rock costs one point however long it scrapes and puts the boat outside it, the banks turn
+  it back), the light (narrow reaches further, wide sees wider, brightest on the axis and nothing
+  behind, a rock shadows what is behind it and lights its own face — made to fail by letting light
+  through rocks), the uniform's layout and the shader's copies of the beam and map, the rocks and
+  rows sent to the GPU (every rock the beam could reach is in the list) and the camera. On
+  SwiftShader the memory map equals `lightAt` to 1.3 × 10⁻⁴ over 56,160 texels in three poses —
+  2,258 of them lit and 146 dark only because a rock is in the way — and fades by exactly the
+  factor asked (to 5 × 10⁻⁸). In the page at 1024: the beam points at the mouse, the keeper's K
+  widens it, a boat left alone is wrecked, and a pilot driven through the arrow keys only — steering
+  for the corridor from the boat's position as the page draws it — gets home in 14.6 s untouched
+  with all four bells, and the best is kept and ticked after a reload. On the emulated iPhone the
+  four helm buttons are 79 × 56, a finger on the water swings the beam to it and the beam keeps
+  that aim when lifted, and Full ahead casts off. Audit clean at both.
+  Not measured: whether it is fun, and above all whether it is fun for TWO — whether the keeper has
+  enough to do on the calm crossing, and whether the pilot can trust what they are shown; whether
+  the crossings are too easy with one person on both (the buoys alone may be enough to steer by);
+  whether the stair-stepped edges of the shadows (the map's 6 texels a unit) matter on a real
+  screen; phone speed (the remember pass is ~25,000 texels × up to 96 rocks a frame).
+
+### Real-device checklist — batch 10
+
+- [ ] Möbius golf — play the six holes without 💡: do the copies round the course make the spaces
+      make sense, or do you need the hints? Is pulling back on a phone precise enough for Lanes and
+      Pocket? Can you find an ace on Pocket in a space other than the torus?
+- [ ] Pinball workshop — does the workshop table play well, and do flips feel like flips? Build a
+      table of your own and play it: is drawing walls precise enough on a phone? On a phone, do you
+      use the pads under the stage or the stage itself?
+- [ ] Night crossing — play it with somebody: one steering, one on the light. Does the keeper have
+      enough to do? Is the reef fair? Then alone, keys and mouse: too easy, too hard? On a phone, is
+      a thumb on the water and a thumb on the helm workable for one person, or is it a two-person
+      phone game?
