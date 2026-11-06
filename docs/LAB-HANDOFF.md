@@ -2,10 +2,23 @@
 
 The state of `#lab`, the WebGPU room. The commits carry the reasoning; this is the map.
 
-evancook.dev deploys from `main`. Batches 1 and 2 are already live there. Batches 3–7 are
-integrated together for a real-device pass and stay off the live site until that integration is
-merged. None of those thirty toys has been tried on a phone or a real GPU. Frame times below are
-SwiftShader, a CPU stand-in, and say nothing about a handset.
+**Integration status, 6 Nov 2026.** This tree is prepared for publishing and is **not deployed**.
+It is `main` at `caaba4f` (the vocal editor and takes work already on `main`, and already deployed
+from there) with the full `claude/lab-toys-11` history merged on top, non-squash, at source head
+`103c93d`. That history is PRs #25 → #26 → #27 → #28 (`7211b3e`, `5978898`, `5e530dd`, `103c93d`).
+Those four source PRs stay open drafts; this integration does not retarget, merge, or close them.
+The coordinator publishes after checks. Until that deploy, evancook.dev does not have these twelve
+toys.
+
+Evan played the original 37 on a desktop only. None of those 37, and none of the twelve added here,
+has been played on a phone or confirmed on a real GPU. Numbers below marked measured are unit tests
+or headless Chromium on SwiftShader, a CPU stand-in, plus an emulated iPhone for layout and touch
+routing. That is not a handset, not an ear, and not a verdict that any of it is fun. Known roughness
+stays: a ball wedged in pinball bumpers still needs 🔄 New game; Fold is not fully keyboard
+playable; Ferro's Space-release and Tunnel's two-keys-one-direction bugs are older and unchanged.
+
+evancook.dev deploys from `main`. Batches 1 and 2 are already live there. Batches 3–7 are in the
+37 on `main` as of `caaba4f`. Frame times below are SwiftShader and say nothing about a handset.
 
 The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch 3 mount
 `current.Demo`, so a toy is in the picker exactly once. Batches 5–7 also carried hand-written
@@ -27,12 +40,14 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 11 — draft #28, `claude/lab-toys-11`, STACKED ON BATCH 10**: two review fixes to batch
   10 (and Bike trials), then Shadow box and Fold.
 
-**Merge order for the stack: #25 → #26 → #27 → #28**, each retargeted to `main` once the one under it
-has merged. Each batch's PR shows only its own diff against the branch below it.
+The source PRs stay stacked (#25 → #26 → #27 → #28) and each still shows only its own diff. Publishing
+goes through one integration branch on current `main`, so #25–#27 are not deployed on their own
+ahead of the batch 11 fixes.
 
-That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41, batch 9
-44, batch 10 47 and batch 11 49 (counted from the `DEMOS` list, not written down from memory). Each
-batch section below is that batch's own note, including what it measured and what it had not.
+That is 7 live toys plus 30 already on `main`, 37 in the picker there; this integration adds 12 and
+the picker here is 49 (counted from the `DEMOS` list: trials, waterworks, studio, critters, strut,
+gust, seedling, mobius, pinball, crossing, shadowbox, fold). Each batch section below is that
+batch's own note, including what it measured and what it had not.
 
 ## What shipped
 
