@@ -19,9 +19,10 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 5 — #21**: Slime, Mirror, Bubbles, Clay, Fireflies, Black hole.
 - **Batch 6 — #22**: Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint.
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
-- **Batch 8 — draft, `claude/lab-toys-8`**: games and builders — see its own section at the end.
+- **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
+  studio, Critters. See its own section at the end.
 
-That is 7 live toys plus 30 new ones, 37 in the picker. Each batch section below is that batch's
+That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41. Each batch section below is that batch's
 own note, including what it measured and what it had not.
 
 ## What shipped
@@ -1602,6 +1603,20 @@ are in the checklist at the end of this section as questions.
      joint. Audit clean at both. Twelve deliberate breaks each fail a test.
      Not measured: how the race reads on a phone (256 faint copies over each other), and how long
      generations take on a real GPU (one dispatch of 256 workgroups, up to 64 substeps each a frame).
+
+**Batch 8 in one place.** Four additions, each a thing to DO: a game against the clock (Bike
+trials), a puzzle with levels and saved progress (Waterworks), a builder with a picture to keep
+(Film studio), and a builder with a race that learns (Critters). Each was played end to end in the
+page by a script (desktop mouse and keys, emulated-iPhone touch) and boots without errors in the
+production bundle (built with placeholder env values and served by `vite preview` — its canvas
+pixels were not read there). Every puzzle in Waterworks was solved, and left unsolved, by a script
+on the GPU; the trials course was finished by a scripted rider. Things a real device must answer
+are in the checklist; none of it has been on a phone.
+
+Try first, on a desktop: **Bike trials** (arrows; can you beat the scripted rider's 18.8 s?), then
+**Waterworks** level 3 (hold 🔥 Heat on the pool and watch the rain), then **Film studio** (pose the
+actors, open the aperture, 🎯 focus, 🎬 Shoot, ⬇ Save picture), then **Critters** (Walker, race ×16
+for a minute, 👑 watch the champion).
 
 ### Real-device checklist — batch 8
 
