@@ -1401,6 +1401,7 @@ are in the checklist at the end of this section as questions.
 | Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time                                                                      | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw                            | "bake the level once, ask it every frame" — any 2D level's collision and look from one field                                         |
 | Waterworks  | A PUZZLE: four levels and a sandbox — get the water into the cup by drawing walls, freezing it into a bridge, boiling it over a wall, melting ice gently                             | a FLIP FLUID: particles → staggered grid with fixed-point `atomicAdd`, a pressure solve by warm-started Jacobi, the change back to the particles; each drop carries its own temperature and state (water, ice, steam) and ice becomes solid for the liquid                                      | "particles with a grid" — any liquid that has to fill, pour and splash; per-particle state machines driven by a field                |
 | Film studio | A BUILDER with a result to keep: place and pose actors, props and lamps, frame with a lens, aperture and focus, then shoot and save a PNG; scenes save to this browser and to a file | a PROGRESSIVE PATH TRACER in a compute shader — analytic spheres, turned boxes and capsules (an actor is a dozen), direct lamp sampling at each diffuse bounce, a thin lens for depth of field, a running sum that settles; the same intersection maths on the CPU picks what is under a finger | "render the real thing, slowly, and keep it" — any offline-quality picture a toy can make, and picking that agrees with the renderer |
+| Critters    | A BUILDER and a race: make a creature of joints, bones and muscles on a grid, then race 256 copies whose brains evolve, generation by generation                                     | A WORKGROUP PER CREATURE: joints in workgroup shared memory through many substeps of position-based dynamics, Jacobi constraint passes gathered per joint from an adjacency list; instanced drawing of every copy                                                                               | "many small independent simulations at once" — populations, ensembles, a workgroup each, shared memory as the scratch pad            |
 
 - **Bike trials** — a trials bike in a quarry. Gas and Brake drive the back wheel; Lean back lifts
   the front (over the block, onto the log, for landing a jump), Lean forward keeps the nose down on
@@ -1556,6 +1557,52 @@ are in the checklist at the end of this section as questions.
      Not measured: how long a clean shot takes on a real GPU (SwiftShader manages a few paths a second
      at 926×469), and whether the controls are too many for a phone.
 
+- **Critters** — build a creature, then race 256 copies of it and watch them learn to walk.
+  Building, on a 10 cm grid: ● Joint taps joints; ⎯ Bone drags from one joint to another; 💪 Muscle
+  taps a bone to make it a muscle (red) that pulses; ✋ Move drags a joint; 🧽 Erase taps a joint or
+  a bone away. Or start from a Hopper, an Inchworm or a Walker. The line under the stage says what
+  is missing (two joints, a muscle, everything joined up) — and warns about the one shape that can
+  never walk: a body that is its own mirror image with a single muscle. ▶ Race 256 of them: every
+  copy has its own brain (each muscle's timing and strength, and the beat they share); after eight
+  seconds the 64 that got furthest breed the next 256 (kept as they are, the rest their children,
+  a small change each). The bright one leads; the score shows the generation, the leader and the
+  record, with a sparkline of each generation's best. ×1/×4/×16 speed; 👑 Watch the champion
+  replays the best brain alone; ↺ New race; ✏️ Change the body. The body and its champion are kept
+  in this browser (`lab_critter_v1`) and can be saved to a file and opened again — read only as
+  numbers, and only if the body passes the same check a hand-built one does. Keys: Space pause,
+  1–5 tool or 1–3 speed, E edit, R new race.
+  Technique (`critters.wgsl`): A WORKGROUP IS A CREATURE and a thread is one of its joints. The
+  joints live in workgroup memory for the whole call, which runs many 240th-of-a-second substeps:
+  drag, gravity, a guess; six Jacobi passes over the bones and muscles as distance constraints, each
+  joint gathering only what its own bones ask of it (an adjacency list per joint, so no two threads
+  ever write the same joint and the order they run in cannot matter); the ground, where most of a
+  joint's slide is taken back (friction, which is what a foot pushes against); the velocity from the
+  move. One dispatch a frame runs all 256. Drawing is instanced: every bone a capsule, every joint a
+  dot, the leader last and opaque. `simulate` in critters.ts is the shader line for line, and
+  breeding is ordinary seeded game logic on the CPU.
+  ⚠️ What was wrong first:
+  1. **The winners flew.** With muscles reaching 35% of their length at up to three beats a second,
+     the "best walkers" were the ones that flung themselves into the air — a 0.8 m Hopper 5.8 m
+     along in one second. Reach 20%, at most 1.5 beats a second, and a little air drag: now no joint
+     of sixteen random Walkers gets above 2 m, and the record still climbs every generation.
+  2. **A hand-built triangle raced for exactly 0.00 m** through four generations — not a bug: a body
+     that is its own mirror with one muscle cannot choose a direction. The builder says so now.
+  3. The champion kept by the first version could be read from a stale render (the frame loop is
+     built once); the race keeps its own state in a ref.
+     _Measured_: on SwiftShader, all 256 GPU creatures against the CPU copy for each preset — after 4
+     substeps the median joint differs by 8×10⁻⁶ m, after 96 by 8×10⁻⁵ m (the gap grows the way any
+     contact-rich system's does, f32 against f64), and the GPU and CPU pick the same leader of 256.
+     On the CPU, six generations of 64: the Hopper's best went 1.33 → 1.80 m in 8 s, the Inchworm's
+     1.07 → 1.88, the Walker's 2.46 → 5.21. The tests hold the physics to settling, friction, moving
+     only by muscles, and determinism, and evolution to never losing ground: with the best kept unchanged
+     and the race the same, the best never walks less from one generation to the next. In the page at
+     1024: a triangle built by mouse (the hints along the way), a joint moved, the stuck warning shown,
+     four generations of the Hopper raced at ×16 with the record 0.3 → 0.9 m, the champion watched, a
+     critter file saved and opened back, a hostile file refused; on the emulated iPhone, touch erases a
+     joint. Audit clean at both. Twelve deliberate breaks each fail a test.
+     Not measured: how the race reads on a phone (256 faint copies over each other), and how long
+     generations take on a real GPU (one dispatch of 256 workgroups, up to 64 substeps each a frame).
+
 ### Real-device checklist — batch 8
 
 - [ ] Bike trials (desktop first) — is the bike fun to ride: does lean feel strong enough in the
@@ -1573,3 +1620,8 @@ are in the checklist at the end of this section as questions.
       browser?
 - [ ] Film studio (phone) — is tapping a small actor to choose it reliable? Are the panels below
       the stage too long to scroll? Does Save picture download on iOS Safari (Blob downloads differ)?
+- [ ] Critters (desktop) — is building with five tools clear without reading the hint? Does a
+      race of 256 read (the leader bright, the rest faint), and do the critters visibly get better
+      within a few generations? Is ×16 smooth?
+- [ ] Critters (phone) — can a finger place joints on a 10 cm grid and drag bones between them, or
+      are the joints too close together at this scale?

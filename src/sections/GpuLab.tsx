@@ -4,6 +4,7 @@ import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
 import { BubblesDemo } from '../gpu/BubblesDemo'
 import { ClayDemo } from '../gpu/ClayDemo'
 import { ClothDemo } from '../gpu/ClothDemo'
+import { CrittersDemo } from '../gpu/CrittersDemo'
 import { ErosionDemo } from '../gpu/ErosionDemo'
 import { FerroDemo } from '../gpu/FerroDemo'
 import { FirefliesDemo } from '../gpu/FirefliesDemo'
@@ -313,6 +314,12 @@ const DEMOS: readonly {
     name: 'Film studio',
     line: 'Film studio — pose actors, place props and lamps, frame it with a real lens, and shoot a path-traced picture to keep.',
     Demo: StudioDemo,
+  },
+  {
+    id: 'critters',
+    name: 'Critters',
+    line: 'Critters — build a creature from joints, bones and muscles, then race 256 copies and watch them learn to walk.',
+    Demo: CrittersDemo,
   },
 ]
 
