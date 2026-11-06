@@ -71,6 +71,7 @@ import {
   chordToneClasses,
   progressionEvents,
   slotAt,
+  type ChordPattern,
 } from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
@@ -1139,6 +1140,26 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         : null,
     [chordPattern, chordSlot, scale, degrees, root],
   )
+
+  /**
+   * Lay down the bassline for a progression, replacing whatever bass is there.
+   *
+   * ⚠️ ONE BUILDER, BECAUSE TWO THINGS NEED TO DO THIS AND THEY MUST DO IT IDENTICALLY. The
+   * Bass button calls it, and so does the chord picker when it swaps a progression out from
+   * under an existing bass. A second copy of these five arguments is exactly the shape
+   * `triadAt` exists to prevent, one level up: the pad and the bass agreeing about a chord is
+   * worth nothing if the room can hand them different progressions.
+   */
+  const layBass = (p: ChordPattern) => {
+    const { events, len } = basslineEvents(
+      p,
+      loopLength(),
+      scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+      scale === 'chromatic' ? 0 : root,
+    )
+    return addPatternLayer(events, len, p.id, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
+  }
+
   useEffect(() => {
     if (!arpLit) {
       setNowNote(null)
@@ -2221,6 +2242,25 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                       })
                     )
                       return
+                    /**
+                     * ⚠️ THE BASS HAS TO COME WITH IT, AND IT DID NOT. Swapping a progression
+                     * replaces the layer marked `-chords:` and leaves `-bass:` exactly where it
+                     * was — so with both loaded, picking Wistful over Four chords moved the pad
+                     * and left the bass playing the old one. Measured in the piano roll: the
+                     * bass read `C2 G1 G2 D2 A2 E2 F2 C2` before and byte for byte the same
+                     * after, under chords that had become Am–F–C–G.
+                     *
+                     * A bass on one progression under a pad on another is the single most
+                     * audible wrong thing a backing can do, which is the sentence `triadAt` was
+                     * factored out to make impossible. That guarantee held perfectly and was
+                     * being defeated one level up, by handing the two halves different patterns.
+                     *
+                     * ⚠️ AND THE UI ASSERTED THE AGREEMENT IT HAD JUST BROKEN. The Bass button
+                     * names whichever progression is loaded, so after the swap its title read
+                     * "A root-and-fifth bass under Wistful" about a bassline that was not under
+                     * Wistful. The button says "Follow the chords"; now it does.
+                     */
+                    if (loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p)
                     if (!loop.playing) startLoop()
                   }}
                   disabled={
@@ -2258,20 +2298,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   }
                   onClick={() => {
                     if (!p) return
-                    const { events, len } = basslineEvents(
-                      p,
-                      loopLength(),
-                      scale === 'chromatic' ? MAJOR_DEGREES : degrees,
-                      scale === 'chromatic' ? 0 : root,
-                    )
-                    if (
-                      !addPatternLayer(events, len, p.id, {
-                        mark: '-bass:',
-                        instrument: 'bass',
-                        gain: 0.5,
-                      })
-                    )
-                      return
+                    /* the same builder the chord picker uses when it swaps — see layBass */
+                    if (!layBass(p)) return
                     if (!loop.playing) startLoop()
                   }}
                   title={
