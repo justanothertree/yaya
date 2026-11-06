@@ -379,3 +379,7 @@
   user-select: none;
   -webkit-user-select: none;
 }
+/* night crossing: the pilot's four helm buttons in one row, a thumb's width each */
+.crossing-helm {
+  flex-wrap: nowrap;
+}

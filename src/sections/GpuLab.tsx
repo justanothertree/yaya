@@ -39,6 +39,7 @@ import { GustDemo } from '../gpu/GustDemo'
 import { SeedlingDemo } from '../gpu/SeedlingDemo'
 import { MobiusDemo } from '../gpu/MobiusDemo'
 import { PinballDemo } from '../gpu/PinballDemo'
+import { CrossingDemo } from '../gpu/CrossingDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -357,6 +358,12 @@ const DEMOS: readonly {
     name: 'Pinball workshop',
     line: 'Pinball workshop — draw your own pinball table, walls, bumpers and targets, then play it with the flippers.',
     Demo: PinballDemo,
+  },
+  {
+    id: 'crossing',
+    name: 'Night crossing',
+    line: 'Night crossing — a boat through a rocky channel in the dark, for two: one steers, one aims the searchlight. Only what the beam lights can be seen.',
+    Demo: CrossingDemo,
   },
 ]
 

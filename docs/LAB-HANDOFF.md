@@ -1855,10 +1855,11 @@ _measured_ means unit tests or headless Chromium on SwiftShader (a CPU stand-in 
 routing only. Automated play proves the rules hold, not that anything is fun; nobody has played
 these on a real device.
 
-| Toy              | What you do                                                                                                                                                                                                                                                        | GPU technique                                                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Möbius golf      | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
-| Pinball workshop | Draw your own pinball table — walls with a finger, bumpers that kick, targets that light (all lit pays a bonus) — then play it: plunger, two flippers, three balls, a best score per table; tables kept here and as files                                          | the table BAKED INTO A DISTANCE FIELD on the GPU whenever it changes (walls, bumpers and targets a channel each), which every frame's neon glow is read from — so a table of 160 segments costs the per-pixel shader one texture read, not 160 distances                                                                        | "bake what changes rarely, draw from the bake": a compute pass on edit, a texture read per frame; checked through the picture, not only the field  |
+| Toy              | What you do                                                                                                                                                                                                                                                                                                                                           | GPU technique                                                                                                                                                                                                                                                                                                                      | Pattern to reuse                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Möbius golf      | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests                                                                                    | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use    | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
+| Pinball workshop | Draw your own pinball table — walls with a finger, bumpers that kick, targets that light (all lit pays a bonus) — then play it: plunger, two flippers, three balls, a best score per table; tables kept here and as files                                                                                                                             | the table BAKED INTO A DISTANCE FIELD on the GPU whenever it changes (walls, bumpers and targets a channel each), which every frame's neon glow is read from — so a table of 160 segments costs the per-pixel shader one texture read, not 160 distances                                                                           | "bake what changes rarely, draw from the bake": a compute pass on edit, a texture read per frame; checked through the picture, not only the field  |
+| Night crossing   | A co-op for two with DIFFERENT jobs: the pilot steers a boat through a rocky channel at night; the keeper aims its searchlight and chooses narrow-and-far or wide-and-near. Only what the beam lights can be seen; rocks throw shadows and are remembered for a moment. Ring the buoys, get home, three knocks and you sink. One person can play both | a MEMORY MAP of the channel in world space: a compute pass lights each texel near the boat (in range, in the beam, no rock in the way — rock shadows by a ray test against every nearby rock) and keeps the brightest of that and its fading past; the night is drawn from the map, so per pixel it is a lookup, not a shadow test | "light into a fading world-space map, draw from the map" — fog of war, sonar, anything seen and then forgotten                                     |
 
 - **Möbius golf** — golf where the shape of the space is yours to choose. Each hole names the spaces
   it may be played in: **Room** (walls all round), **Cylinder** (left edge glued to right), **Möbius
@@ -1978,6 +1979,57 @@ these on a real device.
      real-phone frame rate (the bake is cheap and only on edit; the per-frame shader is a texture read
      plus a few dozen analytic shapes).
 
+- **Night crossing** — a game for two with different jobs, or one person with two hands. A small
+  boat crosses a channel full of rocks at night. The **pilot** steers (←/→ or A/D, ↑/W full ahead,
+  ↓/S slow — or the four helm buttons) and the boat cruises when left alone. The **keeper** aims the
+  boat's searchlight — with the mouse, a finger on the water (the beam follows it, and keeps that
+  angle off the bow when lifted), or J/L — and sets it between narrow-and-far and wide-and-near (I/K,
+  or the slider). Nothing can be seen but what the beam lights: rocks show as it touches them, throw
+  shadows behind them, and stay dimly remembered for a few seconds after. The buoys carry their own
+  small lights and mark the safe water; ringing them (passing close) turns them gold. Three knocks on
+  the rocks and the boat is lost; reach the harbour lamps at the far end to get home, timed, with the
+  best time for each crossing kept. Three crossings: **Calm harbour** (60 units, 40 rocks), **The
+  reef** (90, 90) and **Long night** (130, 150). Space casts off or heaves to, R starts again. Two
+  people on one keyboard split it (WASD/arrows and IJKL), or one on the keys and one on the mouse; on
+  a phone one thumb on the helm buttons and another on the water.
+  Technique: each crossing is generated from a seed — a corridor that wanders across the channel,
+  rocks scattered everywhere except within 1.3 units of its line, a buoy every 14 units along it —
+  and the boat, the knocks, the bells and the harbour are CPU and deterministic. The GPU's
+  `remember` pass keeps a memory map of the whole channel, 6 texels a unit, but runs only on the
+  rows within 22 units of the boat: each texel becomes the larger of the beam's light on it now
+  (`light`, the same as `lightAt` — in range, inside the beam's angle, and no rock between it and the
+  lamp, tested against every rock near the boat) and what it held before times a fade (0.55 a
+  second). `show` draws the night from that map — black water with swell the light picks out, the
+  shore, rocks lit only as much as the map says, white water round them, the buoys' blinking lights,
+  the harbour's lamps and the boat (red while shaken from a knock). So the shadow test is done once
+  a texel near the boat, not once a pixel of the screen.
+  ⚠️ What was wrong first: the shader's first rock was faintly visible unlit — enough ambient light to
+  steer by, which is the whole game given away; unlit rock is now nearly black. And two probe faults
+  worth knowing: a fixed-length key hold is not a fixed pull at an unknown frame rate, and a button
+  below the fold receives no synthetic touch.
+  _Measured_: the tests hold the courses (the same from the same seed; the corridor clear of rock
+  within 1.3 units at every tenth of a unit of all three; a pilot following the corridor gets home
+  untouched and rings every buoy at cruise and at full speed; a boat left to sail straight on is
+  wrecked on every crossing), the boat (cruises, comes up to full and down to slow, turns at its
+  rate, a rock costs one point however long it scrapes and puts the boat outside it, the banks turn
+  it back), the light (narrow reaches further, wide sees wider, brightest on the axis and nothing
+  behind, a rock shadows what is behind it and lights its own face — made to fail by letting light
+  through rocks), the uniform's layout and the shader's copies of the beam and map, the rocks and
+  rows sent to the GPU (every rock the beam could reach is in the list) and the camera. On
+  SwiftShader the memory map equals `lightAt` to 1.3 × 10⁻⁴ over 56,160 texels in three poses —
+  2,258 of them lit and 146 dark only because a rock is in the way — and fades by exactly the
+  factor asked (to 5 × 10⁻⁸). In the page at 1024: the beam points at the mouse, the keeper's K
+  widens it, a boat left alone is wrecked, and a pilot driven through the arrow keys only — steering
+  for the corridor from the boat's position as the page draws it — gets home in 14.6 s untouched
+  with all four bells, and the best is kept and ticked after a reload. On the emulated iPhone the
+  four helm buttons are 79 × 56, a finger on the water swings the beam to it and the beam keeps
+  that aim when lifted, and Full ahead casts off. Audit clean at both.
+  Not measured: whether it is fun, and above all whether it is fun for TWO — whether the keeper has
+  enough to do on the calm crossing, and whether the pilot can trust what they are shown; whether
+  the crossings are too easy with one person on both (the buoys alone may be enough to steer by);
+  whether the stair-stepped edges of the shadows (the map's 6 texels a unit) matter on a real
+  screen; phone speed (the remember pass is ~25,000 texels × up to 96 rocks a frame).
+
 ### Real-device checklist — batch 10
 
 - [ ] Möbius golf — play the six holes without 💡: do the copies round the course make the spaces
@@ -1986,3 +2038,7 @@ these on a real device.
 - [ ] Pinball workshop — does the workshop table play well, and do flips feel like flips? Build a
       table of your own and play it: is drawing walls precise enough on a phone? On a phone, do you
       use the pads under the stage or the stage itself?
+- [ ] Night crossing — play it with somebody: one steering, one on the light. Does the keeper have
+      enough to do? Is the reef fair? Then alone, keys and mouse: too easy, too hard? On a phone, is
+      a thumb on the water and a thumb on the helm workable for one person, or is it a two-person
+      phone game?
