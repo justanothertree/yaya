@@ -1273,8 +1273,21 @@ export function setBpm(bpm: number) {
 export function setBars(bars: number) {
   const next = Math.max(1, Math.min(MAX_BARS, Math.round(bars)))
   if (next === state.bars) return
-  // Layers are NOT touched: a take keeps its own length and the scheduler tiles it into whatever
-  // the loop is now. That is what makes going 2 -> 4 fill the new bars and 4 -> 2 reversible.
+  /**
+   * Layers are NOT touched: a take keeps its own length and the scheduler tiles it into whatever
+   * the loop is now. That is what makes going 2 -> 4 fill the new bars and 4 -> 2 reversible.
+   *
+   * ⚠️ EXCEPT FOR AN ARRANGED LAYER, WHICH THIS USED TO CLAIM WITHOUT THE EXCEPTION. "Fill the
+   * new bars" is true down the tiling path and down the `play` mask — an absent mask entry
+   * PLAYS, which is the rule `pb` exists to preserve in songFile.ts. It is false down `plan`: an
+   * absent plan entry is SILENCE, because a mask is a set of exceptions and an order is not.
+   * Measured in the room, a two-bar progression arranged and then grown reads "Bar 3: silent"
+   * onwards while an untouched layer tiles across the lot.
+   *
+   * That asymmetry is deliberate and documented; whether it is what somebody WANTS when they
+   * grow a song is a product question and is written up rather than guessed at here. The one
+   * thing it is not is a bug in this function, which is why the fix was to the sentence.
+   */
   restart()
   set({ bars: next })
 }
@@ -1431,18 +1444,6 @@ export function addEmptyLayer(instrument: InstrumentId): string {
     ],
   })
   return id
-}
-
-export function toggleLayerBar(id: string, bar: number) {
-  releaseLayer(id)
-  set({
-    layers: state.layers.map((l) => {
-      if (l.id !== id) return l
-      const mask = Array.from({ length: state.bars }, (_, i) => l.play?.[i] ?? true)
-      if (bar >= 0 && bar < mask.length) mask[bar] = !mask[bar]
-      return { ...l, play: mask }
-    }),
-  })
 }
 
 /** Put a layer back in every bar. */

@@ -3604,6 +3604,25 @@ section[id] {
   font-size: 0.85rem;
   /* ⚠️ wraps, so the bar strip below can claim a whole line of its own */
   flex-wrap: wrap;
+  /**
+   * ⚠️ A GRID ITEM'S AUTOMATIC MINIMUM IS ITS MIN-CONTENT SIZE, and the bar strip inside this row
+   * is `flex-wrap: nowrap`, so at 32 bars its min-content is a thousand pixels and the row simply
+   * took them. Measured at 375 with one layer and the loop at 32 bars: this `li` was **1083px**
+   * inside a **327px** grid, and the whole document scrolled sideways by **733px** — `sideways:
+   * 733` and seventeen `offEdge` from `scripts/mobile-audit.js`. With this one line: `li` 327,
+   * document 0, and the strip pans inside itself (`scrollWidth - clientWidth` goes 0 → 753).
+   *
+   * ⚠️ `min-width: 0` ON `.inst-arrange` ALONE DID NOTHING — probed first, and the numbers did not
+   * move an inch. The strip declares `overflow-x: auto` already; what stopped it engaging was not
+   * its own minimum but that its PARENT had been allowed to grow to fit it, so there was never
+   * anything to overflow. Both lines are needed and this is the one that matters.
+   *
+   * It is the same `min-width: auto` CLAUDE.md names for the compose input and the 66-character
+   * goal title — and the floor rule with it: this is safe only because the cells carry
+   * `flex: 0 0 12px`, so they keep their size and the row scrolls. Measured 30×30 before and
+   * after; nothing was crushed to win the number.
+   */
+  min-width: 0;
   padding: 0.4rem var(--layer-pad);
   border: var(--layer-line) solid var(--border);
   border-radius: 9px;
@@ -6142,6 +6161,19 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 .kitbar-del {
   flex: none;
   padding: 0 0.35rem;
+  /**
+   * ⚠️ 23.7px WIDE AND IT IS THE DELETE. Measured at 375 by `scripts/mobile-audit.js`:
+   * 23.7 × 42.4, under the 24×24 of WCAG 2.5.8 — the one bar in this file that is an outside
+   * rule rather than a preference. It had `min-width: auto`, so its width was whatever `✕` plus
+   * 0.7rem of padding happened to come to, and the root font here is FLUID: at a narrower
+   * viewport the glyph gets smaller and so does the target. A number that is 0.3px under today
+   * is further under on a smaller phone.
+   *
+   * So a floor rather than more padding — padding would also make the row taller, and the height
+   * was never the problem. The layer row's own ✕ has carried `min-width: 24px` all along; this
+   * is the same answer, and the two now agree.
+   */
+  min-width: 24px;
 }
 
 /* ⚠️ saved looks
@@ -7999,7 +8031,9 @@ a.cz-msg-author:focus-visible {
   -webkit-touch-callout: none;
 }
 
-/* The arrangement grid — one cell per bar, per layer. See toggleLayerBar. */
+/* The arrangement grid — one cell per bar, per layer. See toggleLayerSlot and layerPlan.
+   (It said `toggleLayerBar`, which was the mask-era function and had no callers left; the row
+   has been an ORDER rather than an on/off mask since plans arrived.) */
 /**
  * ⚠️ ITS OWN FULL-WIDTH LINE, AND IT MUST NOT WRAP.
  *
@@ -8027,6 +8061,9 @@ a.cz-msg-author:focus-visible {
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding-bottom: 2px;
+  /* ⚠️ so this shrinks to its row and its own `overflow-x` above can engage — see the long note
+     on `.inst-layers li`, where the parent's minimum is the half that actually caused it */
+  min-width: 0;
 }
 .inst-bar-cell {
   width: 12px;
