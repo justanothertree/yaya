@@ -2005,12 +2005,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               <span className="muted inst-start-bpm">{loop.bpm}</span>
             </span>
             <span className="inst-start-step">
-              <span className="muted">2. A beat to build on</span>
+              <span className="muted">2. Something to play over</span>
               <button
                 className={'btn' + (beatsOpen ? ' is-on' : '')}
                 aria-pressed={beatsOpen}
                 onClick={() => setBeatsOpen((v) => !v)}
-                title="Drop in a drum pattern you can then change"
+                title="Drums, chords, a bassline and a fill — drop any of them in, then change them"
               >
                 🥁 Pick a beat or some chords
               </button>
@@ -2062,7 +2062,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           title={
             loop.layers.length >= MAX_LAYERS
               ? `That is all ${MAX_LAYERS} layers — delete one to add another`
-              : 'Drop in a drum pattern you can then change'
+              : 'Drums, chords, a bassline and a fill — drop any of them in, then change them'
           }
         >
           🥁 Beats & chords
@@ -2500,12 +2500,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             })()}
           </div>
           <p className="muted inst-beats-lede">
-            {/* ⚠️ THE LEDE HAD TO CHANGE WITH THE PANEL. It said "picking one swaps the
-                beat", which was the whole truth while a beat was all this held — and would
-                have been a plain lie about a panel where a progression and a beat can play at
-                once. Each row owns one slot; the two do not replace each other. */}
-            Picking one swaps that row rather than adding a second — chords and a beat play
-            together. Change either afterwards.
+            {/* ⚠️ THE LEDE HAD TO CHANGE WITH THE PANEL, and then the panel changed twice
+                more in a day without it. It first said "picking one swaps the beat", which was
+                the whole truth while a beat was all this held; it then said "chords and a beat
+                play together", which was true of a two-row panel and became a half-truth the
+                morning Bass, Fill and Lead back arrived. A sentence that names two of five
+                things reads as a complete list, which is worse than naming none.
+
+                So it states the RULE rather than the inventory — each row owns one slot, and
+                the rows play together — which stays true however many rows there are. The
+                inventory belongs in the row labels, where it cannot go stale. */}
+            Picking one swaps that row rather than adding a second — every row plays at once. Change
+            any of it afterwards.
           </p>
           {drumGenres().map((genre) => (
             <div key={genre} className="inst-beats-row">
