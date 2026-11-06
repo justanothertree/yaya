@@ -429,6 +429,50 @@ export function mobileAudit(root = document) {
      This and the `scrollsX` root bug above were masking each other: with every element exempted
      there was nothing left to measure against the wrong number. */
   const W = document.documentElement.clientWidth
+
+  /**
+   * ⚠️ A ZERO-WIDTH VIEWPORT IS NOT A NARROW SCREEN, IT IS A BROKEN MEASUREMENT — and this file
+   * printed confident numbers against one until it cost three probes in a row on 5 Nov 2026.
+   *
+   * CLAUDE.md already says "the Browser pane collapses to 0×0 between calls, so resize
+   * immediately before measuring". What it does not say, because nobody had watched it happen,
+   * is what the collapse LOOKS like coming out of here: `sideways` is `scrollWidth - W`, so with
+   * `W` at zero it becomes the page's own width and every room reports a sideways scroll it does
+   * not have. Measured minutes apart on the same unchanged build — #home `sideways: 147`,
+   * #chronicle `302`, #instrument `263`, every room "broken" — and then `0` across the board the
+   * moment a resize was batched immediately before the sweep. Nothing had changed but the pane.
+   *
+   * That is the worst failure this checker can have: not a miss, but a page of plausible faults
+   * in rooms that are fine, each one worth an hour. `offEdge` goes the same way, since every box
+   * on the page is past an edge at x=0.
+   *
+   * So it refuses. The shape is unchanged for anything reading the arrays, `sideways` is null
+   * rather than a lie, and `unmeasurable` says what to do about it.
+   */
+  if (!(W > 0)) {
+    const why =
+      'the layout viewport is ' +
+      W +
+      'px wide — nothing can be measured against it. The Browser pane collapses to 0×0 between ' +
+      'calls; batch a resize immediately before the sweep and run them in one round trip.'
+    console.warn('mobileAudit: ' + why)
+    return {
+      room: root === document ? location.hash || '#home' : 'scoped',
+      width: W,
+      unmeasurable: why,
+      saw: null,
+      sideways: null,
+      tooSmall: [],
+      snug: [],
+      offEdge: [],
+      clipped: [],
+      insideOut: [],
+      spills: [],
+      unbounded: [],
+      wordless: [],
+    }
+  }
+
   const targets = [...root.querySelectorAll(CONTROLS)].filter(shown)
   const out = {
     room:
@@ -438,6 +482,30 @@ export function mobileAudit(root = document) {
             ? '.' + root.className.split(' ')[0]
             : root.tagName) + ' (scoped)',
     width: W,
+    /**
+     * WHAT THIS SWEEP ACTUALLY LOOKED AT — the field that lets a zero be read.
+     *
+     * ⚠️ CLAUDE.md SAYS "COUNT WHAT THE SWEEP EXAMINED BEFORE BELIEVING THE NUMBER" AND THIS FILE
+     * COULD NOT ANSWER IT. A room reporting nothing wrong and a room with nothing in it printed
+     * character for character the same thing, and the project has already paid for that once:
+     * six chronicle features were called verified off a 375 sweep that said
+     * `0 undersized, 0 off-edge, 0 clipped` about a paragraph and two buttons, because
+     * `previewMember` has no session and the room rendered its empty state.
+     *
+     * ⚠️ `inRoom` IS THE ONE THAT MATTERS, because `controls` is mostly furniture. Measured at 375
+     * on 5 Nov 2026: #chat examined 13 visible controls of which **3** were inside `<main>`, #
+     * ratings 4, #feed 5 — the other ten in each case are the nav and the notification bell,
+     * identical in every room and swept fifteen times over. A clean `#chat` was a clean nav.
+     *
+     * `text` is the cheap corroboration: 133 characters in #chat against 3,991 on #home is an
+     * empty state saying so in one number, without this file needing to know what a room is.
+     */
+    saw: {
+      controls: targets.length,
+      inRoom: targets.filter((el) => el.closest('main')).length,
+      text: ((root === document ? document.querySelector('main') : root)?.innerText ?? '').trim()
+        .length,
+    },
     sideways: document.documentElement.scrollWidth - W,
     tooSmall: [],
     snug: [],
