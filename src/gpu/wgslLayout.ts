@@ -13,6 +13,7 @@ const WGSL: Record<string, { size: number; align: number }> = {
   i32: { size: 4, align: 4 },
   vec2f: { size: 8, align: 8 },
   vec2u: { size: 8, align: 8 },
+  vec2i: { size: 8, align: 8 },
   vec3f: { size: 12, align: 16 },
   vec4f: { size: 16, align: 16 },
   /* four vec4f columns */

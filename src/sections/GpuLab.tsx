@@ -5,23 +5,29 @@ import { BubblesDemo } from '../gpu/BubblesDemo'
 import { ClayDemo } from '../gpu/ClayDemo'
 import { ClothDemo } from '../gpu/ClothDemo'
 import { ErosionDemo } from '../gpu/ErosionDemo'
+import { FerroDemo } from '../gpu/FerroDemo'
 import { FirefliesDemo } from '../gpu/FirefliesDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { FractalDemo } from '../gpu/FractalDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { GlassDemo } from '../gpu/GlassDemo'
 import { GrowthDemo } from '../gpu/GrowthDemo'
+import { HarmonographDemo } from '../gpu/HarmonographDemo'
 import { HarpDemo } from '../gpu/HarpDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { LightDemo } from '../gpu/LightDemo'
 import { LightningDemo } from '../gpu/LightningDemo'
+import { LoomDemo } from '../gpu/LoomDemo'
 import { MarbleDemo } from '../gpu/MarbleDemo'
+import { MarblesDemo } from '../gpu/MarblesDemo'
 import { MirrorDemo } from '../gpu/MirrorDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { NeonDemo } from '../gpu/NeonDemo'
 import { PixelSortDemo } from '../gpu/PixelSortDemo'
 import { PondDemo } from '../gpu/PondDemo'
+import { RainDemo } from '../gpu/RainDemo'
 import { RibbonsDemo } from '../gpu/RibbonsDemo'
 import { SandDemo } from '../gpu/SandDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
@@ -248,6 +254,43 @@ const DEMOS: readonly {
     name: 'Voiceprint',
     line: 'Voiceprint — a picture of sound. Sing into it, paint on it, and play it back.',
     Demo: VoiceprintDemo,
+  },
+
+  {
+    id: 'marbles',
+    name: 'Marble maze',
+    line: 'Marble maze — tilt a wooden maze full of marbles; draw walls, dig holes, pour in more.',
+    Demo: MarblesDemo,
+  },
+  {
+    id: 'glass',
+    name: 'Stained glass',
+    line: 'Stained glass — draw lead, tap panes to glaze them, and move the sun to throw the colours across the floor.',
+    Demo: GlassDemo,
+  },
+  {
+    id: 'harmonograph',
+    name: 'Harmonograph',
+    line: 'Harmonograph — flick the paper to swing the pendulums, and the pen draws their figure as they slow.',
+    Demo: HarmonographDemo,
+  },
+  {
+    id: 'rain',
+    name: 'Rain on glass',
+    line: 'Rain on glass — write in the mist, breathe it back, and tilt the window to make the rain run.',
+    Demo: RainDemo,
+  },
+  {
+    id: 'loom',
+    name: 'Loom',
+    line: 'Loom — thread the warp, tie up the treadles, treadle a tune, and watch the cloth weave.',
+    Demo: LoomDemo,
+  },
+  {
+    id: 'ferro',
+    name: 'Ferrofluid',
+    line: 'Ferrofluid — press and hold under a dish of black liquid and it bristles into spikes; or let it dance to the music.',
+    Demo: FerroDemo,
   },
 ]
 

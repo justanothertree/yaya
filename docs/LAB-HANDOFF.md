@@ -1080,3 +1080,289 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
 - [ ] Voiceprint — sing or whistle with 🎤 Listen on: does your voice show up where you would expect?
       Played back, is it recognisably you, or just eerie (both are fine)? Is the starting tune
       pleasant? Is the playback loud enough through phone speakers?
+## Batch 7 — the toolbox, again
+
+Its own draft PR, branch `claude/lab-toys-7`, from `main`. Not live. Every toy is chosen to differ
+from the seven live ones and from #19 (Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons), #20
+(Fractal, Light, Harp, Neon, Sand, Pond), #21 (Slime, Mirror, Bubbles, Clay, Fireflies, Black hole)
+and #22 (Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint), in both how you play it and
+what the GPU does.
+
+⚠️ **No picker was cherry-picked, and none was invented.** As in batches 5 and 6, each toy is one
+entry in `main`'s `DEMOS` list plus one render line, and each entry carries its component (`Demo:`)
+for #19's registry. Merged after #19, the conflicts in `GpuLab.tsx` are all "both sides added": keep
+both, one closing `]`, and delete this batch's `demo === …` render lines.
+
+Trial-merged on 5 Nov in order — `main`, #19, #20, #21, #22, then this — every conflict was "both
+added" (`GpuLab.tsx`, this file, and `lab.css` between #19 and #20). One shape needs care: where
+two batches each append an entry inside the same shared `{ … }`, one side stops mid-entry and the
+other starts one, so a `},` and a `{` have to go between them. Merged that way: typecheck and lint
+clean, and the 441 tests in `src/gpu` green with 37 toys registered.
+
+⚠️ **THE PICKER ON A PHONE.** Measured in batch 6: at 375, `main`'s button picker fits about 2.7
+buttons a row, and was 3 rows (119px) with eight. Every three toys that land before #19's dropdown
+add about another row. Measured on this branch (all six toys, iPhone 13 emulation, 390 wide):
+**13 buttons in 5 rows, 202px** above the canvas. Batches 5, 6 and 7 together would be about ten
+rows — most of a phone's screen of buttons. Land #19's picker first. A third picker would only
+make the merge worse.
+
+| Toy           | Interaction                                                                                                                                                                      | GPU technique                                                                                                                                                                                                                                                                                | Pattern to reuse                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Marble maze   | TILT (the phone, or a drag that leaves the board tilted), and TOOLS: draw walls, dig holes, pour marbles                                                                         | a SPATIAL HASH BY COUNTING SORT — count per cell (atomics), scan (one workgroup), scatter (atomic cursors) — and POSITION-BASED DYNAMICS with gathered, order-independent pushes; a SIGNED chamfer distance field for the walls, bevelled for drawing                                        | "thousands of things that touch each other" — any crowd, any granular toy                                                         |
+| Stained glass | DRAW (lead), then TAP to fill a region — the region is whatever shape you drew — and move the SUN (drag, keys, or tilt the phone)                                                | CONNECTED-COMPONENT LABELLING on the GPU: min-label propagation with POINTER JUMPING, a fixed number of passes a frame; a fill is every cell sharing the tapped label. The floor's light is each floor pixel's ray back to the sun, through the window                                       | "find the regions" — flood fill, paint bucket, islands, rooms, any region a person drew                                           |
+| Harmonograph  | a FLICK sets the swing; RATIOS you hear as intervals; a detune that makes the figure turn; it draws itself                                                                       | a COMPUTE RASTERISER: a thread a segment walks its own pixels and adds ink with INTEGER ATOMICS, bilinear and exactly conserved; the paper drawn from the ink's density and colour                                                                                                           | "draw millions of lines yourself" — plots, trails, density maps, any line art a rasteriser is wrong for                           |
+| Rain on glass | TOUCH (write in the mist), BREATH — the MIC's loudness, or a held button — fogs it back, and TILT turns which way the water runs                                                 | SCREEN-SPACE METABALLS: drops splatted as instanced quads with ADDITIVE BLENDING into a float field, thresholded and REFRACTED through the slope; a PERSISTENT MIST in two textures that take turns, cleared by fingers and water                                                            | "blobs that join" and "a surface that remembers" — paint that dries, frost, condensation, any metaballs                           |
+| Loom          | TOOLS on a draft — draw the threading and treadling, tap the tie-up — or TAP THE CLOTH and a whole family of crossings flips; it WEAVES ITSELF pick by pick, each treadle a note | PROCEDURAL MATERIAL from a bit-packed draft: every pixel looks up its crossing (a bit of the tie-up), its neighbours' (to bend each thread where it dives), and optionally walks its float, then lights the thread as a twisted cylinder — no geometry, no textures                          | "a rule-built pattern drawn as a real material" — knitting, tiles, brickwork, basketry, any grid of crossings                     |
+| Ferrofluid    | PRESS AND HOLD — a magnet gathers while held, so time is the control — with MULTI-TOUCH (a magnet a finger), and AUDIO: the bass of whatever plays drives a magnet               | A SPECTRAL PDE SOLVER: Swift–Hohenberg, its stiff part solved exactly in Fourier space, with a GPU FFT done a row (then a column) per WORKGROUP IN SHARED MEMORY, twiddles from a table, direction an OVERRIDE CONSTANT; the pattern (hexagonal spikes) is chosen by the equation, not drawn | "solve it in Fourier space" — blur and sharpen at any radius, diffusion with big steps, wave equations, convolution, any spectrum |
+
+- **Marble maze** — a wooden maze full of coloured marbles. 🖐 Tilt: drag and the board tips the way
+  you drag and stays there (⚖️ Level puts it flat); on a phone, 📱 Tilt tips it as you tip the phone.
+  ✏️ Wall draws walls, 🕳 Hole digs holes, 🧽 Erase rubs either out, ⚪ Pour streams marbles from a
+  finger (up to 4,096). A count says how many are in the holes, with a marimba plink for each one
+  that drops. ↺ New maze carves another. Keys: arrows tilt, L level, N new maze, 1–5 tool.
+  Technique: each step, every marble guesses where gravity takes it and is pushed out of the walls
+  along the distance field; then the marbles are SORTED INTO CELLS a marble across — count with
+  `atomicAdd`, prefix-sum the counts in one workgroup's memory, scatter into each cell's run — so a
+  marble only reads the nine cells round it, not all 4,095 others; each gathers half of every
+  overlap from its neighbours (gathered, so no thread's order matters); the velocity is the move.
+  The walls' field is a chamfer distance worked out from both sides, so it is negative inside a
+  wall and its slope always points out.
+  ⚠️ Four things were wrong first:
+  1. **The pipeline layout was refused**: one layout for every pass used 10 storage buffers, and a
+     stage may use 8 — WebGPU's default, and what phones have. The board's passes and the marbles'
+     now have a layout each (4 and 8).
+  2. **Marbles left the board.** Started crowded, they were pushed into the walls, and the field was
+     0 inside a wall — no slope to climb out on — so the probe watched them leave altogether, on the
+     CPU copy as well as the GPU. The field is signed now; pushes are capped at a radius a step and
+     speeds at 250 cells a second (slower than a radius a step, so nothing tunnels); and a marble is
+     clamped inside the board whatever the crowd does — a board can be poured fuller than it holds.
+  3. **One of my own tests packed 200 marbles into a box that holds about 180** — a fixture that
+     could not pass, rather than a bug. 100, and a separate over-packed test for the clamp.
+  4. **Holes were drawn cell by cell**, a staircase; their edge is read between cells now.
+     Measured on the GPU, from the same 300 marbles: one step matches the CPU's to 8×10⁻⁵ cells with the
+     same marbles alive. Twenty steps of a crowd do not match, and should not — collisions amplify the
+     10⁻⁷ differences in summing order the way any chaotic crowd does — so the long check is one marble
+     alone, rolled off walls for 60 frames: 8.6×10⁻⁵. The GPU's sort holds every live marble exactly
+     once, with starts in order. The tests hold the CPU copy to the counting sort (every marble once,
+     grouped by cell), the field (within 9% of Euclid, negative inside a wall, pointing out), the
+     physics (two marbles end just touching, momentum even; none ever left in a wall or off the board,
+     however crowded; they roll downhill and come to rest; holes swallow them) and the maze (every open
+     place reachable from the start). In the page, at 1024 and on an emulated phone: a drag tilts, keys
+     and Level work, a stroke draws walls and Erase takes them out, a click digs a hole, Pour streams
+     marbles, New maze resets, and synthetic orientation tips the phone's board by sin of the angle.
+
+- **Stained glass** — a stained-glass window you make, and the light it throws. ✏️ Lead draws lead
+  lines; 🎨 Fill and a colour (Ruby, Amber, Gold, Emerald, Cobalt, Violet, Sky, Clear) glaze the
+  pane you tap — the whole pane, whatever shape the lead made it, and nothing past it; 🧽 Erase
+  lifts lead, and a gap joins two panes into one. ☀️ Sun (or the arrow keys, or 📱 Tilt the sun on a
+  phone) moves the sun, and the window's colours slide across the stone floor below it. ✿ Rose
+  window starts from a glazed rose; ▢ Empty frame from nothing. Keys: arrows sun, 1–4 tool,
+  C colour, R rose, N empty.
+  Technique: CONNECTED-COMPONENT LABELLING. Every cell of glass starts with its own index as its
+  label; each pass every cell takes the smallest label among itself and its four glass neighbours —
+  lead stops it — and then JUMPS, taking the label its new label has. Thirty-two passes a frame for
+  eight frames after the lead moves; a tap that comes sooner finishes the labelling first. A fill
+  colours every cell whose label is the tapped cell's — all on the GPU, no readback. The floor is
+  drawn by sending each of its pixels back along the sun's ray to the window plane and taking the
+  glass's colour there.
+  ⚠️ What was wrong first: 24 passes a frame was the guess; the rose window needs 28 (measured), so
+  it is 32, and the engine keeps going for eight frames — a 1,740-cell spiral corridor needs 115
+  passes, where a label crossing one cell a pass would need 1,740. Two of the probe's taps first
+  landed on lead (the middle of a rose window is a spoke) and filled nothing, correctly.
+  Measured on the GPU: its labels equal the CPU's on all 58,240 cells of a rose window (38 panes);
+  a tap fills all 893 cells of its pane and none outside; after a lead line is drawn across that
+  pane, a tap above it fills only the 173 cells above. The tests hold the CPU copy to a plain flood
+  fill (a rose window and five scribbles) and count the passes. In the page, at 1024 and on an
+  emulated phone: a line drawn across the empty frame splits it so Ruby fills one side; erasing a
+  gap joins them so Cobalt fills the whole window; the swatches choose and switch to Fill; the sun
+  follows a drag, the keys and synthetic phone tilt.
+
+- **Harmonograph** — the Victorian drawing machine. Flick the paper and the pendulums swing — the
+  flick's strength the swing, its direction the phase between them, which is the shape — and the
+  pen draws their figure as they slow, each drawing in a new ink over the last. Five ratios, each
+  sounded as an interval when it starts (1:1, 1:2 an octave, 2:3 a fifth, 3:4 a fourth, 3:5 a major
+  sixth); Detune puts each axis's second pendulum a little off its first, and the figure turns as
+  it fades; Steady or Quick; ✕ Clean paper; sound on or off. Keys: Space swings, 1–5 ratio, S
+  speed, C clean.
+  Technique: the pen's path is analytic — two pendulums across, two up and down, each a decaying
+  sine — and the GPU draws it without its rasteriser: each frame thousands of segments get a thread
+  each, which walks its own pixels (a step a pixel of its longer side) and adds each step's ink
+  into the four pixels round it with `atomicAdd`, in integers, so the order threads add in changes
+  nothing and the ink is exactly conserved (the four shares always add to a whole step). Four
+  channels a pixel — red, green and blue ink and the total — and the paper pass draws coverage from
+  the total and colour from the mix.
+  ⚠️ Two things were wrong first:
+  1. **Every figure was a squashed spiral.** Each axis had a share of both frequencies, so x and y
+     moved almost together. A lateral harmonograph swings one frequency across and the other up and
+     down, with a smaller, detuned partner on each — and then the figures are harmonographs.
+  2. **I wrapped the angle before `sin`, expecting it to close the GPU's gap to the CPU, and it did
+     not** (worst pixel 59 → 61 units). Measured instead: the gap is SwiftShader's sin moving the pen
+     ~0.005 px, a unit of ink a step, over the dozens of steps that cross a pixel — 3.3%, now 1.9%,
+     and invisible. The wrap stayed, because WGSL only promises sin on −π..π.
+     Measured on the GPU, a whole figure of 40,000 segments: 10,979,840 units of ink against the CPU's
+     10,980,608 (the difference is 3 steps, a segment's step count rounding the other way at a whole
+     pixel); every well-inked pixel within 1.9%. The tests hold the pen to the machine (a whole ratio
+     without damping closes its figure; with damping it spirals in at the decay's rate) and the ink to
+     its promises (exactly INK a step however the pen lands, no pixel skipped, two halves of a line
+     ink what the whole line does, the colour split in whole units). In the page, at 1024 and on an
+     emulated phone: a flick starts a new drawing in the next ink with two notes; the ratios and the
+     detune reach the pendulums; Quick draws faster; Clean paper wipes the ink; the keys work.
+
+- **Rain on glass** — a misted window at dusk with a city blurred behind it. Rain lands and clings;
+  a drop grows as rain joins it until it is heavy enough to run, runs in fits and starts, leaves a
+  clean trail through the mist and a line of droplets, and swallows whatever it meets. ☝️ Wipe
+  writes in the mist, which fogs slowly back; 🌬 Hold to breathe — or 🎤 Blow into the mic — mists
+  it over low in the middle, where a face would be; 💧 Drip adds your own water (a tap a drop, a
+  drag a line of it that gathers and runs); ↻ Tilt turns the glass (on a phone, 📱 Tilt) and the
+  water runs the new way. A Rain slider from none to a downpour; Fog it; Dry it. Keys: ← → turn,
+  ↓ straight, − + rain, F fog, C dry, 1–3 tool, Space pause.
+  Technique: a few hundred drops live on the CPU (their physics is the testable part); the picture
+  is three passes. **Splat**: every drop is an instanced quad, and its fragment ADDS a smooth bump to
+  an `rg16float` field — the bump, and the bump times the radius, so a pixel knows how big the water
+  over it is. A running drop's quad stretches back along the fall into a tail that thins as it goes.
+  Where two bumps overlap they sum past the threshold between them, so touching drops are one shape
+  with a neck: screen-space metaballs, with blending doing the summing instead of a loop over every
+  drop in every pixel. **Fog**: an `r8unorm` mist that remembers — two textures taking turns — fogs
+  back unevenly a little each frame, faster under a breath, and is cleared under a finger (a capsule
+  per stroke segment) and under the water. **Show**: the street sharp through clean glass, blurred
+  and pale through the mist, and through water bent by the surface the field's slope gives: the drop
+  looks back past its own middle, so the street in it is small and upside down. One more pattern
+  worth reusing: the three passes use `layout: 'auto'`, because the field is drawn into by one pass
+  and read by the next two, and a single shared layout would bind it as a texture in the very pass
+  rendering to it — a usage conflict WebGPU refuses.
+  ⚠️ What was wrong first:
+  1. **Every trail droplet was swallowed straight back up.** It was left where the drop had been a
+     frame earlier, a few px behind and well inside merging reach, so a running drop left nothing.
+     They are left a body-length behind now, on an odometer rather than a guess.
+  2. **A still drop's back half was thinner than its front.** The tail's taper was applied to
+     everything behind the centre, tail or not; the probe's comparison of one drop against the
+     formula went from 2×10⁻⁴ to 0.3 and caught it. The taper scales with how much tail there is.
+  3. **The first storm was columns**: 15% of new raindrops were heavy enough to run at once, and the
+     tails were full-width capsules. Fewer big drops, and tails that thin and shallow.
+  4. **A stroke made while paused did nothing, and there was no way to unpause by sight.** The redraw
+     asked `running` from inside `make`, which runs once, so it was always the value at the start —
+     measured: 0 frames drawn while paused and the mist untouched, against 7 frames and a cleared
+     stroke with it read from a ref. And with reduced motion the Lab starts paused, so a rain toy
+     with no ▶ Run button could only be started from a key; it has one now.
+     Measured on the GPU: one drop's field matches the formula to 2.4×10⁻⁴ across 10,000 pixels (1,264
+     pixels inside it against πr² = 1,257); two drops 2px apart join (0.585 at the neck against
+     0.586 wanted) and 10px apart do not; a running drop's tail is behind it whichever way down is; the
+     mist is 0.85 where fogged, 0 under water and under a stroke and its ends, softened at the edge; a
+     second of regrowth adds 0.0996 against 0.1; a breath fogs the middle 0.498 (0.5 wanted) and the
+     corner 0.035; a paused frame changes no mist at all. The tests hold the drops to keeping the water
+     — a merge and a trail neither make nor lose any, through 200 steps of a storm — and to clinging,
+     running downhill whichever way down is, merging at the water's middle, running off the glass, the
+     cap, a finger taking exactly the drops it touches, and a breath that rises slowly and is not
+     fooled by a knock. Each was made to fail once (ten perturbations, every one caught). In the page,
+     at 1024 and on an emulated phone (touch): a stroke clears the mist under it and not beside it;
+     Fog it and Dry it; a tap drips one drop and a drag a line that runs; a Tilt drag turns the fall;
+     holding 🌬 breathes 0.89 and letting go falls back; the keys turn, rain and dry; the mic button
+     opens the (fake) mic. Audit clean at both.
+
+- **Loom** — a weaver's draft on squared paper beside the cloth it makes. The squares along the top
+  are the THREADING (which of eight shafts each warp end goes through — drag across them to
+  rethread), the corner is the TIE-UP (which shafts each treadle lifts — tap to tie or untie), and
+  the column on the right is the TREADLING (which treadle each pick presses — drag down it). Tap the
+  cloth itself and the one tie-up bit that crossing reads flips, so every crossing that shares its
+  shaft and its treadle flips with it, all through the cloth. ▶ Weave runs the loom: pick by pick the
+  shuttle crosses (left to right, then back), the cloth scrolls up, and each treadle plays its note —
+  a pentatonic run on the kalimba, so the treadling is a tune. Six drafts (Log cabin, Houndstooth,
+  Herringbone, Rosepath, Satin, Tartan), 🎨 four colourways, 🔍 Long floats marks every float longer
+  than three threads in red hatching (the hint gives the longest), ↺ Weave again starts from bare
+  warp, Speed, Size, sound. Keys: Space weave, 1–6 draft, C colours, F floats, U weave again, − +
+  size, M sound.
+  Technique: there is no geometry and no texture. The draft is 264 u32s in one storage buffer — each
+  part repeated out to 64, so the shader has one modulus — and every pixel finds which part of the
+  draft it is on, then for the cloth: its crossing (bit `threading[end]` of `tieup[treadling[pick]]`),
+  its neighbours' along each thread, to bend a thread on top down where it dives under, and, with
+  floats marked, the run of its float (a walk of up to 16 each way). The thread on top is lit as a
+  twisted cylinder — normal from across its width, tilted where it dives, ply ridges slanting along
+  it, a sheen that drifts as the light moves; the one beneath is shadowed. Unwoven picks show bare
+  warp over the loom's dark, and the pick being woven has weft only as far as the shuttle has got.
+  ⚠️ What was wrong first:
+  1. **The pack test was green with the tie-up packer stopped at four treadles**, because the twill
+     it was fed ties only four — a fixture sitting on its defaults, exactly CLAUDE.md's warning. It
+     also checks the satin now, whose eight treadles are all tied.
+  2. **Choosing a draft unwove the cloth**, leaving bare warp for ten seconds — a button that seemed
+     to do nothing. A draft shows on the cloth at once now, and only ↺ Weave again starts bare.
+  3. **`woven` started at 10⁹** to mean "already woven", and the shader gets it as an f32, where a
+     pick's fraction is below precision: the shuttle could never move. It starts at 400.
+  4. A `select(x < f, …)` parsed as a template list (the known WGSL trap), and the 375 audit caught
+     a slider's value clipped ("medium", "3 a second") — shorter words now.
+     Measured on the GPU: the cloth's colour at every cell centre (589 cells) says warp or weft exactly
+     as the CPU's drawdown does, for a twill, the satin and rosepath, and scrolled by five picks; every
+     square of the threading, tie-up and treadling (464) is inked exactly where the draft says; the
+     shuttle's pick has weft on the left only and the unwoven ones none; long floats are marked on
+     exactly the 515 cells of 589 the CPU says (satin, over 6) and none in plain weave. The tests hold
+     the drawdown to what weavers know (plain is a checkerboard, a 2/2 twill a diagonal, herringbone
+     turns with a clean break, satin crosses once a row never beside the last, rosepath mirrors about
+     its point), floats (1, 2 and 7), a tap flipping exactly its shaft-and-treadle family, the layout,
+     and the packing. Ten perturbations each fail a test. In the page, at 1024 and on an emulated phone:
+     it weaves (~3 picks a second), the tie-up ties by click and by touch, a drag rethreads and
+     retreadles (with a note a pick), a cloth tap flips one tie-up bit, the drafts, colourways, floats,
+     size and keys all reach the GPU. Audit clean at both.
+
+- **Ferrofluid** — a dish of black magnetic liquid. Press and hold on it and a magnet gathers
+  underneath (about a second to full strength, so the spikes come up as you hold rather than
+  appearing); the pool bristles into a hexagonal field of glossy spikes; drag and they follow; let
+  go and they sink flat. Several fingers are several magnets (four at most). Magnet sets how strong
+  a full magnet is: at the low end hexagons of spikes, at the top mazes, as real ferrofluid does in
+  a strong field. 🎵 Dance to the music puts a magnet under the middle that pulses with the bass of
+  whatever is playing anywhere on the site (🎤 Mic for the room). Settle it flattens the pool. Keys:
+  hold Space for a magnet, arrows move it, D dance, C settle, P pause.
+  Technique: the surface is the Swift–Hohenberg equation, `∂u/∂t = r(x)u − ((k₀²+∇²)/k₀²)²u + gu² − u³`,
+  the textbook model of a surface that must choose a pattern: flat where `r < 0`, patterned at
+  wavelength 2π/k₀ where `r > 0`, and with `g > 0` upward spikes on hexagons. `r` is the magnets'
+  field. Each step (three a frame): the growth, quadratic and cubic terms in real space; a forward 2D
+  FFT; every mode multiplied by its exact damping; an inverse FFT. The FFT is 256 points a line, one
+  workgroup of 128 threads a row, then a column, with the line in workgroup memory — bit-reversed
+  load, eight butterfly stages with a barrier each, twiddles read from a table rather than computed —
+  and its direction is a pipeline OVERRIDE constant, so two entry points make four pipelines. The
+  liquid is drawn top-down: height from the pool's heap and the spikes, normal from its slope, and a
+  studio reflected in it with a Fresnel term, so the steep sides of the spikes catch the softboxes.
+  ⚠️ What was wrong first:
+  1. **The whole pool rose as one lump.** With spikes 11 cells apart (k₀ ≈ 0.57) the textbook
+     operator `(k₀² + ∇²)²` damps the flat mode by k₀⁴ ≈ 0.1, weaker than the field's growth. It is
+     scaled by k₀² now, so the flat mode is damped by 1 and only k₀ is free; the test that the
+     pattern's spectrum peaks at k₀ caught it.
+  2. **"Spikes" were stripes.** Hexagons need a modest growth: measured on a 64² grid, r = 0.2
+     settles into spikes (peaks twice as far up as troughs go down, skew 0.8), r = 0.5 into stripes
+     (skew 0.05). A full magnet gives r = 0.25 now; the Magnet slider goes past it into mazes on
+     purpose.
+  3. **A magnet's patch was four spikes wide** (REACH 34); it is 60 cells, about ten spikes across.
+  4. A flat pool reflected nothing (the studio's lights were all off to the sides of straight up);
+     it has a soft light overhead now.
+     Measured on the GPU: the shared-memory FFT of 65,536 random complex values matches the CPU's to
+     2.5×10⁻⁷ of the largest; forward and back returns the input to 3.3×10⁻⁷; a pure tone lands in
+     exactly its two bins (32,768 each, the rest under 0.0011); one whole step of the surface — noise,
+     growth, both FFTs, damping — matches the CPU doing the same arithmetic to 3.6×10⁻⁸; under a held
+     magnet the spikes' spacing (the spectrum's peak) is 10.94 cells against 11 designed, the dry dish
+     stays exactly 0, and released it settles to 0.0007. The tests hold the FFT to the DFT term by term
+     and to Parseval, the damping to leaving k₀ alone, the surface to going flat with no field and
+     rising at its own wavelength with one, spikes up rather than pits (and symmetric with g = 0), and
+     stability at a large step; and the magnets, the pool, the ramp, the bass. Twelve perturbations
+     each fail a test. In the page, at 1024 and on an emulated phone: a held mouse gathers a magnet to
+     full and raises spikes (rms 0.18, peaks 1.47), a drag moves it, letting go removes it and the
+     surface goes flat; held Space and the arrows make and move one; two touches are two magnets;
+     Settle it flattens; a strong Magnet makes mazes; the mic's (fake) sound drives the speaker magnet.
+     Audit clean at both.
+
+### Phone checklist — batch 7
+
+- [ ] The picker: how many rows of buttons above the canvas at 375? Moot once #19 lands.
+- [ ] Marble maze — does 📱 Tilt feel like tipping a real board (and ask, on iPhone)? Smooth with a
+      few thousand marbles poured? Is the board's stay-tilted drag natural with a mouse? Do the
+      plinks get annoying?
+- [ ] Stained glass — is drawing lead with a finger precise enough to make the panes you meant? Does
+      a pane fill feel instant? Does the light on the floor read as light through a window?
+- [ ] Harmonograph — does a flick feel like giving the pendulums a push? Are the intervals' notes a
+      nice touch or noise? Does a figure take about the right time to draw?
+- [ ] Rain on glass — does writing in the mist feel like a finger on a cold window? Does blowing into
+      the mic fog it (and does the mic prompt feel worth it)? Do drops cling, gather and run like
+      rain, and do their little upside-down streets read? Smooth in a downpour?
+- [ ] Loom — at 375 the draft's squares are about 11px: can a finger thread, tie and treadle them,
+      or does it need a bigger Size? Is tapping the cloth to flip a family delightful or baffling?
+      Is the woven cloth convincing as cloth? Does the treadling-as-a-tune earn its sound?
+- [ ] Ferrofluid — does holding feel like a magnet gathering (is a second too slow)? Smooth on a
+      phone — three FFT round trips of 256² a frame? Do two fingers make two clean fields? Does
+      it dance to music convincingly, and does it look like glossy black liquid?
