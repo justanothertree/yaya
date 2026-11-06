@@ -97,25 +97,27 @@ export function progressionEvents(
   loopLen: number,
   scaleDegrees: readonly number[],
   root: number,
+  leadBack = false,
 ): { events: LoopEvent[]; len: number } {
   const L = scaleDegrees.length
   if (!L || !(loopLen > 0) || p.degrees.length === 0)
     return { events: [], len: Math.max(0, loopLen) }
-  const slot = loopLen / p.degrees.length
   const events: LoopEvent[] = []
-  p.degrees.forEach((_, i) => {
-    const t = i * slot
-    for (const note of triadAt(p, i, scaleDegrees, root, BASS)) {
-      events.push({ t, midi: note, on: true })
-      events.push({ t: t + slot * HOLD, midi: note, on: false })
+  for (const s of slotsOf(p, loopLen, L, leadBack)) {
+    for (const note of triadOf(s.degree, scaleDegrees, root, BASS)) {
+      events.push({ t: s.at, midi: note, on: true })
+      events.push({ t: s.at + s.dur * HOLD, midi: note, on: false })
     }
-  })
+  }
   events.sort((a, b) => a.t - b.t)
   return { events, len: loopLen }
 }
 
+/** the 1-based degree a pattern plays on step `i` */
+const stepAt = (p: ChordPattern, i: number) => Math.round(p.degrees[i])
+
 /**
- * The chord on step `i`, from `base`.
+ * A triad on a 1-based scale degree.
  *
  * ⚠️ SHARED BY THE PAD, THE BASS AND THE KEYBOARD'S HINT, which is the whole reason it is a
  * function. A bassline that worked out its own roots would be a second copy of this arithmetic,
@@ -123,19 +125,83 @@ export function progressionEvents(
  * playing a different chord from the pad above it, which is the single most audible wrong thing a
  * backing can do. `chordToneClasses` joined them for the same reason from the other side: a
  * keyboard that lit up the wrong notes would be confidently teaching somebody the wrong answer.
+ *
+ * ⚠️ IT TAKES A DEGREE RATHER THAN A STEP INDEX NOW, because the turnaround's chord belongs to
+ * no step of the pattern — it is a fifth above where the progression returns to, and the table
+ * has no entry for it. Keyed on the index, the lead-back would have needed its own arithmetic
+ * and the guarantee above would have stopped covering the one chord that was added last.
  */
-function triadAt(
-  p: ChordPattern,
-  i: number,
+function triadOf(
+  degree: number,
   scaleDegrees: readonly number[],
   root: number,
   base: number,
 ): number[] {
   const L = scaleDegrees.length
   /* 1-based in the table because that is how musicians write them; 0-based here */
-  const step = Math.max(0, Math.round(p.degrees[i]) - 1)
+  const step = Math.max(0, degree - 1)
   const midi = base + root + Math.floor(step / L) * 12 + scaleDegrees[step % L]
   return chordNotes('triad', midi, scaleDegrees, root)
+}
+
+/**
+ * The chord that leans back to the top — or null when the progression already does.
+ *
+ * ⚠️ A FIFTH ABOVE WHAT IT RETURNS TO, not simply the key's dominant, and the difference is the
+ * whole reason this rule was chosen. A turnaround's job is to pull toward the chord that comes
+ * next, and the chord that comes next is the progression's FIRST one, which is not always the
+ * tonic. Worked out for all five:
+ *
+ *     Four chords  I V vi IV   returns to I   → V      IV then V
+ *     Fifties      I vi IV V   returns to I   → V      already ends on V — nothing to add
+ *     Wistful      vi IV I V   returns to vi  → iii    V then iii
+ *     Simple       I IV V IV   returns to I   → V      IV then V
+ *     Turnaround   ii V I I    returns to ii  → vi     I then vi
+ *
+ * The simpler rule — always play V — was the first idea and is worse: it leaves BOTH Fifties and
+ * Wistful unchanged, because each already ends on V, and for Wistful that is the wrong answer
+ * anyway. Wistful goes home to A minor, so the chord that leans into it is E minor, not G.
+ *
+ * ⚠️ AND NULL IS A REAL ANSWER, NOT A FAILURE. Fifties ends on its own dominant already; it IS a
+ * turnaround, which is what doo-wop is. Adding a second V would repeat the chord rather than
+ * lead anywhere, so the control says so and stays out of the way.
+ *
+ * ⚠️ FOUR SCALE STEPS, NOT SEVEN SEMITONES, so it stays inside whatever scale is loaded. In a
+ * seven-note mode that is a fifth; in a scale of another size it is still "four steps up", which
+ * is the same gesture expressed in the notes the room is actually offering. A chord from outside
+ * the scale would be the one thing scale lock exists to prevent.
+ */
+export function leadBackStep(p: ChordPattern, scaleLen: number): number | null {
+  const n = p.degrees.length
+  if (!n || !(scaleLen > 0)) return null
+  const first = Math.max(0, stepAt(p, 0) - 1)
+  const lead = ((first + 4) % scaleLen) + 1
+  return lead === stepAt(p, n - 1) ? null : lead
+}
+
+/** one chord's place in the lap: which degree, when it starts, how long it holds */
+type Slot = { degree: number; at: number; dur: number }
+
+/**
+ * Where each chord of a progression falls.
+ *
+ * ⚠️ ONE LAYOUT, BECAUSE THE PAD AND THE BASS MUST AGREE ABOUT THE TURNAROUND TOO. They already
+ * share `triadAt` so they cannot disagree about WHAT a chord is; splitting the last slot in two
+ * is a question about WHEN, and a second copy of that arithmetic would let the bass change chord
+ * half a beat away from the pad. That is the same failure in a smaller window, and harder to
+ * hear as a cause.
+ */
+function slotsOf(p: ChordPattern, loopLen: number, scaleLen: number, leadBack: boolean): Slot[] {
+  const n = p.degrees.length
+  const slot = loopLen / n
+  const out: Slot[] = p.degrees.map((_, i) => ({ degree: stepAt(p, i), at: i * slot, dur: slot }))
+  const lead = leadBack ? leadBackStep(p, scaleLen) : null
+  if (lead !== null) {
+    const last = out[out.length - 1]
+    last.dur = slot / 2
+    out.push({ degree: lead, at: last.at + slot / 2, dur: slot / 2 })
+  }
+  return out
 }
 
 /** Where a bassline sits — an octave below the pad, which is where a bass is. */
@@ -159,13 +225,13 @@ export function basslineEvents(
   loopLen: number,
   scaleDegrees: readonly number[],
   root: number,
+  leadBack = false,
 ): { events: LoopEvent[]; len: number } {
   if (!scaleDegrees.length || !(loopLen > 0) || p.degrees.length === 0)
     return { events: [], len: Math.max(0, loopLen) }
-  const slot = loopLen / p.degrees.length
   const events: LoopEvent[] = []
-  p.degrees.forEach((_, i) => {
-    const triad = triadAt(p, i, scaleDegrees, root, BASS_LOW)
+  for (const s of slotsOf(p, loopLen, scaleDegrees.length, leadBack)) {
+    const triad = triadOf(s.degree, scaleDegrees, root, BASS_LOW)
     /**
      * The root, then the chord's top note dropped an octave — its fifth in a plain triad, and
      * whatever the scale made of that otherwise, so the bass is always inside the harmony.
@@ -178,12 +244,14 @@ export function basslineEvents(
      * does without thinking.
      */
     const notes = [triad[0], triad[triad.length - 1] - 12]
+    /* ⚠️ HALVES OF THIS SLOT, not of a fixed one — so a turnaround's shortened last chord gets
+       root-and-fifth in the time it actually has, instead of running past the lap's end */
     notes.forEach((midi, half) => {
-      const t = i * slot + half * (slot / 2)
+      const t = s.at + half * (s.dur / 2)
       events.push({ t, midi, on: true })
-      events.push({ t: t + (slot / 2) * HOLD, midi, on: false })
+      events.push({ t: t + (s.dur / 2) * HOLD, midi, on: false })
     })
-  })
+  }
   events.sort((a, b) => a.t - b.t)
   return { events, len: loopLen }
 }

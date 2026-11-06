@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_PATTERNS, basslineEvents, progressionEvents } from './chordPatterns'
+import { CHORD_PATTERNS, basslineEvents, leadBackStep, progressionEvents } from './chordPatterns'
+import type { LoopEvent } from './looper'
 import { nameChord } from './chordName'
-import { SCALES, degreesOf } from './scales'
+import { MAJOR_DEGREES, SCALES, degreesOf } from './scales'
 
 /**
  * A progression you did not have to play.
@@ -271,3 +272,119 @@ describe('a bassline that follows the chords', () => {
  * `expect(chordToneClasses(...)).toEqual(chordToneClasses(...))` is not a test. Where a sweep is
  * used it asserts a PROPERTY — the hint agrees with the pad — rather than a value.
  */
+
+describe('the chord that leans back to the top', () => {
+  const by = (id: string) => CHORD_PATTERNS.find((p) => p.id === id)!
+  const SEVEN = MAJOR_DEGREES.length
+
+  /**
+   * ⚠️ THE WHOLE RULE IN ONE TABLE, written in roman numerals because that is the form the
+   * decision was made in. A turnaround pulls toward the chord that comes NEXT, and the chord
+   * that comes next is the progression's first one — which is not always the tonic.
+   */
+  it('is a fifth above whatever the progression returns to', () => {
+    expect(leadBackStep(by('four'), SEVEN), 'I V vi IV returns to I, so V').toBe(5)
+    expect(leadBackStep(by('simple'), SEVEN), 'I IV V IV returns to I, so V').toBe(5)
+    expect(leadBackStep(by('sad'), SEVEN), 'vi IV I V returns to vi, so iii').toBe(3)
+    expect(leadBackStep(by('turnaround'), SEVEN), 'ii V I I returns to ii, so vi').toBe(6)
+  })
+
+  /**
+   * ⚠️ NULL IS A REAL ANSWER. Fifties ends on its own dominant already — it IS a turnaround,
+   * which is what doo-wop is — so a second V would repeat the chord rather than lead anywhere.
+   */
+  it('is nothing when the progression already ends there', () => {
+    expect(leadBackStep(by('fifties'), SEVEN), 'I vi IV V already ends on V').toBeNull()
+  })
+
+  it('stays inside the scale, whatever size it is', () => {
+    /* four STEPS up, not seven semitones — a chord from outside the scale is the one thing
+       scale lock exists to prevent */
+    for (const [, , degrees] of SCALES) {
+      for (const p of CHORD_PATTERNS) {
+        const lead = leadBackStep(p, degrees.length)
+        if (lead === null) continue
+        expect(lead, `${p.id} in a ${degrees.length}-note scale`).toBeGreaterThanOrEqual(1)
+        expect(lead, `${p.id} in a ${degrees.length}-note scale`).toBeLessThanOrEqual(
+          degrees.length,
+        )
+      }
+    }
+  })
+
+  it('answers nothing rather than throwing on a scale with no notes', () => {
+    expect(leadBackStep(by('four'), 0)).toBeNull()
+  })
+})
+
+describe('a progression with the lead-back on', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+  const fifties = CHORD_PATTERNS.find((p) => p.id === 'fifties')!
+
+  const chordsAt = (events: LoopEvent[]) => {
+    const byTime = new Map<number, number[]>()
+    for (const e of events) {
+      if (!e.on) continue
+      const k = Math.round(e.t * 1000)
+      byTime.set(k, [...(byTime.get(k) ?? []), ((e.midi % 12) + 12) % 12])
+    }
+    return [...byTime.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([t, pcs]) => ({ t, pcs: [...new Set(pcs)].sort((x, y) => x - y) }))
+  }
+
+  it('adds a fifth chord in the second half of the last slot', () => {
+    const plain = chordsAt(progressionEvents(four, 8, MAJOR_DEGREES, 0).events)
+    const led = chordsAt(progressionEvents(four, 8, MAJOR_DEGREES, 0, true).events)
+    expect(plain).toHaveLength(4)
+    expect(led, 'the lead-back is a fifth chord, not a replacement').toHaveLength(5)
+    /* the first three are untouched, and the fourth still starts where it did */
+    expect(led.slice(0, 4).map((c) => c.t)).toEqual(plain.map((c) => c.t))
+    expect(led[4].t, 'halfway through the last slot of an 8s lap over four chords').toBe(7000)
+    /* C G Am F then G — in C major, G is G B D */
+    expect(led[4].pcs).toEqual([2, 7, 11])
+  })
+
+  it('does not run past the end of the lap', () => {
+    const { events, len } = progressionEvents(four, 8, MAJOR_DEGREES, 0, true)
+    for (const e of events)
+      expect(e.t, `an event at ${e.t} in a ${len}s lap`).toBeLessThanOrEqual(len)
+  })
+
+  it('changes nothing for a progression that already ends on its lead-back', () => {
+    const plain = progressionEvents(fifties, 8, MAJOR_DEGREES, 0).events
+    const led = progressionEvents(fifties, 8, MAJOR_DEGREES, 0, true).events
+    expect(led, 'Fifties already ends on V — there is nothing to add').toEqual(plain)
+  })
+
+  it('is off unless asked, so nothing anybody already has changes', () => {
+    for (const p of CHORD_PATTERNS) {
+      expect(progressionEvents(p, 8, MAJOR_DEGREES, 0).events, `${p.id} with no argument`).toEqual(
+        progressionEvents(p, 8, MAJOR_DEGREES, 0, false).events,
+      )
+    }
+  })
+
+  /**
+   * ⚠️ THE PROPERTY THAT MATTERS, and the reason `slotsOf` is shared. The bass splitting the
+   * last slot differently from the pad would change chord half a beat away from it — the same
+   * disagreement `triadOf` prevents, in a smaller window and harder to hear a cause for.
+   */
+  it('and the bass turns around at the same instant, in every key and scale', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++) {
+        for (const p of CHORD_PATTERNS) {
+          const pad = chordsAt(progressionEvents(p, 8, degrees, root, true).events)
+          const bass = chordsAt(basslineEvents(p, 8, degrees, root, true).events)
+          /* the bass plays twice a chord, so its starts are a superset of the pad's */
+          const padStarts = pad.map((c) => c.t)
+          const bassStarts = new Set(bass.map((c) => c.t))
+          for (const t of padStarts) {
+            expect(bassStarts.has(t), `${p.id} root ${root}: no bass note at ${t}`).toBe(true)
+          }
+        }
+      }
+    }
+  })
+})

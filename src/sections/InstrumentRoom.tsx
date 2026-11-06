@@ -67,6 +67,7 @@ import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
 import {
   CHORD_PATTERNS,
   basslineEvents,
+  leadBackStep,
   progressionEvents,
   type ChordPattern,
 } from '../audio/chordPatterns'
@@ -258,6 +259,7 @@ const CHORD_KEY = 'instrument_chord_v1'
 const STRUM_KEY = 'instrument_strum_v1'
 const ARP_KEY = 'instrument_arp_v1'
 const SWING_KEY = 'instrument_swing_v1'
+const LEAD_KEY = 'instrument_leadback_v1'
 
 /**
  * Tempos as words, because "how fast?" is not a question about numbers.
@@ -768,6 +770,23 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       return false
     }
   })
+  /**
+   * Whether a dropped progression ends with the chord that leans back to the top.
+   *
+   * ⚠️ OFF BY DEFAULT, and that is a decision rather than caution. A turnaround is a strong
+   * flavour: it is what makes four chords sound like a song rather than a loop, and it is also
+   * the thing somebody writing a calm two-chord bed does not want pulling at them every lap. The
+   * five progressions are what they say on the tin until you ask for more.
+   *
+   * Remembered like every other playing setting here, so asking once is asking for good.
+   */
+  const [leadBack, setLeadBack] = useState(() => {
+    try {
+      return localStorage.getItem(LEAD_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [arp, setArp] = useState<ArpId>(() => {
     try {
       const v = localStorage.getItem(ARP_KEY)
@@ -851,10 +870,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(STRUM_KEY, strum)
       localStorage.setItem(ARP_KEY, arp)
       localStorage.setItem(SWING_KEY, swing ? '1' : '0')
+      localStorage.setItem(LEAD_KEY, leadBack ? '1' : '0')
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root, chord, strum, arp, swing])
+  }, [inst, octave, scale, root, chord, strum, arp, swing, leadBack])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -1196,14 +1216,47 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * `triadAt` exists to prevent, one level up: the pad and the bass agreeing about a chord is
    * worth nothing if the room can hand them different progressions.
    */
-  const layBass = (p: ChordPattern) => {
+  const layBass = (p: ChordPattern, lead = leadBack) => {
     const { events, len } = basslineEvents(
       p,
       loopLength(),
       scale === 'chromatic' ? MAJOR_DEGREES : degrees,
       scale === 'chromatic' ? 0 : root,
+      lead,
     )
     return addPatternLayer(events, len, p.id, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
+  }
+
+  /**
+   * Lay down a progression, with or without the chord that leans back to the top.
+   *
+   * ⚠️ IT LAYS THE BASS TOO, AND THAT USED TO BE THE CALLER'S JOB. Swapping a progression
+   * replaces the layer marked `-chords:` and leaves `-bass:` where it was, so with both loaded
+   * the pad moved and the bass kept playing the old one — measured in the piano roll as
+   * `C2 G1 G2 D2 A2 E2 F2 C2` before and byte for byte the same after, under chords that had
+   * become Am–F–C–G. A bass on one progression under a pad on another is the single most
+   * audible wrong thing a backing can do.
+   *
+   * It was fixed at the call site first, which worked and was one call site away from breaking
+   * again: the turnaround added a SECOND setting the two halves could disagree about, and a
+   * lead-back on the pad but not under it changes chord half a bar apart. Both now come from
+   * here, so there is no version of this a caller can get half right.
+   */
+  const layChords = (p: ChordPattern, lead = leadBack) => {
+    const { events, len } = progressionEvents(
+      p,
+      loopLength(),
+      scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+      scale === 'chromatic' ? 0 : root,
+      lead,
+    )
+    const id = addPatternLayer(events, len, p.id, {
+      mark: '-chords:',
+      instrument: 'pad',
+      gain: 0.42,
+    })
+    if (id && loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p, lead)
+    return id
   }
 
   useEffect(() => {
@@ -2287,40 +2340,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   className={'btn' + (on ? '' : ' btn-ghost')}
                   aria-pressed={on}
                   onClick={() => {
-                    const { events, len } = progressionEvents(
-                      p,
-                      loopLength(),
-                      scale === 'chromatic' ? MAJOR_DEGREES : degrees,
-                      scale === 'chromatic' ? 0 : root,
-                    )
-                    if (
-                      !addPatternLayer(events, len, p.id, {
-                        mark: '-chords:',
-                        instrument: 'pad',
-                        /* under the beat and well under a hand playing over it */
-                        gain: 0.42,
-                      })
-                    )
-                      return
-                    /**
-                     * ⚠️ THE BASS HAS TO COME WITH IT, AND IT DID NOT. Swapping a progression
-                     * replaces the layer marked `-chords:` and leaves `-bass:` exactly where it
-                     * was — so with both loaded, picking Wistful over Four chords moved the pad
-                     * and left the bass playing the old one. Measured in the piano roll: the
-                     * bass read `C2 G1 G2 D2 A2 E2 F2 C2` before and byte for byte the same
-                     * after, under chords that had become Am–F–C–G.
-                     *
-                     * A bass on one progression under a pad on another is the single most
-                     * audible wrong thing a backing can do, which is the sentence `triadAt` was
-                     * factored out to make impossible. That guarantee held perfectly and was
-                     * being defeated one level up, by handing the two halves different patterns.
-                     *
-                     * ⚠️ AND THE UI ASSERTED THE AGREEMENT IT HAD JUST BROKEN. The Bass button
-                     * names whichever progression is loaded, so after the swap its title read
-                     * "A root-and-fifth bass under Wistful" about a bassline that was not under
-                     * Wistful. The button says "Follow the chords"; now it does.
-                     */
-                    if (loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p)
+                    /* lays the bass with it when there is one — see layChords */
+                    if (!layChords(p)) return
                     if (!loop.playing) startLoop()
                   }}
                   disabled={
@@ -2333,6 +2354,45 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 </button>
               )
             })}
+            {/**
+             * ⚠️ IN THE CHORDS ROW, NOT A ROW OF ITS OWN. It is a property OF the progression —
+             * what its last bar does — and a room that already carries thirty-odd controls does
+             * not need a fourth line to say one word. The five patterns and this sit together
+             * because you choose them in one breath.
+             *
+             * ⚠️ AND IT REBUILDS WHAT IS ALREADY DOWN. A toggle that only affected the NEXT
+             * progression you picked would be a setting that silently disagrees with what you
+             * are hearing — the shape this room has already been bitten by twice. Pressing it
+             * re-lays the loaded progression, and `layChords` brings the bass with it.
+             */}
+            {(() => {
+              const live = loop.layers.map((l) => chordPatternOf(l)).find((x) => x) ?? null
+              const p = CHORD_PATTERNS.find((x) => x.id === live) ?? null
+              /* null means this progression already ends on its lead-back — see leadBackStep */
+              const adds = p
+                ? leadBackStep(p, scale === 'chromatic' ? MAJOR_DEGREES.length : degrees.length)
+                : null
+              const pointless = !!p && adds === null
+              return (
+                <button
+                  className={'btn' + (leadBack ? '' : ' btn-ghost')}
+                  aria-pressed={leadBack}
+                  disabled={pointless}
+                  onClick={() => {
+                    const next = !leadBack
+                    setLeadBack(next)
+                    if (p) layChords(p, next)
+                  }}
+                  title={
+                    pointless
+                      ? `${p.name} already ends on the chord that leans home — there is nothing to add`
+                      : 'End the last bar on the chord that leans back to the top'
+                  }
+                >
+                  ↩ Lead back
+                </button>
+              )
+            })()}
           </div>
           {/**
            * ⚠️ ONE BUTTON THAT FOLLOWS, NOT A SECOND PICKER. A bassline has to play the same
