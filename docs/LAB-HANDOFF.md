@@ -21,11 +21,18 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
 - **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
   studio, Critters. See its own section at the end.
-- **Batch 9 — draft, `claude/lab-toys-9`, STACKED ON BATCH 8**: remixes and new things to make —
-  see its own section at the very end.
+- **Batch 9 — draft #26, `claude/lab-toys-9`, STACKED ON BATCH 8**: Strut, Gust, Seedling.
+- **Batch 10 — draft #27, `claude/lab-toys-10`, STACKED ON BATCH 9**: Möbius golf, Pinball
+  workshop, Night crossing.
+- **Batch 11 — draft #28, `claude/lab-toys-11`, STACKED ON BATCH 10**: two review fixes to batch
+  10 (and Bike trials), then Shadow box and Fold.
 
-That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41. Each batch section below is that batch's
-own note, including what it measured and what it had not.
+**Merge order for the stack: #25 → #26 → #27 → #28**, each retargeted to `main` once the one under it
+has merged. Each batch's PR shows only its own diff against the branch below it.
+
+That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41, batch 9
+44, batch 10 47 and batch 11 49 (counted from the `DEMOS` list, not written down from memory). Each
+batch section below is that batch's own note, including what it measured and what it had not.
 
 ## What shipped
 
@@ -2042,3 +2049,170 @@ these on a real device.
       enough to do? Is the reef fair? Then alone, keys and mouse: too easy, too hard? On a phone, is
       a thumb on the water and a thumb on the helm workable for one person, or is it a two-person
       phone game?
+
+## Batch 11 — review fixes, then things to rebuild and fold
+
+⚠️ **STACKED ON BATCH 10** (`claude/lab-toys-11` from `claude/lab-toys-10` at `5e530dd`; #25, #26
+and #27 all unmerged drafts when it was cut). Its draft PR, #28, targets the batch-10 branch. When it
+was cut, `main` had moved on by Instrument and takes commits only and the whole stack still merged
+into it cleanly. Same rules of evidence as before: _measured_ means unit tests or headless Chromium
+on SwiftShader; the emulated phone is Playwright's iPhone 13 with CDP touch, layout and touch
+routing only. Automated play shows the rules hold, never that anything is fun.
+
+### The review fixes (committed on their own, before anything new)
+
+- **A held control stays held until the last thing holding it lets go** (`ca72159`). Reproduced in
+  the page first, eleven cases:
+  - _A key let go after focus moved was ignored._ Pinball and Night crossing dropped every key
+    event not aimed at the toy's own box, releases included: hold Z, click 🔔 Sound, let go — the
+    flipper stayed up for good; hold A, click the beam slider, let go — the boat turned in circles.
+    A release now counts wherever focus is; a press on a button or slider is still the control's
+    (Space presses the button, the slider's arrows move it — both checked).
+  - _Letting go of one input let go of the action._ One boolean an action, cleared by any release:
+    hold Z and tap the ◀ pad, and the flipper dropped with Z still down; the same for Z and ←, Z and
+    a finger on the stage, A and ← or the Port pad in Night crossing — and Bike trials' keys and
+    pads. `holds.ts` names every holder (`key:z`, `pad:7`, `stage:12`) and an action is held while
+    any of them is; Pinball's plunger fires when the last one lets go.
+  - _Checked_: `holds.test.ts`, and a page probe whose eleven cases all fail on the code before the
+    change and all pass after it.
+  - _Same shape elsewhere, NOT changed_ (older toys, on `main`, outside the reviewed stack): Ferro
+    ignores a Space release that arrives from a focused button, and Tunnel lets one of its two keys
+    for a direction cancel the other. Both would take the same few lines.
+- **A pinball bumper pays for a hit, not for every step a ball cannot get away** (`f6fc455`).
+  Reproduced first: three bumpers in a tight triangle (Build lets them go anywhere) wedged a ball and
+  scored on every physics step — 8,640 hits and 864,000 points in three seconds; four in a cage
+  23,400. A bumper still kicks on every contact (the physics is untouched) but pays — score and
+  sound — only once the ball has got clear of where that bumper last paid by the ball's own width.
+  _Checked_: the triangle now scores 300 in all and the cages 400 and 600; a ball bouncing off a
+  bumper and back, and a ball kicked between two bumpers one above the other, are paid on every
+  arrival (counted independently of the scoring); scripted play on the workshop table scores exactly
+  what it did before, 5,562.5 a 90 s game and 350 idle. _Not fixed_: the wedged ball itself stays
+  wedged until 🔄 New game — scoring was the finding, and freeing it means changing the physics.
+
+### New
+
+| Toy        | What you do                                                                                                                                                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                                                                                                  | Pattern to reuse                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Shadow box | Rebuild a hidden stack of blocks from the shadows it throws on the walls and floor. Six puzzles with a par (the fewest blocks that can do it), or pass and play: one builds and hides it behind a curtain, the other rebuilds it from the shadows           | a VOXEL RAY TRACER per pixel: each ray walks the floor's columns to the first block face, else the walls and floor; each wall's shadow is found by walking from the lit point toward its lamp through the columns. The hidden build's shadows and the player's are drawn over each other — blue where they agree, red where the player's throws shadow the hidden one does not | "the clue is drawn by the same light the answer casts": a hidden state shown only through a projection, judged on the projection |
+| Fold       | Fold a square of two-coloured paper by picking up a point and laying it down: the crease is half way between, and the picked-up side turns over on top. Seven shapes to fold within a limit, or fold freely and keep the shape as a picture or as its folds | the LAYERS DRAWN PER PIXEL: each layer a convex polygon and an affine map back to the flat sheet; at each pixel the topmost layer is found, the point mapped back onto the sheet and drawn there — front colour or cream back, fibres, the creases already in it — with the target as a ghost under it. Redrawn only when something changed                                    | "a stack of mapped flat pieces": anything folded, mirrored or tiled out of one flat source keeps one map per piece               |
+
+- **Shadow box** — a 5 × 5 box, stacks up to 4 blocks tall, and three lamps square to the walls: one
+  in front throws the blocks' outline onto the back wall, one on the right onto the left wall, one
+  overhead marks the floor they stand on. The job is always to build something that throws the
+  given shadows — not necessarily the same blocks, since many builds throw one set of shadows. Your
+  own shadows fall over the given ones: blue where they agree, red where yours throws shadow it
+  should not; on the floor, a block standing where nothing should is tinted red too. **🧩 Puzzles**:
+  six, from _A step_ to _Skyline_; some show the floor and some only the walls, and each has a par —
+  the fewest blocks that throw its shadows, which on _Stairs_ is 10 though the hidden build used 20.
+  Solving keeps your best (fewest blocks) and ticks the list; 💡 Show an answer builds a par answer
+  and is not kept. **👥 Pass and play**: the builder stacks blocks and chooses which lamps are on —
+  those are the only shadows the guesser will get — then 🙈 Hide it: a curtain is all the GPU draws
+  and the grid goes. The guesser presses 👀 and rebuilds from the shadows; ✔ Check says how many of
+  the shadows are still wrong; when they all match, or on 🏳 Give up, the hidden box is shown. ⬇ Save
+  box keeps a build as a file; ⬆ Open a box to solve… takes one straight behind the curtain, so a
+  box made earlier (or on another device, by file) can be solved without its opener seeing it.
+  Building: tap the box (on a stack adds a block on top, on the floor starts one; ➖ makes a tap
+  take one away), or the grid under it (a tap cycles a stack 0 → 4 → 0), or the keys (arrows move,
+  0–4 set, + and − nudge). Drag the box sideways to turn it.
+  Technique: a build is 25 heights. Square lamps make each shadow a profile — the tallest stack in
+  each column (back wall), in each row (left wall), and which cells are built on (floor) —
+  `shadowsOf`, and the judge compares profiles. Par comes from `fewest`: for walls only, one stack
+  does for a column and a row that need the same height, so each height needs as many stacks as
+  the larger of its columns and its rows (exact); with the floor, every marked cell needs a block and
+  the same matching is done greedily. The GPU traces the box per pixel: an orthographic camera,
+  mirrored so x runs left to right as it does on the grid; a 2-D walk over the columns finds the
+  first block face; the back wall, left wall and floor behind; each wall point's shadow found by
+  walking toward its lamp through the columns, once for the hidden build and once for yours. A tap
+  on the box is the same trace on the CPU (`traceBlocks`, `pickCell`).
+  ⚠️ What was wrong first:
+  1. **The whole floor read as shadowed**: the floor's shadow test lowered the point half a unit,
+     so an empty cell (height 0) counted as built on. The GPU-against-CPU check of every wall pixel
+     disagreed on a third of them; it agrees on all now.
+  2. **The left wall's shadows missed the column against the wall**: the walk toward the right-hand
+     lamp started one column in.
+  3. **The view was a mirror of the grid**: in a right-handed world seen from the front, +x is on
+     the left, so the box's left wall was drawn on the right. The camera's horizontal axis is
+     mirrored, in the shader and its CPU copy alike.
+  4. **On a phone the grid sat below the stage**, so you could not see the shadows while building;
+     tapping the box itself builds now.
+     _Measured_: the tests hold the shadows (profiles; different builds matching one clue, but not once
+     the floor is shown; a shadow not shown is not judged), the puzzles (none solved by an empty box,
+     each hidden build matches its own clue, par is a valid build and the fewest — against a full
+     search where the floor is shown and the exact count where it is not — made to fail by taking the
+     matching step out of `fewest`), a box as a file (round trip; refusals), the uniform layout, the
+     camera (its centre ray through the middle; x left to right), the shadow test, and picking (a tap on
+     a stack's top or side or on the floor picks the right cell, checked through a projection worked
+     out independently of the ray). On SwiftShader every sampled wall and floor pixel's shadow equals
+     the CPU's (12,652 of 12,652 in each of three puzzles) and every pixel's block-or-not equals
+     `traceBlocks` (79,338 pixels, three puzzles at three angles, 0 disagreements). In the page at 1024:
+     a puzzle solved by grid taps at par and kept; a wrong block un-matches it; keys set stacks; a shown
+     answer is not kept; drag turns the box; pass and play from build to curtain (the grid gone, the GPU
+     told to draw only the curtain) to guess (empty grid, only the two lamps chosen) — a wrong check
+     says two shadows are wrong, a different build with the same shadows is accepted, the box is
+     revealed, roles swap; a hostile file is refused and a saved box opens behind the curtain; bests
+     survive a reload. On the emulated iPhone: the 44 px grid, a puzzle solved by taps, and the box
+     itself built on by touch (a floor cell, the top of the new stack, ➖ taking one away). Audit clean.
+     Not measured: whether the puzzles are the right difficulty; whether a guesser can read the
+     shadows from the default angle without turning the box; whether pass and play holds its secret
+     well enough at a real table (the curtain is drawn, but the builder's phone is still in their hand).
+
+- **Fold** — a square of paper, coloured on the front and cream on the back, on a cutting mat. Press
+  on the paper (anywhere on it, or a hair off its edge), drag, and let go: the point you picked up
+  is laid where you let go, the crease is the line half way between, square to the move, and
+  everything on the picked-up side turns over and lands on top — so the other colour shows. The
+  fold is shown as you drag; the point you pick up and the point you lay it on are pulled to the
+  sheet's corners as it lies, and gently to a grid of twelfths. **🧩 Puzzles**: seven shapes, from
+  _Half_ and _Triangle_ to _Envelope_ (four corners to the middle) and _Arrow_, each drawn as a pale
+  ghost with a dashed outline and a number of folds allowed; the score says how like it the paper is
+  (shared area over either), and 97% within the limit solves it — any way of getting there counts.
+  Your best (fewest folds) is kept and ticked; 💡 Show how folds it for you and is not kept. **✋ Free
+  fold**: up to eight folds, a choice of eight paper colours, ⬇ Save picture (a 1024 px PNG), ⬇ Save
+  folds / ⬆ Open folds… (the moves as numbers, replayed). ↶ Undo or U, 🔄 Unfold or R.
+  Technique: a folded sheet is a stack of flat layers, bottom to top, each a convex polygon where it
+  lies now, the affine map back to where it was on the flat sheet, and which side is up. `fold` cuts
+  every layer by the crease; the parts on the picked-up side are reflected (and so is their map back,
+  a reflection being its own inverse), their side flipped, their order reversed and laid on top; the
+  crease is recorded on the flat sheet wherever a layer was cut. Paper is neither made nor lost
+  (every fold keeps the area at exactly 1), and past 64 layers the paper is "too thick to fold
+  again". The match is measured on a 240 × 240 grid. The GPU draws it per pixel: every layer's
+  polygon tested (a convex polygon's signed distance is the largest of its edges'), the topmost one
+  that covers the pixel mapped back onto the sheet and coloured from there, the creases drawn on the
+  sheet so they fold with it, each top edge drawn as a fine line and a soft shadow on the mat; and
+  only when the sheet, the colour or the size changed, since testing up to 64 layers a pixel for an
+  unchanged picture would be waste.
+  ⚠️ What was wrong first:
+  1. **The grid swallowed every point**: twelfths are 0.083 apart and pulled from 0.04, so nothing
+     could be placed between them. The grid's pull is 0.016 now; the corners' is still 0.04.
+  2. **Picking the paper up by its edge did nothing** when the press landed a hair outside it — the
+     first fold the desktop probe tried. A press within 0.04 of any layer's edge counts now.
+  3. **The score lagged a fold behind**: the folded sheet was worked out in an effect, after the
+     render that showed the score. It is worked out as the folds change now.
+     _Measured_: the tests hold the geometry (a reflection is its own inverse and keeps distances; the
+     crease is the perpendicular bisector; cutting keeps area), folding (the picked-up point lands on
+     the target point, back up; paper area exactly 1 and every layer counter-clockwise across four
+     arbitrary folds; the turned-over part on top in reverse order — made to fail by not reversing it —
+     and the crease on the flat sheet; refusals for no move, a fold that misses, turning the whole sheet
+     over, and folding past 64 layers), the puzzles (each folds within its limit, the flat sheet matches
+     none, no two targets pass for each other, a different way to the same shape counts), picking up,
+     snapping, folds as a file (round trip; refusals including folds that do not fold), the uniform
+     layout, the layer packing and the view. On SwiftShader every classified pixel's table, front or
+     back equals the CPU's topmost layer — 85,640 pixels over three folded sheets, 0 disagreements. In
+     the page at 1024: Half, House and Triangle folded by mouse drags and kept as bests; a second fold
+     on Triangle over the limit is said so and U undoes it; Show how folds Envelope and is not kept;
+     three free folds, a colour, a 1024 × 1024 PNG, the folds saved, a hostile file refused, the saved
+     folds reopened to the same sheet; bests survive a reload. On the emulated iPhone a touch drag folds
+     Half. Audit clean at both.
+     Not measured: whether the puzzles are interesting past the first few (they are shapes reachable by
+     a known sequence, not designed for an "aha"); how precisely a finger can lay a point on a phone
+     (snapping helps; there is no zoom); speed on a phone with many layers (the picture is redrawn only
+     on change, but a drag redraws it every move). There is no way to fold from the keyboard alone.
+
+### Real-device checklist — batch 11
+
+- [ ] Pinball and Night crossing — hold a key, click or tap a button, let go: does the control let go?
+      Hold a key and a pad together, let go of one: does the control stay held?
+- [ ] Shadow box — the puzzles without 💡: can you reach par? Pass and play with somebody: is the
+      curtain enough, and are three lamps the right number of clues? Is tapping the box precise
+      enough on a phone, or do you reach for the grid?
+- [ ] Fold — fold the seven shapes without 💡; is dragging a point precise enough on a phone? Make a
+      shape of your own and keep it.

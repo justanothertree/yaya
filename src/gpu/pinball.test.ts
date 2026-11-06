@@ -345,3 +345,79 @@ describe('for the GPU', () => {
     expect(distanceAt(DEFAULT_TABLE, [2.2, 8.6])).toBeCloseTo(-TARGET_R, 9)
   })
 })
+
+describe('a bumper pays for a hit, not for a ball that cannot get away', () => {
+  /** three or four bumpers close round a ball: it is kicked from one into the next every step */
+  const cage = (n: number, r: number): Table => ({
+    ...empty,
+    bumpers: Array.from(
+      { length: n },
+      (_, k): V2 => [
+        4.6 + Math.cos((k * 2 * Math.PI) / n + Math.PI / 2) * r,
+        10 + Math.sin((k * 2 * Math.PI) / n + Math.PI / 2) * r,
+      ],
+    ),
+  })
+  const sit = (t: Table, at: V2, seconds: number) => {
+    const g = inPlay(t, at)
+    const { seen } = run(g, t, seconds)
+    return { g, paid: seen.filter((h) => h.kind === 'bumper').length }
+  }
+  it('a ball wedged in a triangle of bumpers scores each bumper once, not once a step', () => {
+    // before this rule: 8,640 hits and 864,000 points in these three seconds
+    const { g, paid } = sit(cage(3, 0.75), [4.6, 10], 3)
+    expect(g.ball.y).toBeGreaterThan(9)
+    expect(paid).toBeLessThanOrEqual(3)
+    expect(g.score).toBeLessThanOrEqual(3 * SCORE.bumper)
+  })
+  it('a ball rattling inside a cage of four, never getting clear, stops paying', () => {
+    // before: 23,400 points in three seconds, the ball never more than a third of a unit from home
+    const { paid } = sit(cage(4, 0.95), [4.6, 10], 3)
+    expect(paid).toBeLessThanOrEqual(4)
+  })
+  it('a ball that bounces off a bumper and comes back pays every time it comes back', () => {
+    const t: Table = { ...empty, bumpers: [[4.6, 9]] }
+    const g = inPlay(t, [4.6, 11])
+    const f = restFlippers()
+    let touching = false
+    let arrivals = 0
+    let paid = 0
+    for (let k = 0; k < 4 * HZ && !g.waiting; k++) {
+      step(g, t, f, none)
+      paid += g.hits.filter((h) => h.kind === 'bumper').length
+      const now = Math.hypot(g.ball.x - 4.6, g.ball.y - 9) < BUMPER_R + BALL_R + 0.01
+      if (now && !touching) arrivals++
+      touching = now
+    }
+    expect(arrivals).toBeGreaterThanOrEqual(2)
+    expect(paid).toBe(arrivals)
+  })
+  it('two bumpers far enough apart for the ball to fly between them pay on every hit', () => {
+    // one above the other: the lower kicks the ball up, the upper kicks it back down, and every
+    // arrival is a real hit after 1.7 units of flight
+    const t: Table = {
+      ...empty,
+      bumpers: [
+        [4.6, 7],
+        [4.6, 10.3],
+      ],
+    }
+    const g = inPlay(t, [4.6, 8.6], [0, -2])
+    const f = restFlippers()
+    let paid = 0
+    let arrivals = 0
+    const touching = [false, false]
+    for (let k = 0; k < 1.5 * HZ && !g.waiting; k++) {
+      step(g, t, f, none)
+      paid += g.hits.filter((h) => h.kind === 'bumper').length
+      t.bumpers.forEach((p, i) => {
+        const now = Math.hypot(g.ball.x - p[0], g.ball.y - p[1]) < BUMPER_R + BALL_R + 0.01
+        if (now && !touching[i]) arrivals++
+        touching[i] = now
+      })
+    }
+    expect(arrivals).toBeGreaterThanOrEqual(6)
+    expect(paid).toBe(arrivals)
+    expect(g.score).toBe(paid * SCORE.bumper)
+  })
+})
