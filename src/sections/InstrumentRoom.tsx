@@ -1,4 +1,12 @@
-import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   INSTRUMENTS,
   allNotesOff,
@@ -56,7 +64,13 @@ import {
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
 import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
-import { CHORD_PATTERNS, basslineEvents, progressionEvents } from '../audio/chordPatterns'
+import {
+  CHORD_PATTERNS,
+  basslineEvents,
+  chordToneClasses,
+  progressionEvents,
+  slotAt,
+} from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import {
@@ -1057,6 +1071,46 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   const [nowNote, setNowNote] = useState<number | null>(null)
   const arpLit = arp !== 'off' && held.length > 0
+
+  /**
+   * The notes the backing is on RIGHT NOW, as pitch classes — the keyboard's live hint.
+   *
+   * ⚠️ THE BLANK-PAGE PROBLEM ONE FLOOR FURTHER UP, which is the only reason to add a fourth
+   * thing a key can look like. Scale lock already means every key you press is a right note, and
+   * a progression underneath means some of those right notes are the ones the chord is built
+   * from. A person who cannot play has no way to know which — that is the entire skill — and
+   * they are the people these three features exist for.
+   *
+   * ⚠️ IT CANNOT DISAGREE WITH WHAT YOU HEAR, because it is the pad's own arithmetic. Both come
+   * out of `triadAt`, and chordPatterns.test.ts asserts they match in every key and every
+   * seven-note scale. A hint built beside the pad rather than from it would be right until the
+   * day either changed, and then it would be confidently teaching the wrong notes.
+   *
+   * ⚠️ AND IT IS NOT ON BY DEFAULT IN ANY MEANINGFUL SENSE. It needs a progression layer in the
+   * room AND the loop running — two states you reach on purpose — so a plain keyboard looks
+   * exactly as it always has. When the transport stops the hint goes with it, because a chord
+   * highlight frozen on whatever bar you happened to pause in is a lie about the present tense.
+   *
+   * Keyed on the SLOT rather than the position, so it recomputes when the chord changes — once
+   * a bar or two — rather than on every tick of the playhead this room already re-renders for.
+   */
+  const chordPattern =
+    CHORD_PATTERNS.find(
+      (x) => x.id === (loop.layers.map((l) => chordPatternOf(l)).find((v) => v) ?? null),
+    ) ?? null
+  const chordSlot = chordPattern && loop.playing ? slotAt(chordPattern, loop.position) : null
+  const chordTones = useMemo(
+    () =>
+      chordPattern && chordSlot !== null
+        ? chordToneClasses(
+            chordPattern,
+            chordSlot,
+            scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+            scale === 'chromatic' ? 0 : root,
+          )
+        : [],
+    [chordPattern, chordSlot, scale, degrees, root],
+  )
   useEffect(() => {
     if (!arpLit) {
       setNowNote(null)
@@ -1535,6 +1589,22 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 ? ' is-root'
                 : '') +
               (held.includes(midi) ? ' is-held' : '') +
+              /**
+               * ⚠️ ONLY WHERE NOTHING ELSE IS ALREADY SPEAKING, which is what makes this
+               * additive rather than a fourth thing competing for the same keys. A finger beats
+               * it, and so does the root tint — the root is nearly always a chord tone anyway,
+               * so claiming it would repaint a landmark somebody navigates by to say something
+               * they could already see. Exclusive in the markup for the reason the two comments
+               * above give: `.is-root` and `.is-chord` would tie on specificity and the later
+               * rule in the stylesheet would win, which is not a thing anybody should have to
+               * know.
+               */
+              (chordTones.length &&
+              !held.includes(midi) &&
+              !(scale !== 'chromatic' && midi % 12 === root) &&
+              chordTones.includes(((midi % 12) + 12) % 12)
+                ? ' is-chord'
+                : '') +
               /* ⚠️ A SOFTER FILL FOR A NOTE THE CHORD ADDED, so you can see which key your own
                  finger is on. Four keys lighting identically is what chords did to this row.
                  With Chord off every held note is a lead and this never applies, so a plain

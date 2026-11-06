@@ -3294,6 +3294,43 @@ section[id] {
   background: color-mix(in oklab, var(--accent), transparent 82%);
 }
 /**
+ * A note the chord playing underneath you is built from.
+ *
+ * ⚠️ A DOT, NOT A FILL — the `.is-theirs` reasoning, applied for the third time and for the same
+ * reason. Every other thing a key can be is a background: held is a solid accent, a chord-added
+ * note is that at 45%, the root is it at 18%. A fourth tint in the same property would be a
+ * fourth shade of one colour on a 1.6rem key, which is a thing nobody can read at a glance and
+ * which would make the root and this indistinguishable. A mark of a different KIND cannot be
+ * confused with a degree of the same one.
+ *
+ * ⚠️ AT THE TOP, because the key is a flex column ending at `flex-end` with `padding-bottom:
+ * 0.4rem` — the note name lives at the bottom and the top is empty. It needs no space of its own
+ * and nothing moves when it appears.
+ *
+ * ⚠️ AND IT DOES NOT ANIMATE. It comes and goes as the backing changes chord, which is already
+ * once a bar; a transition or a pulse on top of that is a keyboard that will not sit still. The
+ * key's own `transition` covers `background` and `transform` only, so this appears cleanly.
+ *
+ * ⚠️ VISUAL ONLY, DELIBERATELY. The obvious accessible addition is to say "in the chord" in the
+ * key's `aria-label` — and that label would then change on every key, every bar, for as long as
+ * the loop runs, which is a screen reader narrating a metronome. The information is available
+ * in the chord-name readout instead, which changes once per chord and says what it is.
+ */
+.inst-key.is-chord {
+  position: relative;
+}
+.inst-key.is-chord::after {
+  content: '';
+  position: absolute;
+  top: 0.4rem;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/**
  * The name of whatever is being held.
  *
  * ⚠️ A FIXED HEIGHT AND A NON-BREAKING SPACE WHEN IT IS EMPTY. The line appears and disappears

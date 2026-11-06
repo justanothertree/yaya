@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_PATTERNS, basslineEvents, progressionEvents } from './chordPatterns'
+import {
+  CHORD_PATTERNS,
+  basslineEvents,
+  chordToneClasses,
+  progressionEvents,
+  slotAt,
+} from './chordPatterns'
 import { nameChord } from './chordName'
-import { SCALES, degreesOf } from './scales'
+import { MAJOR_DEGREES, SCALES, degreesOf } from './scales'
 
 /**
  * A progression you did not have to play.
@@ -260,5 +266,99 @@ describe('a bassline that follows the chords', () => {
   it('gives nothing for a loop with no length or a scale with no degrees', () => {
     expect(basslineEvents(CHORD_PATTERNS[0], 0, major, 0).events).toEqual([])
     expect(basslineEvents(CHORD_PATTERNS[0], 8, [], 0).events).toEqual([])
+  })
+})
+
+/**
+ * The keyboard's hint: which notes belong to the chord playing right now.
+ *
+ * ⚠️ EVERY EXPECTATION IS A STATEMENT ABOUT MUSIC, not a re-run of the code. "Four chords in C
+ * major starts on C major, so the lit keys are C, E and G" is a claim somebody can argue with;
+ * `expect(chordToneClasses(...)).toEqual(chordToneClasses(...))` is not a test. Where a sweep is
+ * used it asserts a PROPERTY — the hint agrees with the pad — rather than a value.
+ */
+describe('which chord is sounding', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+
+  it('is the first one at the top of the lap and the last one at the end', () => {
+    expect(slotAt(four, 0)).toBe(0)
+    expect(slotAt(four, 0.99)).toBe(3)
+  })
+
+  it('divides the lap evenly, one slot per chord', () => {
+    /* four chords: each owns a quarter, and the boundary belongs to the chord it opens */
+    expect([0.0, 0.24, 0.25, 0.49, 0.5, 0.74, 0.75].map((x) => slotAt(four, x))).toEqual([
+      0, 0, 1, 1, 2, 2, 3,
+    ])
+  })
+
+  it('never answers past the end, whatever the clock says', () => {
+    /* a position of exactly 1 is the top of the NEXT lap, not a fifth chord in a four-chord one */
+    for (const lap of [1, 1.5, -0.2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const s = slotAt(four, lap)
+      expect(s, `lap ${lap}`).toBeGreaterThanOrEqual(0)
+      expect(s, `lap ${lap}`).toBeLessThan(four.degrees.length)
+    }
+  })
+})
+
+describe('the keys the chord is made of', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+  const C = 0
+
+  it('are the notes of the chord, named', () => {
+    /* [1, 5, 6, 4] in C major is C–G–Am–F. C major is C E G; A minor is A C E. */
+    expect(chordToneClasses(four, 0, MAJOR_DEGREES, C), 'C major').toEqual([0, 4, 7])
+    expect(chordToneClasses(four, 2, MAJOR_DEGREES, C), 'A minor').toEqual([0, 4, 9])
+  })
+
+  it('transpose with the key', () => {
+    /* the same progression in D is D–A–Bm–G, so the first chord is D F# A */
+    expect(chordToneClasses(four, 0, MAJOR_DEGREES, 2)).toEqual([2, 6, 9])
+  })
+
+  it('are classes, not notes — an octave cannot appear twice', () => {
+    for (const p of CHORD_PATTERNS) {
+      for (let slot = 0; slot < p.degrees.length; slot++) {
+        const got = chordToneClasses(p, slot, MAJOR_DEGREES, 0)
+        expect(new Set(got).size, `${p.id} slot ${slot}`).toBe(got.length)
+        for (const c of got) {
+          expect(c, `${p.id} slot ${slot}`).toBeGreaterThanOrEqual(0)
+          expect(c, `${p.id} slot ${slot}`).toBeLessThan(12)
+        }
+      }
+    }
+  })
+
+  /**
+   * ⚠️ THE PROPERTY THAT MATTERS, and the reason the hint shares `triadAt` with the pad. A
+   * keyboard lighting up notes the backing is not playing is confidently teaching somebody the
+   * wrong answer, which is worse than lighting up nothing.
+   */
+  it('are exactly the notes the pad plays in that slot, in every key and every scale', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++) {
+        for (const p of CHORD_PATTERNS) {
+          const { events } = progressionEvents(p, 8, degrees, root)
+          for (let slot = 0; slot < p.degrees.length; slot++) {
+            const at = (8 / p.degrees.length) * slot
+            const pad = new Set(
+              events
+                .filter((e) => e.on && Math.abs(e.t - at) < 1e-9)
+                .map((e) => ((e.midi % 12) + 12) % 12),
+            )
+            expect(
+              chordToneClasses(p, slot, degrees, root),
+              `${p.id} slot ${slot} root ${root}`,
+            ).toEqual([...pad].sort((a, b) => a - b))
+          }
+        }
+      }
+    }
+  })
+
+  it('says nothing rather than guessing when there is no scale', () => {
+    expect(chordToneClasses(four, 0, [], 0)).toEqual([])
   })
 })

@@ -105,10 +105,12 @@ export function progressionEvents(
 /**
  * The chord on step `i`, from `base`.
  *
- * ⚠️ SHARED BY THE PAD AND THE BASS, which is the whole reason it is a function. A bassline
- * that worked out its own roots would be a second copy of this arithmetic, free to disagree the
- * first time either changed — and the way it would disagree is the bass playing a different
- * chord from the pad above it, which is the single most audible wrong thing a backing can do.
+ * ⚠️ SHARED BY THE PAD, THE BASS AND THE KEYBOARD'S HINT, which is the whole reason it is a
+ * function. A bassline that worked out its own roots would be a second copy of this arithmetic,
+ * free to disagree the first time either changed — and the way it would disagree is the bass
+ * playing a different chord from the pad above it, which is the single most audible wrong thing a
+ * backing can do. `chordToneClasses` joined them for the same reason from the other side: a
+ * keyboard that lit up the wrong notes would be confidently teaching somebody the wrong answer.
  */
 function triadAt(
   p: ChordPattern,
@@ -172,4 +174,47 @@ export function basslineEvents(
   })
   events.sort((a, b) => a.t - b.t)
   return { events, len: loopLen }
+}
+
+/**
+ * Which chord of the progression is sounding, `lap` of the way through the loop.
+ *
+ * ⚠️ THE SAME DIVISION `progressionEvents` MAKES, and that is the only property worth having. It
+ * lays the chords out by `loopLen / degrees.length`, so the slot at a given point in the lap is
+ * `floor(lap * degrees.length)` — anything else is a second opinion about where the chord
+ * changes, and a hint that disagrees with what you can hear is worse than no hint at all.
+ *
+ * Clamped at both ends because `lap` comes from a clock: a position of exactly 1 is the top of
+ * the next lap rather than a fifth chord in a four-chord progression.
+ */
+export function slotAt(p: ChordPattern, lap: number): number {
+  const n = p.degrees.length
+  if (n === 0) return 0
+  if (!Number.isFinite(lap)) return 0
+  return Math.min(n - 1, Math.max(0, Math.floor(lap * n)))
+}
+
+/**
+ * The pitch classes of that chord — 0..11, no octave.
+ *
+ * ⚠️ CLASSES RATHER THAN NOTES, because the question is about a KEYBOARD. "Is this key one of
+ * the notes in the chord playing right now" is asked of every key on screen across two octaves,
+ * and the pad sounds in one of them. Comparing MIDI numbers would light up a third of the
+ * answers and read as a broken hint; `% 12` is what makes the question the one being asked.
+ *
+ * ⚠️ AND IT IS WHAT THE PAD IS ACTUALLY PLAYING, not a chord worked out beside it. It goes
+ * through `triadAt`, so the lit keys are the pad's own notes by construction — see the note
+ * there. A hint built from its own arithmetic would be right until the day either changed.
+ */
+export function chordToneClasses(
+  p: ChordPattern,
+  slot: number,
+  scaleDegrees: readonly number[],
+  root: number,
+): number[] {
+  if (!scaleDegrees.length || p.degrees.length === 0) return []
+  const i = Math.min(p.degrees.length - 1, Math.max(0, Math.floor(slot)))
+  const seen = new Set<number>()
+  for (const midi of triadAt(p, i, scaleDegrees, root, BASS)) seen.add(((midi % 12) + 12) % 12)
+  return [...seen].sort((a, b) => a - b)
 }
