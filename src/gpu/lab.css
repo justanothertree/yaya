@@ -228,3 +228,198 @@
     display: none;
   }
 }
+
+/* ── bike trials ─────────────────────────────────────────────────── */
+.trials-wrap {
+  position: relative;
+}
+/* the clock and the flags over the sky: dark words with a light edge, since the sky changes */
+.trials-hud {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  display: flex;
+  gap: 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1d1a26;
+  text-shadow:
+    0 0 3px rgba(255, 255, 255, 0.9),
+    0 0 6px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+/* four hold buttons, big enough for thumbs: leans on the left, brake and gas on the right */
+.trials-pad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+.trials-pad .btn {
+  min-height: 52px;
+  padding: 0.4rem 0.3rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.trials-gas {
+  font-weight: 700;
+}
+
+/* ── the film studio ─────────────────────────────────────────────── */
+.studio-what {
+  font-size: 0.9rem;
+}
+.studio-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.studio-pick select {
+  min-height: 36px;
+}
+/* a colour is a button that is its colour; its name is its label for anyone who cannot see it */
+.lab-controls .btn.studio-swatch {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 2px solid var(--border);
+}
+.lab-controls .btn.studio-swatch[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ── critters ────────────────────────────────────────────────────── */
+.critters-spark {
+  width: 100px;
+  height: 24px;
+  color: var(--accent);
+}
+
+/* ── strut ───────────────────────────────────────────────────────── */
+/* the sequencer is sixteen steps wide; on a phone it scrolls sideways inside itself */
+.strut-grid {
+  display: grid;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+.strut-row {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.strut-name {
+  flex: none;
+  width: 2.2rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  border-left: 4px solid;
+  padding-left: 0.3rem;
+}
+.strut-cell {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--card, transparent);
+  padding: 0;
+  cursor: pointer;
+}
+.strut-cell[data-beat='yes'] {
+  border-color: color-mix(in oklab, var(--text, #888), transparent 55%);
+}
+.strut-cell[data-now='yes'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* gust: the score in each side's colour */
+.gust-score .gust-blue {
+  color: #3d74e0;
+  font-weight: 600;
+}
+.gust-score .gust-orange {
+  color: #e07a1f;
+  font-weight: 600;
+}
+
+/* ── seedling ────────────────────────────────────────────────────── */
+.seedling-name {
+  width: 9rem;
+  min-height: 36px;
+}
+.seedling-rule {
+  width: 6.5rem;
+  min-height: 36px;
+  font-family: ui-monospace, monospace;
+}
+.seedling-rule[aria-invalid='true'] {
+  outline: 2px solid #d9534f;
+}
+.seedling-num {
+  width: 4.5rem;
+  min-height: 36px;
+}
+
+/* ── pinball workshop ────────────────────────────────────────────── */
+/* the flippers and the plunger: three big hold-buttons a thumb each, which never select text */
+.pinball-pads {
+  flex-wrap: nowrap;
+}
+.lab-controls .btn.pinball-pad {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 56px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* night crossing: the pilot's four helm buttons in one row, a thumb's width each */
+.crossing-helm {
+  flex-wrap: nowrap;
+}
+
+/* ── shadow box ──────────────────────────────────────────────────── */
+/* the floor of the box as a grid of stacks, back row at the top as the box is seen */
+.shadowbox-grid {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0.5rem 0;
+}
+.shadowbox-row {
+  display: flex;
+  gap: 4px;
+}
+.shadowbox-cell {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card, #f4f1ec);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.shadowbox-cell[data-h='1'] {
+  background: #f1d2bb;
+}
+.shadowbox-cell[data-h='2'] {
+  background: #e7b48f;
+}
+.shadowbox-cell[data-h='3'] {
+  background: #dc9766;
+}
+.shadowbox-cell[data-h='4'] {
+  background: #c97a45;
+  color: #fff;
+}
+.shadowbox-cell[data-cursor='yes'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

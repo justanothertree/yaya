@@ -19,9 +19,20 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 5 — #21**: Slime, Mirror, Bubbles, Clay, Fireflies, Black hole.
 - **Batch 6 — #22**: Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint.
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
+- **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
+  studio, Critters. See its own section at the end.
+- **Batch 9 — draft #26, `claude/lab-toys-9`, STACKED ON BATCH 8**: Strut, Gust, Seedling.
+- **Batch 10 — draft #27, `claude/lab-toys-10`, STACKED ON BATCH 9**: Möbius golf, Pinball
+  workshop, Night crossing.
+- **Batch 11 — draft #28, `claude/lab-toys-11`, STACKED ON BATCH 10**: two review fixes to batch
+  10 (and Bike trials), then Shadow box and Fold.
 
-That is 7 live toys plus 30 new ones, 37 in the picker. Each batch section below is that batch's
-own note, including what it measured and what it had not.
+**Merge order for the stack: #25 → #26 → #27 → #28**, each retargeted to `main` once the one under it
+has merged. Each batch's PR shows only its own diff against the branch below it.
+
+That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41, batch 9
+44, batch 10 47 and batch 11 49 (counted from the `DEMOS` list, not written down from memory). Each
+batch section below is that batch's own note, including what it measured and what it had not.
 
 ## What shipped
 
@@ -1381,3 +1392,827 @@ make the merge worse.
 - [ ] Ferrofluid — does holding feel like a magnet gathering (is a second too slow)? Smooth on a
       phone — three FFT round trips of 256² a frame? Do two fingers make two clean fields? Does
       it dance to music convincingly, and does it look like glossy black liquid?
+
+## Batch 8 — games and builders
+
+Its own draft PR, branch `claude/lab-toys-8`, from `main` after #24 (all 37 toys on one
+registry). Evan played the 37 on a desktop; none has been on a phone. This batch leans away from
+"another effect" toward things to DO: games with a goal and a restart, and builders that keep what
+you make. Each is one entry appended to `DEMOS`, so it merges as an addition.
+
+⚠️ **MEASURED HERE vs ASSUMED.** Every number below marked _measured_ came from headless Chromium
+on SwiftShader (a CPU stand-in for a GPU) or from the unit tests. "Emulated phone" means
+Playwright's iPhone 13 profile with CDP touch events — it checks layout and that touches reach the
+controls, and says NOTHING about a real phone's speed, feel, thumbs or permission prompts. Those
+are in the checklist at the end of this section as questions.
+
+| Toy         | What you do                                                                                                                                                                          | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time                                                                      | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw                            | "bake the level once, ask it every frame" — any 2D level's collision and look from one field                                         |
+| Waterworks  | A PUZZLE: four levels and a sandbox — get the water into the cup by drawing walls, freezing it into a bridge, boiling it over a wall, melting ice gently                             | a FLIP FLUID: particles → staggered grid with fixed-point `atomicAdd`, a pressure solve by warm-started Jacobi, the change back to the particles; each drop carries its own temperature and state (water, ice, steam) and ice becomes solid for the liquid                                      | "particles with a grid" — any liquid that has to fill, pour and splash; per-particle state machines driven by a field                |
+| Film studio | A BUILDER with a result to keep: place and pose actors, props and lamps, frame with a lens, aperture and focus, then shoot and save a PNG; scenes save to this browser and to a file | a PROGRESSIVE PATH TRACER in a compute shader — analytic spheres, turned boxes and capsules (an actor is a dozen), direct lamp sampling at each diffuse bounce, a thin lens for depth of field, a running sum that settles; the same intersection maths on the CPU picks what is under a finger | "render the real thing, slowly, and keep it" — any offline-quality picture a toy can make, and picking that agrees with the renderer |
+| Critters    | A BUILDER and a race: make a creature of joints, bones and muscles on a grid, then race 256 copies whose brains evolve, generation by generation                                     | A WORKGROUP PER CREATURE: joints in workgroup shared memory through many substeps of position-based dynamics, Jacobi constraint passes gathered per joint from an adjacency list; instanced drawing of every copy                                                                               | "many small independent simulations at once" — populations, ensembles, a workgroup each, shared memory as the scratch pad            |
+
+- **Bike trials** — a trials bike in a quarry. Gas and Brake drive the back wheel; Lean back lifts
+  the front (over the block, onto the log, for landing a jump), Lean forward keeps the nose down on
+  a climb. Hit your head and it is a crash: ↺ Back to the flag puts you on the bike at the last
+  checkpoint passed (the clock keeps going), ⏮ Start again starts the run over. One course, the
+  Quarry: bumps, a block, a log, a gap to jump, a long hill, a staircase, a pit, a run to the
+  chequered flag; four checkpoint flags that turn green as you pass. The clock counts whole 60ths;
+  the best time is kept in this browser (`lab_trials_best_v1`, read back only if it is a whole
+  number of frames between a second and an hour). On screen: four hold buttons (two leans, Brake,
+  Gas) that keep a finger captured until it lifts, so a thumb sliding off Gas mid-jump keeps the
+  throttle open; two thumbs at once work. Keys: ↑/W gas, ↓/S brake, ←/A lean back, →/D lean
+  forward, R back to the flag, N start again, P pause.
+  Physics (CPU, `trials.ts`, fixed 600 Hz, nothing random): a chassis and two wheels; each wheel
+  hangs on a FORK — soft along the frame's up (the suspension), stiff across it; ground contact is a
+  stiff penalty spring with regularised Coulomb friction, and the tyre's spin enters the friction
+  so the engine's torque on the back wheel becomes traction; half the engine's torque kicks back on
+  the frame. The GPU never decides anything about a run, so a ride is the same on every machine.
+  GPU (`trials.wgsl`): `bake` writes every texel's signed distance (8 texels a metre, 248,064 of them
+  for the Quarry) — the nearest edge of the ground, negative inside by counting crossings, exactly
+  as the CPU's `inGround` does; `fly` moves up to 4,096 mud particles with gravity and drag and,
+  where the field says they are in the ground, pushes them out along its slope and takes most of
+  their speed; `show` draws the sky, two parallax hill ranges, the ground from the field (depth gives
+  it layers and stones, the edge grass), the flags and the bike and rider from a dozen shapes posed
+  from the physics; `mud` draws the particles.
+  ⚠️ What was wrong first, each found by the tests or a probe:
+  1. **The bike backflipped on the throttle.** All of the engine's torque reacted on a light frame;
+     half of a smaller torque does now, so a wheelie needs a lean.
+  2. **Square steps were walls.** A wheel meets a square step with an upward normal of (R − h)/R —
+     0.17 at h = 0.3 — and bounced straight back off it forty times running. Every step up leans now.
+  3. **The kicker threw the bike flat into the gap**, two metres short: a smooth hill levels off at
+     its top. It is straight to the lip.
+  4. **The suspension was one isotropic spring**, so a wheel that hit the block's face swung back
+     on it like a pendulum (0.21 m across the fork; 0.06 with the fork). A test now holds that.
+  5. **A wheel landing just past the gap's lip was thrown down into it at 26 m/s.** The ground's
+     inside was decided by which side of a segment's LINE a point was — past the end of a wall the
+     line runs on through the air. Inside is a crossing count now, in the physics and the bake alike.
+     _Measured_: the scripted rider in the tests (throttle, and lean to match the slope a metre ahead)
+     finishes the Quarry in 18.8 s with no crash, which is the claim that the course can be finished;
+     the same inputs give the same ride twice. The bake matches the CPU's signed distance to 3×10⁻⁶ m
+     at 3,000 random texels, with no sign wrong among the 2,340 texels within 20 cm of the surface;
+     300 mud particles dropped on flat ground all come to rest on it, none in it; 100 thrown hard at
+     the start wall all bounce back, none through. In the page, at 1024 and on the emulated iPhone: the
+     keys drive (20 m in a second of ↑), lean, brake, crash (by leaning back on the throttle until the
+     head hits), R puts the bike at the checkpoint, N restarts; the pad's Gas held with a mouse drives
+     and stays held after the pointer slides off; on emulated touch, Gas plus Lean back together pull a
+     wheelie (0.43 rad); a corrupt stored best is ignored. The 375 audit is clean.
+     Not measured: frame rate on any real GPU or phone, how the controls FEEL, and whether the course is fun or too hard. Twelve deliberate breaks of the physics
+     and the packing each fail a test.
+
+- **Waterworks** — get the water into the cup, to the red line. Five levels, one at a time:
+  1. **Fill the cup** — the tap pours onto the floor and past the cup. ✏️ Wall draws (300 cells
+     of ink), 🧽 Erase takes walls back and refunds the ink: draw a chute.
+  2. **Ice bridge** — the stream runs off a ledge and down a shaft. Hold ❄️ Cool just inside the
+     top of the shaft and the falling water freezes into a bridge level with the ledges; let go and
+     the water runs over it to the cup. Ice frozen too high dams the stream: 🔥 Heat melts it.
+  3. **Up and over** — a wall between the pool and the cup. Hold 🔥 Heat on the pool: it boils,
+     the steam spreads under the ceiling and over the wall, the cool plate on the far side turns it
+     back to rain, and the rain falls into the cup.
+  4. **Gently** — a block of ice in a freezer hopper over the cup. Short bursts of 🔥 Heat melt it
+     and it drains into the cup; hold the heat too long and it boils away instead.
+  5. **Sandbox** — every tool and 2,000 cells of ink.
+     A level shows ✓ once solved; solved levels are kept (`lab_waterworks_v1`, a list read back only
+     as known level ids). ↺ Restart; Next appears when the cup is full. Keys: 1–4 tool, R restart, N
+     next level, Space pause.
+     Technique (`waterworks.wgsl`): FLIP on a 160×100 staggered (MAC) grid, two 120th-of-a-second
+     substeps a frame. `clear`; `p2g` — each water drop adds its velocity to the four nearest u-faces
+     and v-faces with bilinear weights, in fixed point by `atomicAdd`, and counts itself into its cell
+     (water, ice and steam in ten bits each); `faces` — sums become velocities, a copy is kept, gravity,
+     faces touching rock or ice are zero; `diverge`; 40 `jacobi` passes for the pressure, never below
+     zero; `project`; `g2p` — each drop takes back the CHANGE in the grid's velocity (95% FLIP, 5%
+     PIC), moves an axis at a time stopping at rock, warms or cools toward its cell's plate or the
+     finger's tool, and changes state at the thresholds (freeze < −1, melt > 2, boil > 100, condense
+     < 92 — gaps, so a drop at a line does not flicker). Ice does not move and is solid to the water;
+     steam rises, wanders, and is pushed from crowded cells to empty ones. Then `count_cup` counts the
+     water in the cup on the GPU, read back a few times a second. `waterworks-draw.wgsl` splats every
+     drop into a float texture (water, ice, steam in three channels) and reads it back as a surface.
+     ⚠️ What was wrong first — each found by measuring:
+  6. **Every drop's vertical velocity landed on one face of the grid.** The v accumulators were
+     indexed as if v came after u in one buffer, which is how `vel` is laid out but not them; the
+     out-of-range writes were clamped onto the last element. Nothing moved.
+  7. **A still pool sank to 17% of its volume in six seconds** (2,736 wet cells to 468): 40 Jacobi
+     passes from zero never reach the bottom of a pool. Starting each solve from the last one's
+     pressure keeps it within 2% and level to half a cell. A push apart for crowded cells (the
+     usual FLIP volume fix) was tried and only ever pushed: the same pool swelled 11%.
+  8. **Steam rose in a column and never crossed the wall**; now it spreads from crowded cells.
+  9. **Steam cooled on its way and rained back over the kettle**, and the cold plate at −40 froze
+     what reached it into ice hanging from the ceiling — 44 drops in the cup in 23 s. Steam keeps
+     its heat unless something cold is near (a GAME RULE, not physics, and said so in the code), and
+     the plate is a cool 5 °C.
+  10. **Water hung from the ceiling** — suction. Pressure is clamped at zero: water pushes and cannot
+      pull.
+  11. **Level 2 was impossible as first drawn** (a pit needing 13,000 drops of ice to fill) and
+      **level 4 solved itself** (the room thawed the ice in ten seconds); both redesigned on what the
+      probe showed. And the cup's red line was drawn at the rim, so a full cup looked a quarter full.
+      _Measured_ (SwiftShader): a still pool stays still (rms 0.66 cells/s), level (to 0.5 cells) and
+      keeps its volume to 1.6% over six seconds; a dam break settles with every drop accounted for, none
+      in rock, none NaN; the GPU's cup count equals the CPU's (300 = 300, 569 = 569); heating a pool
+      turns 3,398 of 4,032 drops to steam that rises from y ≈ 89 to y ≈ 30, and cooling freezes ice
+      that does not move at all. **Every puzzle was played by a script on the GPU, both ways**:
+      untouched, each cup stays at 0 for the whole run; solved — a chute (255 ink), the cold held just
+      inside the shaft, the pool boiled, the ice melted in short bursts — they reach 1,222, 1,821, 725
+      and 2,090 against 400. Held heat on level 4 got only 271: "gently" is real. In the page at 1024,
+      level 1 was solved by drawing the chute with the mouse, its ✓ stored, Next taken; erase refunded
+      ink; the cool tool reaches the shader only while held; keys work; on the emulated iPhone a touch
+      stroke draws the wall. Audit clean at both. Twelve deliberate breaks of the rules each fail a test.
+      Not measured: real-GPU frame rate (SwiftShader takes ~120 ms a frame with 7,200 drops, which says
+      little), and whether the puzzles are fun, too hard or too fiddly with a finger.
+
+- **Film studio** — a small set on a studio floor, in front of a back wall. Tap an actor, a prop or
+  a lamp to choose it and drag it about (a lamp moves at its own height); drag the empty set to walk
+  the camera round. Add 🧍 Actor, ⬛ Box, ⚪ Ball, 💡 Lamp (12 things and 3 lamps at most). A chosen
+  actor has a Pose (stand, wave, cheer, walk, sit, point, think); anything has a Finish (matte,
+  gloss, metal, glow), eight colours, Turn and Size, 🎯 Focus on it and 🗑 Remove; a lamp has a
+  colour, Power and Height. The camera has a Lens (18–135 mm on a full-frame sensor), an Aperture
+  (f/1.4–16 — wide blurs what is not in focus) and Distance. The preview settles at 48 paths a
+  pixel; 🎬 Shoot takes it to 512, and ⬇ Save picture downloads it as a PNG. The scene is kept in
+  this browser as you go (`lab_studio_scene_v1`), and ⬇ Save scene file / ⬆ Open scene file… move
+  it as JSON. Keys: arrows walk the camera, − + distance, S shoot, Delete removes, Esc lets go.
+  Technique (`studio.wgsl`): every frame each pixel traces two more paths and adds them to a running
+  sum, so the picture starts grainy and settles; any change starts the sum again. A path: a thin
+  lens (an aperture of focal length / f-stop / 2, aimed at the plane in focus), up to four bounces,
+  each lamp sampled directly at every diffuse bounce by sampling the cone it subtends, gloss as a
+  Fresnel-weighted clear coat, metal as a blurred tinted mirror, glow as light. Intersections are
+  closed forms — sphere, a box in its turned frame, Inigo Quilez's capsule — and studio.ts carries the
+  same maths for picking. On its first pass each pixel also writes the id of what its centre sees,
+  which is how the probe checks that picking and the picture agree. The developed picture is the sum
+  over its count through an ACES curve; Save picture renders that into an `rgba8unorm` texture,
+  reads it back and encodes a PNG.
+  ⚠️ What was wrong first:
+  1. **A dragged actor was flung across the set.** The drag followed where the finger's ray met the
+     FLOOR, and a finger on an actor's chest points at floor metres behind it — measured, 1.9 m for
+     a move worth 1 m (and 1.8 for 0.7 on the emulated phone). It drags on the level plane at the
+     height the finger met the thing now: 1.0 for 1.0, 0.64 for 0.7.
+  2. **Importing let junk use up the slots.** A file's list was cut to its limit BEFORE non-objects
+     were dropped, so a scene padded with nonsense could arrive with one lamp instead of three. A
+     deliberate break (lifting the cap) passed the first version of the test, which is how it was
+     found: the fixture had too few lamps to reach the cap.
+  3. Bone lengths changed when the thinking pose leaned, feet floated or sank, and the figure was
+     1.93 m: the tests that every pose keeps every bone, and that soles rest on the floor, fixed them.
+     _Measured_ (SwiftShader): what each pixel's centre sees on the GPU agrees with the CPU picker on
+     10,232 of 10,240 pixels (the rest on edges); light under a lamp falls 3.89× when the lamp is twice
+     as high (inverse square says 4); the error against a 256-path reference falls 4.36× from 4 paths to
+     64 (1/√n says 4); a box casts its shadow under a lamp straight above it. The tests hold every
+     intersection to sphere tracing of the shape's own distance field — maths shared with nothing — over
+     600 random rays; the camera to a 33.4° view at 40 mm; poses to their bones; and a scene file to a
+     round trip in which every field is something other than its default, and hostile input to clamps
+     (a file setting an actor at x = 99 with a material of `<img onerror>` arrives at x = 8, matte;
+     a `__proto__` key pollutes nothing; a non-scene is refused with a sentence). In the page at 1024:
+     choose by click, drag, pose, colour, add, orbit, a lamp's power, the aperture, Shoot, a 926×469
+     PNG downloaded, the scene file downloaded and opened back, the hostile file and a non-scene file,
+     Start over; on the emulated iPhone, touch chooses and drags. Audit clean at both. Twelve deliberate
+     breaks each fail a test.
+     Not measured: how long a clean shot takes on a real GPU (SwiftShader manages a few paths a second
+     at 926×469), and whether the controls are too many for a phone.
+
+- **Critters** — build a creature, then race 256 copies of it and watch them learn to walk.
+  Building, on a 10 cm grid: ● Joint taps joints; ⎯ Bone drags from one joint to another; 💪 Muscle
+  taps a bone to make it a muscle (red) that pulses; ✋ Move drags a joint; 🧽 Erase taps a joint or
+  a bone away. Or start from a Hopper, an Inchworm or a Walker. The line under the stage says what
+  is missing (two joints, a muscle, everything joined up) — and warns about the one shape that can
+  never walk: a body that is its own mirror image with a single muscle. ▶ Race 256 of them: every
+  copy has its own brain (each muscle's timing and strength, and the beat they share); after eight
+  seconds the 64 that got furthest breed the next 256 (kept as they are, the rest their children,
+  a small change each). The bright one leads; the score shows the generation, the leader and the
+  record, with a sparkline of each generation's best. ×1/×4/×16 speed; 👑 Watch the champion
+  replays the best brain alone; ↺ New race; ✏️ Change the body. The body and its champion are kept
+  in this browser (`lab_critter_v1`) and can be saved to a file and opened again — read only as
+  numbers, and only if the body passes the same check a hand-built one does. Keys: Space pause,
+  1–5 tool or 1–3 speed, E edit, R new race.
+  Technique (`critters.wgsl`): A WORKGROUP IS A CREATURE and a thread is one of its joints. The
+  joints live in workgroup memory for the whole call, which runs many 240th-of-a-second substeps:
+  drag, gravity, a guess; six Jacobi passes over the bones and muscles as distance constraints, each
+  joint gathering only what its own bones ask of it (an adjacency list per joint, so no two threads
+  ever write the same joint and the order they run in cannot matter); the ground, where most of a
+  joint's slide is taken back (friction, which is what a foot pushes against); the velocity from the
+  move. One dispatch a frame runs all 256. Drawing is instanced: every bone a capsule, every joint a
+  dot, the leader last and opaque. `simulate` in critters.ts is the shader line for line, and
+  breeding is ordinary seeded game logic on the CPU.
+  ⚠️ What was wrong first:
+  1. **The winners flew.** With muscles reaching 35% of their length at up to three beats a second,
+     the "best walkers" were the ones that flung themselves into the air — a 0.8 m Hopper 5.8 m
+     along in one second. Reach 20%, at most 1.5 beats a second, and a little air drag: now no joint
+     of sixteen random Walkers gets above 2 m, and the record still climbs every generation.
+  2. **A hand-built triangle raced for exactly 0.00 m** through four generations — not a bug: a body
+     that is its own mirror with one muscle cannot choose a direction. The builder says so now.
+  3. The champion kept by the first version could be read from a stale render (the frame loop is
+     built once); the race keeps its own state in a ref.
+     _Measured_: on SwiftShader, all 256 GPU creatures against the CPU copy for each preset — after 4
+     substeps the median joint differs by 8×10⁻⁶ m, after 96 by 8×10⁻⁵ m (the gap grows the way any
+     contact-rich system's does, f32 against f64), and the GPU and CPU pick the same leader of 256.
+     On the CPU, six generations of 64: the Hopper's best went 1.33 → 1.80 m in 8 s, the Inchworm's
+     1.07 → 1.88, the Walker's 2.46 → 5.21. The tests hold the physics to settling, friction, moving
+     only by muscles, and determinism, and evolution to never losing ground: with the best kept unchanged
+     and the race the same, the best never walks less from one generation to the next. In the page at
+     1024: a triangle built by mouse (the hints along the way), a joint moved, the stuck warning shown,
+     four generations of the Hopper raced at ×16 with the record 0.3 → 0.9 m, the champion watched, a
+     critter file saved and opened back, a hostile file refused; on the emulated iPhone, touch erases a
+     joint. Audit clean at both. Twelve deliberate breaks each fail a test.
+     Not measured: how the race reads on a phone (256 faint copies over each other), and how long
+     generations take on a real GPU (one dispatch of 256 workgroups, up to 64 substeps each a frame).
+
+**Batch 8 in one place.** Four additions, each a thing to DO: a game against the clock (Bike
+trials), a puzzle with levels and saved progress (Waterworks), a builder with a picture to keep
+(Film studio), and a builder with a race that learns (Critters). Each was played end to end in the
+page by a script (desktop mouse and keys, emulated-iPhone touch) and boots without errors in the
+production bundle (built with placeholder env values and served by `vite preview` — its canvas
+pixels were not read there). Every puzzle in Waterworks was solved, and left unsolved, by a script
+on the GPU; the trials course was finished by a scripted rider. Things a real device must answer
+are in the checklist; none of it has been on a phone.
+
+Try first, on a desktop: **Bike trials** (arrows; can you beat the scripted rider's 18.8 s?), then
+**Waterworks** level 3 (hold 🔥 Heat on the pool and watch the rain), then **Film studio** (pose the
+actors, open the aperture, 🎯 focus, 🎬 Shoot, ⬇ Save picture), then **Critters** (Walker, race ×16
+for a minute, 👑 watch the champion).
+
+### Real-device checklist — batch 8
+
+- [ ] Bike trials (desktop first) — is the bike fun to ride: does lean feel strong enough in the
+      air and not twitchy on the ground? Is the Quarry too easy, too hard, or right for a first
+      course? Is a crash fair (does the head hit when you expect)? Does the best time survive a
+      reload?
+- [ ] Bike trials (phone) — can two thumbs hold Gas and a lean at once on a real screen? Is
+      anything selected or zoomed by a long press? Is 11 m across enough to see what is coming?
+- [ ] Waterworks (desktop) — do the puzzles read without the hint? Is the ice bridge findable (hold
+      cold just INSIDE the shaft top)? Does Up and over take too long? Is "Gently" fair?
+- [ ] Waterworks (phone) — is a 3-cell wall pen too thin or too fat under a finger? Is the fluid
+      smooth (12,000 drops, 80 Jacobi passes a frame)? Do the level and tool buttons crowd the page?
+- [ ] Film studio (desktop) — how many seconds to a clean 512-path shot? Do the shots look good
+      enough to keep? Is dragging an actor predictable? Does a saved scene file open on another
+      browser?
+- [ ] Film studio (phone) — is tapping a small actor to choose it reliable? Are the panels below
+      the stage too long to scroll? Does Save picture download on iOS Safari (Blob downloads differ)?
+- [ ] Critters (desktop) — is building with five tools clear without reading the hint? Does a
+      race of 256 read (the leader bright, the rest faint), and do the critters visibly get better
+      within a few generations? Is ×16 smooth?
+- [ ] Critters (phone) — can a finger place joints on a 10 cm grid and drag bones between them, or
+      are the joints too close together at this scale?
+
+## Batch 9 — remixes and things to make
+
+⚠️ **STACKED ON BATCH 8.** Branch `claude/lab-toys-9` was cut from `claude/lab-toys-8` at
+`7211b3e` while #25 was still an unmerged draft, because one of these toys (Strut) builds directly
+on Critters' bodies, checks and physics. Its draft PR targets the batch-8 branch, so its diff is
+only batch 9. Merge #25 first; then this PR can be retargeted to `main` unchanged. Nothing here
+edits a batch-8 file except the shared `DEMOS` list (appended to) and `lab.css` (appended to) and
+this document.
+
+Same rules of evidence as batch 8: _measured_ means unit tests or headless Chromium on SwiftShader
+(a CPU stand-in for a GPU); "emulated phone" is Playwright's iPhone 13 profile with CDP touch, which
+checks layout and touch routing only. Nobody has played these on a real device.
+
+| Toy      | What you do                                                                                                                                                                                                                                                                   | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strut    | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep                                                                          | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind                                                                                                         |
+| Gust     | NEW: air hockey with no mallets — steer a fan round your half and blow; real wind carries the puck past four posts into the other goal. Against the computer (three speeds) or a friend on one device, first to 5                                                             | a STABLE-FLUIDS solver on a 160×90 grid (advect, red-black Gauss-Seidel pressure, project) with the posts, walls and open goal mouths as boundaries; the puck is stepped ON THE GPU by the air round it and read back each frame for the score          | "the GPU owns the physics, the CPU owns the rules": a one-thread pass that is a pure CPU function line for line, read back with a serial so a stale read is never counted                            |
+| Seedling | A REMIX of Life: Life as a puzzle — plant a few seed cells in a patch so what grows lights every lamp before time runs out; six gardens (gliders, a wall with a gap, the Seeds and Maze rules, a methuselah), then MAKE your own garden, rule included, and keep it as a file | Life with the RULE AS TWO MASKS in the uniform (any B/S rule), bounded edges, stones that never live; the step also lights lamps and leaves a fading glow, all in one compute pass; the garden drawn per pixel and stood upright on a tall stage        | "the GPU steps, the CPU judges": a twin of the step decides the puzzle and is compared to the GPU cell for cell; every level ships with a solution the tests replay, and is proven to fail untouched |
+
+- **Strut** — a creature whose step sequencer is both its gait and its song. Each row of the grid
+  under the stage is a muscle, and plays that muscle's note: the muscles sorted longest first climb a
+  pentatonic scale from the key, so a long muscle is low and a short one high (muscles of the same
+  length take neighbouring notes). Light a step and that muscle pulls in on it and sounds; its feet
+  drum where they land (kick and snare for the feet, left to right; toms if it stumbles onto a
+  joint). So a groove either walks or falls over: the goal is a groove that gets it to the
+  chequered flag 24 m away (the score shows metres, then the bars it took). As it walks, every note
+  is laid as a blot of watercolour as high up the paper as the note is up the scale, every footfall
+  a grey stamp on the floor and every few frames a faint dot under each joint, so the floor behind
+  it becomes a painted score of the walk; ⬇ Save painting keeps the whole 32 m strip as a PNG, 🧻
+  Fresh paper starts a new one. Tempo, Voice (marimba, kalimba, vibes, pluck, bell, steel pan) and
+  Key change the song; ✏️ Body opens Critters' builder (joint, bone, muscle, move, erase — the same
+  rules), and changing the body changes both how it walks and what it plays. Two presets: the
+  Stomper and the Inchworm. The creation is kept in this browser (`lab_strut_v1`) and in a file
+  (⬇ Save strut / ⬆ Open strut…). Keys: Space play, R from the start, E body, M sound, 1–5 tool.
+  Technique: the body's physics is Critters' (the same constants, run on the CPU for one creature at
+  240 Hz) with the muscles driven by the grid instead of a brain — a lit step pulls a muscle to 72%
+  of its rest, an unlit one lets it out to 108%, easing over 50 ms. Events come out of the physics in
+  order: a note when a lit step starts, a foot when a joint lands from the air faster than 0.35 m/s.
+  The GPU paints them: `blot_*` splats each event's pigment (the colour it takes OUT of the paper)
+  and wetness into an `rgba16float` sheet in world space, 48 px a metre; `bleed` lets wet paper share
+  pigment with its neighbours and dries it a little each frame; `show` lights the paper through the
+  pigment (`exp(−absorb)`), samples it between pixels, and draws the creature over it with each muscle
+  in its note's colour, brighter while it pulls; `develop` prints the whole sheet for the PNG.
+  ⚠️ What was wrong first:
+  1. **The first hand-made patterns tumbled or walked backwards** (the Stomper's top joint reached
+     2.75 m; the Inchworm went −1.1 m). The presets' patterns came from searching 400 grooves for the
+     furthest that stays upright: 14.5 m and 5.5 m in 8 bars.
+  2. **A preset edit silently did not apply** — a text replacement missed a reformatted block — and
+     the test that walks the presets forward is what caught it.
+  3. **A symmetric creature played one note**: muscles of equal length shared a pitch. They take
+     neighbouring notes now.
+  4. **The painting turned to mud**: notes laid where their muscles were stacked every colour on a
+     slow walker's spot until it dried black. Notes go up the paper by pitch now, a score.
+     _Measured_: the tests hold the music (longer is lower, pentatonic from the key, every muscle its
+     own note; the feet's drums), the sequencer (every lit step sounds once as it starts, from the first;
+     a lit muscle reaches 72% and an unlit 108%; nothing lit stands still and silent), the presets
+     (walk forward ≥ 10 m and ≥ 4 m in 8 bars without rising more than 0.4 m above their own height,
+     drumming as they go), the painting's arithmetic, and a saved strut (a round trip with every field
+     non-default; wrong row counts, non-boolean cells, too many muscles and broken bodies refused). On
+     SwiftShader a blot keeps 99% of its pigment while it blooms, is dry in about eight seconds and then
+     never changes; the printed painting is 1,536 × 192 and red where a red note was laid. In the page at
+     1024: it plays and walks with notes sounding, a cell toggles and is stored, a preset swaps the grid,
+     Save painting downloads the PNG, a file saves and reopens, a hostile file is refused, Voice and Tempo
+     are kept, mute stops the notes; on the emulated iPhone the grid scrolls sideways inside itself and a
+     touch toggles a cell. Audit clean at both.
+     Not measured: whether finding a walking groove is fun or frustrating, how in time the notes feel
+     (they sound on the frame the physics reaches the step, up to a frame late), and phone speed.
+
+- **Gust** — air hockey with no mallets. Each player has a fan they move round their own half of
+  the rink; it blows straight at the puck while held, and the wind — a real fluid, swirling round
+  four posts and round the puck itself — is what moves the puck. So where you stand is your aim:
+  get behind the puck to send it at the other goal, get in front of it to stop a shot. A fan's
+  breath (the arc round it) empties in 2.2 s of blowing and refills in 3.5 s, so it is played in
+  bursts. Blue's and Orange's wind dye the ice their colours, so you can see the air you made.
+  Against the computer (🤖, Gentle / Keen / Sharp — how fast its fan moves) or 👥 two players on
+  one device: each player's finger on their half of the ice steers and blows their fan, and two
+  thumbs at once work. On a tall stage (a phone held upright) the rink stands up, Blue's goal at the
+  bottom. First to 5; a goal rings a bell and play waits 1.5 s with the puck nudged toward who
+  conceded. Keys: Blue WASD + F to blow, Orange arrows + / or Enter, P or Space pause, N new match.
+  Technique: `force` adds each blowing fan's jet (6 cells wide, fading over 20, aimed at the puck)
+  and dye; `advect` carries air and dye back along themselves; `walls` stops air at the walls
+  (but not at the goal mouths), in the posts, and sets the air inside the puck to the puck's speed;
+  `diverge`, then 24 red-black Gauss-Seidel sweeps warm-started from the last frame's pressure, then
+  `project` make it incompressible, with zero pressure outside the goal mouths so air can leave
+  through them; `step_puck` — one thread — averages the air in a ring just outside the puck and does
+  exactly what `stepPuck` in gust.ts does: drag toward that air, move, bounce off walls and posts,
+  and the last 8 cells of a goal mouth tip toward the line. The CPU reads the puck back each frame
+  for the score and the computer's eyes; every time it puts the puck back it bumps a serial the GPU
+  carries, and a reading from before that is thrown away, so a goal is never counted twice.
+  ⚠️ What was wrong first:
+  1. **Shots crawled**: a fan pushed only the air round itself, so the push faded as the puck left
+     and a 2-second blow carried it 75 cells at 33 cells/s, curling away from the goal. The wind is
+     a jet toward the puck now, fading over 20 cells: the same blow scores in 1.9 s at 71 cells/s.
+  2. **A slow puck sat in the goal mouth for ever**: with the wall open there and the air still, it
+     could stop 3 cells short of the line. That was also why the computer, against nobody, scored
+     nothing in 30 s. The last 8 cells of a mouth tip toward the goal now.
+  3. **The computer gave up at the centre line**: it guarded its goal whenever the puck was in the
+     other half, even a puck an arm's length over the line. It shoots at anything within its jet's
+     reach now, from its own side. Against an idle player it wins 5–0 in 16 s at Keen.
+  4. **A landscape rink on an upright phone was small** (about 470 × 265 device pixels); standing
+     it up gives it 45% more area, and the shader and the finger share one fit (`rinkFit`).
+     _Measured_: the tests hold the uniform layout and the shader's copies of every constant, the puck
+     (still in still air, dragged to the air's speed, bounces off walls and posts losing speed, through
+     the goal mouth but not beside it, a crept-up puck drops in and one beside the mouth does not —
+     this test was made to fail by taking the tip out), breath (empties in 2.2 s, refills in 3.5 s, no
+     blowing on empty), fans held in their half at their speed, the computer (stands in line behind
+     the puck from the goal it attacks, blows only once there and with breath, guards a far puck,
+     shoots across the line within reach), the match (scorer, kickoff, winner at 5), and the rink's fit
+     (centred, upright on a tall stage, turned not mirrored). On SwiftShader: untouched, the puck does
+     not move in 2 s; the GPU puck matches its CPU twin to 0.0000 cells per step over a whole shot;
+     600 frames of random blowing never put the puck outside the walls or inside a post. In the page at
+     1024: the computer scores against an idle player and a bell sounds; WASD moves Blue and F blows it
+     and empties its breath, letting go stops it; a held mouse brings Blue to it, blowing; in two-player
+     mode the arrows and Enter move and blow Orange and a mouse on the right half steers Orange while
+     Blue stays put. On the emulated iPhone, two simultaneous CDP touches, one on each half, each
+     steered and blew its own fan, lifting stopped both, and the drawn blue ring was centred within
+     1 px of the thumb on the upright rink. Audit clean at both.
+     Not measured: whether it is fun — the fan speed, jet strength and breath were tuned by numbers,
+     not by playing; real two-thumb play on a real phone (the multi-touch was synthetic); and speed on
+     a phone GPU (24 sweeps × 2 on 14,400 cells a substep is small, but untested).
+
+- **Seedling** — Life as a puzzle. Each garden (32 × 20) has a green planting patch, a few lamps,
+  maybe some stones, a rule and a number of generations. You get so many seed cells to plant in the
+  patch: tap a cell to plant it (tap again to take it up), or switch to 🛩 Glider and tap to stamp a
+  whole glider (↻ turns it; a stamp is planted whole or not at all). ▶ Grow runs the rule; a lamp
+  lights when a live cell stands on it, and the garden is solved when every lamp has been lit at
+  least once before the generations run out. Stones never come alive, so they cut whatever grows
+  into them. Six gardens, easiest first: **First light** (one glider), **Both ways** (two gliders,
+  opposite directions), **Through the gap** (a glider lined up with a gap in a wall), **Seeds** (a
+  different rule — B2/S, where every cell dies at once — three seeds for four corners), **Wake the
+  garden** (six lamps all round; the right five cells grow for hundreds of generations — 12 of the
+  4,368 ways to plant five work, and nothing with four or fewer), **Maze** (B3/S12345, corridors
+  that stay). 💡 Show a way plants a stored solution (a garden solved that way earns no ✓); your
+  best for each (fewest seeds, then soonest) is kept and the list ticks it. 🛠 Make: 🪨 stones (drag
+  to draw), 💡 lamps, 🌱 drag out the patch, 🧽 erase; a name, a rule (Life, HighLife, Seeds, Day &
+  Night, Maze, or any B/S you type — B0 is refused, it would fill the empty garden), seeds and
+  generations; ▶ Try it plays it. The garden you make, your bests and where you were are kept in
+  this browser (`lab_seedling_v1`); ⬇ Save garden / ⬆ Open garden… keep it as a file. Keys (Play):
+  Space grow/pause, R replant, C clear, G glider, T turn; (Make) 1–4 tools.
+  Technique: one compute pass, `grow`, is `step` in seedling.ts line for line — the eight
+  neighbours counted with the edge as dead ground, born or staying by bit n of the rule's two
+  masks, never on a stone — and also sets a lamp's lit bit when a live cell is on it and keeps a
+  glow that fades by 18% a generation where life has been. Two boards take turns. `show` draws the
+  garden per pixel: uneven soil, the patch (gently pulsing while you plant), stones, lamps waiting
+  or lit, sprouts that swell in as each generation starts, and the glow; on a tall stage the
+  garden stands upright (`gardenFit`, shared with the finger). The CPU runs its own copy of the
+  step as the judge, and that is what decides solved or out of time.
+  ⚠️ What was wrong first:
+  1. **A solved level came out unsolved on the GPU.** `grow` reads the garden's size from the
+     uniform, and only drawing a picture wrote it, so any generation run before the first frame saw
+     a 0 × 0 garden and did nothing. The page happened to draw first; the probe, which grows before
+     drawing, did not. The size is written when the engine is made now.
+  2. **A glider stamped at the patch's edge planted half a glider**, which is no glider. A stamp
+     plants whole or not at all, and says why.
+  3. **The first wall had a 3-cell gap**, which no glider can pass: its 3 × 3 box moves a cell down
+     for every cell across. The gap is 5 now, and the lamp is on the lane through it.
+  4. **Show a way earned a ✓**, and a "too many seeds" note outlived the try that caused it.
+     _Measured_: the tests hold the rule notation, Conway's classics (a block stays, a blinker turns,
+     a glider walks a cell diagonally in four generations, and a turned glider the turned way), the
+     edge as dead ground (no wrap), stones (never alive; they cut a blinker — made to fail by letting a
+     stone live), Seeds' rule, planting (patch only, once each, the budget), every garden failing
+     untouched and solved by its stored solution within its budget, patch and time, the gap mattering
+     (the same glider two cells left is cut by the wall; with no wall it gets there), half of Both ways
+     not being a solution, a garden file (every field non-default round trip; too big, not JSON, a B0
+     rule, a 10-bit mask, zero or fractional generations, a big budget, a patch or stone off the board,
+     no lamps, 41 lamps, a lamp off the board, in the patch or on a stone — each refused, saying why),
+     tapping (plant, unplant, a whole glider that solves First light, a stamp that does not fit, a
+     stamp over budget), making (stones as runs along a row, a stone puts a lamp out, none in the
+     patch, lamps toggle, a patch dragged either way clears what is under it and stops at the edge, a
+     fresh garden is valid and unsolved), the uniform layout and the shader's mark bits, and the fit.
+     On SwiftShader, all six gardens untouched and solved: the GPU's board equals the judge's every
+     ten generations (0 differing cells in 120 comparisons) and its lit lamps equal the judge's. In
+     the page at 1024: untouched runs out; a mouse-stamped glider solves First light at generation 51
+     and is kept as a best with a ✓; an over-budget tap is refused saying so; Show a way solves Wake the
+     garden at 116 and earns no best; in Make, a dragged line of stones, a lamp, a dragged patch and a
+     typed rule are kept (B0 is marked invalid and not taken), the garden saves and reopens, a hostile
+     file is refused with its reason, Try it plays it, and all of it is there after a reload. On the
+     emulated iPhone the garden stands upright and a finger-tapped glider solves First light. Audit
+     clean at both.
+     Not measured: whether the gardens are the right difficulty and in the right order (designed by
+     search, not by watching somebody play); whether ~18 px cells on an upright phone are easy to tap
+     (under the 24 px a lone control should have — a board of cells, like the piano's keys, is
+     excused, and the glider stamp is the bigger target); real-device speed (640 cells, so trivial).
+
+### Real-device checklist — batch 9
+
+- [ ] Strut — can you find a groove that walks without the presets? Do notes land in time with the
+      grid? Is the painting worth keeping? On a phone, is a 28 px grid cell easy to tap, and is
+      scrolling the grid sideways natural?
+- [ ] Gust — play the computer on Keen: can you win, and is Sharp too sharp? Two people on one
+      phone held upright: do both thumbs work at once, and does the puck feel pushed by wind rather
+      than steered? Does it hold 60 fps on the phone?
+- [ ] Seedling — play all six gardens without 💡: which was too hard or too easy? On a phone held
+      upright, can you plant the cell you meant? Make a garden and have somebody else solve it.
+
+## Batch 10 — new territory
+
+⚠️ **STACKED ON BATCH 9, WHICH IS STACKED ON BATCH 8.** Branch `claude/lab-toys-10` was cut from
+`claude/lab-toys-9` at `5978898` while both #25 (batch 8) and #26 (batch 9) were unmerged drafts.
+Its draft PR targets the batch-9 branch, so its diff is only batch 10. **Merge order: #25, then #26
+(retargeted to `main`), then this one (retargeted to `main`).** Nothing here edits a file of either
+earlier batch except the shared `DEMOS` list, `lab.css` (appended to) and this document. When it was
+cut, `main` had moved on by Instrument commits only, and the whole stack still merged into it cleanly
+(`git merge-tree`).
+
+The brief was different ground from everything before — no creature, no fluid routing, no cellular
+puzzle — favouring unusual things to do with your hands. Same rules of evidence as batches 8 and 9:
+_measured_ means unit tests or headless Chromium on SwiftShader (a CPU stand-in for a GPU); the
+"emulated phone" is Playwright's iPhone 13 profile with CDP touch, which checks layout and touch
+routing only. Automated play proves the rules hold, not that anything is fun; nobody has played
+these on a real device.
+
+| Toy              | What you do                                                                                                                                                                                                                                                                                                                                           | GPU technique                                                                                                                                                                                                                                                                                                                      | Pattern to reuse                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Möbius golf      | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests                                                                                    | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use    | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
+| Pinball workshop | Draw your own pinball table — walls with a finger, bumpers that kick, targets that light (all lit pays a bonus) — then play it: plunger, two flippers, three balls, a best score per table; tables kept here and as files                                                                                                                             | the table BAKED INTO A DISTANCE FIELD on the GPU whenever it changes (walls, bumpers and targets a channel each), which every frame's neon glow is read from — so a table of 160 segments costs the per-pixel shader one texture read, not 160 distances                                                                           | "bake what changes rarely, draw from the bake": a compute pass on edit, a texture read per frame; checked through the picture, not only the field  |
+| Night crossing   | A co-op for two with DIFFERENT jobs: the pilot steers a boat through a rocky channel at night; the keeper aims its searchlight and chooses narrow-and-far or wide-and-near. Only what the beam lights can be seen; rocks throw shadows and are remembered for a moment. Ring the buoys, get home, three knocks and you sink. One person can play both | a MEMORY MAP of the channel in world space: a compute pass lights each texel near the boat (in range, in the beam, no rock in the way — rock shadows by a ray test against every nearby rock) and keeps the brightest of that and its fading past; the night is drawn from the map, so per pixel it is a lookup, not a shadow test | "light into a fading world-space map, draw from the map" — fog of war, sonar, anything seen and then forgotten                                     |
+
+- **Möbius golf** — golf where the shape of the space is yours to choose. Each hole names the spaces
+  it may be played in: **Room** (walls all round), **Cylinder** (left edge glued to right), **Möbius
+  band** (left glued to right with a twist: out at the top of one side, in at the bottom of the
+  other), **Torus** (both pairs glued straight) and **Klein bottle** (sides twisted, top and bottom
+  straight). Pick one — that starts the hole from the tee in it — then pull back anywhere on the
+  stage and let go to shoot, harder the further you pull; a dotted guide shows the first 3.5 m of
+  the shot, through the edges. The stage draws the course and a ring of its copies (🔭 Wider for
+  more): where an edge is glued you see the copy it leads to, mirrored and tinted cooler across a
+  twist, with arrows on the glued edges (one on the left/right pair, two on the top/bottom, pointing
+  opposite ways across a twist); beyond a wall edge, sky. The flag leans one way and the ball has two
+  spots, so a mirrored copy, and a ball that has been through a twist, are visibly mirror images.
+  Six holes: **Round the back** (a wall right across: a cylinder takes you round), **Upside down**
+  (four rooms; only the Möbius band joins the bottom-left to the top-right), **Two doors** (only the
+  torus, through two edges), **The bottle** (the Möbius band cannot, the Klein bottle can), **Lanes**
+  (three spaces will do; which is easiest?) and **Pocket** (every space open; the cup's pocket faces
+  the edge, so the question is where a ball can arrive from). Par, strokes, an ace called out with a
+  chime, and your best (and the space you did it in) kept and ticked in the list; 💡 Show the ace
+  aims the stored ace for you, and a hole played that way is not kept. Keys: ←/→ aim (Shift for
+  10°), ↑/↓ strength, Space or Enter shoot, R from the tee, W wider, 1–5 the hole's spaces.
+  Technique: the physics is CPU and deterministic at 240 Hz — a rolling ball slowing at 2.2 m/s²,
+  capsule walls, wall edges it banks off, glued edges it `cross`es (a twist mirrors its height and
+  its vertical speed and flips its handedness), and a cup it drops into below 5.5 m/s. The GPU draws
+  the cover in one pass: `fold` (the same as in mobius.ts) maps each pixel's point of the plane to a
+  copy and a point of the course, and the course is drawn there — mown stripes, edge marks, walls,
+  cup and flag, the ball, the aim arrow and the path (the trail, or while aiming the dotted guide).
+  ⚠️ What was wrong first:
+  1. **A random search for a hard hole found nothing** — sixty courses of random posts and a pocket,
+     and none had an ace in exactly one space. The last two holes were designed by hand and then
+     counted instead.
+  2. **A tap fired the keyboard's aimed shot**: letting go of a press that never pulled back shot
+     whatever the arrow keys had last set. Only a press that pulled back shoots now.
+  3. **The "stars" beyond a wall edge drew as grey squares** a cell wide.
+     _Measured_: the tests hold the gluings (a wrap is the same way up; a twist mirrors height and
+     speed and flips the ball, and twice round a band is the right way up again; the Klein bottle's top
+     and bottom are straight; a wall edge is banked off, never crossed), the cover (a ball rolled
+     straight through the copies of the torus and the Klein bottle and the same ball crossing the
+     course's edges agree to 10⁻⁶ m and on handedness at every step of 2,000 — made to fail by dropping
+     the twist from `fold`; no copies beyond a wall edge), the ball (stops at v²/2a, drops in when slow
+     and runs over when fast, banks off a wall), the course (every hole aced by its stored shot in a
+     space it offers; for the first four, a sweep of 2,760 shots in the other space it offers finds no
+     ace at all — the space is the puzzle), the uniform's layout and the shader's copies of the sizes.
+     The design sweeps, on a finer grid of 16,560 shots: Pocket has 483 aces in the torus, 467 in the
+     Klein bottle, 25 in the Möbius band, and 2 in the room and 1 in the cylinder (bank shots nobody
+     will find on purpose). On SwiftShader, the shader's fold agrees with the CPU's on every sampled
+     pixel in all five spaces — 103,182 pixels classed as sky, cup or green, 0 disagreements. In the
+     page at 1024: the ace's shot in the room banks back and leaves stroke 2; the same shot on the
+     cylinder is an ace, chimes and is kept with a ✓; a mouse pull-back aces Upside down on the Möbius
+     band; a tap shoots nothing; a shown ace is played but not kept; the hole and bests are there after
+     a reload. On the emulated iPhone a touch pull-back aces the first hole. Audit clean at both.
+     Not measured: whether it is fun, and whether six holes is the right length; whether a beginner
+     reads the copies and the edge arrows without being told (the hints do the telling); whether
+     pulling back on a phone is precise enough for the tight holes — the arrow keys are the fine
+     control, and a phone has none. Seen in the phone screenshot: the site's own "You're playing"
+     pill (from any toy that plays the synth) floats over the controls until dragged away; that pill
+     belongs to the Instrument and is left alone.
+
+- **Pinball workshop** — make a pinball table, then play it. **🛠 Build**: ✏️ draw walls with a
+  finger or the mouse (a stroke is kept as a wall, thinned to a point every half unit), ● tap to
+  place bumpers, ◆ targets, 🧽 tap a part to erase it; name the table; ↺ back to the workshop
+  table, 🧹 an empty one, ⬇ Save table / ⬆ Open table… as a file. The frame stays put — the outer
+  walls, the plunger lane and the orbit at its top, the slopes down to the flippers and the drain —
+  and parts may not go in the lane, the orbit or down by the flippers (the toy says so). **🎮 Play**:
+  hold 🚀 (or Space, or any finger on the stage while the ball waits) to pull the plunger and let go
+  to launch — a weak pull falls back for another go — then the flippers: Z / ← / left Shift and M /
+  → / right Shift, the ◀ and ▶ pads, or a finger on the left or right of the stage (two thumbs at
+  once work). Bumpers kick the ball away and score 100, a target lights for 250, lighting every
+  target pays 2,000 and puts them out. Three balls; the best score for each table name is kept.
+  Sound: bumpers on the marimba, targets on the bell, a drain low. N new game.
+  Technique: the physics is CPU and deterministic at 960 Hz — gravity down the table, capsule walls,
+  a speed limit so no step crosses a wall, flippers as capsules swinging at 28 rad/s up and 18 down
+  whose surface speed (ω × r) is what strikes the ball, bumpers that set the ball's outward speed
+  to 13, and a plunger that catches a ball falling back down its lane. The GPU's `bake` runs only
+  when the table changes: a 160 × 288 `rgba16float` field holding, at every texel, the distance to
+  the nearest wall, bumper and target (`distanceAt`, a channel each). `show` reads it once a pixel
+  for the neon — a bright core and a soft halo — and draws what moves analytically: bumpers' rings
+  (flashing when struck), lit targets, the flippers, the ball and its trail, the plunger's pull.
+  While you draw, the stroke is baked in each frame so it glows as you go.
+  ⚠️ What was wrong first:
+  1. **The plunger could not get a ball into the table**: a ball shot straight up the lane passed
+     the top of the lane's wall and fell back down it. A straight deflector bounced it back too; the
+     top right is now a quarter-circle orbit the ball runs round into the table.
+  2. **A weak pull bounced in the lane for four seconds** before it could be plunged again. The
+     plunger catches a ball falling back now, as a real one does.
+  3. **Everything read from the baked field was drawn upside down**: the bake writes the table's
+     bottom into row 0 and the shader sampled it flipped. The check of the field against the CPU
+     passed — it read the texture with the bake's own mapping — and the picture did not: the bumper
+     discs sat below their own rings. A second check now goes through the rendered pixels.
+  4. **The outer walls glowed outward** past the edge of the field, where a sample clamps to the edge
+     texel: 798 of 6,439 bright wall pixels were off any wall. Past the edge the shader reads the
+     nearest point inside and adds the way out, and it is 0 of 4,502.
+  5. **The drawn table's segments were rebuilt 960 times a second**; they are worked out once per
+     table now.
+     _Measured_: the tests hold the flippers (swing up at 28, fall at 18, stop at their ends; mirror
+     images; a drain gap wider than a ball), a resting ball fired up the table by a flip (made to fail
+     by taking the flipper's own surface speed out of the collision), an untouched ball draining and
+     the third drain ending the game, the ball never leaving the table when fired at top speed in 24
+     directions through the workshop table with the flippers going, a full plunge going round the
+     orbit and a feeble one coming back to the plunger, bumpers (kick at their own speed, score, flash),
+     targets (light once, the last pays the bonus and puts them out), playing beating not playing (a
+     scripted flipper keeps the first ball over four times as long as doing nothing), building (where
+     parts may go, strokes thinned and clipped, the limits said, erase nearest), a table file (round
+     trip, refusals for each way one can be bad), the uniform layout, the item list, the fit and the
+     field's distances. In the simulator: idle games end in 12–25 s at a full-enough pull and nothing
+     ever stuck; over 90 s the scripted flipper scores about 5,500 on the workshop table. On
+     SwiftShader: the baked field equals `distanceAt` to a relative 5 × 10⁻⁴ (half floats) at 966
+     texels; through the picture, every bright wall pixel is on a wall by the CPU's measure and every
+     bumper's centre is pink. In the page at 1024: the plunger pad pulls to full and launches round the
+     orbit, Z and M each raise their own flipper, an idle game ends, a drawn wall / bumper / target are
+     kept and a bumper in the lane is refused saying why, erase, save, a hostile file refused, reopen,
+     and it all survives a reload. On the emulated iPhone: the three pads are 109 × 56, the plunger pad
+     held and let go launches the ball, and two simultaneous touches on the stage, one each side, raise
+     both flippers and lifting drops them. Audit clean at both.
+     Not measured: whether it plays well — the flipper strength, gravity and bumper kick are tuned by
+     numbers (a perfect scripted flipper never loses a ball, which no person is); whether the pads,
+     which sit below the stage on a phone, are needed at all with the stage's halves doing the same;
+     real-phone frame rate (the bake is cheap and only on edit; the per-frame shader is a texture read
+     plus a few dozen analytic shapes).
+
+- **Night crossing** — a game for two with different jobs, or one person with two hands. A small
+  boat crosses a channel full of rocks at night. The **pilot** steers (←/→ or A/D, ↑/W full ahead,
+  ↓/S slow — or the four helm buttons) and the boat cruises when left alone. The **keeper** aims the
+  boat's searchlight — with the mouse, a finger on the water (the beam follows it, and keeps that
+  angle off the bow when lifted), or J/L — and sets it between narrow-and-far and wide-and-near (I/K,
+  or the slider). Nothing can be seen but what the beam lights: rocks show as it touches them, throw
+  shadows behind them, and stay dimly remembered for a few seconds after. The buoys carry their own
+  small lights and mark the safe water; ringing them (passing close) turns them gold. Three knocks on
+  the rocks and the boat is lost; reach the harbour lamps at the far end to get home, timed, with the
+  best time for each crossing kept. Three crossings: **Calm harbour** (60 units, 40 rocks), **The
+  reef** (90, 90) and **Long night** (130, 150). Space casts off or heaves to, R starts again. Two
+  people on one keyboard split it (WASD/arrows and IJKL), or one on the keys and one on the mouse; on
+  a phone one thumb on the helm buttons and another on the water.
+  Technique: each crossing is generated from a seed — a corridor that wanders across the channel,
+  rocks scattered everywhere except within 1.3 units of its line, a buoy every 14 units along it —
+  and the boat, the knocks, the bells and the harbour are CPU and deterministic. The GPU's
+  `remember` pass keeps a memory map of the whole channel, 6 texels a unit, but runs only on the
+  rows within 22 units of the boat: each texel becomes the larger of the beam's light on it now
+  (`light`, the same as `lightAt` — in range, inside the beam's angle, and no rock between it and the
+  lamp, tested against every rock near the boat) and what it held before times a fade (0.55 a
+  second). `show` draws the night from that map — black water with swell the light picks out, the
+  shore, rocks lit only as much as the map says, white water round them, the buoys' blinking lights,
+  the harbour's lamps and the boat (red while shaken from a knock). So the shadow test is done once
+  a texel near the boat, not once a pixel of the screen.
+  ⚠️ What was wrong first: the shader's first rock was faintly visible unlit — enough ambient light to
+  steer by, which is the whole game given away; unlit rock is now nearly black. And two probe faults
+  worth knowing: a fixed-length key hold is not a fixed pull at an unknown frame rate, and a button
+  below the fold receives no synthetic touch.
+  _Measured_: the tests hold the courses (the same from the same seed; the corridor clear of rock
+  within 1.3 units at every tenth of a unit of all three; a pilot following the corridor gets home
+  untouched and rings every buoy at cruise and at full speed; a boat left to sail straight on is
+  wrecked on every crossing), the boat (cruises, comes up to full and down to slow, turns at its
+  rate, a rock costs one point however long it scrapes and puts the boat outside it, the banks turn
+  it back), the light (narrow reaches further, wide sees wider, brightest on the axis and nothing
+  behind, a rock shadows what is behind it and lights its own face — made to fail by letting light
+  through rocks), the uniform's layout and the shader's copies of the beam and map, the rocks and
+  rows sent to the GPU (every rock the beam could reach is in the list) and the camera. On
+  SwiftShader the memory map equals `lightAt` to 1.3 × 10⁻⁴ over 56,160 texels in three poses —
+  2,258 of them lit and 146 dark only because a rock is in the way — and fades by exactly the
+  factor asked (to 5 × 10⁻⁸). In the page at 1024: the beam points at the mouse, the keeper's K
+  widens it, a boat left alone is wrecked, and a pilot driven through the arrow keys only — steering
+  for the corridor from the boat's position as the page draws it — gets home in 14.6 s untouched
+  with all four bells, and the best is kept and ticked after a reload. On the emulated iPhone the
+  four helm buttons are 79 × 56, a finger on the water swings the beam to it and the beam keeps
+  that aim when lifted, and Full ahead casts off. Audit clean at both.
+  Not measured: whether it is fun, and above all whether it is fun for TWO — whether the keeper has
+  enough to do on the calm crossing, and whether the pilot can trust what they are shown; whether
+  the crossings are too easy with one person on both (the buoys alone may be enough to steer by);
+  whether the stair-stepped edges of the shadows (the map's 6 texels a unit) matter on a real
+  screen; phone speed (the remember pass is ~25,000 texels × up to 96 rocks a frame).
+
+### Real-device checklist — batch 10
+
+- [ ] Möbius golf — play the six holes without 💡: do the copies round the course make the spaces
+      make sense, or do you need the hints? Is pulling back on a phone precise enough for Lanes and
+      Pocket? Can you find an ace on Pocket in a space other than the torus?
+- [ ] Pinball workshop — does the workshop table play well, and do flips feel like flips? Build a
+      table of your own and play it: is drawing walls precise enough on a phone? On a phone, do you
+      use the pads under the stage or the stage itself?
+- [ ] Night crossing — play it with somebody: one steering, one on the light. Does the keeper have
+      enough to do? Is the reef fair? Then alone, keys and mouse: too easy, too hard? On a phone, is
+      a thumb on the water and a thumb on the helm workable for one person, or is it a two-person
+      phone game?
+
+## Batch 11 — review fixes, then things to rebuild and fold
+
+⚠️ **STACKED ON BATCH 10** (`claude/lab-toys-11` from `claude/lab-toys-10` at `5e530dd`; #25, #26
+and #27 all unmerged drafts when it was cut). Its draft PR, #28, targets the batch-10 branch. When it
+was cut, `main` had moved on by Instrument and takes commits only and the whole stack still merged
+into it cleanly. Same rules of evidence as before: _measured_ means unit tests or headless Chromium
+on SwiftShader; the emulated phone is Playwright's iPhone 13 with CDP touch, layout and touch
+routing only. Automated play shows the rules hold, never that anything is fun.
+
+### The review fixes (committed on their own, before anything new)
+
+- **A held control stays held until the last thing holding it lets go** (`ca72159`). Reproduced in
+  the page first, eleven cases:
+  - _A key let go after focus moved was ignored._ Pinball and Night crossing dropped every key
+    event not aimed at the toy's own box, releases included: hold Z, click 🔔 Sound, let go — the
+    flipper stayed up for good; hold A, click the beam slider, let go — the boat turned in circles.
+    A release now counts wherever focus is; a press on a button or slider is still the control's
+    (Space presses the button, the slider's arrows move it — both checked).
+  - _Letting go of one input let go of the action._ One boolean an action, cleared by any release:
+    hold Z and tap the ◀ pad, and the flipper dropped with Z still down; the same for Z and ←, Z and
+    a finger on the stage, A and ← or the Port pad in Night crossing — and Bike trials' keys and
+    pads. `holds.ts` names every holder (`key:z`, `pad:7`, `stage:12`) and an action is held while
+    any of them is; Pinball's plunger fires when the last one lets go.
+  - _Checked_: `holds.test.ts`, and a page probe whose eleven cases all fail on the code before the
+    change and all pass after it.
+  - _Same shape elsewhere, NOT changed_ (older toys, on `main`, outside the reviewed stack): Ferro
+    ignores a Space release that arrives from a focused button, and Tunnel lets one of its two keys
+    for a direction cancel the other. Both would take the same few lines.
+- **A pinball bumper pays for a hit, not for every step a ball cannot get away** (`f6fc455`).
+  Reproduced first: three bumpers in a tight triangle (Build lets them go anywhere) wedged a ball and
+  scored on every physics step — 8,640 hits and 864,000 points in three seconds; four in a cage
+  23,400. A bumper still kicks on every contact (the physics is untouched) but pays — score and
+  sound — only once the ball has got clear of where that bumper last paid by the ball's own width.
+  _Checked_: the triangle now scores 300 in all and the cages 400 and 600; a ball bouncing off a
+  bumper and back, and a ball kicked between two bumpers one above the other, are paid on every
+  arrival (counted independently of the scoring); scripted play on the workshop table scores exactly
+  what it did before, 5,562.5 a 90 s game and 350 idle. _Not fixed_: the wedged ball itself stays
+  wedged until 🔄 New game — scoring was the finding, and freeing it means changing the physics.
+
+### New
+
+| Toy        | What you do                                                                                                                                                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                                                                                                  | Pattern to reuse                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Shadow box | Rebuild a hidden stack of blocks from the shadows it throws on the walls and floor. Six puzzles with a par (the fewest blocks that can do it), or pass and play: one builds and hides it behind a curtain, the other rebuilds it from the shadows           | a VOXEL RAY TRACER per pixel: each ray walks the floor's columns to the first block face, else the walls and floor; each wall's shadow is found by walking from the lit point toward its lamp through the columns. The hidden build's shadows and the player's are drawn over each other — blue where they agree, red where the player's throws shadow the hidden one does not | "the clue is drawn by the same light the answer casts": a hidden state shown only through a projection, judged on the projection |
+| Fold       | Fold a square of two-coloured paper by picking up a point and laying it down: the crease is half way between, and the picked-up side turns over on top. Seven shapes to fold within a limit, or fold freely and keep the shape as a picture or as its folds | the LAYERS DRAWN PER PIXEL: each layer a convex polygon and an affine map back to the flat sheet; at each pixel the topmost layer is found, the point mapped back onto the sheet and drawn there — front colour or cream back, fibres, the creases already in it — with the target as a ghost under it. Redrawn only when something changed                                    | "a stack of mapped flat pieces": anything folded, mirrored or tiled out of one flat source keeps one map per piece               |
+
+- **Shadow box** — a 5 × 5 box, stacks up to 4 blocks tall, and three lamps square to the walls: one
+  in front throws the blocks' outline onto the back wall, one on the right onto the left wall, one
+  overhead marks the floor they stand on. The job is always to build something that throws the
+  given shadows — not necessarily the same blocks, since many builds throw one set of shadows. Your
+  own shadows fall over the given ones: blue where they agree, red where yours throws shadow it
+  should not; on the floor, a block standing where nothing should is tinted red too. **🧩 Puzzles**:
+  six, from _A step_ to _Skyline_; some show the floor and some only the walls, and each has a par —
+  the fewest blocks that throw its shadows, which on _Stairs_ is 10 though the hidden build used 20.
+  Solving keeps your best (fewest blocks) and ticks the list; 💡 Show an answer builds a par answer
+  and is not kept. **👥 Pass and play**: the builder stacks blocks and chooses which lamps are on —
+  those are the only shadows the guesser will get — then 🙈 Hide it: a curtain is all the GPU draws
+  and the grid goes. The guesser presses 👀 and rebuilds from the shadows; ✔ Check says how many of
+  the shadows are still wrong; when they all match, or on 🏳 Give up, the hidden box is shown. ⬇ Save
+  box keeps a build as a file; ⬆ Open a box to solve… takes one straight behind the curtain, so a
+  box made earlier (or on another device, by file) can be solved without its opener seeing it.
+  Building: tap the box (on a stack adds a block on top, on the floor starts one; ➖ makes a tap
+  take one away), or the grid under it (a tap cycles a stack 0 → 4 → 0), or the keys (arrows move,
+  0–4 set, + and − nudge). Drag the box sideways to turn it.
+  Technique: a build is 25 heights. Square lamps make each shadow a profile — the tallest stack in
+  each column (back wall), in each row (left wall), and which cells are built on (floor) —
+  `shadowsOf`, and the judge compares profiles. Par comes from `fewest`: for walls only, one stack
+  does for a column and a row that need the same height, so each height needs as many stacks as
+  the larger of its columns and its rows (exact); with the floor, every marked cell needs a block and
+  the same matching is done greedily. The GPU traces the box per pixel: an orthographic camera,
+  mirrored so x runs left to right as it does on the grid; a 2-D walk over the columns finds the
+  first block face; the back wall, left wall and floor behind; each wall point's shadow found by
+  walking toward its lamp through the columns, once for the hidden build and once for yours. A tap
+  on the box is the same trace on the CPU (`traceBlocks`, `pickCell`).
+  ⚠️ What was wrong first:
+  1. **The whole floor read as shadowed**: the floor's shadow test lowered the point half a unit,
+     so an empty cell (height 0) counted as built on. The GPU-against-CPU check of every wall pixel
+     disagreed on a third of them; it agrees on all now.
+  2. **The left wall's shadows missed the column against the wall**: the walk toward the right-hand
+     lamp started one column in.
+  3. **The view was a mirror of the grid**: in a right-handed world seen from the front, +x is on
+     the left, so the box's left wall was drawn on the right. The camera's horizontal axis is
+     mirrored, in the shader and its CPU copy alike.
+  4. **On a phone the grid sat below the stage**, so you could not see the shadows while building;
+     tapping the box itself builds now.
+     _Measured_: the tests hold the shadows (profiles; different builds matching one clue, but not once
+     the floor is shown; a shadow not shown is not judged), the puzzles (none solved by an empty box,
+     each hidden build matches its own clue, par is a valid build and the fewest — against a full
+     search where the floor is shown and the exact count where it is not — made to fail by taking the
+     matching step out of `fewest`), a box as a file (round trip; refusals), the uniform layout, the
+     camera (its centre ray through the middle; x left to right), the shadow test, and picking (a tap on
+     a stack's top or side or on the floor picks the right cell, checked through a projection worked
+     out independently of the ray). On SwiftShader every sampled wall and floor pixel's shadow equals
+     the CPU's (12,652 of 12,652 in each of three puzzles) and every pixel's block-or-not equals
+     `traceBlocks` (79,338 pixels, three puzzles at three angles, 0 disagreements). In the page at 1024:
+     a puzzle solved by grid taps at par and kept; a wrong block un-matches it; keys set stacks; a shown
+     answer is not kept; drag turns the box; pass and play from build to curtain (the grid gone, the GPU
+     told to draw only the curtain) to guess (empty grid, only the two lamps chosen) — a wrong check
+     says two shadows are wrong, a different build with the same shadows is accepted, the box is
+     revealed, roles swap; a hostile file is refused and a saved box opens behind the curtain; bests
+     survive a reload. On the emulated iPhone: the 44 px grid, a puzzle solved by taps, and the box
+     itself built on by touch (a floor cell, the top of the new stack, ➖ taking one away). Audit clean.
+     Not measured: whether the puzzles are the right difficulty; whether a guesser can read the
+     shadows from the default angle without turning the box; whether pass and play holds its secret
+     well enough at a real table (the curtain is drawn, but the builder's phone is still in their hand).
+
+- **Fold** — a square of paper, coloured on the front and cream on the back, on a cutting mat. Press
+  on the paper (anywhere on it, or a hair off its edge), drag, and let go: the point you picked up
+  is laid where you let go, the crease is the line half way between, square to the move, and
+  everything on the picked-up side turns over and lands on top — so the other colour shows. The
+  fold is shown as you drag; the point you pick up and the point you lay it on are pulled to the
+  sheet's corners as it lies, and gently to a grid of twelfths. **🧩 Puzzles**: seven shapes, from
+  _Half_ and _Triangle_ to _Envelope_ (four corners to the middle) and _Arrow_, each drawn as a pale
+  ghost with a dashed outline and a number of folds allowed; the score says how like it the paper is
+  (shared area over either), and 97% within the limit solves it — any way of getting there counts.
+  Your best (fewest folds) is kept and ticked; 💡 Show how folds it for you and is not kept. **✋ Free
+  fold**: up to eight folds, a choice of eight paper colours, ⬇ Save picture (a 1024 px PNG), ⬇ Save
+  folds / ⬆ Open folds… (the moves as numbers, replayed). ↶ Undo or U, 🔄 Unfold or R.
+  Technique: a folded sheet is a stack of flat layers, bottom to top, each a convex polygon where it
+  lies now, the affine map back to where it was on the flat sheet, and which side is up. `fold` cuts
+  every layer by the crease; the parts on the picked-up side are reflected (and so is their map back,
+  a reflection being its own inverse), their side flipped, their order reversed and laid on top; the
+  crease is recorded on the flat sheet wherever a layer was cut. Paper is neither made nor lost
+  (every fold keeps the area at exactly 1), and past 64 layers the paper is "too thick to fold
+  again". The match is measured on a 240 × 240 grid. The GPU draws it per pixel: every layer's
+  polygon tested (a convex polygon's signed distance is the largest of its edges'), the topmost one
+  that covers the pixel mapped back onto the sheet and coloured from there, the creases drawn on the
+  sheet so they fold with it, each top edge drawn as a fine line and a soft shadow on the mat; and
+  only when the sheet, the colour or the size changed, since testing up to 64 layers a pixel for an
+  unchanged picture would be waste.
+  ⚠️ What was wrong first:
+  1. **The grid swallowed every point**: twelfths are 0.083 apart and pulled from 0.04, so nothing
+     could be placed between them. The grid's pull is 0.016 now; the corners' is still 0.04.
+  2. **Picking the paper up by its edge did nothing** when the press landed a hair outside it — the
+     first fold the desktop probe tried. A press within 0.04 of any layer's edge counts now.
+  3. **The score lagged a fold behind**: the folded sheet was worked out in an effect, after the
+     render that showed the score. It is worked out as the folds change now.
+     _Measured_: the tests hold the geometry (a reflection is its own inverse and keeps distances; the
+     crease is the perpendicular bisector; cutting keeps area), folding (the picked-up point lands on
+     the target point, back up; paper area exactly 1 and every layer counter-clockwise across four
+     arbitrary folds; the turned-over part on top in reverse order — made to fail by not reversing it —
+     and the crease on the flat sheet; refusals for no move, a fold that misses, turning the whole sheet
+     over, and folding past 64 layers), the puzzles (each folds within its limit, the flat sheet matches
+     none, no two targets pass for each other, a different way to the same shape counts), picking up,
+     snapping, folds as a file (round trip; refusals including folds that do not fold), the uniform
+     layout, the layer packing and the view. On SwiftShader every classified pixel's table, front or
+     back equals the CPU's topmost layer — 85,640 pixels over three folded sheets, 0 disagreements. In
+     the page at 1024: Half, House and Triangle folded by mouse drags and kept as bests; a second fold
+     on Triangle over the limit is said so and U undoes it; Show how folds Envelope and is not kept;
+     three free folds, a colour, a 1024 × 1024 PNG, the folds saved, a hostile file refused, the saved
+     folds reopened to the same sheet; bests survive a reload. On the emulated iPhone a touch drag folds
+     Half. Audit clean at both.
+     Not measured: whether the puzzles are interesting past the first few (they are shapes reachable by
+     a known sequence, not designed for an "aha"); how precisely a finger can lay a point on a phone
+     (snapping helps; there is no zoom); speed on a phone with many layers (the picture is redrawn only
+     on change, but a drag redraws it every move). There is no way to fold from the keyboard alone.
+
+### Real-device checklist — batch 11
+
+- [ ] Pinball and Night crossing — hold a key, click or tap a button, let go: does the control let go?
+      Hold a key and a pad together, let go of one: does the control stay held?
+- [ ] Shadow box — the puzzles without 💡: can you reach par? Pass and play with somebody: is the
+      curtain enough, and are three lamps the right number of clues? Is tapping the box precise
+      enough on a phone, or do you reach for the grid?
+- [ ] Fold — fold the seven shapes without 💡; is dragging a point precise enough on a phone? Make a
+      shape of your own and keep it.

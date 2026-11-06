@@ -4,6 +4,7 @@ import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
 import { BubblesDemo } from '../gpu/BubblesDemo'
 import { ClayDemo } from '../gpu/ClayDemo'
 import { ClothDemo } from '../gpu/ClothDemo'
+import { CrittersDemo } from '../gpu/CrittersDemo'
 import { ErosionDemo } from '../gpu/ErosionDemo'
 import { FerroDemo } from '../gpu/FerroDemo'
 import { FirefliesDemo } from '../gpu/FirefliesDemo'
@@ -33,9 +34,20 @@ import { SandDemo } from '../gpu/SandDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
+import { StrutDemo } from '../gpu/StrutDemo'
+import { GustDemo } from '../gpu/GustDemo'
+import { SeedlingDemo } from '../gpu/SeedlingDemo'
+import { MobiusDemo } from '../gpu/MobiusDemo'
+import { PinballDemo } from '../gpu/PinballDemo'
+import { CrossingDemo } from '../gpu/CrossingDemo'
+import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
+import { FoldDemo } from '../gpu/FoldDemo'
+import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
+import { TrialsDemo } from '../gpu/TrialsDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
 import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
+import { WaterworksDemo } from '../gpu/WaterworksDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 
@@ -291,6 +303,82 @@ const DEMOS: readonly {
     name: 'Ferrofluid',
     line: 'Ferrofluid — press and hold under a dish of black liquid and it bristles into spikes; or let it dance to the music.',
     Demo: FerroDemo,
+  },
+  /* batch 8 — games and builders */
+  {
+    id: 'trials',
+    name: 'Bike trials',
+    line: 'Bike trials — throttle, brake and lean a dirt bike over a quarry course against the clock.',
+    Demo: TrialsDemo,
+  },
+  {
+    id: 'waterworks',
+    name: 'Waterworks',
+    line: 'Waterworks — get the water into the cup: route it with walls, freeze it into bridges, boil it over the top.',
+    Demo: WaterworksDemo,
+  },
+  {
+    id: 'studio',
+    name: 'Film studio',
+    line: 'Film studio — pose actors, place props and lamps, frame it with a real lens, and shoot a path-traced picture to keep.',
+    Demo: StudioDemo,
+  },
+  {
+    id: 'critters',
+    name: 'Critters',
+    line: 'Critters — build a creature from joints, bones and muscles, then race 256 copies and watch them learn to walk.',
+    Demo: CrittersDemo,
+  },
+  /* batch 9 — remixes and new things to make */
+  {
+    id: 'strut',
+    name: 'Strut',
+    line: 'Strut — a creature whose step sequencer is its gait and its song: find a groove that walks it to the flag.',
+    Demo: StrutDemo,
+  },
+  {
+    id: 'gust',
+    name: 'Gust',
+    line: 'Gust — air hockey with no mallets: steer a fan, blow real wind through the rink and let the air carry the puck. Against the computer or a friend.',
+    Demo: GustDemo,
+  },
+  {
+    id: 'seedling',
+    name: 'Seedling',
+    line: 'Seedling — Life as a puzzle: plant a few seed cells so what grows lights every lamp in the garden. Then make gardens of your own, rule and all.',
+    Demo: SeedlingDemo,
+  },
+  // batch 10 — new territory
+  {
+    id: 'mobius',
+    name: 'Möbius golf',
+    line: 'Möbius golf — glue the green’s edges into a cylinder, a Möbius band, a torus or a Klein bottle, and play the hole through them.',
+    Demo: MobiusDemo,
+  },
+  {
+    id: 'pinball',
+    name: 'Pinball workshop',
+    line: 'Pinball workshop — draw your own pinball table, walls, bumpers and targets, then play it with the flippers.',
+    Demo: PinballDemo,
+  },
+  {
+    id: 'crossing',
+    name: 'Night crossing',
+    line: 'Night crossing — a boat through a rocky channel in the dark, for two: one steers, one aims the searchlight. Only what the beam lights can be seen.',
+    Demo: CrossingDemo,
+  },
+  // batch 11
+  {
+    id: 'shadowbox',
+    name: 'Shadow box',
+    line: 'Shadow box — rebuild a hidden stack of blocks from the shadows it throws. Puzzles with par, or pass and play: one hides, one rebuilds.',
+    Demo: ShadowboxDemo,
+  },
+  {
+    id: 'fold',
+    name: 'Fold',
+    line: 'Fold — pick up a point of a square of paper and lay it down: fold it into the shape asked for, in as few folds as you can, or make your own.',
+    Demo: FoldDemo,
   },
 ]
 
