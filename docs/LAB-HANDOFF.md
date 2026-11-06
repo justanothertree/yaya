@@ -1837,3 +1837,86 @@ checks layout and touch routing only. Nobody has played these on a real device.
       than steered? Does it hold 60 fps on the phone?
 - [ ] Seedling — play all six gardens without 💡: which was too hard or too easy? On a phone held
       upright, can you plant the cell you meant? Make a garden and have somebody else solve it.
+
+## Batch 10 — new territory
+
+⚠️ **STACKED ON BATCH 9, WHICH IS STACKED ON BATCH 8.** Branch `claude/lab-toys-10` was cut from
+`claude/lab-toys-9` at `5978898` while both #25 (batch 8) and #26 (batch 9) were unmerged drafts.
+Its draft PR targets the batch-9 branch, so its diff is only batch 10. **Merge order: #25, then #26
+(retargeted to `main`), then this one (retargeted to `main`).** Nothing here edits a file of either
+earlier batch except the shared `DEMOS` list, `lab.css` (appended to) and this document. When it was
+cut, `main` had moved on by Instrument commits only, and the whole stack still merged into it cleanly
+(`git merge-tree`).
+
+The brief was different ground from everything before — no creature, no fluid routing, no cellular
+puzzle — favouring unusual things to do with your hands. Same rules of evidence as batches 8 and 9:
+_measured_ means unit tests or headless Chromium on SwiftShader (a CPU stand-in for a GPU); the
+"emulated phone" is Playwright's iPhone 13 profile with CDP touch, which checks layout and touch
+routing only. Automated play proves the rules hold, not that anything is fun; nobody has played
+these on a real device.
+
+| Toy         | What you do                                                                                                                                                                                                                                                        | GPU technique                                                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Möbius golf | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
+
+- **Möbius golf** — golf where the shape of the space is yours to choose. Each hole names the spaces
+  it may be played in: **Room** (walls all round), **Cylinder** (left edge glued to right), **Möbius
+  band** (left glued to right with a twist: out at the top of one side, in at the bottom of the
+  other), **Torus** (both pairs glued straight) and **Klein bottle** (sides twisted, top and bottom
+  straight). Pick one — that starts the hole from the tee in it — then pull back anywhere on the
+  stage and let go to shoot, harder the further you pull; a dotted guide shows the first 3.5 m of
+  the shot, through the edges. The stage draws the course and a ring of its copies (🔭 Wider for
+  more): where an edge is glued you see the copy it leads to, mirrored and tinted cooler across a
+  twist, with arrows on the glued edges (one on the left/right pair, two on the top/bottom, pointing
+  opposite ways across a twist); beyond a wall edge, sky. The flag leans one way and the ball has two
+  spots, so a mirrored copy, and a ball that has been through a twist, are visibly mirror images.
+  Six holes: **Round the back** (a wall right across: a cylinder takes you round), **Upside down**
+  (four rooms; only the Möbius band joins the bottom-left to the top-right), **Two doors** (only the
+  torus, through two edges), **The bottle** (the Möbius band cannot, the Klein bottle can), **Lanes**
+  (three spaces will do; which is easiest?) and **Pocket** (every space open; the cup's pocket faces
+  the edge, so the question is where a ball can arrive from). Par, strokes, an ace called out with a
+  chime, and your best (and the space you did it in) kept and ticked in the list; 💡 Show the ace
+  aims the stored ace for you, and a hole played that way is not kept. Keys: ←/→ aim (Shift for
+  10°), ↑/↓ strength, Space or Enter shoot, R from the tee, W wider, 1–5 the hole's spaces.
+  Technique: the physics is CPU and deterministic at 240 Hz — a rolling ball slowing at 2.2 m/s²,
+  capsule walls, wall edges it banks off, glued edges it `cross`es (a twist mirrors its height and
+  its vertical speed and flips its handedness), and a cup it drops into below 5.5 m/s. The GPU draws
+  the cover in one pass: `fold` (the same as in mobius.ts) maps each pixel's point of the plane to a
+  copy and a point of the course, and the course is drawn there — mown stripes, edge marks, walls,
+  cup and flag, the ball, the aim arrow and the path (the trail, or while aiming the dotted guide).
+  ⚠️ What was wrong first:
+  1. **A random search for a hard hole found nothing** — sixty courses of random posts and a pocket,
+     and none had an ace in exactly one space. The last two holes were designed by hand and then
+     counted instead.
+  2. **A tap fired the keyboard's aimed shot**: letting go of a press that never pulled back shot
+     whatever the arrow keys had last set. Only a press that pulled back shoots now.
+  3. **The "stars" beyond a wall edge drew as grey squares** a cell wide.
+     _Measured_: the tests hold the gluings (a wrap is the same way up; a twist mirrors height and
+     speed and flips the ball, and twice round a band is the right way up again; the Klein bottle's top
+     and bottom are straight; a wall edge is banked off, never crossed), the cover (a ball rolled
+     straight through the copies of the torus and the Klein bottle and the same ball crossing the
+     course's edges agree to 10⁻⁶ m and on handedness at every step of 2,000 — made to fail by dropping
+     the twist from `fold`; no copies beyond a wall edge), the ball (stops at v²/2a, drops in when slow
+     and runs over when fast, banks off a wall), the course (every hole aced by its stored shot in a
+     space it offers; for the first four, a sweep of 2,760 shots in the other space it offers finds no
+     ace at all — the space is the puzzle), the uniform's layout and the shader's copies of the sizes.
+     The design sweeps, on a finer grid of 16,560 shots: Pocket has 483 aces in the torus, 467 in the
+     Klein bottle, 25 in the Möbius band, and 2 in the room and 1 in the cylinder (bank shots nobody
+     will find on purpose). On SwiftShader, the shader's fold agrees with the CPU's on every sampled
+     pixel in all five spaces — 103,182 pixels classed as sky, cup or green, 0 disagreements. In the
+     page at 1024: the ace's shot in the room banks back and leaves stroke 2; the same shot on the
+     cylinder is an ace, chimes and is kept with a ✓; a mouse pull-back aces Upside down on the Möbius
+     band; a tap shoots nothing; a shown ace is played but not kept; the hole and bests are there after
+     a reload. On the emulated iPhone a touch pull-back aces the first hole. Audit clean at both.
+     Not measured: whether it is fun, and whether six holes is the right length; whether a beginner
+     reads the copies and the edge arrows without being told (the hints do the telling); whether
+     pulling back on a phone is precise enough for the tight holes — the arrow keys are the fine
+     control, and a phone has none. Seen in the phone screenshot: the site's own "You're playing"
+     pill (from any toy that plays the synth) floats over the controls until dragged away; that pill
+     belongs to the Instrument and is left alone.
+
+### Real-device checklist — batch 10
+
+- [ ] Möbius golf — play the six holes without 💡: do the copies round the course make the spaces
+      make sense, or do you need the hints? Is pulling back on a phone precise enough for Lanes and
+      Pocket? Can you find an ace on Pocket in a space other than the torus?

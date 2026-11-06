@@ -37,6 +37,7 @@ import { SquishDemo } from '../gpu/SquishDemo'
 import { StrutDemo } from '../gpu/StrutDemo'
 import { GustDemo } from '../gpu/GustDemo'
 import { SeedlingDemo } from '../gpu/SeedlingDemo'
+import { MobiusDemo } from '../gpu/MobiusDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -342,6 +343,13 @@ const DEMOS: readonly {
     name: 'Seedling',
     line: 'Seedling — Life as a puzzle: plant a few seed cells so what grows lights every lamp in the garden. Then make gardens of your own, rule and all.',
     Demo: SeedlingDemo,
+  },
+  // batch 10 — new territory
+  {
+    id: 'mobius',
+    name: 'Möbius golf',
+    line: 'Möbius golf — glue the green’s edges into a cylinder, a Möbius band, a torus or a Klein bottle, and play the hole through them.',
+    Demo: MobiusDemo,
   },
 ]
 
