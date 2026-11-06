@@ -2,13 +2,15 @@
 
 The state of `#lab`, the WebGPU room. The commits carry the reasoning; this is the map.
 
-**Integration status, 6 Nov 2026.** This tree is prepared for publishing and is **not deployed**.
-It is `main` at `caaba4f` (the vocal editor and takes work already on `main`, and already deployed
-from there) with the full `claude/lab-toys-11` history merged on top, non-squash, at source head
-`103c93d`. That history is PRs #25 → #26 → #27 → #28 (`7211b3e`, `5978898`, `5e530dd`, `103c93d`).
-Those four source PRs stay open drafts; this integration does not retarget, merge, or close them.
-The coordinator publishes after checks. Until that deploy, evancook.dev does not have these twelve
-toys.
+**Status, checked 7 Nov 2026: all 49 are on `main` and deployed.** The batch 8–11 integration
+merged as #29 (`bd40884`, 6 Nov 22:51 UTC) — a non-squash merge of `claude/lab-toys-11` at
+`103c93d`, so the commits of #25 → #26 → #27 → #28 are on `main` as they were written. The
+**Deploy to GitHub Pages** run for `bd40884` finished successfully at 22:53 UTC (Actions run
+42307857946), alongside green Build, Lint, Test and db guards runs on the same commit. That is the
+evidence: the live site itself could not be fetched from the session that wrote this, so "live" here
+means the deploy job for that commit succeeded, not that a page was loaded. #25 shows as merged (its
+head reached `main`); #26–#28 are still open drafts on GitHub even though everything in them is on
+`main` — they can be closed. New Lab work branches from `main` (batch 12 onward is not stacked).
 
 Evan played the original 37 on a desktop only. None of those 37, and none of the twelve added here,
 has been played on a phone or confirmed on a real GPU. Numbers below marked measured are unit tests
@@ -32,20 +34,18 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 5 — #21**: Slime, Mirror, Bubbles, Clay, Fireflies, Black hole.
 - **Batch 6 — #22**: Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint.
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
-- **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
-  studio, Critters. See its own section at the end.
-- **Batch 9 — draft #26, `claude/lab-toys-9`, STACKED ON BATCH 8**: Strut, Gust, Seedling.
-- **Batch 10 — draft #27, `claude/lab-toys-10`, STACKED ON BATCH 9**: Möbius golf, Pinball
-  workshop, Night crossing.
-- **Batch 11 — draft #28, `claude/lab-toys-11`, STACKED ON BATCH 10**: two review fixes to batch
-  10 (and Bike trials), then Shadow box and Fold.
+- **Batch 8 — #25, live via #29**: games and builders — Bike trials, Waterworks, Film studio,
+  Critters.
+- **Batch 9 — #26, live via #29**: Strut, Gust, Seedling.
+- **Batch 10 — #27, live via #29**: Möbius golf, Pinball workshop, Night crossing.
+- **Batch 11 — #28, live via #29**: two review fixes to batch 10 (and Bike trials), then Shadow
+  box and Fold.
 
-The source PRs stay stacked (#25 → #26 → #27 → #28) and each still shows only its own diff. Publishing
-goes through one integration branch on current `main`, so #25–#27 are not deployed on their own
-ahead of the batch 11 fixes.
+The source PRs were stacked (#25 → #26 → #27 → #28); they reached `main` together through #29, so
+none of #25–#27 went live ahead of the batch 11 fixes.
 
-That is 7 live toys plus 30 already on `main`, 37 in the picker there; this integration adds 12 and
-the picker here is 49 (counted from the `DEMOS` list: trials, waterworks, studio, critters, strut,
+That was 7 live toys plus 30 on `main`, 37 in the picker; the integration added 12 and the picker
+on `main` is now 49 (counted from the `DEMOS` list: trials, waterworks, studio, critters, strut,
 gust, seedling, mobius, pinball, crossing, shadowbox, fold). Each batch section below is that
 batch's own note, including what it measured and what it had not.
 
