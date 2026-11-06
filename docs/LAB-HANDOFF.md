@@ -792,3 +792,291 @@ reason.
       steps per pixel, at 1× pixel density. If it stutters, the cheapest lever is the step count or a
       lower pixel density, not the physics. Does 📱 Tilt ask (iOS) and feel natural? Does throwing it
       feel good? Is the Grid sky interesting or just busy?
+## Batch 6 — more mixes
+
+Its own draft PR, branch `claude/lab-toys-6`, from `main`. Not live. Every toy is chosen to
+differ from the seven live ones, from #19 (Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons),
+#20 (Fractal, Light, Harp, Neon, Sand, Pond) and #21 (Slime, Mirror, Bubbles, Clay, Fireflies,
+Black hole), in both how you play it and what the GPU does.
+
+⚠️ **No picker was cherry-picked, and none was invented.** As in batch 5, each toy is one entry in
+`main`'s `DEMOS` list plus one render line; each entry also carries its component (`Demo:`), which
+`main`'s list ignores and #19's registry reads. Merged after #19, the conflicts in `GpuLab.tsx` are
+all "both sides added": keep both, keep one closing `]`, and delete this batch's `demo === …`
+render lines. This section sits at the end of the file for the same reason.
+
+⚠️ **THE PICKER ON A PHONE.** `main`'s picker is a row of buttons that wraps. Measured at 375
+on this branch with one toy added: 8 buttons in **3 rows, 119px** of buttons above the canvas,
+about 2.7 to a row (one row at 820 and 1440). So every three toys that land before #19's dropdown
+add roughly another row at 375: this batch's six on `main` would be about 5 rows, and batches 5
+and 6 together about 8. That is a reason to land #19 (or at least its picker commit) first, not a
+reason for a third picker — the dropdown already exists, and two dropdowns would be the conflict
+nobody can resolve by keeping both sides.
+
+`wgslLayout.ts` gained one line, `mat4x4f` (four `vec4f` columns: size 64, align 16), because
+Erosion's uniform carries a camera matrix. It is additive; if another branch has added a type to
+the same table, keep both lines.
+
+| Toy        | Interaction                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                                 |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Erosion    | TOOLS on a 3D world: rain on it, raise land, dig channels — then watch water find its way; two fingers orbit and pinch      | SHALLOW WATER through VIRTUAL PIPES (Mei et al.): four flows per cell, scaled so a cell never sends more than it has, so water is conserved by construction; sediment picked up and dropped by capacity; slumping; drawn as a lit HEIGHTFIELD MESH pulled straight from the simulation's buffer                 | "a world that changes shape" — any terrain, any 2.5D surface you can sculpt and simulate                                                                         |
+| Snowflake  | BREATH: blow on the microphone (or hold a finger to breathe on one spot) and it grows faster; the weather chooses its shape | A CELLULAR AUTOMATON ON A HEXAGONAL LATTICE (Reiter's snow model) in axial coordinates, two passes a step (mark the ice's edge, then diffuse vapour into it); drawn by interpolating across the lattice's triangles, lit from the field's own gradient                                                          | "a hex grid on the GPU" — neighbours, rotation, drawing it smooth; and a sim whose look comes from one diffusion-limited rule                                    |
+| Pixel sort | YOUR PHOTO, and GESTURES AS COMMANDS: the direction you swipe is the direction it sorts; a tap drips                        | A BITONIC SORTING NETWORK, a stage per dispatch (k and j by dynamic uniform offset), over COMPOSITE KEYS — span, level, place — whose spans come from a PREFIX SCAN in workgroup memory; the picture is a GATHER through the sorted keys                                                                        | "sort millions of things on the GPU, stably, in segments" — any ranking, any per-row ordering; and the dynamic-offset trick for many small passes in one encoder |
+| Squish     | MANY FINGERS AT ONCE as handles on a picture, PINS that hold it, and a jelly WOBBLE (with a boing) when you let go          | MOVING-LEAST-SQUARES DEFORMATION: every vertex of a mesh solves its own small weighted fit (a rotation, or an affine map) from the handles in a compute pass; the picture rides the mesh. Inverse by Newton on the CPU, so a finger takes hold of what is under it                                              | "bend an image by its points" — warping, puppeteering, any handle-driven deformation                                                                             |
+| Lightning  | TAP TO SUMMON, PLANT RODS it seeks out, a STORM that strikes by itself — and THUNDER synthesised for each strike            | DIELECTRIC BREAKDOWN: Laplace relaxed by Jacobi between growth steps, and the next cell chosen by an EXPONENTIAL RACE — every candidate draws −ln(u)/w, atomicMin over the float's bits finds the earliest, a second pass lets the earliest claim the win; one thread grows the channel and walks the path home | "choose one of many in proportion to a weight, on the GPU, exactly" — weighted sampling without a prefix sum; and growth driven by a solved field                |
+| Voiceprint | SING INTO IT (the microphone is the brush), PAINT on the picture, and PLAY it back as sound                                 | a FAST FOURIER TRANSFORM in workgroup memory (1,024 points, ten stages of butterflies, two per thread) every frame; and ADDITIVE SYNTHESIS on the GPU — a sine per row, per sample, written into a buffer that comes back as audio                                                                              | "the GPU as an audio engine" — spectra, filters, resynthesis; and the precision traps of long phases in f32                                                      |
+
+- **Erosion** — a landscape that rain carves. Rain on it with a finger (🌧) and the water gathers
+  into streams, cuts valleys into the slopes and spreads fans of sand where it slows (they are
+  coloured: sand where ground was laid down, raw earth where it was cut); ⛰ Raise a ridge across a
+  river and it pools into a lake until it spills; ⛏ Dig a channel and it follows it. ⛈ Storm rains
+  everywhere; 🌊 Drains to the sea lets water off the edges, and without it the land fills like a
+  basin. Three lands — Hills, Ridge, Mesa (whose cliffs slump and gully) — each new every press.
+  Two fingers (or 🔄 Turn, or the wheel) look round it. Keys: R, U, D, T tools, S storm, E edges,
+  1–3 new land, arrows turn, + − zoom.
+  Technique: a 256² grid of cells holding ground, water, sediment and the ground it started as.
+  Each step is five compute passes, each mirrored by a function in `erosion.ts`: paint (rain, and
+  the finger), flux (each cell's four pipe flows, pushed by the difference in water SURFACE height
+  and scaled so it never sends more than it holds), water (in less out, and the velocity that
+  makes), erode (water that could carry more than it does picks ground up; carrying more than it
+  could, it puts some down — ground plus sediment unchanged), settle (sediment carried
+  semi-Lagrangian along the flow; ground steeper than a talus slope slides, each pair of
+  neighbours trading exactly what the other loses). The finger's ray is met with the land ON THE
+  GPU, as Clay does, and the paint pass reads the hit. Drawn as a 255²-quad mesh whose vertices
+  are read straight from the simulation buffer, plus a see-through water surface over it.
+  ⚠️ Four things were wrong first:
+  1. **Water never came to rest.** The pipe model as published keeps every flow's momentum, so a
+     heap of water on flat ground sloshed as a standing wave for good — max − min depth 0.38
+     against a mean of 0.31 after a minute. Pipes have friction now.
+  2. **Erosion was five times too fast.** A storm carved 20 cells deep in 24 seconds and the land
+     was finished before anybody had watched it; now a river takes a minute or two to cut.
+  3. **Rain as drops pocked the land with spikes** — every drop dug its own pit. A storm falls
+     evenly now (with a little unevenness so streams have somewhere to start); the finger is the
+     downpour.
+  4. **Hills started as a flat green table** (its peaks were 24–37 against Ridge's 76).
+     Measured on the GPU over 60 steps from the same land and water: it matches `erosion.ts` to
+     5.7×10⁻⁶ in ground, 3.8×10⁻⁵ in water and 1.1×10⁻⁵ in sediment; 40 steps of storm put down
+     4,092.597 of water against 4,092.599 from the same hash; the finger's ray meets the land within
+     0.15 of a cell of a CPU march, and finds nothing past the edge on both. The tests hold the CPU
+     copy to the physics: water conserved exactly in a closed basin, a still lake stays still, a heap
+     spreads flat, water runs downhill and off an open edge, slumping conserves ground and brings a
+     cliff under the talus slope, rain on a ramp carves its top and lays sand at its foot, a long
+     storm stays finite. In the page, at 1024 and on an emulated phone: Raise adds ground and moves
+     the start-height with it (so it is not coloured as sand), Dig takes it, Rain adds water and the
+     ground under it starts to wear; Turn moves the eye and paints nothing; the wheel zooms without
+     scrolling the page; two fingers orbit and pinch; Storm, edges, lands and keys all reach the
+     shader; no sideways scroll, nothing undersized or clipped.
+
+- **Snowflake** — a speck of ice in cold, damp air, growing six feathered arms. 🎤 Breathe opens
+  the microphone (the site's own `localMic`, which analyses and never records) and blowing on it
+  makes the air damper, so it grows faster and wilder; hold a finger on it to breathe on one spot —
+  with ❄ Six-fold on (the default) the breath lands six ways round, as still air round a real
+  crystal does; turn it off and one breath makes it lopsided. Four weathers grow four different
+  crystals: Fern (long arms with side branches), Star, Sector (broad arms) and Feather (thick with
+  branches). Calm, Brisk and Blizzard set the speed; ↺ New flake starts again. Leaving the toy
+  turns the microphone off. Keys: N, M breathe, X six-fold, 1–4 weather.
+  Technique: Clifford Reiter's model (2005) on a 401-wide lattice of hexagons held as axial
+  coordinates — six neighbours at (±1, 0), (0, ±1), (1, −1), (−1, 1). A cell that is ice (holds
+  ≥ 1 of water) or touches ice is RECEPTIVE: it keeps its water and gains γ; everybody's free vapour
+  diffuses (a receptive cell's counting as none, so vapour drawn into the ice stays there). The tips
+  reach furthest into the damp, get the most, grow fastest, and branch. Two compute passes a step:
+  mark the receptive cells, then grow. Drawn by reading the lattice linearly across the triangle of
+  the three nearest cell centres, so the ice's edge is smooth where the value crosses 1, and lit
+  from the field's own gradient, so older, thicker ice catches the light.
+  ⚠️ Three things were wrong first:
+  1. **Every weather grew a plain hexagonal plate.** I had left receptive cells out of the
+     diffusion; with nothing drawing vapour into the ice, nothing was starved of it and no tip
+     could outrun a face. With the inflow back the same weathers branch — fill of the hexagon their
+     tips span went from about 1.0 to 0.2–0.55.
+  2. **The speeds were a fixed number of steps a frame**, and the weathers grow ten times apart:
+     Feather filled the whole disc in a quarter of a second at "Brisk". Each weather has its own
+     pace now, and all take about forty seconds.
+  3. **I wrote a test claiming every crystal starts as a little plate**, as real ones do. In this
+     model at these weathers it does not — Star is already branching four cells out — so the claim
+     came out rather than being tuned until it passed.
+     Weathers were chosen by a sweep on the CPU (201-wide lattice, crystals grown 80 cells out): at
+     β 0.35 γ 0.0001 a fern, 0.4/0.001 a star, 0.3/0.003 broad sectors, 0.65/0.001 feathers,
+     0.5/0.01 a fat star, 0.8/0.002 long blades. Measured on the GPU over 120 steps of the full
+     lattice: matches `stepFlake` to 1.1×10⁻⁶ with the same 673 cells of ice; its own crystal is
+     six-fold to 4×10⁻⁷; a finger's breath lands equally at all six turned places with Six-fold on
+     and at one with it off. The tests hold the CPU copy to the lattice (six neighbours one cell
+     apart at 60° steps, six turns come home) and the model (still air stays still, vapour is moved
+     but never made, ice never melts, growth is six-fold, damper air grows faster, and the tips
+     outgrow the faces). In the page, at 1024 and on an emulated phone: a press maps to the cell the
+     shader draws there, Chromium's fake microphone reads as breath on the meter, the microphone's
+     track has ended after leaving the toy, every weather, speed, toggle and key reaches the shader.
+
+- **Pixel sort** — the glitch-art effect, done properly. Swipe across the picture and every run
+  of pixels under your finger is sorted the way you swiped, brightest last, so it melts into
+  streaks; a tap drips downwards; ✨ Melt it all sorts the whole picture down. Sort by Brightness,
+  Hue or Warmth; Gentle, Glitch (the default) or Everything decides which pixels join a sorted run.
+  🖼 Your photo loads one from the device (fitted so its longer side is 1,024 pixels; it never
+  leaves the device), ↺ Start again puts it back unsorted. The built-in picture — a sunset over a
+  city and the sea — is painted in code, and painted upright on a phone held upright. Keys: arrows
+  melt it all that way, 1–3 sort by, S which pixels, O start again.
+  Technique: pixel sorting sorts RUNS, not rows — only pixels in the stroke and in the chosen
+  range join a run, and the rest stay put, which is what keeps the picture recognisable. A sorting
+  network cannot stop at a run's edge, so the run goes in the key: `run · 2²⁰ + level · 2¹⁰ +
+place`. Sorting a whole line by that key sorts every run within itself, never moves a pixel out
+  of its run, and is stable, and the low bits say where each pixel came from — the picture is a
+  GATHER through the sorted keys. Each line's runs are numbered by a prefix scan in workgroup
+  memory (one workgroup a line, 256 threads, 1,024 places). The sort is a bitonic network: 55
+  stages for 1,024 keys, each pairing every key with exactly one other, run two a frame so the
+  pixels can be seen streaming, each stage's k and j a 256-byte slot of one uniform buffer chosen
+  by dynamic offset — all the stages in one encoder. When it finishes the gather is baked into the
+  photo, so swipes build on each other.
+  ⚠️ Four things were wrong first:
+  1. **Half-way through, half of every column was upside down.** The textbook bitonic network
+     sorts alternate blocks downwards until the very last merge, and drawn live that flickered in
+     flipped bands. The variant whose first stage of each merge compares MIRRORED pairs leaves every
+     block sorted the same way after every level: the picture melts in runs of two, then four, then
+     whole lines.
+  2. **On the frame a sort finished, the picture was sorted twice**: the uniform had already said
+     "draw through the keys" when the photo became the sorted one. Whether a frame bakes is decided
+     before the uniform is written now.
+  3. **The first built-in picture did nothing when melted** — its sky was dark at the top and bright
+     at the horizon, already in order going down. It has lit clouds and a city of windows now, and
+     the spans were chosen by sorting it every way with every range (Gentle barely moves the
+     clouds, Glitch is the classic look, Everything leaves stripes).
+  4. **A span preset called "Melt" sat beside "✨ Melt it all"**, and the probe clicking one hit the
+     other — so would a person. It is called Everything.
+     Measured on the GPU, sorting a 300×200 picture of noise and stripes the whole way in each
+     direction and comparing every pixel with the same sort done on the CPU (keys, network, gather):
+     right, left and down by brightness or warmth agree on all 60,000 pixels; up by hue differs on 40
+     — computing the hue in single precision on the CPU brings that to 7, the rest within WGSL's
+     2.5-ulp division, so it is rounding at level boundaries and not the sort. One dab of radius 20
+     marks 1,264 pixels against π·20² = 1,257. The tests hold the network to an ordinary sort (ties
+     included, 1,024 keys), every stage to pairing each key with exactly one other, every finished
+     level to blocks sorted the same way round, the keys to never moving a pixel out of its run and to
+     agreeing with a plain stable sort of each run on a long random line. In the page, at 1024 and on
+     an emulated phone: a swipe left sorts rows the other way, a tap drips down, a swipe down on a
+     touch screen sorts columns, Melt it all, sort-by, spans and keys reach the shader, a chosen photo
+     is fitted and sorted, and Start again restores it unsorted.
+
+- **Squish** — a picture made of jelly: a cheerful green face on a checked cloth (painted in code,
+  upright on an upright phone), or 🖼 your own photo. Grab it anywhere and pull; two fingers stretch
+  and turn it between them; more, and it bends to all of them at once. 📌 Pin holds a spot still
+  (tap a pin again to take it out) so one cheek can be pulled while the other stays put. Let go and
+  it springs back, wobbling, with a marimba boing — low for a big stretch, high for a small one
+  (🔊 Sound on/off). Rigid bends it like rubber and never shears; Stretchy smears it like dough.
+  Keys: P pin, M bend, U unpin all, B boing.
+  Technique: moving-least-squares image deformation (Schaefer, McPhail & Warren, 2006). The
+  handles are pairs — where a point of the picture was, and where it is held. A compute pass gives
+  each vertex of a 97×65 mesh its own best transformation from them, weighting each handle by
+  1/distance²: the best ROTATION (Rigid, a closed form from Σw(p̂·q̂, p̂×q̂)) or the best linear map
+  (Stretchy, a 2×2 solve). The picture is drawn on the bent mesh. A let-go handle springs home on
+  the EXACT solution of a damped spring, so a slow frame cannot add energy to the wobble. A finger
+  landing on jelly that is already bent takes hold of the point of the picture under it, found by
+  inverting the bend with Newton's method on the CPU's copy of the same sum.
+  ⚠️ Two things were wrong first:
+  1. **A finger on bent jelly grabbed the wrong place.** The inverse was a plain fixed-point
+     iteration, which only converges while the bend is nearly a slide; with a twist in it the
+     tests found it 15 pixels out. Newton with the bend's own Jacobian is within half a pixel.
+  2. **`struct Squish` is 40 bytes, not the 48 I typed beside it** — it ends at 36 and rounds to its
+     8-byte alignment. The layout test caught the table before anything packed it.
+     Measured on the GPU with two pins and two pulled handles: every vertex of the mesh lands where
+     the CPU's `deform` puts it, to 1.5×10⁻⁴ px in Rigid and 2.3×10⁻⁴ in Stretchy. The tests hold
+     the method to its promises: nothing moved leaves the picture alone; every handle moved by one
+     rigid motion moves the whole picture by it, exactly, in both modes; a point under a handle goes
+     exactly where it is held; Rigid's local move is always a rotation (unit, orthogonal, determinant
+  1) while Stretchy's stretches; the spring overshoots and settles, and one long step equals many
+     short ones. In the page, at 1024 and on an emulated phone: a held mouse makes a handle that
+     follows it and wobbles home on release, with one boing (none with sound off); pins go in and come
+     out; two fingers make two handles from their own points of the picture; Stretchy, Unpin all, a
+     photo and the keys all reach the shader.
+
+- **Lightning** — a night sky that strikes. Tap anywhere to plant a lightning rod there (a mast
+  down to the ground) and call a bolt: the stepped leader feels its way down from the cloud,
+  branching; when a branch touches the ground or a rod the path it took blazes — the return
+  stroke, flickering with a re-strike — and thunder follows, made on the spot (a crack of filtered
+  noise and a rolling rumble, at the instrument channel's volume). ⚡ Strike calls one; ⛈ Storm
+  strikes by itself every few seconds; Wild, Forked and Straight are η of 1, 2 and 3.5. Keys: Space
+  strikes, S storm, C clear rods, 1–3 shape.
+  Technique: the dielectric breakdown model (Niemeyer, Pietronero & Wiesmann). φ is 0 on the
+  cloud and the channel, 1 on the ground and the rods, and relaxed by Jacobi between them — 12
+  passes after every new cell, warm-started, so the field near the tip is always fresh. The next
+  cell to break down is chosen among the air touching the channel with probability ∝ φ^η, by an
+  EXPONENTIAL RACE: every candidate draws a time −ln(u)/w and the earliest wins, which is exactly
+  weighted sampling with no running total. On the GPU the earliest is an `atomicMin` over the
+  float's bits (positive floats sort as their bits do), and a second pass lets the candidate whose
+  time equals the minimum claim the win by index. One thread then grows the channel, remembers
+  which channel cell it grew from, and when it has arrived walks those links back to the cloud,
+  marking the path that flashes. The step counter lives in a storage buffer, so every growth step
+  of a frame runs in one compute pass with no uniform written between them.
+  ⚠️ Two things were wrong first:
+  1. **The shapes grew at one rate**, and a Wild bolt needs 2,334 cells to reach the ground against
+     Forked's 586 and Straight's 300 — six and a half seconds at six a frame. Each shape has its own
+     rate now and all take a couple of seconds.
+  2. **`struct Bolt` is 40 bytes, not 36** (the same rounding as Squish's) — caught by the layout
+     test again.
+     Measured on the GPU: grown 60 cells from the same sky, the GPU breaks down exactly the same
+     cells in exactly the same order as the CPU's copy, all 60. Whole bolts at each η reach the ground
+     with a path from cloud to ground that has no gaps; a bolt with a rod at (150, 70) makes contact
+     at (149, 78), on the mast. The tests hold the CPU copy to the physics: relaxing an empty sky
+     gives the straight line Laplace says it must, a rod raises the field round it, the race wins in
+     proportion to the weights (40,000 draws), a whole bolt reaches the ground, branches more at
+     smaller η, and goes to a rod. In the page, at 1024 and on an emulated phone (where the grid
+     turns upright): the first bolt arrives, flashes and thunders once; a tap plants a rod and strikes;
+     shapes, Clear rods, the thunder switch (no thunder when off), Storm and the keys all work.
+
+- **Voiceprint** — a picture of sound: pitch up the side (rows spaced evenly in pitch, 80 Hz to
+  8 kHz, a faint line every octave), time along the bottom (512 columns, a sixtieth of a second
+  each), loudness as colour. ▶ Play turns the picture back into sound — a level stroke is a note, a
+  slanting one a glide; it starts with a little tune written in (an arpeggio, a glide, a chord).
+  🖌 Paint and 🧽 Erase with a finger. 🎤 Listen writes the microphone in, column by column, as you
+  sing or whistle, and played back it comes out as a ghost of itself. ♪ The tune puts the tune
+  back; ✕ Clear empties it. Leaving the toy stops the sound and turns the microphone off. Keys:
+  Space plays, L listens, 1–2 tool, T the tune, C clear.
+  Technique: listening, a compute pass of one workgroup takes the newest 1,024 samples, windows
+  them (Hann), puts each where its bits reversed say, and runs a radix-2 FFT in workgroup memory —
+  ten stages of 512 butterflies, two per thread, a barrier between — then each thread reads one
+  row's loudness off the spectrum at that row's pitch. Playing, a pass with a thread per output
+  sample sums a sine for every row at the loudness the picture gives it there, eased between
+  columns, its phase a function of the time alone so nothing clicks from column to column; 8.5
+  seconds come back in one readback and play as an AudioBuffer, normalised and at the instrument
+  channel's volume.
+  ⚠️ What was wrong first:
+  1. **Late in the picture the GPU's sound drifted from the CPU's**, 1.8×10⁻³ on a peak of 0.5. Two
+     guesses were tried and measured before the cause was found, and both stayed in because both are
+     right: the phase is split so no f32 product is large (pitch × time reaches tens of thousands of
+     turns), and the sine is read on −π..π, the only range WGSL holds it to. Neither moved the error
+     much. The cause was WGSL's `pow` — the shader computed each row's pitch with it, and pow is held
+     only loosely; a pitch a millionth out drifts the phase over seconds. Pitches are worked out once
+     on the CPU now, which took the late error to 2.5×10⁻⁴ (and removed 10⁸ pows a play).
+  2. **A quick stroke left gaps**: the brush takes 64 dabs a frame and threw the rest away. They wait
+     for the next frame now; the same swipe paints 483 where it painted 191.
+  3. **WGSL reserves `from`** — a field of the uniform was called it, and was renamed `first`.
+     Measured on the GPU: its transform puts the loudest row of a 440 Hz tone, a two-note chord and
+     noise on the same row as the CPU's (values within 0.007, 5×10⁻⁵ for noise); its synthesis of the
+     tune matches the CPU's sample for sample to 1×10⁻⁴, and 2.5×10⁻⁴ five seconds in; a brush dab
+     paints 0.75 where it lands and nothing ten columns away. The tests hold the CPU copy to the maths:
+     the FFT is the Fourier sum and keeps every bit of energy (Parseval); a tuning fork lands on its
+     own row at about full loudness; rows are even in pitch, an octave the same height everywhere; a
+     level stroke plays its row's pitch (counted by zero crossings); rendering a stretch alone gives the
+     same samples as rendering the whole; a dark picture is silent. In the page, at 1024 and on an
+     emulated phone: Play renders 8.53 seconds and the playhead moves, Stop stops, Clear, Paint and
+     Erase change the picture, Listen with Chromium's fake microphone writes columns, the keys work,
+     and the microphone's track has ended after leaving the toy.
+
+### Phone checklist — batch 6
+
+- [ ] The picker: how many rows of buttons sit above the canvas at 375? If #19 has landed, this is
+      moot.
+- [ ] Erosion — smooth on a phone (four steps of a 256² simulation a frame, and a 130,000-triangle
+      mesh)? Does rain from a finger feel like it lands where you touch? Is a minute or two to cut
+      a valley the right pace, or too slow to notice? Two fingers to turn — natural?
+- [ ] Snowflake — does blowing on the phone's microphone feel like it does something (it is
+      breath, but any loud sound counts)? Is forty seconds to grow a crystal the right wait? Does a
+      finger's breath read as breath? Does the browser ask for the microphone, and does its
+      recording light go off when you leave the toy?
+- [ ] Pixel sort — does a swipe feel like it pushes the pixels the way you swiped? Try your own
+      photo (does the picker open the camera roll?). Is the melt quick enough, or should it run
+      faster than two stages a frame? Is Glitch the right default?
+- [ ] Squish — does it feel like jelly? Three or four fingers at once? Is the wobble too much or
+      too little, and is the boing charming? Try it on your own photo — a face is the obvious test.
+- [ ] Lightning — is the thunder satisfying through phone speakers, or just noise? Too loud? Does a
+      bolt take about the right time to come down? On a big screen the grid's cells show as dots in
+      the side branches — charming pixel-lightning, or worth a finer grid?
+- [ ] Voiceprint — sing or whistle with 🎤 Listen on: does your voice show up where you would expect?
+      Played back, is it recognisably you, or just eerie (both are fine)? Is the starting tune
+      pleasant? Is the playback loud enough through phone speakers?

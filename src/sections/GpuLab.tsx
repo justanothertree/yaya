@@ -4,6 +4,7 @@ import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
 import { BubblesDemo } from '../gpu/BubblesDemo'
 import { ClayDemo } from '../gpu/ClayDemo'
 import { ClothDemo } from '../gpu/ClothDemo'
+import { ErosionDemo } from '../gpu/ErosionDemo'
 import { FirefliesDemo } from '../gpu/FirefliesDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { FractalDemo } from '../gpu/FractalDemo'
@@ -14,16 +15,21 @@ import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { LightDemo } from '../gpu/LightDemo'
+import { LightningDemo } from '../gpu/LightningDemo'
 import { MarbleDemo } from '../gpu/MarbleDemo'
 import { MirrorDemo } from '../gpu/MirrorDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { NeonDemo } from '../gpu/NeonDemo'
+import { PixelSortDemo } from '../gpu/PixelSortDemo'
 import { PondDemo } from '../gpu/PondDemo'
 import { RibbonsDemo } from '../gpu/RibbonsDemo'
 import { SandDemo } from '../gpu/SandDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
+import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
+import { SquishDemo } from '../gpu/SquishDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
+import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 
@@ -205,6 +211,43 @@ const DEMOS: readonly {
     name: 'Black hole',
     line: 'Black hole — drag one across the sky and throw it; every pixel bends its light round it.',
     Demo: BlackHoleDemo,
+  },
+
+  {
+    id: 'erosion',
+    name: 'Erosion',
+    line: 'Erosion — rain on a landscape and watch it carve valleys, rivers and lakes. Raise and dig to steer it.',
+    Demo: ErosionDemo,
+  },
+  {
+    id: 'snowflake',
+    name: 'Snowflake',
+    line: 'Snowflake — a crystal of ice grows six arms in damp air. Blow on the microphone, or breathe on it with a finger.',
+    Demo: SnowflakeDemo,
+  },
+  {
+    id: 'pixelsort',
+    name: 'Pixel sort',
+    line: 'Pixel sort — swipe across a picture and its pixels sort themselves that way, melting into streaks.',
+    Demo: PixelSortDemo,
+  },
+  {
+    id: 'squish',
+    name: 'Squish',
+    line: 'Squish — a picture made of jelly. Grab it with as many fingers as you like, pin it, let go and it wobbles.',
+    Demo: SquishDemo,
+  },
+  {
+    id: 'lightning',
+    name: 'Lightning',
+    line: 'Lightning — tap the sky to plant a lightning rod and call a bolt down to it, thunder and all.',
+    Demo: LightningDemo,
+  },
+  {
+    id: 'voiceprint',
+    name: 'Voiceprint',
+    line: 'Voiceprint — a picture of sound. Sing into it, paint on it, and play it back.',
+    Demo: VoiceprintDemo,
   },
 ]
 
