@@ -264,7 +264,11 @@ const BASE = 60
  * than the loop — so a pattern does not need to know how long the song is, and the same pattern
  * works in a two-bar sketch and a sixteen-bar arrangement.
  */
-export function patternEvents(p: DrumPattern, bpm: number): { events: LoopEvent[]; len: number } {
+export function patternEvents(
+  /* ⚠️ the GRID is all this needs, which is what lets DRUM_FILL through without being a beat */
+  p: { grid: Grid },
+  bpm: number,
+): { events: LoopEvent[]; len: number } {
   const step = 60 / bpm / 4
   const steps = Math.max(...Object.values(p.grid).map((row) => (row ? row.length : 0)), 16)
   const events: LoopEvent[] = []
@@ -287,4 +291,39 @@ export function patternEvents(p: DrumPattern, bpm: number): { events: LoopEvent[
   }
   events.sort((a, b) => a.t - b.t)
   return { events, len: steps * step }
+}
+
+/**
+ * One bar that says "the phrase is ending".
+ *
+ * ⚠️ NOT IN `DRUM_PATTERNS`, AND THAT IS THE POINT. A fill is not a beat you choose between —
+ * nobody wants a song that is fills all the way through — so it must not appear in a picker
+ * whose whole job is "which groove". It is a thing you add ON TOP of whichever beat is already
+ * going, which is why it lives out here with its own export and its own button.
+ *
+ * ⚠️ AND IT IS ONE BAR THAT TILES NOWHERE, placed on the last bar by the ARRANGEMENT rather
+ * than by making beats stop tiling. That was the other design on the table and it is worse:
+ * `patternEvents` deliberately returns a one-bar take because "a pattern does not need to know
+ * how long the song is, and the same pattern works in a two-bar sketch and a sixteen-bar
+ * arrangement". Varying the last bar of the beat itself would have tied every beat to the
+ * current bar count and broken that for the sake of this. Instead the fill is an ordinary
+ * layer with a `plan` of nulls and one slot — machinery that already exists, that the bar
+ * strip already draws, and that you can drag somewhere else if you want the fill in the middle.
+ *
+ * ⚠️ QUIET THEN BUSY, so it works under any beat. The first half keeps a plain kick and hats so
+ * the bar does not start by contradicting whatever groove is playing; the second half drops the
+ * hats and walks the toms down, which is the one fill everybody recognises. A fill that is busy
+ * from the downbeat sounds like a mistake rather than an ending.
+ */
+export const DRUM_FILL: { id: string; name: string; grid: Grid } = {
+  id: 'fill',
+  name: 'Fill',
+  grid: {
+    Kick: 'x...............',
+    'Closed hat': 'x.x.x.x.........',
+    Snare: '....x...x.x.....',
+    'High tom': '............x...',
+    'Mid tom': '.............x..',
+    'Low tom': '..............x.',
+  },
 }

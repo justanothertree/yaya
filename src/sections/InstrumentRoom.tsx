@@ -63,7 +63,7 @@ import {
 } from '../audio/audioHealth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
-import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
+import { DRUM_FILL, DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
 import {
   CHORD_PATTERNS,
   basslineEvents,
@@ -144,6 +144,7 @@ import {
   splitDrumLayer,
   beatPatternOf,
   bassPatternOf,
+  fillPatternOf,
   chordPatternOf,
   soleDrumPiece,
   setBars,
@@ -152,6 +153,7 @@ import {
   layerHeard,
   layerLost,
   layerPlan,
+  setLayerPlan,
   moveLayerBar,
   setMetronome,
   takeBars,
@@ -2445,6 +2447,54 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   }
                 >
                   Follow the chords
+                </button>
+              )
+            })()}
+          </div>
+          {/**
+           * ⚠️ A LAYER ARRANGED ONTO THE LAST BAR, NOT A CHANGE TO THE BEAT. Making the beat's
+           * own last bar different was the other design and it is worse: `patternEvents`
+           * returns a ONE-BAR take on purpose, so "the same pattern works in a two-bar sketch
+           * and a sixteen-bar arrangement", and varying its end would tie every beat to the
+           * current bar count. Instead this is an ordinary layer with a `plan` of nulls and one
+           * slot — machinery that already exists, that the bar strip already draws, and that
+           * can be dragged elsewhere if somebody wants the fill in the middle.
+           *
+           * ⚠️ IT NEEDS MORE THAN ONE BAR TO MEAN ANYTHING. On a one-bar loop "the last bar" is
+           * every bar, so the fill would replace the groove rather than end a phrase. The
+           * button says so rather than doing something silly.
+           */}
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Fill</span>
+            {(() => {
+              const on = loop.layers.some((l) => fillPatternOf(l) !== null)
+              const room = loop.bars > 1
+              return (
+                <button
+                  className={'btn' + (on ? '' : ' btn-ghost')}
+                  aria-pressed={on}
+                  disabled={!room || (loop.layers.length >= MAX_LAYERS && !on)}
+                  onClick={() => {
+                    const { events, len } = patternEvents(DRUM_FILL, loop.bpm)
+                    const id = addPatternLayer(events, len, DRUM_FILL.id, {
+                      mark: '-fill:',
+                      instrument: 'drums',
+                    })
+                    if (!id) return
+                    /* silent everywhere but the last bar — the arrangement, not a second beat */
+                    setLayerPlan(
+                      id,
+                      Array.from({ length: loop.bars }, (_, i) => (i === loop.bars - 1 ? 0 : null)),
+                    )
+                    if (!loop.playing) startLoop()
+                  }}
+                  title={
+                    room
+                      ? 'A tom roll on the last bar, to end the phrase'
+                      : 'A fill needs more than one bar — on a one-bar loop every bar is the last one'
+                  }
+                >
+                  On the last bar
                 </button>
               )
             })()}

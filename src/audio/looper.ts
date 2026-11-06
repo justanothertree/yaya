@@ -1740,6 +1740,8 @@ const BEAT_MARK = '-beat:'
  */
 const CHORD_MARK = '-chords:'
 const BASS_MARK = '-bass:'
+/* a one-bar fill, arranged onto the last bar — see DRUM_FILL */
+const FILL_MARK = '-fill:'
 const markedWith = (l: Layer, mark: string): string | null => {
   const at = l.id.indexOf(mark)
   return at === -1 ? null : l.id.slice(at + mark.length)
@@ -1747,6 +1749,7 @@ const markedWith = (l: Layer, mark: string): string | null => {
 export const beatPatternOf = (l: Layer): string | null => markedWith(l, BEAT_MARK)
 export const chordPatternOf = (l: Layer): string | null => markedWith(l, CHORD_MARK)
 export const bassPatternOf = (l: Layer): string | null => markedWith(l, BASS_MARK)
+export const fillPatternOf = (l: Layer): string | null => markedWith(l, FILL_MARK)
 
 /**
  * ⚠️ PICKING A BEAT SWAPS THE BEAT, it does not add one.

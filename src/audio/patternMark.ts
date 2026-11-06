@@ -22,7 +22,7 @@
  */
 
 /** The pickers that own a layer. A mark is this, then the pattern's own id. */
-export const PATTERN_MARKS = ['-beat:', '-chords:', '-bass:'] as const
+export const PATTERN_MARKS = ['-beat:', '-chords:', '-bass:', '-fill:'] as const
 
 /**
  * ⚠️ A FILE'S TAG BECOMES PART OF A LAYER ID, which becomes part of every voice id the
