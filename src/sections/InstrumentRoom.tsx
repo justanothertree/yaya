@@ -1109,8 +1109,22 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * running, both reached on purpose, so a plain keyboard looks exactly as it always has. When
    * the loop stops the hint goes with it, because a chord highlight frozen on whatever bar you
    * paused in is a lie about the present tense.
+   *
+   * ⚠️ AND IT HAS TO BE A LAYER YOU CAN ACTUALLY HEAR, which took two more goes to get right.
+   * The transport check covers the whole room stopping; it says nothing about this one layer
+   * being switched off. Measured: with the chord layer MUTED — row marked `is-muted`, button
+   * showing 🔇 — the keys still carried dots and the line still read "G major underneath", about
+   * a backing making no sound at all. Same again with the layer's own fader pulled to 0.
+   *
+   * Both are things somebody does ON PURPOSE to turn the backing off, which makes a hint that
+   * keeps describing it the plainest possible contradiction of what the hint is for. The rule
+   * this whole feature runs on is that it describes what you HEAR; silence is part of that.
+   *
+   * `gain` undefined means 1 — see the Layer type — so the test is on the resolved value, not on
+   * the field being present.
    */
-  const chordLayer = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+  const chordLayer =
+    loop.layers.find((l) => chordPatternOf(l) !== null && !l.muted && (l.gain ?? 1) > 0) ?? null
   /**
    * ⚠️ NOT `chordNotes` — that name is already an IMPORT from chords.ts that the Chord picker
    * calls at the top of this component. A local const of the same name shadows it for the whole

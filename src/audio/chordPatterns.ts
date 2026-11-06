@@ -62,7 +62,19 @@ export const CHORD_PATTERNS: ChordPattern[] = [
  */
 const BASS = 48
 
-/** How much of its slot a chord holds — a sliver of silence so repeats re-articulate. */
+/**
+ * How much of its slot a chord holds — a sliver of silence so repeats re-articulate.
+ *
+ * ⚠️ WHICH MEANS THE BACKING IS GENUINELY SILENT 4% OF THE TIME, and anything that SAMPLES it
+ * once can land there. The keyboard's chord hint reads what is sounding, so in that sliver it
+ * correctly shows nothing — and a probe taking a single reading gets a zero that looks exactly
+ * like the feature being broken. It cost two false conclusions in one sitting: a hint reported
+ * dead immediately after a progression was dropped, and a fader restored from zero reported as
+ * not coming back. Both were fine, both were the gap.
+ *
+ * Sample across a window longer than one slot before believing a zero from anything downstream
+ * of this number.
+ */
 const HOLD = 0.96
 
 /**
