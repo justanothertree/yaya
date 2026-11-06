@@ -34,6 +34,7 @@ import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
+import { TrialsDemo } from '../gpu/TrialsDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
 import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -291,6 +292,13 @@ const DEMOS: readonly {
     name: 'Ferrofluid',
     line: 'Ferrofluid — press and hold under a dish of black liquid and it bristles into spikes; or let it dance to the music.',
     Demo: FerroDemo,
+  },
+  /* batch 8 — games and builders */
+  {
+    id: 'trials',
+    name: 'Bike trials',
+    line: 'Bike trials — throttle, brake and lean a dirt bike over a quarry course against the clock.',
+    Demo: TrialsDemo,
   },
 ]
 

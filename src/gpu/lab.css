@@ -228,3 +228,41 @@
     display: none;
   }
 }
+
+/* ── bike trials ─────────────────────────────────────────────────── */
+.trials-wrap {
+  position: relative;
+}
+/* the clock and the flags over the sky: dark words with a light edge, since the sky changes */
+.trials-hud {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  display: flex;
+  gap: 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1d1a26;
+  text-shadow:
+    0 0 3px rgba(255, 255, 255, 0.9),
+    0 0 6px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+/* four hold buttons, big enough for thumbs: leans on the left, brake and gas on the right */
+.trials-pad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+.trials-pad .btn {
+  min-height: 52px;
+  padding: 0.4rem 0.3rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.trials-gas {
+  font-weight: 700;
+}

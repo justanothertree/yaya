@@ -19,6 +19,7 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 5 — #21**: Slime, Mirror, Bubbles, Clay, Fireflies, Black hole.
 - **Batch 6 — #22**: Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint.
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
+- **Batch 8 — draft, `claude/lab-toys-8`**: games and builders — see its own section at the end.
 
 That is 7 live toys plus 30 new ones, 37 in the picker. Each batch section below is that batch's
 own note, including what it measured and what it had not.
@@ -1381,3 +1382,77 @@ make the merge worse.
 - [ ] Ferrofluid — does holding feel like a magnet gathering (is a second too slow)? Smooth on a
       phone — three FFT round trips of 256² a frame? Do two fingers make two clean fields? Does
       it dance to music convincingly, and does it look like glossy black liquid?
+
+## Batch 8 — games and builders
+
+Its own draft PR, branch `claude/lab-toys-8`, from `main` after #24 (all 37 toys on one
+registry). Evan played the 37 on a desktop; none has been on a phone. This batch leans away from
+"another effect" toward things to DO: games with a goal and a restart, and builders that keep what
+you make. Each is one entry appended to `DEMOS`, so it merges as an addition.
+
+⚠️ **MEASURED HERE vs ASSUMED.** Every number below marked _measured_ came from headless Chromium
+on SwiftShader (a CPU stand-in for a GPU) or from the unit tests. "Emulated phone" means
+Playwright's iPhone 13 profile with CDP touch events — it checks layout and that touches reach the
+controls, and says NOTHING about a real phone's speed, feel, thumbs or permission prompts. Those
+are in the checklist at the end of this section as questions.
+
+| Toy         | What you do                                                                                                     | GPU technique                                                                                                                                                                                                                                                        | Pattern to reuse                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw | "bake the level once, ask it every frame" — any 2D level's collision and look from one field |
+
+- **Bike trials** — a trials bike in a quarry. Gas and Brake drive the back wheel; Lean back lifts
+  the front (over the block, onto the log, for landing a jump), Lean forward keeps the nose down on
+  a climb. Hit your head and it is a crash: ↺ Back to the flag puts you on the bike at the last
+  checkpoint passed (the clock keeps going), ⏮ Start again starts the run over. One course, the
+  Quarry: bumps, a block, a log, a gap to jump, a long hill, a staircase, a pit, a run to the
+  chequered flag; four checkpoint flags that turn green as you pass. The clock counts whole 60ths;
+  the best time is kept in this browser (`lab_trials_best_v1`, read back only if it is a whole
+  number of frames between a second and an hour). On screen: four hold buttons (two leans, Brake,
+  Gas) that keep a finger captured until it lifts, so a thumb sliding off Gas mid-jump keeps the
+  throttle open; two thumbs at once work. Keys: ↑/W gas, ↓/S brake, ←/A lean back, →/D lean
+  forward, R back to the flag, N start again, P pause.
+  Physics (CPU, `trials.ts`, fixed 600 Hz, nothing random): a chassis and two wheels; each wheel
+  hangs on a FORK — soft along the frame's up (the suspension), stiff across it; ground contact is a
+  stiff penalty spring with regularised Coulomb friction, and the tyre's spin enters the friction
+  so the engine's torque on the back wheel becomes traction; half the engine's torque kicks back on
+  the frame. The GPU never decides anything about a run, so a ride is the same on every machine.
+  GPU (`trials.wgsl`): `bake` writes every texel's signed distance (8 texels a metre, 248,064 of them
+  for the Quarry) — the nearest edge of the ground, negative inside by counting crossings, exactly
+  as the CPU's `inGround` does; `fly` moves up to 4,096 mud particles with gravity and drag and,
+  where the field says they are in the ground, pushes them out along its slope and takes most of
+  their speed; `show` draws the sky, two parallax hill ranges, the ground from the field (depth gives
+  it layers and stones, the edge grass), the flags and the bike and rider from a dozen shapes posed
+  from the physics; `mud` draws the particles.
+  ⚠️ What was wrong first, each found by the tests or a probe:
+  1. **The bike backflipped on the throttle.** All of the engine's torque reacted on a light frame;
+     half of a smaller torque does now, so a wheelie needs a lean.
+  2. **Square steps were walls.** A wheel meets a square step with an upward normal of (R − h)/R —
+     0.17 at h = 0.3 — and bounced straight back off it forty times running. Every step up leans now.
+  3. **The kicker threw the bike flat into the gap**, two metres short: a smooth hill levels off at
+     its top. It is straight to the lip.
+  4. **The suspension was one isotropic spring**, so a wheel that hit the block's face swung back
+     on it like a pendulum (0.21 m across the fork; 0.06 with the fork). A test now holds that.
+  5. **A wheel landing just past the gap's lip was thrown down into it at 26 m/s.** The ground's
+     inside was decided by which side of a segment's LINE a point was — past the end of a wall the
+     line runs on through the air. Inside is a crossing count now, in the physics and the bake alike.
+     _Measured_: the scripted rider in the tests (throttle, and lean to match the slope a metre ahead)
+     finishes the Quarry in 18.8 s with no crash, which is the claim that the course can be finished;
+     the same inputs give the same ride twice. The bake matches the CPU's signed distance to 3×10⁻⁶ m
+     at 3,000 random texels, with no sign wrong among the 2,340 texels within 20 cm of the surface;
+     300 mud particles dropped on flat ground all come to rest on it, none in it; 100 thrown hard at
+     the start wall all bounce back, none through. In the page, at 1024 and on the emulated iPhone: the
+     keys drive (20 m in a second of ↑), lean, brake, crash (by leaning back on the throttle until the
+     head hits), R puts the bike at the checkpoint, N restarts; the pad's Gas held with a mouse drives
+     and stays held after the pointer slides off; on emulated touch, Gas plus Lean back together pull a
+     wheelie (0.43 rad); a corrupt stored best is ignored. The 375 audit is clean.
+     Not measured: frame rate on any real GPU or phone, how the controls FEEL, and whether the course is fun or too hard. Twelve deliberate breaks of the physics
+     and the packing each fail a test.
+
+### Real-device checklist — batch 8
+
+- [ ] Bike trials (desktop first) — is the bike fun to ride: does lean feel strong enough in the
+      air and not twitchy on the ground? Is the Quarry too easy, too hard, or right for a first
+      course? Is a crash fair (does the head hit when you expect)? Does the best time survive a
+      reload?
+- [ ] Bike trials (phone) — can two thumbs hold Gas and a lean at once on a real screen? Is
+      anything selected or zoomed by a long press? Is 11 m across enough to see what is coming?
