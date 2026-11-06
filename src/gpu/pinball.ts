@@ -202,7 +202,19 @@ export type Game = {
   hits: { kind: 'bumper' | 'target' | 'bonus' | 'flipper' | 'drain'; k: number }[]
   /** how long each bumper has been lit after a hit, seconds left */
   flash: number[]
+  /** where each bumper last paid, and whether the ball has got clear of that spot since */
+  paid: { at: V2 | null; clear: boolean }[]
 }
+
+/**
+ * ⚠️ A BUMPER PAYS FOR A HIT, NOT FOR CONTACT. It kicks on every step it touches the ball, and it
+ * used to score on every one: a ball wedged in a triangle of three made 8,640 "hits" and 864,000
+ * points in three seconds. It pays again only once the ball has got clear of where it last paid by
+ * the ball's own width — which a ball that flies off and comes back always has, and a ball wedged or
+ * rattling in a cage never does. Per bumper, so a ball knocked from one bumper into its neighbour is
+ * paid by both.
+ */
+export const REARM = 2 * BALL_R
 
 export const newGame = (t: Table): Game => ({
   ball: { x: PLUNGE_AT[0], y: PLUNGE_AT[1], vx: 0, vy: 0 },
@@ -213,6 +225,7 @@ export const newGame = (t: Table): Game => ({
   over: false,
   hits: [],
   flash: t.bumpers.map(() => 0),
+  paid: t.bumpers.map(() => ({ at: null, clear: true })),
 })
 
 /** the plunger let go at `pull` (0..1) */
@@ -287,6 +300,9 @@ export function step(
     }
   }
   t.bumpers.forEach((p, k) => {
+    const pay = g.paid[k] ?? (g.paid[k] = { at: null, clear: true })
+    if (!pay.clear && pay.at && Math.hypot(b.x - pay.at[0], b.y - pay.at[1]) >= REARM)
+      pay.clear = true
     const dx = b.x - p[0]
     const dy = b.y - p[1]
     const d = Math.hypot(dx, dy)
@@ -302,9 +318,13 @@ export function step(
         b.vx += (BUMPER_KICK - vn) * nx
         b.vy += (BUMPER_KICK - vn) * ny
       }
-      g.score += SCORE.bumper
       g.flash[k] = 0.15
-      g.hits.push({ kind: 'bumper', k })
+      if (pay.clear) {
+        g.score += SCORE.bumper
+        g.hits.push({ kind: 'bumper', k })
+        pay.at = [b.x, b.y]
+        pay.clear = false
+      }
     }
   })
   t.targets.forEach((p, k) => {
