@@ -266,3 +266,28 @@
 .trials-gas {
   font-weight: 700;
 }
+
+/* ── the film studio ─────────────────────────────────────────────── */
+.studio-what {
+  font-size: 0.9rem;
+}
+.studio-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.studio-pick select {
+  min-height: 36px;
+}
+/* a colour is a button that is its colour; its name is its label for anyone who cannot see it */
+.lab-controls .btn.studio-swatch {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 2px solid var(--border);
+}
+.lab-controls .btn.studio-swatch[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}

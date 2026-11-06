@@ -33,6 +33,7 @@ import { SandDemo } from '../gpu/SandDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
+import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
@@ -306,6 +307,12 @@ const DEMOS: readonly {
     name: 'Waterworks',
     line: 'Waterworks — get the water into the cup: route it with walls, freeze it into bridges, boil it over the top.',
     Demo: WaterworksDemo,
+  },
+  {
+    id: 'studio',
+    name: 'Film studio',
+    line: 'Film studio — pose actors, place props and lamps, frame it with a real lens, and shoot a path-traced picture to keep.',
+    Demo: StudioDemo,
   },
 ]
 

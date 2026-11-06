@@ -1396,10 +1396,11 @@ Playwright's iPhone 13 profile with CDP touch events — it checks layout and th
 controls, and says NOTHING about a real phone's speed, feel, thumbs or permission prompts. Those
 are in the checklist at the end of this section as questions.
 
-| Toy         | What you do                                                                                                                                              | GPU technique                                                                                                                                                                                                                                                        | Pattern to reuse                                                                                                      |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time                                          | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw | "bake the level once, ask it every frame" — any 2D level's collision and look from one field                          |
-| Waterworks  | A PUZZLE: four levels and a sandbox — get the water into the cup by drawing walls, freezing it into a bridge, boiling it over a wall, melting ice gently | a FLIP FLUID: particles → staggered grid with fixed-point `atomicAdd`, a pressure solve by warm-started Jacobi, the change back to the particles; each drop carries its own temperature and state (water, ice, steam) and ice becomes solid for the liquid           | "particles with a grid" — any liquid that has to fill, pour and splash; per-particle state machines driven by a field |
+| Toy         | What you do                                                                                                                                                                          | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time                                                                      | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw                            | "bake the level once, ask it every frame" — any 2D level's collision and look from one field                                         |
+| Waterworks  | A PUZZLE: four levels and a sandbox — get the water into the cup by drawing walls, freezing it into a bridge, boiling it over a wall, melting ice gently                             | a FLIP FLUID: particles → staggered grid with fixed-point `atomicAdd`, a pressure solve by warm-started Jacobi, the change back to the particles; each drop carries its own temperature and state (water, ice, steam) and ice becomes solid for the liquid                                      | "particles with a grid" — any liquid that has to fill, pour and splash; per-particle state machines driven by a field                |
+| Film studio | A BUILDER with a result to keep: place and pose actors, props and lamps, frame with a lens, aperture and focus, then shoot and save a PNG; scenes save to this browser and to a file | a PROGRESSIVE PATH TRACER in a compute shader — analytic spheres, turned boxes and capsules (an actor is a dozen), direct lamp sampling at each diffuse bounce, a thin lens for depth of field, a running sum that settles; the same intersection maths on the CPU picks what is under a finger | "render the real thing, slowly, and keep it" — any offline-quality picture a toy can make, and picking that agrees with the renderer |
 
 - **Bike trials** — a trials bike in a quarry. Gas and Brake drive the back wheel; Lean back lifts
   the front (over the block, onto the log, for landing a jump), Lean forward keeps the nose down on
@@ -1508,6 +1509,53 @@ are in the checklist at the end of this section as questions.
       Not measured: real-GPU frame rate (SwiftShader takes ~120 ms a frame with 7,200 drops, which says
       little), and whether the puzzles are fun, too hard or too fiddly with a finger.
 
+- **Film studio** — a small set on a studio floor, in front of a back wall. Tap an actor, a prop or
+  a lamp to choose it and drag it about (a lamp moves at its own height); drag the empty set to walk
+  the camera round. Add 🧍 Actor, ⬛ Box, ⚪ Ball, 💡 Lamp (12 things and 3 lamps at most). A chosen
+  actor has a Pose (stand, wave, cheer, walk, sit, point, think); anything has a Finish (matte,
+  gloss, metal, glow), eight colours, Turn and Size, 🎯 Focus on it and 🗑 Remove; a lamp has a
+  colour, Power and Height. The camera has a Lens (18–135 mm on a full-frame sensor), an Aperture
+  (f/1.4–16 — wide blurs what is not in focus) and Distance. The preview settles at 48 paths a
+  pixel; 🎬 Shoot takes it to 512, and ⬇ Save picture downloads it as a PNG. The scene is kept in
+  this browser as you go (`lab_studio_scene_v1`), and ⬇ Save scene file / ⬆ Open scene file… move
+  it as JSON. Keys: arrows walk the camera, − + distance, S shoot, Delete removes, Esc lets go.
+  Technique (`studio.wgsl`): every frame each pixel traces two more paths and adds them to a running
+  sum, so the picture starts grainy and settles; any change starts the sum again. A path: a thin
+  lens (an aperture of focal length / f-stop / 2, aimed at the plane in focus), up to four bounces,
+  each lamp sampled directly at every diffuse bounce by sampling the cone it subtends, gloss as a
+  Fresnel-weighted clear coat, metal as a blurred tinted mirror, glow as light. Intersections are
+  closed forms — sphere, a box in its turned frame, Inigo Quilez's capsule — and studio.ts carries the
+  same maths for picking. On its first pass each pixel also writes the id of what its centre sees,
+  which is how the probe checks that picking and the picture agree. The developed picture is the sum
+  over its count through an ACES curve; Save picture renders that into an `rgba8unorm` texture,
+  reads it back and encodes a PNG.
+  ⚠️ What was wrong first:
+  1. **A dragged actor was flung across the set.** The drag followed where the finger's ray met the
+     FLOOR, and a finger on an actor's chest points at floor metres behind it — measured, 1.9 m for
+     a move worth 1 m (and 1.8 for 0.7 on the emulated phone). It drags on the level plane at the
+     height the finger met the thing now: 1.0 for 1.0, 0.64 for 0.7.
+  2. **Importing let junk use up the slots.** A file's list was cut to its limit BEFORE non-objects
+     were dropped, so a scene padded with nonsense could arrive with one lamp instead of three. A
+     deliberate break (lifting the cap) passed the first version of the test, which is how it was
+     found: the fixture had too few lamps to reach the cap.
+  3. Bone lengths changed when the thinking pose leaned, feet floated or sank, and the figure was
+     1.93 m: the tests that every pose keeps every bone, and that soles rest on the floor, fixed them.
+     _Measured_ (SwiftShader): what each pixel's centre sees on the GPU agrees with the CPU picker on
+     10,232 of 10,240 pixels (the rest on edges); light under a lamp falls 3.89× when the lamp is twice
+     as high (inverse square says 4); the error against a 256-path reference falls 4.36× from 4 paths to
+     64 (1/√n says 4); a box casts its shadow under a lamp straight above it. The tests hold every
+     intersection to sphere tracing of the shape's own distance field — maths shared with nothing — over
+     600 random rays; the camera to a 33.4° view at 40 mm; poses to their bones; and a scene file to a
+     round trip in which every field is something other than its default, and hostile input to clamps
+     (a file setting an actor at x = 99 with a material of `<img onerror>` arrives at x = 8, matte;
+     a `__proto__` key pollutes nothing; a non-scene is refused with a sentence). In the page at 1024:
+     choose by click, drag, pose, colour, add, orbit, a lamp's power, the aperture, Shoot, a 926×469
+     PNG downloaded, the scene file downloaded and opened back, the hostile file and a non-scene file,
+     Start over; on the emulated iPhone, touch chooses and drags. Audit clean at both. Twelve deliberate
+     breaks each fail a test.
+     Not measured: how long a clean shot takes on a real GPU (SwiftShader manages a few paths a second
+     at 926×469), and whether the controls are too many for a phone.
+
 ### Real-device checklist — batch 8
 
 - [ ] Bike trials (desktop first) — is the bike fun to ride: does lean feel strong enough in the
@@ -1520,3 +1568,8 @@ are in the checklist at the end of this section as questions.
       cold just INSIDE the shaft top)? Does Up and over take too long? Is "Gently" fair?
 - [ ] Waterworks (phone) — is a 3-cell wall pen too thin or too fat under a finger? Is the fluid
       smooth (12,000 drops, 80 Jacobi passes a frame)? Do the level and tool buttons crowd the page?
+- [ ] Film studio (desktop) — how many seconds to a clean 512-path shot? Do the shots look good
+      enough to keep? Is dragging an actor predictable? Does a saved scene file open on another
+      browser?
+- [ ] Film studio (phone) — is tapping a small actor to choose it reliable? Are the panels below
+      the stage too long to scroll? Does Save picture download on iOS Safari (Blob downloads differ)?
