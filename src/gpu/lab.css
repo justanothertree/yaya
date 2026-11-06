@@ -365,3 +365,17 @@
   width: 4.5rem;
   min-height: 36px;
 }
+
+/* ── pinball workshop ────────────────────────────────────────────── */
+/* the flippers and the plunger: three big hold-buttons a thumb each, which never select text */
+.pinball-pads {
+  flex-wrap: nowrap;
+}
+.lab-controls .btn.pinball-pad {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 56px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

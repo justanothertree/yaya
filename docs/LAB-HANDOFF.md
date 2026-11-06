@@ -1855,9 +1855,10 @@ _measured_ means unit tests or headless Chromium on SwiftShader (a CPU stand-in 
 routing only. Automated play proves the rules hold, not that anything is fun; nobody has played
 these on a real device.
 
-| Toy         | What you do                                                                                                                                                                                                                                                        | GPU technique                                                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                   |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Möbius golf | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
+| Toy              | What you do                                                                                                                                                                                                                                                        | GPU technique                                                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Möbius golf      | Golf on a square whose edges you glue: a room, a cylinder, a Möbius band, a torus or a Klein bottle. Choosing the space is half of every hole; a shot out of one edge comes back in at its partner, upside down across a twist. Six holes with par, aces and bests | the COVER drawn per pixel: every pixel is a point of the plane tiled with copies of the course, folded back into the course (flipped across a twist, nothing beyond a wall edge) — so the ball's path, which bends at every edge, is seen running straight on through the copies; the edges carry the arrows topology books use | "a pure fold function the shader repeats line for line, checked pixel by pixel against the CPU's" — any toy whose world is a quotient of the plane |
+| Pinball workshop | Draw your own pinball table — walls with a finger, bumpers that kick, targets that light (all lit pays a bonus) — then play it: plunger, two flippers, three balls, a best score per table; tables kept here and as files                                          | the table BAKED INTO A DISTANCE FIELD on the GPU whenever it changes (walls, bumpers and targets a channel each), which every frame's neon glow is read from — so a table of 160 segments costs the per-pixel shader one texture read, not 160 distances                                                                        | "bake what changes rarely, draw from the bake": a compute pass on edit, a texture read per frame; checked through the picture, not only the field  |
 
 - **Möbius golf** — golf where the shape of the space is yours to choose. Each hole names the spaces
   it may be played in: **Room** (walls all round), **Cylinder** (left edge glued to right), **Möbius
@@ -1915,8 +1916,73 @@ these on a real device.
      pill (from any toy that plays the synth) floats over the controls until dragged away; that pill
      belongs to the Instrument and is left alone.
 
+- **Pinball workshop** — make a pinball table, then play it. **🛠 Build**: ✏️ draw walls with a
+  finger or the mouse (a stroke is kept as a wall, thinned to a point every half unit), ● tap to
+  place bumpers, ◆ targets, 🧽 tap a part to erase it; name the table; ↺ back to the workshop
+  table, 🧹 an empty one, ⬇ Save table / ⬆ Open table… as a file. The frame stays put — the outer
+  walls, the plunger lane and the orbit at its top, the slopes down to the flippers and the drain —
+  and parts may not go in the lane, the orbit or down by the flippers (the toy says so). **🎮 Play**:
+  hold 🚀 (or Space, or any finger on the stage while the ball waits) to pull the plunger and let go
+  to launch — a weak pull falls back for another go — then the flippers: Z / ← / left Shift and M /
+  → / right Shift, the ◀ and ▶ pads, or a finger on the left or right of the stage (two thumbs at
+  once work). Bumpers kick the ball away and score 100, a target lights for 250, lighting every
+  target pays 2,000 and puts them out. Three balls; the best score for each table name is kept.
+  Sound: bumpers on the marimba, targets on the bell, a drain low. N new game.
+  Technique: the physics is CPU and deterministic at 960 Hz — gravity down the table, capsule walls,
+  a speed limit so no step crosses a wall, flippers as capsules swinging at 28 rad/s up and 18 down
+  whose surface speed (ω × r) is what strikes the ball, bumpers that set the ball's outward speed
+  to 13, and a plunger that catches a ball falling back down its lane. The GPU's `bake` runs only
+  when the table changes: a 160 × 288 `rgba16float` field holding, at every texel, the distance to
+  the nearest wall, bumper and target (`distanceAt`, a channel each). `show` reads it once a pixel
+  for the neon — a bright core and a soft halo — and draws what moves analytically: bumpers' rings
+  (flashing when struck), lit targets, the flippers, the ball and its trail, the plunger's pull.
+  While you draw, the stroke is baked in each frame so it glows as you go.
+  ⚠️ What was wrong first:
+  1. **The plunger could not get a ball into the table**: a ball shot straight up the lane passed
+     the top of the lane's wall and fell back down it. A straight deflector bounced it back too; the
+     top right is now a quarter-circle orbit the ball runs round into the table.
+  2. **A weak pull bounced in the lane for four seconds** before it could be plunged again. The
+     plunger catches a ball falling back now, as a real one does.
+  3. **Everything read from the baked field was drawn upside down**: the bake writes the table's
+     bottom into row 0 and the shader sampled it flipped. The check of the field against the CPU
+     passed — it read the texture with the bake's own mapping — and the picture did not: the bumper
+     discs sat below their own rings. A second check now goes through the rendered pixels.
+  4. **The outer walls glowed outward** past the edge of the field, where a sample clamps to the edge
+     texel: 798 of 6,439 bright wall pixels were off any wall. Past the edge the shader reads the
+     nearest point inside and adds the way out, and it is 0 of 4,502.
+  5. **The drawn table's segments were rebuilt 960 times a second**; they are worked out once per
+     table now.
+     _Measured_: the tests hold the flippers (swing up at 28, fall at 18, stop at their ends; mirror
+     images; a drain gap wider than a ball), a resting ball fired up the table by a flip (made to fail
+     by taking the flipper's own surface speed out of the collision), an untouched ball draining and
+     the third drain ending the game, the ball never leaving the table when fired at top speed in 24
+     directions through the workshop table with the flippers going, a full plunge going round the
+     orbit and a feeble one coming back to the plunger, bumpers (kick at their own speed, score, flash),
+     targets (light once, the last pays the bonus and puts them out), playing beating not playing (a
+     scripted flipper keeps the first ball over four times as long as doing nothing), building (where
+     parts may go, strokes thinned and clipped, the limits said, erase nearest), a table file (round
+     trip, refusals for each way one can be bad), the uniform layout, the item list, the fit and the
+     field's distances. In the simulator: idle games end in 12–25 s at a full-enough pull and nothing
+     ever stuck; over 90 s the scripted flipper scores about 5,500 on the workshop table. On
+     SwiftShader: the baked field equals `distanceAt` to a relative 5 × 10⁻⁴ (half floats) at 966
+     texels; through the picture, every bright wall pixel is on a wall by the CPU's measure and every
+     bumper's centre is pink. In the page at 1024: the plunger pad pulls to full and launches round the
+     orbit, Z and M each raise their own flipper, an idle game ends, a drawn wall / bumper / target are
+     kept and a bumper in the lane is refused saying why, erase, save, a hostile file refused, reopen,
+     and it all survives a reload. On the emulated iPhone: the three pads are 109 × 56, the plunger pad
+     held and let go launches the ball, and two simultaneous touches on the stage, one each side, raise
+     both flippers and lifting drops them. Audit clean at both.
+     Not measured: whether it plays well — the flipper strength, gravity and bumper kick are tuned by
+     numbers (a perfect scripted flipper never loses a ball, which no person is); whether the pads,
+     which sit below the stage on a phone, are needed at all with the stage's halves doing the same;
+     real-phone frame rate (the bake is cheap and only on edit; the per-frame shader is a texture read
+     plus a few dozen analytic shapes).
+
 ### Real-device checklist — batch 10
 
 - [ ] Möbius golf — play the six holes without 💡: do the copies round the course make the spaces
       make sense, or do you need the hints? Is pulling back on a phone precise enough for Lanes and
       Pocket? Can you find an ace on Pocket in a space other than the torus?
+- [ ] Pinball workshop — does the workshop table play well, and do flips feel like flips? Build a
+      table of your own and play it: is drawing walls precise enough on a phone? On a phone, do you
+      use the pads under the stage or the stage itself?

@@ -38,6 +38,7 @@ import { StrutDemo } from '../gpu/StrutDemo'
 import { GustDemo } from '../gpu/GustDemo'
 import { SeedlingDemo } from '../gpu/SeedlingDemo'
 import { MobiusDemo } from '../gpu/MobiusDemo'
+import { PinballDemo } from '../gpu/PinballDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -350,6 +351,12 @@ const DEMOS: readonly {
     name: 'Möbius golf',
     line: 'Möbius golf — glue the green’s edges into a cylinder, a Möbius band, a torus or a Klein bottle, and play the hole through them.',
     Demo: MobiusDemo,
+  },
+  {
+    id: 'pinball',
+    name: 'Pinball workshop',
+    line: 'Pinball workshop — draw your own pinball table, walls, bumpers and targets, then play it with the flippers.',
+    Demo: PinballDemo,
   },
 ]
 
