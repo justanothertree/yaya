@@ -373,3 +373,192 @@ Roughly in order of how much they would teach:
   round. Fixed in `fac6325`: 28px with a mouse, 44px under a finger.
 - The Lab's own wording ("Experiments with WebGPU…") is in `App.tsx` beside the room's heading,
   not in `GpuLab.tsx`.
+
+## Batch 4 — a bigger toolbox
+
+Its own draft PR, branch `claude/lab-toys-4`, from `main`. Not live. Every toy is chosen to be
+different from the seven live ones and from batch 3's six (#19: Marbling, Growth, Aquarium,
+Tunnel, Cloth, Ribbons) in what it does, how you touch it and how the GPU draws it.
+
+⚠️ **This branch carries batch 3's picker commit** (`72444ac`, cherry-picked unchanged as
+`69b3f03`) because the old button row does not hold twenty demos on a phone. The patch is
+identical, so it merges cleanly whichever PR lands first. This section sits at the END of the file
+for the same reason: #19 adds its own section further up, and the two should not touch.
+
+| Toy     | Interaction                                                                                                                          | GPU technique                                                                                                                                                                                                               | Reusable pattern                                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Fractal | a CAMERA you pinch: two-finger zoom, drag to pan, wheel, double-tap; or ✨ Dive auto-plays                                           | PERTURBATION: a reference orbit in f64 on the CPU, each pixel's tiny difference from it in f32 on the GPU, rebasing when it strays; expensive pass only on a new view, cheap colouring every frame; 2×2 blocks while moving | "more precision than the GPU has" — and "compute once, look up every frame" for anything heavy                                     |
+| Light   | ARRANGE a scene: drag lamps, pillars and walls; tap for a lamp; turn a wall with a second finger or the wheel; 🌀 Drift              | 2D global illumination: the scene's distance field BAKED into a texture once per change, then Monte Carlo rays sphere-traced through it from every texel, averaged over frames                                              | "light that works itself out" — soft shadows, glows and colour bleeding from one loop; and "bake the scene, then query it cheaply" |
+| Harp    | PLAY an instrument: strum with any number of fingers, tap a string, keys; ✨ Play by itself; it makes SOUND through the site's synth | analytic motion: each point of each string is the sum of its standing waves since its last pluck, worked out in the vertex shader — no simulation state                                                                     | "motion with an exact answer needs no simulation" — anything that rings, wobbles or decays                                         |
+| Neon    | TYPE: a real text box (a phone brings up its keyboard); tap the sign to knock it; letters stutter on and one is faulty               | the JUMP FLOOD: a distance field in log₂(size) passes, each texel learning its nearest seed and carrying that seed's payload (which letter) with it                                                                         | "distance to anything, fast" — glows, outlines, Voronoi, soft shapes from a mask                                                   |
+| Sand    | POUR with any number of fingers; wall it in; TURN THE BOX (⟲ ⟳, arrows) or tilt the phone and gravity follows                        | a MARGOLUS block automaton: 2×2 blocks, shifted every other step, each rearranged by one thread — no races, and grains conserved by construction; integer rules a CPU copy matches cell for cell                            | "particles that never collide on the GPU" — falling sand, crowds, anything that must not double up                                 |
+| Pond    | TOUCH the water: tap, drag for a wake, many fingers; 🌧 Rain plays by itself                                                         | the wave equation on a height field, and CAUSTICS: a mesh refracted onto the floor, each pixel lit by the surface area that lands on it (screen-space derivatives) — light moved, never made                                | "light through anything that ripples" — water, glass, heat haze; and "conserve it, then test the conservation"                     |
+
+- **Fractal** — the Mandelbrot set. Drag to move, pinch (or scroll) to zoom, double-tap to zoom
+  in. ✨ Dive picks its own way down: every 0.8 s it samples the view in f64 on the CPU and steers
+  for the point that escapes LATEST, which is the one nearest the set's edge, so it never lands
+  somewhere flat and needs no coordinates written down. ◎ Julia from here switches to the Julia
+  set of the point in the middle (one map read two ways), and 〰 Morph walks its `c` round a small
+  circle. Four colourings that keep turning. Keys: arrows, + −, D dive, J Julia, M morph, H all of
+  it, 1–4.
+  Technique: f32 runs out at a view about 10⁻⁵ wide (neighbouring pixels become the same number —
+  measured: 3 distinct columns of 256 at 10⁻⁸, 1 at 10⁻¹¹). So one point, the centre, is iterated
+  in f64 on the CPU, and every pixel iterates only its DIFFERENCE from that orbit on the GPU,
+  δ ← 2Zδ + δ² + δc — tiny, but f32 keeps its exponent, so precise. When a pixel strays nearer the
+  reference's start than to where the reference has got to, it REBASES (Zhuoran's method), which
+  is what keeps it free of the glitches older perturbation renderers patched by hand. The limit is
+  the centre's own f64: about 10⁻¹³. The iteration writes a smooth count per pixel into a buffer
+  ONLY when the view changes; a cheap pass colours it every frame, so the colours flow with no
+  iteration redone. While the view moves it works out one pixel in four (2×2 blocks, about a third
+  of the time), and in full once it comes to rest.
+  ⚠️ Two things were wrong first. A Julia rebase measured from zero rather than from the
+  reference's start — the same for Mandelbrot, whose orbit starts at 0, and off by 0.12 in every
+  pixel's count for Julia. And a √n palette turned every jump of hundreds of steps between
+  neighbouring pixels at the edge into a new colour — speckle; a logarithm spaces a colour band
+  per doubling.
+  Measured against plain f64 escape-time, on pixels where f64 itself is stable (a hundredth of a
+  pixel either way gives the same count — at the edge, roughly half the pixels are not, and there
+  is no right answer to compare with): 100% within 2% at every depth from the whole set to
+  10⁻¹¹, along a real dive. In the page: a 100px drag moves the plane 100px, a pinch from 80 to
+  240px apart zooms exactly 3×, a wheel zooms without scrolling the page, a double-click doubles,
+  and a dive goes 2× deeper every 0.7 s.
+
+- **Light** — a dark room lit by coloured lamps. Drag the lamps, pillars and walls about; tap an
+  empty spot for a new lamp (up to six); double-tap anything to take it away. A second finger
+  swung round a held wall turns it (the wheel or Q/E with a mouse). Three rooms: Pillars, Mixing
+  (red, green and blue round one pillar — where two shadows overlap the third colour remains) and
+  Window (beams through slits). 🌀 Drift lets the lamps wander. Keys: L lamp, W wall, Q/E turn,
+  D drift, 1–3 rooms.
+  Technique: nothing draws the shadows. Once per change, a bake pass writes every texel's distance
+  to the nearest surface (and that surface's light, if it is a lamp) into an rgba16float texture —
+  the room's whole geometry, one fetch away. Then every texel, at half the canvas's resolution,
+  casts 16 rays a frame at angles spread evenly round it and turned by a random amount each
+  frame, and sphere-traces each through the baked field until it lands on a lamp (bringing its
+  light back) or anything else (bringing nothing). Each frame's answer is blended into the
+  picture so far: an exact running average while the room is still, so the grain falls as 1/√n,
+  and a short memory (at least a fifth) while anything moves, so a moving lamp's light does not
+  smear across everywhere it has been. A still room stops tracing once its picture has settled
+  (600 frames), and a paused one gathers 24 frames at once on every change, so it is never left
+  grainy — including when it opens paused under reduced motion.
+  Measured on the real shaders: the bake matches the CPU's distances to 4.6×10⁻⁴ (f16); behind a
+  pillar is fully dark (0) where the same distance in the open is 0.15; light falls off as
+  1/distance, as 2D light should (twice as far: 2.00× dimmer, against 2.01 from the angle the lamp
+  covers); and the grain halves for every 4× more frames (2.01, 1.97). One test went green when it
+  should not have: a wall turned a quarter looks the same either way round, so it could not tell
+  which way walls turn — an eighth can, and does.
+
+- **Harp** — strings of light that sound. Strum across them with as many fingers as you like, or
+  tap one; a stroke sounds each string it crosses in the order it crossed them, spaced by how far
+  into the stroke each was, as a hand spaces them. How fast you strum is how hard, and which way
+  is which way the string swings. ✨ Play by itself rolls chords and runs. Harp, Koto, Pluck or
+  Kalimba; Pentatonic, Minor or Hirajoshi tunings (any strum sounds good). It plays through the
+  site's own synth (`noteOn`), so it is on the Instrument's volume and heard by Music, Ribbons'
+  Listen and the visualiser like anything else played. Keys: Z… and A… play the strings, P plays
+  by itself, 1–3 tunings.
+  Technique: no simulation. A plucked string's motion is the sum of its modes — mode n starts at
+  2·sin(nπp)/(n²π²p(1−p)) for a pluck at p, swings n times as fast as the first, and dies n times
+  as fast — so the vertex shader works out every point of every string from the time since its
+  last pluck, 16 modes, 96 segments a string, drawn as a glowing ribbon added onto the dark.
+  Plucked in the middle the even modes vanish (round); near the end the high ones are strong
+  (bright) — and you can see it. A string is SEEN to swing a few times a second, an octave faster
+  for every two octaves up, since 220Hz drawn at 220Hz is a blur.
+  Measured: summed far enough, the modes rebuild the exact triangle the finger pulled the string
+  into (the Fourier series, checked against the shape at four points) — and with the 16 drawn, the
+  pluck's corner still reaches 0.9 of its height. In the page: two fingers strumming opposite ways
+  across all twelve strings at once sound exactly 24 notes; a stroke across five strings plucks
+  those five, in order. One bug first: a stroke starting 8px beside a string pressed it AND
+  crossed it, sounding it twice — the press still sounds at once (an instrument cannot wait to see
+  whether a press becomes a stroke), and the finger skips that string the first time it leaves it.
+
+- **Neon** — type a word and it becomes a neon sign on a brick wall. Each new letter stutters on
+  as real neon does; the letters already there stay lit; one letter is always a little faulty and
+  buzzes off now and then; a tap on the sign knocks it and everything flickers. Tube (glass bent
+  along the letters' outlines) or Solid; Pink, Ice, Gold or Mixed. Keys, with the sign focused:
+  K knock, S style, 1–4 colours — and typing in the box never triggers them (checked: an "s"
+  typed there is just an "s").
+  Technique: the text is drawn into a mask with each letter in its own red, and the JUMP FLOOD
+  (Rong & Tan) finds every texel's nearest seed — the outline's texels for a tube, all of the
+  glyph for a solid sign — in one pass per halving step plus one more at step 1: nine passes for
+  this field, rather than every texel asking every seed. Each seed carries which letter it is, so
+  every texel knows both how far it is from the nearest tube and whose tube that is, and each
+  letter flickers on its own. The display turns that into a white-hot core, a coloured near glow,
+  and the whole sign's light on the wall. All of it runs once per change of text; a frame only
+  reads it.
+  ⚠️ Two things were wrong first. Letters drawn 1 apart in red (1, 2, 3…) came back as the wrong
+  letter on 18% of texels: a canvas keeps colour premultiplied by alpha, so at an antialiased edge
+  a red of 1 reads back as 2. Spaced 15 apart, a rounding error cannot cross. And the wide glow
+  was taken from each pixel's nearest letter, which carved the wall into one region per letter — a
+  dark column behind an unlit one; the far glow is now the whole sign's.
+  Measured: the GPU's flood equals a CPU copy of the same flood on every texel, and that flood is
+  exact on all but 2 of 122,880 texels of scattered seeds (worst 0.36px) — 34 (worst 0.92px)
+  without the extra pass at step 1, which is the test that holds the pass to its job. In the page,
+  typing "NEON LAB" over "NEON" leaves the first four letters steady while the new ones stutter.
+
+- **Sand** — a box of sand and water. Hold a finger down to pour (several at once); draw walls;
+  erase. Turn the box with ⟲ and ⟳ (or the arrow keys) and everything falls the new way; on a
+  phone, 📱 Tilt makes down wherever the phone says it is. Three boxes: an Hourglass (turn it over
+  and it pours back through the neck), Shelves, and an empty one. Keys: arrows, S/W/B/E tools, 1–3
+  boxes.
+  Technique: falling sand written the usual way — every grain looks below itself and moves — is a
+  race on a GPU, since two grains can see the same empty cell and both move in. A MARGOLUS
+  neighbourhood avoids it: each step the grid is cut into 2×2 blocks (shifted one cell on
+  alternate steps) and one thread owns a whole block, reading its four cells and writing the same
+  four, only ever swapping them. So nothing races, and no grain can be lost or doubled. Gravity's
+  four directions are the same rule read through a turned block. The rules are integers and a
+  hash, so a CPU copy matches the GPU exactly.
+  ⚠️ Water first spread by stepping left or right at random — a random walk, spreading as the
+  square root of time: a block left 1,500 steps still sloped 29 cells deep to 1. Now each drop
+  remembers which way it is going (one bit of its shade) and turns round when stopped, so it
+  spreads in a line, one cell a step thanks to the shifting blocks; it levels in a few thousand
+  steps (six a frame). There is no pressure in a cellular automaton, so it is slightly thick
+  water, and that is the honest limit.
+  And a comment was wrong: it said sand toppling only three times in four is what makes a pile
+  stand at a slope. Forced to always, the pile test still passed — the slope (about 45°) comes
+  from grains moving one across for one down; the odds only make the face grainy.
+  Measured: after 300 steps with gravity turned through all four directions, the GPU and the CPU
+  copy differ in 0 cells, and grains, water and walls are all exactly conserved. An hourglass
+  drains at about 65 grains a second and pours back when turned over; a poured pile stands at a
+  slope of 1.24. In the page, a mouse pours, two touch fingers pour at once (507 grains), ⟲ from
+  down gives right as a clock face says it should, every grain survives the turns, and a tilt onto
+  the phone's right edge sends everything right.
+
+- **Pond** — a pond seen from above, over a pool's tiles, pebbles or rippled sand. Tap it for a
+  drop; drag through it and it leaves a wake; several fingers at once. 🌧 Rain lets it rain by
+  itself, 💦 Splash drops a handful; Shallow or Deep (deep water focuses the light more sharply).
+  It opens with a few drops already spreading. Keys: R rain, X splash, D depth, 1–3 floors.
+  Technique: the water is a height field, each cell pulled towards its neighbours' average (the
+  wave equation) and keeping a little less of its speed each step. The floor is seen through it:
+  each pixel's line of sight is bent by the surface (Snell, 1.33) and lands somewhere a little off.
+  The CAUSTICS are the clever part, after Evan Wallace's WebGL Water: a mesh as fine as the water
+  is laid on it, and every vertex moved to where light through that point reaches the floor.
+  Where the mesh is squeezed light is gathered, where stretched it is thinned — so a pixel's
+  brightness is the area of surface that lands on it, measured with the fragment shader's own
+  screen-space derivatives, and folds add up. Light is only moved, never made.
+  ⚠️ Rings came out as rounded squares: four neighbours carry short ripples 11.5% further along
+  the diagonals. Nine, edges weighted 4 and corners 1, make them round to 1%. The first test of it
+  passed WITH the bug, because it measured a big drop's height — round either way — rather than a
+  small drop's slope, which is what the eye sees; it now goes red without the fix.
+  ⚠️ And the opening splash vanished: the first frame takes no step, and was emptying the queue of
+  drops anyway. Drops now wait for a step to land on (found by counting them in the page).
+  Measured: flat water lights the floor at exactly 1.000 everywhere; rippled, the light ranges
+  0.81–1.37 and still averages 1.0026 — conserved to a quarter of a percent; the GPU's waves match
+  the CPU's to 1.4×10⁻⁶ after 200 steps. In the page: a tap is a drop, a drag leaves 41, two
+  fingers make two, the rain is about seven a second.
+
+### Phone checklist — batch 4
+
+- [ ] Fractal — does a pinch feel stuck to the fingers? Let ✨ Dive run for a minute: does it keep
+      finding detail, and does it stay smooth (it recomputes every frame while diving, at a
+      quarter of the pixels)? Is 〰 Morph worth having?
+- [ ] Light — does the grain settle quickly enough to read as light rather than noise? Drag a lamp
+      behind a pillar and watch the shadow swing; turn a wall with two fingers; is 🌀 Drift too
+      grainy (it never settles while lamps move)? Is it smooth on a phone (16 rays a texel a frame)?
+- [ ] Harp — is the sound in time with the finger, or does it lag? (The synth's own latency, which
+      the Instrument already tuned.) Strum with several fingers; try Koto and Hirajoshi together;
+      does ✨ Play by itself sound musical or random? Is it loud enough next to everything else?
+- [ ] Neon — does the phone's keyboard cover the sign while you type (it should scroll)? Does the
+      stutter-on read as neon? Is the faulty letter charming or annoying? Try a long word.
+- [ ] Sand — 📱 Tilt: does it ask, and does the sand fall to the edge that is lowest — in
+      landscape too? Does the water feel too thick? Is the hourglass satisfying to turn?
+- [ ] Pond — do the caustics read as light on a floor? Drag a finger for a wake; try Deep with
+      rain. Smooth on a phone (two wave steps and a caustic mesh a frame)?

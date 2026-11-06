@@ -2,14 +2,20 @@ import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { AquariumDemo } from '../gpu/AquariumDemo'
 import { ClothDemo } from '../gpu/ClothDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
+import { FractalDemo } from '../gpu/FractalDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
 import { GrowthDemo } from '../gpu/GrowthDemo'
+import { HarpDemo } from '../gpu/HarpDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { LightDemo } from '../gpu/LightDemo'
 import { MarbleDemo } from '../gpu/MarbleDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
+import { NeonDemo } from '../gpu/NeonDemo'
+import { PondDemo } from '../gpu/PondDemo'
 import { RibbonsDemo } from '../gpu/RibbonsDemo'
+import { SandDemo } from '../gpu/SandDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -120,6 +126,42 @@ const DEMOS: readonly {
     Demo: RibbonsDemo,
     name: 'Ribbons',
     line: 'Ribbons — light that dances by itself. Lead it with a finger, or let the music move it.',
+  },
+  {
+    id: 'fractal',
+    Demo: FractalDemo,
+    name: 'Fractal',
+    line: 'Fractal — pinch into the Mandelbrot set, or let it dive, a hundred million times deeper than the GPU’s own numbers reach.',
+  },
+  {
+    id: 'light',
+    Demo: LightDemo,
+    name: 'Light',
+    line: 'Light — move lamps, pillars and walls round a dark room; the soft shadows and mixed colours work themselves out.',
+  },
+  {
+    id: 'harp',
+    Demo: HarpDemo,
+    name: 'Harp',
+    line: 'Harp — strum the strings with as many fingers as you like; they swing and sing.',
+  },
+  {
+    id: 'neon',
+    Demo: NeonDemo,
+    name: 'Neon',
+    line: 'Neon — type a word and it becomes a neon sign. Letters stutter on; tap it to knock it.',
+  },
+  {
+    id: 'sand',
+    Demo: SandDemo,
+    name: 'Sand',
+    line: 'Sand — pour sand and water, wall it in, and turn the box over (or tilt the phone).',
+  },
+  {
+    id: 'pond',
+    Demo: PondDemo,
+    name: 'Pond',
+    line: 'Pond — touch the water and watch the ripples bend the light on the floor beneath.',
   },
 ]
 
