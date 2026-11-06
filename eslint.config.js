@@ -54,13 +54,25 @@ export default defineConfig([
   },
 
   /**
-   * ⚠️ `scripts/mobile-audit.js` RUNS IN THE BROWSER, not in node — it is pasted into the Browser
-   * pane (or imported from the dev server) and talks to `document`, `getComputedStyle` and
-   * `matchMedia`. Node globals would be wrong for it in both directions: it would lose `document`
-   * and gain a `process` it must never touch.
+   * ⚠️ A `scripts/*.js` RUNS IN THE BROWSER, not in node — it is pasted into the Browser pane
+   * (or imported from the dev server) and talks to `document`, `getComputedStyle` and
+   * `matchMedia`. Node globals would be wrong for it in both directions: it would lose
+   * `document` and gain a `process` it must never touch.
+   *
+   * ⚠️ IT NAMED ONE FILE AND THAT IS THE SAME BLIND SPOT AS BEFORE, arriving the moment a second
+   * browser script existed. `scripts/sound-probe.js` matched no block at all, and a file matching
+   * no block has no rules to break — appending `undefinedFunctionCall()` and an unused const to
+   * it left `npm run lint` printing nothing and exiting 0. That is word for word what CLAUDE.md
+   * records happening to `server/ws-server.js`: "the direction nothing ever contradicts", because
+   * silence is what passing looks like.
+   *
+   * So it matches the CONVENTION rather than a name, and the convention is already real and
+   * exceptionless: every `.mjs` in `scripts/` is node — the test sweeps, the migration tools, the
+   * stub relay — and every `.js` is pasted into a browser. Checked against all twelve before
+   * writing it down.
    */
   {
-    files: ['scripts/mobile-audit.js'],
+    files: ['scripts/*.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 2022,
