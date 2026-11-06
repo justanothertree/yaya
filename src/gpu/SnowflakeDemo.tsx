@@ -45,8 +45,16 @@ export function SnowflakeDemo({ running, setRunning, onAdapter }: Props) {
   const finger = useRef<readonly [number, number] | null>(null)
   const redraw = useRef<() => void>(() => {})
 
+  /** false once the toy has unmounted, so a prompt that resolves late cannot leave the mic on */
+  const here = useRef(true)
   /* leaving the toy turns the microphone off: the browser's recording light must not outlive it */
-  useEffect(() => () => stopLocalMic(), [])
+  useEffect(
+    () => () => {
+      here.current = false
+      stopLocalMic()
+    },
+    [],
+  )
 
   const fresh = (id = now.current.weather) => {
     setWeather(id)
@@ -61,6 +69,10 @@ export function SnowflakeDemo({ running, setRunning, onAdapter }: Props) {
       return
     }
     const ok = await startLocalMic()
+    if (!here.current) {
+      stopLocalMic()
+      return
+    }
     setMic(ok)
     setNote(
       ok ? null : 'The microphone was not allowed, or there is not one — a finger breathes too.',

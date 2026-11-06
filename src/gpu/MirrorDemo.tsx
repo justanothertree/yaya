@@ -46,6 +46,8 @@ export function MirrorDemo({ running, setRunning, onAdapter }: Props) {
   const fingers = useRef(new Map<number, readonly [number, number]>())
   const frameNo = useRef(0)
   const redraw = useRef<() => void>(() => {})
+  /** false once the toy has unmounted, so a prompt that resolves late cannot turn the camera back on */
+  const here = useRef(true)
 
   const stopCamera = () => {
     stream.current?.getTracks().forEach((t) => t.stop())
@@ -53,7 +55,13 @@ export function MirrorDemo({ running, setRunning, onAdapter }: Props) {
     if (video.current) video.current.srcObject = null
   }
   /* the camera is let go of when the toy is left, whatever else happens: the light goes off */
-  useEffect(() => stopCamera, [])
+  useEffect(
+    () => () => {
+      here.current = false
+      stopCamera()
+    },
+    [],
+  )
 
   const toggleCamera = async () => {
     if (camera === 'on') {
@@ -67,16 +75,26 @@ export function MirrorDemo({ running, setRunning, onAdapter }: Props) {
         video: { facingMode: 'user', width: { ideal: 640 } },
         audio: false,
       })
+      /* left while the browser was still asking: stop this stream, do not keep it */
+      if (!here.current) {
+        s.getTracks().forEach((t) => t.stop())
+        return
+      }
       stream.current = s
       const v = video.current ?? document.createElement('video')
       v.muted = true
       v.playsInline = true
       v.srcObject = s
       await v.play()
+      if (!here.current) {
+        stopCamera()
+        return
+      }
       video.current = v
       setCamera('on')
       if (!runningRef.current) setRunning(true)
     } catch {
+      if (!here.current) return
       stopCamera()
       setCamera('refused')
     }

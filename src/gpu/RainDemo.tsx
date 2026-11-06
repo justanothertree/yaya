@@ -67,9 +67,12 @@ export function RainDemo({ running, setRunning, onAdapter }: Props) {
   const redraw = useRef<() => void>(() => {})
   const size = useRef<V2>([1, 1])
 
+  /** false once the toy has unmounted, so a prompt that resolves late cannot leave the mic on */
+  const here = useRef(true)
   /* the mic goes when you do — the rule every Lab toy with a microphone keeps */
   useEffect(
     () => () => {
+      here.current = false
       stopLocalMic()
     },
     [],
@@ -106,6 +109,10 @@ export function RainDemo({ running, setRunning, onAdapter }: Props) {
       return
     }
     const ok = await startLocalMic()
+    if (!here.current) {
+      stopLocalMic()
+      return
+    }
     setMicOn(ok)
     setNote(ok ? null : 'The microphone was not allowed, or there is not one — hold 🌬 instead.')
     if (ok && !running) setRunning(true)

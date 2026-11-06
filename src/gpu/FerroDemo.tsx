@@ -41,8 +41,11 @@ export function FerroDemo({ running, setRunning, onAdapter }: Props) {
   const keyAt = useRef<[number, number]>([N / 2, N / 2])
   const redraw = useRef<() => void>(() => {})
 
+  /** false once the toy has unmounted, so a prompt that resolves late cannot leave the mic on */
+  const here = useRef(true)
   useEffect(
     () => () => {
+      here.current = false
       stopLocalMic()
     },
     [],
@@ -55,6 +58,10 @@ export function FerroDemo({ running, setRunning, onAdapter }: Props) {
       return
     }
     const ok = await startLocalMic()
+    if (!here.current) {
+      stopLocalMic()
+      return
+    }
     setMicOn(ok)
     setNote(ok ? null : 'The microphone was not allowed, or there is not one.')
     if (ok) {

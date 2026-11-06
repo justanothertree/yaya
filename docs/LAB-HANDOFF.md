@@ -1,16 +1,27 @@
-# Lab handoff — 5 Nov 2026
+# Lab handoff — 6 Nov 2026
 
-The state of `#lab`, the WebGPU room, at the end of the autonomous demo loop. The commits carry
-the reasoning; this is the map.
+The state of `#lab`, the WebGPU room. The commits carry the reasoning; this is the map.
 
-Three batches. evancook.dev deploys from `main`.
+evancook.dev deploys from `main`. Batches 1 and 2 are already live there. Batches 3–7 are
+integrated together for a real-device pass and stay off the live site until that integration is
+merged. None of those thirty toys has been tried on a phone or a real GPU. Frame times below are
+SwiftShader, a CPU stand-in, and say nothing about a handset.
+
+The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch 3 mount
+`current.Demo`, so a toy is in the picker exactly once. Batches 5–7 also carried hand-written
+`demo === …` renders for `main`'s old list; those lines are not in this tree.
 
 - **Batch 1 — #17, merged and live**: the room, Swarm, Life, Fluid and Music, and the round that
   made them playful.
 - **Batch 2 — #18, merged and live**: Kaleidoscope, Lava lamp, Galaxy.
-- **Batch 3 — its own draft PR**, branch `claude/lab-toys-3`, from `main`: new toys chosen to be
-  different from the seven above in what they do, how you touch them and how the GPU draws them.
-  Not live. See "Batch 3 — a toolbox" below.
+- **Batch 3 — #19**: Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons, and the shared picker.
+- **Batch 4 — #20**: Fractal, Light, Harp, Neon, Sand, Pond.
+- **Batch 5 — #21**: Slime, Mirror, Bubbles, Clay, Fireflies, Black hole.
+- **Batch 6 — #22**: Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint.
+- **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
+
+That is 7 live toys plus 30 new ones, 37 in the picker. Each batch section below is that batch's
+own note, including what it measured and what it had not.
 
 ## What shipped
 
@@ -328,7 +339,8 @@ Batch 2:
       watch it rise
 - [ ] Galaxy — do the arms read as arms on a phone at 128K? Drag to tilt it nearly edge on; play
       a song in Music and come back to watch it flare on the beat
-      Batch 3:
+
+Batch 3:
 
 - [ ] Marbling — does a held drop feel like ink spreading? Comb across a marbled sheet; two
       fingers with the stylus; does the paper stay crisp, or soften too fast after many strokes?
@@ -562,6 +574,7 @@ for the same reason: #19 adds its own section further up, and the two should not
       landscape too? Does the water feel too thick? Is the hourglass satisfying to turn?
 - [ ] Pond — do the caustics read as light on a floor? Drag a finger for a wake; try Deep with
       rain. Smooth on a phone (two wave steps and a caustic mesh a frame)?
+
 ## Batch 5 — new mixes
 
 Its own draft PR, branch `claude/lab-toys-5`, from `main`. Not live. Every toy is chosen to differ
@@ -792,6 +805,7 @@ reason.
       steps per pixel, at 1× pixel density. If it stutters, the cheapest lever is the step count or a
       lower pixel density, not the physics. Does 📱 Tilt ask (iOS) and feel natural? Does throwing it
       feel good? Is the Grid sky interesting or just busy?
+
 ## Batch 6 — more mixes
 
 Its own draft PR, branch `claude/lab-toys-6`, from `main`. Not live. Every toy is chosen to
@@ -1080,6 +1094,7 @@ place`. Sorting a whole line by that key sorts every run within itself, never mo
 - [ ] Voiceprint — sing or whistle with 🎤 Listen on: does your voice show up where you would expect?
       Played back, is it recognisably you, or just eerie (both are fine)? Is the starting tune
       pleasant? Is the playback loud enough through phone speakers?
+
 ## Batch 7 — the toolbox, again
 
 Its own draft PR, branch `claude/lab-toys-7`, from `main`. Not live. Every toy is chosen to differ

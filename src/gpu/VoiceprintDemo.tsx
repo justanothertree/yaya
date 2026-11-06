@@ -37,11 +37,24 @@ export function VoiceprintDemo({ running, setRunning, onAdapter }: Props) {
   const playback = useRef<{ source: AudioBufferSourceNode; start: number } | null>(null)
   const redraw = useRef<() => void>(() => {})
 
+  /** false once the toy has unmounted, so a prompt that resolves late cannot leave the mic on */
+  const here = useRef(true)
+  const releaseSound = () => {
+    const source = playback.current?.source
+    playback.current = null
+    /* stop() throws once the buffer has already ended, which is also how onended arrives */
+    try {
+      source?.stop()
+    } catch {
+      /* already finished */
+    }
+  }
   /* leaving the toy turns the microphone off and stops the sound */
   useEffect(
     () => () => {
+      here.current = false
       stopLocalMic()
-      playback.current?.source.stop()
+      releaseSound()
     },
     [],
   )
@@ -53,6 +66,10 @@ export function VoiceprintDemo({ running, setRunning, onAdapter }: Props) {
       return
     }
     const ok = await startLocalMic()
+    if (!here.current) {
+      stopLocalMic()
+      return
+    }
     setMic(ok)
     setNote(
       ok ? null : 'The microphone was not allowed, or there is not one — painting still works.',
@@ -61,8 +78,7 @@ export function VoiceprintDemo({ running, setRunning, onAdapter }: Props) {
   }
 
   const stop = () => {
-    playback.current?.source.stop()
-    playback.current = null
+    releaseSound()
     setPlaying(false)
   }
 
@@ -73,6 +89,7 @@ export function VoiceprintDemo({ running, setRunning, onAdapter }: Props) {
     const ctx = sharedCtx()
     void ctx.resume()
     const samples = await v.render(ctx.sampleRate)
+    if (!here.current) return
     /* as loud as it can go without clipping, and no louder than the site's instrument volume */
     let peak = 0
     for (const s of samples) peak = Math.max(peak, Math.abs(s))
