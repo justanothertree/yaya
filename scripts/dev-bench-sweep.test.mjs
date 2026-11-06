@@ -65,6 +65,30 @@ describe('the workbench list', () => {
     )
   })
 
+  it('gives every workbench the handle a scoped sweep needs', () => {
+    /**
+     * ⚠️ WITHOUT IT THE FIGURE IS THE BENCH PLUS THE HOME PAGE. A bench renders inside <main>
+     * beside whatever room the router fell back to, so an unscoped `mobileAudit()` counts
+     * home's 44 controls as well. Four benches carried `.dev-bench` and three did not, and the
+     * three that did not are exactly the ones that reported 44 of 55 and looked as though they
+     * had never rendered. A handle on some of them is worse than none, because the numbers stay
+     * comparable-looking while meaning different things.
+     */
+    const blocks = src.split(
+      /{(?=[A-Za-z_.]+ && DEV_PREVIEW === |import.meta.env.DEV && DEV_PREVIEW === )/,
+    )
+    const without = []
+    for (const name of declared) {
+      const block = blocks.find(
+        (b) =>
+          b.startsWith(`import.meta.env.DEV && DEV_PREVIEW === '${name}'`) ||
+          b.includes(`DEV_PREVIEW === '${name}'`),
+      )
+      if (!block || !block.slice(0, 1200).includes('dev-bench')) without.push(name)
+    }
+    expect(without, 'these benches cannot be swept on their own').toEqual([])
+  })
+
   it('is handed to the checker only in dev', () => {
     /* ⚠️ the assignment has to be inside an `import.meta.env.DEV` branch or it ships — the
        bundle carries whatever is reachable, and CLAUDE.md has the 2.78 kB receipt */

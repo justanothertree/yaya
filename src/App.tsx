@@ -2173,20 +2173,42 @@ export default function App() {
             health bar and the knockout were checked as pure functions and never once seen on a
             field. This is the one workbench that is about a GAME rather than a layout, and it
             joins a room of its own so it can never be the real park. */}
+          {/**
+           * ⚠️ `.dev-bench` ON ALL THREE, WHICH FOUR BENCHES ALREADY HAD AND THESE DID NOT — and
+           * the gap quietly inflated every figure anybody measured here. A bench renders INSIDE
+           * `<main>`, beside whatever room the router fell back to, which is home; so
+           * `mobileAudit()` with no argument counts the bench AND the home page's 44 controls.
+           * That is why #dev-usage, #dev-park and #dev-swarm all reported exactly 44 of 55 — not
+           * because nothing rendered, as it looks, but because what rendered added no CONTROLS:
+           * usage is a panel of text, and park and swarm show their empty states until this
+           * browser has a minion in it.
+           *
+           * Scoped to the handle the figure is about the bench, which is the question being
+           * asked, and `saw.thin` can see a bench rendering nothing — it cannot while home's
+           * controls are in the count masking it.
+           *
+           *   mobileAudit(document.querySelector('.dev-bench'))
+           */}
           {TradeReviewPreview && DEV_PREVIEW === 'review' && (
-            <Suspense fallback={<div aria-busy>Loading…</div>}>
-              <TradeReviewPreview />
-            </Suspense>
+            <div className="dev-bench">
+              <Suspense fallback={<div aria-busy>Loading…</div>}>
+                <TradeReviewPreview />
+              </Suspense>
+            </div>
           )}
           {ParkPreview && DEV_PREVIEW === 'park' && (
-            <Suspense fallback={<div aria-busy>Finding the park…</div>}>
-              <ParkPreview />
-            </Suspense>
+            <div className="dev-bench">
+              <Suspense fallback={<div aria-busy>Finding the park…</div>}>
+                <ParkPreview />
+              </Suspense>
+            </div>
           )}
           {SwarmPreview && DEV_PREVIEW === 'swarm' && (
-            <Suspense fallback={<div aria-busy>Gathering…</div>}>
-              <SwarmPreview />
-            </Suspense>
+            <div className="dev-bench">
+              <Suspense fallback={<div aria-busy>Gathering…</div>}>
+                <SwarmPreview />
+              </Suspense>
+            </div>
           )}
           {InvestmentsMemberPreview && DEV_PREVIEW === 'investments' && (
             <div className="dev-bench">

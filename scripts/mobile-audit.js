@@ -470,6 +470,19 @@ function thinness(targets, root) {
   const text = ((root === document ? document.querySelector('main') : root)?.innerText ?? '').trim()
     .length
   const saw = { controls: targets.length, inRoom, text }
+  /**
+   * ⚠️ NOTHING AT ALL IS THE EMPTIEST CASE AND THE RULE BELOW CANNOT SEE IT: `inRoom * 2 <
+   * targets.length` is `0 < 0` when a sweep finds no controls, which is false, so a completely
+   * empty sweep came back unflagged. Found by scoping to `.dev-bench` on #dev-park, where the
+   * bench shows "No minions in this browser yet" — 0 controls, 156 characters — and reported
+   * clean with no comment.
+   */
+  if (!targets.length) {
+    saw.thin =
+      'no controls at all, so there is nothing here a sweep could fail on. Either this scope is ' +
+      'empty or what it holds needs something to render first — a clean result means neither.'
+    return saw
+  }
   /* the room gave less than the furniture around it — see above */
   if (inRoom * 2 < targets.length) {
     saw.thin =
@@ -787,7 +800,10 @@ export function nextBench(done = []) {
     room: left[0],
     left: left.length,
     load: 'location.hash = "' + left[0] + '"; setTimeout(() => location.reload(), 50)',
-    then: 'wait for the load, then call mobileAudit()',
+    then: "wait for the load, then call mobileAudit(document.querySelector('.dev-bench'))",
+    /* ⚠️ SCOPED, because a bench renders beside the room the router fell back to — home — and
+       an unscoped call counts its 44 controls too. That is what made #dev-usage, #dev-park
+       and #dev-swarm all report exactly 44 of 55 and look as though they had not rendered. */
   }
 }
 
