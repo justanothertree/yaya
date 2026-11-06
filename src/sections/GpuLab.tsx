@@ -1,11 +1,41 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { AquariumDemo } from '../gpu/AquariumDemo'
+import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
+import { BubblesDemo } from '../gpu/BubblesDemo'
+import { ClayDemo } from '../gpu/ClayDemo'
+import { ClothDemo } from '../gpu/ClothDemo'
+import { ErosionDemo } from '../gpu/ErosionDemo'
+import { FerroDemo } from '../gpu/FerroDemo'
+import { FirefliesDemo } from '../gpu/FirefliesDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
+import { FractalDemo } from '../gpu/FractalDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { GlassDemo } from '../gpu/GlassDemo'
+import { GrowthDemo } from '../gpu/GrowthDemo'
+import { HarmonographDemo } from '../gpu/HarmonographDemo'
+import { HarpDemo } from '../gpu/HarpDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { LightDemo } from '../gpu/LightDemo'
+import { LightningDemo } from '../gpu/LightningDemo'
+import { LoomDemo } from '../gpu/LoomDemo'
+import { MarbleDemo } from '../gpu/MarbleDemo'
+import { MarblesDemo } from '../gpu/MarblesDemo'
+import { MirrorDemo } from '../gpu/MirrorDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
+import { NeonDemo } from '../gpu/NeonDemo'
+import { PixelSortDemo } from '../gpu/PixelSortDemo'
+import { PondDemo } from '../gpu/PondDemo'
+import { RainDemo } from '../gpu/RainDemo'
+import { RibbonsDemo } from '../gpu/RibbonsDemo'
+import { SandDemo } from '../gpu/SandDemo'
+import { SlimeDemo } from '../gpu/SlimeDemo'
+import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
+import { SquishDemo } from '../gpu/SquishDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
+import { TunnelDemo } from '../gpu/TunnelDemo'
+import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 
@@ -17,45 +47,254 @@ import '../gpu/lab.css'
  * a demo nobody can name is a pretty picture rather than an experiment.
  */
 
-const DEMOS = [
+/** What every demo is handed: whether to move, a way to start or stop it, and somewhere to report
+ *  the adapter it was given. */
+type DemoProps = {
+  running: boolean
+  setRunning: (r: boolean | ((r: boolean) => boolean)) => void
+  onAdapter: (adapter: GPUAdapter, format: GPUTextureFormat) => void
+}
+
+/**
+ * ⚠️ THE LIST IS THE ROOM. Each demo is one entry — its id, its name, its one line and its
+ * component — and the picker, the dropdown, the stepping buttons and the stage all read it. It
+ * used to be a list here AND a hand-written line per demo further down, which is the shape
+ * places.ts was written to end: a demo added to one and not the other is half there.
+ */
+const DEMOS: readonly {
+  id: string
+  Demo: ComponentType<DemoProps>
+  name: string
+  line: string
+}[] = [
   {
     id: 'swarm',
+    Demo: SwarmDemo,
     name: 'Swarm',
     line: 'Up to two million particles in a swirling current — a compute pass moves every one each frame.',
   },
   {
     id: 'life',
+    Demo: LifeDemo,
     name: 'Life',
     line: 'Conway’s Game of Life — every cell’s next generation worked out at once, on the GPU.',
   },
   {
     id: 'fluid',
+    Demo: FluidDemo,
     name: 'Fluid',
     line: 'Fluid painting — drag to stir colour into a simulated fluid that swirls, spreads and fades.',
   },
   {
     id: 'music',
+    Demo: MusicDemo,
     name: 'Music',
     line: 'Music visual — your mic, a file or the instrument as bars or a ring, drawn into a trail.',
   },
   {
     id: 'kaleido',
+    Demo: KaleidoDemo,
     name: 'Kaleidoscope',
     line: 'Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.',
   },
   {
     id: 'lava',
+    Demo: LavaDemo,
     name: 'Lava lamp',
     line: 'Lava lamp — wax heated by the bulb rises, cools at the top and sinks. Reach in and stir.',
   },
   {
     id: 'galaxy',
+    Demo: GalaxyDemo,
     name: 'Galaxy',
     line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
   },
-] as const
+  {
+    id: 'marble',
+    Demo: MarbleDemo,
+    name: 'Marbling',
+    line: 'Marbling — float drops of ink on water, then pull them into feathered patterns with a stylus or comb.',
+  },
+  {
+    id: 'growth',
+    Demo: GrowthDemo,
+    name: 'Growth',
+    line: 'Growth — two chemicals reacting on a grid grow coral, dividing cells, worms or mazes. Seed it and watch.',
+  },
+  {
+    id: 'aquarium',
+    Demo: AquariumDemo,
+    name: 'Aquarium',
+    line: 'Aquarium — fish that school with their own kind. Tap to feed them; drag and you are the shark.',
+  },
+  {
+    id: 'tunnel',
+    Demo: TunnelDemo,
+    name: 'Tunnel',
+    line: 'Tunnel — fly down an endless tunnel and catch the orbs. Drag to steer, or tilt the phone.',
+  },
+  {
+    id: 'cloth',
+    Demo: ClothDemo,
+    name: 'Cloth',
+    line: 'Cloth — grab it, pull it, tear it, cut it. Let go mid-swing and it flies.',
+  },
+  {
+    id: 'ribbons',
+    Demo: RibbonsDemo,
+    name: 'Ribbons',
+    line: 'Ribbons — light that dances by itself. Lead it with a finger, or let the music move it.',
+  },
+  {
+    id: 'fractal',
+    Demo: FractalDemo,
+    name: 'Fractal',
+    line: 'Fractal — pinch into the Mandelbrot set, or let it dive, a hundred million times deeper than the GPU’s own numbers reach.',
+  },
+  {
+    id: 'light',
+    Demo: LightDemo,
+    name: 'Light',
+    line: 'Light — move lamps, pillars and walls round a dark room; the soft shadows and mixed colours work themselves out.',
+  },
+  {
+    id: 'harp',
+    Demo: HarpDemo,
+    name: 'Harp',
+    line: 'Harp — strum the strings with as many fingers as you like; they swing and sing.',
+  },
+  {
+    id: 'neon',
+    Demo: NeonDemo,
+    name: 'Neon',
+    line: 'Neon — type a word and it becomes a neon sign. Letters stutter on; tap it to knock it.',
+  },
+  {
+    id: 'sand',
+    Demo: SandDemo,
+    name: 'Sand',
+    line: 'Sand — pour sand and water, wall it in, and turn the box over (or tilt the phone).',
+  },
+  {
+    id: 'pond',
+    Demo: PondDemo,
+    name: 'Pond',
+    line: 'Pond — touch the water and watch the ripples bend the light on the floor beneath.',
+  },
 
-type DemoId = (typeof DEMOS)[number]['id']
+  {
+    id: 'slime',
+    name: 'Slime',
+    line: 'Slime — lay food and a slime mould grows a glowing network to it, routing round your walls.',
+    Demo: SlimeDemo,
+  },
+  {
+    id: 'mirror',
+    name: 'Mirror',
+    line: 'Mirror — your camera, with time you can paint: brush part of the picture and it lags behind.',
+    Demo: MirrorDemo,
+  },
+  {
+    id: 'bubbles',
+    name: 'Bubbles',
+    line: 'Bubbles — hold to blow a soap bubble, let go to send it off, tap one to pop it.',
+    Demo: BubblesDemo,
+  },
+  {
+    id: 'clay',
+    name: 'Clay',
+    line: 'Clay — sculpt a lump of clay in 3D: add, carve and smooth with a finger, and turn it round.',
+    Demo: ClayDemo,
+  },
+  {
+    id: 'fireflies',
+    name: 'Fireflies',
+    line: 'Fireflies — a night meadow that falls into flashing together. Tap a rhythm and it follows.',
+    Demo: FirefliesDemo,
+  },
+  {
+    id: 'blackhole',
+    name: 'Black hole',
+    line: 'Black hole — drag one across the sky and throw it; every pixel bends its light round it.',
+    Demo: BlackHoleDemo,
+  },
+
+  {
+    id: 'erosion',
+    name: 'Erosion',
+    line: 'Erosion — rain on a landscape and watch it carve valleys, rivers and lakes. Raise and dig to steer it.',
+    Demo: ErosionDemo,
+  },
+  {
+    id: 'snowflake',
+    name: 'Snowflake',
+    line: 'Snowflake — a crystal of ice grows six arms in damp air. Blow on the microphone, or breathe on it with a finger.',
+    Demo: SnowflakeDemo,
+  },
+  {
+    id: 'pixelsort',
+    name: 'Pixel sort',
+    line: 'Pixel sort — swipe across a picture and its pixels sort themselves that way, melting into streaks.',
+    Demo: PixelSortDemo,
+  },
+  {
+    id: 'squish',
+    name: 'Squish',
+    line: 'Squish — a picture made of jelly. Grab it with as many fingers as you like, pin it, let go and it wobbles.',
+    Demo: SquishDemo,
+  },
+  {
+    id: 'lightning',
+    name: 'Lightning',
+    line: 'Lightning — tap the sky to plant a lightning rod and call a bolt down to it, thunder and all.',
+    Demo: LightningDemo,
+  },
+  {
+    id: 'voiceprint',
+    name: 'Voiceprint',
+    line: 'Voiceprint — a picture of sound. Sing into it, paint on it, and play it back.',
+    Demo: VoiceprintDemo,
+  },
+
+  {
+    id: 'marbles',
+    name: 'Marble maze',
+    line: 'Marble maze — tilt a wooden maze full of marbles; draw walls, dig holes, pour in more.',
+    Demo: MarblesDemo,
+  },
+  {
+    id: 'glass',
+    name: 'Stained glass',
+    line: 'Stained glass — draw lead, tap panes to glaze them, and move the sun to throw the colours across the floor.',
+    Demo: GlassDemo,
+  },
+  {
+    id: 'harmonograph',
+    name: 'Harmonograph',
+    line: 'Harmonograph — flick the paper to swing the pendulums, and the pen draws their figure as they slow.',
+    Demo: HarmonographDemo,
+  },
+  {
+    id: 'rain',
+    name: 'Rain on glass',
+    line: 'Rain on glass — write in the mist, breathe it back, and tilt the window to make the rain run.',
+    Demo: RainDemo,
+  },
+  {
+    id: 'loom',
+    name: 'Loom',
+    line: 'Loom — thread the warp, tie up the treadles, treadle a tune, and watch the cloth weave.',
+    Demo: LoomDemo,
+  },
+  {
+    id: 'ferro',
+    name: 'Ferrofluid',
+    line: 'Ferrofluid — press and hold under a dish of black liquid and it bristles into spikes; or let it dance to the music.',
+    Demo: FerroDemo,
+  },
+]
+
+type DemoId = string
 
 const KEY = 'lab_demo_v1'
 function storedDemo(): DemoId {
@@ -126,10 +365,39 @@ export function GpuLab() {
   const onAdapter = (adapter: GPUAdapter, format: GPUTextureFormat) =>
     setReport(reportOf(adapter, format))
   const props = { running, setRunning, onAdapter }
-  const current = DEMOS.find((d) => d.id === demo) ?? DEMOS[0]
+  const at = Math.max(
+    0,
+    DEMOS.findIndex((d) => d.id === demo),
+  )
+  const current = DEMOS[at]
+  /** the next or previous demo, round the end — browsing toys should not hit a wall */
+  const step = (by: number) => pick(DEMOS[(at + by + DEMOS.length) % DEMOS.length].id)
 
   return (
     <div className="lab">
+      {/* ⚠️ TWO PICKERS, ONE SHOWN. A row of buttons is right while it fits on one line; on a
+          phone seven were already two rows and pushed the canvas half off the first screen, and
+          every new toy made it worse. Below 640px it is a native dropdown — the phone's own
+          wheel — with buttons either side to step through, which is how people actually browse
+          toys. A width query, not a pointer one: the problem is room, not fingers. */}
+      <div className="lab-step">
+        <button className="btn btn-ghost" onClick={() => step(-1)} aria-label="Previous experiment">
+          ‹
+        </button>
+        <label className="lab-select">
+          <span className="sr-only">Which experiment</span>
+          <select value={current.id} onChange={(e) => pick(e.target.value)}>
+            {DEMOS.map((d, i) => (
+              <option key={d.id} value={d.id}>
+                {i + 1}. {d.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn btn-ghost" onClick={() => step(1)} aria-label="Next experiment">
+          ›
+        </button>
+      </div>
       <div className="lab-picker" role="group" aria-label="Which experiment">
         {DEMOS.map((d) => (
           <button
@@ -145,13 +413,7 @@ export function GpuLab() {
       <p className="lab-line">{current.line}</p>
 
       {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
-      {demo === 'swarm' && <SwarmDemo key="swarm" {...props} />}
-      {demo === 'life' && <LifeDemo key="life" {...props} />}
-      {demo === 'fluid' && <FluidDemo key="fluid" {...props} />}
-      {demo === 'music' && <MusicDemo key="music" {...props} />}
-      {demo === 'kaleido' && <KaleidoDemo key="kaleido" {...props} />}
-      {demo === 'lava' && <LavaDemo key="lava" {...props} />}
-      {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
+      <current.Demo key={current.id} {...props} />
 
       {report && <GpuReport report={report} />}
     </div>
