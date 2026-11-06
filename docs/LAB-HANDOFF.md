@@ -1396,9 +1396,10 @@ Playwright's iPhone 13 profile with CDP touch events — it checks layout and th
 controls, and says NOTHING about a real phone's speed, feel, thumbs or permission prompts. Those
 are in the checklist at the end of this section as questions.
 
-| Toy         | What you do                                                                                                     | GPU technique                                                                                                                                                                                                                                                        | Pattern to reuse                                                                             |
-| ----------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw | "bake the level once, ask it every frame" — any 2D level's collision and look from one field |
+| Toy         | What you do                                                                                                                                              | GPU technique                                                                                                                                                                                                                                                        | Pattern to reuse                                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Bike trials | A GAME: throttle, brake and lean a dirt bike over a course against the clock; checkpoints, crashes, a best time                                          | a SIGNED DISTANCE FIELD BAKED ONCE from the course's polygons (brute force per texel: nearest edge, sign by crossing count), then reused three ways — drawing the ground's layers and grass, lighting nothing extra, and colliding the mud particles the tyres throw | "bake the level once, ask it every frame" — any 2D level's collision and look from one field                          |
+| Waterworks  | A PUZZLE: four levels and a sandbox — get the water into the cup by drawing walls, freezing it into a bridge, boiling it over a wall, melting ice gently | a FLIP FLUID: particles → staggered grid with fixed-point `atomicAdd`, a pressure solve by warm-started Jacobi, the change back to the particles; each drop carries its own temperature and state (water, ice, steam) and ice becomes solid for the liquid           | "particles with a grid" — any liquid that has to fill, pour and splash; per-particle state machines driven by a field |
 
 - **Bike trials** — a trials bike in a quarry. Gas and Brake drive the back wheel; Lean back lifts
   the front (over the block, onto the log, for landing a jump), Lean forward keeps the nose down on
@@ -1448,6 +1449,65 @@ are in the checklist at the end of this section as questions.
      Not measured: frame rate on any real GPU or phone, how the controls FEEL, and whether the course is fun or too hard. Twelve deliberate breaks of the physics
      and the packing each fail a test.
 
+- **Waterworks** — get the water into the cup, to the red line. Five levels, one at a time:
+  1. **Fill the cup** — the tap pours onto the floor and past the cup. ✏️ Wall draws (300 cells
+     of ink), 🧽 Erase takes walls back and refunds the ink: draw a chute.
+  2. **Ice bridge** — the stream runs off a ledge and down a shaft. Hold ❄️ Cool just inside the
+     top of the shaft and the falling water freezes into a bridge level with the ledges; let go and
+     the water runs over it to the cup. Ice frozen too high dams the stream: 🔥 Heat melts it.
+  3. **Up and over** — a wall between the pool and the cup. Hold 🔥 Heat on the pool: it boils,
+     the steam spreads under the ceiling and over the wall, the cool plate on the far side turns it
+     back to rain, and the rain falls into the cup.
+  4. **Gently** — a block of ice in a freezer hopper over the cup. Short bursts of 🔥 Heat melt it
+     and it drains into the cup; hold the heat too long and it boils away instead.
+  5. **Sandbox** — every tool and 2,000 cells of ink.
+     A level shows ✓ once solved; solved levels are kept (`lab_waterworks_v1`, a list read back only
+     as known level ids). ↺ Restart; Next appears when the cup is full. Keys: 1–4 tool, R restart, N
+     next level, Space pause.
+     Technique (`waterworks.wgsl`): FLIP on a 160×100 staggered (MAC) grid, two 120th-of-a-second
+     substeps a frame. `clear`; `p2g` — each water drop adds its velocity to the four nearest u-faces
+     and v-faces with bilinear weights, in fixed point by `atomicAdd`, and counts itself into its cell
+     (water, ice and steam in ten bits each); `faces` — sums become velocities, a copy is kept, gravity,
+     faces touching rock or ice are zero; `diverge`; 40 `jacobi` passes for the pressure, never below
+     zero; `project`; `g2p` — each drop takes back the CHANGE in the grid's velocity (95% FLIP, 5%
+     PIC), moves an axis at a time stopping at rock, warms or cools toward its cell's plate or the
+     finger's tool, and changes state at the thresholds (freeze < −1, melt > 2, boil > 100, condense
+     < 92 — gaps, so a drop at a line does not flicker). Ice does not move and is solid to the water;
+     steam rises, wanders, and is pushed from crowded cells to empty ones. Then `count_cup` counts the
+     water in the cup on the GPU, read back a few times a second. `waterworks-draw.wgsl` splats every
+     drop into a float texture (water, ice, steam in three channels) and reads it back as a surface.
+     ⚠️ What was wrong first — each found by measuring:
+  6. **Every drop's vertical velocity landed on one face of the grid.** The v accumulators were
+     indexed as if v came after u in one buffer, which is how `vel` is laid out but not them; the
+     out-of-range writes were clamped onto the last element. Nothing moved.
+  7. **A still pool sank to 17% of its volume in six seconds** (2,736 wet cells to 468): 40 Jacobi
+     passes from zero never reach the bottom of a pool. Starting each solve from the last one's
+     pressure keeps it within 2% and level to half a cell. A push apart for crowded cells (the
+     usual FLIP volume fix) was tried and only ever pushed: the same pool swelled 11%.
+  8. **Steam rose in a column and never crossed the wall**; now it spreads from crowded cells.
+  9. **Steam cooled on its way and rained back over the kettle**, and the cold plate at −40 froze
+     what reached it into ice hanging from the ceiling — 44 drops in the cup in 23 s. Steam keeps
+     its heat unless something cold is near (a GAME RULE, not physics, and said so in the code), and
+     the plate is a cool 5 °C.
+  10. **Water hung from the ceiling** — suction. Pressure is clamped at zero: water pushes and cannot
+      pull.
+  11. **Level 2 was impossible as first drawn** (a pit needing 13,000 drops of ice to fill) and
+      **level 4 solved itself** (the room thawed the ice in ten seconds); both redesigned on what the
+      probe showed. And the cup's red line was drawn at the rim, so a full cup looked a quarter full.
+      _Measured_ (SwiftShader): a still pool stays still (rms 0.66 cells/s), level (to 0.5 cells) and
+      keeps its volume to 1.6% over six seconds; a dam break settles with every drop accounted for, none
+      in rock, none NaN; the GPU's cup count equals the CPU's (300 = 300, 569 = 569); heating a pool
+      turns 3,398 of 4,032 drops to steam that rises from y ≈ 89 to y ≈ 30, and cooling freezes ice
+      that does not move at all. **Every puzzle was played by a script on the GPU, both ways**:
+      untouched, each cup stays at 0 for the whole run; solved — a chute (255 ink), the cold held just
+      inside the shaft, the pool boiled, the ice melted in short bursts — they reach 1,222, 1,821, 725
+      and 2,090 against 400. Held heat on level 4 got only 271: "gently" is real. In the page at 1024,
+      level 1 was solved by drawing the chute with the mouse, its ✓ stored, Next taken; erase refunded
+      ink; the cool tool reaches the shader only while held; keys work; on the emulated iPhone a touch
+      stroke draws the wall. Audit clean at both. Twelve deliberate breaks of the rules each fail a test.
+      Not measured: real-GPU frame rate (SwiftShader takes ~120 ms a frame with 7,200 drops, which says
+      little), and whether the puzzles are fun, too hard or too fiddly with a finger.
+
 ### Real-device checklist — batch 8
 
 - [ ] Bike trials (desktop first) — is the bike fun to ride: does lean feel strong enough in the
@@ -1456,3 +1516,7 @@ are in the checklist at the end of this section as questions.
       reload?
 - [ ] Bike trials (phone) — can two thumbs hold Gas and a lean at once on a real screen? Is
       anything selected or zoomed by a long press? Is 11 m across enough to see what is coming?
+- [ ] Waterworks (desktop) — do the puzzles read without the hint? Is the ice bridge findable (hold
+      cold just INSIDE the shaft top)? Does Up and over take too long? Is "Gently" fair?
+- [ ] Waterworks (phone) — is a 3-cell wall pen too thin or too fat under a finger? Is the fluid
+      smooth (12,000 drops, 80 Jacobi passes a frame)? Do the level and tool buttons crowd the page?

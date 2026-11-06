@@ -37,6 +37,7 @@ import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
 import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
+import { WaterworksDemo } from '../gpu/WaterworksDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 
@@ -299,6 +300,12 @@ const DEMOS: readonly {
     name: 'Bike trials',
     line: 'Bike trials — throttle, brake and lean a dirt bike over a quarry course against the clock.',
     Demo: TrialsDemo,
+  },
+  {
+    id: 'waterworks',
+    name: 'Waterworks',
+    line: 'Waterworks — get the water into the cup: route it with walls, freeze it into bridges, boil it over the top.',
+    Demo: WaterworksDemo,
   },
 ]
 
