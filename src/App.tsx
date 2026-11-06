@@ -285,6 +285,33 @@ const CANVAS_PREF = 'canvas_mode_v1'
  */
 const DEV_PREVIEW = typeof window === 'undefined' ? '' : window.location.hash.replace(/^#dev-/, '')
 
+/**
+ * Every workbench, in one place, so a checker can ask instead of keeping its own copy.
+ *
+ * ⚠️ THESE SURFACES HAD NEVER BEEN SWEPT, and not because anybody decided not to.
+ * `scripts/mobile-audit.js` walks the NAV — deliberately, since CLAUDE.md's rule about lists
+ * that must be maintained by hand is what got it there — and a workbench is not in the nav.
+ * Swept by hand at 375 on 6 Nov 2026 they hold about **440 controls between them**:
+ * #dev-investments 159, #dev-profile 89, #dev-review 88, #dev-admin 62, #dev-usage 44. The
+ * nav-walk's view of the same five rooms is ONE control, which is the Investments page's
+ * signed-out state.
+ *
+ * ⚠️ AND A HASH CHANGE CANNOT REACH THEM, which is why the sweep cannot simply append these to
+ * its room list. `DEV_PREVIEW` is read at module scope — it has to be, see above — so a
+ * workbench needs a real page load, and a tool that walks rooms by setting `location.hash`
+ * never triggers one. Reloading per bench is the caller's job; this list only says which exist.
+ *
+ * ⚠️ IT CANNOT DRIFT FROM THE RENDERING, because `scripts/dev-bench-sweep.test.mjs` reads the
+ * `DEV_PREVIEW === '…'` comparisons out of this file and asserts they are exactly this set. A
+ * list beside the thing it describes is the kind that goes quietly wrong; one a test compares
+ * against its source cannot.
+ */
+const DEV_BENCHES = ['usage', 'admin', 'profile', 'review', 'park', 'swarm', 'investments'] as const
+
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __devBenches?: readonly string[] }).__devBenches = DEV_BENCHES
+}
+
 export default function App() {
   const initialSection: Section = sectionOf(window.location.hash)
   const [active, setActive] = useState<Section>(initialSection)

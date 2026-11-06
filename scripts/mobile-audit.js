@@ -750,6 +750,48 @@ export async function auditRooms(rooms = navRooms()) {
 }
 
 /**
+ * The dev workbenches, and why they are not in the sweep above.
+ *
+ * ⚠️ THE NAV-WALK STRUCTURALLY CANNOT REACH THEM, for two separate reasons and both are worth
+ * knowing. They are not in the nav, which is where `navRooms` gets its list — and more
+ * awkwardly, `DEV_PREVIEW` in App.tsx is read at MODULE SCOPE, because the router normalises an
+ * unrecognised hash before React mounts. So setting `location.hash` to a workbench does not
+ * open one; it briefly shows the hash and then the router sends you home. A bench needs a real
+ * page load, which ends whatever script asked for it.
+ *
+ * ⚠️ WHICH MATTERS BECAUSE THAT IS WHERE MOST OF THE CONTROLS LIVE. Swept by hand at 375 on
+ * 6 Nov 2026: #dev-investments 159 controls, #dev-profile 89, #dev-review 88, #dev-admin 62,
+ * #dev-usage 44 — about 440 between them. The nav-walk sees ONE control across those same five
+ * rooms, the Investments page signed out, which is why `saw.thin` flags it.
+ *
+ * The list comes from App.tsx rather than from here, and scripts/dev-bench-sweep.test.mjs
+ * asserts it matches the DEV_PREVIEW comparisons, so adding a workbench cannot quietly leave
+ * it unswept.
+ */
+export function benchRooms() {
+  const names = window.__devBenches
+  if (!Array.isArray(names)) return []
+  return names.map((n) => '#dev-' + n)
+}
+
+/**
+ * ⚠️ SAYS WHAT TO DO RATHER THAN DOING IT, because the doing ends this script. Anything that
+ * reloads the page cannot also report on what loaded, so the honest shape is a caller that takes
+ * one bench at a time — the alternative is a helper that looks automatic, navigates, and returns
+ * nothing.
+ */
+export function nextBench(done = []) {
+  const left = benchRooms().filter((r) => !done.includes(r))
+  if (!left.length) return null
+  return {
+    room: left[0],
+    left: left.length,
+    load: 'location.hash = "' + left[0] + '"; setTimeout(() => location.reload(), 50)',
+    then: 'wait for the load, then call mobileAudit()',
+  }
+}
+
+/**
  * Where a thumb cannot scroll the page.
  *
  * ⚠️ REPORTED AS "SCROLLING PAST A DEMO IS TRICKY — YOU HAVE TO SWIPE FROM ABOVE OR BELOW".
