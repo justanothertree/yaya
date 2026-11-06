@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partAt, partLost, partsIn } from './arrange'
+import { partAt, partLost, partsIn, takeTimeAt } from './arrange'
 
 /**
  * The arrangement's bound, which the scheduler had and the picture did not.
@@ -115,6 +115,60 @@ describe('a slot holding a part the take has lost', () => {
           expect(partAt([src], 0, parts), `${src} with ${parts} parts`).toBeNull()
         }
       }
+    }
+  })
+})
+
+describe('where a moment of the song lands inside the take', () => {
+  /* two-second bars, so every number below is readable as "bar N, half a bar in" */
+  const BAR = 2
+
+  it('is the same moment when the bars are in their original order', () => {
+    /* plan [0, 1] is the identity: nothing has been moved, so song time IS take time */
+    for (const at of [0, 0.5, 1.9, 2, 3.5]) {
+      expect(takeTimeAt([0, 1], 2, at, BAR), `at ${at}`).toBeCloseTo(at, 6)
+    }
+  })
+
+  it('reads the swapped bar, keeping how far into the bar you are', () => {
+    /* plan [1, 0]: song bar 0 plays take bar 1, so half a bar into the song is half a bar
+       into the take's SECOND bar — 1s into the song is 3s into the take */
+    expect(takeTimeAt([1, 0], 2, 1, BAR)).toBeCloseTo(3, 6)
+    expect(takeTimeAt([1, 0], 2, 0, BAR)).toBeCloseTo(2, 6)
+    /* and the song's second bar plays the take's first */
+    expect(takeTimeAt([1, 0], 2, 2.5, BAR)).toBeCloseTo(0.5, 6)
+  })
+
+  it('is nothing where the arrangement is silent', () => {
+    expect(takeTimeAt([0, null], 2, 2.5, BAR)).toBeNull()
+  })
+
+  it('is nothing where the slot holds a part the take does not have', () => {
+    /* the same bound the scheduler applies — see partAt */
+    expect(takeTimeAt([3, 0], 2, 1, BAR)).toBeNull()
+  })
+
+  it('is nothing past the end of the plan, and for nonsense', () => {
+    expect(takeTimeAt([0, 1], 2, 10, BAR)).toBeNull()
+    expect(takeTimeAt(undefined, 2, 1, BAR)).toBeNull()
+    expect(takeTimeAt([0], 1, Number.NaN, BAR)).toBeNull()
+    expect(takeTimeAt([0], 1, 1, 0)).toBeNull()
+    expect(takeTimeAt([0], 1, -1, BAR)).toBeNull()
+  })
+
+  /**
+   * ⚠️ THE PROPERTY, rather than another worked example: whatever it answers must lie inside the
+   * bar it named. A dropped `src * barLen` term passes every identity case above and fails this
+   * one for every moved bar, which is the mistake worth guarding.
+   */
+  it('always lands inside the take-bar the plan chose', () => {
+    const plan = [2, 0, 3, 1]
+    for (let at = 0; at < 4 * BAR; at += 0.137) {
+      const got = takeTimeAt(plan, 4, at, BAR)
+      if (got === null) continue
+      const src = plan[Math.floor(at / BAR)]!
+      expect(got, `at ${at.toFixed(3)}`).toBeGreaterThanOrEqual(src * BAR)
+      expect(got, `at ${at.toFixed(3)}`).toBeLessThan((src + 1) * BAR)
     }
   })
 })

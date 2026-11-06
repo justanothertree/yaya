@@ -73,6 +73,7 @@ import {
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
 import { soundingAt, toNotes } from '../audio/noteEdit'
+import { takeTimeAt } from '../audio/arrange'
 import {
   library,
   librarySaved,
@@ -1122,11 +1123,40 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     [chordLayer],
   )
   const backingNow = useMemo(() => {
-    if (!chordLayer || !loop.playing || chordLayer.plan) return []
+    if (!chordLayer || !loop.playing) return []
     const len = chordLayer.len
     if (!(len > 0)) return []
-    return soundingAt(chordTake, (((loop.position * loopLength()) % len) + len) % len)
-  }, [chordLayer, chordTake, loop.playing, loop.position])
+    const lap = loopLength()
+    const at = loop.position * lap
+    /**
+     * ⚠️ TWO PATHS, THE SAME TWO THE SCHEDULER HAS, and for the reason its own note gives: a
+     * plain take tiles by its own length, which need not be a whole number of bars, while an
+     * arranged one is a list of bars. Making one a special case of the other would reinterpret
+     * every unarranged take as a whole number of bars, which is exactly what the scheduler
+     * refuses to do.
+     *
+     * ⚠️ THE ARRANGED PATH ASKS `partAt` RATHER THAN WORKING IT OUT. This used to stand down
+     * entirely once somebody put the bars in an order — honest, but a gap, and the reason given
+     * was that deciding which bar sounds where is the scheduler's business. It still is: that
+     * decision lives in `arrange.ts` and both of them ask it, so this cannot drift from what you
+     * hear any more than the dots can drift from the pad.
+     *
+     * Inverting the scheduler's own placement gives the moment inside the take, and that
+     * inversion is `takeTimeAt` rather than four lines here — dropping its `src * barLen` term
+     * reads the top of the take for every moved bar, which is a plausible chord every time and
+     * simply the wrong one. A mistake that silent belongs somewhere a test can put the question.
+     */
+    if (chordLayer.plan) {
+      const tTake = takeTimeAt(
+        chordLayer.plan,
+        takeBars(chordLayer),
+        at,
+        lap / Math.max(1, loop.bars),
+      )
+      return tTake == null ? [] : soundingAt(chordTake, tTake)
+    }
+    return soundingAt(chordTake, ((at % len) + len) % len)
+  }, [chordLayer, chordTake, loop.playing, loop.position, loop.bars])
   const chordTones = useMemo(
     () => [...new Set(backingNow.map((m) => ((m % 12) + 12) % 12))].sort((a, b) => a - b),
     [backingNow],

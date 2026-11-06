@@ -110,3 +110,32 @@ export function partLost(
   const src = plan[bar]
   return typeof src === 'number' && Number.isFinite(src) && src >= parts
 }
+
+/**
+ * Where inside the take a moment of the SONG lands, once the bars have been put in an order —
+ * or null when that slot is silent.
+ *
+ * ⚠️ THIS IS THE SCHEDULER'S OWN PLACEMENT, INVERTED, and it is here rather than in the room
+ * because getting it wrong is silent. The scheduler puts an event owned by take-bar `src` at
+ * `b * barLen + (e.t - src * barLen)`; so a song time `at` falling in song-bar `b` is take time
+ * `src * barLen + (at - b * barLen)`. Drop the `src * barLen` term and every arranged bar reads
+ * the top of the take instead — which looks like a plausible chord, every time, and is simply
+ * the wrong one.
+ *
+ * ⚠️ AND IT SHARES `partAt` WITH THE SCHEDULER, so which bar sounds where is decided in one
+ * place. The keyboard's chord hint used to stand down entirely once a layer was arranged, on the
+ * grounds that working the order out again here would be a second copy of that decision. It
+ * would have been — the answer was to ask, not to look away.
+ */
+export function takeTimeAt(
+  plan: readonly (number | null)[] | undefined,
+  parts: number,
+  at: number,
+  barLen: number,
+): number | null {
+  if (!plan || !Number.isFinite(at) || !(barLen > 0) || at < 0) return null
+  const bar = Math.floor(at / barLen)
+  const src = partAt(plan, bar, parts)
+  if (src == null) return null
+  return src * barLen + (at - bar * barLen)
+}
