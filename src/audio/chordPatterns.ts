@@ -255,3 +255,26 @@ export function basslineEvents(
   events.sort((a, b) => a.t - b.t)
   return { events, len: loopLen }
 }
+
+/**
+ * Does this take already end on the chord that leans home?
+ *
+ * ⚠️ READ FROM THE NOTES, NOT FROM THE SETTING, and that distinction is the bug this fixes. The
+ * Lead back toggle began life showing a remembered preference, which is right until a song is
+ * loaded: open one built WITH a turnaround while the preference happens to be off, and the row
+ * shows `Four chords` pressed — correctly, from the layer — beside `↩ Lead back` unpressed,
+ * about a pad whose own piano roll plainly ends on G. Two buttons an inch apart, describing one
+ * backing, and one of them lying. Measured: 15 notes ending G3 B3 D4, toggle reading false.
+ *
+ * ⚠️ IT COUNTS ONSETS RATHER THAN LOOKING FOR THE CHORD. A turnaround is the only thing that
+ * puts a fifth chord in a four-chord progression, so "more chord starts than the pattern has
+ * degrees" answers it without this needing to re-derive which degree the lead-back was, in
+ * which key, under which scale — all of which the room may since have changed. The notes are
+ * the evidence; the setting is only an intention.
+ */
+export function leadsBack(events: readonly LoopEvent[], p: ChordPattern): boolean {
+  if (!p.degrees.length) return false
+  const starts = new Set<number>()
+  for (const e of events) if (e.on) starts.add(Math.round(e.t * 1000))
+  return starts.size > p.degrees.length
+}

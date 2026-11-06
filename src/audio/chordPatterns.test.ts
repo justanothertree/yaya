@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_PATTERNS, basslineEvents, leadBackStep, progressionEvents } from './chordPatterns'
+import {
+  CHORD_PATTERNS,
+  basslineEvents,
+  leadBackStep,
+  leadsBack,
+  progressionEvents,
+} from './chordPatterns'
 import type { LoopEvent } from './looper'
 import { nameChord } from './chordName'
 import { MAJOR_DEGREES, SCALES, degreesOf } from './scales'
@@ -386,5 +392,49 @@ describe('a progression with the lead-back on', () => {
         }
       }
     }
+  })
+})
+
+describe('reading the turnaround back off a take', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+  const fifties = CHORD_PATTERNS.find((p) => p.id === 'fifties')!
+
+  it('sees one that is there', () => {
+    const { events } = progressionEvents(four, 8, MAJOR_DEGREES, 0, true)
+    expect(leadsBack(events, four)).toBe(true)
+  })
+
+  it('and does not invent one that is not', () => {
+    const { events } = progressionEvents(four, 8, MAJOR_DEGREES, 0)
+    expect(leadsBack(events, four)).toBe(false)
+  })
+
+  it('says no for a progression that cannot have one', () => {
+    /* Fifties already ends on its lead-back, so asking for one changes nothing and there is
+       nothing to read back — the control is disabled for exactly this reason */
+    const { events } = progressionEvents(fifties, 8, MAJOR_DEGREES, 0, true)
+    expect(leadsBack(events, fifties)).toBe(false)
+  })
+
+  /**
+   * ⚠️ IN EVERY KEY AND SCALE, because this is what a CONTROL will show and a control that is
+   * right in C and wrong in F# is worse than one that is always wrong — nobody would look.
+   */
+  it('agrees with what was asked for, whatever the key', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++) {
+        for (const p of CHORD_PATTERNS) {
+          const asked = leadBackStep(p, degrees.length) !== null
+          const built = progressionEvents(p, 8, degrees, root, true).events
+          expect(leadsBack(built, p), `${p.id} root ${root}`).toBe(asked)
+          expect(leadsBack(progressionEvents(p, 8, degrees, root).events, p)).toBe(false)
+        }
+      }
+    }
+  })
+
+  it('answers nothing for a pattern with no degrees', () => {
+    expect(leadsBack([], { id: 'x', name: 'x', degrees: [], hint: '' })).toBe(false)
   })
 })

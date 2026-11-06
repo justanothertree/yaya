@@ -68,6 +68,7 @@ import {
   CHORD_PATTERNS,
   basslineEvents,
   leadBackStep,
+  leadsBack,
   progressionEvents,
   type ChordPattern,
 } from '../audio/chordPatterns'
@@ -2373,13 +2374,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 ? leadBackStep(p, scale === 'chromatic' ? MAJOR_DEGREES.length : degrees.length)
                 : null
               const pointless = !!p && adds === null
+              /**
+               * ⚠️ WHAT THE LAYER HAS, NOT WHAT THE SETTING REMEMBERS, whenever there IS a
+               * layer. The first version showed the preference, which reads correctly until a
+               * song is loaded: open one built with a turnaround while the preference is off
+               * and this said "no lead-back" an inch from a Four chords button correctly
+               * showing pressed, about a pad whose roll plainly ended on G. Measured — 15
+               * notes, ending G3 B3 D4, toggle reading false.
+               *
+               * The chord buttons beside it have always answered "what is loaded". Two
+               * controls in one row cannot mean two different things.
+               */
+              const loaded = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+              const shown = p && loaded ? leadsBack(loaded.events, p) : leadBack
               return (
                 <button
-                  className={'btn' + (leadBack ? '' : ' btn-ghost')}
-                  aria-pressed={leadBack}
+                  className={'btn' + (shown ? '' : ' btn-ghost')}
+                  aria-pressed={shown}
                   disabled={pointless}
                   onClick={() => {
-                    const next = !leadBack
+                    /* toggling what you can SEE — with a song loaded that is the layer's
+                       state, not whatever this browser last remembered */
+                    const next = !shown
                     setLeadBack(next)
                     if (p) layChords(p, next)
                   }}
