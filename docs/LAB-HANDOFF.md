@@ -1656,10 +1656,11 @@ Same rules of evidence as batch 8: _measured_ means unit tests or headless Chrom
 (a CPU stand-in for a GPU); "emulated phone" is Playwright's iPhone 13 profile with CDP touch, which
 checks layout and touch routing only. Nobody has played these on a real device.
 
-| Toy   | What you do                                                                                                                                                                                                       | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                                                                          |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Strut | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep              | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind                                                                              |
-| Gust  | NEW: air hockey with no mallets — steer a fan round your half and blow; real wind carries the puck past four posts into the other goal. Against the computer (three speeds) or a friend on one device, first to 5 | a STABLE-FLUIDS solver on a 160×90 grid (advect, red-black Gauss-Seidel pressure, project) with the posts, walls and open goal mouths as boundaries; the puck is stepped ON THE GPU by the air round it and read back each frame for the score          | "the GPU owns the physics, the CPU owns the rules": a one-thread pass that is a pure CPU function line for line, read back with a serial so a stale read is never counted |
+| Toy      | What you do                                                                                                                                                                                                                                                                   | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strut    | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep                                                                          | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind                                                                                                         |
+| Gust     | NEW: air hockey with no mallets — steer a fan round your half and blow; real wind carries the puck past four posts into the other goal. Against the computer (three speeds) or a friend on one device, first to 5                                                             | a STABLE-FLUIDS solver on a 160×90 grid (advect, red-black Gauss-Seidel pressure, project) with the posts, walls and open goal mouths as boundaries; the puck is stepped ON THE GPU by the air round it and read back each frame for the score          | "the GPU owns the physics, the CPU owns the rules": a one-thread pass that is a pure CPU function line for line, read back with a serial so a stale read is never counted                            |
+| Seedling | A REMIX of Life: Life as a puzzle — plant a few seed cells in a patch so what grows lights every lamp before time runs out; six gardens (gliders, a wall with a gap, the Seeds and Maze rules, a methuselah), then MAKE your own garden, rule included, and keep it as a file | Life with the RULE AS TWO MASKS in the uniform (any B/S rule), bounded edges, stones that never live; the step also lights lamps and leaves a fading glow, all in one compute pass; the garden drawn per pixel and stood upright on a tall stage        | "the GPU steps, the CPU judges": a twin of the step decides the puzzle and is compared to the GPU cell for cell; every level ships with a solution the tests replay, and is proven to fail untouched |
 
 - **Strut** — a creature whose step sequencer is both its gait and its song. Each row of the grid
   under the stage is a muscle, and plays that muscle's note: the muscles sorted longest first climb a
@@ -1763,6 +1764,69 @@ checks layout and touch routing only. Nobody has played these on a real device.
      not by playing; real two-thumb play on a real phone (the multi-touch was synthetic); and speed on
      a phone GPU (24 sweeps × 2 on 14,400 cells a substep is small, but untested).
 
+- **Seedling** — Life as a puzzle. Each garden (32 × 20) has a green planting patch, a few lamps,
+  maybe some stones, a rule and a number of generations. You get so many seed cells to plant in the
+  patch: tap a cell to plant it (tap again to take it up), or switch to 🛩 Glider and tap to stamp a
+  whole glider (↻ turns it; a stamp is planted whole or not at all). ▶ Grow runs the rule; a lamp
+  lights when a live cell stands on it, and the garden is solved when every lamp has been lit at
+  least once before the generations run out. Stones never come alive, so they cut whatever grows
+  into them. Six gardens, easiest first: **First light** (one glider), **Both ways** (two gliders,
+  opposite directions), **Through the gap** (a glider lined up with a gap in a wall), **Seeds** (a
+  different rule — B2/S, where every cell dies at once — three seeds for four corners), **Wake the
+  garden** (six lamps all round; the right five cells grow for hundreds of generations — 12 of the
+  4,368 ways to plant five work, and nothing with four or fewer), **Maze** (B3/S12345, corridors
+  that stay). 💡 Show a way plants a stored solution (a garden solved that way earns no ✓); your
+  best for each (fewest seeds, then soonest) is kept and the list ticks it. 🛠 Make: 🪨 stones (drag
+  to draw), 💡 lamps, 🌱 drag out the patch, 🧽 erase; a name, a rule (Life, HighLife, Seeds, Day &
+  Night, Maze, or any B/S you type — B0 is refused, it would fill the empty garden), seeds and
+  generations; ▶ Try it plays it. The garden you make, your bests and where you were are kept in
+  this browser (`lab_seedling_v1`); ⬇ Save garden / ⬆ Open garden… keep it as a file. Keys (Play):
+  Space grow/pause, R replant, C clear, G glider, T turn; (Make) 1–4 tools.
+  Technique: one compute pass, `grow`, is `step` in seedling.ts line for line — the eight
+  neighbours counted with the edge as dead ground, born or staying by bit n of the rule's two
+  masks, never on a stone — and also sets a lamp's lit bit when a live cell is on it and keeps a
+  glow that fades by 18% a generation where life has been. Two boards take turns. `show` draws the
+  garden per pixel: uneven soil, the patch (gently pulsing while you plant), stones, lamps waiting
+  or lit, sprouts that swell in as each generation starts, and the glow; on a tall stage the
+  garden stands upright (`gardenFit`, shared with the finger). The CPU runs its own copy of the
+  step as the judge, and that is what decides solved or out of time.
+  ⚠️ What was wrong first:
+  1. **A solved level came out unsolved on the GPU.** `grow` reads the garden's size from the
+     uniform, and only drawing a picture wrote it, so any generation run before the first frame saw
+     a 0 × 0 garden and did nothing. The page happened to draw first; the probe, which grows before
+     drawing, did not. The size is written when the engine is made now.
+  2. **A glider stamped at the patch's edge planted half a glider**, which is no glider. A stamp
+     plants whole or not at all, and says why.
+  3. **The first wall had a 3-cell gap**, which no glider can pass: its 3 × 3 box moves a cell down
+     for every cell across. The gap is 5 now, and the lamp is on the lane through it.
+  4. **Show a way earned a ✓**, and a "too many seeds" note outlived the try that caused it.
+     _Measured_: the tests hold the rule notation, Conway's classics (a block stays, a blinker turns,
+     a glider walks a cell diagonally in four generations, and a turned glider the turned way), the
+     edge as dead ground (no wrap), stones (never alive; they cut a blinker — made to fail by letting a
+     stone live), Seeds' rule, planting (patch only, once each, the budget), every garden failing
+     untouched and solved by its stored solution within its budget, patch and time, the gap mattering
+     (the same glider two cells left is cut by the wall; with no wall it gets there), half of Both ways
+     not being a solution, a garden file (every field non-default round trip; too big, not JSON, a B0
+     rule, a 10-bit mask, zero or fractional generations, a big budget, a patch or stone off the board,
+     no lamps, 41 lamps, a lamp off the board, in the patch or on a stone — each refused, saying why),
+     tapping (plant, unplant, a whole glider that solves First light, a stamp that does not fit, a
+     stamp over budget), making (stones as runs along a row, a stone puts a lamp out, none in the
+     patch, lamps toggle, a patch dragged either way clears what is under it and stops at the edge, a
+     fresh garden is valid and unsolved), the uniform layout and the shader's mark bits, and the fit.
+     On SwiftShader, all six gardens untouched and solved: the GPU's board equals the judge's every
+     ten generations (0 differing cells in 120 comparisons) and its lit lamps equal the judge's. In
+     the page at 1024: untouched runs out; a mouse-stamped glider solves First light at generation 51
+     and is kept as a best with a ✓; an over-budget tap is refused saying so; Show a way solves Wake the
+     garden at 116 and earns no best; in Make, a dragged line of stones, a lamp, a dragged patch and a
+     typed rule are kept (B0 is marked invalid and not taken), the garden saves and reopens, a hostile
+     file is refused with its reason, Try it plays it, and all of it is there after a reload. On the
+     emulated iPhone the garden stands upright and a finger-tapped glider solves First light. Audit
+     clean at both.
+     Not measured: whether the gardens are the right difficulty and in the right order (designed by
+     search, not by watching somebody play); whether ~18 px cells on an upright phone are easy to tap
+     (under the 24 px a lone control should have — a board of cells, like the piano's keys, is
+     excused, and the glider stamp is the bigger target); real-device speed (640 cells, so trivial).
+
 ### Real-device checklist — batch 9
 
 - [ ] Strut — can you find a groove that walks without the presets? Do notes land in time with the
@@ -1771,3 +1835,5 @@ checks layout and touch routing only. Nobody has played these on a real device.
 - [ ] Gust — play the computer on Keen: can you win, and is Sharp too sharp? Two people on one
       phone held upright: do both thumbs work at once, and does the puck feel pushed by wind rather
       than steered? Does it hold 60 fps on the phone?
+- [ ] Seedling — play all six gardens without 💡: which was too hard or too easy? On a phone held
+      upright, can you plant the cell you meant? Make a garden and have somebody else solve it.

@@ -347,3 +347,21 @@
   color: #e07a1f;
   font-weight: 600;
 }
+
+/* ── seedling ────────────────────────────────────────────────────── */
+.seedling-name {
+  width: 9rem;
+  min-height: 36px;
+}
+.seedling-rule {
+  width: 6.5rem;
+  min-height: 36px;
+  font-family: ui-monospace, monospace;
+}
+.seedling-rule[aria-invalid='true'] {
+  outline: 2px solid #d9534f;
+}
+.seedling-num {
+  width: 4.5rem;
+  min-height: 36px;
+}
