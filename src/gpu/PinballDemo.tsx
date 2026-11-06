@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { noteOff, noteOn } from '../audio/synth'
+import { Holds, keySource } from './holds'
 import { LabStage } from './LabStage'
 import {
   DEFAULT_TABLE,
@@ -81,10 +82,9 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
   const [shown, setShown] = useState({ score: 0, balls: 3, over: false, waiting: true })
   const game = useRef<Game>(newGame(saved.table))
   const flippers = useRef(restFlippers())
-  const held = useRef<Held>({ left: false, right: false, plunger: false })
+  /** who is holding each control: keys, pads and fingers on the stage, each its own holder */
+  const holds = useRef(new Holds<keyof Held>()).current
   const pull = useRef(0)
-  /** each finger or button on the stage, and what it is holding */
-  const presses = useRef(new Map<number, keyof Held>())
   const stroke = useRef<V2[] | null>(null)
   const trail = useRef<V2[]>([])
   const engine = useRef<PinballView | null>(null)
@@ -146,18 +146,28 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
     newBall(t)
   }
 
-  const hold = (what: keyof Held, on: boolean) => {
-    held.current[what] = on
-    if (what === 'plunger' && !on && pull.current > 0) {
+  const hold = (what: keyof Held, source: string) => {
+    holds.press(what, source)
+    if (!now.current.running) setRunning(true)
+  }
+  /** the plunger fires when the last thing pulling it lets go */
+  const letGo = (freed: (keyof Held)[]) => {
+    if (freed.includes('plunger') && pull.current > 0) {
       plunge(game.current, pull.current)
       pull.current = 0
     }
-    if (on && !now.current.running) setRunning(true)
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>, down: boolean) => {
     if (e.altKey || e.ctrlKey || e.metaKey) return
-    if (e.target !== e.currentTarget && e.key !== 'Shift') return
+    const source = keySource(e)
+    /* ⚠️ A RELEASE COUNTS WHEREVER FOCUS IS. A key held on the stage and let go after a click has moved
+       focus to a button arrives from the button; ignoring it left the flipper up for good. A press on
+       a control stays the control's (Space presses a button), and so does the release's default. */
+    if (!down) {
+      letGo(holds.releaseSource(source))
+      if (e.target !== e.currentTarget) return
+    } else if (e.target !== e.currentTarget && e.key !== 'Shift') return
     const k = e.key.toLowerCase()
     const side =
       k === 'z' || k === 'arrowleft' || e.code === 'ShiftLeft'
@@ -167,8 +177,9 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
           : k === ' ' || k === 'arrowdown'
             ? 'plunger'
             : null
-    if (side && mode === 'play') hold(side, down)
-    else if (down && k === 'n' && mode === 'play') newBall()
+    if (side && mode === 'play') {
+      if (down) hold(side, source)
+    } else if (down && k === 'n' && mode === 'play') newBall()
     else return
     e.preventDefault()
   }
@@ -182,10 +193,12 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
       } catch {
         /* a pointer the browser no longer tracks */
       }
-      hold(what, true)
+      hold(what, `pad:${e.pointerId}`)
     },
-    onPointerUp: () => hold(what, false),
-    onPointerCancel: () => hold(what, false),
+    onPointerUp: (e: PointerEvent<HTMLButtonElement>) =>
+      letGo(holds.releaseSource(`pad:${e.pointerId}`)),
+    onPointerCancel: (e: PointerEvent<HTMLButtonElement>) =>
+      letGo(holds.releaseSource(`pad:${e.pointerId}`)),
     onContextMenu: (e: { preventDefault(): void }) => e.preventDefault(),
   })
 
@@ -198,8 +211,11 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
       onKeyDown={(e) => onKey(e, true)}
       onKeyUp={(e) => onKey(e, false)}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-          held.current = { left: false, right: false, plunger: false }
+        /* focus left the toy, so no release will reach it: let go of everything, launching nothing */
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          holds.clear()
+          pull.current = 0
+        }
       }}
       aria-label="Pinball workshop"
     >
@@ -232,14 +248,19 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
               }
               t += dt
               if (n.mode === 'play' && dt > 0) {
-                if (held.current.plunger && g.waiting)
+                const held = {
+                  left: holds.has('left'),
+                  right: holds.has('right'),
+                  plunger: holds.has('plunger'),
+                }
+                if (held.plunger && g.waiting)
                   pull.current = Math.min(1, pull.current + dt / PULL_TIME)
                 acc = Math.min(acc + dt, 0.05)
                 const before = { score: g.score, balls: g.balls, over: g.over, waiting: g.waiting }
                 let sounds = 0
                 while (acc >= 1 / HZ) {
                   acc -= 1 / HZ
-                  step(g, tbl, flippers.current, held.current)
+                  step(g, tbl, flippers.current, held)
                   for (const h of g.hits) {
                     if (sounds > 3) break
                     sounds++
@@ -295,8 +316,7 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
               : p[0] < 4.6
                 ? 'left'
                 : 'right'
-            presses.current.set(e.pointerId, what)
-            hold(what, true)
+            hold(what, `stage:${e.pointerId}`)
             return
           }
           const t = tableNow.current
@@ -312,11 +332,7 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
           if (mode === 'build' && stroke.current) stroke.current.push(onTable(e))
         }}
         onPointerUp={(e) => {
-          const what = presses.current.get(e.pointerId)
-          if (what) {
-            presses.current.delete(e.pointerId)
-            if (![...presses.current.values()].includes(what)) hold(what, false)
-          }
+          letGo(holds.releaseSource(`stage:${e.pointerId}`))
           const st = stroke.current
           stroke.current = null
           if (mode === 'build' && st) {

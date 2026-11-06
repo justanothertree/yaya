@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { noteOff, noteOn } from '../audio/synth'
+import { Holds, keySource } from './holds'
 import { LabStage } from './LabStage'
 import {
   COURSES,
@@ -93,7 +94,8 @@ export function CrossingDemo({ running, setRunning, onAdapter }: Props) {
   const [shown, setShown] = useState({ time: 0, hull: HULL, bells: 0, done: false, wrecked: false })
   const [sailing, setSailing] = useState(false)
   const voyage = useRef<Voyage>(setOff(course))
-  const keys = useRef<Keys>({ ...NO_KEYS })
+  /** who is holding each control: two keys, a pad, each its own holder (see holds.ts) */
+  const holds = useRef(new Holds<keyof Keys>()).current
   /** the beam: an angle off the bow, or aimed at the world point under the keeper's pointer */
   const aim = useRef<{ off: number; pointer: V2 | null }>({ off: 0, pointer: null })
   const widthNow = useRef(width)
@@ -159,11 +161,16 @@ export function CrossingDemo({ running, setRunning, onAdapter }: Props) {
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>, down: boolean) => {
-    if (e.altKey || e.ctrlKey || e.metaKey || e.target !== e.currentTarget) return
+    if (e.altKey || e.ctrlKey || e.metaKey) return
+    /* ⚠️ A RELEASE COUNTS WHEREVER FOCUS IS: a rudder held on the stage and let go after the beam's
+       slider has taken focus arrives from the slider, and ignoring it left the boat turning for good.
+       A press on a control stays the control's — the slider's own arrows still move it. */
+    if (!down) holds.releaseSource(keySource(e))
+    if (e.target !== e.currentTarget) return
     const k = e.key.toLowerCase()
     const what = KEYMAP[k]
     if (what) {
-      keys.current[what] = down
+      if (down) holds.press(what, keySource(e))
       if (what.startsWith('beam')) aim.current.pointer = null
       // the pilot's first touch of the helm casts off
       const helm = what === 'left' || what === 'right' || what === 'faster' || what === 'slower'
@@ -186,11 +193,12 @@ export function CrossingDemo({ running, setRunning, onAdapter }: Props) {
       } catch {
         /* a pointer the browser no longer tracks */
       }
-      keys.current[what] = true
+      holds.press(what, `pad:${e.pointerId}`)
       if (!now.current.sailing) castOff()
     },
-    onPointerUp: () => (keys.current[what] = false),
-    onPointerCancel: () => (keys.current[what] = false),
+    onPointerUp: (e: PointerEvent<HTMLButtonElement>) => holds.releaseSource(`pad:${e.pointerId}`),
+    onPointerCancel: (e: PointerEvent<HTMLButtonElement>) =>
+      holds.releaseSource(`pad:${e.pointerId}`),
     onContextMenu: (e: { preventDefault(): void }) => e.preventDefault(),
   })
 
@@ -214,7 +222,7 @@ export function CrossingDemo({ running, setRunning, onAdapter }: Props) {
       onKeyDown={(e) => onKey(e, true)}
       onKeyUp={(e) => onKey(e, false)}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) keys.current = { ...NO_KEYS }
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) holds.clear()
       }}
       aria-label="Night crossing"
     >
@@ -235,7 +243,9 @@ export function CrossingDemo({ running, setRunning, onAdapter }: Props) {
             frame: (dt: number) => {
               const c = now.current.course
               const vo = voyage.current
-              const kk = keys.current
+              const kk = Object.fromEntries(
+                (Object.keys(NO_KEYS) as (keyof Keys)[]).map((a) => [a, holds.has(a)]),
+              ) as Keys
               if (fresh.current) {
                 fresh.current = false
                 v.start(mapSize(c))

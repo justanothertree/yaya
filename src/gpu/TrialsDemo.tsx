@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { touchOnly } from '../ui/pointerKind'
+import { Holds, keySource } from './holds'
 import { LabStage } from './LabStage'
 import {
   BEST_KEY,
@@ -74,14 +75,16 @@ export function TrialsDemo({ running, setRunning, onAdapter }: Props) {
 
   const engine = useRef<TrialsView | null>(null)
   const run = useRef<Run>(startRun(COURSE))
-  const held = useRef(new Set<Hold>())
+  /** who is holding each control: two keys bound to one, a pad, each its own holder (holds.ts) —
+   *  letting go of ← used to cut the throttle that the Gas pad was still holding open */
+  const held = useRef(new Holds<Hold>()).current
   const cam = useRef<[number, number]>([COURSE.start[0] + 3, COURSE.start[1] + 1])
   const now = useRef({ running })
   now.current = { running }
   const redraw = useRef<() => void>(() => {})
 
   const input = (): Input => {
-    const h = held.current
+    const h = held
     return {
       gas: h.has('gas'),
       brake: h.has('brake'),
@@ -123,9 +126,9 @@ export function TrialsDemo({ running, setRunning, onAdapter }: Props) {
     const k = e.key.toLowerCase()
     if (k in KEYS) {
       if (down) {
-        held.current.add(KEYS[k])
+        held.press(KEYS[k], keySource(e))
         if (!now.current.running) setRunning(true)
-      } else held.current.delete(KEYS[k])
+      } else held.releaseSource(keySource(e))
     } else if (!down) return
     else if (k === 'r' || k === 'enter') again()
     else if (k === 'n' || k === 'backspace') restart()
@@ -145,11 +148,12 @@ export function TrialsDemo({ running, setRunning, onAdapter }: Props) {
       } catch {
         /* a pointer the browser no longer tracks */
       }
-      held.current.add(what)
+      held.press(what, `pad:${e.pointerId}`)
       if (!now.current.running) setRunning(true)
     },
-    onPointerUp: () => held.current.delete(what),
-    onPointerCancel: () => held.current.delete(what),
+    onPointerUp: (e: PointerEvent<HTMLButtonElement>) => held.releaseSource(`pad:${e.pointerId}`),
+    onPointerCancel: (e: PointerEvent<HTMLButtonElement>) =>
+      held.releaseSource(`pad:${e.pointerId}`),
     onContextMenu: (e: { preventDefault(): void }) => e.preventDefault(),
   })
 
@@ -165,7 +169,7 @@ export function TrialsDemo({ running, setRunning, onAdapter }: Props) {
         /* only when focus leaves the toy: a press on a pad button can move focus from this box
            to the button inside it, and letting go of the keys then would be wrong. (Chromium did
            not move it in the probe; other browsers may, and the check costs nothing.) */
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) held.current.clear()
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) held.clear()
       }}
       aria-label="Bike trials"
     >
