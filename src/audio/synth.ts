@@ -1073,7 +1073,9 @@ const RING_TAIL = 4
  * Two render blocks of margin puts the whole ramp safely in the future. Six milliseconds is far
  * below the ~20ms where a delay starts to be felt under the fingers, so nothing feels slower.
  */
-const SAFE_START = 0.006
+/* exported because takeFx.ts needs the same lookahead for the same reason, and two copies of a
+   constant is how the two of them drift apart */
+export const SAFE_START = 0.006
 
 export type Knob = 'echo' | 'echoTime' | 'space' | 'vibrato' | 'glide' | 'tone'
 const KNOB_KEY: Record<Knob, string> = {

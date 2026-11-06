@@ -28,7 +28,20 @@ export function takeBus(): GainNode {
   /* ⚠️ followed rather than read once, or the slider would only apply to takes placed after
      it was moved — the same reason a layer's gain rides its bus instead of scaling its notes */
   unhook = onMixerChange(() => {
-    if (bus) bus.gain.value = volume('instrument')
+    if (!bus) return
+    /**
+     * ⚠️ RAMPED, and it was not. mixer.ts says why in its own `setVolume` — "setting .value on
+     * a live gain is a step change in the waveform, which is an audible click, and dragging a
+     * slider would be a burst of them" — and then ramps the one node it registered itself.
+     * This bus is deliberately NOT that node (see above), so it got the slider's value by
+     * assignment and stepped while everything else on the same fader glided. One channel,
+     * two behaviours, decided by which node you happened to be listening to.
+     */
+    try {
+      bus.gain.setTargetAtTime(volume('instrument'), bus.context.currentTime, 0.015)
+    } catch {
+      bus.gain.value = volume('instrument')
+    }
   })
   bus = g
   return g
