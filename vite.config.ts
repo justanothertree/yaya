@@ -25,6 +25,30 @@ export default defineConfig({
      * excludes node_modules and dist, and restating it by hand is how it drifts.
      */
     exclude: [...configDefaults.exclude, '.claude/**'],
+    /**
+     * ⚠️ A TIMEOUT IS A GUARD AGAINST A HANG, NOT AN ASSERTION ABOUT SPEED — and at 125 test
+     * files the default five seconds had quietly become the latter.
+     *
+     * Measured on 5 Nov 2026, right after the Lab merge took this suite from 95 files to 125.
+     * `npm run test` passed; the pre-push hook ran the same suite minutes later and two tests
+     * failed on `Test timed out in 5000ms` — `scripts/motion-sweep.test.mjs` at **8,186ms** and
+     * `src/gpu/cloth.test.ts` at **11,839ms**. Run on their own, the same two take **276ms** and
+     * **2,301ms**. Nothing is slow; vitest spawns a worker per FILE (see the runner's own note
+     * about ~300–500ms of startup each), so thirty more files means thirty more processes
+     * competing, and anything doing real CPU work starts measuring the scheduler instead of
+     * itself.
+     *
+     * That is the worst kind of red: a gate that fails on machine load, about tests that are
+     * correct, blocking a push that has nothing to do with either. Raising the ceiling weakens
+     * no assertion — every one of these tests still has to produce the right answer, and a
+     * genuine hang is still caught, twenty seconds later instead of five.
+     *
+     * ⚠️ IT IS NOT A FIX FOR A SLOW TEST, and should not be read as permission to write one. If
+     * something here ever legitimately needs twenty seconds, the question to ask is what it is
+     * doing, not whether to raise this again.
+     */
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(
