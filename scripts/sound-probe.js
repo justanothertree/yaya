@@ -162,7 +162,28 @@ export function tap(mod) {
   }
   const scratch = new Uint8Array(Math.max(2048, mod.fftSize('instrument')))
   const level = () => mod.readLevel('instrument', scratch)
-  return { ok: true, live, level, ...probes(level) }
+  /**
+   * ⚠️ A SECOND READING, IN THE UNIT THE SIGNAL IS ACTUALLY IN. `readLevel` is a DISPLAY
+   * figure: RMS multiplied by 2.5 and clamped at 1, which is right for a meter and wrong for
+   * anything comparing two loudnesses. The clamp is the problem — above 0.4 RMS every answer
+   * is 1, so two readings that differ can come back identical, and a ratio taken from them is
+   * silently a lie. Everything below that needs a ratio, so it uses this.
+   */
+  const floats = mod.readFloatWave
+    ? new Float32Array(Math.max(2048, mod.fftSize('instrument')))
+    : null
+  const raw = () => {
+    if (!floats || !mod.readFloatWave('instrument', floats)) return { peak: 0, rms: 0 }
+    let peak = 0
+    let sumsq = 0
+    for (let i = 0; i < floats.length; i++) {
+      const v = floats[i] < 0 ? -floats[i] : floats[i]
+      if (v > peak) peak = v
+      sumsq += floats[i] * floats[i]
+    }
+    return { peak, rms: Math.sqrt(sumsq / floats.length) }
+  }
+  return { ok: true, live, level, raw, ...probes(level, raw) }
 }
 
 const wait = (ms) => new Promise((go) => setTimeout(go, ms))
@@ -199,8 +220,167 @@ const pointer = (el, type, down) => {
   )
 }
 
-function probes(level) {
+/**
+ * How much quieter your own hands get when a backing is loaded, measured against a backing
+ * that is making NO SOUND.
+ *
+ * ⚠️ THE SILENT BACKING IS THE WHOLE EXPERIMENT, and it is what makes the answer unarguable.
+ * Comparing a held note against a backing you can hear proves nothing: the limiter is working,
+ * the polyphony scaling is working, both are supposed to take something off, and no reading
+ * separates "correctly ducked" from "ducked too far". With every layer fader at zero the
+ * backing contributes exactly nothing — measured, peak 0.0015 against 0.5188 for the key — so
+ * any difference at all is the instrument reacting to signal that does not exist.
+ *
+ * ⚠️ IT VALIDATES ITSELF, because a checker that has not been shown reading zero is a checker
+ * reporting that it ran. Three guards come back in the result and all three must hold or the
+ * number is void: the room was silent before each half (`quietBefore`), the backing really was
+ * inaudible (`backingPeak`, must be at the floor), and the alone reading repeats afterwards
+ * (`aloneAgain`, within a couple of percent). With the backing stopped in both halves this
+ * reports about 0dB, which is the null control and the thing to run first if a result surprises
+ * you.
+ *
+ * ⚠️ AND IT PUTS THE FADERS BACK. A probe that leaves the room changed is one you cannot run
+ * twice, and layer gains are the thing it has to move.
+ */
+async function duckProbe(raw, keyIndex) {
+  const el = keyAt(keyIndex)
+  if (!el) return { error: 'no keys — is #instrument open?' }
+  const faders = [...document.querySelectorAll('.inst-layers input[type=range]')]
+  if (!faders.length) return { error: 'no layers — load a backing first' }
+  const was = faders.map((f) => f.value)
+  const setAll = (v) => {
+    const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    for (const f of faders) {
+      d.set.call(f, String(v))
+      f.dispatchEvent(new Event('input', { bubbles: true }))
+      f.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+  }
+  const press = async (ms) => {
+    pointer(el, 'pointerdown', true)
+    await wait(250)
+    let peak = 0
+    const until = performance.now() + ms
+    while (performance.now() < until) {
+      peak = Math.max(peak, raw().peak)
+      await wait(15)
+    }
+    /* released on WINDOW, which is where the room listens — see the note in InstrumentRoom
+       about capture being dropped so a press can slide between keys */
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
+    return +peak.toFixed(4)
+  }
+  /**
+   * ⚠️ "THE ANALYSER IS QUIET" IS NOT "NOTHING IS COUNTED", and that caught this probe out on
+   * its first run — the guards refused the reading and they were right.
+   *
+   * A released voice's entry in synth.ts outlives its audible tail on purpose: the ring is
+   * dropped at `at + a + d + r`, and the comment there records a bell whose entry "lived for 3.8
+   * seconds". So a press taken as soon as the room sounds silent is still being ducked by the
+   * press before it. Measured on the first run: four identical presses read 0.256, 0.209, 0.259
+   * and 0.527 — getting louder as the gaps got longer, with the LAST one matching a key pressed
+   * into a genuinely idle room.
+   *
+   * That is this probe measuring the very thing it exists to measure, as a confound. So it waits
+   * out the longest envelope and then wants THREE consecutive quiet reads, for the same reason
+   * `settles` does: one reading can land in a gap.
+   */
+  const SETTLE_MS = 4500
+  const untilQuiet = async () => {
+    await wait(SETTLE_MS)
+    let run = 0
+    let last = 1
+    for (let i = 0; i < 40; i++) {
+      last = raw().peak
+      run = last < 0.01 ? run + 1 : 0
+      if (run >= 3) return +last.toFixed(4)
+      await wait(150)
+    }
+    return null
+  }
+  const press2 = (label) =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === label)
+
+  try {
+    setAll(0)
+    await wait(300)
+    /**
+     * ⚠️ ONE THROWAWAY PRESS FIRST. On the very first run after a backing has been built, the
+     * opening measurement comes back low — 0.3245 against 0.5334 for the identical press at the
+     * end — and the `repeatable` guard duly refused the reading. Run again immediately and all
+     * four presses agree to the last digit.
+     *
+     * I have not established WHY the room needs to have played once and fully settled before it
+     * answers consistently, so this is a workaround and is labelled as one rather than dressed
+     * up as a reason. What matters is that the guards caught it rather than letting a 1.6x
+     * difference pass as a result.
+     */
+    await press(400)
+    const quietBefore = await untilQuiet()
+    const alone = await press(1200)
+    const quietBetween = await untilQuiet()
+
+    /**
+     * ⚠️ THE NULL CONTROL, AND IT IS THE REASON TO BELIEVE THE OTHER NUMBER. Same backing, same
+     * key, same code path — only the transport is stopped, so nothing of the backing is ringing
+     * and the polyphony scaling has nothing to count. This must come back at about 0dB. If it
+     * does not, the probe is measuring its own machinery and both figures are void.
+     */
+    const overLoadedButStopped = await press(1200)
+    await untilQuiet()
+
+    press2('▶ Play')?.click()
+    await wait(2500)
+    let backingPeak = 0
+    const until = performance.now() + 1500
+    while (performance.now() < until) {
+      backingPeak = Math.max(backingPeak, raw().peak)
+      await wait(15)
+    }
+    const overSilentBacking = await press(1200)
+    press2('⏹ Stop')?.click()
+    await untilQuiet()
+    const aloneAgain = await press(1200)
+    const dBof = (v) => (alone > 0 && v > 0 ? +(20 * Math.log10(v / alone)).toFixed(2) : null)
+    const dB = dBof(overSilentBacking)
+    const controlDb = dBof(overLoadedButStopped)
+    const sound = alone > 0 && aloneAgain > 0
+    return {
+      alone,
+      overSilentBacking,
+      dB,
+      guards: {
+        quietBefore,
+        quietBetween,
+        backingPeak: +backingPeak.toFixed(4),
+        backingReallySilent: backingPeak < 0.01,
+        aloneAgain,
+        repeatable: sound && Math.abs(aloneAgain - alone) / alone < 0.05,
+        /* the null control: loaded but not running, so there is nothing to count */
+        overLoadedButStopped,
+        controlDb,
+        controlIsFlat: controlDb != null && Math.abs(controlDb) < 1,
+      },
+      reading: !sound
+        ? 'no sound from the key at all — nothing here is a measurement'
+        : dB < -1
+          ? 'your hands are ducked by a backing that cannot be heard'
+          : 'no ducking from a silent backing',
+    }
+  } finally {
+    const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    faders.forEach((f, i) => {
+      d.set.call(f, was[i])
+      f.dispatchEvent(new Event('input', { bubbles: true }))
+      f.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+  }
+}
+
+function probes(level, raw) {
   return {
+    /** see duckProbe — hold one key alone, then over a backing at fader zero */
+    ducking: (keyIndex = 7) => duckProbe(raw, keyIndex),
     /**
      * What silence reads as.
      *

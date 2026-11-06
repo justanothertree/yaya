@@ -873,7 +873,48 @@ type Ringing = {
   at: number
   a: number
   d: number
-  /** the level this voice peaks at */
+  /**
+   * The level this voice peaks at.
+   *
+   * ⚠️ THE PATCH'S LEVEL, NOT THE LAYER'S — so the sum below is measured in a different unit
+   * from the signal, and A BACKING AT ZERO VOLUME STILL DUCKS YOUR HANDS. `noteOn` takes
+   * `part.gain` and hands it to `busFor` → `b.level()`, which multiplies at the bus INPUT,
+   * downstream of the polyphony gain. Nothing here ever sees it.
+   *
+   * Measured 6 Nov 2026 in the pane with `ducking()` from scripts/sound-probe.js — four-layer
+   * backing loaded, every layer fader dragged to 0 so it contributes nothing at all, and every
+   * one of the probe's guards green:
+   *
+   *     backing running, no key           peak 0        (silent, as it must be)
+   *     C4 held, backing loaded, STOPPED  peak 0.5334   ->  0.00dB   <- the null control
+   *     C4 held, silent backing RUNNING   peak 0.2879   -> -5.36dB
+   *     C4 held again at the end          peak 0.5334   (identical, to the last digit)
+   *
+   * Same key, same code path, same loaded layers; the only difference is whether a backing you
+   * cannot hear is running. Five and a bit decibels taken off the thing you are playing, to make
+   * room for signal that does not exist.
+   *
+   * ⚠️ AND IT IS A RANGE RATHER THAN A CONSTANT, which is the part that makes it audible. The
+   * sum follows the backing's envelopes, so the duck follows its note density: a hand-run on the
+   * same key an hour earlier measured -6.74dB, and the two differ by where in the bar the note
+   * landed. A held note therefore PUMPS in time with music that is making no sound.
+   *
+   * It cuts the other way at the top of the fader: the gain escapes the scaling entirely, which
+   * is why `in` reads 2.567 against a threshold of 0.707 with four layers at 2x. The sum is
+   * simply not the sum of what is sounding.
+   *
+   * ⚠️ AND IT MAY BE THE COMPLAINT ALREADY RECORDED IN presets.test.ts — "the layer volume is
+   * almost not loud enough for some of the instruments". Turning a layer DOWN does not only
+   * make that layer quieter; it leaves it counting its full patch level against everything
+   * else, so the room gets quieter around it and the fader feels like it has no authority.
+   *
+   * ⚠️ NOT FIXED HERE ON PURPOSE. The fix is one multiplication — carry the layer gain into
+   * this `peak` and into `target` — and it changes loudness in BOTH directions: hands come back
+   * up over a quiet backing, and a hot layer starts ducking properly instead of leaning on the
+   * limiter. Which of those is wanted, and where the balance between hands and backing should
+   * then sit, is a thing an ear decides. `scripts/sound-probe.js` has `ducking()`, which runs
+   * the measurement above in one paste and validates its own silence.
+   */
   peak: number
   /** absolute sustain level, and the floor a one-shot decays to */
   target: number
