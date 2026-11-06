@@ -158,12 +158,23 @@ function probes(level) {
      * the same mistake the chord hint cost two false readings for on the same evening, built
      * into the tool meant to catch that class of thing.
      *
-     * ⚠️ THE THRESHOLD IS NOT ZERO. A note's tail decays smoothly and the limiter has a release,
-     * so demanding exact silence waits for the last float to flush. 0.01 is a hundredth of what
-     * one key produces — measured, three keys peak around 0.83 — and well under anything
-     * audible.
+     * ⚠️ THE THRESHOLD IS 0.02 AND THAT NUMBER IS MEASURED, not picked. A voice does not fade to
+     * nothing: it decays fast to a FLAT residual of about **0.0137** and sits there for roughly
+     * four seconds before dropping to exactly 0. Traced on a single key with nothing else
+     * happening — 0.3176, 0.1518, 0.0801, 0.0437, 0.0213, then thirty samples within a whisker
+     * of 0.0137, then 0. A plateau is not a tail; it is the voice's nodes still connected until
+     * the stop scheduled at `a + d + r`, and they go silent all at once when it arrives.
+     *
+     * At roughly 35dB below a played note — three keys peak near 0.76 — none of it is audible.
+     * But a threshold under it makes every answer wrong in the same direction: with 0.01, Panic
+     * "settled after 5787ms", which reads as a Panic button that takes six seconds. It does not.
+     * The audible part was over in under one, and the rest was this.
+     *
+     * 0.02 clears the residual and is still far below anything a stuck voice could be and remain
+     * inaudible — a single held key is ten times it. Checked the other way too: a room that has
+     * been quiet a while reads exactly 0, so the floor is real and this is not masking it.
      */
-    settles: async (ms = 8000, quiet = 0.01) => {
+    settles: async (ms = 8000, quiet = 0.02) => {
       const started = performance.now()
       const trail = []
       let run = 0
