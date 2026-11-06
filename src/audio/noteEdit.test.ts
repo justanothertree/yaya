@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { ROLL_BAR_MAX, ROLL_CELL_MIN, gridStep, rollSize } from './noteEdit'
+import {
+  ROLL_BAR_MAX,
+  ROLL_CELL_MIN,
+  gridStep,
+  rollSize,
+  soundingAt,
+  toEvents,
+  toNotes,
+  type Note,
+} from './noteEdit'
 
 /**
  * The piano roll's geometry, asked without a browser.
@@ -80,5 +89,58 @@ describe('rollSize', () => {
       const r = rollSize({ len, bpm, quantize: 8, avail: 900 })
       expect(r.barW * r.bars).toBeCloseTo(r.width, 6)
     }
+  })
+})
+
+describe('what a take is holding at a moment', () => {
+  /* a four-chord progression's shape: three notes a slot, each ending just before the next */
+  const prog: Note[] = [
+    { midi: 60, t: 0, dur: 0.96 },
+    { midi: 64, t: 0, dur: 0.96 },
+    { midi: 67, t: 0, dur: 0.96 },
+    { midi: 67, t: 1, dur: 0.96 },
+    { midi: 71, t: 1, dur: 0.96 },
+    { midi: 74, t: 1, dur: 0.96 },
+  ]
+
+  it('is the chord whose slot the moment falls in', () => {
+    expect(soundingAt(prog, 0)).toEqual([60, 64, 67])
+    expect(soundingAt(prog, 0.5)).toEqual([60, 64, 67])
+    expect(soundingAt(prog, 1.2)).toEqual([67, 71, 74])
+  })
+
+  it('is nothing in the gap a take leaves between them', () => {
+    /* 0.96 of a 1.0 slot, so 0.98 is the sliver of silence that makes a repeat re-articulate */
+    expect(soundingAt(prog, 0.98)).toEqual([])
+  })
+
+  it('hands over on the boundary rather than sounding both', () => {
+    /* half-open: a note starting exactly where another ends does not overlap it */
+    const touching: Note[] = [
+      { midi: 60, t: 0, dur: 1 },
+      { midi: 62, t: 1, dur: 1 },
+    ]
+    expect(soundingAt(touching, 1), 'the instant of handover belongs to the new one').toEqual([62])
+    expect(soundingAt(touching, 0.999)).toEqual([60])
+  })
+
+  it('is nothing before the take starts or after it ends', () => {
+    expect(soundingAt(prog, -1)).toEqual([])
+    expect(soundingAt(prog, 99)).toEqual([])
+  })
+
+  it('answers nothing rather than throwing on a moment that is not a number', () => {
+    /* `at` comes from a clock and a division — both can produce this */
+    expect(soundingAt(prog, Number.NaN)).toEqual([])
+    expect(soundingAt([], 0.5)).toEqual([])
+  })
+
+  it('and goes through the same converter a real take does', () => {
+    /* built from EVENTS, the way a layer actually stores them, so the round trip is exercised
+       rather than a hand-written note list that cannot be wrong */
+    const events = toEvents(prog, 2)
+    const back = toNotes(events, 2)
+    expect(soundingAt(back, 0.5)).toEqual([60, 64, 67])
+    expect(soundingAt(back, 1.2)).toEqual([67, 71, 74])
   })
 })

@@ -67,14 +67,12 @@ import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
 import {
   CHORD_PATTERNS,
   basslineEvents,
-  chordAt,
-  chordToneClasses,
   progressionEvents,
-  slotAt,
   type ChordPattern,
 } from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
+import { soundingAt, toNotes } from '../audio/noteEdit'
 import {
   library,
   librarySaved,
@@ -1075,7 +1073,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const arpLit = arp !== 'off' && held.length > 0
 
   /**
-   * The notes the backing is on RIGHT NOW, as pitch classes — the keyboard's live hint.
+   * What the backing is actually sounding RIGHT NOW — the keyboard's live hint, and the words
+   * for it.
    *
    * ⚠️ THE BLANK-PAGE PROBLEM ONE FLOOR FURTHER UP, which is the only reason to add a fourth
    * thing a key can look like. Scale lock already means every key you press is a right note, and
@@ -1083,62 +1082,65 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * from. A person who cannot play has no way to know which — that is the entire skill — and
    * they are the people these three features exist for.
    *
-   * ⚠️ IT CANNOT DISAGREE WITH WHAT YOU HEAR, because it is the pad's own arithmetic. Both come
-   * out of `triadAt`, and chordPatterns.test.ts asserts they match in every key and every
-   * seven-note scale. A hint built beside the pad rather than from it would be right until the
-   * day either changed, and then it would be confidently teaching the wrong notes.
+   * ⚠️ IT READS THE LAYER'S OWN NOTES, AND THE FIRST VERSION DID NOT. That one re-derived the
+   * chord from the progression's pattern plus the room's CURRENT key and scale, which is right
+   * for exactly as long as nobody touches the Key picker. Measured: a progression dropped in C
+   * keeps playing C–G–Am–F — it is a take, not a live instrument — and switching the Key to D
+   * had the keyboard light up A, C♯ and E and the line read "A major underneath" while the
+   * speakers played G major. C♯ is not in the backing's key at all, so the hint was pointing at
+   * a clash and naming it confidently.
    *
-   * ⚠️ AND IT IS NOT ON BY DEFAULT IN ANY MEANINGFUL SENSE. It needs a progression layer in the
-   * room AND the loop running — two states you reach on purpose — so a plain keyboard looks
-   * exactly as it always has. When the transport stops the hint goes with it, because a chord
-   * highlight frozen on whatever bar you happened to pause in is a lie about the present tense.
+   * That is §2 about my own work: the hint was true the day it shipped and a neighbouring
+   * control made it false. Asking the notes instead means a key change, a scale change, and
+   * somebody editing the roll by hand all come out right without this knowing any of them
+   * happened — the hint cannot drift from the sound because it IS the sound.
    *
-   * Keyed on the SLOT rather than the position, so it recomputes when the chord changes — once
-   * a bar or two — rather than on every tick of the playhead this room already re-renders for.
+   * ⚠️ TILED BY THE LAYER'S OWN LENGTH, like the scheduler does, so a take shorter than the loop
+   * is read at the right point in its repetition rather than off its end.
+   *
+   * ⚠️ AND IT STANDS DOWN FOR AN ARRANGED LAYER. Once somebody puts the bars in an order, which
+   * bar sounds in which slot is the scheduler's business and working it out again here would be
+   * a second copy of that decision — the exact mistake this rewrite is undoing. Saying nothing
+   * beats guessing, and an arrangement is rare enough that nobody loses a feature they were
+   * using.
+   *
+   * ⚠️ NOT ON BY DEFAULT IN ANY MEANINGFUL SENSE. It needs a progression layer AND the transport
+   * running, both reached on purpose, so a plain keyboard looks exactly as it always has. When
+   * the loop stops the hint goes with it, because a chord highlight frozen on whatever bar you
+   * paused in is a lie about the present tense.
    */
-  const chordPattern =
-    CHORD_PATTERNS.find(
-      (x) => x.id === (loop.layers.map((l) => chordPatternOf(l)).find((v) => v) ?? null),
-    ) ?? null
-  const chordSlot = chordPattern && loop.playing ? slotAt(chordPattern, loop.position) : null
+  const chordLayer = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+  /**
+   * ⚠️ NOT `chordNotes` — that name is already an IMPORT from chords.ts that the Chord picker
+   * calls at the top of this component. A local const of the same name shadows it for the whole
+   * body, so the picker's two calls would have hit the temporal dead zone and thrown
+   * `Cannot access 'chordNotes' before initialization` the moment anybody pressed a key with a
+   * chord selected. Typecheck caught it only obliquely, as "the import is never read".
+   */
+  const chordTake = useMemo(
+    () => (chordLayer ? toNotes(chordLayer.events, chordLayer.len) : []),
+    [chordLayer],
+  )
+  const backingNow = useMemo(() => {
+    if (!chordLayer || !loop.playing || chordLayer.plan) return []
+    const len = chordLayer.len
+    if (!(len > 0)) return []
+    return soundingAt(chordTake, (((loop.position * loopLength()) % len) + len) % len)
+  }, [chordLayer, chordTake, loop.playing, loop.position])
   const chordTones = useMemo(
-    () =>
-      chordPattern && chordSlot !== null
-        ? chordToneClasses(
-            chordPattern,
-            chordSlot,
-            scale === 'chromatic' ? MAJOR_DEGREES : degrees,
-            scale === 'chromatic' ? 0 : root,
-          )
-        : [],
-    [chordPattern, chordSlot, scale, degrees, root],
+    () => [...new Set(backingNow.map((m) => ((m % 12) + 12) % 12))].sort((a, b) => a - b),
+    [backingNow],
   )
   /**
-   * The same chord, in words.
-   *
    * ⚠️ THE DOTS SAY WHICH KEYS AND THIS SAYS WHAT IT IS, which are different questions and only
    * one of them is answerable by looking at the keyboard. "These three are the good ones" gets
    * somebody playing; "that was A minor" is the thing they can carry to the next song, look up,
-   * or ask about. It costs a line that is already reserved and sits empty whenever nobody is
-   * holding a key.
-   *
-   * It comes out of `chordAt` — the same slot, the same `triadAt` — so it cannot name one chord
-   * while the keyboard lights up another. chordPatterns.test.ts asserts the two agree across
-   * every key and seven-note scale, and that the words are the expected C–G–Am–F.
+   * or ask about. Both come off the same `backingNow`, so they cannot name one chord while the
+   * keyboard lights up another.
    */
   const backingChord = useMemo(
-    () =>
-      chordPattern && chordSlot !== null
-        ? nameChord(
-            chordAt(
-              chordPattern,
-              chordSlot,
-              scale === 'chromatic' ? MAJOR_DEGREES : degrees,
-              scale === 'chromatic' ? 0 : root,
-            ),
-          )
-        : null,
-    [chordPattern, chordSlot, scale, degrees, root],
+    () => (backingNow.length ? nameChord(backingNow) : null),
+    [backingNow],
   )
 
   /**
@@ -2210,10 +2212,24 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * makes scale lock worth having — every key is a right note, and now there is something
        * underneath for those right notes to be right ABOUT.
        *
-       * ⚠️ IT FOLLOWS THE ROOM'S OWN KEY AND SCALE, so the progression a person drops and the
-       * notes they then play are in the same world without anybody being asked a question.
-       * Chromatic has no degrees to build on, so it borrows the major ones exactly as the
-       * Chord picker does.
+       * ⚠️ IT IS BUILT FROM THE ROOM'S KEY AND SCALE AT THE MOMENT YOU DROP IT, so the
+       * progression and the notes you then play are in the same world without anybody being
+       * asked a question. Chromatic has no degrees to build on, so it borrows the major ones
+       * exactly as the Chord picker does.
+       *
+       * ⚠️ "AT THE MOMENT YOU DROP IT" IS THE CORRECTION — this used to say it FOLLOWS the key,
+       * present tense, and it does not. What lands is an ordinary layer of notes, which is the
+       * whole point of these being takes rather than a chord track; so moving the Key picker
+       * afterwards re-tunes the keyboard and leaves the backing where it was. Measured: a
+       * progression dropped in C still reads C–G–Am–F in its own piano roll after the key goes
+       * to D.
+       *
+       * Whether changing the key should re-voice a backing already on the table is a product
+       * decision and is written up rather than guessed at here. It is not obviously yes: the
+       * layer is editable, so re-voicing would silently overwrite anything somebody had changed
+       * in the roll — the shape CLAUDE.md calls "a save that writes every column is a delete for
+       * the ones the caller forgot". The keyboard's hint reads the layer's own notes precisely so
+       * it stays honest either way.
        */}
       {beatsOpen && (
         <div className="inst-beats card">

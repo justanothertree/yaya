@@ -174,3 +174,30 @@ export function rollSize(o: { len: number; bpm: number; quantize: number; avail:
   const width = cols * cellW
   return { step, cols, bars, cellW, width, barW: width / bars }
 }
+
+/**
+ * Which notes a take is holding at a moment inside it.
+ *
+ * ⚠️ IT ASKS THE NOTES, NOT THE THING THAT MADE THEM, and that is the whole point. The
+ * keyboard's chord hint used to re-derive the sounding chord from the progression's pattern plus
+ * the room's CURRENT key — which is right until the key picker moves and then confidently
+ * wrong. Measured on 5 Nov 2026: a progression dropped in C kept playing C–G–Am–F, and switching
+ * the Key to D had the keyboard light up A, C♯ and E while the speakers played G major. C♯ is
+ * not in the backing's key at all. The hint was teaching a clash.
+ *
+ * A take is a list of notes. What it is holding at time `at` is a question about those notes and
+ * nothing else — so a key change, a scale change, or somebody editing the roll by hand all come
+ * out right without this knowing any of them happened.
+ *
+ * ⚠️ HALF-OPEN, `t <= at < t + dur`, so a note that ends exactly where the next begins hands
+ * over cleanly instead of both sounding for one instant. Chord slots butt up against each other
+ * by construction — `progressionEvents` ends each at `slot * HOLD` — but a hand-edited roll need
+ * not, and two chords flickering together on a boundary is the kind of thing that reads as a
+ * bug in the hint.
+ */
+export function soundingAt(notes: readonly Note[], at: number): number[] {
+  if (!Number.isFinite(at)) return []
+  const out: number[] = []
+  for (const n of notes) if (at >= n.t && at < n.t + n.dur) out.push(n.midi)
+  return out.sort((a, b) => a - b)
+}
