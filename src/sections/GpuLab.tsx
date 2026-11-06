@@ -41,6 +41,7 @@ import { MobiusDemo } from '../gpu/MobiusDemo'
 import { PinballDemo } from '../gpu/PinballDemo'
 import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
+import { FoldDemo } from '../gpu/FoldDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -372,6 +373,12 @@ const DEMOS: readonly {
     name: 'Shadow box',
     line: 'Shadow box — rebuild a hidden stack of blocks from the shadows it throws. Puzzles with par, or pass and play: one hides, one rebuilds.',
     Demo: ShadowboxDemo,
+  },
+  {
+    id: 'fold',
+    name: 'Fold',
+    line: 'Fold — pick up a point of a square of paper and lay it down: fold it into the shape asked for, in as few folds as you can, or make your own.',
+    Demo: FoldDemo,
   },
 ]
 

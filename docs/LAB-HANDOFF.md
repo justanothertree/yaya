@@ -2091,9 +2091,10 @@ routing only. Automated play shows the rules hold, never that anything is fun.
 
 ### New
 
-| Toy        | What you do                                                                                                                                                                                                                                       | GPU technique                                                                                                                                                                                                                                                                                                                                                                  | Pattern to reuse                                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Shadow box | Rebuild a hidden stack of blocks from the shadows it throws on the walls and floor. Six puzzles with a par (the fewest blocks that can do it), or pass and play: one builds and hides it behind a curtain, the other rebuilds it from the shadows | a VOXEL RAY TRACER per pixel: each ray walks the floor's columns to the first block face, else the walls and floor; each wall's shadow is found by walking from the lit point toward its lamp through the columns. The hidden build's shadows and the player's are drawn over each other — blue where they agree, red where the player's throws shadow the hidden one does not | "the clue is drawn by the same light the answer casts": a hidden state shown only through a projection, judged on the projection |
+| Toy        | What you do                                                                                                                                                                                                                                                 | GPU technique                                                                                                                                                                                                                                                                                                                                                                  | Pattern to reuse                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Shadow box | Rebuild a hidden stack of blocks from the shadows it throws on the walls and floor. Six puzzles with a par (the fewest blocks that can do it), or pass and play: one builds and hides it behind a curtain, the other rebuilds it from the shadows           | a VOXEL RAY TRACER per pixel: each ray walks the floor's columns to the first block face, else the walls and floor; each wall's shadow is found by walking from the lit point toward its lamp through the columns. The hidden build's shadows and the player's are drawn over each other — blue where they agree, red where the player's throws shadow the hidden one does not | "the clue is drawn by the same light the answer casts": a hidden state shown only through a projection, judged on the projection |
+| Fold       | Fold a square of two-coloured paper by picking up a point and laying it down: the crease is half way between, and the picked-up side turns over on top. Seven shapes to fold within a limit, or fold freely and keep the shape as a picture or as its folds | the LAYERS DRAWN PER PIXEL: each layer a convex polygon and an affine map back to the flat sheet; at each pixel the topmost layer is found, the point mapped back onto the sheet and drawn there — front colour or cream back, fibres, the creases already in it — with the target as a ghost under it. Redrawn only when something changed                                    | "a stack of mapped flat pieces": anything folded, mirrored or tiled out of one flat source keeps one map per piece               |
 
 - **Shadow box** — a 5 × 5 box, stacks up to 4 blocks tall, and three lamps square to the walls: one
   in front throws the blocks' outline onto the back wall, one on the right onto the left wall, one
@@ -2155,6 +2156,57 @@ routing only. Automated play shows the rules hold, never that anything is fun.
      shadows from the default angle without turning the box; whether pass and play holds its secret
      well enough at a real table (the curtain is drawn, but the builder's phone is still in their hand).
 
+- **Fold** — a square of paper, coloured on the front and cream on the back, on a cutting mat. Press
+  on the paper (anywhere on it, or a hair off its edge), drag, and let go: the point you picked up
+  is laid where you let go, the crease is the line half way between, square to the move, and
+  everything on the picked-up side turns over and lands on top — so the other colour shows. The
+  fold is shown as you drag; the point you pick up and the point you lay it on are pulled to the
+  sheet's corners as it lies, and gently to a grid of twelfths. **🧩 Puzzles**: seven shapes, from
+  _Half_ and _Triangle_ to _Envelope_ (four corners to the middle) and _Arrow_, each drawn as a pale
+  ghost with a dashed outline and a number of folds allowed; the score says how like it the paper is
+  (shared area over either), and 97% within the limit solves it — any way of getting there counts.
+  Your best (fewest folds) is kept and ticked; 💡 Show how folds it for you and is not kept. **✋ Free
+  fold**: up to eight folds, a choice of eight paper colours, ⬇ Save picture (a 1024 px PNG), ⬇ Save
+  folds / ⬆ Open folds… (the moves as numbers, replayed). ↶ Undo or U, 🔄 Unfold or R.
+  Technique: a folded sheet is a stack of flat layers, bottom to top, each a convex polygon where it
+  lies now, the affine map back to where it was on the flat sheet, and which side is up. `fold` cuts
+  every layer by the crease; the parts on the picked-up side are reflected (and so is their map back,
+  a reflection being its own inverse), their side flipped, their order reversed and laid on top; the
+  crease is recorded on the flat sheet wherever a layer was cut. Paper is neither made nor lost
+  (every fold keeps the area at exactly 1), and past 64 layers the paper is "too thick to fold
+  again". The match is measured on a 240 × 240 grid. The GPU draws it per pixel: every layer's
+  polygon tested (a convex polygon's signed distance is the largest of its edges'), the topmost one
+  that covers the pixel mapped back onto the sheet and coloured from there, the creases drawn on the
+  sheet so they fold with it, each top edge drawn as a fine line and a soft shadow on the mat; and
+  only when the sheet, the colour or the size changed, since testing up to 64 layers a pixel for an
+  unchanged picture would be waste.
+  ⚠️ What was wrong first:
+  1. **The grid swallowed every point**: twelfths are 0.083 apart and pulled from 0.04, so nothing
+     could be placed between them. The grid's pull is 0.016 now; the corners' is still 0.04.
+  2. **Picking the paper up by its edge did nothing** when the press landed a hair outside it — the
+     first fold the desktop probe tried. A press within 0.04 of any layer's edge counts now.
+  3. **The score lagged a fold behind**: the folded sheet was worked out in an effect, after the
+     render that showed the score. It is worked out as the folds change now.
+     _Measured_: the tests hold the geometry (a reflection is its own inverse and keeps distances; the
+     crease is the perpendicular bisector; cutting keeps area), folding (the picked-up point lands on
+     the target point, back up; paper area exactly 1 and every layer counter-clockwise across four
+     arbitrary folds; the turned-over part on top in reverse order — made to fail by not reversing it —
+     and the crease on the flat sheet; refusals for no move, a fold that misses, turning the whole sheet
+     over, and folding past 64 layers), the puzzles (each folds within its limit, the flat sheet matches
+     none, no two targets pass for each other, a different way to the same shape counts), picking up,
+     snapping, folds as a file (round trip; refusals including folds that do not fold), the uniform
+     layout, the layer packing and the view. On SwiftShader every classified pixel's table, front or
+     back equals the CPU's topmost layer — 85,640 pixels over three folded sheets, 0 disagreements. In
+     the page at 1024: Half, House and Triangle folded by mouse drags and kept as bests; a second fold
+     on Triangle over the limit is said so and U undoes it; Show how folds Envelope and is not kept;
+     three free folds, a colour, a 1024 × 1024 PNG, the folds saved, a hostile file refused, the saved
+     folds reopened to the same sheet; bests survive a reload. On the emulated iPhone a touch drag folds
+     Half. Audit clean at both.
+     Not measured: whether the puzzles are interesting past the first few (they are shapes reachable by
+     a known sequence, not designed for an "aha"); how precisely a finger can lay a point on a phone
+     (snapping helps; there is no zoom); speed on a phone with many layers (the picture is redrawn only
+     on change, but a drag redraws it every move). There is no way to fold from the keyboard alone.
+
 ### Real-device checklist — batch 11
 
 - [ ] Pinball and Night crossing — hold a key, click or tap a button, let go: does the control let go?
@@ -2162,3 +2214,5 @@ routing only. Automated play shows the rules hold, never that anything is fun.
 - [ ] Shadow box — the puzzles without 💡: can you reach par? Pass and play with somebody: is the
       curtain enough, and are three lamps the right number of clues? Is tapping the box precise
       enough on a phone, or do you reach for the grid?
+- [ ] Fold — fold the seven shapes without 💡; is dragging a point precise enough on a phone? Make a
+      shape of your own and keep it.
