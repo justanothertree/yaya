@@ -3343,6 +3343,19 @@ section[id] {
   margin: 0.15rem 0 0;
   font-variant-numeric: tabular-nums;
 }
+/**
+ * The chord the backing is on, when your own hands are quiet.
+ *
+ * ⚠️ QUIETER THAN THE LINE IT SHARES, because it is about something you did NOT do. The held
+ * chord is a report on your fingers and should read at full strength; this is context, and it
+ * occupies a row that is otherwise blank. Dimmer and italic says "not you" without a second
+ * label taking up the width — the two never appear at once, so the only thing distinguishing
+ * them is how they look.
+ */
+.inst-backing-chord {
+  opacity: 0.72;
+  font-style: italic;
+}
 .inst-pick {
   display: inline-flex;
   align-items: center;

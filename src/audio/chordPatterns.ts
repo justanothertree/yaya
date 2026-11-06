@@ -212,9 +212,26 @@ export function chordToneClasses(
   scaleDegrees: readonly number[],
   root: number,
 ): number[] {
+  const seen = new Set<number>()
+  for (const midi of chordAt(p, slot, scaleDegrees, root)) seen.add(((midi % 12) + 12) % 12)
+  return [...seen].sort((a, b) => a - b)
+}
+
+/**
+ * The notes the pad is holding in that slot — the chord itself, at the pitch it sounds.
+ *
+ * ⚠️ THE ONE PLACE EVERYTHING ELSE ASKS. The keyboard's dots want pitch classes and the readout
+ * wants something `nameChord` can read, and those are two views of one chord rather than two
+ * chords. Splitting them would be a third copy of `triadAt`'s arithmetic — see the note there,
+ * which already has the pad and the bass hanging off it for exactly this reason.
+ */
+export function chordAt(
+  p: ChordPattern,
+  slot: number,
+  scaleDegrees: readonly number[],
+  root: number,
+): number[] {
   if (!scaleDegrees.length || p.degrees.length === 0) return []
   const i = Math.min(p.degrees.length - 1, Math.max(0, Math.floor(slot)))
-  const seen = new Set<number>()
-  for (const midi of triadAt(p, i, scaleDegrees, root, BASS)) seen.add(((midi % 12) + 12) % 12)
-  return [...seen].sort((a, b) => a - b)
+  return triadAt(p, i, scaleDegrees, root, BASS)
 }

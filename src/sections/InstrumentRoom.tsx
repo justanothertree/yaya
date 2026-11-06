@@ -67,6 +67,7 @@ import { DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
 import {
   CHORD_PATTERNS,
   basslineEvents,
+  chordAt,
   chordToneClasses,
   progressionEvents,
   slotAt,
@@ -1109,6 +1110,33 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             scale === 'chromatic' ? 0 : root,
           )
         : [],
+    [chordPattern, chordSlot, scale, degrees, root],
+  )
+  /**
+   * The same chord, in words.
+   *
+   * ⚠️ THE DOTS SAY WHICH KEYS AND THIS SAYS WHAT IT IS, which are different questions and only
+   * one of them is answerable by looking at the keyboard. "These three are the good ones" gets
+   * somebody playing; "that was A minor" is the thing they can carry to the next song, look up,
+   * or ask about. It costs a line that is already reserved and sits empty whenever nobody is
+   * holding a key.
+   *
+   * It comes out of `chordAt` — the same slot, the same `triadAt` — so it cannot name one chord
+   * while the keyboard lights up another. chordPatterns.test.ts asserts the two agree across
+   * every key and seven-note scale, and that the words are the expected C–G–Am–F.
+   */
+  const backingChord = useMemo(
+    () =>
+      chordPattern && chordSlot !== null
+        ? nameChord(
+            chordAt(
+              chordPattern,
+              chordSlot,
+              scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+              scale === 'chromatic' ? 0 : root,
+            ),
+          )
+        : null,
     [chordPattern, chordSlot, scale, degrees, root],
   )
   useEffect(() => {
@@ -2955,9 +2983,23 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * ⚠️ NOT ON THE DRUM KIT, where a pad is a sound and not a pitch. Naming a kick and a
        * snare "C and its fifth" is true of the MIDI and false about the room.
        */}
+      {/**
+       * ⚠️ THE LIVE REGION IS THE INNER SPAN NOW, AND THAT IS THE WHOLE REASON FOR THE SPLIT.
+       * What you are holding changes when you press a key, so announcing it is answering
+       * something you just did. The backing's chord changes once a bar for as long as the loop
+       * runs — put that in an `aria-live` region and a screen reader narrates a metronome
+       * forever. It is the same call the keyboard's dots made one commit ago, and reusing this
+       * element would have silently undone it.
+       *
+       * The outer <p> keeps its reserved height either way, so the keyboard never jumps.
+       */}
       {inst !== 'drums' && (
-        <p className="muted inst-note inst-chord-name" aria-live="polite">
-          {(held.length > 0 && nameChord(held)) || ' '}
+        <p className="muted inst-note inst-chord-name">
+          <span aria-live="polite">{(held.length > 0 && nameChord(held)) || ' '}</span>
+          {/* only when your own hands are quiet — what you are playing always wins the line */}
+          {held.length === 0 && backingChord && (
+            <span className="inst-backing-chord">{backingChord} underneath</span>
+          )}
         </p>
       )}
 

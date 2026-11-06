@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CHORD_PATTERNS,
   basslineEvents,
+  chordAt,
   chordToneClasses,
   progressionEvents,
   slotAt,
@@ -360,5 +361,49 @@ describe('the keys the chord is made of', () => {
 
   it('says nothing rather than guessing when there is no scale', () => {
     expect(chordToneClasses(four, 0, [], 0)).toEqual([])
+  })
+})
+
+describe('naming the chord the backing is on', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+
+  /**
+   * ⚠️ THE READOUT AND THE DOTS MUST BE ONE CHORD. They are two views of the same slot — a name
+   * and a set of keys — and a name that disagrees with the lit keys is worse than either alone,
+   * because the person has no way to tell which of the two is lying to them.
+   */
+  it('names the same chord the keyboard lights up', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++) {
+        for (const p of CHORD_PATTERNS) {
+          for (let slot = 0; slot < p.degrees.length; slot++) {
+            const notes = chordAt(p, slot, degrees, root)
+            const fromNotes = [...new Set(notes.map((n) => ((n % 12) + 12) % 12))].sort(
+              (a, b) => a - b,
+            )
+            expect(chordToneClasses(p, slot, degrees, root), `${p.id} slot ${slot}`).toEqual(
+              fromNotes,
+            )
+          }
+        }
+      }
+    }
+  })
+
+  it('gives nameChord something it can actually read', () => {
+    /* [1, 5, 6, 4] in C major is C–G–Am–F, and those are the words it should produce */
+    const said = four.degrees.map((_, slot) => nameChord(chordAt(four, slot, MAJOR_DEGREES, 0)))
+    expect(said).toEqual(['C major', 'G major', 'A minor', 'F major'])
+  })
+
+  it('and in another key', () => {
+    /* the same four in D: D–A–Bm–G */
+    const said = four.degrees.map((_, slot) => nameChord(chordAt(four, slot, MAJOR_DEGREES, 2)))
+    expect(said).toEqual(['D major', 'A major', 'B minor', 'G major'])
+  })
+
+  it('says nothing rather than guessing when there is no scale', () => {
+    expect(chordAt(four, 0, [], 0)).toEqual([])
   })
 })
