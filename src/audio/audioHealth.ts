@@ -1,5 +1,6 @@
 import { sharedCtx } from './context'
-import { readWaveform } from './audioTap'
+import { readFloatWave } from './audioTap'
+import { clipScan, coverage } from './clipScan'
 import { limiterReduction, liveVoices, noteCounts, preLimitPeak, resetNoteCounts } from './synth'
 
 /**
@@ -34,25 +35,41 @@ export type AudioHealth = {
   /** times the gap between quanta was more than a quantum and a half */
   gaps: number
   /**
-   * Loudest sample seen since the last read, 0..1.
+   * Loudest sample seen since the last read. Can exceed 1.
    *
-   * ⚠️ A 4.3% SAMPLE, NOT A MEASUREMENT, and the difference matters when you are trusting
-   * it. This comes from the analyser tap's 2048 bytes, read once per call — 43ms out of every
-   * second at 48kHz — so it sees whatever happened to be in that window. Measured on ONE
-   * unchanging drum loop across six consecutive reads: 0.117, 0.625, 0.055, 0.531, 0.109, 0.828,
-   * while preMax below sat still at 0.819 the whole time. peakMax latches the highest of them, so
-   * it creeps toward the truth over a while; a single read is close to noise.
+   * ⚠️ IT WAS A 4.3% SAMPLE OF 8-BIT DATA, AND BOTH HALVES OF THAT HID A REAL MISS. It used to
+   * be read once per call from the tap's 2048 BYTES — 43ms out of every second at 48kHz, and a
+   * byte mapping that saturates at 255. Measured on ONE unchanging drum loop across six
+   * consecutive reads: 0.117, 0.625, 0.055, 0.531, 0.109, 0.828, while preMax sat still at 0.819
+   * the whole time.
    *
-   * It is also 8-bit: the analyser hands back bytes, so the finest step here is 1/128.
+   * ⚠️ AND ON 6 Nov 2026 IT MISSED CLIPPING OUTRIGHT. Four backing layers with every fader at
+   * maximum: dense float sampling found a peak of **1.100** with 0.004% of samples past full
+   * scale, while this strip read `clip ~0 · out ~0.898` through the same run. Bytes could not
+   * have shown 1.100 at any sampling rate — see readFloatWave in audioTap.
+   *
+   * Both are fixed here rather than in a worklet, which is what the note that used to sit below
+   * proposed: the 20Hz sampler that already latches `preMax` scans this too, taking coverage
+   * from 4.3% to about 85%, and it reads floats. What is left is the 15% between windows, which
+   * is why peakMax is still the figure to trust after the fact.
    */
   peak: number
   /**
-   * Samples at or above 0.985 — the flattened tops of a clipped waveform.
+   * Samples past full scale — genuinely clipped, not merely loud.
    *
-   * ⚠️ COUNTED IN THE SAME 4.3% WINDOW, so zero means "none seen", not "none happened".
-   * Fixing that honestly means feeding the limiter's output into the worklet, which has no audio
-   * input at all today — it is connected output-only, and only counts render quanta. Until then
-   * the number earns a `~` on screen rather than a confidence it has not got.
+   * ⚠️ THE OLD TEST WAS `>= 0.985` AND IT WAS A PROXY, not a definition: bytes saturate, so a
+   * sample at 1.0 and one at 1.5 arrived identical and the only askable question was "is the top
+   * flat". That is wrong in both directions — a clean sine peaking at 0.99 was counted, and a mix
+   * 10% through the roof read as 0.992. With floats the real question is askable, so clipScan.ts
+   * asks it and a test pins the answer.
+   *
+   * ⚠️ MEASURED WHERE THE LIMITER LEAVES IT, WHICH IS BEFORE YOUR VOLUME. The tap forks off ahead
+   * of the instrument fader on purpose (see mixer.ts on why the picture must not follow the
+   * knob), so this says the mix came out of the limiter past full scale — not that your speakers
+   * got it. At the default volume of 0.7 a peak of 1.10 reaches the converter at 0.77 and nothing
+   * clips. Left that way deliberately: a limiter overshooting is a fact about the signal chain
+   * and worth seeing, while a figure that moved when you touched the volume slider would be a
+   * latched total nobody could reason about.
    */
   clipped: number
   /** notes actually started and stopped at the synth since the last read */
@@ -126,13 +143,29 @@ const DRIFT_WINDOW_MS = 2000
  * cannot see them cannot clear them either.
  */
 const DRIFT_FLOOR_MS = 15
+/**
+ * How the post-limiter scan is sampled, as two constants rather than two literals and a
+ * sentence — `scanCoverage()` below turns them into the figure the strip shows, so the claim on
+ * screen cannot drift from the cadence that produces it.
+ *
+ * 2048 is the analyser's own fftSize and not a choice; 50ms is the sampler that already exists
+ * for the limiter.
+ */
+const SCAN_WINDOW = 2048
+const SCAN_EVERY_MS = 50
+
+/** What fraction of the audio the scan actually looks at, 0..1, at this context's rate. */
+export function scanCoverage(rate: number): number {
+  return coverage(SCAN_WINDOW, SCAN_EVERY_MS, rate)
+}
+
 let node: AudioWorkletNode | null = null
 let expectedFrom = 0
 let counted = 0
 let gapCount = 0
 let peak = 0
 let clipped = 0
-let scratch: Uint8Array | null = null
+let scratch: Float32Array | null = null
 let droppedTotal = 0
 let clippedTotal = 0
 let peakMax = 0
@@ -233,10 +266,27 @@ export async function startHealth(): Promise<boolean> {
     fastTimer = window.setInterval(() => {
       const p = preLimitPeak()
       if (p > preMax) preMax = p
+      /**
+       * ⚠️ THE POST-LIMITER SCAN RIDES THIS TIMER TOO, and that is the whole repair. It used to
+       * happen once per readHealth — 1Hz — which is 2048 samples out of 48,000 and therefore a
+       * meter that could honestly only say "none seen". At 50ms the same window covers 85% of
+       * the audio, for one more array scan twenty times a second.
+       *
+       * ⚠️ AND IT IS SCANNED EVEN DURING THE ARMING SECOND, unlike the limiter reduction below.
+       * The guard there exists because `reduction` is a relaxing envelope that reads -13dB on a
+       * compressor that has only just been built; a PEAK has no such warm-up — it is whatever
+       * arrived — so skipping the first second would only lose real samples.
+       */
+      if (!scratch) scratch = new Float32Array(SCAN_WINDOW)
+      if (readFloatWave('instrument', scratch)) {
+        const s = clipScan(scratch, peak)
+        peak = s.peak
+        clipped += s.over
+      }
       if (performance.now() < armedAt) return
       const r = limiterReduction()
       if (p > 0.02 && r < reductionWorst) reductionWorst = r
-    }, 50)
+    }, SCAN_EVERY_MS)
     node.port.onmessage = (e: MessageEvent) => {
       const d = e.data as { n: number; elapsed: number; gaps: number }
       const should = Math.round((d.elapsed * ctx.sampleRate) / 128)
@@ -282,15 +332,11 @@ export function stopHealth() {
  */
 export function readHealth(): AudioHealth {
   const ctx = sharedCtx()
-  if (!scratch) scratch = new Uint8Array(2048)
-  // the tap is post-limiter, so this is what the speakers are actually being asked for
-  if (readWaveform('instrument', scratch)) {
-    for (let i = 0; i < scratch.length; i++) {
-      const v = Math.abs((scratch[i] - 128) / 128)
-      if (v > peak) peak = v
-      if (v >= 0.985) clipped++
-    }
-  }
+  /* ⚠️ NO SCAN HERE ANY MORE. It used to read the tap once per call, which is where the 4.3%
+     came from; the 20Hz sampler in startHealth does it now and this only reports what it
+     latched. One consequence worth knowing: with the strip stopped, `peak` and `clipped` stay
+     at zero rather than giving a one-window answer — which is the honest reading, because
+     nothing was watching. */
   const dropped = Math.max(0, expectedFrom - counted)
   droppedTotal += dropped
   clippedTotal += clipped

@@ -57,6 +57,7 @@ import {
   labOn,
   readHealth,
   resetHealth,
+  scanCoverage,
   startHealth,
   stopHealth,
   type AudioHealth,
@@ -479,6 +480,8 @@ function AudioHealthStrip() {
   }, [])
   if (!h) return null
   const bad = h.worst !== 'clean'
+  /* the real rate, so the tooltip's percentage is this machine's rather than 48kHz's */
+  const scanPct = Math.round(scanCoverage(h.sampleRate) * 100)
   /**
    * ⚠️ THREE STATES, NOT TWO, because "not clean" covers two very different things.
    *
@@ -510,10 +513,15 @@ function AudioHealthStrip() {
     <div className="inst-health" style={bad ? { color: '#f46b6b' } : undefined}>
       <div
         title={
-          'in and squash are latched from a 20Hz sampler and are solid. ' +
-          'clip and out are computed from 2048 samples once a second — 4.3% of the audio — so a ' +
-          'zero there means "none seen", not "none happened". Measured: on one unchanging drum ' +
-          'loop, out read 0.055 one second and 0.828 the next while in sat still at 0.819.'
+          /* ⚠️ THE COVERAGE FIGURE IS ASKED FOR, NOT TYPED. It used to say 4.3% beside a
+             cadence defined in audioHealth, and when the scan moved onto the 20Hz sampler the
+             sentence would have gone on claiming the old number — the exact rot CLAUDE.md
+             describes, in the file that would never have contradicted it. */
+          `in, squash, clip and out are all latched from the same 20Hz sampler, which sees ${scanPct}% ` +
+          'of the audio. A zero still means "none seen in the windows looked at", not "none ' +
+          'happened" — but it used to mean 4.3% of them. clip counts samples PAST full scale, ' +
+          'and out is the mix as it leaves the limiter, before your volume: at 0.7 a peak of ' +
+          '1.10 reaches the speakers at 0.77.'
         }
       >
         <strong>{h.worst === 'clean' ? 'clean' : h.worst}</strong> · late {h.driftMs}ms · clip ~

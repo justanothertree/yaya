@@ -113,6 +113,32 @@ export function readWaveform(id: TapId, into: Uint8Array): boolean {
 }
 
 /**
+ * The same waveform in FLOATS, which is the only way to see past full scale.
+ *
+ * ⚠️ `getByteTimeDomainData` CANNOT REPORT A PEAK ABOVE 1, and that is not a resolution
+ * quibble — it is a ceiling. The byte mapping is `128 + 128x` clamped into 0..255, so every
+ * sample from 0.992 upwards comes back as 255 and reads as 0.992 however far past the ceiling
+ * it actually went. A meter built on it can tell you the tops are flat; it cannot tell you a
+ * clean loud signal from one 10% through the roof, which are the two cases worth separating.
+ *
+ * Measured on 6 Nov 2026 on the instrument's own tap, playing a four-layer backing with every
+ * layer fader at maximum: float sampling found a peak of **1.100** with 0.004% of samples past
+ * full scale, while the byte path in audioHealth reported `clip ~0` and `out ~0.898` across the
+ * same run. Both halves of that miss are real — bytes could not have shown 1.100 at all, and
+ * one read a second sees 4.3% of the audio.
+ *
+ * Bytes stay the default for DRAWING: a scope wants 0..255 and a clamp is what a scope hitting
+ * its edge should look like. This is for measuring.
+ */
+export function readFloatWave(id: TapId, into: Float32Array): boolean {
+  const node = sources.get(id)
+  if (!node) return false
+  if (into.length < node.fftSize) return false
+  node.getFloatTimeDomainData(into as Float32Array<ArrayBuffer>)
+  return true
+}
+
+/**
  * Every live source at once.
  *
  * ⚠️ The PEAK per bin, not the sum. Summing dB-scaled bytes is not physically meaningful —
