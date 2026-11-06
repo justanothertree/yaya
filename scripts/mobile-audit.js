@@ -226,6 +226,41 @@ const spillsUnmanaged = (el, cs) => {
 }
 
 /**
+ * A HORIZONTAL SCROLL CONTAINER THAT IS ITSELF WIDER THAN THE SCREEN — a box that says it will
+ * keep its content in and then does not, because nothing ever bounded the box.
+ *
+ * ⚠️ THE ONE SHAPE EVERY RULE ABOVE IS BLIND TO, AND `spillsUnmanaged` IS BLIND TO IT BY
+ * DESIGN. That rule exempts anything declaring its own axis, correctly — the piano keyboard and
+ * the day strip are meant to go sideways and a checker that cries wolf about them is one nobody
+ * runs twice. But "declares the axis" was being read as "therefore it is fine", and those are
+ * different claims: `overflow-x: auto` only does something once the element has a width to
+ * overflow. Give it a parent that grows to fit it and the property is inert decoration.
+ *
+ * What it catches, found by eye on 5 Nov 2026 and only afterwards explained: at 375 with the
+ * loop at 32 bars, `.inst-arrange` declared `overflow-x: auto`, measured 1064px wide, reported
+ * `scrollWidth - clientWidth` of ZERO, and dragged the whole document 733px sideways. Its
+ * `li` is a grid item whose automatic minimum is its min-content size, so the row simply took
+ * the width it wanted. `spills` reported 0 throughout. `sideways` and `offEdge` both fired —
+ * and named seventeen things, none of which was the cause, because everything from the nav
+ * down is past the edge once the page is wider than the screen.
+ *
+ * ⚠️ SO ITS VALUE IS NAMING THE CULPRIT, not noticing the damage. `sideways` already says the
+ * page is broken; this says which element broke it, which is the half that took a manual walk
+ * up the ancestor chain comparing `scrollWidth` to `clientWidth` at every step.
+ *
+ * ⚠️ THE TEST IS AGAINST THE VIEWPORT, not against the parent, and that is deliberate — at the
+ * time of the bug the parent had grown too (1083px), so a parent comparison reports nothing
+ * until four levels up. A scroller exists to keep content inside a box; a box wider than the
+ * window has failed whatever its parent is doing. Measured against the healthy site: the piano
+ * keyboard, the bar ruler and the day strip all sit at 327 inside a 375 page and stay silent.
+ */
+const overgrownScroller = (el, cs, W) => {
+  if (cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') return false
+  /* two pixels of slack, like every other rule here — a rounded border is not a finding */
+  return el.getBoundingClientRect().width > W + 2
+}
+
+/**
  * ⚠️ WCAG exempts a target whose size is set by the text around it — a link in a sentence
  * cannot be made 24px tall without changing the line it sits in.
  */
@@ -411,6 +446,8 @@ export function mobileAudit(root = document) {
     insideOut: [],
     /* content past its own box with nothing managing it — see spillsUnmanaged */
     spills: [],
+    /* a scroll container wider than the screen, so it never scrolls — see overgrownScroller */
+    unbounded: [],
     wordless: [],
   }
   const once = new Set()
@@ -498,6 +535,17 @@ export function mobileAudit(root = document) {
         el: id(el),
         wide: el.clientWidth,
         by: el.scrollWidth - el.clientWidth,
+      })
+    }
+    if (!once.has('u' + id(el)) && overgrownScroller(el, cs, W)) {
+      once.add('u' + id(el))
+      out.unbounded.push({
+        el: id(el),
+        wide: Math.round(el.getBoundingClientRect().width),
+        screen: W,
+        /* zero means the property is doing nothing at all — the box never got a width to
+           overflow, which is the shape worth recognising at a glance */
+        scrolls: el.scrollWidth - el.clientWidth,
       })
     }
     if (!once.has('p' + id(el)) && spillsUnmanaged(el, cs)) {
