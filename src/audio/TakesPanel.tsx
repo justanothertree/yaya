@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
-import { canRecord, decodeTake, recordTake, type Recording } from './recordTake'
-import { allTakes, dropTake, putTake, takenBytes, TAKE_CAP, type TakeRow } from './takes'
+import { audioSeconds, canRecord, decodeTake, recordTake, type Recording } from './recordTake'
+import {
+  allTakes,
+  dropTake,
+  putTake,
+  takenBytes,
+  TAKE_CAP,
+  TAKE_MAX_SECONDS,
+  type TakeRow,
+} from './takes'
 import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx, takeChop } from './looper'
 import { PLAIN_VOICE, type VoiceFx } from './takeFx'
 import { CHOP_RATES, CHOP_SHAPES, NO_CHOP, type ChopShape } from './chop'
 import { bounceStems, type Stem, type StemProgress } from './stems'
+import { TakeEditor } from './TakeEditor'
+import { isWhole, trimFrames, trimLen } from './takeEdit'
 
 /**
  * Singing, kept beside the song.
@@ -64,6 +74,10 @@ export function TakesPanel() {
   const [onLoop, setOnLoop] = useState(() => loopState().takes)
   /** which take's controls are showing, if any */
   const [open, setOpen] = useState<string | null>(null)
+  /** which take's waveform is open, if any — a separate question from its effects */
+  const [cut, setCut] = useState<string | null>(null)
+  /** which take has been asked about deleting; cleared the moment anything else happens */
+  const [sure, setSure] = useState<string | null>(null)
   const [stems, setStems] = useState<Stem[]>([])
   const [bouncing, setBouncing] = useState<StemProgress | null>(null)
   /**
@@ -148,7 +162,16 @@ export function TakesPanel() {
       }
       out.current = { src, gain }
       setPlaying(row.id)
-      src.start()
+      /**
+       * ⚠️ THE TRIM, HERE TOO. Found by reloading the page and looking at the list: this ▶
+       * played the whole four seconds of a take the editor and the transport had both agreed
+       * was one — three controls on one recording and one of them disagreeing, which is the
+       * shape this repository keeps finding. The frames come from the same function the
+       * editor and the export ask, so there is no second conversion to drift.
+       */
+      const { offset, frames } = trimFrames(row.trim, buf.duration, buf.sampleRate)
+      if (!frames) return stopPlaying()
+      src.start(0, offset / buf.sampleRate, frames / buf.sampleRate)
     },
     [stopPlaying],
   )
@@ -179,8 +202,70 @@ export function TakesPanel() {
     await refresh()
   }, [going, refresh])
 
+  /**
+   * ⚠️ THE ARMED DELETE DISARMS ITSELF. A button that has turned into "Delete for good?" and
+   * stays that way is a trap: you come back to the room a minute later, press what you think
+   * is the ✕ you remember, and it goes. Six seconds is long enough to read it and decide.
+   */
+  useEffect(() => {
+    if (!sure) return
+    const t = window.setTimeout(() => setSure(null), 6000)
+    return () => window.clearTimeout(t)
+  }, [sure])
+
+  /**
+   * Open a sound file that already exists, as a take.
+   *
+   * ⚠️ THREE REFUSALS BEFORE THE EXPENSIVE STEP, in the order that makes each one cheap. Size
+   * first, because it is free and the common mistake (an album, a podcast) fails here. Then
+   * duration, from the container's own metadata — a check the size cannot do, because the
+   * ratio between bytes on disk and megabytes of AudioBuffer is the bitrate. Only then the
+   * decode, which is the one that can take the tab down and the only honest test of whether
+   * this browser can actually open the format.
+   *
+   * ⚠️ AND EVERY REFUSAL SAYS WHICH ONE IT IS. "That didn't work" for a file that is too long,
+   * a file that is too big and a file this browser has never heard of sends somebody to try
+   * the same thing three times. The numbers are in the sentence.
+   */
+  const openFile = useCallback(
+    async (file: File) => {
+      setSay('')
+      stopPlaying()
+      const room = TAKE_CAP - (await takenBytes())
+      if (file.size > room)
+        return setSay(
+          room <= 0
+            ? `Full — ${mb(TAKE_CAP)}MB of takes already. Delete one to make room.`
+            : `That file is ${mb(file.size)}MB and there is ${mb(room)}MB left. Delete a take to make room.`,
+        )
+      setSay('Opening…')
+      const secsLong = await audioSeconds(file)
+      if (secsLong === null)
+        return setSay(`${file.name} is not a sound file this browser can open.`)
+      if (secsLong > TAKE_MAX_SECONDS)
+        return setSay(
+          `That is ${Math.round(secsLong / 60)} minutes long — ${TAKE_MAX_SECONDS / 60} is the most a take can be.`,
+        )
+      /* the decode is both the last check and the thing that proves it will play later */
+      if (!(await decodeTake(file))) return setSay(`${file.name} will not open in this browser.`)
+      const id = `take_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+      const kept = await putTake(id, file, secsLong)
+      setSay(
+        kept.ok
+          ? `Opened ${file.name} — ${secs(secsLong)}. It stays in this browser.`
+          : kept.why === 'full'
+            ? `Full — ${mb(TAKE_CAP)}MB of takes already. Delete one to make room.`
+            : 'This browser will not keep recordings.',
+      )
+      await refresh()
+    },
+    [refresh, stopPlaying],
+  )
+
   const bin = useCallback(
     async (id: string) => {
+      setSure(null)
+      if (cut === id) setCut(null)
       stopPlaying()
       /* ⚠️ off the loop first. Deleting the audio under a placed take would leave the
          transport holding an id with no bytes — which plays silence rather than breaking, but
@@ -189,7 +274,7 @@ export function TakesPanel() {
       await dropTake(id)
       await refresh()
     },
-    [refresh, stopPlaying],
+    [refresh, stopPlaying, cut],
   )
 
   const toLoop = useCallback(
@@ -255,11 +340,43 @@ export function TakesPanel() {
           Discard
         </button>
       )}
+      {/**
+       * ⚠️ A LABEL WRAPPING A HIDDEN INPUT, not a button that clicks one. A file dialog may
+       * only be opened from a real user gesture, and a `ref.current.click()` inside a handler
+       * is one indirection away from browsers that refuse it. A label IS the gesture.
+       *
+       * ⚠️ AND NOTHING LEAVES THE MACHINE. The file is read into a Blob and put in the same
+       * IndexedDB store a recording goes to — there is no upload here and no server that
+       * would take one. The copy under the list says so, because "where did my voice memo
+       * go" is a fair question to have about a site.
+       */}
+      {!going && (
+        <label className="btn btn-ghost inst-takes-open" title="Use a sound file you already have">
+          📂 Open a file
+          <input
+            type="file"
+            accept="audio/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              /* ⚠️ cleared, or picking the same file twice in a row fires no change event
+                 and the second attempt silently does nothing */
+              e.target.value = ''
+              if (f) void openFile(f)
+            }}
+          />
+        </label>
+      )}
       {say && <span className="muted inst-takes-say">{say}</span>}
       {!rows.length && !going && (
         <span className="muted">
-          Takes are recordings — a voice, a room, anything a note cannot be. They stay in this
-          browser.
+          {/* ⚠️ IT NAMED ONE WAY IN AND THERE ARE TWO NOW, which is the same rot as the beats
+              panel: a sentence that lists what a feature does goes stale the moment the
+              feature grows, and nothing downstream contradicts it. It also has one more job
+              than it looks — "stay in this browser" is the answer to the question somebody
+              has about handing a site a voice memo, so it goes before the invitation. */}
+          Takes are recordings — a voice, a room, anything a note cannot be. Sing one or open a
+          sound file you already have; either way it stays in this browser.
         </span>
       )}
       {rows.length > 0 && (
@@ -270,10 +387,20 @@ export function TakesPanel() {
                 className="btn btn-ghost"
                 onClick={() => void (playing === r.id ? stopPlaying() : play(r))}
               >
-                {playing === r.id ? '■' : '▶'} {secs(r.len)}
+                {/* ⚠️ HOW LONG IT PLAYS, NOT HOW LONG IT WAS RECORDED — the figure beside a
+                    play button is a claim about what pressing it does. Measured on screen
+                    after a reload: a trimmed take's row read 0:04 while the button played one
+                    second, because the length came off the stored row and the sound came off
+                    the trim. The original is still named in the line beside it. */}
+                {playing === r.id ? '■' : '▶'} {secs(trimLen(r.trim, r.len))}
               </button>
               <span className="muted inst-takes-meta">
                 {new Date(r.at).toLocaleDateString()} · {mb(r.bytes)}MB
+                {/* ⚠️ SAID WHERE THE SIZE IS SAID, because the two together are the thing that
+                    would otherwise look like a bug: a row reading 1 second and 0.4MB. The
+                    recording is whole and only part of it is being played, and that sentence
+                    belongs beside the number that gives it away. */}
+                {!isWhole(r.trim, r.len) && ` · ${secs(r.len)} kept whole`}
               </span>
               {/* ⚠️ WHAT IT DOES, NOT WHERE IT GOES. "Add to loop" describes the mechanism;
                   this says the outcome, which is the thing somebody is deciding between. */}
@@ -309,12 +436,62 @@ export function TakesPanel() {
                   ⚙
                 </button>
               )}
-              <button className="btn btn-ghost" onClick={() => void bin(r.id)} title="Delete">
-                ✕
+              {/* ⚠️ SEEING IT IS A SEPARATE THING FROM EFFECTING IT, and it is available
+                  whether or not the take is on the loop — the first question anybody has about
+                  a recording is where the singing starts, and that is not a question about the
+                  arrangement. ⚙ is only offered for a placed take because its chain does not
+                  exist otherwise; a waveform always does. */}
+              <button
+                className={'btn btn-ghost' + (cut === r.id ? ' is-on' : '')}
+                onClick={() => setCut(cut === r.id ? null : r.id)}
+                title="Look at it and choose a part"
+              >
+                ✎{!isWhole(r.trim, r.len) && <span aria-hidden> ·</span>}
+                <span className="sr-only">
+                  {isWhole(r.trim, r.len) ? 'Edit this recording' : 'Edit this recording — trimmed'}
+                </span>
               </button>
+              {/**
+               * ⚠️ IT ASKS NOW, AND IT DID NOT. One press of ✕ destroyed a recording outright —
+               * no confirm, no undo, and the blob is the only copy there will ever be. Every
+               * other path to losing a take is already careful: `putTake` refuses at the cap
+               * rather than evicting, `sweepTakes` takes the ids to KEEP so a forgetful caller
+               * deletes nothing, and a trim does not touch the bytes at all. This was the one
+               * door left open, and it was a single mis-tap wide on a phone.
+               *
+               * ⚠️ NOT `window.confirm`, which is auto-dismissed in the Browser pane and
+               * returns false — so a confirmed delete would appear to do nothing and the
+               * feature would read as broken (CLAUDE.md records an hour lost to exactly that on
+               * the paint room's Clear button). Two presses of the same button, with the second
+               * one saying what it will do.
+               */}
+              {sure === r.id ? (
+                <button
+                  className="btn is-danger"
+                  onClick={() => void bin(r.id)}
+                  title="This cannot be undone"
+                >
+                  Delete for good?
+                </button>
+              ) : (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setSure(r.id)}
+                  title="Delete this recording"
+                >
+                  ✕<span className="sr-only">Delete this recording</span>
+                </button>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {cut !== null && rows.some((r) => r.id === cut) && (
+        <TakeEditor
+          key={cut}
+          row={rows.find((r) => r.id === cut)!}
+          onChanged={() => void refresh()}
+        />
       )}
       {open !== null && onLoop.some((t) => t.id === open) && (
         <div className="inst-takes-fx">

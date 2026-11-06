@@ -19654,3 +19654,51 @@ a.cz-msg-author:focus-visible {
   font-size: 0.85rem;
   color: #f46b6b;
 }
+
+/* ⚠️ A DELETE THAT HAS BEEN ASKED ABOUT, and the only red button in the instrument. It exists
+   because the takes list had a one-press ✕ that destroyed the only copy of a recording; the
+   second press is a different button saying what it does, rather than a `window.confirm` the
+   Browser pane auto-dismisses. See TakesPanel. */
+.btn.is-danger {
+  border-color: var(--loss);
+  color: var(--loss);
+}
+.btn.is-danger:hover {
+  background: color-mix(in srgb, var(--loss) 18%, transparent);
+}
+
+/* Looking at a recording — see TakeEditor. Its own row under the list, because a waveform
+   that has to share a line with six buttons is a waveform nobody can aim at. */
+.take-edit {
+  flex: 1 0 100%;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.04);
+}
+/* ⚠️ `touch-action: none`, for the reason the keyboard sets it: on a phone the browser would
+   otherwise decide that a drag across this is a page scroll, and the selection would never
+   start. `width: 100%` with `display: block` so the canvas does not carry its own aspect. */
+.take-edit-wave {
+  display: block;
+  width: 100%;
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 0.35rem;
+  background: rgb(0 0 0 / 0.22);
+}
+.take-edit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+/* ⚠️ its own line, with a floor in PIXELS rather than rem — the root size is fluid here, so
+   rem is not a length. Without it the sentence is the flexible thing in the row and collapses
+   to a column of single characters while every figure beside it reads zero. */
+.take-edit-says {
+  flex: 1 1 100%;
+  min-width: 120px;
+  font-size: 0.78rem;
+}

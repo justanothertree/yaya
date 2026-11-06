@@ -8,6 +8,7 @@ import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
 import { partAt, partsIn } from './arrange'
+import { trimFrames } from './takeEdit'
 
 /**
  * A loop you play into, and then play over.
@@ -1867,7 +1868,21 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
     if (!row) return false
     const buf = await decodeTake(row.blob)
     if (!buf) return false
-    heard.set(id, buf)
+    /**
+     * ⚠️ THE TRIM IS APPLIED ONCE, HERE, AND NOWHERE ELSE. A take's trim is two numbers beside
+     * the blob (see takes.ts) and this is the only place the loop turns a blob into sound — so
+     * cutting the buffer as it arrives means every reader downstream is already looking at the
+     * kept part: the scheduler's `buf.duration`, the boundary cut, the chop's bar maths, the
+     * stem bouncer. Teaching each of those about a trim instead would be six places that have
+     * to agree, which is the bug shape this file keeps finding.
+     *
+     * ⚠️ AND IT MUST BE REDONE WHEN THE TRIM CHANGES, which is what `retrimTake` is for. The
+     * buffer is cached in `heard` precisely so a take is decoded once; the cost of that is
+     * that a cached buffer is a snapshot of a decision, and the panel has to say when the
+     * decision moved. Without it the editor would show one span and the loop would play
+     * another — a control derived from the take beside a control derived from the setting.
+     */
+    heard.set(id, cutTo(buf, row.trim))
   }
   if (!chains.has(id)) {
     const chain = makeVoiceChain(sharedCtx(), takeBus())
@@ -1880,6 +1895,51 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
       ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
       : [...state.takes, { id, at, fx: { ...PLAIN_VOICE } }],
   })
+  return true
+}
+
+/**
+ * A buffer holding only the kept part of a take.
+ *
+ * ⚠️ A COPY, NOT A VIEW, because Web Audio has no way to play part of a cached buffer without
+ * the caller remembering to say so every time — `start(when, offset, duration)` puts that on
+ * every call site, and the loop has several. Copying once per decode costs a few megabytes of
+ * Float32 for a minute of audio and removes the whole class of "this one forgot the offset".
+ *
+ * The original blob is untouched and is the only thing that persists; this is derived.
+ */
+function cutTo(buf: AudioBuffer, trim: { from: number; to: number } | undefined): AudioBuffer {
+  const { offset, frames } = trimFrames(trim, buf.duration, buf.sampleRate)
+  if (!frames || (offset === 0 && frames >= buf.length)) return buf
+  const ctx = sharedCtx()
+  const cut = ctx.createBuffer(buf.numberOfChannels, frames, buf.sampleRate)
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    /* ⚠️ copyFromChannel's third argument is the offset INTO THE SOURCE, which is the one
+       that makes this two lines instead of a loop — and `getChannelData().subarray()` would
+       alias the decoded buffer rather than copy it, so a second trim would read bytes the
+       first had already moved. */
+    cut.copyToChannel(buf.getChannelData(ch).slice(offset, offset + frames), ch)
+  }
+  return cut
+}
+
+/**
+ * The trim moved — decode this take again so the loop plays the new span.
+ *
+ * Returns false when the take is not on the loop, so a caller can skip the work.
+ */
+export async function retrimTake(id: string): Promise<boolean> {
+  if (!heard.has(id)) return false
+  heard.delete(id)
+  hushTakes()
+  const row = await getTake(id)
+  if (!row) return false
+  const buf = await decodeTake(row.blob)
+  if (!buf) return false
+  heard.set(id, cutTo(buf, row.trim))
+  /* ⚠️ the loop is told, or the takes list redraws and the transport does not — the two would
+     then disagree about a take that is on screen in both */
+  set({})
   return true
 }
 

@@ -39,6 +39,21 @@ const VERSION = 1
  */
 export const TAKE_CAP = 16 * 1024 * 1024
 
+/**
+ * The longest single recording that may be opened from a file.
+ *
+ * ⚠️ A MEMORY LIMIT WEARING A CLOCK, and the byte cap above cannot do its job. TAKE_CAP bounds
+ * what is STORED; this bounds what has to be DECODED to draw and play it, and the ratio
+ * between the two is the bitrate, which is not in the file size. Sixteen megabytes of 128kbps
+ * mp3 is about seventeen minutes, and seventeen minutes of stereo Float32 at 48kHz is roughly
+ * 390MB of AudioBuffer — enough to take a phone tab down while the file itself sat well inside
+ * every limit on this page.
+ *
+ * Ten minutes is about 115MB decoded in stereo, which a phone survives, and it is far longer
+ * than anything this room is for: a take is a voice or a room, not an album.
+ */
+export const TAKE_MAX_SECONDS = 10 * 60
+
 /** What is kept beside the bytes, so the store can be listed without decoding anything. */
 export type TakeRow = {
   id: string
@@ -49,6 +64,22 @@ export type TakeRow = {
   bytes: number
   type: string
   blob: Blob
+  /**
+   * Which part of it to keep, in seconds — absent means all of it.
+   *
+   * ⚠️ TWO NUMBERS BESIDE THE AUDIO, NEVER A REWRITTEN BLOB. The recording that came off the
+   * microphone is the only copy there will ever be, and `putTake` above already refuses at the
+   * cap rather than evicting because "that silently deletes something somebody sang, which is
+   * the one thing a recorder must never do". An edit that re-encodes the blob is that same
+   * deletion wearing a different hat — so trimming is a view, undo is just removing the view,
+   * and the bytes are untouchable.
+   *
+   * ⚠️ AND IT IS NOT VALIDATED BY `sane` BELOW, deliberately. A trim that came back malformed
+   * is a reason to ignore the trim, never a reason to drop the take — `clampTrim` in
+   * takeEdit.ts takes anything and answers with the whole take, so every reader is already
+   * safe and the row survives.
+   */
+  trim?: { from: number; to: number }
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -163,6 +194,30 @@ export async function putTake(id: string, blob: Blob, len: number): Promise<PutR
   }
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done === null ? { ok: false, why: 'blocked' } : { ok: true, row }
+}
+
+/**
+ * Keep part of a take, or go back to all of it.
+ *
+ * ⚠️ READ-MODIFY-WRITE OF THE WHOLE ROW, because IndexedDB has no partial update — and the row
+ * it writes back is the one it just read, blob included. That is the shape CLAUDE.md warns
+ * about under "a save that writes every column is a delete for the ones the caller forgot", so
+ * it is spelt out: nothing here constructs a row, it spreads the stored one and changes one
+ * field. A take that has grown a field this function has never heard of keeps it.
+ *
+ * Passing null removes the trim, which is the whole of undo — see takeEdit.ts.
+ */
+export async function setTakeTrim(
+  id: string,
+  trim: { from: number; to: number } | null,
+): Promise<boolean> {
+  const had = await getTake(id)
+  if (!had) return false
+  const row: TakeRow = { ...had }
+  if (trim) row.trim = { from: trim.from, to: trim.to }
+  else delete row.trim
+  const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
+  return done !== null
 }
 
 export async function dropTake(id: string): Promise<void> {

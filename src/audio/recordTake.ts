@@ -137,6 +137,44 @@ export async function recordTake(): Promise<Recording | null> {
 }
 
 /**
+ * How long a file is, WITHOUT decoding it.
+ *
+ * ⚠️ THE CHECK THAT HAS TO HAPPEN BEFORE decodeAudioData, not after, because decoding is the
+ * thing that can take the tab down. A compressed file is small on disk and enormous in memory:
+ * 16MB of 128kbps mp3 is about seventeen minutes, and seventeen minutes of stereo Float32 at
+ * 48kHz is **390MB** of AudioBuffer. The file-size limit cannot see that — the ratio between
+ * the two is the bitrate, which is not in the size.
+ *
+ * An `<audio>` element reads the container's own duration from its metadata and decodes
+ * nothing, so this costs a fetch of the first few kilobytes of a blob already in memory.
+ *
+ * Returns null when the browser cannot make sense of it at all, which is also the answer to
+ * "is this a format we can open" — and getting that answer here rather than from a failed
+ * decode is why an unsupported file can be refused in a sentence instead of a stack trace.
+ */
+export function audioSeconds(blob: Blob): Promise<number | null> {
+  return new Promise((give) => {
+    if (typeof Audio === 'undefined') return give(null)
+    const url = URL.createObjectURL(blob)
+    const el = new Audio()
+    let settled = false
+    const done = (v: number | null) => {
+      if (settled) return
+      settled = true
+      URL.revokeObjectURL(url)
+      give(v)
+    }
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) ? el.duration : null)
+    el.onerror = () => done(null)
+    /* ⚠️ a timeout, because a container the browser half-recognises can fire NEITHER event and
+       leave the import hanging with no message — which looks exactly like a frozen button */
+    setTimeout(() => done(null), 5000)
+    el.src = url
+  })
+}
+
+/**
  * Turn a stored take back into something that can be played.
  *
  * ⚠️ decodeAudioData IS DESTRUCTIVE TO ITS INPUT in some browsers — it detaches the ArrayBuffer
