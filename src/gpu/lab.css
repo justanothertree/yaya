@@ -383,3 +383,43 @@
 .crossing-helm {
   flex-wrap: nowrap;
 }
+
+/* ── shadow box ──────────────────────────────────────────────────── */
+/* the floor of the box as a grid of stacks, back row at the top as the box is seen */
+.shadowbox-grid {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0.5rem 0;
+}
+.shadowbox-row {
+  display: flex;
+  gap: 4px;
+}
+.shadowbox-cell {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card, #f4f1ec);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.shadowbox-cell[data-h='1'] {
+  background: #f1d2bb;
+}
+.shadowbox-cell[data-h='2'] {
+  background: #e7b48f;
+}
+.shadowbox-cell[data-h='3'] {
+  background: #dc9766;
+}
+.shadowbox-cell[data-h='4'] {
+  background: #c97a45;
+  color: #fff;
+}
+.shadowbox-cell[data-cursor='yes'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

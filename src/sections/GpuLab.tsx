@@ -40,6 +40,7 @@ import { SeedlingDemo } from '../gpu/SeedlingDemo'
 import { MobiusDemo } from '../gpu/MobiusDemo'
 import { PinballDemo } from '../gpu/PinballDemo'
 import { CrossingDemo } from '../gpu/CrossingDemo'
+import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -364,6 +365,13 @@ const DEMOS: readonly {
     name: 'Night crossing',
     line: 'Night crossing — a boat through a rocky channel in the dark, for two: one steers, one aims the searchlight. Only what the beam lights can be seen.',
     Demo: CrossingDemo,
+  },
+  // batch 11
+  {
+    id: 'shadowbox',
+    name: 'Shadow box',
+    line: 'Shadow box — rebuild a hidden stack of blocks from the shadows it throws. Puzzles with par, or pass and play: one hides, one rebuilds.',
+    Demo: ShadowboxDemo,
   },
 ]
 
