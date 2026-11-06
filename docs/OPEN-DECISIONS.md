@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-10-28 (fourth pass — §10 is new; §1–9 untouched).
+Last reviewed: 2026-11-06 (fifth pass — §11 is new, closing a run of Instrument work; §1–10 untouched).
 
 ---
 
@@ -312,3 +312,86 @@ the day a path appears, the door is already known:
 The cash question — whether "worth today" should include cash from sales — is untouched by
 everything above. The card still counts shares only and the chart's line still includes cash, both
 deliberately, both documented where they are. Nothing this week moved either.
+
+---
+
+## 11. Three Instrument loudness calls, all measured, none decided
+
+Added 6 Nov 2026, closing a run of Instrument work. Each of these is a number I can measure and
+a balance I cannot judge, because judging it means listening on a real device. They are listed
+together because they interact: fixing the first changes what the other two are worth.
+
+### 11a. A backing at zero volume takes 5–7dB off your hands
+
+**The strongest of the three, and the only one that is plainly a defect rather than a taste.**
+
+`Ringing.peak` in `synth.ts` is the PATCH's level. The polyphony scaling sums those and holds the
+total at the limiter threshold — but the LAYER's gain is applied by `busFor` → `b.level()` at the
+bus input, downstream of the polyphony gain, so the sum never sees it. A layer at gain 0 still
+counts its full patch level; a layer at gain 2 counts half of what it contributes.
+
+Measured with `ducking()` in `scripts/sound-probe.js`, four-layer backing, every fader at zero so
+it makes no sound at all, every guard in the probe green:
+
+|                                     | peak   | vs alone                      |
+| ----------------------------------- | ------ | ----------------------------- |
+| backing running, no key             | 0      | — (silent, as it must be)     |
+| C4 held, backing loaded but STOPPED | 0.5334 | **0.00dB** — the null control |
+| C4 held, silent backing RUNNING     | 0.2879 | **−5.36dB**                   |
+| C4 held again at the end            | 0.5334 | identical, to the last digit  |
+
+A hand-run earlier the same day measured **−6.74dB**. The two differ by where in the bar the note
+landed, because the sum follows the backing's envelopes — so a held note **pumps in time with
+music that is making no sound**.
+
+**What is being asked.** The fix is one multiplication: carry the layer gain into `peak` and
+`target`. It changes loudness in both directions — hands come back up over a quiet backing, and a
+hot layer starts ducking properly instead of leaning on the limiter. Whether that balance is the
+one Evan wants is an ear's decision.
+
+**Cost of waiting.** Turning a layer down makes the whole room quieter around it, so the fader
+feels like it has no authority — which may well be the complaint already recorded in
+`presets.test.ts`: _"the layer volume is almost not loud enough for some of the instruments"_. If
+so, this has been the cause the whole time and the preset levels below are a red herring.
+
+**To reproduce**, on `#instrument` with a backing loaded:
+
+```js
+const t = tap(await import('/src/audio/audioTap.ts'))
+await t.ducking()
+```
+
+It runs the whole experiment, validates its own silence, and puts the faders back. Run it twice —
+the first run after a backing is built reads low and the `repeatable` guard will say so.
+
+### 11b. The preset levels, and whether they still need re-levelling
+
+Untouched on purpose, all session. The measured spread is roughly 13× between the quietest and
+loudest patch at the same fader position, which is what `scripts/synth-levels.py` and
+`presets.test.ts` are both about.
+
+⚠️ **Do not act on this before 11a.** If the fader's apparent weakness is the ducking bug, then
+re-levelling presets is fixing the symptom of something else — and it is the change that cannot be
+undone quietly, because every saved song carries the old levels in its layer gains.
+
+### 11c. The layer fader's 2× ceiling buys less than it looks like
+
+Taking every layer fader from 1 to its 2× maximum moved the post-limiter peak **1.061 → 1.100**
+and the RMS **0.248 → 0.339**. The limiter eats most of a doubling, so raising the cap would buy
+less than the number suggests — and what it mostly buys is more limiter, which is audible as
+intermodulation rather than as volume (`synth.ts` has the spectral proof).
+
+Same ordering applies: 11a first, because the sum the limiter is being asked to hold is the thing
+that is currently wrong.
+
+### 11d. Two smaller ones, from the same run
+
+- **`out` and `clip` on the health strip are measured before the volume fader**, because the tap
+  forks there on purpose (see `mixer.ts` on why the picture must not follow the knob). So the
+  strip can say CLIPPING about a mix that reaches the speakers at 0.77. Left measuring the
+  limiter's output and the tooltip now says so; whether CLIPPING should instead mean _at the
+  converter_ is a real question.
+- **The take chain's echo and space sends have no headroom lean**, where the synth bus leans `dry`
+  back as space comes up. A full-scale source with echo at 0.6 peaked at 1.777 through it. Real
+  takes come from a microphone well below full scale, so this is a worst case rather than a daily
+  one.
