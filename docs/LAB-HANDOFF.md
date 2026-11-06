@@ -21,6 +21,8 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
 - **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
   studio, Critters. See its own section at the end.
+- **Batch 9 — draft, `claude/lab-toys-9`, STACKED ON BATCH 8**: remixes and new things to make —
+  see its own section at the very end.
 
 That is 7 live toys plus 30 integrated ones, 37 in the picker on `main`; batch 8 makes 41. Each batch section below is that batch's
 own note, including what it measured and what it had not.
@@ -1640,3 +1642,198 @@ for a minute, 👑 watch the champion).
       within a few generations? Is ×16 smooth?
 - [ ] Critters (phone) — can a finger place joints on a 10 cm grid and drag bones between them, or
       are the joints too close together at this scale?
+
+## Batch 9 — remixes and things to make
+
+⚠️ **STACKED ON BATCH 8.** Branch `claude/lab-toys-9` was cut from `claude/lab-toys-8` at
+`7211b3e` while #25 was still an unmerged draft, because one of these toys (Strut) builds directly
+on Critters' bodies, checks and physics. Its draft PR targets the batch-8 branch, so its diff is
+only batch 9. Merge #25 first; then this PR can be retargeted to `main` unchanged. Nothing here
+edits a batch-8 file except the shared `DEMOS` list (appended to) and `lab.css` (appended to) and
+this document.
+
+Same rules of evidence as batch 8: _measured_ means unit tests or headless Chromium on SwiftShader
+(a CPU stand-in for a GPU); "emulated phone" is Playwright's iPhone 13 profile with CDP touch, which
+checks layout and touch routing only. Nobody has played these on a real device.
+
+| Toy      | What you do                                                                                                                                                                                                                                                                   | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strut    | A REMIX of Critters: a creature whose 16-step sequencer is both its gait and its song — find a groove that walks it to the flag; its feet drum, and the walk leaves a watercolour score you can keep                                                                          | a WET-ON-WET PAINTING in world space: every note and footfall splats pigment into a float texture, which bleeds into its neighbours while wet and then dries for good (two textures taking turns); subtractive pigment, so colours mix like watercolour | "a sim whose events paint a keepable picture" — any game that should leave an artwork behind                                                                                                         |
+| Gust     | NEW: air hockey with no mallets — steer a fan round your half and blow; real wind carries the puck past four posts into the other goal. Against the computer (three speeds) or a friend on one device, first to 5                                                             | a STABLE-FLUIDS solver on a 160×90 grid (advect, red-black Gauss-Seidel pressure, project) with the posts, walls and open goal mouths as boundaries; the puck is stepped ON THE GPU by the air round it and read back each frame for the score          | "the GPU owns the physics, the CPU owns the rules": a one-thread pass that is a pure CPU function line for line, read back with a serial so a stale read is never counted                            |
+| Seedling | A REMIX of Life: Life as a puzzle — plant a few seed cells in a patch so what grows lights every lamp before time runs out; six gardens (gliders, a wall with a gap, the Seeds and Maze rules, a methuselah), then MAKE your own garden, rule included, and keep it as a file | Life with the RULE AS TWO MASKS in the uniform (any B/S rule), bounded edges, stones that never live; the step also lights lamps and leaves a fading glow, all in one compute pass; the garden drawn per pixel and stood upright on a tall stage        | "the GPU steps, the CPU judges": a twin of the step decides the puzzle and is compared to the GPU cell for cell; every level ships with a solution the tests replay, and is proven to fail untouched |
+
+- **Strut** — a creature whose step sequencer is both its gait and its song. Each row of the grid
+  under the stage is a muscle, and plays that muscle's note: the muscles sorted longest first climb a
+  pentatonic scale from the key, so a long muscle is low and a short one high (muscles of the same
+  length take neighbouring notes). Light a step and that muscle pulls in on it and sounds; its feet
+  drum where they land (kick and snare for the feet, left to right; toms if it stumbles onto a
+  joint). So a groove either walks or falls over: the goal is a groove that gets it to the
+  chequered flag 24 m away (the score shows metres, then the bars it took). As it walks, every note
+  is laid as a blot of watercolour as high up the paper as the note is up the scale, every footfall
+  a grey stamp on the floor and every few frames a faint dot under each joint, so the floor behind
+  it becomes a painted score of the walk; ⬇ Save painting keeps the whole 32 m strip as a PNG, 🧻
+  Fresh paper starts a new one. Tempo, Voice (marimba, kalimba, vibes, pluck, bell, steel pan) and
+  Key change the song; ✏️ Body opens Critters' builder (joint, bone, muscle, move, erase — the same
+  rules), and changing the body changes both how it walks and what it plays. Two presets: the
+  Stomper and the Inchworm. The creation is kept in this browser (`lab_strut_v1`) and in a file
+  (⬇ Save strut / ⬆ Open strut…). Keys: Space play, R from the start, E body, M sound, 1–5 tool.
+  Technique: the body's physics is Critters' (the same constants, run on the CPU for one creature at
+  240 Hz) with the muscles driven by the grid instead of a brain — a lit step pulls a muscle to 72%
+  of its rest, an unlit one lets it out to 108%, easing over 50 ms. Events come out of the physics in
+  order: a note when a lit step starts, a foot when a joint lands from the air faster than 0.35 m/s.
+  The GPU paints them: `blot_*` splats each event's pigment (the colour it takes OUT of the paper)
+  and wetness into an `rgba16float` sheet in world space, 48 px a metre; `bleed` lets wet paper share
+  pigment with its neighbours and dries it a little each frame; `show` lights the paper through the
+  pigment (`exp(−absorb)`), samples it between pixels, and draws the creature over it with each muscle
+  in its note's colour, brighter while it pulls; `develop` prints the whole sheet for the PNG.
+  ⚠️ What was wrong first:
+  1. **The first hand-made patterns tumbled or walked backwards** (the Stomper's top joint reached
+     2.75 m; the Inchworm went −1.1 m). The presets' patterns came from searching 400 grooves for the
+     furthest that stays upright: 14.5 m and 5.5 m in 8 bars.
+  2. **A preset edit silently did not apply** — a text replacement missed a reformatted block — and
+     the test that walks the presets forward is what caught it.
+  3. **A symmetric creature played one note**: muscles of equal length shared a pitch. They take
+     neighbouring notes now.
+  4. **The painting turned to mud**: notes laid where their muscles were stacked every colour on a
+     slow walker's spot until it dried black. Notes go up the paper by pitch now, a score.
+     _Measured_: the tests hold the music (longer is lower, pentatonic from the key, every muscle its
+     own note; the feet's drums), the sequencer (every lit step sounds once as it starts, from the first;
+     a lit muscle reaches 72% and an unlit 108%; nothing lit stands still and silent), the presets
+     (walk forward ≥ 10 m and ≥ 4 m in 8 bars without rising more than 0.4 m above their own height,
+     drumming as they go), the painting's arithmetic, and a saved strut (a round trip with every field
+     non-default; wrong row counts, non-boolean cells, too many muscles and broken bodies refused). On
+     SwiftShader a blot keeps 99% of its pigment while it blooms, is dry in about eight seconds and then
+     never changes; the printed painting is 1,536 × 192 and red where a red note was laid. In the page at
+     1024: it plays and walks with notes sounding, a cell toggles and is stored, a preset swaps the grid,
+     Save painting downloads the PNG, a file saves and reopens, a hostile file is refused, Voice and Tempo
+     are kept, mute stops the notes; on the emulated iPhone the grid scrolls sideways inside itself and a
+     touch toggles a cell. Audit clean at both.
+     Not measured: whether finding a walking groove is fun or frustrating, how in time the notes feel
+     (they sound on the frame the physics reaches the step, up to a frame late), and phone speed.
+
+- **Gust** — air hockey with no mallets. Each player has a fan they move round their own half of
+  the rink; it blows straight at the puck while held, and the wind — a real fluid, swirling round
+  four posts and round the puck itself — is what moves the puck. So where you stand is your aim:
+  get behind the puck to send it at the other goal, get in front of it to stop a shot. A fan's
+  breath (the arc round it) empties in 2.2 s of blowing and refills in 3.5 s, so it is played in
+  bursts. Blue's and Orange's wind dye the ice their colours, so you can see the air you made.
+  Against the computer (🤖, Gentle / Keen / Sharp — how fast its fan moves) or 👥 two players on
+  one device: each player's finger on their half of the ice steers and blows their fan, and two
+  thumbs at once work. On a tall stage (a phone held upright) the rink stands up, Blue's goal at the
+  bottom. First to 5; a goal rings a bell and play waits 1.5 s with the puck nudged toward who
+  conceded. Keys: Blue WASD + F to blow, Orange arrows + / or Enter, P or Space pause, N new match.
+  Technique: `force` adds each blowing fan's jet (6 cells wide, fading over 20, aimed at the puck)
+  and dye; `advect` carries air and dye back along themselves; `walls` stops air at the walls
+  (but not at the goal mouths), in the posts, and sets the air inside the puck to the puck's speed;
+  `diverge`, then 24 red-black Gauss-Seidel sweeps warm-started from the last frame's pressure, then
+  `project` make it incompressible, with zero pressure outside the goal mouths so air can leave
+  through them; `step_puck` — one thread — averages the air in a ring just outside the puck and does
+  exactly what `stepPuck` in gust.ts does: drag toward that air, move, bounce off walls and posts,
+  and the last 8 cells of a goal mouth tip toward the line. The CPU reads the puck back each frame
+  for the score and the computer's eyes; every time it puts the puck back it bumps a serial the GPU
+  carries, and a reading from before that is thrown away, so a goal is never counted twice.
+  ⚠️ What was wrong first:
+  1. **Shots crawled**: a fan pushed only the air round itself, so the push faded as the puck left
+     and a 2-second blow carried it 75 cells at 33 cells/s, curling away from the goal. The wind is
+     a jet toward the puck now, fading over 20 cells: the same blow scores in 1.9 s at 71 cells/s.
+  2. **A slow puck sat in the goal mouth for ever**: with the wall open there and the air still, it
+     could stop 3 cells short of the line. That was also why the computer, against nobody, scored
+     nothing in 30 s. The last 8 cells of a mouth tip toward the goal now.
+  3. **The computer gave up at the centre line**: it guarded its goal whenever the puck was in the
+     other half, even a puck an arm's length over the line. It shoots at anything within its jet's
+     reach now, from its own side. Against an idle player it wins 5–0 in 16 s at Keen.
+  4. **A landscape rink on an upright phone was small** (about 470 × 265 device pixels); standing
+     it up gives it 45% more area, and the shader and the finger share one fit (`rinkFit`).
+     _Measured_: the tests hold the uniform layout and the shader's copies of every constant, the puck
+     (still in still air, dragged to the air's speed, bounces off walls and posts losing speed, through
+     the goal mouth but not beside it, a crept-up puck drops in and one beside the mouth does not —
+     this test was made to fail by taking the tip out), breath (empties in 2.2 s, refills in 3.5 s, no
+     blowing on empty), fans held in their half at their speed, the computer (stands in line behind
+     the puck from the goal it attacks, blows only once there and with breath, guards a far puck,
+     shoots across the line within reach), the match (scorer, kickoff, winner at 5), and the rink's fit
+     (centred, upright on a tall stage, turned not mirrored). On SwiftShader: untouched, the puck does
+     not move in 2 s; the GPU puck matches its CPU twin to 0.0000 cells per step over a whole shot;
+     600 frames of random blowing never put the puck outside the walls or inside a post. In the page at
+     1024: the computer scores against an idle player and a bell sounds; WASD moves Blue and F blows it
+     and empties its breath, letting go stops it; a held mouse brings Blue to it, blowing; in two-player
+     mode the arrows and Enter move and blow Orange and a mouse on the right half steers Orange while
+     Blue stays put. On the emulated iPhone, two simultaneous CDP touches, one on each half, each
+     steered and blew its own fan, lifting stopped both, and the drawn blue ring was centred within
+     1 px of the thumb on the upright rink. Audit clean at both.
+     Not measured: whether it is fun — the fan speed, jet strength and breath were tuned by numbers,
+     not by playing; real two-thumb play on a real phone (the multi-touch was synthetic); and speed on
+     a phone GPU (24 sweeps × 2 on 14,400 cells a substep is small, but untested).
+
+- **Seedling** — Life as a puzzle. Each garden (32 × 20) has a green planting patch, a few lamps,
+  maybe some stones, a rule and a number of generations. You get so many seed cells to plant in the
+  patch: tap a cell to plant it (tap again to take it up), or switch to 🛩 Glider and tap to stamp a
+  whole glider (↻ turns it; a stamp is planted whole or not at all). ▶ Grow runs the rule; a lamp
+  lights when a live cell stands on it, and the garden is solved when every lamp has been lit at
+  least once before the generations run out. Stones never come alive, so they cut whatever grows
+  into them. Six gardens, easiest first: **First light** (one glider), **Both ways** (two gliders,
+  opposite directions), **Through the gap** (a glider lined up with a gap in a wall), **Seeds** (a
+  different rule — B2/S, where every cell dies at once — three seeds for four corners), **Wake the
+  garden** (six lamps all round; the right five cells grow for hundreds of generations — 12 of the
+  4,368 ways to plant five work, and nothing with four or fewer), **Maze** (B3/S12345, corridors
+  that stay). 💡 Show a way plants a stored solution (a garden solved that way earns no ✓); your
+  best for each (fewest seeds, then soonest) is kept and the list ticks it. 🛠 Make: 🪨 stones (drag
+  to draw), 💡 lamps, 🌱 drag out the patch, 🧽 erase; a name, a rule (Life, HighLife, Seeds, Day &
+  Night, Maze, or any B/S you type — B0 is refused, it would fill the empty garden), seeds and
+  generations; ▶ Try it plays it. The garden you make, your bests and where you were are kept in
+  this browser (`lab_seedling_v1`); ⬇ Save garden / ⬆ Open garden… keep it as a file. Keys (Play):
+  Space grow/pause, R replant, C clear, G glider, T turn; (Make) 1–4 tools.
+  Technique: one compute pass, `grow`, is `step` in seedling.ts line for line — the eight
+  neighbours counted with the edge as dead ground, born or staying by bit n of the rule's two
+  masks, never on a stone — and also sets a lamp's lit bit when a live cell is on it and keeps a
+  glow that fades by 18% a generation where life has been. Two boards take turns. `show` draws the
+  garden per pixel: uneven soil, the patch (gently pulsing while you plant), stones, lamps waiting
+  or lit, sprouts that swell in as each generation starts, and the glow; on a tall stage the
+  garden stands upright (`gardenFit`, shared with the finger). The CPU runs its own copy of the
+  step as the judge, and that is what decides solved or out of time.
+  ⚠️ What was wrong first:
+  1. **A solved level came out unsolved on the GPU.** `grow` reads the garden's size from the
+     uniform, and only drawing a picture wrote it, so any generation run before the first frame saw
+     a 0 × 0 garden and did nothing. The page happened to draw first; the probe, which grows before
+     drawing, did not. The size is written when the engine is made now.
+  2. **A glider stamped at the patch's edge planted half a glider**, which is no glider. A stamp
+     plants whole or not at all, and says why.
+  3. **The first wall had a 3-cell gap**, which no glider can pass: its 3 × 3 box moves a cell down
+     for every cell across. The gap is 5 now, and the lamp is on the lane through it.
+  4. **Show a way earned a ✓**, and a "too many seeds" note outlived the try that caused it.
+     _Measured_: the tests hold the rule notation, Conway's classics (a block stays, a blinker turns,
+     a glider walks a cell diagonally in four generations, and a turned glider the turned way), the
+     edge as dead ground (no wrap), stones (never alive; they cut a blinker — made to fail by letting a
+     stone live), Seeds' rule, planting (patch only, once each, the budget), every garden failing
+     untouched and solved by its stored solution within its budget, patch and time, the gap mattering
+     (the same glider two cells left is cut by the wall; with no wall it gets there), half of Both ways
+     not being a solution, a garden file (every field non-default round trip; too big, not JSON, a B0
+     rule, a 10-bit mask, zero or fractional generations, a big budget, a patch or stone off the board,
+     no lamps, 41 lamps, a lamp off the board, in the patch or on a stone — each refused, saying why),
+     tapping (plant, unplant, a whole glider that solves First light, a stamp that does not fit, a
+     stamp over budget), making (stones as runs along a row, a stone puts a lamp out, none in the
+     patch, lamps toggle, a patch dragged either way clears what is under it and stops at the edge, a
+     fresh garden is valid and unsolved), the uniform layout and the shader's mark bits, and the fit.
+     On SwiftShader, all six gardens untouched and solved: the GPU's board equals the judge's every
+     ten generations (0 differing cells in 120 comparisons) and its lit lamps equal the judge's. In
+     the page at 1024: untouched runs out; a mouse-stamped glider solves First light at generation 51
+     and is kept as a best with a ✓; an over-budget tap is refused saying so; Show a way solves Wake the
+     garden at 116 and earns no best; in Make, a dragged line of stones, a lamp, a dragged patch and a
+     typed rule are kept (B0 is marked invalid and not taken), the garden saves and reopens, a hostile
+     file is refused with its reason, Try it plays it, and all of it is there after a reload. On the
+     emulated iPhone the garden stands upright and a finger-tapped glider solves First light. Audit
+     clean at both.
+     Not measured: whether the gardens are the right difficulty and in the right order (designed by
+     search, not by watching somebody play); whether ~18 px cells on an upright phone are easy to tap
+     (under the 24 px a lone control should have — a board of cells, like the piano's keys, is
+     excused, and the glider stamp is the bigger target); real-device speed (640 cells, so trivial).
+
+### Real-device checklist — batch 9
+
+- [ ] Strut — can you find a groove that walks without the presets? Do notes land in time with the
+      grid? Is the painting worth keeping? On a phone, is a 28 px grid cell easy to tap, and is
+      scrolling the grid sideways natural?
+- [ ] Gust — play the computer on Keen: can you win, and is Sharp too sharp? Two people on one
+      phone held upright: do both thumbs work at once, and does the puck feel pushed by wind rather
+      than steered? Does it hold 60 fps on the phone?
+- [ ] Seedling — play all six gardens without 💡: which was too hard or too easy? On a phone held
+      upright, can you plant the cell you meant? Make a garden and have somebody else solve it.

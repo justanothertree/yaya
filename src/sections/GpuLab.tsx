@@ -34,6 +34,9 @@ import { SandDemo } from '../gpu/SandDemo'
 import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SnowflakeDemo } from '../gpu/SnowflakeDemo'
 import { SquishDemo } from '../gpu/SquishDemo'
+import { StrutDemo } from '../gpu/StrutDemo'
+import { GustDemo } from '../gpu/GustDemo'
+import { SeedlingDemo } from '../gpu/SeedlingDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -320,6 +323,25 @@ const DEMOS: readonly {
     name: 'Critters',
     line: 'Critters — build a creature from joints, bones and muscles, then race 256 copies and watch them learn to walk.',
     Demo: CrittersDemo,
+  },
+  /* batch 9 — remixes and new things to make */
+  {
+    id: 'strut',
+    name: 'Strut',
+    line: 'Strut — a creature whose step sequencer is its gait and its song: find a groove that walks it to the flag.',
+    Demo: StrutDemo,
+  },
+  {
+    id: 'gust',
+    name: 'Gust',
+    line: 'Gust — air hockey with no mallets: steer a fan, blow real wind through the rink and let the air carry the puck. Against the computer or a friend.',
+    Demo: GustDemo,
+  },
+  {
+    id: 'seedling',
+    name: 'Seedling',
+    line: 'Seedling — Life as a puzzle: plant a few seed cells so what grows lights every lamp in the garden. Then make gardens of your own, rule and all.',
+    Demo: SeedlingDemo,
   },
 ]
 
