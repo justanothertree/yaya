@@ -1,11 +1,17 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { AquariumDemo } from '../gpu/AquariumDemo'
+import { ClothDemo } from '../gpu/ClothDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
+import { GrowthDemo } from '../gpu/GrowthDemo'
 import { KaleidoDemo } from '../gpu/KaleidoDemo'
 import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
+import { MarbleDemo } from '../gpu/MarbleDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
+import { RibbonsDemo } from '../gpu/RibbonsDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
+import { TunnelDemo } from '../gpu/TunnelDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 
@@ -17,45 +23,107 @@ import '../gpu/lab.css'
  * a demo nobody can name is a pretty picture rather than an experiment.
  */
 
-const DEMOS = [
+/** What every demo is handed: whether to move, a way to start or stop it, and somewhere to report
+ *  the adapter it was given. */
+type DemoProps = {
+  running: boolean
+  setRunning: (r: boolean | ((r: boolean) => boolean)) => void
+  onAdapter: (adapter: GPUAdapter, format: GPUTextureFormat) => void
+}
+
+/**
+ * ⚠️ THE LIST IS THE ROOM. Each demo is one entry — its id, its name, its one line and its
+ * component — and the picker, the dropdown, the stepping buttons and the stage all read it. It
+ * used to be a list here AND a hand-written line per demo further down, which is the shape
+ * places.ts was written to end: a demo added to one and not the other is half there.
+ */
+const DEMOS: readonly {
+  id: string
+  Demo: ComponentType<DemoProps>
+  name: string
+  line: string
+}[] = [
   {
     id: 'swarm',
+    Demo: SwarmDemo,
     name: 'Swarm',
     line: 'Up to two million particles in a swirling current — a compute pass moves every one each frame.',
   },
   {
     id: 'life',
+    Demo: LifeDemo,
     name: 'Life',
     line: 'Conway’s Game of Life — every cell’s next generation worked out at once, on the GPU.',
   },
   {
     id: 'fluid',
+    Demo: FluidDemo,
     name: 'Fluid',
     line: 'Fluid painting — drag to stir colour into a simulated fluid that swirls, spreads and fades.',
   },
   {
     id: 'music',
+    Demo: MusicDemo,
     name: 'Music',
     line: 'Music visual — your mic, a file or the instrument as bars or a ring, drawn into a trail.',
   },
   {
     id: 'kaleido',
+    Demo: KaleidoDemo,
     name: 'Kaleidoscope',
     line: 'Kaleidoscope — draw, and every stroke repeats and mirrors round the middle as you go.',
   },
   {
     id: 'lava',
+    Demo: LavaDemo,
     name: 'Lava lamp',
     line: 'Lava lamp — wax heated by the bulb rises, cools at the top and sinks. Reach in and stir.',
   },
   {
     id: 'galaxy',
+    Demo: GalaxyDemo,
     name: 'Galaxy',
     line: 'Galaxy — a spiral of stars that breathes with the music. Drag to turn it and tilt it.',
   },
-] as const
+  {
+    id: 'marble',
+    Demo: MarbleDemo,
+    name: 'Marbling',
+    line: 'Marbling — float drops of ink on water, then pull them into feathered patterns with a stylus or comb.',
+  },
+  {
+    id: 'growth',
+    Demo: GrowthDemo,
+    name: 'Growth',
+    line: 'Growth — two chemicals reacting on a grid grow coral, dividing cells, worms or mazes. Seed it and watch.',
+  },
+  {
+    id: 'aquarium',
+    Demo: AquariumDemo,
+    name: 'Aquarium',
+    line: 'Aquarium — fish that school with their own kind. Tap to feed them; drag and you are the shark.',
+  },
+  {
+    id: 'tunnel',
+    Demo: TunnelDemo,
+    name: 'Tunnel',
+    line: 'Tunnel — fly down an endless tunnel and catch the orbs. Drag to steer, or tilt the phone.',
+  },
+  {
+    id: 'cloth',
+    Demo: ClothDemo,
+    name: 'Cloth',
+    line: 'Cloth — grab it, pull it, tear it, cut it. Let go mid-swing and it flies.',
+  },
+  {
+    id: 'ribbons',
+    Demo: RibbonsDemo,
+    name: 'Ribbons',
+    line: 'Ribbons — light that dances by itself. Lead it with a finger, or let the music move it.',
+  },
+]
 
-type DemoId = (typeof DEMOS)[number]['id']
+type DemoId = string
 
 const KEY = 'lab_demo_v1'
 function storedDemo(): DemoId {
@@ -126,10 +194,39 @@ export function GpuLab() {
   const onAdapter = (adapter: GPUAdapter, format: GPUTextureFormat) =>
     setReport(reportOf(adapter, format))
   const props = { running, setRunning, onAdapter }
-  const current = DEMOS.find((d) => d.id === demo) ?? DEMOS[0]
+  const at = Math.max(
+    0,
+    DEMOS.findIndex((d) => d.id === demo),
+  )
+  const current = DEMOS[at]
+  /** the next or previous demo, round the end — browsing toys should not hit a wall */
+  const step = (by: number) => pick(DEMOS[(at + by + DEMOS.length) % DEMOS.length].id)
 
   return (
     <div className="lab">
+      {/* ⚠️ TWO PICKERS, ONE SHOWN. A row of buttons is right while it fits on one line; on a
+          phone seven were already two rows and pushed the canvas half off the first screen, and
+          every new toy made it worse. Below 640px it is a native dropdown — the phone's own
+          wheel — with buttons either side to step through, which is how people actually browse
+          toys. A width query, not a pointer one: the problem is room, not fingers. */}
+      <div className="lab-step">
+        <button className="btn btn-ghost" onClick={() => step(-1)} aria-label="Previous experiment">
+          ‹
+        </button>
+        <label className="lab-select">
+          <span className="sr-only">Which experiment</span>
+          <select value={current.id} onChange={(e) => pick(e.target.value)}>
+            {DEMOS.map((d, i) => (
+              <option key={d.id} value={d.id}>
+                {i + 1}. {d.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn btn-ghost" onClick={() => step(1)} aria-label="Next experiment">
+          ›
+        </button>
+      </div>
       <div className="lab-picker" role="group" aria-label="Which experiment">
         {DEMOS.map((d) => (
           <button
@@ -145,13 +242,7 @@ export function GpuLab() {
       <p className="lab-line">{current.line}</p>
 
       {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
-      {demo === 'swarm' && <SwarmDemo key="swarm" {...props} />}
-      {demo === 'life' && <LifeDemo key="life" {...props} />}
-      {demo === 'fluid' && <FluidDemo key="fluid" {...props} />}
-      {demo === 'music' && <MusicDemo key="music" {...props} />}
-      {demo === 'kaleido' && <KaleidoDemo key="kaleido" {...props} />}
-      {demo === 'lava' && <LavaDemo key="lava" {...props} />}
-      {demo === 'galaxy' && <GalaxyDemo key="galaxy" {...props} />}
+      <current.Demo key={current.id} {...props} />
 
       {report && <GpuReport report={report} />}
     </div>
