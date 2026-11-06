@@ -498,3 +498,69 @@ describe('tone, the sixth effect', () => {
     }
   })
 })
+
+describe('which picker owns a layer', () => {
+  /**
+   * ⚠️ THE BUG THIS BLOCK EXISTS FOR WAS THREE CLICKS DEEP. The mark lives in the layer's id,
+   * ids are minted fresh on load, and the format did not carry it — so keeping a song with
+   * chords and a bass and opening it again gave blank pickers, a Bass button DISABLED reading
+   * "Pick some chords first" about a song containing a bass layer, a dead chord hint on the
+   * keyboard, and then a progression pick that ADDED a second pad instead of swapping the
+   * first. Two pads on different progressions is the one thing the backing is built to prevent.
+   */
+  const marked = (kinds: Array<string | undefined>) =>
+    readSong({
+      v: 1,
+      name: 'Backing',
+      bpm: 96,
+      bars: 2,
+      layers: kinds.map((kind, i) => ({
+        instrument: 'pad',
+        len: 5,
+        muted: false,
+        kind,
+        fx: {},
+        events: [
+          { t: 0, midi: 60 + i, on: true },
+          { t: 1, midi: 60 + i, on: false },
+        ],
+      })),
+    })!
+
+  it('survives being written down and read back', () => {
+    const kinds = ['-beat:straight', '-chords:four', '-bass:four']
+    const after = readSong(packSong(marked(kinds)))!
+    expect(after.layers.map((l) => l.kind)).toEqual(kinds)
+  })
+
+  it('and is back on the id by the time the looper sees it', () => {
+    /* the id is the only place the pickers look — see patternMark.ts */
+    const layers = songToLayers(readSong(packSong(marked(['-chords:four', '-bass:four'])))!)
+    expect(layers.map((l) => /-chords:four$/.test(l.id))).toEqual([true, false])
+    expect(layers.map((l) => /-bass:four$/.test(l.id))).toEqual([false, true])
+  })
+
+  it('and two layers cannot both claim one picker', () => {
+    /* nothing the app writes produces this; a file can simply say so */
+    const layers = songToLayers(marked(['-chords:four', '-chords:fifties']))
+    expect(layers.filter((l) => l.id.includes('-chords:'))).toHaveLength(1)
+    expect(layers[0].id).toContain('-chords:four')
+  })
+
+  it('and a tag a picker could not have written never reaches an id', () => {
+    const layers = songToLayers(marked(['-chords:<script>', '-nope:x', '-chords:four']))
+    expect(layers.map((l) => /-(beat|chords|bass):/.test(l.id))).toEqual([false, false, true])
+  })
+
+  it('and a song saved before this existed still opens, untagged', () => {
+    /* every song anybody has kept so far — they behave exactly as they did */
+    const packed = packSong(marked([undefined, undefined])) as { l: Array<{ k?: string }> }
+    expect(
+      packed.l.every((x) => x.k === undefined),
+      'nothing written for an untagged layer',
+    ).toBe(true)
+    const layers = songToLayers(readSong(packed)!)
+    expect(layers.every((l) => !/-(beat|chords|bass):/.test(l.id))).toBe(true)
+    expect(layers).toHaveLength(2)
+  })
+})

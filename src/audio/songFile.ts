@@ -1,6 +1,7 @@
 import { INSTRUMENTS, type Fx, type InstrumentId } from './synth'
 import { toEvents, toNotes, type Note } from './noteEdit'
 import type { Layer, LoopEvent } from './looper'
+import { markOf, readMark, uniqueMarks } from './patternMark'
 
 /**
  * A song, as data you can keep.
@@ -62,6 +63,20 @@ export type SongLayer = {
    * follows.
    */
   plan?: (number | null)[]
+  /**
+   * Which picker put this layer here — `-chords:four`, `-beat:straight`, `-bass:four`.
+   *
+   * ⚠️ IT IS IN THE ID WHILE THE SONG IS LIVE AND NOWHERE WHEN IT IS WRITTEN DOWN, which is why
+   * a kept song came back with its pickers blank and its Bass button disabled — see
+   * patternMark.ts. Saved alongside everything else rather than reconstructed, because nothing
+   * in the notes says which progression made them: Four chords and Fifties are the same four
+   * triads in a different order, and a reader guessing between them would be wrong half the
+   * time about a thing the writer knew exactly.
+   *
+   * Absent in every song saved before this, which is the common case and costs nothing — those
+   * open exactly as they do today.
+   */
+  kind?: string
 }
 
 export type Song = {
@@ -95,6 +110,7 @@ export function toSong(
       gain: l.gain,
       play: l.play,
       plan: l.plan,
+      kind: markOf(l.id) ?? undefined,
     })),
   }
 }
@@ -191,6 +207,7 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
     gain: typeof o.gain === 'number' ? num(o.gain, 0, 1.5, 1) : undefined,
     play: readPlay(o.play),
     plan: readPlan(o.plan),
+    kind: readMark(o.kind) ?? undefined,
   }
 }
 
@@ -265,6 +282,8 @@ export type PackedSong = {
      */
     f: [number, number, number, number, number, number]
     m: 0 | 1
+    /** which picker owns it, as the live id's tag — see patternMark.ts */
+    k?: string
     n: number[]
   }>
 }
@@ -328,6 +347,7 @@ export function packSong(song: Song): PackedSong {
           layer.fx.tone,
         ].map((x) => Math.round(x * 100) / 100) as [number, number, number, number, number, number],
         m: layer.muted ? 1 : 0,
+        k: layer.kind,
         n,
       }
     }),
@@ -393,7 +413,17 @@ function readPacked(v: Record<string, unknown>): Song | null {
       : undefined
     const gain =
       typeof o.v === 'number' && Number.isFinite(o.v) ? num(o.v / 100, 0, 1.5, 1) : undefined
-    layers.push({ instrument: inst, events, len, fx, muted: o.m === 1, gain, play, plan })
+    layers.push({
+      instrument: inst,
+      events,
+      len,
+      fx,
+      muted: o.m === 1,
+      gain,
+      play,
+      plan,
+      kind: readMark(o.k) ?? undefined,
+    })
   }
   if (!layers.length) return null
   return {
@@ -432,8 +462,20 @@ export function songNotes(s: Song): number {
  */
 export function songToLayers(s: Song): Layer[] {
   const stamp = Date.now()
+  /**
+   * ⚠️ THE TAG GOES BACK ONTO THE ID, WHICH IS THE ONLY PLACE THE PICKERS LOOK. Fresh ids are
+   * still minted for the reason above — two copies of one song must not claim the same identity
+   * — and the tag rides along so the room knows which layer is the chords, the beat and the
+   * bass. Without it, a kept song opened with its pickers blank, its Bass button disabled, and
+   * the next progression pick ADDING a second pad instead of swapping the first.
+   *
+   * `uniqueMarks` hands each mark out at most once: a file can carry two layers both claiming
+   * `-chords:`, which nothing the app writes can produce and which would put two pads on
+   * different progressions underneath each other. The second keeps its notes and loses its tag.
+   */
+  const tags = uniqueMarks(s.layers.map((l) => l.kind))
   return s.layers.map((l, i) => ({
-    id: `${stamp}-${i}`,
+    id: `${stamp}-${i}${tags[i] ?? ''}`,
     instrument: l.instrument,
     events: l.events,
     muted: l.muted,
