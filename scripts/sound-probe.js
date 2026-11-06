@@ -59,6 +59,85 @@
 const TAP = '/src/audio/audioTap.ts'
 
 /**
+ * Did the press actually REACH the synth? — `counting(await import('/src/audio/synth.ts'))`
+ *
+ * ⚠️ THE QUESTION THAT COST THIS SESSION FOUR CALLS AND NEARLY A WRONG CONCLUSION. Driving the
+ * keyboard with synthetic pointer events works until it does not, and when it stops the silence
+ * is indistinguishable from the instrument being broken. Measured: seventy-five press-and-
+ * release pairs dispatched at `.inst-key` elements produced **zero** noteOns — `noteCounts.on`
+ * did not move once — on a room that had been sounding normally minutes earlier. Everything
+ * downstream then reads as "nothing is playing", which is true and says nothing about the synth.
+ *
+ * `synth.ts` already counts what arrives, and its own comment says why: "counts what ACTUALLY
+ * reached the synth, not what the UI meant to send… every attempt to answer it by reasoning
+ * about pointer events failed". This exposes that to a probe, so a run can tell three states
+ * apart that otherwise look identical — the press never landed, the press landed and made no
+ * sound, and the sound happened and stopped.
+ *
+ * ⚠️ `liveVoices` IS THE OTHER HALF AND IS BETTER THAN RMS WHERE IT APPLIES. It is a count, not
+ * a level: a four-chord pad reads a steady **3** — one triad at a time — dropping to 0 for a
+ * single sample in the gap `HOLD` leaves between chords. No threshold, no floor, no residual.
+ * Use it for "how many voices" and `settles` for "is it audible", because a voice can be in the
+ * map while inaudible and a reverb tail can be audible with the map empty.
+ *
+ * ⚠️⚠️ TRUST THIS LESS THAN `tap()`, AND HERE IS THE RECEIPT. `synth.ts` keeps `voices` and
+ * `noteCounts` in module scope, and unlike `audioTap` there is no cheap way to prove you hold
+ * the app's copy — `liveTaps()` naming a live producer is self-evidently the real registry,
+ * while a count of 3 looks exactly like a count of 3 from anywhere.
+ *
+ * It cost most of a session. Readings taken a second apart gave `on: 3`, then `on: 0`, then
+ * `on: 3` — impossible for a counter that only ever increments, and the tell that successive
+ * `import()` calls were landing on different copies. Along the way the numbers described a
+ * progression that fired three noteOns and then stopped, holding three voices for ever, which
+ * is a serious bug and is not happening: `loopState()` from the same import said
+ * `{ playing: false, layers: 0 }` about a room that was audibly playing a layer. Every number
+ * was fiction, and the fiction was self-consistent enough to have been written up.
+ *
+ * So: cross-check anything from here against `tap()`, which can prove itself, and treat a
+ * `noteCounts` that goes DOWN as proof you are holding more than one copy. A level that moves
+ * when you press a key is worth more than any count that cannot show its provenance.
+ */
+export function counting(synth) {
+  if (!synth || !synth.noteCounts || typeof synth.liveVoices !== 'function') {
+    return { ok: false, why: 'pass the module in: counting(await import("/src/audio/synth.ts"))' }
+  }
+  return {
+    ok: true,
+    voices: () => synth.liveVoices(),
+    /** run something and report what the synth actually received while it ran */
+    during: async (fn) => {
+      const before = { ...synth.noteCounts }
+      const peak = { voices: synth.liveVoices() }
+      const watch = setInterval(() => {
+        peak.voices = Math.max(peak.voices, synth.liveVoices())
+      }, 30)
+      try {
+        await fn()
+      } finally {
+        clearInterval(watch)
+      }
+      const on = synth.noteCounts.on - before.on
+      const off = synth.noteCounts.off - before.off
+      return {
+        on,
+        off,
+        peakVoices: peak.voices,
+        /**
+         * ⚠️ BOTH SIGNALS, BECAUSE ONE OF THEM CRIED WOLF IMMEDIATELY. The first version warned
+         * on `on === 0` alone and fired on a backing that was demonstrably working — `on: 0`
+         * but `peakVoices: 3`, one triad in the map. A count of live voices is positive
+         * evidence that something reached the synth, whatever the counter says, and a warning
+         * that fires on a healthy room is the failure this whole file is built to avoid.
+         */
+        ...(on === 0 && peak.voices === 0
+          ? { warning: 'the synth received nothing — whatever drove this never reached it' }
+          : {}),
+      }
+    },
+  }
+}
+
+/**
  * The app's analyser registry, or a refusal.
  *
  * ⚠️ IT PROVES IT HAS THE LIVE ONE instead of assuming. An empty `liveTaps()` means this is a
