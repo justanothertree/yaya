@@ -411,6 +411,49 @@ const hitBox = (el) => {
  * `location.hash = '#dev-investments'; location.reload()`. The app then normalises the hash back
  * to `#home`, which is why `room` below reports the scope rather than trusting the URL.
  */
+/**
+ * What the sweep looked at, and whether that was enough to mean anything.
+ *
+ * ⚠️ `saw` ALONE STILL READS AS A CLEAN ROOM, which is the half this was missing. Reporting
+ * `inRoom: 3` beside five zeros is honest and completely skimmable — a run of fifteen rooms all
+ * saying zero looks like fifteen clean rooms, and nobody reads the scope column. The number had
+ * to turn into a sentence.
+ *
+ * ⚠️ AND THE TEST CALIBRATES ITSELF RATHER THAN PICKING A NUMBER. Every room is swept with the
+ * same furniture around it — the nav, the notification bell, the skip links — so the honest
+ * question is whether the ROOM contributed more than its surroundings did. If it did not, what
+ * was examined is mostly chrome that is identical everywhere and has already been swept
+ * fourteen times.
+ *
+ * Measured at 375 on 5 Nov 2026, controls in `<main>` against the furniture:
+ *   #chat 3 of 11 · #ratings 4 of 15 · #feed 5 of 16   → thin, all three
+ *   #people 15 of 28 · #chronicle 25 of 36             → not thin
+ *   #home 44 of 55 · #paint 51 of 62 · #instrument 113 of 126
+ * The three thin ones are members-only rooms rendering their empty state, because
+ * `previewMember` has no session — exactly the trap CLAUDE.md records as having got six
+ * chronicle features called verified off a sweep of a paragraph and two buttons.
+ *
+ * A magic threshold would have had to be re-tuned the first time a room grew a toolbar. This
+ * cannot drift, because both halves of it move together.
+ */
+function thinness(targets, root) {
+  const inRoom = targets.filter((el) => el.closest('main')).length
+  const text = ((root === document ? document.querySelector('main') : root)?.innerText ?? '').trim()
+    .length
+  const saw = { controls: targets.length, inRoom, text }
+  /* the room gave less than the furniture around it — see above */
+  if (inRoom * 2 < targets.length) {
+    saw.thin =
+      'only ' +
+      inRoom +
+      ' of ' +
+      targets.length +
+      ' controls are inside <main>, so this sweep is mostly the nav. A clean result here is a ' +
+      'clean nav, not a clean room — give the room something to render before believing it.'
+  }
+  return saw
+}
+
 export function mobileAudit(root = document) {
   /* ⚠️ THE LAYOUT VIEWPORT, NOT `innerWidth`, AND THE BROWSER PANE IS WHY. The pane
      emulates a viewport by scaling the page: at the `mobile` preset the page lays out at 375 CSS
@@ -500,12 +543,7 @@ export function mobileAudit(root = document) {
      * `text` is the cheap corroboration: 133 characters in #chat against 3,991 on #home is an
      * empty state saying so in one number, without this file needing to know what a room is.
      */
-    saw: {
-      controls: targets.length,
-      inRoom: targets.filter((el) => el.closest('main')).length,
-      text: ((root === document ? document.querySelector('main') : root)?.innerText ?? '').trim()
-        .length,
-    },
+    saw: thinness(targets, root),
     sideways: document.documentElement.scrollWidth - W,
     tooSmall: [],
     snug: [],
