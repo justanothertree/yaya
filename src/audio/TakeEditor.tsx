@@ -2,31 +2,56 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { resumeAudio, sharedCtx } from './context'
 import { takeBus } from './takeBus'
 import { decodeTake } from './recordTake'
-import { setTakeTrim, type TakeRow } from './takes'
-import { retrimTake } from './looper'
+import { setTakeLog, type TakeRow } from './takes'
+import { refreshTakeAudio } from './looper'
+import { editedBuffer } from './takeAudio'
 import { toWav } from './wav'
-import { atFraction, clampTrim, isWhole, peaks, pickRange, trimFrames, type Trim } from './takeEdit'
+import {
+  canRedo,
+  canUndo,
+  cutOut,
+  editLen,
+  isWholeEdit,
+  keepOnly,
+  logDo,
+  logNow,
+  logRedo,
+  logUndo,
+  MIN_SPAN,
+  peaks,
+  pickRange,
+  readLog,
+  timeToFrac,
+  toSource,
+  viewAround,
+  wholeEdit,
+  zoomView,
+  clampView,
+  panView,
+  type EditLog,
+  type Span,
+  type View,
+} from './takeEdit'
 
 /**
- * Seeing a recording, and choosing the part worth keeping.
+ * Seeing a recording, choosing part of it, and being able to change your mind.
  *
- * ⚠️ THE MISSING STEP, AND THE ONE EVERYTHING ELSE WAITED ON. The panel could record a take,
- * play it, place it on the loop and put six effects through it — and you could not LOOK at it.
- * A take was a duration and a file size in a list, so the first question anybody has about a
- * recording ("where does the singing actually start") had no answer short of listening to the
- * whole thing again, and the one edit everybody wants — throw away the four seconds of fumbling
- * at the front — could not be expressed at all.
+ * ⚠️ EVERY EDIT IS A STEP IN A LIST, which is what makes undo real rather than a special case.
+ * The first pass had one operation and one escape from it — "Whole take" — and that is not
+ * undo, it is a reset: it cannot take back the second of two edits, and it has nothing to say
+ * about an edit you want back after changing your mind twice. The list is in takeEdit.ts and
+ * it is persisted, so Undo still works tomorrow.
  *
- * ⚠️ AND IT CUTS NOTHING. "Keep this bit" writes two numbers next to the take; the blob that
- * came off the microphone is never rewritten. takes.ts already refuses to evict a take at the
- * storage cap because "that silently deletes something somebody sang, which is the one thing a
- * recorder must never do" — an editor that re-encodes the audio is the same deletion with a
- * nicer name. So Whole take is not an undo stack, it is the removal of a view, and it works
- * after a reload, after a trim of a trim, and after the tab has been closed for a week.
+ * ⚠️ AND IT CUTS NOTHING. Keep, Cut, Undo and Redo all move two numbers in a list beside the
+ * take; the blob that came off the microphone is never rewritten. takes.ts refuses to evict a
+ * recording at the storage cap because "that silently deletes something somebody sang, which
+ * is the one thing a recorder must never do" — an editor that re-encodes the audio is the same
+ * deletion with a nicer name.
  *
- * ⚠️ ONE SET OF ARITHMETIC, IN takeEdit.ts. What the picture shows, what a drag selects and
- * what the export writes are three readings of the same two numbers — so they are one function
- * each, pure, tested, and asked by all three callers rather than re-derived per call site.
+ * ⚠️ THE PICTURE IS ON THE SOURCE CLOCK, THE PLAYHEAD ARRIVES ON THE PLAYED ONE. You look at
+ * the whole recording, with the cut parts dimmed so you can see what you removed and put it
+ * back; the playing buffer only knows about the edited result. `toSource` is the only way
+ * across, and no code here subtracts its way between them.
  */
 
 /** How tall the picture is, in CSS pixels. Enough to see a breath; short enough for a phone. */
@@ -37,61 +62,61 @@ const exact = (n: number) => `${n.toFixed(2)}s`
 
 export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => void }) {
   const box = useRef<HTMLCanvasElement | null>(null)
-  const [buf, setBuf] = useState<AudioBuffer | null>(null)
+  const [source, setSource] = useState<AudioBuffer | null>(null)
   const [bad, setBad] = useState(false)
-  /** the drag in progress, in CSS pixels across the canvas */
   const drag = useRef<{ x0: number; x1: number } | null>(null)
-  const [sel, setSel] = useState<Trim | null>(null)
+  const [sel, setSel] = useState<Span | null>(null)
   const [playAt, setPlayAt] = useState<number | null>(null)
   const out = useRef<{ src: AudioBufferSourceNode; began: number; from: number } | null>(null)
   const [say, setSay] = useState('')
   const [width, setWidth] = useState(0)
 
-  const len = buf?.duration ?? row.len
-  /* memoised so the draw effect can depend on it honestly — clampTrim returns a fresh object
-     every call, and a dependency that is never equal redraws the canvas on every render */
-  const trim = useMemo(() => clampTrim(row.trim, len), [row.trim, len])
-  const whole = isWhole(row.trim, len)
+  const len = source?.duration ?? row.len
+  /** the stored history is the truth; state is a copy of it that the buttons move */
+  const [log, setLog] = useState<EditLog>(() => readLog(row.log, row.trim, row.len))
+  const edit = useMemo(() => logNow(log), [log])
+  const played = editLen(edit)
+  const [view, setView] = useState<View>(() => ({ from: 0, to: row.len }))
+  const zoomed = view.to - view.from < len - 1e-6
 
-  /* decode once; the blob is the thing that persists and this is derived from it */
+  /* decode once; the blob is the thing that persists and everything else is derived from it */
   useEffect(() => {
     let alive = true
     setBad(false)
     void decodeTake(row.blob).then((b) => {
       if (!alive) return
       if (!b) return setBad(true)
-      setBuf(b)
+      setSource(b)
+      setLog(readLog(row.log, row.trim, b.duration))
+      setView({ from: 0, to: b.duration })
     })
     return () => {
       alive = false
     }
+    // the log is re-read from the decoded length, so it is not a dependency of decoding
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.blob])
 
   /**
-   * How wide to draw, measured from the element three different ways.
+   * ⚠️ ONE FUNCTION BUILDS WHAT YOU HEAR, HERE AND IN THE LOOP AND IN THE EXPORT. Three
+   * renderings of one edit is three chances to disagree, and the first pass of this editor
+   * shipped with exactly that — the list's play button playing the whole take while the
+   * editor and the transport played the trimmed one.
+   */
+  const heard = useMemo(() => (source ? editedBuffer(source, edit) : null), [source, edit])
+
+  /**
+   * How wide to draw, measured three ways and not depending on a frame.
    *
-   * ⚠️ NOT ResizeObserver ALONE, AND THAT IS A MEASUREMENT RATHER THAN A PRECAUTION. CLAUDE.md
-   * records RO firing in the Browser pane on 28 Oct, including the initial callback that the
-   * spec guarantees on `observe()`. Measured again here on 6 Nov with the pane hidden: **zero
-   * callbacks**, through an element that went 1045 → 499 → 1045 CSS pixels while being watched.
-   * The canvas drew itself at 120px and stretched it across a thousand.
-   *
-   * The cause is almost certainly not RO: delivery is tied to the end of a frame, and the same
-   * file records rAF not firing while the pane is hidden (re-measured 5 Nov, having fired on
-   * 28 Oct). One frame loop, two APIs that ride it. So this is a pane artifact and RO is
-   * probably fine in a real browser — but "probably fine in the thing I cannot check" is not a
-   * foundation for whether a waveform is legible.
-   *
-   * So the measurement does not depend on a frame at all. A layout effect runs after every
-   * render and is what makes this correct on mount, on decode, and on any state change; the
-   * window listener catches a rotation or a pane resize (`resize_window` does fire one,
-   * measured 28 Oct); and RO stays as the one that also catches a SIBLING changing size with
-   * the window still, which neither of the others can see.
+   * ⚠️ NOT ResizeObserver ALONE. Measured 6 Nov with the pane hidden: zero callbacks, not even
+   * the initial one the spec guarantees on `observe()`, through an element that went
+   * 1045 → 499 → 1045 CSS pixels. Delivery rides the end of a frame and rAF does not fire
+   * while the pane is hidden, so one frame loop takes both out. The layout effect is what
+   * makes this correct; RO stays only for a SIBLING resizing with the window still.
    */
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
-    /* guarded, or setting state from a layout effect that runs every render is a loop */
     const take = () => {
       const w = el.clientWidth
       setWidth((was) => (Math.abs(was - w) >= 1 ? w : was))
@@ -118,43 +143,34 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     }
   }, [])
 
-  /* ⚠️ a preview left running sings over whatever room you went to next — see the same
-     teardown in TakesPanel */
+  /* ⚠️ a preview left running sings over whatever room you went to next */
   useEffect(() => () => stop(), [stop])
 
-  /**
-   * Play a span.
-   *
-   * ⚠️ THE SAME FRAMES THE EXPORT USES. `start(when, offset, duration)` takes seconds and the
-   * export copies samples, so asking takeEdit for ONE answer in frames is what stops a saved
-   * file being a frame or two different from what was auditioned.
-   */
-  const playSpan = useCallback(
-    (span: Trim) => {
-      if (!buf) return
+  /** Play the edited result, from a played-time offset. */
+  const playFrom = useCallback(
+    (at: number) => {
+      if (!heard) return
       stop()
       resumeAudio()
       const ctx = sharedCtx()
-      const { offset, frames } = trimFrames(span, buf.duration, buf.sampleRate)
-      if (!frames) return
       const src = ctx.createBufferSource()
-      src.buffer = buf
+      src.buffer = heard
       src.connect(takeBus())
       src.onended = () => {
         if (out.current?.src === src) stop()
       }
-      out.current = { src, began: ctx.currentTime, from: span.from }
-      src.start(0, offset / buf.sampleRate, frames / buf.sampleRate)
-      setPlayAt(span.from)
+      const from = Math.max(0, Math.min(heard.duration, at))
+      out.current = { src, began: ctx.currentTime, from }
+      src.start(0, from)
+      setPlayAt(from)
     },
-    [buf, stop],
+    [heard, stop],
   )
 
   /**
    * ⚠️ A TIMER, NOT requestAnimationFrame. CLAUDE.md has rAF firing in the pane on 28 Oct and
-   * NOT firing on 5 Nov, both measured — so a playhead built on it is a feature that works or
-   * does not depending on which week somebody checks. 20Hz is plenty for a line crossing a
-   * picture and costs nothing.
+   * not firing on 5 Nov, both measured — a playhead built on it works or does not depending on
+   * which week somebody checks. 20Hz is plenty for a line crossing a picture.
    */
   const running = playAt != null
   useEffect(() => {
@@ -170,7 +186,7 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
   /* draw */
   useEffect(() => {
     const el = box.current
-    if (!el || !buf || !(width > 0)) return
+    if (!el || !source || !(width > 0)) return
     const dpr = Math.min(3, window.devicePixelRatio || 1)
     el.width = Math.max(1, Math.round(width * dpr))
     el.height = Math.round(TALL * dpr)
@@ -179,130 +195,138 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     g.setTransform(dpr, 0, 0, dpr, 0, 0)
     g.clearRect(0, 0, width, TALL)
 
-    /* ⚠️ read from the element, so the picture follows the theme — this site has several and
-       a hard-coded green is invisible on one of them. `--accent` and `--muted` are the two the
-       rest of the room is drawn with. */
     const css = getComputedStyle(el)
     const ink = css.getPropertyValue('--accent').trim() || '#22c55e'
     const dim = css.getPropertyValue('--muted').trim() || '#9090b0'
     const mid = TALL / 2
     const cols = Math.max(1, Math.floor(width))
-    const env = peaks(buf.getChannelData(0), cols)
+    const rate = source.sampleRate
+    const env = peaks(
+      source.getChannelData(0),
+      cols,
+      Math.floor(view.from * rate),
+      Math.ceil(view.to * rate),
+    )
+    const colAt = (t: number) => Math.round(timeToFrac(t, view) * width)
 
-    /* what is NOT kept, drawn first and faint, so the trim reads as a window rather than as
-       the audio having been destroyed */
-    const show = sel ?? trim
-    g.fillStyle = dim
-    g.globalAlpha = 0.35
-    for (let c = 0; c < cols; c++) {
+    /* everything, faint — so a cut reads as a window onto the recording rather than as the
+       recording having been destroyed, and so you can see what to put back */
+    const bar = (c: number, colour: string, alpha: number) => {
       const lo = env[c * 2]
       const hi = env[c * 2 + 1]
+      g.globalAlpha = alpha
+      g.fillStyle = colour
       g.fillRect(c, mid - hi * mid, 1, Math.max(1, (hi - lo) * mid))
+      g.globalAlpha = 1
     }
-    g.globalAlpha = 1
-    const a = Math.round(atFraction(show.from, len) * width)
-    const b = Math.round(atFraction(show.to, len) * width)
-    g.fillStyle = ink
-    for (let c = a; c < b && c < cols; c++) {
-      const lo = env[c * 2]
-      const hi = env[c * 2 + 1]
-      g.fillRect(c, mid - hi * mid, 1, Math.max(1, (hi - lo) * mid))
-    }
-    /* the edges of the kept part, so a selection with quiet audio in it is still visible */
-    g.strokeStyle = ink
-    g.globalAlpha = 0.8
-    g.beginPath()
-    g.moveTo(a + 0.5, 0)
-    g.lineTo(a + 0.5, TALL)
-    g.moveTo(b - 0.5, 0)
-    g.lineTo(b - 0.5, TALL)
-    g.stroke()
-    g.globalAlpha = 1
+    for (let c = 0; c < cols; c++) bar(c, dim, 0.3)
 
-    if (playAt != null) {
-      const x = Math.round(atFraction(playAt, len) * width)
-      g.strokeStyle = '#f6c177'
+    /* the kept spans, solid */
+    for (const s of edit.keep) {
+      const a = Math.max(0, colAt(s.from))
+      const b = Math.min(cols, colAt(s.to))
+      for (let c = a; c < b; c++) bar(c, ink, 1)
+    }
+
+    /* the selection, as a box rather than a colour, so it reads on top of kept and cut alike */
+    if (sel) {
+      const a = colAt(sel.from)
+      const b = colAt(sel.to)
+      g.fillStyle = ink
+      g.globalAlpha = 0.16
+      g.fillRect(a, 0, Math.max(1, b - a), TALL)
+      g.globalAlpha = 0.85
+      g.strokeStyle = ink
       g.beginPath()
-      g.moveTo(x + 0.5, 0)
-      g.lineTo(x + 0.5, TALL)
+      g.moveTo(a + 0.5, 0)
+      g.lineTo(a + 0.5, TALL)
+      g.moveTo(b - 0.5, 0)
+      g.lineTo(b - 0.5, TALL)
       g.stroke()
+      g.globalAlpha = 1
     }
-  }, [buf, width, sel, trim, len, playAt])
+
+    /* ⚠️ the playhead arrives in PLAYED time and the picture is in SOURCE time */
+    if (playAt != null) {
+      const at = toSource(edit, playAt)
+      if (at != null) {
+        const x = colAt(at)
+        g.strokeStyle = '#f6c177'
+        g.beginPath()
+        g.moveTo(x + 0.5, 0)
+        g.lineTo(x + 0.5, TALL)
+        g.stroke()
+      }
+    }
+  }, [source, width, sel, edit, view, playAt])
+
+  /** Put a new edit in the history, store it, and tell the loop its audio changed. */
+  const apply = useCallback(
+    async (next: EditLog, note: string) => {
+      setLog(next)
+      setSel(null)
+      await setTakeLog(row.id, next)
+      await refreshTakeAudio(row.id)
+      onChanged()
+      setSay(note)
+    },
+    [row.id, onChanged],
+  )
 
   const xOf = (e: React.PointerEvent) => e.clientX - e.currentTarget.getBoundingClientRect().left
 
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!buf) return
+    if (!source) return
     const x = xOf(e)
     drag.current = { x0: x, x1: x }
-    setSel(pickRange(x, x, width, len))
+    setSel(pickRange(x, x, width, view))
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
-      /* ⚠️ allowed to fail — capture is an enhancement that keeps a drag alive when the
-         pointer leaves the box, and CLAUDE.md records a synthetic pointerId taking the rest
-         of a handler down with it. The selection is the point; the capture is not. */
+      /* ⚠️ allowed to fail — capture keeps a drag alive when the pointer leaves the box, and
+         CLAUDE.md records a synthetic pointerId taking the rest of a handler down with it.
+         The selection is the point; the capture is not. */
     }
   }
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drag.current || !buf) return
+    if (!drag.current || !source) return
     drag.current.x1 = xOf(e)
-    setSel(pickRange(drag.current.x0, drag.current.x1, width, len))
+    setSel(pickRange(drag.current.x0, drag.current.x1, width, view))
   }
   const onUp = () => {
     drag.current = null
+    /* a tap, not a drag — clear it rather than leaving a hairline selection nobody can see */
+    setSel((s) => (s && s.to - s.from < MIN_SPAN ? null : s))
   }
 
-  const keep = useCallback(async () => {
-    if (!sel) return
-    const next = clampTrim(sel, len)
-    await setTakeTrim(row.id, next)
-    setSel(null)
-    /* the loop caches a decoded buffer per take, so it has to be told the span moved */
-    await retrimTake(row.id)
-    onChanged()
-    /* ⚠️ NOT a repeat of the summary beside it, which already says what is kept — measured
-       on screen as "Keeping 1.00s of 4.00s · Keeping 1.00s of 4.00s." The thing somebody
-       wants to know after pressing a button called Keep is what happened to the rest. */
-    setSay(`the recording itself is untouched`)
-  }, [sel, len, row.id, onChanged])
-
-  const resetAll = useCallback(async () => {
-    await setTakeTrim(row.id, null)
-    setSel(null)
-    await retrimTake(row.id)
-    onChanged()
-    setSay('nothing was ever removed')
-  }, [row.id, onChanged])
-
   /**
-   * ⚠️ WHAT YOU HEAR, NOT WHAT WAS RECORDED. The file carries the kept span and nothing else,
-   * because a "save" that quietly hands back the four seconds of fumbling you just trimmed off
-   * is the one outcome nobody expects. The original is still in the browser, untouched, and
-   * Whole take brings it back — so this is a copy of a decision, not a destruction of one.
+   * ⚠️ WHAT YOU HEAR, NOT WHAT WAS RECORDED. The file carries the edited result, because a
+   * "save" that quietly hands back the four seconds you just cut is the one outcome nobody
+   * expects. The original is still in the browser and Undo brings it back, so this is a copy
+   * of a decision rather than the destruction of one.
    *
-   * ⚠️ AND IT IS MIXED TO MONO, because toWav writes a mono header and has done since it was
-   * written for the debug capture. Averaging the channels is right for a voice; it is wrong for
-   * a stereo field, and a microphone take has not got one. Said here rather than discovered.
+   * ⚠️ MIXED TO MONO, because toWav writes a mono header and has since it was written for the
+   * debug capture. Averaging is right for a voice; it is wrong for a stereo field, and a
+   * microphone take has not got one.
    */
   const save = useCallback(() => {
-    if (!buf) return
-    const { offset, frames } = trimFrames(row.trim, buf.duration, buf.sampleRate)
-    if (!frames) return setSay('Nothing to save.')
-    const mix = new Float32Array(frames)
-    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-      const d = buf.getChannelData(ch)
-      for (let i = 0; i < frames; i++) mix[i] += d[offset + i] / buf.numberOfChannels
+    if (!heard) return
+    const n = heard.length
+    if (!n) return setSay('nothing to save')
+    const mix = new Float32Array(n)
+    for (let c = 0; c < heard.numberOfChannels; c++) {
+      const d = heard.getChannelData(c)
+      for (let i = 0; i < n; i++) mix[i] += d[i] / heard.numberOfChannels
     }
-    const url = URL.createObjectURL(toWav(mix, buf.sampleRate))
+    const url = URL.createObjectURL(toWav(mix, heard.sampleRate))
     const a = document.createElement('a')
     a.href = url
     a.download = `take-${new Date(row.at).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.wav`
     a.click()
     /* ⚠️ revoked, or every save leaks the whole file for as long as the tab is open */
     setTimeout(() => URL.revokeObjectURL(url), 10000)
-    setSay(`Saved ${exact(frames / buf.sampleRate)} as a WAV.`)
-  }, [buf, row.trim, row.at])
+    setSay(`saved ${exact(n / heard.sampleRate)}`)
+  }, [heard, row.at])
 
   if (bad)
     return (
@@ -310,6 +334,11 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
         <span className="muted">This recording will not open in this browser.</span>
       </div>
     )
+
+  const whole = isWholeEdit(edit, len)
+  const span = view.to - view.from
+  const canKeep = !!sel && sel.to - sel.from >= MIN_SPAN
+  const parts = edit.keep.length
 
   return (
     <div className="take-edit">
@@ -321,41 +350,174 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        /* ⚠️ a drag across this must not be read as a page scroll on a phone — the same
-           reason the keyboard sets it, see InstrumentRoom */
-        aria-label={`Waveform, ${secs(len)}. Drag to choose part of it.`}
         role="img"
+        aria-label={`Waveform, ${secs(len)}${whole ? '' : `, ${secs(played)} kept`}. Drag to choose part of it.`}
       />
-      {!buf && <span className="muted">Opening…</span>}
+      {/**
+       * ⚠️ BUTTONS AND A SLIDER, NOT A PINCH. A drag on the picture already means "choose a
+       * part", which is the one gesture that must never be ambiguous — and on a phone a pinch
+       * or a two-finger pan shares its first touch with that drag, so the room would have to
+       * guess what you meant from how your second finger lands. A slider is unmistakable, it
+       * works with one thumb, and it says where you are in the take by where it sits.
+       */}
       <div className="take-edit-bar">
         <button
           className="btn btn-ghost"
-          onClick={() => (out.current ? stop() : playSpan(sel ?? trim))}
-          disabled={!buf}
-          title={sel ? 'Hear what you have chosen' : 'Hear the part that is kept'}
+          onClick={() =>
+            setView(
+              zoomView(view, 0.5, sel ? (sel.from + sel.to) / 2 : (view.from + view.to) / 2, len),
+            )
+          }
+          disabled={!source}
+          title="Look closer"
         >
-          {out.current ? '■' : '▶'} {sel ? 'Selection' : 'Play'}
-        </button>
-        <button className="btn" onClick={() => void keep()} disabled={!sel} title="Keep only this">
-          Keep this bit
+          ＋<span className="sr-only">Zoom in</span>
         </button>
         <button
           className="btn btn-ghost"
-          onClick={() => void resetAll()}
+          onClick={() => setView(zoomView(view, 2, (view.from + view.to) / 2, len))}
+          disabled={!source || !zoomed}
+          title="Look wider"
+        >
+          －<span className="sr-only">Zoom out</span>
+        </button>
+        {/**
+         * ⚠️ TWO BUTTONS, BECAUSE ONE CHANGED MEANING UNDER YOUR HAND. This was a single
+         * control that fitted the selection when there was one and the whole take when there
+         * was not — which reads fine until you are zoomed in WITH a selection, and then there
+         * is no way back out short of pressing － six times. Measured in the pane: after a
+         * drag at 0.25s zoom the only ⤢ on screen zoomed further in.
+         *
+         * A tap on the picture clears a selection, so the pair is always reachable; the title
+         * says so, because nothing else on screen would.
+         */}
+        <button
+          className="btn btn-ghost"
+          onClick={() => setView(clampView({ from: 0, to: len }, len))}
+          disabled={!source || !zoomed}
+          title="Show the whole recording"
+        >
+          ⤢ All
+        </button>
+        {sel && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => setView(viewAround(sel, len))}
+            disabled={!source}
+            title="Fill the picture with what you chose — tap the picture to clear it"
+          >
+            ⤢ Selection
+          </button>
+        )}
+        {zoomed && (
+          <label className="take-edit-scroll" title="Move along the recording">
+            <span className="sr-only">Position in the recording</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, len - span)}
+              step={Math.max(0.001, span / 200)}
+              value={view.from}
+              onChange={(e) => setView(panView(view, Number(e.target.value), len))}
+            />
+          </label>
+        )}
+        <span className="muted take-edit-zoom">
+          {zoomed ? `${exact(span)} of ${exact(len)} shown` : 'whole recording'}
+        </span>
+      </div>
+
+      <div className="take-edit-bar">
+        <button
+          className="btn btn-ghost"
+          onClick={() => (out.current ? stop() : playFrom(0))}
+          disabled={!heard}
+          title="Hear the edited take"
+        >
+          {out.current ? '■' : '▶'} Play
+        </button>
+        <button
+          className="btn"
+          onClick={() =>
+            void apply(
+              logDo(log, keepOnly(edit, sel!, len)),
+              'kept — nothing was removed from the recording',
+            )
+          }
+          disabled={!canKeep}
+          title="Keep only this"
+        >
+          Keep
+        </button>
+        {/**
+         * ⚠️ THE GAP CLOSES, which is the whole difference from Keep and the reason it needed
+         * the list rather than a second pair of numbers. takeEdit's `cutOut` refuses to remove
+         * everything: a drag across the whole picture followed by Cut would otherwise leave a
+         * take that plays nothing, which on screen is indistinguishable from a broken one.
+         */}
+        <button
+          className="btn"
+          onClick={() =>
+            void apply(
+              logDo(log, cutOut(edit, sel!, len)),
+              'cut — the gap is closed and the recording is untouched',
+            )
+          }
+          disabled={!canKeep}
+          title="Remove this and close the gap"
+        >
+          Cut
+        </button>
+        {/**
+         * ⚠️ WORDS, AND KEPT TOGETHER. They were ↶ and ↷ with the names hidden for screen
+         * readers, which `mobile-audit` passes — its wordless rule reads the accessibility
+         * tree, and an sr-only span is a real name there. Eyes are a different question: at
+         * 375 the two glyphs are near-identical, and a screenshot showed the row wrapping
+         * BETWEEN them, so Undo ended one line and Redo began the next as if they were
+         * unrelated. Undo is the whole of "forgiving" in this editor; it should not be the
+         * control nobody can find.
+         */}
+        <span className="take-edit-pair">
+          <button
+            className="btn btn-ghost"
+            onClick={() => void apply(logUndo(log), 'undone')}
+            disabled={!canUndo(log)}
+            title="Take back the last edit"
+          >
+            ↶ Undo
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => void apply(logRedo(log), 'redone')}
+            disabled={!canRedo(log)}
+            title="Put the last edit back"
+          >
+            ↷ Redo
+          </button>
+        </span>
+        {/**
+         * ⚠️ STILL HERE, AND IT IS NOT UNDO. Undo steps back through what you did; this goes
+         * straight to the recording as it was, in one press, and is itself an edit you can
+         * undo. Keeping both is the difference between "that last cut was wrong" and "start
+         * again" — two different thoughts, and asking somebody to press Undo eleven times to
+         * express the second is how an editor stops feeling forgiving.
+         */}
+        <button
+          className="btn btn-ghost"
+          onClick={() => void apply(logDo(log, wholeEdit(len)), 'back to the whole recording')}
           disabled={whole}
-          title="Undo the trim — the recording was never changed"
+          title="Back to the whole recording — itself undoable"
         >
           Whole take
         </button>
-        <button className="btn btn-ghost" onClick={save} disabled={!buf} title="Download a WAV">
+        <button className="btn btn-ghost" onClick={save} disabled={!heard} title="Download a WAV">
           ⬇ Save a copy
         </button>
         <span className="muted take-edit-says">
-          {sel
-            ? `Chosen ${exact(sel.to - sel.from)}`
-            : whole
-              ? `All ${exact(len)}`
-              : `Keeping ${exact(trim.to - trim.from)} of ${exact(len)}`}
+          {whole
+            ? `All ${exact(len)}`
+            : `${exact(played)} of ${exact(len)}${parts > 1 ? ` in ${parts} pieces` : ''}`}
+          {sel ? ` · chosen ${exact(sel.to - sel.from)}` : ''}
           {say ? ` · ${say}` : ''}
         </span>
       </div>

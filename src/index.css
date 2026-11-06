@@ -19702,3 +19702,33 @@ a.cz-msg-author:focus-visible {
   min-width: 120px;
   font-size: 0.78rem;
 }
+/* ⚠️ THE SLIDER TAKES THE ROOM THAT IS LEFT, with a floor in pixels for the same reason as
+   above: it is the only flexible thing in the zoom row, so without one it is what pays when
+   the row is tight and it collapses to a stub nobody can aim at. */
+.take-edit-scroll {
+  flex: 1 1 140px;
+  min-width: 110px;
+  display: flex;
+  align-items: center;
+}
+.take-edit-scroll input {
+  width: 100%;
+  min-width: 0;
+  /* ⚠️ 28px BECAUSE A RANGE INPUT IS 16px TALL BY DEFAULT, which is under the 24px WCAG 2.5.8
+     floor this project measures against — and `scripts/mobile-audit.js` said so at 375 the
+     first time this slider was on screen: one finding, "INPUT 188x16". A scrollbar you have
+     to hit with a thumb is the one control in this editor that must not be fiddly, because
+     the alternative to using it is losing your place in the recording. */
+  height: 28px;
+}
+/* ⚠️ undo and redo do not wrap apart. They are one idea and two buttons, and flex-wrap
+   breaks between flex items — measured at 375, the row split with Undo ending one line and
+   Redo starting the next. */
+.take-edit-pair {
+  display: flex;
+  gap: 0.35rem;
+}
+.take-edit-zoom {
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}

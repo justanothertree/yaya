@@ -8,7 +8,8 @@ import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
 import { partAt, partsIn } from './arrange'
-import { trimFrames } from './takeEdit'
+import { logNow, readLog } from './takeEdit'
+import { editedBuffer } from './takeAudio'
 
 /**
  * A loop you play into, and then play over.
@@ -1882,7 +1883,7 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
      * decision moved. Without it the editor would show one span and the loop would play
      * another — a control derived from the take beside a control derived from the setting.
      */
-    heard.set(id, cutTo(buf, row.trim))
+    heard.set(id, cutTo(buf, row))
   }
   if (!chains.has(id)) {
     const chain = makeVoiceChain(sharedCtx(), takeBus())
@@ -1899,36 +1900,28 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
 }
 
 /**
- * A buffer holding only the kept part of a take.
+ * The take as its edit says it should sound.
  *
- * ⚠️ A COPY, NOT A VIEW, because Web Audio has no way to play part of a cached buffer without
- * the caller remembering to say so every time — `start(when, offset, duration)` puts that on
- * every call site, and the loop has several. Copying once per decode costs a few megabytes of
- * Float32 for a minute of audio and removes the whole class of "this one forgot the offset".
- *
- * The original blob is untouched and is the only thing that persists; this is derived.
+ * ⚠️ IT DELEGATES, and it used to do the arithmetic itself. When an edit was one span this
+ * held its own copy loop; a cut in the middle makes it two spans with a fade at the join, and
+ * a second implementation of that is a second thing that can disagree with the editor and the
+ * export. `editedBuffer` is the one all three ask — see takeAudio.ts.
  */
-function cutTo(buf: AudioBuffer, trim: { from: number; to: number } | undefined): AudioBuffer {
-  const { offset, frames } = trimFrames(trim, buf.duration, buf.sampleRate)
-  if (!frames || (offset === 0 && frames >= buf.length)) return buf
-  const ctx = sharedCtx()
-  const cut = ctx.createBuffer(buf.numberOfChannels, frames, buf.sampleRate)
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    /* ⚠️ copyFromChannel's third argument is the offset INTO THE SOURCE, which is the one
-       that makes this two lines instead of a loop — and `getChannelData().subarray()` would
-       alias the decoded buffer rather than copy it, so a second trim would read bytes the
-       first had already moved. */
-    cut.copyToChannel(buf.getChannelData(ch).slice(offset, offset + frames), ch)
-  }
-  return cut
+function cutTo(buf: AudioBuffer, row: { log?: unknown; trim?: unknown }): AudioBuffer {
+  return editedBuffer(buf, logNow(readLog(row.log, row.trim, buf.duration)))
 }
 
 /**
- * The trim moved — decode this take again so the loop plays the new span.
+ * The edit moved — build this take's audio again so the loop plays the new version.
+ *
+ * ⚠️ THE ONE PLACE THE LOOP'S CACHED AUDIO IS INVALIDATED. `heard` exists so a take is decoded
+ * once, and the cost of that is that the cached buffer is a snapshot of a decision. Every
+ * edit, undo and redo has to say so here, or the editor shows one thing and the transport
+ * plays another — which is precisely the disagreement this pass was asked to make impossible.
  *
  * Returns false when the take is not on the loop, so a caller can skip the work.
  */
-export async function retrimTake(id: string): Promise<boolean> {
+export async function refreshTakeAudio(id: string): Promise<boolean> {
   if (!heard.has(id)) return false
   heard.delete(id)
   hushTakes()
@@ -1936,7 +1929,7 @@ export async function retrimTake(id: string): Promise<boolean> {
   if (!row) return false
   const buf = await decodeTake(row.blob)
   if (!buf) return false
-  heard.set(id, cutTo(buf, row.trim))
+  heard.set(id, cutTo(buf, row))
   /* ⚠️ the loop is told, or the takes list redraws and the transport does not — the two would
      then disagree about a take that is on screen in both */
   set({})

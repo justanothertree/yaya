@@ -16,7 +16,8 @@ import { PLAIN_VOICE, type VoiceFx } from './takeFx'
 import { CHOP_RATES, CHOP_SHAPES, NO_CHOP, type ChopShape } from './chop'
 import { bounceStems, type Stem, type StemProgress } from './stems'
 import { TakeEditor } from './TakeEditor'
-import { isWhole, trimFrames, trimLen } from './takeEdit'
+import { editLen, isWholeEdit, logNow, readLog } from './takeEdit'
+import { editedBuffer } from './takeAudio'
 
 /**
  * Singing, kept beside the song.
@@ -48,6 +49,15 @@ const KNOBS: [keyof VoiceFx, string, string][] = [
 ]
 
 const fxOf = (fx: VoiceFx | undefined): VoiceFx => ({ ...PLAIN_VOICE, ...fx })
+
+/**
+ * What this take plays right now, read from its stored history.
+ *
+ * ⚠️ READ, NOT REMEMBERED. The row in IndexedDB is the only truth about an edit; a copy held
+ * in this component would be a second one, and the two would part company the moment the
+ * editor changed something — which is the disagreement this pass exists to remove.
+ */
+const editOf = (r: TakeRow) => logNow(readLog(r.log, r.trim, r.len))
 
 /** what each chop shape does, in the fewest words that are true — see chop.ts */
 const CHOP_SAYS: Record<ChopShape, string> = {
@@ -147,8 +157,16 @@ export function TakesPanel() {
     async (row: TakeRow) => {
       stopPlaying()
       resumeAudio()
-      const buf = await decodeTake(row.blob)
-      if (!buf) return setSay('That take will not play in this browser.')
+      const whole = await decodeTake(row.blob)
+      if (!whole) return setSay('That take will not play in this browser.')
+      /**
+       * ⚠️ THE EDITED AUDIO, FROM THE SAME FUNCTION THE EDITOR AND THE LOOP ASK. This used to
+       * decode the take and hand the raw buffer an offset and a duration, which works for one
+       * kept span and cannot express two — and the first pass shipped with this button playing
+       * the whole recording while the other two played the trimmed one. There is no second
+       * conversion here to drift any more: it plays exactly what `editedBuffer` builds.
+       */
+      const buf = editedBuffer(whole, logNow(readLog(row.log, row.trim, whole.duration)))
       const ctx = sharedCtx()
       /* ⚠️ the takes' bus, so this obeys the instrument fader — and see takeBus for why
          it is not makeGain, which would play into nowhere and steal the slider on the way */
@@ -162,16 +180,7 @@ export function TakesPanel() {
       }
       out.current = { src, gain }
       setPlaying(row.id)
-      /**
-       * ⚠️ THE TRIM, HERE TOO. Found by reloading the page and looking at the list: this ▶
-       * played the whole four seconds of a take the editor and the transport had both agreed
-       * was one — three controls on one recording and one of them disagreeing, which is the
-       * shape this repository keeps finding. The frames come from the same function the
-       * editor and the export ask, so there is no second conversion to drift.
-       */
-      const { offset, frames } = trimFrames(row.trim, buf.duration, buf.sampleRate)
-      if (!frames) return stopPlaying()
-      src.start(0, offset / buf.sampleRate, frames / buf.sampleRate)
+      src.start()
     },
     [stopPlaying],
   )
@@ -392,7 +401,7 @@ export function TakesPanel() {
                     after a reload: a trimmed take's row read 0:04 while the button played one
                     second, because the length came off the stored row and the sound came off
                     the trim. The original is still named in the line beside it. */}
-                {playing === r.id ? '■' : '▶'} {secs(trimLen(r.trim, r.len))}
+                {playing === r.id ? '■' : '▶'} {secs(editLen(editOf(r)))}
               </button>
               <span className="muted inst-takes-meta">
                 {new Date(r.at).toLocaleDateString()} · {mb(r.bytes)}MB
@@ -400,7 +409,7 @@ export function TakesPanel() {
                     would otherwise look like a bug: a row reading 1 second and 0.4MB. The
                     recording is whole and only part of it is being played, and that sentence
                     belongs beside the number that gives it away. */}
-                {!isWhole(r.trim, r.len) && ` · ${secs(r.len)} kept whole`}
+                {!isWholeEdit(editOf(r), r.len) && ` · ${secs(r.len)} kept whole`}
               </span>
               {/* ⚠️ WHAT IT DOES, NOT WHERE IT GOES. "Add to loop" describes the mechanism;
                   this says the outcome, which is the thing somebody is deciding between. */}
@@ -446,9 +455,11 @@ export function TakesPanel() {
                 onClick={() => setCut(cut === r.id ? null : r.id)}
                 title="Look at it and choose a part"
               >
-                ✎{!isWhole(r.trim, r.len) && <span aria-hidden> ·</span>}
+                ✎{!isWholeEdit(editOf(r), r.len) && <span aria-hidden> ·</span>}
                 <span className="sr-only">
-                  {isWhole(r.trim, r.len) ? 'Edit this recording' : 'Edit this recording — trimmed'}
+                  {isWholeEdit(editOf(r), r.len)
+                    ? 'Edit this recording'
+                    : 'Edit this recording — trimmed'}
                 </span>
               </button>
               {/**

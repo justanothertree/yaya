@@ -65,21 +65,32 @@ export type TakeRow = {
   type: string
   blob: Blob
   /**
-   * Which part of it to keep, in seconds — absent means all of it.
+   * ⚠️ WHAT THE FIRST VERSION OF THE EDITOR STORED, and it is read but never written now. A
+   * take trimmed before the edit log existed must not lose its edit, so `readLog` in
+   * takeEdit.ts understands this shape and turns it into a one-step history. Left here rather
+   * than migrated in place: a rewrite of every row is a write pass over somebody's recordings
+   * to save reading one extra field.
+   */
+  trim?: { from: number; to: number }
+  /**
+   * Every edit this take has been through, and where in that line we are standing.
    *
-   * ⚠️ TWO NUMBERS BESIDE THE AUDIO, NEVER A REWRITTEN BLOB. The recording that came off the
+   * ⚠️ NUMBERS BESIDE THE AUDIO, NEVER A REWRITTEN BLOB. The recording that came off the
    * microphone is the only copy there will ever be, and `putTake` above already refuses at the
    * cap rather than evicting because "that silently deletes something somebody sang, which is
    * the one thing a recorder must never do". An edit that re-encodes the blob is that same
-   * deletion wearing a different hat — so trimming is a view, undo is just removing the view,
-   * and the bytes are untouchable.
+   * deletion wearing a different hat — so an edit is a view, undo is standing somewhere else
+   * in the list, and the bytes are untouchable.
    *
-   * ⚠️ AND IT IS NOT VALIDATED BY `sane` BELOW, deliberately. A trim that came back malformed
-   * is a reason to ignore the trim, never a reason to drop the take — `clampTrim` in
-   * takeEdit.ts takes anything and answers with the whole take, so every reader is already
-   * safe and the row survives.
+   * ⚠️ PERSISTED, WHICH IS WHY takeEdit BOUNDS IT. The history lives in the row, inside a store
+   * with a hard cap on it, so an unbounded one would eventually squeeze out a recording. See
+   * HISTORY_MAX.
+   *
+   * ⚠️ AND IT IS NOT VALIDATED BY `sane` BELOW, deliberately. A log that came back malformed is
+   * a reason to ignore the log, never a reason to drop the take — `readLog` takes anything and
+   * answers with the whole recording, so every reader is already safe and the row survives.
    */
-  trim?: { from: number; to: number }
+  log?: { steps: { keep: { from: number; to: number }[] }[]; at: number }
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -197,7 +208,7 @@ export async function putTake(id: string, blob: Blob, len: number): Promise<PutR
 }
 
 /**
- * Keep part of a take, or go back to all of it.
+ * Record where this take's editing has got to.
  *
  * ⚠️ READ-MODIFY-WRITE OF THE WHOLE ROW, because IndexedDB has no partial update — and the row
  * it writes back is the one it just read, blob included. That is the shape CLAUDE.md warns
@@ -205,17 +216,21 @@ export async function putTake(id: string, blob: Blob, len: number): Promise<PutR
  * it is spelt out: nothing here constructs a row, it spreads the stored one and changes one
  * field. A take that has grown a field this function has never heard of keeps it.
  *
- * Passing null removes the trim, which is the whole of undo — see takeEdit.ts.
+ * ⚠️ AND IT WRITES A PLAIN COPY. IndexedDB structured-clones what it is given, and a log held
+ * in React state is shared with the component that is still drawing from it — storing the
+ * live object means a later `logUndo` mutating a step would reach into the database. Nothing
+ * in takeEdit mutates today; this costs nothing and removes the question.
  */
-export async function setTakeTrim(
-  id: string,
-  trim: { from: number; to: number } | null,
-): Promise<boolean> {
+export async function setTakeLog(id: string, log: TakeRow['log'] | null): Promise<boolean> {
   const had = await getTake(id)
   if (!had) return false
   const row: TakeRow = { ...had }
-  if (trim) row.trim = { from: trim.from, to: trim.to }
-  else delete row.trim
+  if (log)
+    row.log = {
+      at: log.at,
+      steps: log.steps.map((s) => ({ keep: s.keep.map((k) => ({ from: k.from, to: k.to })) })),
+    }
+  else delete row.log
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done !== null
 }
