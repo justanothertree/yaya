@@ -562,3 +562,233 @@ for the same reason: #19 adds its own section further up, and the two should not
       landscape too? Does the water feel too thick? Is the hourglass satisfying to turn?
 - [ ] Pond — do the caustics read as light on a floor? Drag a finger for a wake; try Deep with
       rain. Smooth on a phone (two wave steps and a caustic mesh a frame)?
+## Batch 5 — new mixes
+
+Its own draft PR, branch `claude/lab-toys-5`, from `main`. Not live. Every toy is chosen to differ
+from the seven live ones, from #19 (Marbling, Growth, Aquarium, Tunnel, Cloth, Ribbons) and from
+#20 (Fractal, Light, Harp, Neon, Sand, Pond), in both how you play it and what the GPU does.
+
+⚠️ **No picker was cherry-picked.** This branch adds its toys to `main`'s own list, one entry and
+one render line each — and each entry also carries its component (`Demo:`), which `main`'s list
+does not read but #19's registry does. Merged after #19 or #20, the conflicts in `GpuLab.tsx`
+are all "both sides added": keep both, and delete this batch's `demo === …` render lines, since
+the registry renders every entry by itself. This section is at the end of the file for the same
+reason.
+
+| Toy        | Interaction                                                                                                                  | GPU technique                                                                                                                                                                                                                                           | Pattern to reuse                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Slime      | TOOLS on a living thing: lay food, draw walls, erase, blow spores — then watch                                               | STIGMERGY: tens of thousands of agents sense a shared field and write back into it with `atomicAdd`; the field diffuses and decays                                                                                                                      | "many writers, one grid" — any scatter where several threads land on one cell                                            |
+| Mirror     | the CAMERA, and a brush that paints TIME onto it: slow a part of the picture, bring it back                                  | a RING OF PAST FRAMES in a `texture_2d_array` (the newest over the oldest, nothing moved) and a per-pixel delay map choosing which moment each pixel shows, blended between frames                                                                      | "time as a texture" — slit-scan, echoes, any effect that needs the recent past                                           |
+| Bubbles    | HOLD to blow (the longer, the bigger), let go to THROW, TAP to pop — and each pop sounds                                     | PHYSICAL THIN-FILM INTERFERENCE per pixel on sphere impostors (no geometry): for red, green and blue, whether the film's two reflections strengthen or cancel at its thickness; reflection ADDED through premultiplied blending                         | "colour from physics" — oil slicks, beetles, anything iridescent                                                         |
+| Clay       | SCULPT in 3D: add, carve, smooth with a finger; Turn, two fingers or the wheel to look round; mirror symmetry                | a signed-distance field in a 64³ `texture_3d`, edited by smooth unions in compute and RAY-MARCHED to draw; GPU-side PICKING — a one-thread pass finds where the finger's ray meets the clay and the edit reads it, no round trip                        | "a solid you can change" — any editable 3D shape; and "let the GPU tell itself where you touched"                        |
+| Fireflies  | TAP A RHYTHM, or let the MUSIC lead (🎵 Listen); how much they follow each other; then watch them fall into step             | COUPLED OSCILLATORS (Kuramoto) with each firefly feeling its patch and the patches beside it, the patches' sums gathered by a REDUCTION in FIXED-POINT INTEGER ATOMICS (WGSL has no float atomics), and read back each 0.4s to say how in step they are | "sum many floats from many threads, exactly" — any per-cell average, histogram or centre of mass                         |
+| Black hole | DRAG and THROW it (it glides and bounces), PINCH or scroll for its mass, TILT THE PHONE to look along the disk or down on it | PER-PIXEL GEODESIC INTEGRATION: every pixel steps its own ray of light through Schwarzschild spacetime (velocity Verlet, adaptive steps) to the sky, the disk or the hole — an ODE solved per fragment, not a shape marched                             | "solve a small ODE per pixel" — any bent, refracted or curved-space ray; and DeviceOrientation with its permission dance |
+
+- **Slime** — a slime mould, after Jeff Jones's physarum model. Lay food (🍯) and it grows a
+  glowing network to it, joining the pieces up the way a real one solves a maze; draw walls and it
+  routes round them; erase; blow ✨ spores to start it somewhere new. Three starts (Cities — a
+  scatter of towns it links up —, Maze, Wild), three habits (Veins, Web, Coral — classic parameter
+  sets), three colours. Keys: F, W, E, S tools, H habit, 1–3 start again.
+  Technique: each agent smells the trail ahead and to either side, turns towards the strongest,
+  steps, and adds 1 to its cell. Many land on one cell in a step, so the add is ATOMIC — a plain
+  read-add-write loses all but one, and the probe measures it: a step's deposits always total
+  exactly the number of agents with `atomicAdd` (300,000 of 300,000), while the same step with a
+  plain load and store counted 59,979 and 59,996 of 60,000 on two runs. Then the trail moves part
+  of the way to its 3×3 mean, decays, and food feeds it.
+  ⚠️ Three things were wrong first, all found by looking: agents starting in an inward ring all
+  arrived at the middle together and the mould was one blob that never broke out (they start
+  scattered now); a full 3×3 blur each step settled the network into a few thick smooth loops (it
+  moves only part of the way — `diffuse` — and keeps fine veins); and food that could only be
+  smelled on the spot was passed by — the network formed beautifully beside the towns. Food now
+  feeds the trail like any scent and the mould finds it from afar: trail near food went from 1.2–1.5×
+  elsewhere to 5–6× on Cities, and 10–11× along the way through the Maze.
+  Measured: the trail step on the GPU matches a CPU copy to 1.5×10⁻⁵ (on a peak of 140) over 50
+  steps, food and walls included. In the page, at 1024 and on an emulated phone: food is laid under
+  a mouse (158 cells) and under two fingers at once, a wall drawn (87 cells) and partly erased (to
+  59), spores reach the shader, and frames read back from the page show the network linking the
+  food that was laid.
+
+- **Mirror** — your camera, with time you can paint. Brush over the picture with 🐢 Slow time and
+  that part falls up to two seconds behind; ⚡ Bring back returns it; several fingers at once.
+  Start from Falling (the classic slit-scan: the past pours down the picture), Ripple, Split or
+  Now; 🎨 Show time tints what you have painted. Until the camera is turned on — or if it is
+  refused, or there is none — a stand-in scene of drifting circles and a sweeping hand shows the
+  same trick. The camera stays on the device; the picture is mirrored, as a mirror is; and leaving
+  the toy stops every track, so the light goes off (checked). Keys: C camera, S, N brushes, T show
+  time, 1–4 start from.
+  Technique: the last 64 frames are layers of one `texture_2d_array`, written as a ring — each new
+  frame over the oldest, a `head` saying which is newest, nothing ever copied along. A per-pixel
+  delay map (0..1) says how far back each pixel looks, and the display blends the two frames
+  either side of that moment, so a smooth map is a smooth smear rather than steps. The brush is a
+  compute pass easing the map towards the past or now. The history is shaped like the canvas (about
+  49,000 texels whatever the shape), so a phone held upright is not stretched.
+  ⚠️ One bug the linter led to: the drawing loop is built once, with the device, so it was reading
+  the camera state from the first render — off, for ever — and would never have shown the camera.
+  It reads a ref now.
+  Measured, with a stand-in where frame n is a flat red of n so a pixel's red says which moment it
+  shows: a delay of ½ everywhere shows 118 against 117.5 expected (31.5 frames back, blended); the
+  Falling map shows each row the frame its height says, within half a frame; the GPU brush matches a
+  CPU copy to 1.3×10⁻⁷. In the page, with Chromium's fake camera: it goes live, the brush paints
+  under a mouse and under two fingers, and leaving the toy ends the camera's track.
+
+- **Bubbles** — soap bubbles at dusk. Hold a finger down and a bubble grows on it; let go and it
+  sails off the way you were moving; tap one and it pops with a note (kalimba, through the site's
+  synth — small bubbles high, big ones low). Several fingers blow several at once. Free bubbles
+  rise gently, nudge each other apart, and their films DRAIN: the colours sweep through as they
+  thin, and just before bursting by themselves they turn dark and clear, as real ones do. ✨ Blow
+  some, 💥 Pop them all, a sound switch. Keys: B, P, S.
+  Technique: no geometry — each bubble is a quad whose fragment shader rebuilds the sphere's
+  surface, and the colour is THIN-FILM INTERFERENCE: light reflects off both faces of the film, the
+  two meet out of step by the extra path 2·n·d·cosθ, one is flipped, so each wavelength reflects
+  sin²(2π·n·d·cosθ/λ) of itself. Done for 650, 532 and 450nm, over a thickness that is thinner at
+  the top (the soap drains down) and swirls. Fresnel brightens the rim; a glint from the sun.
+  ⚠️ Two things were wrong first. The reflection was multiplied by the film's tiny opacity, so a
+  reflection of 0.4 reached the screen as 0.05 and the bubbles were grey ghosts; it is ADDED now —
+  premultiplied blending lets colour exceed alpha, and alpha is only what the film takes away from
+  behind. And films burst at 25nm, where blue still reflects a fifth — darkening, not black; the
+  black-film stage is 5–15nm, and at 12 every colour is under 5%.
+  Measured: the centre pixel of a bubble on the GPU matches the same sums done in the probe, at five
+  thicknesses from 20 to 1,100nm, to within 0.005; the tests hold the film to the physics (black when
+  thin, a quarter-wave film fully reflects its colour, the pattern repeats every half-wave). In the
+  page: six bubbles open in the air, pop all sounds six notes, a held bubble grows from 35 to 84px,
+  a thrown one flies the way the hand went, a tap pops and sounds once, Sound off sounds none, and
+  two fingers blow two at once.
+
+- **Clay** — a lump of glazed clay on a turning wheel. Hold a finger on it and it grows there
+  (➕ Add), hollows (➖ Carve) or smooths (〰); 🪞 Mirror makes every stroke on both sides at once
+  (on by default — faces come easily); three brush sizes, three glazes, 🏺 the wheel turning it
+  slowly, ↺ a new lump. On a phone two fingers turn it and pinch to come closer; with a mouse,
+  🔄 Turn and the wheel. Keys: A, C, S, T tools, [ ] brush, M mirror, W wheel, R new lump, 1–3.
+  Technique: the clay is a signed distance field in a 64³ `rgba16float` 3D texture — every voxel
+  how far it is from the surface. It is drawn by RAY-MARCHING: every pixel steps through the
+  volume by the distance it samples until it reaches the surface, lit off the field's own gradient,
+  with shadow in the creases from how much clay sits just outside. A stroke folds a sphere in with
+  a SMOOTH union or subtraction (Quilez's polynomial smooth minimum), so edges blend rather than
+  seam, at 30% a frame so a held stroke builds rather than slaps. And where the finger meets the
+  clay is found ON THE GPU: the CPU never holds the clay, so a one-thread pass marches the finger's
+  ray through the volume and writes the hit into a small buffer, and the edit in the same
+  submission reads it — no readback, no frame of lag.
+  ⚠️ One bug, and one wrong diagnosis of it first. The starting lump read back as all zeros, while
+  a reset later worked; the first theory was lazy texture clearing, and the fix written for it
+  (zeros written in first) changed nothing. The cause was the uniform: `start` skips every voxel
+  past its size, and before the first frame the size was 0. It is written before the first
+  reset now, and the wrong fix came out.
+  Measured: the starting lump matches the CPU's to 4.9×10⁻⁴ (f16); the GPU's pick lands 0.0018
+  from the true surface — a seventeenth of a voxel; adding grows the clay with nothing 0.6 away
+  touched; carving takes it back; a mirrored stroke grows both sides by exactly 583 voxels each. In
+  the page: a held mouse sculpts (the hit buffer reports a hit), Turn turns, the wheel comes closer
+  without scrolling the page, and on an emulated phone two fingers turn and pinch with no sculpting
+  while they do.
+
+- **Fireflies** — a night meadow of fireflies, each flashing on its own clock, and each nudging its
+  clock towards the flashes it sees nearby — until, past a certain pull, the meadow falls into
+  flashing together by itself, as real fireflies in Southeast Asia do. Tap and the ones round your
+  finger flash with you; tap a steady rhythm and the whole meadow takes up its pace; 🎵 Listen and
+  they take up the beat of whatever the site is playing. Shy, Social and Crowd set how much they
+  follow each other; 1K, 4K, 12K fireflies (12K not offered to touch). The readout says how in
+  step they are nearby and across the meadow, and whose beat they are following. Keys: Space,
+  Enter or B taps, S scatters, L listens, 1–3 mood.
+  Technique: the Kuramoto model, dθ/dt = ω + K·R·sin(ψ − θ), but LOCAL — the meadow is cut into
+  16×10 patches and each firefly is pulled by its own and the eight beside it. Every frame a pass
+  clears each patch's three sums, a pass has every firefly ADD its cos θ, sin θ and 1 to its patch,
+  and a pass turns every clock. Many fireflies share a patch, so the adds are atomic — and WGSL has
+  no float atomics, so they are FIXED POINT: round(cos θ · 1024) into an `i32`. That makes the sums
+  exact as well as safe, because integer addition does not care about order: the same crowd sums
+  to the same bits every time (checked, three times), which floats added by many threads would not.
+  The sums are read back every 0.4s (`mapAsync`, one read in flight) for the readout.
+  ⚠️ Three things were wrong first, all found by measuring rather than looking:
+  1. **The music led nobody.** A beat pulled every clock towards flashing now, and a simulation
+     (then the page, with a 120/min kick track) showed it changed nothing — beats with the crowd
+     flashing on them came out no better than with no kicks at all. Two reasons: at 70/min the
+     fireflies' own pace drifts off a beat faster than a kick can pull it back; and at 120/min, two
+     beats to a flash, the off-beat kick finds every clock half way round and pulls it exactly as
+     hard the other way. So a beat now SETS THEIR PACE (folded into a pace they can keep, and
+     followed 95%), only the beats the folding kept kick them, and each pull aims a little ahead
+     because it goes on pulling while they move. A Shy meadow, which would never find itself, now
+     locks onto the beat in 2–4s from 55 to 175/min and flashes within 5% of a turn of it.
+  2. **One "in step" figure called a perfect wave 44% in step.** Each firefly only sees its
+     neighbours, so a Crowd can lock into a wave sweeping the meadow — every patch flashing
+     together, each a little after the one beside it — and stay that way. Over eight crowds every
+     patch was 99–100% in step while the whole meadow read 44–99%. The readout gives both now.
+  3. **And the per-patch figure read a scattered meadow as 25% in step**, because a few clocks at
+     random still add up to about √n of them. It takes away what chance alone gives —
+     (|Σ|² − n) / (n(n − 1)), averaged before the square root — and reads under 12% for scattered
+     patches of six or of twenty-five.
+     Measured on the GPU (4K fireflies): each patch's count is exact and the cos/sin sums agree with a
+     CPU's to rounding (220 units off in 8,192 terms, each at most one, as SwiftShader's own cos is
+     within 0.19 of a unit); a plain read-add-write instead of `atomicAdd` loses 65–102 of 4,096
+     fireflies a frame. Shy stays scattered (0.02 across, 20s), Social reaches 0.80 and Crowd 0.92
+     across; a tap brings its neighbourhood to 0.69 in step against 0.03 elsewhere; a 120/min beat
+     holds a Shy meadow 100% in step, flashing 0.007 of a turn from the beat. In the page, at 1024 and
+     on an emulated phone: taps land where pressed, at full strength on their first frame; five taps
+     600ms apart read "following your beat, 98/min" and set that pace, which is let go 5s after the
+     last tap; with a 120/min track playing, 🎵 Listen kicks on every other beat (4 in 4s) and reads
+     "100% … following the music's beat, 121/min"; mood and count buttons and every key reach the
+     shader; no sideways scroll, nothing undersized or clipped.
+
+- **Black hole** — a black hole you can pick up. Drag it across a starry sky and the stars behind
+  it bend round it; throw it and it glides, slows and comes softly back off the edges; pinch (or
+  scroll) to make it heavier. Its glowing accretion disk shows the famous shape: the far side lifted
+  over the top by gravity and seen again underneath, the side coming towards you brighter and bluer.
+  📱 Tilt (on phones) looks along the disk or down on it as you tilt the phone, and rolls it as you
+  lean — measured from however you were holding it; View does the same everywhere. Skies: Stars,
+  Grid (which shows the bending plainly — Einstein rings, nested), Nebula; 💫 Disk on and off. Keys:
+  Space, ↑ ↓ view, + − mass, D disk, C centre, 1–3 sky.
+  Technique: nothing is drawn and warped. Every pixel starts a ray at the eye and steps it through
+  curved space — Schwarzschild's bending, written as ray tracers write it, a pull of
+  −(3/2)·rs·h²·p/|p|⁵ with h = |p × v| kept all the way — until it falls in (black), escapes (the
+  sky it ends up pointing at) or crosses the disk (its glow: a thin disk's temperature profile,
+  shifted by the gas's orbit and by gravity, so the approaching side shines). Velocity Verlet,
+  with steps in proportion to the distance far out and shrinking as its square near the hole. About
+  90 steps a pixel on average, up to ~300; the canvas is held to 1 device pixel per CSS pixel.
+  `blackhole.ts` has the same stepping in TypeScript, so the tests hold it to numbers that share no
+  arithmetic with it: the exact deflection integral, and the shadow's size.
+  ⚠️ What the tests caught, in my own physics and code:
+  1. **The step was too coarse for the light that matters most.** 0.06·r all the way in is a third
+     of a percent off for most rays but drifts for the ones grazing the shadow — 0.12 of a radian at
+     1% outside its edge, 0.89 at 0.1%, against the exact integral. Those rays draw the photon ring.
+     Shrinking the step as r² inside r = 4 brings them to 0.001 and 0.03 for about a dozen more
+     steps on a ray that comes close.
+  2. **The disk's redshift counted the orbit's slow clock twice.** √(1 − 3M/r) already is gravity
+     and time dilation together for light leaving an orbit sideways; I had divided by γ as well.
+  3. **A throw took its speed from the hole, not the finger.** The hole eases after the finger, so a
+     hole still catching up was flung on release even when the finger had stopped, and lifting one
+     finger of a pinch threw it at the other. It is the finger's last 100ms now, nothing if it had
+     rested 80ms, and a pinch latches until both fingers are up.
+  4. **Chromium now has `DeviceOrientationEvent.requestPermission`** — only iOS used to — and,
+     undecided, it answers `'prompt'`. The first version read anything but `'granted'` as a no and
+     hid the button for good; it stays now, with a line saying View does the same.
+     Measured: the stepping agrees with the exact integral to 0.1% from just outside the shadow
+     (b = 2.65) to b = 20, to the weak-field series at b = 50 and 100, captures every ray inside
+     3√3/2 rs and frees every one outside; on the GPU, sampled across a 512×320 frame, all 1,632 rays
+     have the same fate as the TypeScript stepping and leave in the same direction to 0.005 (the
+     8-bit colour they are read back in), and the shadow's radius in pixels is 25.08, 42.04 and 86.4
+     against 25.03, 41.98 and 86.4 from the formula, at three masses; the approaching side of the
+     disk is 3.6× brighter than the receding. In the page, at 1024 and on an emulated phone: drag,
+     throw (it glides to the edge and back), wheel (no page scroll), pinch (mass 1 → 2.5, the hole
+     not moving), Tilt (undecided: unpressed with the note; granted: 30° of tilt and 20° of lean read
+     as a 38° view and 12° of roll, the slider disabled meanwhile; off: roll back to 0), every
+     button, the slider and every key; no sideways scroll, nothing undersized or clipped.
+
+### Phone checklist — batch 5
+
+- [ ] Slime — does the network read as alive? Lay food in a few places and watch it link them; draw
+      a wall across a vein and watch it reroute. Smooth on a phone (two steps a frame, a cell every
+      2 CSS px)? On `main`'s picker this batch's toys make a third row on a phone — #19's dropdown
+      fixes that when it lands.
+- [ ] Mirror — does the camera ask, and does the picture look like a mirror (moving left moves
+      left)? Paint 🐢 over your face and turn your head. Does the camera light go off when you
+      leave the toy? Smooth on a phone (a 64-frame history)?
+- [ ] Bubbles — do they read as soap rather than glass? Blow a big one slowly; throw one; pop a
+      few. Is the pop sound charming, and quiet enough? Do the colours drift nicely as they age?
+- [ ] Clay — does sculpting feel like clay (fast enough, not too fast)? Is it smooth on a phone (it
+      ray-marches a 3D texture per pixel)? Is Mirror on by default the right call? Two fingers to
+      turn — natural?
+- [ ] Fireflies — does it feel like a meadow at night, and is the flash bright enough to see on a
+      phone in daylight? Tap a slow rhythm — does it feel like they answer? Put a song on in Music,
+      come back and 🎵 Listen — do they flash on the beat? Are the waves a Crowd falls into lovely
+      or confusing — and does "nearby / across" explain them?
+- [ ] Black hole — is it smooth on a phone? This is the heaviest toy in the batch: ~90 light-ray
+      steps per pixel, at 1× pixel density. If it stutters, the cheapest lever is the step count or a
+      lower pixel density, not the physics. Does 📱 Tilt ask (iOS) and feel natural? Does throwing it
+      feel good? Is the Grid sky interesting or just busy?

@@ -1,6 +1,10 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { AquariumDemo } from '../gpu/AquariumDemo'
+import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
+import { BubblesDemo } from '../gpu/BubblesDemo'
+import { ClayDemo } from '../gpu/ClayDemo'
 import { ClothDemo } from '../gpu/ClothDemo'
+import { FirefliesDemo } from '../gpu/FirefliesDemo'
 import { FluidDemo } from '../gpu/FluidDemo'
 import { FractalDemo } from '../gpu/FractalDemo'
 import { GalaxyDemo } from '../gpu/GalaxyDemo'
@@ -11,11 +15,13 @@ import { LavaDemo } from '../gpu/LavaDemo'
 import { LifeDemo } from '../gpu/LifeDemo'
 import { LightDemo } from '../gpu/LightDemo'
 import { MarbleDemo } from '../gpu/MarbleDemo'
+import { MirrorDemo } from '../gpu/MirrorDemo'
 import { MusicDemo } from '../gpu/MusicDemo'
 import { NeonDemo } from '../gpu/NeonDemo'
 import { PondDemo } from '../gpu/PondDemo'
 import { RibbonsDemo } from '../gpu/RibbonsDemo'
 import { SandDemo } from '../gpu/SandDemo'
+import { SlimeDemo } from '../gpu/SlimeDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TunnelDemo } from '../gpu/TunnelDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
@@ -162,6 +168,43 @@ const DEMOS: readonly {
     Demo: PondDemo,
     name: 'Pond',
     line: 'Pond — touch the water and watch the ripples bend the light on the floor beneath.',
+  },
+
+  {
+    id: 'slime',
+    name: 'Slime',
+    line: 'Slime — lay food and a slime mould grows a glowing network to it, routing round your walls.',
+    Demo: SlimeDemo,
+  },
+  {
+    id: 'mirror',
+    name: 'Mirror',
+    line: 'Mirror — your camera, with time you can paint: brush part of the picture and it lags behind.',
+    Demo: MirrorDemo,
+  },
+  {
+    id: 'bubbles',
+    name: 'Bubbles',
+    line: 'Bubbles — hold to blow a soap bubble, let go to send it off, tap one to pop it.',
+    Demo: BubblesDemo,
+  },
+  {
+    id: 'clay',
+    name: 'Clay',
+    line: 'Clay — sculpt a lump of clay in 3D: add, carve and smooth with a finger, and turn it round.',
+    Demo: ClayDemo,
+  },
+  {
+    id: 'fireflies',
+    name: 'Fireflies',
+    line: 'Fireflies — a night meadow that falls into flashing together. Tap a rhythm and it follows.',
+    Demo: FirefliesDemo,
+  },
+  {
+    id: 'blackhole',
+    name: 'Black hole',
+    line: 'Black hole — drag one across the sky and throw it; every pixel bends its light round it.',
+    Demo: BlackHoleDemo,
   },
 ]
 
