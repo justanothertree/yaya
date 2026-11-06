@@ -226,6 +226,35 @@ const spillsUnmanaged = (el, cs) => {
 }
 
 /**
+ * TEXT THAT IS CLIPPED ON PURPOSE, AND WIDE ENOUGH TO STILL SAY SOMETHING.
+ *
+ * ⚠️ `clipped` HAD BEEN CRYING WOLF AT EVERY PROFILE SWEEP AND NOBODY HAD NOTICED, because
+ * nobody sweeps `#dev-profile` — the nav-walk only reaches rooms in the nav. The element is
+ * `.profile-chron-goal-title` holding the 66-character goal CLAUDE.md already tells the story
+ * of: "Finish the back fence, including the gate and the post by the shed", 450px of text in a
+ * 200px box. That one is FIXED and the fix is the point — `overflow: hidden`,
+ * `text-overflow: ellipsis`, `white-space: nowrap` and a `min-width: 56px` floor, with
+ * `spills` and `sideways` both reporting zero. The card holds. The title ellipses. That is
+ * the design, and a checker calling it a fault is the failure this file worries about most.
+ *
+ * ⚠️ BUT ELLIPSIS ALONE IS NOT A CLEAN BILL, which is why this is a floor rather than a skip.
+ * The other half of that same CLAUDE.md story is a layout fix whose numbers all read zero while
+ * every title had been crushed to "a 3px column reading :". An ellipsis at 200px shows most of a
+ * sentence; an ellipsis at 12px shows nothing at all and is still, technically, deliberate.
+ *
+ * So: declared ellipsis excuses the clipping only above a readable width, measured in the
+ * element's OWN font size rather than in pixels — the root size here is fluid, so a pixel
+ * constant would mean different things at different widths. Six characters' worth is the line:
+ * enough that the reader gets a word and the ellipsis is doing its job.
+ */
+const ellipsedOnPurpose = (el, cs) => {
+  if (cs.textOverflow !== 'ellipsis') return false
+  if (cs.overflow !== 'hidden' && cs.overflowX !== 'hidden') return false
+  const em = parseFloat(cs.fontSize) || 16
+  return el.clientWidth >= em * 6
+}
+
+/**
  * A HORIZONTAL SCROLL CONTAINER THAT IS ITSELF WIDER THAN THE SCREEN — a box that says it will
  * keep its content in and then does not, because nothing ever bounded the box.
  *
@@ -630,6 +659,7 @@ export function mobileAudit(root = document) {
       !scrollsX(el) &&
       cs.overflowX !== 'auto' &&
       cs.overflowX !== 'scroll' &&
+      !ellipsedOnPurpose(el, cs) &&
       !once.has('c' + id(el))
     ) {
       once.add('c' + id(el))
