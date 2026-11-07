@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-06 (sixth pass — §12 is new, from the vocal editor import-and-microphone pass; §1–11 untouched, and §11 deliberately so).
+Last reviewed: 2026-11-07 (seventh pass — §13 is new, from the Lab catalog-and-feedback pass; §1–12 untouched).
 
 ---
 
@@ -453,3 +453,75 @@ Eight controls, and at 375px they wrap to three lines of buttons plus the status
 controls under an 86px picture. Measured clean (nothing undersized, clipped, off-edge or
 wordless, Undo and Redo still inseparable), and it looks fine in a screenshot. But it is full:
 the next operation added to this editor wants a rethink of the bar rather than a ninth button.
+
+---
+
+## 13. The Lab's votes and notes — the calls made, and the ones left to Evan (2026-11-07)
+
+**Already built, as a draft:** `supabase/drafts/lab-catalog-and-feedback.sql`, NOT applied to
+production. `docs/2026-11-07-lab-catalog-and-feedback.md` has the apply order and the rollback.
+Every call below is something the draft does today, chosen as the narrower option where the
+policy was not already written down; each says what changes if Evan decides otherwise. None of
+them blocks applying the draft — they are the questions to answer before or after.
+
+### 13a. Evan reads every note, a minor's included
+
+`can_see` deliberately gave up the admin's standing permission to read friends-tier things
+("Only me means no one else, owner included"). A Lab note is different in kind: it is feedback
+addressed to the site's owner, the way a bug report is, and `bug_report` is admin-readable. So
+`lab_can_read_comment` lets the admin read every note, and the panel says so before anybody
+writes one ("Evan reads every note"). Other members read a note through `can_see(author,
+'members')`, so a minor's note reaches their friends and no other member.
+**If that is wrong:** delete the `is_admin()` branch in `lab_can_read_comment` and the admin
+reads notes by the same ladder as everybody else — then a minor's bug report only reaches Evan if
+they are friends. The panel's sentence must change with it.
+
+### 13b. A minor's vote is kept but not in the shared total
+
+The total another member sees counts only voters whose `visibility_ceiling` reaches `members`
+(adults and the admin) and who are not suspended. A minor's or an unestablished age's vote is
+stored, changeable, shown to the voter as theirs — with a sentence saying it is not in the total —
+and counted for the admin as "kept out". The reasoning: a total is a (thin) picture of what each
+voter did, and at small counts it is not thin at all (a toy with one vote names its voter to
+anybody who knows who plays it). **If Evan would rather count everybody,** it is one line:
+`lab_vote_counts` returns true for any non-suspended member. A middle way — count everybody, but
+show no total under some minimum — was not built because it is an opaque rule, and the page's
+promise is a transparent one.
+
+### 13c. Guests see no totals
+
+A guest gets the owner's flags (featured / rough edges / hidden) and nothing counted. Votes are
+members' activity, and showing their totals on the open internet is a decision nobody has made.
+"Highly rated" says "Sign in to see how members rated them" to a guest. **To open it:** have
+`lab_catalog` return `up`/`down` when `member` is false too, and nothing else changes.
+
+### 13d. There is no member-to-member block, so notes cannot honour one
+
+Friendships here are `pending` / `accepted` only; nothing lets one member stop seeing another.
+The Lab reuses what exists (the visibility ladder, suspension, the admin's removal) and does not
+invent a block list of its own — one would be a site-wide feature, not a Lab one. If a block is
+ever built, `lab_can_read_comment` is the one place that would consult it.
+
+### 13e. An author's delete takes the reports on it too
+
+`lab_comment_delete` removes the row and its reports cascade, so a note somebody withdrew is not
+kept as evidence. The admin's own **Remove** keeps the note (hidden from everyone but its author
+and the admin) and closes its reports as `removed`. **If evidence should survive a withdrawal,**
+the delete becomes a soft delete for reported notes — but that keeps words the author asked to
+take back, which is the reason it was not the default.
+
+### 13f. Smaller calls, recorded so they are not mistaken for accidents
+
+- **Limits:** a note is 2–500 characters and nine lines; five notes per ten minutes and twenty a
+  day per author; ten reports an hour. Numbers chosen for a site of a few dozen people, not
+  measured against any abuse.
+- **Favourites live in the browser only** — never sent, so a second device does not have them.
+  Syncing them would mean a fifth `member_library`-style kind; not done because a bookmark is
+  not worth an account round-trip until somebody asks for it on two devices.
+- **A suspended author's notes stop reaching other members** (their own view and the admin's are
+  unchanged). Suspension until now only stopped WRITING; this is the first reader to also hide.
+- **Hidden means retired:** no new votes or notes, even from the admin, and members cannot read
+  its notes; everything already there is kept and returns with a restore.
+- **A new toy needs no migration:** the admin's own visit to the Lab registers any id the database
+  has not met (`admin_lab_register`). Until Evan visits, a new toy plays and lists normally but
+  cannot be voted on.
