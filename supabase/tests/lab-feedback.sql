@@ -110,7 +110,7 @@ begin
   asked := asked + 1;
   j := public.lab_catalog();
   if jsonb_array_length(j) < 51 or exists (select 1 from jsonb_array_elements(j) e
-       where e ? 'up' or e ? 'down' or e ? 'mine' or e ? 'withheld' or e ? 'notes') then
+       where e ? 'up' or e ? 'down' or e ? 'few' or e ? 'mine' or e ? 'notes' or e ? 'reports') then
     fails := array_append(fails, ('2: a guest catalog carries counts, or is short')::text);
   end if;
   foreach t in array array['select public.lab_vote(''swarm'', 1)',
@@ -134,12 +134,17 @@ begin
   perform set_config('role', 'authenticated', true);
   j := public.lab_vote('swarm', 1);
   asked := asked + 1;
-  if (j ->> 'up')::int <> 1 or (j ->> 'mine')::int <> 1 then fails := array_append(fails, (('3: first vote answered ' || j::text))::text); end if;
+  -- the only vote there is: the voter is told their own, and no total (the floor)
+  if (j ->> 'mine')::int <> 1 or j ? 'up' or j ? 'down' or not (j ->> 'few')::boolean then
+    fails := array_append(fails, (('3: first vote answered ' || j::text))::text);
+  end if;
   j := public.lab_vote('swarm', 1);
   j := public.lab_vote('swarm', -1);
-  asked := asked + 1;
-  if (j ->> 'up')::int <> 0 or (j ->> 'down')::int <> 1 then fails := array_append(fails, (('3: changed vote answered ' || j::text))::text); end if;
   perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if (select value from public.lab_votes where user_id = a and demo_id = 'swarm') <> -1 then
+    fails := array_append(fails, ('3: a changed vote did not change'::text));
+  end if;
   asked := asked + 1;
   if (select count(*) from public.lab_votes where user_id = a and demo_id = 'swarm') <> 1 then
     fails := array_append(fails, ('3: a changed vote is not one row')::text);
@@ -165,47 +170,76 @@ begin
   end loop;
   perform set_config('role', 'postgres', true);
 
-  -- the total counts adults and the admin; a minor's, an unknown age's and a suspended member's
-  -- votes are kept but not counted
+  -- every member who may vote counts — an adult, the admin, a minor, an unknown age — and a
+  -- suspended member's earlier vote does not, while they are suspended
   foreach t in array array[a::text, f::text, o::text, m::text, s::text] loop
     perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
     perform set_config('role', 'authenticated', true);
     perform public.lab_vote('life', 1);
     perform set_config('role', 'postgres', true);
   end loop;
-  insert into public.lab_votes (user_id, demo_id, value) values (x, 'life', 1); -- from before the suspension
-  perform set_config('request.jwt.claims', json_build_object('sub', f, 'role', 'authenticated')::text, true);
-  perform set_config('role', 'authenticated', true);
-  select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'life';
-  asked := asked + 1;
-  if (row_for ->> 'up')::int <> 3 or row_for ? 'withheld' or row_for ? 'notes'
-     or not (row_for ->> 'counted')::boolean then
-    fails := array_append(fails, (('3: a member sees life as ' || row_for::text))::text);
-  end if;
-  perform set_config('role', 'postgres', true);
-  -- the minor sees their own vote even though the total does not carry it
-  perform set_config('request.jwt.claims', json_build_object('sub', m, 'role', 'authenticated')::text, true);
-  perform set_config('role', 'authenticated', true);
-  select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'life';
-  asked := asked + 1;
-  if (row_for ->> 'mine')::int <> 1 or (row_for ->> 'up')::int <> 3 or (row_for ->> 'counted')::boolean then
-    fails := array_append(fails, (('3: the minor sees life as ' || row_for::text))::text);
-  end if;
-  perform set_config('role', 'postgres', true);
-  -- the admin sees how many were kept out, and never who
+  insert into public.lab_votes (user_id, demo_id, value) values (x, 'life', -1); -- from before the suspension
+  for t in select unnest(array[f::text, m::text, s::text, o::text]) loop
+    perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'life';
+    perform set_config('role', 'postgres', true);
+    asked := asked + 1;
+    if (row_for ->> 'up')::int <> 5 or (row_for ->> 'down')::int <> 0 or (row_for ->> 'mine')::int <> 1
+       or row_for ? 'withheld' or row_for ? 'counted' or row_for ? 'few' then
+      fails := array_append(fails, (format('3: %s sees life as %s',
+        (select username from public.profiles where user_id = t::uuid), row_for))::text);
+    end if;
+  end loop;
+  -- the catalog never names anybody
   perform set_config('request.jwt.claims', json_build_object('sub', o, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
   j := public.lab_catalog();
-  select e into row_for from jsonb_array_elements(j) e where e ->> 'id' = 'life';
+  perform set_config('role', 'postgres', true);
   asked := asked + 1;
-  if (row_for ->> 'withheld')::int <> 3 or (row_for ->> 'up')::int <> 3 then
-    fails := array_append(fails, (('3: the admin sees life as ' || row_for::text))::text);
-  end if;
-  asked := asked + 1;
-  if j::text ~ (m::text || '|' || a::text || '|' || f::text || '|labminor|labadult|seedfriend') then
+  if j::text ~ (m::text || '|' || a::text || '|' || f::text || '|' || x::text || '|labminor|labadult|seedfriend|labbanned') then
     fails := array_append(fails, ('3: the catalog names a voter')::text);
   end if;
+
+  -- THE FLOOR: a total is shown only once three OTHER members have voted. Three votes on fluid —
+  -- from the minor, the adult and the friend.
+  foreach t in array array[m::text, a::text, f::text] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    perform public.lab_vote('fluid', -1);
+    perform set_config('role', 'postgres', true);
+  end loop;
+  -- [viewer, sees a total]: a voter sees two others, so no total — subtracting yourself is the
+  -- first thing anybody would try; a non-voter sees three others, so the total
+  for t, n in select * from (values (m::text, 0), (a::text, 0), (f::text, 0), (s::text, 1), (o::text, 1)) q loop
+    perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fluid';
+    perform set_config('role', 'postgres', true);
+    asked := asked + 1;
+    if (n = 1 and ((row_for ->> 'down')::int is distinct from 3 or row_for ? 'few'))
+       or (n = 0 and (row_for ? 'up' or row_for ? 'down' or not (row_for ->> 'few')::boolean)) then
+      fails := array_append(fails, (format('3: the floor shows %s fluid as %s',
+        (select username from public.profiles where user_id = t::uuid), row_for))::text);
+    end if;
+  end loop;
+  -- one more voter, and the three who had voted each see three others
+  perform set_config('request.jwt.claims', json_build_object('sub', s, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  j := public.lab_vote('fluid', 1);
   perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if (j ->> 'up')::int <> 1 or (j ->> 'down')::int <> 3 then
+    fails := array_append(fails, ('3: the fourth vote answered ' || j::text)::text);
+  end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', m, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fluid';
+  perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if (row_for ->> 'up')::int <> 1 or (row_for ->> 'down')::int <> 3 then
+    fails := array_append(fails, ('3: past the floor the minor sees ' || coalesce(row_for::text, 'nothing'))::text);
+  end if;
   -- a suspended member cannot vote
   perform set_config('request.jwt.claims', json_build_object('sub', x, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
@@ -291,13 +325,16 @@ begin
   perform set_config('role', 'postgres', true);
 
   /* ---------------------------------------------------------------- 5. notes: who reads which */
-  -- [viewer, note, should see]
+  -- [viewer, note, should see]. ⚠️ THE ADMIN (o) IS A MEMBER HERE LIKE ANY OTHER: they read the
+  -- adult's note through the ladder and NOT the minor's, the unknown age's or the suspended
+  -- member's — none of which reaches them, and none of which anybody has reported
   for j in select jsonb_build_object('v', v, 'n', nn, 'see', see) from (values
       (a, note_a, true), (f, note_a, true), (s, note_a, true), (m, note_a, true), (o, note_a, true),
-      (m, note_m, true), (f, note_m, true), (o, note_m, true), (a, note_m, false), (s, note_m, false),
-      (s, note_s, true), (o, note_s, true), (f, note_s, false), (a, note_s, false), (m, note_s, false),
-      (x, note_x, true), (o, note_x, true), (a, note_x, false), (f, note_x, false)
+      (m, note_m, true), (f, note_m, true), (o, note_m, false), (a, note_m, false), (s, note_m, false),
+      (s, note_s, true), (o, note_s, false), (f, note_s, false), (a, note_s, false), (m, note_s, false),
+      (x, note_x, true), (o, note_x, false), (a, note_x, false), (f, note_x, false)
     ) q(v, nn, see) loop
+    asked := asked + 1;
     perform set_config('request.jwt.claims', json_build_object('sub', j ->> 'v', 'role', 'authenticated')::text, true);
     perform set_config('role', 'authenticated', true);
     select count(*) into n from jsonb_array_elements(public.lab_comments_page('swarm', null, null, 30) -> 'items') e
@@ -423,6 +460,67 @@ begin
   select (e ->> 'reports')::int into n from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'swarm';
   asked := asked + 1;
   if n <> 1 then fails := array_append(fails, (format('7: the admin catalog counts %s reported notes on swarm', n))::text); end if;
+  -- the admin's note counts are the notes THEY CAN READ — the same number the page gives them,
+  -- and fewer than the table holds, since the minor's, the unknown age's and the suspended
+  -- member's notes do not reach them
+  select (select sum(v::int) from jsonb_each_text(e -> 'notes') x(k, v)) into n
+    from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'swarm';
+  asked := asked + 1;
+  if n <> jsonb_array_length(public.lab_comments_page('swarm', null, null, 30) -> 'items') then
+    fails := array_append(fails, (format('7: the admin catalog counts %s notes on swarm, the page shows %s', n,
+      jsonb_array_length(public.lab_comments_page('swarm', null, null, 30) -> 'items')))::text);
+  end if;
+  perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if n >= (select count(*) from public.lab_comments where demo_id = 'swarm' and removed_at is null) then
+    fails := array_append(fails, ('7: the admin catalog counts notes the admin cannot read'::text));
+  end if;
+  perform set_config('role', 'authenticated', true);
+  -- no standing access: an unreported note the ladder keeps from the admin cannot be moderated,
+  -- and the refusal is the one a missing note gets
+  foreach t in array array[format('select public.admin_lab_moderate(%L, ''remove'')', note_m),
+                           format('select public.admin_lab_moderate(%L, ''keep'')', note_s),
+                           format('select public.admin_lab_moderate(%L, ''remove'')', note_x),
+                           format('select public.admin_lab_moderate(%L, ''remove'')', gen_random_uuid())] loop
+    asked := asked + 1;
+    begin
+      execute t;
+      fails := array_append(fails, ('7: the admin moderated an unreported note they cannot see: ' || t)::text);
+    exception when no_data_found then
+      if sqlerrm <> 'no such note' then fails := array_append(fails, ('7: the refusal said ' || sqlerrm)::text); end if;
+    end;
+  end loop;
+  asked := asked + 1;
+  if public.admin_lab_reports()::text ~ (note_m::text || '|' || note_s::text || '|' || note_x::text) then
+    fails := array_append(fails, ('7: the report queue holds a note nobody reported'::text));
+  end if;
+  perform set_config('role', 'postgres', true);
+  -- the minor's friend reports the minor's note: now — and only through the queue — the admin
+  -- reads it and may act on it, while the page still does not show it to them
+  perform set_config('request.jwt.claims', json_build_object('sub', f, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  perform public.lab_comment_report(note_m, 'unsafe');
+  perform set_config('role', 'postgres', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', o, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  select e into row_for from jsonb_array_elements(public.admin_lab_reports()) e where e ->> 'id' = note_m::text;
+  asked := asked + 1;
+  if row_for is null or row_for ->> 'body' is null or row_for ->> 'state' <> 'open'
+     or row_for -> 'reasons' <> '{"unsafe": 1}'::jsonb then
+    fails := array_append(fails, ('7: a reported private note in the queue: ' || coalesce(row_for::text, 'missing'))::text);
+  end if;
+  asked := asked + 1;
+  if exists (select 1 from jsonb_array_elements(public.lab_comments_page('swarm', null, null, 30) -> 'items') e
+             where e ->> 'id' = note_m::text) then
+    fails := array_append(fails, ('7: a report put a private note on the admin''s page'::text));
+  end if;
+  asked := asked + 1;
+  begin
+    perform public.admin_lab_moderate(note_m, 'keep');
+  exception when others then
+    fails := array_append(fails, ('7: the admin could not act on a reported note: ' || sqlerrm)::text);
+  end;
+  row_for := null;
   j := public.admin_lab_moderate(note_a, 'remove');
   perform set_config('role', 'postgres', true);
   asked := asked + 1;
@@ -430,8 +528,9 @@ begin
      or (select resolution from public.lab_comment_reports where comment_id = note_a and reporter = f) <> 'removed' then
     fails := array_append(fails, ('7: removing did not close its reports')::text);
   end if;
-  -- removed: gone for the others, still there for its author with its text, and for the admin
-  for t, n in select * from (values (f::text, 0), (s::text, 0), (a::text, 1), (o::text, 1)) q loop
+  -- removed: gone for the others — the admin included, on the page — and still there for its
+  -- author with its text
+  for t, n in select * from (values (f::text, 0), (s::text, 0), (a::text, 1), (o::text, 0)) q loop
     asked := asked + 1;
     perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
     perform set_config('role', 'authenticated', true);
@@ -443,6 +542,16 @@ begin
     end if;
     row_for := null;
   end loop;
+  -- the admin finds it in the queue as removed, which is where it is restored from
+  perform set_config('request.jwt.claims', json_build_object('sub', o, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  select e into row_for from jsonb_array_elements(public.admin_lab_reports()) e where e ->> 'id' = note_a::text;
+  perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if row_for is null or row_for ->> 'state' <> 'removed' then
+    fails := array_append(fails, ('7: a removed note is not in the queue to restore: ' || coalesce(row_for::text, 'missing'))::text);
+  end if;
+  row_for := null;
   -- a removed note cannot be edited back into view, and the admin can restore it
   perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
@@ -638,8 +747,11 @@ begin
   perform set_config('role', 'authenticated', true);
   select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold';
   asked := asked + 1;
-  if (row_for ->> 'mine')::int <> 1 or (row_for ->> 'up')::int <> 1
-     or jsonb_array_length(public.lab_comments_page('fold') -> 'items') <> 1 then
+  -- its one vote is still the voter's own (no total: one vote is under the floor), and its note
+  n := jsonb_array_length(public.lab_comments_page('fold') -> 'items');
+  perform set_config('role', 'postgres', true);
+  if (row_for ->> 'mine')::int <> 1 or not (row_for ->> 'few')::boolean or n <> 1
+     or (select count(*) from public.lab_votes where demo_id = 'fold') <> 1 then
     fails := array_append(fails, (('10: restored fold lost its history: ' || coalesce(row_for::text, 'not listed')))::text);
   end if;
   perform set_config('role', 'postgres', true);

@@ -26,22 +26,21 @@
 --   lab_comment_reports  one private report per (note, reporter). Only the admin reads them, and
 --                        even the admin is shown counts by reason, never who reported.
 --
--- WHO SEES WHAT — the rules reused, not invented:
+-- WHO SEES WHAT — the rules reused, not invented (Evan's decisions, OPEN-DECISIONS §13):
 --   • A vote is never shown to anybody but its voter. There is no function that returns voters.
---   • The shared total counts only votes whose voter could show the room their activity anyway:
---     not suspended, and visibility_ceiling(voter) at 'members' or above — so an adult or the
---     admin. A minor's, or an unestablished age's, vote is kept and changeable like any other but
---     is NOT in the total another member sees, because their ceiling is Friends and a total is a
---     (thin) picture of what they did. The admin sees how many votes were kept out, as a number.
---   • Totals are for signed-in members. A guest gets the owner's flags and nothing counted.
+--   • Every member who may vote today counts — minors and unknown ages included; a suspended
+--     member's votes stop counting while suspended. A total is shown only to signed-in members,
+--     and only once at least lab_vote_floor() OTHER members have voted (§13b says why, and what
+--     the floor cannot do).
+--   • Guests get the owner's flags and nothing counted, and cannot read or write notes.
 --   • A note is read through can_see(author, 'members') — the profile ladder, so a minor's note
---     reaches their friends and no other member — plus its author, plus the admin, because a
---     note is feedback addressed to the site's owner the way a bug report is. The panel says so
---     before anybody writes one. docs/OPEN-DECISIONS.md §13 records that call.
+--     reaches their friends and no other member — plus its author. The admin has NO standing
+--     access: they read a note the ladder keeps from them only after somebody reports it, and
+--     only in the report queue (§13a).
 --   • A suspended member writes nothing (votes, notes, reports), and their notes stop reaching
---     other members; their own and the admin's view are unchanged.
+--     other members.
 --   • There is no member-to-member block on this site (friendships are pending/accepted only),
---     so there is nothing further to consult; §13 says that rather than inventing one here.
+--     so nothing here claims to honour one (§13d).
 
 create table public.lab_demos (
   id text primary key check (id ~ '^[a-z0-9][a-z0-9-]{0,39}$'),
@@ -123,8 +122,9 @@ on conflict (id) do nothing;
 
 /* ------------------------------------------------------------------ the rules, in one place */
 
--- Does this voter's vote go into the total other members see. Not a privacy check on any one
--- row — no row is ever shown — but a statement about whose activity a shared number may carry.
+-- Is this a vote that counts: from a member who may vote today — a profile, not suspended.
+-- EVERY such member counts, minors and unknown ages included (OPEN-DECISIONS §13b). A suspended
+-- member's earlier votes stop counting while they are suspended and count again after.
 create or replace function public.lab_vote_counts(p_voter uuid)
 returns boolean
 language sql stable security definer
@@ -133,13 +133,48 @@ as $$
   select exists (
     select 1 from public.profiles p
     where p.user_id = p_voter and not coalesce(p.suspended, false)
-  ) and public.visibility_ceiling(p_voter) >= 'members'::public.visibility_tier;
+  );
 $$;
 
--- May the caller read this note. Its author, the admin (a note is feedback addressed to the
--- site's owner), and otherwise the profile ladder at 'members' — clamped to the author's own
--- ceiling inside can_see, so a minor's note reaches their friends only. A removed note reaches
--- its author and the admin; a suspended author's notes stop reaching anybody else.
+-- ⚠️ THE FLOOR UNDER EVERY TOTAL. Counting everybody means a total can be one person — and then it
+-- is that person's vote, shown to every member, which for a minor is exactly the activity their
+-- Friends ceiling keeps from non-friends. So a total is shown to a caller only once at least
+-- this many OTHER members have voted on it: "others" because a total of four that includes your
+-- own vote is three other people, and subtracting yourself is the first thing anybody would try.
+-- It stops a total from naming anybody by itself. It cannot stop somebody who watches a total
+-- move while knowing who was just online — OPEN-DECISIONS §13b is that conflict, for Evan.
+create or replace function public.lab_vote_floor()
+returns int
+language sql immutable
+set search_path = public, pg_temp
+as $$ select 3 $$;
+
+-- The totals for one experiment as the caller may see them: {up, down} once enough other members
+-- have voted, or {few: true} before that. Never who; never a total the floor does not allow.
+create or replace function public.lab_totals(p_demo text)
+returns jsonb
+language sql stable security definer
+set search_path = public, pg_temp
+as $$
+  with v as (
+    select v.user_id, v.value from public.lab_votes v
+    where v.demo_id = p_demo and public.lab_vote_counts(v.user_id)
+  )
+  select case
+    when (select count(*) from v where v.user_id is distinct from auth.uid()) < public.lab_vote_floor()
+      then jsonb_build_object('few', true)
+    else jsonb_build_object('up', (select count(*) from v where v.value = 1),
+                            'down', (select count(*) from v where v.value = -1))
+  end;
+$$;
+
+-- May the caller read this note. Its author, and otherwise the profile ladder at 'members' —
+-- clamped to the author's own ceiling inside can_see, so a minor's note reaches their friends
+-- only. ⚠️ THE ADMIN HAS NO BRANCH HERE, on purpose (OPEN-DECISIONS §13a): being the site's owner
+-- is not a standing permission to read what somebody shared with friends — the same rule can_see
+-- itself keeps. The admin reaches a note they cannot otherwise see only when somebody REPORTS it,
+-- and only through admin_lab_reports. A removed note reaches its author alone; a suspended
+-- author's notes stop reaching anybody else.
 create or replace function public.lab_can_read_comment(p_author uuid, p_removed boolean)
 returns boolean
 language sql stable security definer
@@ -148,11 +183,24 @@ as $$
   select case
     when auth.uid() is null then false
     when p_author = auth.uid() then true
-    when public.is_admin() then true
     when p_removed then false
     when coalesce((select suspended from public.profiles where user_id = p_author), true) then false
     else public.can_see(p_author, 'members'::public.visibility_tier)
   end;
+$$;
+
+-- May the admin moderate this note: somebody reported it, or the admin can read it through the
+-- ladder like any member. Anything else is somebody's private note that nobody flagged, and the
+-- admin has no business with it — it answers exactly as a note that does not exist.
+create or replace function public.lab_admin_may_moderate(c public.lab_comments)
+returns boolean
+language sql stable security definer
+set search_path = public, pg_temp
+as $$
+  select public.is_admin() and (
+    exists (select 1 from public.lab_comment_reports r where r.comment_id = c.id)
+    or public.lab_can_read_comment(c.user_id, false)
+  );
 $$;
 
 create or replace function public.lab_demo_open(p_demo text)
@@ -179,8 +227,7 @@ as $$
     'id', c.id,
     'demo', c.demo_id,
     'kind', c.kind,
-    -- no condition needed: lab_can_read_comment hands a removed note to its author and the
-    -- admin only, and both may read what it said
+    -- every caller of this has already established the reader may see the note
     'body', c.body,
     'author', (select username::text from public.profiles where user_id = c.user_id),
     'mine', c.user_id = auth.uid(),
@@ -192,10 +239,11 @@ $$;
 
 /* ------------------------------------------------------------------ the catalog */
 
--- The owner's flags for every experiment, and — for a signed-in member — the vote totals and
--- the caller's own vote. Callable by guests, who get the flags and nothing counted. A hidden
--- experiment reaches anybody but the admin as its id and `hidden: true`, and nothing else. The admin also gets how many votes were kept out of
--- the totals, how many notes of each kind, and how many reports are open.
+-- The owner's flags for every experiment, and — for a signed-in member — the totals the floor
+-- allows (lab_totals) and the caller's own vote. Callable by guests, who get the flags and nothing
+-- counted. A hidden experiment reaches anybody but the admin as its id and `hidden: true`, and
+-- nothing else. The admin also gets how many notes of each kind THEY CAN READ, and how many notes
+-- have an open report.
 create or replace function public.lab_catalog()
 returns jsonb
 language plpgsql stable security definer
@@ -221,30 +269,23 @@ begin
         'featured', d.featured,
         'experiment', d.experiment,
         'hidden', d.hidden,
-        'up', case when member then (select count(*) from public.lab_votes v
-                                      where v.demo_id = d.id and v.value = 1
-                                        and public.lab_vote_counts(v.user_id)) end,
-        'down', case when member then (select count(*) from public.lab_votes v
-                                        where v.demo_id = d.id and v.value = -1
-                                          and public.lab_vote_counts(v.user_id)) end,
         'mine', case when me is not null then (select v.value from public.lab_votes v
                                                where v.demo_id = d.id and v.user_id = me) end,
-        -- whether the caller's OWN vote is in the total: about themselves, so theirs to know
-        'counted', case when me is not null then public.lab_vote_counts(me) end,
-        'withheld', case when admin then (select count(*) from public.lab_votes v
-                                          where v.demo_id = d.id
-                                            and not public.lab_vote_counts(v.user_id)) end,
+        -- the notes the ADMIN CAN READ, by kind: a count of everybody's would be a picture of
+        -- activity the ladder keeps from them
         'notes', case when admin then (
           select jsonb_build_object(
             'idea', count(*) filter (where c.kind = 'idea'),
             'more', count(*) filter (where c.kind = 'more'),
             'bug', count(*) filter (where c.kind = 'bug'))
-          from public.lab_comments c where c.demo_id = d.id and c.removed_at is null) end,
+          from public.lab_comments c
+          where c.demo_id = d.id and c.removed_at is null
+            and public.lab_can_read_comment(c.user_id, false)) end,
         'reports', case when admin then (
           select count(distinct r.comment_id) from public.lab_comment_reports r
           join public.lab_comments c on c.id = r.comment_id
           where c.demo_id = d.id and r.resolved_at is null) end
-      )) end as r
+      ) || case when member then public.lab_totals(d.id) else '{}'::jsonb end) end as r
       from public.lab_demos d
     ) q
   ), '[]'::jsonb);
@@ -285,15 +326,7 @@ begin
       do update set value = excluded.value, updated_at = now()
       where public.lab_votes.value is distinct from excluded.value;
   end if;
-  return jsonb_build_object(
-    'id', p_demo,
-    'up', (select count(*) from public.lab_votes v
-           where v.demo_id = p_demo and v.value = 1 and public.lab_vote_counts(v.user_id)),
-    'down', (select count(*) from public.lab_votes v
-             where v.demo_id = p_demo and v.value = -1 and public.lab_vote_counts(v.user_id)),
-    'mine', nullif(p_value, 0),
-    'counted', public.lab_vote_counts(me)
-  );
+  return jsonb_build_object('id', p_demo, 'mine', nullif(p_value, 0)) || public.lab_totals(p_demo);
 end;
 $$;
 
@@ -548,7 +581,9 @@ begin
 end;
 $$;
 
--- The open reports, one entry per note, with how many reports of each reason. Never who.
+-- What the admin moderates, and only that: every note with an OPEN report — the one way the
+-- admin reads a note the ladder keeps from them — and every note the admin has removed, so it can
+-- be restored. Each with how many open reports of each reason. Never who reported.
 create or replace function public.admin_lab_reports()
 returns jsonb
 language plpgsql stable security definer
@@ -563,25 +598,29 @@ begin
     from (
       select public.lab_comment_json(c)
              || jsonb_build_object(
-                  'first', min(r.created_at),
-                  'reasons', (select jsonb_object_agg(x.reason, x.n) from (
+                  'state', case when c.removed_at is null then 'open' else 'removed' end,
+                  'first', coalesce((select min(r.created_at) from public.lab_comment_reports r
+                                      where r.comment_id = c.id and r.resolved_at is null),
+                                    c.removed_at),
+                  'reasons', coalesce((select jsonb_object_agg(x.reason, x.n) from (
                                 select r2.reason, count(*) as n from public.lab_comment_reports r2
                                 where r2.comment_id = c.id and r2.resolved_at is null
-                                group by r2.reason) x)
+                                group by r2.reason) x), '{}'::jsonb)
                 ) as e
-      from public.lab_comment_reports r
-      join public.lab_comments c on c.id = r.comment_id
-      where r.resolved_at is null
-      group by c.id
-      order by min(r.created_at) desc
+      from public.lab_comments c
+      where c.removed_at is not null
+         or exists (select 1 from public.lab_comment_reports r
+                    where r.comment_id = c.id and r.resolved_at is null)
+      order by coalesce(c.removed_at, c.created_at) desc
       limit 100
     ) q
   ), '[]'::jsonb);
 end;
 $$;
 
--- remove: hide the note from everyone but its author and the admin, and close its reports as
--- 'removed'. restore: undo a remove. keep: close its reports as 'kept' and leave it up.
+-- remove: hide the note from everyone but its author, and close its reports as 'removed'.
+-- restore: undo a remove. keep: close its reports as 'kept' and leave it up. Only on a note the
+-- admin may moderate (lab_admin_may_moderate): reported, or one they can already read.
 create or replace function public.admin_lab_moderate(p_id uuid, p_action text)
 returns jsonb
 language plpgsql volatile security definer
@@ -597,6 +636,10 @@ begin
   if p_action is null or p_action not in ('remove', 'restore', 'keep') then
     raise exception 'remove, restore or keep' using errcode = '22023';
   end if;
+  select * into c from public.lab_comments where id = p_id for update;
+  if c.id is null or not public.lab_admin_may_moderate(c) then
+    raise exception 'no such note' using errcode = 'P0002';
+  end if;
   update public.lab_comments
      set removed_at = case p_action when 'remove' then coalesce(removed_at, now())
                                     when 'restore' then null else removed_at end,
@@ -604,9 +647,6 @@ begin
                                     when 'restore' then null else removed_by end
    where id = p_id
   returning * into c;
-  if c.id is null then
-    raise exception 'no such note' using errcode = 'P0002';
-  end if;
   if p_action in ('remove', 'keep') then
     update public.lab_comment_reports
        set resolved_at = now(),
@@ -624,7 +664,9 @@ $$;
 -- exactly the roles that use it. The helpers are granted to nobody: they run inside the functions
 -- that call them, as the definer.
 revoke all on function
-  public.lab_vote_counts(uuid), public.lab_can_read_comment(uuid, boolean),
+  public.lab_vote_counts(uuid), public.lab_vote_floor(), public.lab_totals(text),
+  public.lab_can_read_comment(uuid, boolean),
+  public.lab_admin_may_moderate(public.lab_comments),
   public.lab_demo_open(text), public.lab_comment_json(public.lab_comments),
   public.lab_clean_body(text),
   public.lab_catalog(), public.lab_vote(text, int),
