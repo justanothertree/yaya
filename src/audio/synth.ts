@@ -1676,7 +1676,12 @@ export function noteOn(
        always have been — a kit is noise bursts and short tones built here rather than a voice
        with an envelope this file holds the numbers for. It is not obviously wrong (a kick is
        percussive and the limiter handles it) but it does mean the sum is a sum of the PITCHED
-       parts only, and the beat picker's layers are drums. See OPEN-DECISIONS §13b. */
+       parts only, and the beat picker's layers are drums.
+
+       See OPEN-DECISIONS §13b, "Drums are invisible to the scaler" — NAMED as well as numbered
+       on purpose, because an unmerged Lab draft adds a §13 of its own whose 13b is about who
+       may read a minor's vote. A number is the one part of a cross-reference somebody else can
+       change without touching this file. */
     hitDrum(c, midi, at, bus)
     return
   }
