@@ -242,34 +242,59 @@ const pointer = (el, type, down) => {
  * ⚠️ AND IT PUTS THE FADERS BACK. A probe that leaves the room changed is one you cannot run
  * twice, and layer gains are the thing it has to move.
  */
-async function duckProbe(raw, keyIndex) {
+/**
+ * The bench both loudness probes stand on: one key, every layer fader, and the discipline about
+ * when a reading is allowed to be taken.
+ *
+ * ⚠️ IT PUTS THE FADERS BACK, through `restore`. A probe that leaves the room changed is one
+ * you cannot run twice, and layer gains are the thing these have to move.
+ */
+function rig(raw, keyIndex) {
   const el = keyAt(keyIndex)
   if (!el) return { error: 'no keys — is #instrument open?' }
   const faders = [...document.querySelectorAll('.inst-layers input[type=range]')]
   if (!faders.length) return { error: 'no layers — load a backing first' }
   const was = faders.map((f) => f.value)
-  const setAll = (v) => {
-    const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-    for (const f of faders) {
-      d.set.call(f, String(v))
-      f.dispatchEvent(new Event('input', { bubbles: true }))
-      f.dispatchEvent(new Event('change', { bubbles: true }))
-    }
+  const vset = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+  const write = (f, v) => {
+    vset.call(f, String(v))
+    f.dispatchEvent(new Event('input', { bubbles: true }))
+    f.dispatchEvent(new Event('change', { bubbles: true }))
   }
-  const press = async (ms) => {
-    pointer(el, 'pointerdown', true)
-    await wait(250)
+  const hold = (down) => pointer(el, 'pointerdown', down)
+  const peakFor = async (ms) => {
     let peak = 0
     const until = performance.now() + ms
     while (performance.now() < until) {
       peak = Math.max(peak, raw().peak)
       await wait(15)
     }
-    /* released on WINDOW, which is where the room listens — see the note in InstrumentRoom
-       about capture being dropped so a press can slide between keys */
-    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
     return +peak.toFixed(4)
   }
+  return {
+    faders,
+    setAll: (v) => faders.forEach((f) => write(f, v)),
+    restore: () => faders.forEach((f, i) => write(f, was[i])),
+    down: () => hold(true),
+    /* released on WINDOW, which is where the room listens — see the note in InstrumentRoom
+       about capture being dropped so a press can slide between keys */
+    up: () => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true })),
+    peakFor,
+    /** hold the key, wait out the attack, and report the highest sample while it is down */
+    press: async (ms) => {
+      hold(true)
+      await wait(250)
+      const peak = await peakFor(ms)
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
+      return peak
+    },
+  }
+}
+
+async function duckProbe(raw, keyIndex) {
+  const r = rig(raw, keyIndex)
+  if (r.error) return r
+  const { setAll, press } = r
   /**
    * ⚠️ "THE ANALYSER IS QUIET" IS NOT "NOTHING IS COUNTED", and that caught this probe out on
    * its first run — the guards refused the reading and they were right.
@@ -368,12 +393,64 @@ async function duckProbe(raw, keyIndex) {
           : 'no ducking from a silent backing',
     }
   } finally {
-    const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-    faders.forEach((f, i) => {
-      d.set.call(f, was[i])
-      f.dispatchEvent(new Event('input', { bubbles: true }))
-      f.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    r.restore()
+  }
+}
+
+/**
+ * Does the room hand the headroom BACK? — the transition `ducking()` structurally cannot see.
+ *
+ * ⚠️ THE SAME BUG HAS A TRANSIENT FORM AND IT IS THE WORSE ONE. `ducking()` compares two
+ * steady states, so it would go green for a fix that carried the layer gain into the sum at
+ * note-on and left it there. Layer gain rides the part's BUS — `setLayerGain` says so — so a
+ * gain remembered on the voice disagrees with the signal for as long as that voice lasts.
+ *
+ * This holds one key over an AUDIBLE backing and then pulls every fader to zero underneath it,
+ * without letting go and without striking anything new. The backing goes; the question is where
+ * the key ends up. Measured 7 Nov with the fix: **0.4838** against **0.5253** for that key alone,
+ * which is 0.71dB. Measured the same morning without it: **0.2198**, 7.7dB down and STAYING
+ * there, because nothing was ever going to re-strike it.
+ *
+ * `alone` is taken first, with the transport stopped, so the comparison is against this room on
+ * this run rather than against a number written down here.
+ */
+async function recoverProbe(raw, keyIndex, from) {
+  const r = rig(raw, keyIndex)
+  if (r.error) return r
+  const play = (label) =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === label)
+  try {
+    r.setAll(from)
+    await wait(300)
+    const alone = await r.press(1200)
+    await wait(4500)
+    play('▶ Play')?.click()
+    await wait(2500)
+    r.down()
+    await wait(600)
+    const overBacking = await r.peakFor(400)
+    /* the only thing that moves is the fader — the key is still down */
+    r.setAll(0)
+    await wait(500)
+    const afterwards = await r.peakFor(600)
+    r.up()
+    play('⏹ Stop')?.click()
+    const dB =
+      alone > 0 && afterwards > 0 ? +(20 * Math.log10(afterwards / alone)).toFixed(2) : null
+    return {
+      alone,
+      overBacking,
+      afterwards,
+      dB,
+      reading:
+        dB == null
+          ? 'no sound from the key at all — nothing here is a measurement'
+          : dB < -2
+            ? 'the key is still ducked by a backing that has been turned off'
+            : 'the headroom came back without a new note',
+    }
+  } finally {
+    r.restore()
   }
 }
 
@@ -381,6 +458,8 @@ function probes(level, raw) {
   return {
     /** see duckProbe — hold one key alone, then over a backing at fader zero */
     ducking: (keyIndex = 7) => duckProbe(raw, keyIndex),
+    /** see recoverProbe — pull the faders to zero under a key that is still held down */
+    recovers: (keyIndex = 7, from = 1) => recoverProbe(raw, keyIndex, from),
     /**
      * What silence reads as.
      *

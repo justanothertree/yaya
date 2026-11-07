@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-06 (sixth pass — §12 is new, from the vocal editor import-and-microphone pass; §1–11 untouched, and §11 deliberately so).
+Last reviewed: 2026-11-07 (seventh pass — §11a is DONE, §11b and §11c are re-measured on top of it, and §13 is new; §12 untouched).
 
 ---
 
@@ -315,74 +315,64 @@ deliberately, both documented where they are. Nothing this week moved either.
 
 ---
 
-## 11. Three Instrument loudness calls, all measured, none decided
+## 11. Three Instrument loudness calls — the first is now fixed, two still waiting
 
 Added 6 Nov 2026, closing a run of Instrument work. Each of these is a number I can measure and
 a balance I cannot judge, because judging it means listening on a real device. They are listed
 together because they interact: fixing the first changes what the other two are worth.
 
-### 11a. A backing at zero volume takes 5–7dB off your hands
+### 11a. ~~A backing at zero volume takes 5–7dB off your hands~~ — DONE 2026-11-07
 
-**The strongest of the three, and the only one that is plainly a defect rather than a taste.**
+Fixed. The sum the scaler works from now carries the layer's fader, and reads it back off the bus
+each time rather than copying it onto the voice. `src/audio/poly.ts` holds the arithmetic and
+`poly.test.ts` asks it 20 questions; the reasoning and every figure are in
+`docs/2026-11-07-the-sum-and-the-signal.md`.
 
-`Ringing.peak` in `synth.ts` is the PATCH's level. The polyphony scaling sums those and holds the
-total at the limiter threshold — but the LAYER's gain is applied by `busFor` → `b.level()` at the
-bus input, downstream of the polyphony gain, so the sum never sees it. A layer at gain 0 still
-counts its full patch level; a layer at gain 2 counts half of what it contributes.
+Measured with `ducking()`, same backing, same key, every guard green:
 
-Measured with `ducking()` in `scripts/sound-probe.js`, four-layer backing, every fader at zero so
-it makes no sound at all, every guard in the probe green:
+|                                                 | before                      | after                     |
+| ----------------------------------------------- | --------------------------- | ------------------------- |
+| every fader at 0, held C4                       | **−6.62dB**                 | **−0.06dB**               |
+| a held key with the faders pulled to 0 under it | 0.2198, stranded 7.7dB down | **0.4838**, within 0.71dB |
 
-|                                     | peak   | vs alone                      |
-| ----------------------------------- | ------ | ----------------------------- |
-| backing running, no key             | 0      | — (silent, as it must be)     |
-| C4 held, backing loaded but STOPPED | 0.5334 | **0.00dB** — the null control |
-| C4 held, silent backing RUNNING     | 0.2879 | **−5.36dB**                   |
-| C4 held again at the end            | 0.5334 | identical, to the last digit  |
-
-A hand-run earlier the same day measured **−6.74dB**. The two differ by where in the bar the note
-landed, because the sum follows the backing's envelopes — so a held note **pumps in time with
-music that is making no sound**.
-
-**What is being asked.** The fix is one multiplication: carry the layer gain into `peak` and
-`target`. It changes loudness in both directions — hands come back up over a quiet backing, and a
-hot layer starts ducking properly instead of leaning on the limiter. Whether that balance is the
-one Evan wants is an ear's decision.
-
-**Cost of waiting.** Turning a layer down makes the whole room quieter around it, so the fader
-feels like it has no authority — which may well be the complaint already recorded in
-`presets.test.ts`: _"the layer volume is almost not loud enough for some of the instruments"_. If
-so, this has been the cause the whole time and the preset levels below are a red herring.
-
-**To reproduce**, on `#instrument` with a backing loaded:
-
-```js
-const t = tap(await import('/src/audio/audioTap.ts'))
-await t.ducking()
-```
-
-It runs the whole experiment, validates its own silence, and puts the faders back. Run it twice —
-the first run after a backing is built reads low and the `repeatable` guard will say so.
+⚠️ **It is not the identity except at a fader of 1, and that is the point.** What else moved is
+in §11c and §13a. Nothing has been LISTENED to.
 
 ### 11b. The preset levels, and whether they still need re-levelling
 
-Untouched on purpose, all session. The measured spread is roughly 13× between the quietest and
-loudest patch at the same fader position, which is what `scripts/synth-levels.py` and
+Untouched on purpose, three sessions running. The measured spread is roughly 13× between the
+quietest and loudest patch at the same fader position, which is what `scripts/synth-levels.py` and
 `presets.test.ts` are both about.
 
-⚠️ **Do not act on this before 11a.** If the fader's apparent weakness is the ducking bug, then
-re-levelling presets is fixing the symptom of something else — and it is the change that cannot be
-undone quietly, because every saved song carries the old levels in its layer gains.
+⚠️ **11a was the blocker and it has gone, so this is now answerable rather than merely
+waiting.** The reasoning recorded here was that re-levelling presets might be fixing the symptom of
+the ducking bug — "the layer volume is almost not loud enough for some of the instruments" is a
+complaint about a fader that feels like it has no authority, and a fader that left a layer counting
+its full patch level against everything else is exactly that. That cause is gone. Whether a spread
+remains that an ear objects to is now a question about the presets alone, and the first useful move
+is to listen to the same two patches that prompted it before changing any number.
 
-### 11c. The layer fader's 2× ceiling buys less than it looks like
+### 11c. The layer fader's 2× ceiling buys less than it looks like — re-measured
 
-Taking every layer fader from 1 to its 2× maximum moved the post-limiter peak **1.061 → 1.100**
-and the RMS **0.248 → 0.339**. The limiter eats most of a doubling, so raising the cap would buy
-less than the number suggests — and what it mostly buys is more limiter, which is audible as
-intermodulation rather than as volume (`synth.ts` has the spectral proof).
+The original reading was that taking every layer fader from 1 to its maximum moved the post-limiter
+peak **1.061 → 1.100** and the RMS **0.248 → 0.339**, and that what it mostly bought was more
+limiter.
 
-Same ordering applies: 11a first, because the sum the limiter is being asked to hold is the thing
-that is currently wrong.
+⚠️ **That was measured over the bug and 11a has changed it.** Re-measured 7 Nov on the same
+four-layer backing, playing with no key pressed:
+
+|                            | in (at the limiter) | out        | windows past full scale |
+| -------------------------- | ------------------- | ---------- | ----------------------- |
+| every fader at 1, after    | 2.1913              | 1.0964     | 6 of 232                |
+| every fader at max, before | 2.5308              | 1.1507     | **20 of 231**           |
+| every fader at max, after  | **1.6328**          | **1.0287** | **4 of 231**            |
+
+So a hot layer now ducks instead of leaning on the limiter, and the maximum is a quieter and
+cleaner place than it was. The question is unchanged and the answer has moved: raising the cap
+would buy even less volume than before, because the scaler takes back what the fader adds once the
+sum is over the threshold — but it would no longer cost what it used to in limiting. Still an
+ear's decision, and still **not to be changed here**. `BUS_CEILING` in `poly.ts` is the one place
+that number now lives, and `setLayerGain`'s own clamp of 2 is still above it (see §13c).
 
 ### 11d. Two smaller ones, from the same run
 
@@ -453,3 +443,57 @@ Eight controls, and at 375px they wrap to three lines of buttons plus the status
 controls under an 86px picture. Measured clean (nothing undersized, clipped, off-edge or
 wordless, Undo and Redo still inseparable), and it looks fine in a screenshot. But it is full:
 the next operation added to this editor wants a rethink of the bar rather than a ninth button.
+
+---
+
+## 13. What fixing the ducking turned up (2026-11-07)
+
+Three things the measurement found that are loudness balance rather than defects, so they are
+Evan's. They are listed in the order they would be worth acting on, and the first is the only one
+with a number attached that anybody would notice.
+
+### 13a. The shipped backing gains were chosen over the bug
+
+The beat-and-chord picker drops its layers in at **0.4, 0.5, 0.55 and 0.55** — `BEAT_GAIN` is 0.55
+and has its own paragraph in `looper.ts` about a beat being the thing you play over. Every one of
+those numbers was picked by ear while a layer at 0.4 was counting its full patch level against the
+room, which held the whole mix down by roughly the inverse of the average fader.
+
+Measured with no key pressed, the backing alone:
+
+|                 | in (at the limiter) | out        | windows past full scale |
+| --------------- | ------------------- | ---------- | ----------------------- |
+| shipped, before | 0.9848              | 0.9205     | 0 of 85                 |
+| shipped, after  | **1.3251**          | **0.9970** | 0 of 60                 |
+
+**About 2.6dB louder, and still nothing past full scale.** Nothing is broken and nothing clips;
+the backing is simply where it always meant to be, and the room it sits in is now the one the
+numbers describe. The call is whether the backing now sits too far forward under a hand — which
+is a thing to hear, not to compute. If it does, the fix is three numbers in `looper.ts` and it
+should be made once, with ears, rather than drifted towards.
+
+### 13b. Drums are invisible to the scaler, and always have been
+
+`hitDrum` builds noise bursts and short tones directly and registers no ring, so a drum voice
+contributes nothing to the sum that decides how loud everything else is allowed to be. The beat
+picker's layers are drums, so a loud kit does not make room for itself and does not take any from
+your hands either.
+
+That is defensible — a kick is percussive, the limiter handles transients, and giving a drum an
+envelope this file holds the numbers for would mean inventing one. It is recorded because the sum
+reads like a sum of everything and is not, and because anybody reasoning from `poly.ts` about why
+a busy beat does not duck will otherwise look in the wrong place. Changing it would make the room
+quieter around every beat, which is a loudness decision and belongs beside 13a.
+
+### 13c. The nominal sum and the real peak are a factor of three apart
+
+The scaler holds the **sum of envelope levels** at `LIMIT_AT` (0.7). What arrives at the limiter is
+the sum of waveforms, whose phases add, and that was measured at **2.19** with the nominal sum
+pinned at 0.7 — about 3×. So "held at the threshold" is a statement about a nominal quantity, and
+the limiter is still doing real work on anything dense.
+
+This is why `LIMIT_AT` is a calibration rather than a derivation, and it bounds what 11c can ever
+buy. It also explains the one thing in `poly.ts` that looks like a loose end: `setLayerGain` clamps
+a fader to 2 and the bus clamps it to 1.5, so the top quarter of the slider's travel does nothing.
+Closing that gap is a one-line change in either direction and both are audible, so it is here
+rather than done.
