@@ -309,6 +309,94 @@ export function peaks(data: ArrayLike<number>, columns: number, from = 0, to = -
   return out
 }
 
+/* ── finding where the sound is, for "trim the ends" ──────────────────────────────────── */
+
+/**
+ * How far below a take's own loudest moment still counts as silence: -40dB.
+ *
+ * ⚠️ RELATIVE TO THE TAKE, NEVER AN ABSOLUTE LEVEL, and that is the whole decision. A phone
+ * held at arm's length in a quiet room records a voice that peaks around -30dBFS; a fixed
+ * floor set anywhere useful for a close recording eats that one whole, and the operation whose
+ * job is to remove silence would answer "it is all silence". Measured against the take's own
+ * peak, the same recording turned down by a factor of a hundred trims to the same place — see
+ * the test that scales the buffer and expects no change.
+ */
+export const QUIET_BELOW = 0.01
+
+/**
+ * How much is left on either side of the sound, in seconds.
+ *
+ * ⚠️ A MARGIN, BECAUSE A WORD DOES NOT START AT ITS PEAK. The attack of a sung note and the
+ * breath before a consonant are both below the floor and both part of the sound — cut exactly
+ * at the threshold and a trimmed take starts a syllable late, which is the one way this
+ * operation can ruin a recording rather than tidy it.
+ */
+export const QUIET_EDGE = 0.08
+
+/** The window a peak is measured over. Short enough that a gap between words is not sound. */
+const QUIET_WINDOW = 0.02
+
+/**
+ * Where the sound in a recording begins and ends.
+ *
+ * ⚠️ PEAKS, LIKE `peaks` ABOVE AND FOR THE SAME REASON. An RMS window averages a transient
+ * away, and the first thing in a take is usually a transient — the attack of a word, a chair.
+ *
+ * ⚠️ AND IT IS THE OUTERMOST LOUD WINDOW, NOT THE FIRST RUN OF THEM. A take is top-and-tailed,
+ * not split: the gaps between words are below the floor too, and a function that stopped at
+ * the first quiet window would return the first syllable.
+ *
+ * Returns null when there is nothing to find — no channels, no samples, or a take that is
+ * silent all the way through, which is a recording to delete rather than one to trim. The
+ * honest limit is a handling click at the very start: it sets the threshold's own peak and the
+ * span then begins at zero, so nothing is trimmed. That is the right failure — it is a sound.
+ */
+export function loudSpan(
+  channels: readonly ArrayLike<number>[],
+  len: number,
+  rate: number,
+): Span | null {
+  const seconds = fin(len, 0)
+  const hz = fin(rate, 0)
+  if (!channels.length || seconds <= 0 || hz <= 0) return null
+  const per = Math.max(1, Math.round(QUIET_WINDOW * hz))
+  let frames = Math.round(seconds * hz)
+  for (const d of channels) frames = Math.min(frames, d.length)
+  if (frames <= 0) return null
+
+  const windows = Math.ceil(frames / per)
+  const peak = new Float32Array(windows)
+  let loudest = 0
+  for (let w = 0; w < windows; w++) {
+    const a = w * per
+    const b = Math.min(frames, a + per)
+    let hi = 0
+    for (const d of channels)
+      for (let i = a; i < b; i++) {
+        const v = Math.abs(d[i])
+        /* NaN fails the comparison, so a corrupt sample cannot pin the threshold at the top */
+        if (v > hi) hi = v
+      }
+    peak[w] = hi
+    if (hi > loudest) loudest = hi
+  }
+  if (!(loudest > 0)) return null
+
+  const floor = loudest * QUIET_BELOW
+  let first = -1
+  let last = -1
+  for (let w = 0; w < windows; w++)
+    if (peak[w] > floor) {
+      if (first < 0) first = w
+      last = w
+    }
+  if (first < 0) return null
+
+  const from = bound((first * per) / hz - QUIET_EDGE, 0, seconds)
+  const to = bound(((last + 1) * per) / hz + QUIET_EDGE, 0, seconds)
+  return to - from >= MIN_SPAN ? { from, to } : null
+}
+
 /* ── the visible window, for zooming into a long take ─────────────────────────────────── */
 
 /** What part of the source the picture is showing, in seconds. */

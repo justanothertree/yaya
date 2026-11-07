@@ -14,6 +14,7 @@ import {
   isWholeEdit,
   keepOnly,
   logDo,
+  loudSpan,
   logNow,
   logRedo,
   logUndo,
@@ -104,6 +105,35 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
    * editor and the transport played the trimmed one.
    */
   const heard = useMemo(() => (source ? editedBuffer(source, edit) : null), [source, edit])
+
+  /**
+   * Where the sound in this recording is, for the one-press trim.
+   *
+   * ⚠️ THE TOP AND TAIL IS THE EDIT EVERYBODY MAKES, every time, and until now it was a drag.
+   * You press record, get your hand away from the phone, sing, then reach back for the button
+   * — so a take has dead air at both ends by construction, and the first thing anybody wants
+   * is it gone. Doing it with a drag means finding a boundary by eye in a picture where, on a
+   * six-minute take at full view, one pixel is nearly half a second.
+   *
+   * ⚠️ AND IT IS AN ORDINARY `keepOnly`, which is why it needed no new stored field, no second
+   * code path through the renderer and no undo of its own. It composes: trim the ends of a
+   * take you have already cut the middle out of, and both decisions survive.
+   *
+   * ⚠️ MEASURED ONCE PER DECODE. It is one pass over every sample — about 18 million for the
+   * six-minute take this was checked against — and the button's own disabled state needs the
+   * answer, so it cannot wait for the press.
+   */
+  const loud = useMemo(() => {
+    if (!source) return null
+    const chans: Float32Array[] = []
+    for (let c = 0; c < source.numberOfChannels; c++) chans.push(source.getChannelData(c))
+    return loudSpan(chans, source.duration, source.sampleRate)
+  }, [source])
+  /* ⚠️ enabled only when pressing it would take something away — not "is there silence
+     somewhere", which is still true after you have already trimmed, leaving a live button
+     whose only outcome is nothing happening */
+  const trimmed = useMemo(() => (loud ? keepOnly(edit, loud, len) : null), [loud, edit, len])
+  const canTrim = !!trimmed && editLen(trimmed) < played - MIN_SPAN
 
   /**
    * How wide to draw, measured three ways and not depending on a frame.
@@ -467,6 +497,26 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
           title="Remove this and close the gap"
         >
           Cut
+        </button>
+        {/**
+         * ⚠️ NO SELECTION, WHICH IS THE POINT. Keep and Cut both need a drag first; this is the
+         * one edit that already knows where it wants to go, and it is also the edit every take
+         * needs. See `loud` above for why that is, and takeEdit's `loudSpan` for why the
+         * threshold is measured against the take's own loudest moment rather than a fixed
+         * level — a recording made at arm's length would otherwise read as silence throughout.
+         */}
+        <button
+          className="btn"
+          onClick={() =>
+            void apply(
+              logDo(log, trimmed!),
+              'trimmed — the recording is untouched and Undo puts it back',
+            )
+          }
+          disabled={!canTrim}
+          title="Remove the silence before and after the sound"
+        >
+          Trim ends
         </button>
         {/**
          * ⚠️ WORDS, AND KEPT TOGETHER. They were ↶ and ↷ with the names hidden for screen

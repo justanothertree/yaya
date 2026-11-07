@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-06 (fifth pass — §11 is new, closing a run of Instrument work; §1–10 untouched).
+Last reviewed: 2026-11-06 (sixth pass — §12 is new, from the vocal editor import-and-microphone pass; §1–11 untouched, and §11 deliberately so).
 
 ---
 
@@ -395,3 +395,61 @@ that is currently wrong.
   back as space comes up. A full-scale source with echo at 0.6 peaked at 1.777 through it. Real
   takes come from a microphone well below full scale, so this is a worst case rather than a daily
   one.
+
+---
+
+## 12. The vocal editor, after the import-and-microphone pass (2026-11-06)
+
+Four calls that are Evan's rather than the code's. Everything else from that pass is settled and
+committed; these are the ones where two answers are both defensible.
+
+### 12a. A recording you walk away from — kept, or thrown away?
+
+Leaving the instrument mid-recording used to hold the microphone open for ever: the room
+unmounted, the Stop button went with it, and the track read `live` four seconds later with no
+control anywhere on the site that could release it. That half is simply a bug and is fixed.
+
+The other half is a decision. **What was already sung is now kept** — it appears in the list when
+you come back — and the reasoning is takes.ts's own: it refuses to evict a recording at the
+storage cap because "that silently deletes something somebody sang, which is the one thing a
+recorder must never do", and a tap on the wrong nav link is not a decision to throw a take away.
+
+The argument the other way is that a take nobody pressed Stop on is a take nobody asked for, and
+it arrives with no message, because by then there is no panel to put one in. If a stray 0:02 row
+after every mis-tap is more annoying than a lost 0:30 is painful, the fix is one line.
+
+(Leaving while the permission prompt is still up drops it instead, and that part is not in
+question — nothing was sung into it on purpose.)
+
+### 12b. One sentence for three different refusals
+
+`getUserMedia` can fail three ways and all three say **"No microphone, or the browser said no."**
+Measured with each rejection in turn:
+
+| rejected with      | what it means                              |
+| ------------------ | ------------------------------------------ |
+| `NotAllowedError`  | the person said no, or the site is blocked |
+| `NotFoundError`    | there is no microphone on this machine     |
+| `NotReadableError` | something else is using it                 |
+
+The first two are covered by the sentence — allow it, or plug one in. The third is not: "another
+app has the microphone" is a different thing to do about it, and on a phone it is usually a call
+or a voice-memo app left open. Worth a sentence of its own, or not worth the words.
+
+### 12c. 16MB of storage is two voice memos
+
+Measured against a real Windows voice recording: **6 minutes 41 seconds of m4a is 9.3MB**, which
+is 58% of `TAKE_CAP`. So the cap is "about eleven minutes of recorded sound in total", not the
+three-quarters of an hour its own comment estimates from the 350KB-a-minute that MediaRecorder
+produces — a file somebody already has is three times that rate.
+
+Nothing is wrong: the refusal is clear and names both numbers. But the duration cap of ten
+minutes can only ever be reached by a file that would also nearly fill the store, so the two
+limits are closer together in practice than they look.
+
+### 12d. The edit bar is full
+
+Eight controls, and at 375px they wrap to three lines of buttons plus the status line — 150px of
+controls under an 86px picture. Measured clean (nothing undersized, clipped, off-edge or
+wordless, Undo and Redo still inseparable), and it looks fine in a screenshot. But it is full:
+the next operation added to this editor wants a rethink of the bar rather than a ninth button.
