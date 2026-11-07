@@ -9,6 +9,7 @@ import {
   takenBytes,
   TAKE_CAP,
   TAKE_MAX_SECONDS,
+  type PutResult,
   type TakeRow,
 } from './takes'
 import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx, takeChop } from './looper'
@@ -72,6 +73,21 @@ const CHOP_SAYS: Record<ChopShape, string> = {
 const mb = (n: number) => (n / (1024 * 1024)).toFixed(1)
 const secs = (n: number) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`
 
+/**
+ * Close a recording and keep what it caught.
+ *
+ * ⚠️ OUTSIDE THE COMPONENT ON PURPOSE, so the unmount path can call it. Leaving the room while
+ * a recording is going has two jobs — let the microphone go, and do not throw away what was
+ * sung — and neither may touch component state, because by then there is no component to set.
+ * Returns null when nothing usable arrived, which is the one case with nothing to keep.
+ */
+async function keepWhatWasCaught(r: Recording): Promise<PutResult | null> {
+  const got = await r.stop()
+  if (!got) return null
+  const id = `take_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+  return putTake(id, got.blob, got.len)
+}
+
 export function TakesPanel() {
   const [rows, setRows] = useState<TakeRow[]>([])
   const [used, setUsed] = useState(0)
@@ -80,6 +96,18 @@ export function TakesPanel() {
   const [playing, setPlaying] = useState<string | null>(null)
   const [say, setSay] = useState('')
   const out = useRef<{ src: AudioBufferSourceNode; gain: GainNode } | null>(null)
+  /**
+   * The live recording, where a cleanup can reach it.
+   *
+   * ⚠️ A REF BESIDE THE STATE, BECAUSE AN UNMOUNT CANNOT READ STATE. The teardown effect below
+   * runs with `[]` deps, so it closes over the `going` of the first render — null, for ever.
+   * That is how the effect came to promise it stopped "both of them" and stop one: it was
+   * written against a variable it could not see move. Written at each of the three places that
+   * change, rather than mirrored by an effect, so it is never a render behind.
+   */
+  const goingRef = useRef<Recording | null>(null)
+  /** false from the moment this room is taken off the screen — see `begin` */
+  const alive = useRef(true)
   /* which takes are on the loop, straight from the transport so the two cannot disagree */
   const [onLoop, setOnLoop] = useState(() => loopState().takes)
   /** which take's controls are showing, if any */
@@ -125,20 +153,41 @@ export function TakesPanel() {
   }, [going])
 
   /**
-   * ⚠️ STOPPED ON THE WAY OUT, BOTH OF THEM. A recording left running holds the microphone open
-   * with the browser's recording dot lit on a page nobody is looking at, and a playing take
-   * left running sings over whatever room you went to next.
+   * ⚠️ STOPPED ON THE WAY OUT, BOTH OF THEM — AND FROM 21 SEP TO 6 NOV IT WAS ONE. This said
+   * "both" and the body stopped the playing take only, because `going` is state and an effect
+   * with `[]` deps closes over the first render's copy of it. Measured 6 Nov 2026 with a real
+   * MediaStream and real tracks: press 🎤, walk out of the instrument, and the track reads
+   * `live` four seconds later with the room unmounted, the Stop button gone and no control
+   * anywhere on the site that can release it. The recording dot stays lit until the tab
+   * closes. The comment was the specification; the code was half of it.
+   *
+   * ⚠️ AND IT KEEPS WHAT WAS SUNG rather than dropping it. takes.ts refuses to evict a
+   * recording at the storage cap because "that silently deletes something somebody sang, which
+   * is the one thing a recorder must never do" — and a tap on the wrong nav link is not a
+   * decision to throw a take away. The microphone is released either way; that part is the
+   * bug. Keeping it is the part that follows the rule already written down.
    */
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    /**
+     * ⚠️ SET IN THE BODY, NOT ONLY CLEARED IN THE CLEANUP, because StrictMode runs the cleanup
+     * once on mount in dev — and a flag that is only ever set false would then be false for
+     * the life of the component, so `begin` below would drop every recording it was handed.
+     * App.tsx has two notes about this same double-invoke; this is the third.
+     */
+    alive.current = true
+    return () => {
+      alive.current = false
       try {
         out.current?.src.stop()
       } catch {
         /* never started */
       }
-    },
-    [],
-  )
+      const r = goingRef.current
+      goingRef.current = null
+      /* nothing can be told about this — the panel has gone — so the only report is the row */
+      if (r) void keepWhatWasCaught(r)
+    }
+  }, [])
 
   const stopPlaying = useCallback(() => {
     const on = out.current
@@ -190,18 +239,32 @@ export function TakesPanel() {
     stopPlaying()
     const r = await recordTake()
     if (!r) return setSay('No microphone, or the browser said no.')
+    /**
+     * ⚠️ THE ROOM MAY HAVE GONE WHILE THE PROMPT WAS STILL UP, and then nothing can ever stop
+     * this. getUserMedia does not resolve until the person answers, so the stream can arrive
+     * after the unmount — and it is reachable only through the state the next two lines set,
+     * which no longer exists. Measured 6 Nov 2026: left the room with the prompt pending, the
+     * stream was created afterwards and read `live` with no Stop button on screen and no
+     * reference anywhere that could release it. The recording dot was lit for a room that was
+     * not there.
+     *
+     * ⚠️ DROPPED HERE, WHERE THE UNMOUNT ABOVE KEEPS. Nothing was sung into this one on
+     * purpose — the question was still on screen when the person left.
+     */
+    if (!alive.current) return r.drop()
     setHeld(0)
+    goingRef.current = r
     setGoing(r)
   }, [stopPlaying])
 
   const finish = useCallback(async () => {
-    const r = going
+    const r = goingRef.current
     if (!r) return
+    /* ⚠️ cleared before the await, or an unmount in that window stops the same recorder twice */
+    goingRef.current = null
     setGoing(null)
-    const got = await r.stop()
-    if (!got) return setSay('Nothing came through the microphone.')
-    const id = `take_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
-    const kept = await putTake(id, got.blob, got.len)
+    const kept = await keepWhatWasCaught(r)
+    if (!kept) return setSay('Nothing came through the microphone.')
     if (!kept.ok)
       setSay(
         kept.why === 'full'
@@ -209,7 +272,7 @@ export function TakesPanel() {
           : 'This browser will not keep recordings.',
       )
     await refresh()
-  }, [going, refresh])
+  }, [refresh])
 
   /**
    * ⚠️ THE ARMED DELETE DISARMS ITSELF. A button that has turned into "Delete for good?" and
@@ -341,6 +404,7 @@ export function TakesPanel() {
         <button
           className="btn btn-ghost"
           onClick={() => {
+            goingRef.current = null
             going.drop()
             setGoing(null)
           }}
