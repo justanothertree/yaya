@@ -41,7 +41,7 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 11 — #28, live via #29**: two review fixes to batch 10 (and Bike trials), then Shadow
   box and Fold.
 - **Batch 12 — draft, `claude/lab-toys-12`, from `main` at `bd40884`**: Topple, Print shop. Not
-  stacked: it branches from `main` with batches 8–11 already there.
+  stacked: it branches from `main` with batches 8–11 already there; the picker on this branch is 51.
 
 The source PRs were stacked (#25 → #26 → #27 → #28); they reached `main` together through #29, so
 none of #25–#27 went live ahead of the batch 11 fixes.
@@ -2241,9 +2241,10 @@ status at the top). Not stacked on anything. Same rules of evidence: _measured_ 
 headless Chromium on SwiftShader; the emulated phone is Playwright's iPhone 13 with CDP touch, for
 layout and touch routing only. Automated play shows the rules hold, never that anything is fun.
 
-| Toy    | What you do                                                                                                                                                                                                                                | GPU technique                                                                                                                                                                                                                                                                                   | Pattern to reuse                                                                                                                                 |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Topple | Draw lines of dominoes, paint their faces, push one: the run falls and a picture appears, because a domino's colour only shows as it tips. Five puzzles ring bells from one push — a fork, a duet that must ring together, chimes in order | every domino an INSTANCED BOX tipped in the vertex shader about its base edge by π/2·(Δt/FALL)², from its own start time and resting angle; a soft shadow quad under each that stretches as it falls; the floor (wood, walls, bells, the push arrow, the line being drawn) per pixel under them | "the CPU decides WHEN, the GPU animates HOW": an event-ordered cascade hands each instance a start time, and the shader replays any moment of it |
+| Toy        | What you do                                                                                                                                                                                                                                | GPU technique                                                                                                                                                                                                                                                                                                               | Pattern to reuse                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Topple     | Draw lines of dominoes, paint their faces, push one: the run falls and a picture appears, because a domino's colour only shows as it tips. Five puzzles ring bells from one push — a fork, a duet that must ring together, chimes in order | every domino an INSTANCED BOX tipped in the vertex shader about its base edge by π/2·(Δt/FALL)², from its own start time and resting angle; a soft shadow quad under each that stretches as it falls; the floor (wood, walls, bells, the push arrow, the line being drawn) per pixel under them                             | "the CPU decides WHEN, the GPU animates HOW": an event-ordered cascade hands each instance a start time, and the shader replays any moment of it                     |
+| Print shop | Carve a lino block with three gouges and pull prints from it, colour over colour: a reduction linocut, where each colour is printed from what is left of the same block. The print is the block turned over                                | a COMPUTE pass carves each cut into a 480×360 height field over the cut's own box only (one dispatch a cut, the minimum over its segments); a second inks every texel of the paper from the MIRRORED block texel, broken by an integer-hash paper grain; a fragment pass lights the block by its own slope beside the print | "replay the steps, never store the pixels": the work is its cuts and pulls, so Undo, a file and a reload all rebuild the GPU state exactly from a list a few KB long |
 
 - **Topple** — a wooden table, and dominoes. ✏️ **Line**: draw, and dominoes stand along what you drew,
   0.6 apart, each facing along the line where it stands (a drawn corner is rounded off, because a
@@ -2302,7 +2303,60 @@ layout and touch routing only. Automated play shows the rules hold, never that a
      finger draws sharp corners); how a 600-domino table runs on a phone GPU (one instanced draw, but 600
      × 36 vertices and a shadow each); whether the puzzles are the right difficulty.
 
+- **Print shop** — a block of lino on a bench beside a sheet of paper. Drag on the block to carve it
+  with ✒️ **V gouge** (a fine line), 🥄 **U gouge** (a medium one) or 🪣 **Scoop** (clears a broad
+  band); pick an ink (eight, Lemon to Black, light to dark as a reduction print goes) and a pressure,
+  and 🖨 **Print it** (P). What you carved away stays the paper's colour; what still stands takes the
+  ink. Then carve away what should KEEP that colour and print a darker ink over the lot — the same
+  block every time, which is what a reduction print is: planned light to dark, and the block is used
+  up as it goes. ↶ Undo (U) takes back the cuts since the last print and no further — a printed cut is
+  in the block for good, as on a real one, and pressing Undo then says so rather than going dead.
+  🔄 New block starts again (and Undo brings the old one back). Light pressure lets the paper's grain
+  show through; the block keeps a film of the last ink on what still stands. The print is the block
+  mirrored, so words are carved backwards. ⬇ Save picture (the print as a 480×360 PNG), ⬇ Save block /
+  ⬆ Open block… (the work as a file); the work is also kept in this browser and rebuilt on a reload.
+  Technique: the work is a list of steps — cuts (a gouge and up to 96 points) and pulls (an ink, a
+  pressure and the seed of that pull's grain) — and the block and the paper are always that list
+  replayed. `carve` is dispatched over a cut's box (`cutBox`) and takes each texel to the lowest any
+  segment of the cut reaches (`carveStroke`); because carving is a minimum, a cut carved piece by piece
+  while it is dragged is exactly the cut replayed from its saved points, which is what lets a file or
+  a reload print the block that was on screen. `press` reads the mirrored block texel, lets it take
+  ink by how far it stands above the surface line, breaks that by an integer hash of the texel and the
+  pull's seed (the same bits in TypeScript and WGSL), and lays the ink over the paper as a
+  transparent multiply. `show` samples both bilinearly, so a thin cut neither steps nor beads at a
+  phone's fractional scale.
+  ⚠️ What was wrong first:
+  1. **Carving one segment per submit would have made a long file thousands of submits to open.**
+     One dispatch per cut, over its box, with the cut's points in a storage buffer.
+  2. **Undo went dead after a print** with nothing to say why; it stays enabled and explains.
+  3. **A thin V cut looked beaded on the phone** — nearest-texel display at about 1.4 device pixels a
+     texel. The print itself was clean (checked in the exported PNG); `show` now interpolates.
+  4. **The pressure slider was 16px tall**, under the 24px floor; it uses the Lab's `lab-flow` rule.
+     _Measured_: the tests hold each gouge to the width of line it prints (V 2–3 texels, U 8–10, scoop
+     22+), a cut only ever lowering the block, a V's sloped wall and a scoop's flat floor, a stroke the
+     same in one piece and segment by segment in either order, every texel a cut changes inside the box
+     the GPU is dispatched over, a cut carved as it is dragged equal to its saved points replayed (made
+     to fail by carving the wrong piece), ink taken by height from the surface line, light pressure
+     leaving more of the grain, the grain repeatable and different a pull, the mirror, inks layering
+     darker, only cuts since the last print undoable, a file round trip with every field off its
+     default, seventeen refusals (including unknown fields dropped and a `script` step refused), the largest
+     possible block fitting under the file limit, the uniform, the shader's copies of the sizes and the
+     layout. On SwiftShader, against the CPU twin over the whole 480×360: after eleven cuts every texel
+     of the block within 8·10⁻⁵ (none past 10⁻⁴); after a Lemon pull at pressure 0.7 and an Ultramarine
+     one at 1 every texel of the paper within 10⁻⁴; the scoop disc at block x≈100 is paper at print x≈379
+     and inked at x≈100; replaying the steps gives a bit-identical block and paper. In the page at 1024:
+     carve, Undo to an uncut block, carve, print, Undo after it explains and changes nothing, a second
+     ink by the P key, a long drag kept as four cuts, the picture and the block saved, New block and back
+     with Undo (block and paper read back identical), a reload (identical), a hostile file refused, the
+     saved file reopened (identical). On the emulated iPhone the same by touch — the touch cut carves
+     exactly the 6,176 texels the mouse one did. Audit clean at both.
+     Not measured: how carving feels with a finger (the finger covers the cut; there is no zoom), how
+     the 2.7 MB paper buffer and the bilinear `show` run on a phone GPU, whether a reduction print is
+     something people work out from the hint alone.
+
 ### Real-device checklist — batch 12
 
 - [ ] Topple — draw First run with a finger and push it. Paint a picture of your own and knock it
       down. Can you do Duet without 💡?
+- [ ] Print shop — carve something, print Lemon, carve more, print Ultramarine over it. Is the
+      mirror a surprise? Does a finger carve where you meant, and does the picture save?

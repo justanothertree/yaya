@@ -43,6 +43,7 @@ import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
+import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
 import { TrialsDemo } from '../gpu/TrialsDemo'
@@ -387,6 +388,12 @@ const DEMOS: readonly {
     name: 'Topple',
     line: 'Topple — draw lines of dominoes, paint their faces and push one: a picture appears as they fall. Puzzles ring bells with one push.',
     Demo: ToppleDemo,
+  },
+  {
+    id: 'printshop',
+    name: 'Print shop',
+    line: 'Print shop — carve a lino block with a gouge and pull prints from it, ink over ink: a reduction linocut, cut and printed on the GPU.',
+    Demo: PrintshopDemo,
   },
 ]
 
