@@ -2,13 +2,15 @@
 
 The state of `#lab`, the WebGPU room. The commits carry the reasoning; this is the map.
 
-**Integration status, 6 Nov 2026.** This tree is prepared for publishing and is **not deployed**.
-It is `main` at `caaba4f` (the vocal editor and takes work already on `main`, and already deployed
-from there) with the full `claude/lab-toys-11` history merged on top, non-squash, at source head
-`103c93d`. That history is PRs #25 → #26 → #27 → #28 (`7211b3e`, `5978898`, `5e530dd`, `103c93d`).
-Those four source PRs stay open drafts; this integration does not retarget, merge, or close them.
-The coordinator publishes after checks. Until that deploy, evancook.dev does not have these twelve
-toys.
+**Status, checked 7 Nov 2026: all 49 are on `main` and deployed.** The batch 8–11 integration
+merged as #29 (`bd40884`, 6 Nov 22:51 UTC) — a non-squash merge of `claude/lab-toys-11` at
+`103c93d`, so the commits of #25 → #26 → #27 → #28 are on `main` as they were written. The
+**Deploy to GitHub Pages** run for `bd40884` finished successfully at 22:53 UTC (Actions run
+42307857946), alongside green Build, Lint, Test and db guards runs on the same commit. That is the
+evidence: the live site itself could not be fetched from the session that wrote this, so "live" here
+means the deploy job for that commit succeeded, not that a page was loaded. #25 shows as merged (its
+head reached `main`); #26–#28 are still open drafts on GitHub even though everything in them is on
+`main` — they can be closed. New Lab work branches from `main` (batch 12 onward is not stacked).
 
 Evan played the original 37 on a desktop only. None of those 37, and none of the twelve added here,
 has been played on a phone or confirmed on a real GPU. Numbers below marked measured are unit tests
@@ -32,20 +34,20 @@ The room is one `DEMOS` list. The phone dropdown and ‹ › steppers from batch
 - **Batch 5 — #21**: Slime, Mirror, Bubbles, Clay, Fireflies, Black hole.
 - **Batch 6 — #22**: Erosion, Snowflake, Pixel sort, Squish, Lightning, Voiceprint.
 - **Batch 7 — #23**: Marble maze, Stained glass, Harmonograph, Rain on glass, Loom, Ferrofluid.
-- **Batch 8 — draft #25, `claude/lab-toys-8`**: games and builders — Bike trials, Waterworks, Film
-  studio, Critters. See its own section at the end.
-- **Batch 9 — draft #26, `claude/lab-toys-9`, STACKED ON BATCH 8**: Strut, Gust, Seedling.
-- **Batch 10 — draft #27, `claude/lab-toys-10`, STACKED ON BATCH 9**: Möbius golf, Pinball
-  workshop, Night crossing.
-- **Batch 11 — draft #28, `claude/lab-toys-11`, STACKED ON BATCH 10**: two review fixes to batch
-  10 (and Bike trials), then Shadow box and Fold.
+- **Batch 8 — #25, live via #29**: games and builders — Bike trials, Waterworks, Film studio,
+  Critters.
+- **Batch 9 — #26, live via #29**: Strut, Gust, Seedling.
+- **Batch 10 — #27, live via #29**: Möbius golf, Pinball workshop, Night crossing.
+- **Batch 11 — #28, live via #29**: two review fixes to batch 10 (and Bike trials), then Shadow
+  box and Fold.
+- **Batch 12 — draft, `claude/lab-toys-12`, from `main` at `bd40884`**: Topple, Print shop. Not
+  stacked: it branches from `main` with batches 8–11 already there; the picker on this branch is 51.
 
-The source PRs stay stacked (#25 → #26 → #27 → #28) and each still shows only its own diff. Publishing
-goes through one integration branch on current `main`, so #25–#27 are not deployed on their own
-ahead of the batch 11 fixes.
+The source PRs were stacked (#25 → #26 → #27 → #28); they reached `main` together through #29, so
+none of #25–#27 went live ahead of the batch 11 fixes.
 
-That is 7 live toys plus 30 already on `main`, 37 in the picker there; this integration adds 12 and
-the picker here is 49 (counted from the `DEMOS` list: trials, waterworks, studio, critters, strut,
+That was 7 live toys plus 30 on `main`, 37 in the picker; the integration added 12 and the picker
+on `main` is now 49 (counted from the `DEMOS` list: trials, waterworks, studio, critters, strut,
 gust, seedling, mobius, pinball, crossing, shadowbox, fold). Each batch section below is that
 batch's own note, including what it measured and what it had not.
 
@@ -2231,3 +2233,130 @@ routing only. Automated play shows the rules hold, never that anything is fun.
       enough on a phone, or do you reach for the grid?
 - [ ] Fold — fold the seven shapes without 💡; is dragging a point precise enough on a phone? Make a
       shape of your own and keep it.
+
+## Batch 12 — things to knock down and to print
+
+Branch `claude/lab-toys-12`, cut from `main` at `bd40884` (all 49 already there and deployed; see the
+status at the top). Not stacked on anything. Same rules of evidence: _measured_ means unit tests or
+headless Chromium on SwiftShader; the emulated phone is Playwright's iPhone 13 with CDP touch, for
+layout and touch routing only. Automated play shows the rules hold, never that anything is fun.
+
+| Toy        | What you do                                                                                                                                                                                                                                | GPU technique                                                                                                                                                                                                                                                                                                               | Pattern to reuse                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Topple     | Draw lines of dominoes, paint their faces, push one: the run falls and a picture appears, because a domino's colour only shows as it tips. Five puzzles ring bells from one push — a fork, a duet that must ring together, chimes in order | every domino an INSTANCED BOX tipped in the vertex shader about its base edge by π/2·(Δt/FALL)², from its own start time and resting angle; a soft shadow quad under each that stretches as it falls; the floor (wood, walls, bells, the push arrow, the line being drawn) per pixel under them                             | "the CPU decides WHEN, the GPU animates HOW": an event-ordered cascade hands each instance a start time, and the shader replays any moment of it                     |
+| Print shop | Carve a lino block with three gouges and pull prints from it, colour over colour: a reduction linocut, where each colour is printed from what is left of the same block. The print is the block turned over                                | a COMPUTE pass carves each cut into a 480×360 height field over the cut's own box only (one dispatch a cut, the minimum over its segments); a second inks every texel of the paper from the MIRRORED block texel, broken by an integer-hash paper grain; a fragment pass lights the block by its own slope beside the print | "replay the steps, never store the pixels": the work is its cuts and pulls, so Undo, a file and a reload all rebuild the GPU state exactly from a list a few KB long |
+
+- **Topple** — a wooden table, and dominoes. ✏️ **Line**: draw, and dominoes stand along what you drew,
+  0.6 apart, each facing along the line where it stands (a drawn corner is rounded off, because a
+  domino turned more than about 63° from the one hitting it is struck side-on and stands — a sharp
+  corner stops a run, which is true of real dominoes too). 🎨 **Paint** colours their faces (eight
+  colours), 🧽 **Erase** removes, 👉 **Push** knocks the one you tap away from your finger; ▶ Push (or
+  Space) pushes the puzzle's arrow, or in free play the first domino. A domino's face colour shows
+  only as it tips — so a field of plain ivory tiles turns into a picture as it goes down. ⏮ Stand them
+  up (R), ↶ Undo (U, thirty steps), 🧹 Clear, ⏩ 1× / 3× / 6×, 🔔 sound (a tick as they go, a bell as one
+  rings). **🧩 Puzzles**: _First run_, _Round the wall_, _Fork_ (two bells, one push: two dominoes
+  side by side in front of one are both knocked), _Duet_ (two bells within an eighth of a second, so
+  the short run has to wander — two straight branches ring 0.38 s apart), _Chimes_ (left, middle,
+  right in order, and the push goes the wrong way); each has a budget of dominoes, a failed run says
+  what happened ("rang 1.41 s apart", "2 of 3 rang"), your best (fewest dominoes) is kept, 💡 Show a
+  way builds one and is not kept. **🎨 Free table**: up to 600; 🌀 _A picture to knock down_ stands a
+  325-domino spiral with a heart on its faces; ⬇ Save table / ⬆ Open table… as a file; the free table
+  is kept in this browser too.
+  Technique: the cascade is CPU and exact — a priority queue of knocks in time order: a falling
+  domino strikes every standing one in the strip it sweeps (ahead of it by less than its height,
+  overlapping across), at the time it has tipped far enough to reach it (`tipTime`: angle grows as
+  the square of time, so FALL·√(angle/(π/2))); a hit square enough to the struck domino's axis knocks
+  it away from the striker, a side-on one leaves the striker leaning on it; bells ring when a falling
+  top sweeps over them. The GPU draws three passes into one depth buffer: the floor per pixel, a
+  shadow quad per domino, and every domino as an instanced box whose vertex shader tips it by the
+  same curve from its own start time and stops it at its resting angle.
+  ⚠️ What was wrong first:
+  1. **Every bent run stopped at its corner**: dominoes faced along the segment they stood on, so a
+     corner turned one domino all at once and it stood side-on. Lines are rounded off and each domino
+     faces along the curve where it stands now.
+  2. **A line could end up to a spacing short of where it was drawn to** — 3.0 ÷ 0.6 lands just short
+     in floating point and the last domino went, leaving a gap the run could not cross.
+  3. **Two of the first puzzle answers were impossible** — a hairpin no run survives, and a branch
+     leaving the trunk side-on. The Duet answer is now solved for (its meander's length found by
+     bisection, the bells 0.05 s apart) and Chimes is a U-turn.
+  4. **Undo restored the change instead of undoing it**: the old table was read inside a state
+     updater, which React runs after the next line had already replaced it.
+  5. **The run was judged by the first puzzle's rules** — the frame loop held the first render's
+     judge, so Duet reported "(allowed 30)" and the free spiral was judged as a puzzle.
+     _Measured_: the tests hold standing (spacing, facing, the line's own end, rounded corners turning
+     under 0.6 rad a domino, nothing where one stands, in a wall, off the table or past 600), the cascade
+     (a run carries at `tipTime` a domino; a gap wider than a domino stops it; pushed the other way it
+     falls the other way; a side-on domino stops it and the striker leans — made to fail by letting
+     side-on hits knock; a fork; a domino out of reach across stays up), the puzzles (none solved by an
+     empty table; each solved by its stored way within budget; the straight Duet not solved; Chimes in
+     the wrong order not solved), the spiral (all 325 fall from one push), a table file (round trip;
+     refusals), the uniform, the shader's copies of the sizes, the packing and the floor mapping. On
+     SwiftShader, with every domino painted blue: before the push no blue pixel anywhere; after it,
+     every one of 45 dominoes shows blue where the CPU says it lies; mid-run 16 of the 17 that should be
+     down do (the 17th's spot is hidden behind a standing domino at the fork). In the page at 1024: First
+     run drawn by mouse and solved by Space, kept as a best; a straight Duet says how far apart the bells
+     rang; Undo; Show a way at 6× solves Duet and is not kept; the spiral at 6× — 325 of 325 down; a line,
+     painted, a domino erased and Undo bringing it back; a table saved, a hostile file refused, reopened,
+     and the free table there after a reload. On the emulated iPhone, First run drawn by touch and solved
+     with ▶ Push. Audit clean at both.
+     Not measured: whether drawing a run is precise enough on a phone (a corner too sharp stops it, and a
+     finger draws sharp corners); how a 600-domino table runs on a phone GPU (one instanced draw, but 600
+     × 36 vertices and a shadow each); whether the puzzles are the right difficulty.
+
+- **Print shop** — a block of lino on a bench beside a sheet of paper. Drag on the block to carve it
+  with ✒️ **V gouge** (a fine line), 🥄 **U gouge** (a medium one) or 🪣 **Scoop** (clears a broad
+  band); pick an ink (eight, Lemon to Black, light to dark as a reduction print goes) and a pressure,
+  and 🖨 **Print it** (P). What you carved away stays the paper's colour; what still stands takes the
+  ink. Then carve away what should KEEP that colour and print a darker ink over the lot — the same
+  block every time, which is what a reduction print is: planned light to dark, and the block is used
+  up as it goes. ↶ Undo (U) takes back the cuts since the last print and no further — a printed cut is
+  in the block for good, as on a real one, and pressing Undo then says so rather than going dead.
+  🔄 New block starts again (and Undo brings the old one back). Light pressure lets the paper's grain
+  show through; the block keeps a film of the last ink on what still stands. The print is the block
+  mirrored, so words are carved backwards. ⬇ Save picture (the print as a 480×360 PNG), ⬇ Save block /
+  ⬆ Open block… (the work as a file); the work is also kept in this browser and rebuilt on a reload.
+  Technique: the work is a list of steps — cuts (a gouge and up to 96 points) and pulls (an ink, a
+  pressure and the seed of that pull's grain) — and the block and the paper are always that list
+  replayed. `carve` is dispatched over a cut's box (`cutBox`) and takes each texel to the lowest any
+  segment of the cut reaches (`carveStroke`); because carving is a minimum, a cut carved piece by piece
+  while it is dragged is exactly the cut replayed from its saved points, which is what lets a file or
+  a reload print the block that was on screen. `press` reads the mirrored block texel, lets it take
+  ink by how far it stands above the surface line, breaks that by an integer hash of the texel and the
+  pull's seed (the same bits in TypeScript and WGSL), and lays the ink over the paper as a
+  transparent multiply. `show` samples both bilinearly, so a thin cut neither steps nor beads at a
+  phone's fractional scale.
+  ⚠️ What was wrong first:
+  1. **Carving one segment per submit would have made a long file thousands of submits to open.**
+     One dispatch per cut, over its box, with the cut's points in a storage buffer.
+  2. **Undo went dead after a print** with nothing to say why; it stays enabled and explains.
+  3. **A thin V cut looked beaded on the phone** — nearest-texel display at about 1.4 device pixels a
+     texel. The print itself was clean (checked in the exported PNG); `show` now interpolates.
+  4. **The pressure slider was 16px tall**, under the 24px floor; it uses the Lab's `lab-flow` rule.
+     _Measured_: the tests hold each gouge to the width of line it prints (V 2–3 texels, U 8–10, scoop
+     22+), a cut only ever lowering the block, a V's sloped wall and a scoop's flat floor, a stroke the
+     same in one piece and segment by segment in either order, every texel a cut changes inside the box
+     the GPU is dispatched over, a cut carved as it is dragged equal to its saved points replayed (made
+     to fail by carving the wrong piece), ink taken by height from the surface line, light pressure
+     leaving more of the grain, the grain repeatable and different a pull, the mirror, inks layering
+     darker, only cuts since the last print undoable, a file round trip with every field off its
+     default, seventeen refusals (including unknown fields dropped and a `script` step refused), the largest
+     possible block fitting under the file limit, the uniform, the shader's copies of the sizes and the
+     layout. On SwiftShader, against the CPU twin over the whole 480×360: after eleven cuts every texel
+     of the block within 8·10⁻⁵ (none past 10⁻⁴); after a Lemon pull at pressure 0.7 and an Ultramarine
+     one at 1 every texel of the paper within 10⁻⁴; the scoop disc at block x≈100 is paper at print x≈379
+     and inked at x≈100; replaying the steps gives a bit-identical block and paper. In the page at 1024:
+     carve, Undo to an uncut block, carve, print, Undo after it explains and changes nothing, a second
+     ink by the P key, a long drag kept as four cuts, the picture and the block saved, New block and back
+     with Undo (block and paper read back identical), a reload (identical), a hostile file refused, the
+     saved file reopened (identical). On the emulated iPhone the same by touch — the touch cut carves
+     exactly the 6,176 texels the mouse one did. Audit clean at both.
+     Not measured: how carving feels with a finger (the finger covers the cut; there is no zoom), how
+     the 2.7 MB paper buffer and the bilinear `show` run on a phone GPU, whether a reduction print is
+     something people work out from the hint alone.
+
+### Real-device checklist — batch 12
+
+- [ ] Topple — draw First run with a finger and push it. Paint a picture of your own and knock it
+      down. Can you do Duet without 💡?
+- [ ] Print shop — carve something, print Lemon, carve more, print Ultramarine over it. Is the
+      mirror a surprise? Does a finger carve where you meant, and does the picture save?
