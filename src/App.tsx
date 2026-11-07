@@ -1618,7 +1618,7 @@ export default function App() {
       case 'paint':
         return <PaintRoom />
       case 'lab':
-        return <GpuLab />
+        return <GpuLab viewer={viewer} />
       case 'contact':
         return <ContactForm />
       case 'admin':
@@ -2619,7 +2619,7 @@ export default function App() {
                 in between.
               </p>
               <Suspense fallback={<div aria-busy>Loading…</div>}>
-                <GpuLab />
+                <GpuLab viewer={viewer} />
               </Suspense>
             </section>
           )}

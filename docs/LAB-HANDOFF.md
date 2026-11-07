@@ -2360,3 +2360,23 @@ layout and touch routing only. Automated play shows the rules hold, never that a
       down. Can you do Duet without 💡?
 - [ ] Print shop — carve something, print Lemon, carve more, print Ultramarine over it. Is the
       mirror a surprise? Does a finger carve where you meant, and does the picture save?
+
+## Catalog and feedback — not a toy batch (7 Nov 2026)
+
+Branch `claude/lab-catalog-1` from `main` at `3d073b6` (51 experiments, batch 12 merged as #30).
+No new toys. `docs/2026-11-07-lab-catalog-and-feedback.md` is the full record — permission
+review, release order, rollback and what each test is; `docs/OPEN-DECISIONS.md` §13 the policy
+calls.
+
+- **For everyone, no backend needed:** 🔎 Browse, search & favourites — search, a kind filter,
+  ★ favourites (this browser only), 🆕 New and 👍 Highly rated with their rule printed beside
+  them. Browsing unmounts the running experiment, so no card ever mounts a GPU device; choosing one
+  mounts it fresh, the same as the picker.
+- **For signed-in members, once the draft is applied:** 👍 / 👎 under each experiment, and a Notes
+  fold for ideas, requests and bugs. Guests can still play everything.
+- **For the admin:** Owner controls under each experiment — ⭐ Featured, 🧪 Rough edges,
+  🙈 Hidden — and the report queue. A hidden experiment leaves the picker for everybody else and
+  keeps its id, saved work, votes and notes.
+- **Stable ids:** nothing in `DEMOS` changed. A new toy needs a line in `src/lab/catalog.ts`'s
+  `META` (a kind and a date; `catalog.test.ts` fails without it) and is registered in the database
+  by the admin's next visit.

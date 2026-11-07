@@ -1,4 +1,17 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import {
+  FAVOURITES_KEY,
+  entries,
+  listed,
+  readFavourites,
+  readFlags,
+  toggleFavourite,
+  type Flags,
+} from '../lab/catalog'
+import { labApi } from '../lab/feedback'
+import { LabCatalog } from '../lab/LabCatalog'
+import { LabFeedback, type Viewer } from '../lab/LabFeedback'
+import '../lab/lab-catalog.css'
 import { AquariumDemo } from '../gpu/AquariumDemo'
 import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
 import { BubblesDemo } from '../gpu/BubblesDemo'
@@ -448,7 +461,18 @@ function reportOf(adapter: GPUAdapter, format: string): Report {
   }
 }
 
-export function GpuLab() {
+const GUEST: Viewer = { authed: false, suspended: false, isAdmin: false }
+const KNOWN = new Set(DEMOS.map((d) => d.id))
+
+function storedFavourites() {
+  try {
+    return readFavourites(localStorage.getItem(FAVOURITES_KEY), KNOWN)
+  } catch {
+    return []
+  }
+}
+
+export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [demo, setDemo] = useState<DemoId>(storedDemo)
   const [report, setReport] = useState<Report | null>(null)
   /* ⚠️ STILL UNTIL ASKED, under reduced motion. Every demo here is motion, so none can simply
@@ -457,24 +481,83 @@ export function GpuLab() {
   const [running, setRunning] = useState(() => !motionReduced())
   useEffect(() => onMotionChange(() => motionReduced() && setRunning(false)), [])
 
+  /* ── the catalog: the owner's flags, the vote totals a member may see, this browser's favourites.
+     ⚠️ NONE OF IT IS NEEDED TO PLAY. Without a backend, offline, or before the answer arrives,
+     every experiment is listed exactly as it always was; the server can only take away what the
+     owner hid, and add what a signed-in member may be shown. */
+  const api = useMemo(() => labApi(), [])
+  const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
+  const [favourites, setFavourites] = useState<string[]>(storedFavourites)
+  const [browsing, setBrowsing] = useState(false)
+  useEffect(() => {
+    if (!api) return
+    let live = true
+    api
+      .catalog()
+      .then(async (raw) => {
+        if (!live) return
+        setFlags(readFlags(raw, KNOWN))
+        // the owner's own Lab registers an experiment the database has not met yet
+        const seen = new Set(Array.isArray(raw) ? raw.map((r) => (r as { id?: unknown })?.id) : [])
+        const fresh = DEMOS.map((d) => d.id).filter((id) => !seen.has(id))
+        if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live)
+          setFlags(readFlags(await api.catalog(), KNOWN))
+      })
+      .catch(() => {
+        /* no catalog: every experiment stays listed, nothing counted — the Lab still plays */
+      })
+    return () => {
+      live = false
+    }
+  }, [api, viewer.authed, viewer.isAdmin])
+  const all = useMemo(() => entries(DEMOS, flags), [flags])
+  const visible = useMemo(() => all.filter((e) => listed(e, viewer.isAdmin)), [all, viewer.isAdmin])
+  const shownDemos = useMemo(() => {
+    const ids = new Set(visible.map((e) => e.id))
+    return DEMOS.filter((d) => ids.has(d.id))
+  }, [visible])
+
   const pick = (id: DemoId) => {
     setDemo(id)
+    setBrowsing(false)
     try {
       localStorage.setItem(KEY, id)
     } catch {
       /* private mode: it applies for this visit */
     }
   }
+  const favourite = (id: string) =>
+    setFavourites((was) => {
+      const next = toggleFavourite(was, id)
+      try {
+        localStorage.setItem(FAVOURITES_KEY, JSON.stringify(next))
+      } catch {
+        /* private mode: kept for this visit */
+      }
+      return next
+    })
+  const patchFlags = (id: string, patch: Partial<Flags>) =>
+    setFlags((was) => {
+      const next = new Map(was)
+      next.set(id, {
+        ...(was.get(id) ?? { featured: false, experiment: false, hidden: false }),
+        ...patch,
+      })
+      return next
+    })
   const onAdapter = (adapter: GPUAdapter, format: GPUTextureFormat) =>
     setReport(reportOf(adapter, format))
   const props = { running, setRunning, onAdapter }
+  // a demo the owner hid is not offered; somebody who had it open lands on the first one listed
   const at = Math.max(
     0,
-    DEMOS.findIndex((d) => d.id === demo),
+    shownDemos.findIndex((d) => d.id === demo),
   )
-  const current = DEMOS[at]
+  const current = shownDemos[at] ?? DEMOS[0]
   /** the next or previous demo, round the end — browsing toys should not hit a wall */
-  const step = (by: number) => pick(DEMOS[(at + by + DEMOS.length) % DEMOS.length].id)
+  const step = (by: number) =>
+    pick(shownDemos[(at + by + shownDemos.length) % shownDemos.length].id)
+  const currentFlags = flags.get(current.id)
 
   return (
     <div className="lab">
@@ -490,7 +573,7 @@ export function GpuLab() {
         <label className="lab-select">
           <span className="sr-only">Which experiment</span>
           <select value={current.id} onChange={(e) => pick(e.target.value)}>
-            {DEMOS.map((d, i) => (
+            {shownDemos.map((d, i) => (
               <option key={d.id} value={d.id}>
                 {i + 1}. {d.name}
               </option>
@@ -502,23 +585,71 @@ export function GpuLab() {
         </button>
       </div>
       <div className="lab-picker" role="group" aria-label="Which experiment">
-        {DEMOS.map((d) => (
+        {shownDemos.map((d) => (
           <button
             key={d.id}
             className="btn btn-ghost"
-            aria-pressed={demo === d.id}
+            aria-pressed={!browsing && current.id === d.id}
             onClick={() => pick(d.id)}
           >
             {d.name}
           </button>
         ))}
       </div>
-      <p className="lab-line">{current.line}</p>
+      <div className="lab-controls lab-browse-bar">
+        <button className="btn" aria-pressed={browsing} onClick={() => setBrowsing((b) => !b)}>
+          {browsing ? `▶ Back to ${current.name}` : '🔎 Browse, search & favourites'}
+        </button>
+        {!browsing && (
+          <button
+            className="btn btn-ghost"
+            aria-pressed={favourites.includes(current.id)}
+            onClick={() => favourite(current.id)}
+          >
+            {favourites.includes(current.id) ? '★ A favourite' : '☆ Favourite'}
+          </button>
+        )}
+      </div>
 
-      {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
-      <current.Demo key={current.id} {...props} />
+      {browsing ? (
+        /* ⚠️ THE CURRENT EXPERIMENT IS UNMOUNTED WHILE BROWSING, so its GPU device, audio and
+           listeners are released by its own cleanup — and nothing else is mounted to draw a card.
+           Choosing one mounts it fresh, the same as the picker always has. */
+        <LabCatalog
+          list={visible}
+          current={current.id}
+          favourites={favourites}
+          rated={visible.some((e) => e.flags.up !== undefined)}
+          admin={viewer.isAdmin}
+          onFavourite={favourite}
+          onLaunch={pick}
+        />
+      ) : (
+        <>
+          <p className="lab-line">
+            {currentFlags?.featured && <span className="lab-badge">⭐ Featured</span>}
+            {currentFlags?.experiment && <span className="lab-badge">🧪 Rough edges</span>}
+            {viewer.isAdmin && currentFlags?.hidden && (
+              <span className="lab-badge lab-badge-off">🙈 Hidden</span>
+            )}
+            {current.line}
+          </p>
 
-      {report && <GpuReport report={report} />}
+          {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
+          <current.Demo key={current.id} {...props} />
+
+          <LabFeedback
+            api={api}
+            demo={current.id}
+            name={current.name}
+            flags={currentFlags}
+            viewer={viewer}
+            onFlags={patchFlags}
+          />
+
+          {report && <GpuReport report={report} />}
+        </>
+      )}
     </div>
   )
 }

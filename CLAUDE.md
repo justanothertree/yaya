@@ -264,6 +264,16 @@ that render nothing at zero first**.
   `{"code":"UNAUTHORIZED_NO_AUTH_HEADER",...}`. Getting the FUNCTION's sentence back from a call
   carrying the anon key proves the code ran and refused, which a diff cannot show and a boot
   probe cannot either.
+- **NO DOCKER IS NOT NO DATABASE.** `supabase start` needs a Docker daemon the cloud sessions do
+  not have, and "the database tests could not run" was nearly written on the Lab feedback pass.
+  `supabase/tests/plain-postgres/build.sh` loads the SAME files as `[db.seed] sql_paths` into the
+  plain Postgres 16 that is installed, behind `00-platform.sql`, which stands in for the API roles
+  and `auth.uid()`/`auth.jwt()` and nothing else — and `visibility-guards.sql` holds on it, which
+  is the evidence the stand-in is faithful enough. Two things it does that are worth knowing: it
+  drops the dump's MAINTAIN grants on a pre-17 server (production is 17; MAINTAIN is vacuum and
+  analyze rights, nothing a guard asks about), and it puts Supabase's PERMISSIVE default ACL back
+  before loading a draft, so a draft that forgets its own revokes is caught. Postgres refuses to
+  run as root and cannot reach the scratchpad, so the cluster lives under `/var/lib/postgresql`.
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has
