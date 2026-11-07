@@ -178,7 +178,8 @@ begin
   perform set_config('role', 'authenticated', true);
   select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'life';
   asked := asked + 1;
-  if (row_for ->> 'up')::int <> 3 or row_for ? 'withheld' or row_for ? 'notes' then
+  if (row_for ->> 'up')::int <> 3 or row_for ? 'withheld' or row_for ? 'notes'
+     or not (row_for ->> 'counted')::boolean then
     fails := array_append(fails, (('3: a member sees life as ' || row_for::text))::text);
   end if;
   perform set_config('role', 'postgres', true);
@@ -187,7 +188,7 @@ begin
   perform set_config('role', 'authenticated', true);
   select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'life';
   asked := asked + 1;
-  if (row_for ->> 'mine')::int <> 1 or (row_for ->> 'up')::int <> 3 then
+  if (row_for ->> 'mine')::int <> 1 or (row_for ->> 'up')::int <> 3 or (row_for ->> 'counted')::boolean then
     fails := array_append(fails, (('3: the minor sees life as ' || row_for::text))::text);
   end if;
   perform set_config('role', 'postgres', true);
@@ -237,7 +238,6 @@ begin
       'select public.lab_comment_add(''swarm'', ''idea'', repeat(''y'', 501))',
       'select public.lab_comment_add(''swarm'', ''idea'', ''a'' || repeat(E''\nb'', 9))',
       'select public.lab_comment_add(''swarm'', ''idea'', E''bell\x07ringing'')',
-      'select public.lab_comment_add(''swarm'', ''idea'', E''tab\there'')',
       'select public.lab_comment_add(''swarm'', ''praise'', ''hello there'')',
       'select public.lab_comment_add(''swarm'', ''idea'', null)',
       'select public.lab_comment_add(''no-such-toy'', ''idea'', ''hello there'')'] loop
@@ -248,6 +248,13 @@ begin
     exception when others then null;
     end;
   end loop;
+  -- a pasted tab is a space, not a refusal
+  asked := asked + 1;
+  j := public.lab_comment_add('swarm', 'idea', E'tab\there');
+  if j ->> 'body' <> 'tab here' then
+    fails := array_append(fails, '4: a tab was not made a space'::text);
+  end if;
+  perform public.lab_comment_delete((j ->> 'id')::uuid); -- so it is not one of the five
   asked := asked + 1;
   begin
     perform public.lab_comment_add('swarm', 'idea', repeat('z', 500));
@@ -597,8 +604,11 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', a, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
   asked := asked + 1;
-  if exists (select 1 from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold') then
-    fails := array_append(fails, ('10: a member sees a hidden experiment')::text);
+  -- listed as hidden, so the page leaves it out — and carrying nothing but that
+  if (select e from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold')
+     is distinct from '{"id": "fold", "hidden": true}'::jsonb then
+    fails := array_append(fails, ('10: a member is told about a hidden experiment: ' || coalesce(
+      (select e::text from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold'), 'nothing'))::text);
   end if;
   foreach t in array array['select public.lab_vote(''fold'', -1)',
                            'select public.lab_comment_add(''fold'', ''idea'', ''bring it back'')',
@@ -614,8 +624,9 @@ begin
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   perform set_config('role', 'anon', true);
   asked := asked + 1;
-  if exists (select 1 from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold') then
-    fails := array_append(fails, ('10: a guest sees a hidden experiment')::text);
+  if (select e from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold')
+     is distinct from '{"id": "fold", "hidden": true}'::jsonb then
+    fails := array_append(fails, ('10: a guest is told about a hidden experiment wrongly')::text);
   end if;
   perform set_config('role', 'postgres', true);
   -- restore: everything it had is still there

@@ -193,8 +193,8 @@ $$;
 /* ------------------------------------------------------------------ the catalog */
 
 -- The owner's flags for every experiment, and — for a signed-in member — the vote totals and
--- the caller's own vote. Callable by guests, who get the flags and nothing counted. Hidden
--- experiments are listed only to the admin. The admin also gets how many votes were kept out of
+-- the caller's own vote. Callable by guests, who get the flags and nothing counted. A hidden
+-- experiment reaches anybody but the admin as its id and `hidden: true`, and nothing else. The admin also gets how many votes were kept out of
 -- the totals, how many notes of each kind, and how many reports are open.
 create or replace function public.lab_catalog()
 returns jsonb
@@ -210,7 +210,13 @@ begin
   return coalesce((
     select jsonb_agg(q.r order by q.r ->> 'id')
     from (
-      select jsonb_strip_nulls(jsonb_build_object(
+      -- ⚠️ A HIDDEN EXPERIMENT IS LISTED AS HIDDEN, NOT LEFT OUT. The page lists anything the
+      -- catalog does not mention — it has to, or a toy shipped before the database has met it
+      -- would vanish — so leaving a retired one out would un-hide it. To anybody but the admin it
+      -- is its id and the flag, and nothing counted: the id is in the public bundle anyway.
+      select case when d.hidden and not admin
+                  then jsonb_build_object('id', d.id, 'hidden', true)
+                  else jsonb_strip_nulls(jsonb_build_object(
         'id', d.id,
         'featured', d.featured,
         'experiment', d.experiment,
@@ -223,6 +229,8 @@ begin
                                           and public.lab_vote_counts(v.user_id)) end,
         'mine', case when me is not null then (select v.value from public.lab_votes v
                                                where v.demo_id = d.id and v.user_id = me) end,
+        -- whether the caller's OWN vote is in the total: about themselves, so theirs to know
+        'counted', case when me is not null then public.lab_vote_counts(me) end,
         'withheld', case when admin then (select count(*) from public.lab_votes v
                                           where v.demo_id = d.id
                                             and not public.lab_vote_counts(v.user_id)) end,
@@ -236,9 +244,8 @@ begin
           select count(distinct r.comment_id) from public.lab_comment_reports r
           join public.lab_comments c on c.id = r.comment_id
           where c.demo_id = d.id and r.resolved_at is null) end
-      )) as r
+      )) end as r
       from public.lab_demos d
-      where not d.hidden or admin
     ) q
   ), '[]'::jsonb);
 end;
@@ -284,7 +291,8 @@ begin
            where v.demo_id = p_demo and v.value = 1 and public.lab_vote_counts(v.user_id)),
     'down', (select count(*) from public.lab_votes v
              where v.demo_id = p_demo and v.value = -1 and public.lab_vote_counts(v.user_id)),
-    'mine', nullif(p_value, 0)
+    'mine', nullif(p_value, 0),
+    'counted', public.lab_vote_counts(me)
   );
 end;
 $$;
@@ -329,13 +337,15 @@ begin
 end;
 $$;
 
--- what a note's text becomes before it is checked: CRLF to LF, the ends trimmed
+-- what a note's text becomes before it is checked: CRLF to LF, a pasted tab to a space, the
+-- ends trimmed
 create or replace function public.lab_clean_body(p_body text)
 returns text
 language sql immutable
 set search_path = public, pg_temp
 as $$
-  select btrim(replace(replace(coalesce(p_body, ''), E'\r\n', E'\n'), E'\r', E'\n'), E' \n\t');
+  select btrim(replace(replace(replace(coalesce(p_body, ''), E'\r\n', E'\n'), E'\r', E'\n'),
+                       E'\t', ' '), E' \n');
 $$;
 
 create or replace function public.lab_comment_add(p_demo text, p_kind text, p_body text)
