@@ -62,7 +62,7 @@ export function LabCatalog({
   const rule =
     view === 'top'
       ? rated
-        ? 'Ordered by 👍 minus 👎, then by more votes. Totals count members whose activity the site may show other members.'
+        ? 'Ordered by 👍 minus 👎, then by more votes. Every member’s vote counts; a total shows once three other members have voted, and until then it sits at the end.'
         : 'Sign in to see how members rated them — until then this is the Lab’s own order.'
       : view === 'new'
         ? 'Newest first, by the day each was added.'
@@ -188,7 +188,11 @@ function Card({
         {e.flags.experiment && <span className="lab-badge">🧪 Rough edges</span>}
         {admin && e.flags.hidden && <span className="lab-badge lab-badge-off">🙈 Hidden</span>}
         {current && <span className="lab-badge">Playing</span>}
-        {rated && <span>{up + down ? `👍 ${up} · 👎 ${down}` : 'No votes yet'}</span>}
+        {rated && (
+          <span>
+            {e.flags.up !== undefined ? `👍 ${up} · 👎 ${down}` : 'Not enough votes to show yet'}
+          </span>
+        )}
       </p>
     </li>
   )

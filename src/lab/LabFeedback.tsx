@@ -4,6 +4,7 @@ import {
   NOTE_KINDS,
   NOTE_MAX,
   REPORT_REASONS,
+  VOTE_FLOOR,
   checkNote,
   explain,
   type LabApi,
@@ -64,11 +65,15 @@ function Votes({
     setSaid(null)
     try {
       const r = await api.vote(demo, next)
+      // ⚠️ THE ANSWER REPLACES THE TOTALS, IT DOES NOT TOP THEM UP: a vote taken back can put an
+      // experiment under the floor, and an old number left standing would be one the server has
+      // just declined to show
+      const counts = typeof r?.up === 'number' && typeof r?.down === 'number'
       onFlags(demo, {
-        up: typeof r?.up === 'number' ? r.up : flags?.up,
-        down: typeof r?.down === 'number' ? r.down : flags?.down,
+        up: counts ? r.up : undefined,
+        down: counts ? r.down : undefined,
+        few: !counts && r?.few === true ? true : undefined,
         mine: next === 0 ? undefined : next,
-        counted: typeof r?.counted === 'boolean' ? r.counted : flags?.counted,
       })
     } catch (e) {
       setSaid(explain(e))
@@ -77,6 +82,7 @@ function Votes({
     }
   }
   const counted = flags?.up !== undefined
+  const floor = `Totals appear once ${VOTE_FLOOR} other members have voted, so no number can point at one person.`
   return (
     <div className="lab-controls lab-votes">
       <div className="lab-group" role="group" aria-label="Your vote">
@@ -105,11 +111,7 @@ function Votes({
             ? 'Sign in to vote and leave notes — playing never needs an account.'
             : viewer.suspended
               ? 'This account can’t vote or post right now.'
-              : mine && flags?.counted === false
-                ? 'Your vote is kept and Evan can count it, but it isn’t in the total other members see: the site shows your activity to friends only. Press it again to take it back.'
-                : mine
-                  ? 'Your vote is yours alone: nobody else sees who voted which way. Press it again to take it back.'
-                  : 'Nobody else sees who voted which way.')}
+              : `${mine ? 'Your vote counts, and only you see which way it went — press it again to take it back.' : 'Nobody else sees who voted which way.'}${flags?.few ? ` ${floor}` : ''}`)}
       </span>
     </div>
   )
@@ -247,8 +249,9 @@ function Compose({
       }}
     >
       <p className="muted lab-hint">
-        Evan reads every note. Other members see yours by the same rules as your profile, so if your
-        page reaches only friends, so does this. Plain text, up to {NOTE_MAX} characters.
+        Who reads a note follows the same rules as your profile: if your page reaches only friends,
+        so does this note. The site’s owner reads it only where those same rules reach, or once
+        somebody reports it. Plain text, up to {NOTE_MAX} characters.
       </p>
       <div className="lab-controls">
         <label className="studio-pick">
@@ -503,11 +506,8 @@ function Owner({
       </div>
       <p className="muted lab-hint">
         Hiding keeps its id, everybody’s saved work and every vote and note; restore it any time.
-        {flags?.withheld
-          ? ` ${flags.withheld} vote(s) are kept out of the total: minors, unknown ages or suspended accounts.`
-          : ''}
         {flags?.notes
-          ? ` Notes: ${flags.notes.idea} ideas, ${flags.notes.more} asking for more, ${flags.notes.bug} bugs.`
+          ? ` Notes you can read here: ${flags.notes.idea} ideas, ${flags.notes.more} asking for more, ${flags.notes.bug} bugs. A note shared only with friends you are not among reaches you only if somebody reports it.`
           : ''}
       </p>
       <div className="lab-controls">
@@ -521,7 +521,7 @@ function Owner({
             }
           }}
         >
-          Open reports{flags?.reports ? ` (${flags.reports} here)` : ''}
+          Reports and removed notes{flags?.reports ? ` (${flags.reports} reported here)` : ''}
         </button>
       </div>
       {said && <p className="lab-warn">{said}</p>}
@@ -532,13 +532,18 @@ function Owner({
               <li key={r.id} className="lab-note">
                 <p className="lab-note-meta muted">
                   {r.demo} · {r.author} ·{' '}
-                  {Object.entries(r.reasons)
-                    .map(([k, v]) => `${v} ${k}`)
-                    .join(', ')}
+                  {r.state === 'removed'
+                    ? 'removed'
+                    : Object.entries(r.reasons)
+                        .map(([k, v]) => `${v} ${k}`)
+                        .join(', ')}
                 </p>
                 <p className="lab-note-body">{r.body}</p>
                 <div className="lab-controls">
-                  {(['remove', 'keep'] as const).map((a) => (
+                  {(r.state === 'removed'
+                    ? (['restore'] as const)
+                    : (['remove', 'keep'] as const)
+                  ).map((a) => (
                     <button
                       key={a}
                       className="btn btn-ghost"
@@ -551,7 +556,7 @@ function Owner({
                         }
                       }}
                     >
-                      {a === 'remove' ? 'Remove it' : 'Keep it up'}
+                      {a === 'remove' ? 'Remove it' : a === 'keep' ? 'Keep it up' : 'Restore it'}
                     </button>
                   ))}
                 </div>
@@ -559,7 +564,7 @@ function Owner({
             ))}
           </ul>
         ) : (
-          <p className="muted">No open reports.</p>
+          <p className="muted">No open reports and nothing removed.</p>
         ))}
     </details>
   )

@@ -26,6 +26,9 @@ export type ReportReason = (typeof REPORT_REASONS)[number]['id']
 export const NOTE_MIN = 2
 export const NOTE_MAX = 500
 export const NOTE_MAX_BREAKS = 8
+/** how many OTHER members must have voted before a total is shown — the database's
+ *  lab_vote_floor(), here only so the page can say it; feedback.test.ts holds the two together */
+export const VOTE_FLOOR = 3
 
 export type Note = {
   id: string
@@ -121,7 +124,7 @@ export function labApi(rpc: Rpc | null = rpcWith(getSupabaseClientOrNull())) {
   return {
     catalog: () => rpc<unknown>('lab_catalog'),
     vote: (demo: string, value: 1 | -1 | 0) =>
-      rpc<{ up?: number; down?: number; mine?: 1 | -1 | null; counted?: boolean }>('lab_vote', {
+      rpc<{ up?: number; down?: number; few?: boolean; mine?: 1 | -1 | null }>('lab_vote', {
         p_demo: demo,
         p_value: value,
       }),
@@ -158,12 +161,20 @@ export function labApi(rpc: Rpc | null = rpcWith(getSupabaseClientOrNull())) {
       return (Array.isArray(raw) ? raw.slice(0, 100) : []).flatMap((r) => {
         const n = readNote(r)
         if (!n) return []
-        const o = r as { demo?: unknown; reasons?: unknown }
+        const o = r as { demo?: unknown; reasons?: unknown; state?: unknown }
         const reasons: Record<string, number> = {}
         if (o.reasons && typeof o.reasons === 'object')
           for (const [k, v] of Object.entries(o.reasons))
             if (typeof v === 'number' && REPORT_REASONS.some((x) => x.id === k)) reasons[k] = v
-        return [{ ...n, demo: typeof o.demo === 'string' ? o.demo : '', reasons }]
+        return [
+          {
+            ...n,
+            demo: typeof o.demo === 'string' ? o.demo : '',
+            reasons,
+            // 'open': somebody reported it; 'removed': the admin took it down, and can restore it
+            state: o.state === 'removed' ? ('removed' as const) : ('open' as const),
+          },
+        ]
       })
     },
     moderate: async (id: string, action: 'remove' | 'restore' | 'keep') =>

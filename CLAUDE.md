@@ -264,16 +264,22 @@ that render nothing at zero first**.
   `{"code":"UNAUTHORIZED_NO_AUTH_HEADER",...}`. Getting the FUNCTION's sentence back from a call
   carrying the anon key proves the code ran and refused, which a diff cannot show and a boot
   probe cannot either.
-- **NO DOCKER IS NOT NO DATABASE.** `supabase start` needs a Docker daemon the cloud sessions do
-  not have, and "the database tests could not run" was nearly written on the Lab feedback pass.
-  `supabase/tests/plain-postgres/build.sh` loads the SAME files as `[db.seed] sql_paths` into the
-  plain Postgres 16 that is installed, behind `00-platform.sql`, which stands in for the API roles
-  and `auth.uid()`/`auth.jwt()` and nothing else — and `visibility-guards.sql` holds on it, which
-  is the evidence the stand-in is faithful enough. Two things it does that are worth knowing: it
-  drops the dump's MAINTAIN grants on a pre-17 server (production is 17; MAINTAIN is vacuum and
-  analyze rights, nothing a guard asks about), and it puts Supabase's PERMISSIVE default ACL back
-  before loading a draft, so a draft that forgets its own revokes is caught. Postgres refuses to
-  run as root and cannot reach the scratchpad, so the cluster lives under `/var/lib/postgresql`.
+- **THE REAL SUPABASE STACK RUNS HERE — START THE DAEMON FIRST.** `dockerd` is INSTALLED in the
+  cloud sessions and simply not running, and "no Docker, so the database tests could not run" was
+  written down for a pass before anybody tried `dockerd &`. It starts, pulls through the proxy and
+  runs containers. Two catches, both measured on 7 Nov 2026: `supabase start` PRE-PULLS every
+  service's image even with `-x`, and storage-api's layers come from CDN hosts this proxy refuses
+  (403) while Docker Hub rate-limits (429) — so start the CLI (the version CI pins, run from a
+  scratch dir, never added to package.json) against a scratch COPY of `supabase/` with storage,
+  realtime, studio, analytics and edge_runtime disabled, leaving the repo's config alone. What
+  comes up is the real thing: Supabase's Postgres 17, GoTrue issuing sessions and PostgREST
+  verifying them. `docs/2026-11-07-lab-catalog-and-feedback.md` has the commands.
+  `supabase/tests/plain-postgres/build.sh` is the fallback when even that is unavailable: the same
+  `sql_paths` files on the installed plain Postgres 16 behind `00-platform.sql`, a stand-in for the
+  API roles and `auth.uid()`/`auth.jwt()` only — good for SQL assertions, never for "the API works".
+  It drops the dump's MAINTAIN grants on a pre-17 server and puts Supabase's PERMISSIVE default ACL
+  back before loading a draft, so a draft that forgets its revokes is caught; Postgres refuses to
+  run as root and cannot reach the scratchpad, so its cluster lives under `/var/lib/postgresql`.
 - **Co-op IS testable, with two tabs and a doorless relay.** "Only a second machine can check
   this" was written on seventeen commits and was not true. The real relay refuses to show one
   person to another until Supabase has verified their token server-side, and a local relay has

@@ -2372,11 +2372,13 @@ calls.
   ★ favourites (this browser only), 🆕 New and 👍 Highly rated with their rule printed beside
   them. Browsing unmounts the running experiment, so no card ever mounts a GPU device; choosing one
   mounts it fresh, the same as the picker.
-- **For signed-in members, once the draft is applied:** 👍 / 👎 under each experiment, and a Notes
-  fold for ideas, requests and bugs. Guests can still play everything.
+- **For signed-in members, once the draft is applied:** 👍 / 👎 under each experiment — every
+  member's vote counts, and a total shows once three other members have voted — and a Notes fold for
+  ideas, requests and bugs, read by the same rules as a profile. Guests can still play everything.
 - **For the admin:** Owner controls under each experiment — ⭐ Featured, 🧪 Rough edges,
-  🙈 Hidden — and the report queue. A hidden experiment leaves the picker for everybody else and
-  keeps its id, saved work, votes and notes.
+  🙈 Hidden — and the queue of reported and removed notes. The admin reads notes like any member; a
+  note shared only with friends reaches them only when somebody reports it. A hidden experiment
+  leaves the picker for everybody else and keeps its id, saved work, votes and notes.
 - **Stable ids:** nothing in `DEMOS` changed. A new toy needs a line in `src/lab/catalog.ts`'s
   `META` (a kind and a date; `catalog.test.ts` fails without it) and is registered in the database
   by the admin's next visit.

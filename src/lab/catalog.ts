@@ -87,15 +87,16 @@ export type Flags = {
   featured: boolean
   experiment: boolean
   hidden: boolean
-  /** votes up and down in the shared total — present only for a signed-in member */
+  /** votes up and down in the shared total — present only for a signed-in member, and only once
+   *  enough OTHER members have voted (the database's floor) */
   up?: number
   down?: number
+  /** a member is being told there is no total to show yet: under the floor. Says nothing of how
+   *  many votes there are, not even whether there are none. */
+  few?: boolean
   /** the caller's own vote */
   mine?: 1 | -1
-  /** whether the caller's own vote is in the shared total (not for a minor or an unknown age) */
-  counted?: boolean
-  /** admin only: votes kept out of the total, notes by kind, reported notes */
-  withheld?: number
+  /** admin only: notes by kind among the ones the admin can read, and notes with an open report */
   notes?: { idea: number; more: number; bug: number }
   reports?: number
 }
@@ -138,9 +139,7 @@ export function readFlags(raw: unknown, known: ReadonlySet<string>): Map<string,
       f.down = down
     }
     if (o.mine === 1 || o.mine === -1) f.mine = o.mine
-    if (typeof o.counted === 'boolean') f.counted = o.counted
-    const withheld = count(o.withheld)
-    if (withheld !== undefined) f.withheld = withheld
+    if (o.few === true && f.up === undefined) f.few = true
     if (o.notes && typeof o.notes === 'object') {
       const n = o.notes as Record<string, unknown>
       const [idea, more, bug] = [count(n.idea), count(n.more), count(n.bug)]
