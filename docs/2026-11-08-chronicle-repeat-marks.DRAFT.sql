@@ -257,9 +257,12 @@ begin
        || E'    end loop;\n'
        || E'  end loop;\n\n'
        || E'  for x in select * from jsonb_array_elements(coalesce(p_doc->''plans'', ''[]''::jsonb)) loop'),
+      /* ⚠️ KEYED ON `'plans', n_plan, ` ALONE, not the whole result line: the day-notes draft adds
+         `'notes', n_note,` to that line, and a whole-line anchor made the two drafts work in one
+         order only */
       ('chronicle_import',
-       E'''routines'', n_rout, ''plans'', n_plan, ''skipped'', refused);',
-       E'''routines'', n_rout, ''plans'', n_plan, ''marks'', n_mark, ''skipped'', refused);')
+       E'''plans'', n_plan, ',
+       E'''plans'', n_plan, ''marks'', n_mark, ')
     ) as v(fn, old, new)
   loop
     select pg_get_functiondef(p.oid) into v_src
