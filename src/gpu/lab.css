@@ -843,3 +843,31 @@
   color: var(--accent-2);
   font-weight: 600;
 }
+
+/* Sun path: the compass under the panorama, edge to edge like the sky above it */
+.sun-compass {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.sun-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem 1rem;
+}
+.sun-sliders label {
+  display: grid;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.sun-sliders input {
+  width: 100%;
+  min-height: 32px;
+}
+.sun-reading {
+  margin: 0;
+}
