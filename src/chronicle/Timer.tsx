@@ -275,6 +275,19 @@ export function Timer({
    * in the row rather than behind a button that covers it up.
    */
   const [fixAct, setFixAct] = useState<string | null>(null)
+  /** whether the Activities fold is open — see the note where it is drawn */
+  const [actsOpen, setActsOpen] = useState(false)
+  /** the activity editor's "also counts" box, so the door to it can land the cursor there */
+  const metricBox = useRef<HTMLInputElement>(null)
+  /* bumped by the door; the effect below acts once per bump, after the fold has rendered open */
+  const [toMetric, setToMetric] = useState(0)
+  useEffect(() => {
+    if (!toMetric) return
+    const el = metricBox.current
+    if (!el) return
+    el.scrollIntoView({ block: 'center' })
+    el.focus()
+  }, [toMetric])
   const [actName, setActName] = useState('')
   const [actCat, setActCat] = useState<Activity['cat']>('free')
   /** what this activity counts besides time — "pages", "reps", blank for nothing */
@@ -1127,6 +1140,24 @@ export function Timer({
    * is where one of them would quietly stop seeding a field the other does — the amount, say,
    * which the week grid's version already had to remember.
    */
+  /**
+   * Open an activity's editor, seeded with what it holds now.
+   *
+   * ⚠️ ONE FUNCTION FOR THE ROW'S NAME BUTTON AND FOR THE "NAME WHAT THIS COUNTS" DOOR, for the
+   * reason `openSitting` below is one: a second copy of these seven lines is where a field stops
+   * being seeded, and an unseeded field here is not a blank — it is the PREVIOUS activity's value,
+   * saved onto this one by the next Save.
+   */
+  const editActivity = (a: Activity) => {
+    setFixAct(a.id)
+    setActName(a.name)
+    setActCat(a.cat)
+    setActColour(a.colour)
+    setActMetric(a.metric ?? '')
+    setActSession(a.session == null ? '' : String(a.session))
+    setActShared(a.shared)
+  }
+
   const openSitting = (day: string, e: Entry) => {
     setSeeing(day)
     setFixEnt(e.id)
@@ -2268,6 +2299,43 @@ export function Timer({
             )}
 
             {/**
+             * ⚠️ THE DOOR TO THE COUNTER, FOR AN ACTIVITY THAT HAS NONE. The `+1 / +5 / +10` row on
+             * the clock appears only once an activity has been told what it counts — and that is
+             * said in the Activities fold at the foot of the Day half, closed, under a box whose
+             * only label is a placeholder reading "pages?". So somebody timing Gym had a rep
+             * counter one setting away and nothing on any screen saying so. This is where they
+             * already are when the question occurs to them: looking at the session they just did.
+             *
+             * ⚠️ IT OPENS THE ACTIVITY EDITOR, NOT A SECOND ONE. The metric is a property of the
+             * activity, saved through `chronicle_activity_save` with every other field it has; a
+             * box here that saved just the metric would be the second write path to a row whose
+             * every OTHER column it would then have to pass through untouched.
+             */}
+            {(() => {
+              const act = byId.get(entAct)
+              if (metric || !act || act.auto || act.archived) return null
+              return (
+                <p className="muted chron-count-door">
+                  Counted reps, laps or pages?{' '}
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setFixEnt(null)
+                      setJustDid(null)
+                      setActsOpen(true)
+                      editActivity(act)
+                      setToMetric((n) => n + 1)
+                      onShow?.('day')
+                    }}
+                  >
+                    Name what {act.name} counts
+                  </button>
+                </p>
+              )
+            })()}
+
+            {/**
              * ⚠️ BUTTONS RATHER THAN A SELECT, which is the other thing the HTML version has
              * always done — 👍 Great / 😐 OK / 👎 Rough, one tap rather than opening a list. The
              * scale here is five and stays five, because that is what every rating already
@@ -2426,7 +2494,14 @@ export function Timer({
       {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
       {show === 'day' && open.length > 0 && (
-        <details className="chron-tidy">
+        /* ⚠️ CONTROLLED, because something besides its own summary now opens it — the "name what
+           this counts" door in a sitting's editor. `onToggle` keeps the state honest when a person
+           opens or closes it by hand, so the two never disagree about whether it is open. */
+        <details
+          className="chron-tidy"
+          open={actsOpen}
+          onToggle={(ev) => setActsOpen(ev.currentTarget.open)}
+        >
           <summary>Activities</summary>
           <ul className="chron-acts">
             {(acts ?? []).map((a) =>
@@ -2480,6 +2555,7 @@ export function Timer({
                   <label className="chron-qty">
                     <span className="sr-only">Also counts (optional)</span>
                     <input
+                      ref={metricBox}
                       value={actMetric}
                       placeholder="pages?"
                       onChange={(e) => setActMetric(e.target.value)}
@@ -2556,15 +2632,7 @@ export function Timer({
                    */}
                   <button
                     className="btn btn-ghost chron-act-name"
-                    onClick={() => {
-                      setFixAct(a.id)
-                      setActName(a.name)
-                      setActCat(a.cat)
-                      setActColour(a.colour)
-                      setActMetric(a.metric ?? '')
-                      setActSession(a.session == null ? '' : String(a.session))
-                      setActShared(a.shared)
-                    }}
+                    onClick={() => editActivity(a)}
                     title={`Rename ${a.name}, or change what kind it is`}
                   >
                     {a.colour ? (
