@@ -416,6 +416,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const tabsId = useId()
   const panelId = `${tabsId}-panel`
+  /**
+   * ⚠️ THE DAY IS A DEPENDENCY, read on every render. Every view's window comes from the clock, and
+   * a memo keyed only on the data kept yesterday's counts on the strip all morning for a page left
+   * open overnight — "Today 0" over a floss that is due — until something else happened to reload.
+   * The same shape as `Settled` (a new day is an arrival), one memo over.
+   */
+  const day = todayISO()
   /** how many of each view has something in it, so the strip says where the work is */
   const counts = useMemo(() => {
     const out: Record<string, number> = {}
@@ -431,11 +438,11 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         .filter(
           (g) =>
             (inScope(g, x.scope, when) && !finished(g, got, when)) ||
-            lateIn(g, got, x.scope, when, todayISO()),
+            lateIn(g, got, x.scope, when, day),
         ).length
     }
     return out
-  }, [goals, got, marked])
+  }, [goals, got, marked, day])
 
   /**
    * The horizons actually on the strip: the three core ones, plus any that holds something.
