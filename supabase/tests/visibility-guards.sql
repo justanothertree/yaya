@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W8: as W7, with the probe comparing the schedule with its keys sorted (jsonb orders keys its own way).
+-- RUN S1: weekdays, marks, day notes, then the SETS draft last — every suite, the sets test included.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the weekdays draft (FIRST)
@@ -10,6 +10,8 @@
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
 \echo === applying the day-notes draft (AFTER marks)
 \ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
+\echo === applying the sets draft (LAST)
+\ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
 \echo === the standing guards, against a schema with all three drafts in it
 \ir visibility-guards.orig.sql
 \echo === the daily flow
@@ -22,6 +24,8 @@
 \ir chronicle-day-notes.sql
 \echo === the weekdays
 \ir chronicle-weekdays.sql
+\echo === the sets
+\ir chronicle-sets.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
