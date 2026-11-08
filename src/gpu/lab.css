@@ -684,3 +684,43 @@
   max-width: 100%;
   min-width: 0;
 }
+
+/* Slide: four push buttons as a cross, big enough for a thumb, the score beside them */
+.slide-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 52px) 1fr;
+  grid-template-rows: repeat(3, 44px);
+  gap: 4px;
+  align-items: center;
+}
+.slide-pad .btn {
+  min-height: 44px;
+  padding: 0;
+  font-size: 1.1rem;
+}
+.slide-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+.slide-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+.slide-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+.slide-down {
+  grid-column: 2;
+  grid-row: 3;
+}
+.slide-pad .btn[data-hint] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.slide-score {
+  grid-column: 4;
+  grid-row: 1 / 4;
+  padding-left: 0.75rem;
+  white-space: normal;
+}

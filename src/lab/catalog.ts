@@ -89,6 +89,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   wallpaper: { category: 'make', added: '2026-11-08' },
   nonogram: { category: 'games', added: '2026-11-08' },
   gates: { category: 'games', added: '2026-11-08' },
+  slide: { category: 'games', added: '2026-11-08' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */

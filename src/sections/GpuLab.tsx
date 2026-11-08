@@ -65,6 +65,7 @@ import { OrbitDemo } from '../gpu/OrbitDemo'
 import { WallpaperDemo } from '../gpu/WallpaperDemo'
 import { NonogramDemo } from '../gpu/NonogramDemo'
 import { GatesDemo } from '../gpu/GatesDemo'
+import { SlideDemo } from '../gpu/SlideDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -471,6 +472,12 @@ const DEMOS: readonly {
     name: 'Logic gates',
     line: 'Logic gates — wire switches to lamps through NAND and the gates you build from it, until the truth table is all ticks: NOT, AND, XOR, then adders that really add.',
     Demo: GatesDemo,
+  },
+  {
+    id: 'slide',
+    name: 'Slide',
+    line: 'Slide — an ice puzzle: the puck slides until something stops it. Take every coin and come to rest on the goal in as few pushes as the solver did; then endless boards, each solved before you see it.',
+    Demo: SlideDemo,
   },
 ]
 
