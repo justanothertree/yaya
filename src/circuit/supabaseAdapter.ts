@@ -17,6 +17,8 @@ import type {
 } from './types'
 import { ratingId, voteId } from './types'
 import { getSupabaseClient, subscribeLogged } from '../finance/client'
+import { CellRefused } from './cellRefused'
+import { cellChanges, sessionsIn, withSessions, type SessionSum } from './sessions'
 
 const TABLES = [
   'circuit_people',
@@ -264,7 +266,26 @@ async function must<T extends { error: { message: string } | null }>(
 export function createSupabaseAdapter(): CircuitAdapter {
   const sb = getSupabaseClient()
 
+  /**
+   * The board as last loaded, by log id, with sessions in it — what a save compares against to say
+   * which cells moved and what the screen saw under them. Also which people are linked to an
+   * account, which decides how a day is saved.
+   */
+  let lastLogs = new Map<string, DayLog>()
+  let linked = new Set<string>()
+
   async function loadAll(): Promise<CircuitState> {
+    /**
+     * ⚠️ CHRONICLE'S SESSIONS, ADDED INTO THE CELLS THEY BELONG TO. Four hundred days, the session
+     * reader's own limit. A server without the grid draft refuses the call, which reads as no
+     * sessions and leaves the board exactly as it was.
+     */
+    const today = new Date()
+    const day = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12)
+    const since = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 399, 12)
+    const sessionsCall = sb.rpc('circuit_session_sums', { p_from: day(since), p_to: day(tomorrow) })
     const [ppl, logs, movies, wl, pgroups, groups, pools, votes, ratings] = await Promise.all([
       sb.from('circuit_people').select('*'),
       sb.from('circuit_logs').select('*'),
@@ -284,12 +305,26 @@ export function createSupabaseAdapter(): CircuitAdapter {
     for (const r of (pgroups.data as { person_id: string; group_id: string }[] | null) ?? []) {
       ;(byPerson[r.person_id] ||= []).push(r.group_id)
     }
+    const sessionRes = await sessionsCall
+    const sums: SessionSum[] = Array.isArray(sessionRes.data)
+      ? (sessionRes.data as Array<Record<string, unknown>>).map((r) => ({
+          person: String(r.person),
+          exercise: String(r.exercise),
+          on: String(r.on),
+          value: Number(r.value) || 0,
+        }))
+      : []
+    const merged = withSessions(((logs.data as LogRow[] | null) ?? []).map(rowToLog), sums)
+    lastLogs = new Map(merged.map((l) => [l.id, l]))
+    linked = new Set(
+      ((ppl.data as PersonRow[] | null) ?? []).filter((r) => !!r.owner_user_id).map((r) => r.id),
+    )
     return {
       people: ((ppl.data as PersonRow[] | null) ?? []).map((r) => ({
         ...rowToPerson(r),
         groupIds: byPerson[r.id] ?? [],
       })),
-      logs: ((logs.data as LogRow[] | null) ?? []).map(rowToLog),
+      logs: merged,
       movies: ((movies.data as MovieRow[] | null) ?? []).map(rowToMovie),
       watchlist: ((wl.data as WlRow[] | null) ?? []).map(rowToWl),
       groups: ((groups.data as { id: string; name: string }[] | null) ?? []).map((g) => ({
@@ -337,10 +372,52 @@ export function createSupabaseAdapter(): CircuitAdapter {
     async deletePerson(id: ID) {
       await must(sb.from('circuit_people').delete().eq('id', id))
     },
+    /**
+     * ⚠️ A PERSON LINKED TO AN ACCOUNT IS SAVED A CELL AT A TIME, AS TOTALS, THROUGH THE SERVER.
+     * Their cells can hold Chronicle sessions, so the row cannot simply be overwritten with what the
+     * screen shows: `circuit_cell_set` stores the total minus the sessions, under the cell's lock,
+     * and refuses a save made against figures that have since moved. Anybody else's day is saved as
+     * it always was. A server without the grid draft has no such function, and that one case falls
+     * back to the old write — there are no sessions on such a server to protect.
+     */
     async saveLog(l: DayLog) {
-      await must(sb.from('circuit_logs').upsert(logToRow(l)))
+      if (!linked.has(l.personId)) {
+        await must(sb.from('circuit_logs').upsert(logToRow(l)))
+        return
+      }
+      const prev = lastLogs.get(l.id)
+      for (const c of cellChanges(prev, l)) {
+        const { error } = await sb.rpc('circuit_cell_set', {
+          p_person: l.personId,
+          p_exercise: c.eid,
+          p_day: l.date,
+          p_total: c.total,
+          p_seen_sessions: c.seenSessions,
+          p_seen_manual: c.seenManual,
+        })
+        if (
+          error &&
+          /circuit_cell_set|PGRST202|42883/.test(`${error.code} ${error.message}`) &&
+          !prev?.sessions?.length
+        ) {
+          await must(sb.from('circuit_logs').upsert(logToRow({ ...l, sessions: undefined })))
+          return
+        }
+        if (error) throw new CellRefused(error.message)
+      }
+      /* the sessions stay what they were until the board reloads; the grid's copy has none */
+      lastLogs.set(l.id, { ...l, sessions: prev?.sessions })
     },
     async deleteLog(id: ID) {
+      /* ⚠️ a day whose cells hold sessions is not the grid's to delete — the sessions are Chronicle's */
+      const prev = lastLogs.get(id)
+      const held = (prev?.sessions ?? []).filter((x) => x.val > 0)
+      if (held.length) {
+        const n = held.reduce((s, x) => s + sessionsIn(prev, x.eid), 0)
+        throw new CellRefused(
+          `sessions count ${n} on that day — lower them in Chronicle, in that day's log`,
+        )
+      }
       await must(sb.from('circuit_logs').delete().eq('id', id))
     },
     async saveMovie(m: Movie) {

@@ -1552,6 +1552,17 @@ export function Timer({
                     </output>
                     {state}
                   </div>
+                  {/**
+                   * ⚠️ SAID, BECAUSE THIS IS THE ONE CHRONICLE NUMBER THAT LEAVES CHRONICLE. A set is
+                   * part of the person's Circuit cell, and the Circuit shows that cell to the
+                   * circuits the person is in — while everything else in this room is private
+                   * unless shared. The sitting itself, its time and its activity stay here.
+                   */}
+                  {chosen ? (
+                    <p className="muted chron-tally-where">
+                      Each set also counts in your Circuit column.
+                    </p>
+                  ) : null}
                   {chosen ? (
                     <div className="chron-tally-ex" role="group" aria-label="Which exercise">
                       {linked.map((x) => {

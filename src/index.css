@@ -1856,6 +1856,15 @@
   align-items: center;
   gap: 6px;
 }
+/* the part of a cell Chronicle's sessions hold, and the way to it — see circuit/sessions.ts */
+.cz-slot-sessions {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
 .cz-add-slot {
   background: transparent;
   border: 1.5px dashed var(--b2, rgba(127, 127, 127, 0.3));
@@ -17122,6 +17131,10 @@ a.cz-msg-author:focus-visible {
   flex-basis: 100%;
   margin: 0;
   font-size: 0.78rem;
+}
+.chron-tally-where {
+  margin: 0;
+  font-size: 0.76rem;
 }
 /* which exercise the counter is counting, in sets mode */
 .chron-tally-ex {

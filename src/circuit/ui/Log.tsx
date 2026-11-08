@@ -9,6 +9,7 @@ import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
 import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
+import { sessionsIn } from '../sessions'
 import { Modal } from './Modal'
 import { GoalBar } from './GoalBar'
 import { todayISO, localISO } from '../dates'
@@ -641,6 +642,7 @@ export function Log({
                   key={ex.id}
                   ex={ex}
                   val={vals[ex.id] ?? ''}
+                  sessions={sessionsIn(existing, ex.id)}
                   best={bestByEx[ex.id]}
                   dragging={dragId === ex.id}
                   over={overId === ex.id}
@@ -757,6 +759,7 @@ export function Log({
 function Slot({
   ex,
   val,
+  sessions,
   best,
   dragging,
   over,
@@ -772,6 +775,8 @@ function Slot({
 }: {
   ex: Exercise
   val: string
+  /** how much of this cell Chronicle's sessions hold — see circuit/sessions.ts */
+  sessions: number
   best?: number
   dragging: boolean
   over: boolean
@@ -864,6 +869,17 @@ function Slot({
               : `×${ex.mult}`}
         </span>
       </div>
+      {/**
+       * ⚠️ WHERE PART OF THIS NUMBER CAME FROM, AND WHERE TO CHANGE IT. The cell shows a total, and
+       * sessions counted in Chronicle are part of it; the grid will not take the total below them
+       * (OPEN-DECISIONS §19g), so the way to lower that part has to be on the cell, not in a toast
+       * after the save has already been refused.
+       */}
+      {sessions > 0 ? (
+        <a className="cz-slot-sessions" href="#chronicle">
+          {Math.round(sessions * 10) / 10} from Chronicle sessions · change them there
+        </a>
+      ) : null}
       {(best || tags.length > 0) && (
         <div
           className="cz-slot-meta"

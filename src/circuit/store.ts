@@ -5,6 +5,7 @@
 // Every mutation is a reversible command (save/delete on one collection), so the
 // store keeps a 30-step undo/redo history. Signing in or out resets it; a realtime
 // change from somebody else does not — see adoptState for why.
+import { CellRefused } from './cellRefused'
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
 import { showToast } from './toast'
@@ -123,6 +124,8 @@ function inverseOf(s: CircuitState, op: Op): Op {
  * the one that prompted this: every new review had been refused for weeks.)
  */
 function reasonFor(err: unknown): string {
+  /* ⚠️ a cell the server refused for a reason it can name says that reason — see CellRefused */
+  if (err instanceof CellRefused) return `Not saved — ${err.message}`
   const msg = String((err as { message?: unknown })?.message ?? '')
   if (/row-level security|violates row-level/i.test(msg))
     return 'Not saved — the database refused it. That is a bug here, not something you did.'
