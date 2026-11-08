@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partAt, partLost, partsIn, takeTimeAt } from './arrange'
+import { followLastBar, partAt, partLost, partsIn, takeTimeAt } from './arrange'
 
 /**
  * The arrangement's bound, which the scheduler had and the picture did not.
@@ -170,5 +170,41 @@ describe('where a moment of the song lands inside the take', () => {
       expect(got, `at ${at.toFixed(3)}`).toBeGreaterThanOrEqual(src * BAR)
       expect(got, `at ${at.toFixed(3)}`).toBeLessThan((src + 1) * BAR)
     }
+  })
+})
+
+/**
+ * A fill laid "on the last bar" of a two-bar loop is `[null, 0]`. The expectations are which bar
+ * of the loop it sounds in — the thing the button's name promises — not the plan's arithmetic.
+ */
+describe('a fill on the last bar stays on the last bar', () => {
+  const sounds = (plan: (number | null)[], bars: number) =>
+    Array.from({ length: bars }, (_, b) => partAt(plan, b, 1) !== null)
+
+  it('moves to bar four when a two-bar loop grows to four', () => {
+    const next = followLastBar([null, 0], 4)!
+    expect(sounds(next, 4)).toEqual([false, false, false, true])
+  })
+
+  it('and to bar two when a four-bar loop shrinks to two', () => {
+    const next = followLastBar([null, null, null, 0], 2)!
+    expect(sounds(next, 2)).toEqual([false, true])
+  })
+
+  it('without it, the fill sounds in the middle or not at all — which is what this fixes', () => {
+    expect(sounds([null, 0], 4)).toEqual([false, true, false, false])
+    expect(sounds([null, null, null, 0], 2)).toEqual([false, false])
+  })
+
+  it('leaves a fill somebody moved, and any other arrangement, where it is', () => {
+    expect(followLastBar([0, null], 4)).toBe(null)
+    expect(followLastBar([null, 0, null, 0], 8)).toBe(null)
+    expect(followLastBar([null, null], 4)).toBe(null)
+    expect(followLastBar(undefined, 4)).toBe(null)
+  })
+
+  it('does not move on a one-bar loop, so going back to two finds it again', () => {
+    expect(followLastBar([null, 0], 1)).toBe(null)
+    expect(sounds(followLastBar([null, 0], 3)!, 3)).toEqual([false, false, true])
   })
 })

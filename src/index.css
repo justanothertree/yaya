@@ -2841,6 +2841,16 @@ section[id] {
     transform 0.12s ease,
     filter 0.12s ease;
 }
+/* the line under a toggle that says what it does, or why it is off — see `Why` in
+   InstrumentRoom. Smaller and quieter than the label so the label is still what you read first. */
+.btn-why {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.15;
+  opacity: 0.82;
+}
 /**
  * ⚠️ TWO CLASSES, so this actually wins. `.btn-ghost` is declared several hundred lines earlier,
  * and a single class carries the same specificity as `.btn` — so the later rule took it, and every

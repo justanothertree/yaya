@@ -7,7 +7,7 @@ import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
-import { partAt, partsIn } from './arrange'
+import { followLastBar, partAt, partsIn } from './arrange'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -1289,9 +1289,20 @@ export function setBars(bars: number) {
    * That asymmetry is deliberate and documented; whether it is what somebody WANTS when they
    * grow a song is a product question and is written up rather than guessed at here. The one
    * thing it is not is a bug in this function, which is why the fix was to the sentence.
+   *
+   * ⚠️ ONE EXCEPTION TO THE EXCEPTION: A FILL. Its button is named for where it plays — "On the
+   * last bar" — so a fill still sitting on the last bar follows the last bar. A fill dragged
+   * elsewhere, and every other arranged layer, is left exactly as it was. See `followLastBar`.
    */
   restart()
-  set({ bars: next })
+  set({
+    bars: next,
+    layers: state.layers.map((l) => {
+      if (fillPatternOf(l) === null) return l
+      const plan = followLastBar(l.plan, next)
+      return plan ? { ...l, plan } : l
+    }),
+  })
 }
 
 /**
