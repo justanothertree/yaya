@@ -921,3 +921,28 @@ and the rollback for each is written in its file. Two things to know first:
   (`pg_get_functiondef`) before applying, which I have not done, by instruction.
 - **The room must not ship before step 1.** Until the table exists, every tick on a repeating goal
   would come back refused.
+
+---
+
+## 18. A note with no session — built as a draft (2026-11-08)
+
+§14b's three rules were settled, so the build went ahead as a draft: #76, with
+`docs/2026-11-08-chronicle-day-notes.DRAFT.sql` and `supabase/tests/chronicle-day-notes.sql`.
+**Nothing is applied.** The room's door is the Journal: a box at the top, day notes listed beside
+session notes, and ✎ Note with nothing running opening that box. The test asks "never on anybody's
+timeline" two ways: as a census of every function that names the table, and as a friend reading
+a member who is sharing a session. The test first insists the friend's readers did return that
+session, so an empty answer cannot pass for privacy.
+
+### 18a. Approve applying the day-notes draft?
+
+**Recommendation: yes, after #73's step 1 or before it — the order does not matter, and both have
+run.** It changes a live table: `entry` becomes nullable, and a column and a CHECK are added. Every
+existing row satisfies the CHECK. The rollback is written in the file, and its last step deletes
+what people wrote, so that step says to export first and ask.
+
+### 18b. §15a is still open, and #76 does not need it
+
+Where the **Day** log draws one of these — a row with a time and no length, or a fold of its own
+— is still §15a, recommended in §16e. Until it is answered, a note with no session lives in the
+Journal only, which is a complete feature on its own rather than half of one.

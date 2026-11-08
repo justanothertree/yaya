@@ -19,6 +19,7 @@ has run.
 | #73 | `chronicle/marks-wired`     | #43    | see PR    | frontend + DB draft          | db guards (drafts not applied)    |
 | #39 | `chronicle/weekday-logic`   | #38    | `da8b6e0` | proposal, unwired            | db guards ✅                      |
 | #46 | `chronicle/repeat-marks`    | #39    | `ca05932` | proposal — superseded by #73 | db guards ✅                      |
+| #76 | `chronicle/day-notes`       | #43    | see PR    | frontend + DB draft          | db guards (draft not applied)     |
 | #51 | `chronicle/flow-test`       | `main` | `f50fc22` | DB test                      | lint, test, build, db guards ✅   |
 | #67 | `chronicle/flow-in-ci`      | #51    | `43c6ced` | CI (one line)                | db guards ✅ — both suites ran    |
 
@@ -49,6 +50,15 @@ be merged.
    - (c) apply step 3, `docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql`.
 
    **The room must not deploy before (a)**, or every tick on a repeating goal comes back refused.
+
+5. **#76 — a note with no session.** The same release shape as #73, with one step:
+   - (a) approve and apply `docs/2026-11-08-chronicle-day-notes.DRAFT.sql`;
+   - (b) merge and deploy.
+
+   It is stacked on #43 rather than on #73, so the two are independent. Either draft can be
+   applied first, and both orders have run in CI. **They conflict in two places, both trivial:**
+   each adds a count to `Putback` in cloud.ts and to the restore toast in YourCopy.tsx. Keep
+   both counts.
 
 **Parked:** #39 (weekday schedules) needs §16f and §16g answered and its own database approval.
 #46 is superseded by #73 and can be closed whenever convenient — I have not closed it.
