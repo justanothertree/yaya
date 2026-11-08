@@ -56,6 +56,7 @@ import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
+import { JigsawDemo } from '../gpu/JigsawDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -407,6 +408,13 @@ const DEMOS: readonly {
     name: 'Print shop',
     line: 'Print shop — carve a lino block with a gouge and pull prints from it, ink over ink: a reduction linocut, cut and printed on the GPU.',
     Demo: PrintshopDemo,
+  },
+  // after the catalog: registered in the database by the admin's next visit, not by the draft
+  {
+    id: 'jigsaw',
+    name: 'Jigsaw',
+    line: 'Jigsaw — six painted pictures or a photo of your own, cut into 12 to 154 pieces: drag them together on the felt, and they snap when they fit.',
+    Demo: JigsawDemo,
   },
 ]
 

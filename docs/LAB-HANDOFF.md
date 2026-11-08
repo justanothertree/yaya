@@ -2399,11 +2399,82 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 
+### Follow-on: `claude/lab-jigsaw-1`, stacked on #34 (8 Nov 2026) — a new toy, Jigsaw
+
+**Base:** `claude/lab-next-1` at `2c3d39c` (PR #34, itself on #31). No SQL changes; #31's draft
+stays unapplied and untouched.
+
+- **What you do.** Drag pieces off the felt onto the board's tray. A piece laid within about a
+  quarter of a cell of a neighbour joins it, and the pair move as one from then on; a piece or group
+  laid that close to its own place fixes there and cannot be picked up again. Six built-in pictures
+  painted on the GPU (_Hills at dusk_, _Patchwork quilt_, _Flower garden_, _City at night_,
+  _Marbled paper_, _Coral reef_) or a photo of your own, in 12, 24, 48, 96 or 154 pieces. 🧱 Edges
+  first lays the loose edge pieces nearest the board; 👁 shows the picture faintly in the tray;
+  🪄 Place one puts a piece in for you (which also makes the puzzle finishable without a pointer).
+  A clock, a placed count, a sheen and a little chord when it is done, and a best time per picture
+  and size — not kept for a puzzle finished with 🪄. Keys: E, G, H, N.
+- **Kept in this browser:** the puzzle in progress (`lab_jigsaw_v1`, every field checked on the way
+  back in, positions rounded) and best times (`lab_jigsaw_bests_v1`). **A photo of your own is
+  never uploaded and never kept** — the page says so when one is chosen, and the last built-in
+  puzzle stays saved underneath it. Changing the picture or size mid-puzzle does not throw it away:
+  it says to press 🔀 New puzzle, which asks twice while a puzzle is in progress.
+- **GPU technique:** every piece is one instanced quad, its cell grown by the knob's reach, and the
+  fragment shader keeps a pixel only if the piece owns that point of the board **as cut** — the same
+  circle rule `jigsaw.ts` uses to pick a piece up, so the outline drawn, the outline grabbed and the
+  hole in the neighbour are one test asked three ways. The bevel is that test asked again a pixel
+  or three away; against a piece of its own group it is a hairline, the way a finished puzzle shows
+  its cuts. Pictures are painted by a fragment pass into a texture once per puzzle.
+- **Pattern to reuse:** "one rule, asked by both sides" — the shape lives in a pure function the
+  shader copies line for line, and a probe compares the two pixel by pixel.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 24 tests in `jigsaw.test.ts`: knobs have a neck and a head and never touch (an early cut did,
+  0.40 apart against 0.42 of radii, and cut a piece in three); every piece is one connected
+  region; dealt pieces never overlap, asked of the shapes themselves; joins chain; placed is fixed;
+  a hint always makes progress; a kept puzzle round-trips with every field off its default and is
+  refused with any field missing or out of bounds. Made to fail by putting the old knob sizes back
+  (4 red) and by dealing onto the board (7 red).
+- **The outline drawn is the outline picked up:** rendered offscreen at 960×600, half a 48-piece
+  puzzle on the board, 47,386 sample points of the felt checked against `hit()` — 0 disagree
+  (points within 2.5px of an edge skipped). With the shader's knob radius made 1.58× bigger it
+  reports 715; at 1.18× (about 1px) it reports nothing, so that is its resolution.
+- Driven through the real UI on the dev server, desktop 1280 and an emulated iPhone 13 (mouse
+  events, not touch): a piece dragged home fixes, a neighbour joins it, a placed piece will not
+  move, a reload brings back the same deal, a hand-solved 12 records a best and a 🪄-finished one
+  does not, a text file is refused in words, a photo is cut and its puzzle is not saved. One GPU
+  device per mount, each destroyed on switching away. `mobileAudit` at both widths: all zero.
+- A 154-piece frame costs about 150 ms on SwiftShader — a CPU pretending, so it says nothing about
+  a phone; the toy draws only when something moved, so a still table costs nothing.
+
+**Not verified, and why:**
+
+- **What the stage looks like in a page.** On 8 Nov this container's headless Chromium lost every
+  WebGPU canvas after its second submit ("A valid external Instance reference no longer exists") —
+  Topple and the production build too, so not this toy. The pictures above were checked through
+  the engine rendering offscreen and read back, which is the same shaders and the same buffers but
+  not the canvas.
+- **A photo's upload path.** It goes through a 2D canvas and `writeTexture`, not
+  `copyExternalImageToTexture`: the direct copy threw on this toy's device for every bitmap tried,
+  while the same bitmap copied fine on a second device in the same page. Unexplained, so the toy
+  uses the path that was seen to work. Real-GPU behaviour of either is untested.
+- **Voting on it:** Jigsaw is not in #31's seed list on purpose — that draft stays the reviewed
+  text. Once it is applied, the admin's next visit registers it (as the draft already describes);
+  until then a member's vote on Jigsaw is refused. `catalog.test.ts` now holds the seed to be the
+  first 51 ids of the registry, in order, rather than all of them.
+- The site's floating "You're playing" pill appears while a toy plays a note and, on a phone, sits
+  over the Picture select. That pill belongs to the shared audio UI, not the Lab, so it is noted
+  here rather than changed.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
-1. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
+   test browser here could not show its stage at all on 8 Nov. Does the picture appear and the
+   pieces draw cleanly? Do 24 pieces feel big enough for a finger, and do they snap when you
+   expect? Try your own photo once.
+2. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-2. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+3. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-3. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+4. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?
