@@ -1,6 +1,7 @@
 import { localISO } from '../circuit/dates'
 import { localMidnight, type Activity } from './record'
 import type { VisibilityTier } from '../circuit/types'
+import { dueOn, type Schedule } from './weekdays'
 
 /**
  * A goal, and the window it is judged over.
@@ -105,6 +106,21 @@ export type Goal = {
    * and created_at behind it, rather than a second opinion about where a row belongs.
    */
   priority: 0 | 1 | 2
+  /**
+   * When the goal was made, as epoch milliseconds — or absent, when the reader does not say.
+   *
+   * ⚠️ BEFORE IT, THE GOAL ASKED ABOUT NOTHING (§16g, answered): a window that ended before this
+   * local day is neither met nor missed, so a goal made this morning cannot open with a ten-day
+   * streak of things done before anybody asked, and a new daily goal does not open with thirty
+   * misses either. ABSENT MEANS UNKNOWN, not "always": `chronicle_goals_mine` carries it only once
+   * the weekday draft is applied, and until then every window is drawn as it always was.
+   */
+  made?: number | null
+  /**
+   * A repeating daily goal's weekdays, as a history — see weekdays.ts. Absent or empty is every
+   * day, which is what every goal had before the column's draft existed.
+   */
+  days?: Schedule
 }
 
 /** Inclusive `from`, EXCLUSIVE `to`, both local ISO dates. Null for 'life', which has no window. */
@@ -250,7 +266,9 @@ export const homeFor = (s: Scope): Scope => (SHOWN_SCOPES.includes(s) ? s : 'yea
 export function inScope(g: Goal, scope: Scope, on: string): boolean {
   if (homeFor(g.scope) !== scope) return false
   if (g.scope === 'life') return true
-  if (repeats(g)) return true
+  /* ⚠️ A REPEATING DAILY GOAL IS ONLY DUE ON ITS OWN DAYS — a Tuesday swim is not today's work on
+     a Wednesday. Every other scope repeats over every window it has. */
+  if (repeats(g)) return !offOn(g, on)
   const w = windowOf(scope, on)
   return !!w && !!g.anchor && g.anchor >= w.from && g.anchor < w.to
 }
@@ -339,6 +357,16 @@ export function lateIn(
 ): boolean {
   return pastIn(g, scope, on, today) && !finished(g, tally, today)
 }
+
+/**
+ * Whether a repeating daily goal's schedule leaves this day out.
+ *
+ * ⚠️ NOT "NOT IN SCOPE": a goal can be off today and still be on screen, because it was done
+ * anyway, or ticked before an edit made today an off day. The room keeps those rows (see `mine`
+ * in Chronicle.tsx), and this is how it tells them from the day's real work.
+ */
+export const offOn = (g: Goal, on: string): boolean =>
+  repeats(g) && g.scope === 'day' && !dueOn(g.days ?? [], on)
 
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
@@ -876,6 +904,66 @@ export function marksOf(g: Goal, got: Record<string, number>, back = STREAK_BACK
     else out.push(had != null && had >= g.target ? 'met' : 'missed')
   }
   return out
+}
+
+/** A window's verdict on the row, with one answer more than `Mark`: the goal was not for it. */
+export type RowMark = Mark | 'off'
+
+/**
+ * How each window the goal was ASKING ABOUT went, oldest first — the row the room draws.
+ *
+ * `marksOf` answers from the record alone. This applies the two things the record cannot know:
+ *
+ * ⚠️ WINDOWS BEFORE THE GOAL WAS MADE ARE NOT ON THE ROW AT ALL (§16g). Not drawn as misses,
+ * because nothing was asked; not drawn as met either, because "you drew yesterday" is a fact about
+ * the record and not about a goal that did not exist. The window CONTAINING the creation day is
+ * kept — the goal existed during it — so a weekly goal made on a Wednesday is asked about that
+ * week. The row is shorter rather than padded, so it begins where the goal did.
+ *
+ * ⚠️ A DAY THE SCHEDULE LEAVES OUT IS `off` — UNLESS IT WAS MET (§16f). A met day is met whatever
+ * the schedule now says of it, because Evan's rule is that a scheduling change never erases an
+ * earned completion, and the only day an edit can reach is today: every earlier day keeps the
+ * schedule it was judged under. A special case for today alone would be a rule that changes its
+ * answer at midnight. The same rule counts an extra swim on a Wednesday for a Tuesday goal, which
+ * nothing forbids and the integration queue asks about.
+ */
+export function rowOf(
+  g: Goal,
+  got: Record<string, number>,
+  on: string,
+  back = STREAK_BACK,
+): RowMark[] {
+  const base = marksOf(g, got, back)
+  if (!base.length) return []
+  const madeDay = g.made != null && Number.isFinite(g.made) ? localISO(new Date(g.made)) : null
+  const out: RowMark[] = []
+  base.forEach((m, i) => {
+    const w = windowBack(g.scope, on, back - i)
+    if (!w) return
+    if (madeDay && w.to <= madeDay) return
+    out.push(m !== 'met' && g.scope === 'day' && !dueOn(g.days ?? [], w.from) ? 'off' : m)
+  })
+  return out
+}
+
+/**
+ * The run of met windows at the end of a row, stepping over the ones the goal was not for.
+ *
+ * ⚠️ THE SAME TWO RULES AS `streakOf`, plus one: the window you are in does not break the run
+ * because it is not over, an `off` day neither extends nor breaks it — a Tuesday goal met four
+ * Tuesdays running has a streak of four, not of one — and the run cannot reach back past the
+ * start of the row, which is the day the goal was made.
+ */
+export function streakFrom(row: readonly RowMark[]): number {
+  let run = 0
+  let i = row.length - 1
+  if (row[i] === 'now') i--
+  for (; i >= 0; i--) {
+    if (row[i] === 'off') continue
+    if (row[i] !== 'met') break
+    run++
+  }
+  return run
 }
 
 export function streakOf(g: Goal, got: Record<string, number>, back = STREAK_BACK): number {

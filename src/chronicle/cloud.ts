@@ -15,6 +15,7 @@ import {
   pvImport,
   pvMarksFor,
   pvSetMark,
+  pvSetDays,
   pvQuality,
   pvMoods,
   pvPlanDid,
@@ -46,6 +47,7 @@ import { inBatches } from './goal'
 import { SPANS_AT_ONCE } from './year'
 import type { Goal, Scope } from './goal'
 import { NO_MARKS, type Marked, type MarkAt } from './marks'
+import { validMask, type DayMask, type Schedule } from './weekdays'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
 
@@ -103,6 +105,9 @@ type Row = {
   counts: Goal['counts']
   est: number | string | null
   priority: number | string | null
+  /* the weekday draft's two: absent from a reader that predates it */
+  made?: number | string | null
+  days?: unknown
 }
 
 /**
@@ -159,7 +164,33 @@ const read = (r: Row): Goal => ({
      and no flag — rather than as undefined */
   est: r.est == null ? null : num(r.est) || null,
   priority: (Math.min(Math.max(num(r.priority), 0), 2) || 0) as Goal['priority'],
+  /**
+   * ⚠️ ABSENT STAYS ABSENT, never a guess. Until the weekday draft is applied the reader sends
+   * neither, and a goal with no `made` draws every window as it always has — reading a missing
+   * creation as "now" would wipe every row in the room down to one cell.
+   */
+  made: r.made == null ? null : num(r.made, NaN) || null,
+  days: readDays(r.days),
 })
+
+/**
+ * A goal's schedule as the reader sends it: `[{from, days}]`, dates in ISO.
+ *
+ * ⚠️ ANYTHING THAT IS NOT A DATE AND A MASK IS DROPPED rather than defaulted. A row read as "every
+ * day" when it said something else would re-judge the days it covers, which is the one thing the
+ * schedule exists to prevent; dropping it leaves the entry before it in force, which is the
+ * nearest thing to true the client can say.
+ */
+function readDays(v: unknown): Schedule {
+  if (!Array.isArray(v)) return []
+  const out: { from: string; days: number }[] = []
+  for (const x of v) {
+    const from = typeof x?.from === 'string' ? x.from : ''
+    const days = Number(x?.days)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from) && validMask(days)) out.push({ from, days })
+  }
+  return out
+}
 
 /** Every goal of mine. Empty rather than throwing, so a dead network is a quiet room. */
 export async function myGoals(): Promise<Goal[]> {
@@ -299,6 +330,28 @@ export async function setMark(
     p_ends: at.ends,
     p_progress: progress,
     p_done: done,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Set which weekdays a repeating daily goal is for, from a day on.
+ *
+ * ⚠️ `from` IS ALWAYS TODAY, AND THE SERVER INSISTS. A schedule is a history (weekdays.ts) and
+ * Evan's rule is that a change reaches today and the days after it, never the days before — so
+ * the writer refuses anything earlier than UTC's yesterday, and the room only ever sends its own
+ * local today. Changing it twice in a day replaces that day's entry rather than adding a second.
+ */
+export async function setDays(
+  id: string,
+  days: DayMask,
+  from: string,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvSetDays(id, days, from)
+  const { error } = await getSupabaseClient().rpc('chronicle_goal_days_set', {
+    p_goal: id,
+    p_days: days,
+    p_from: from,
   })
   return error ? { why: error.message || 'that did not save' } : null
 }
@@ -861,6 +914,8 @@ export type Putback = {
   plans: number
   /** windows of repeating goals put back — see marks.ts */
   marks: number
+  /** weekday schedule entries put back, only ever with the goal they belong to — see weekdays.ts */
+  schedules: number
   skipped: number
 }
 
@@ -892,6 +947,7 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     routines: n('routines'),
     plans: n('plans'),
     marks: n('marks'),
+    schedules: n('schedules'),
     skipped: n('skipped'),
   }
 }

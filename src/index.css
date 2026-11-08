@@ -17550,6 +17550,40 @@ a.cz-msg-author:focus-visible {
   font-size: 0.86rem;
   color: var(--muted);
 }
+/* which weekdays a repeating daily goal is for — see the picker in Chronicle.tsx */
+.chron-wdays {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+/* ⚠️ PIXELS, because the root size is fluid and a touch target is a length: 32px clears WCAG's
+   24px floor with room to spare on the one control here a thumb presses seven of in a row */
+.chron-wday {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chron-wday.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.chron-wday:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chron-wdays-note {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+}
 .chron-say {
   margin: 0.5rem 0 0;
   font-size: 0.86rem;
@@ -18820,6 +18854,14 @@ a.cz-msg-author:focus-visible {
 .chron-marks i.is-now {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* ⚠️ A DAY THE GOAL WAS NOT FOR IS THINNER, NOT FAINTER. Faint is what a miss already is, and an
+   off day is not a quieter miss — it is a day nothing was asked. A short tick keeps the row a
+   calendar, so a Tuesday goal still reads as one cell a week, in its place. */
+.chron-marks i.is-off {
+  height: 4px;
+  margin-top: 3px;
+  opacity: 0.6;
 }
 
 /* a flagged goal, and a guess at how long it takes — see Chronicle.tsx */

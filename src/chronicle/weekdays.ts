@@ -1,17 +1,15 @@
 import { localMidnight } from './record'
-import type { Mark } from './goal'
 
 /**
- * ⚠️ PROPOSAL — NOTHING IMPORTS THIS YET, AND NO COLUMN EXISTS FOR IT TO READ.
- *
  * Selected-weekday recurrence for a repeating day goal: "swim on Tuesdays", "floss every day but
- * Sunday". It is the logic half of docs/2026-11-08-chronicle-weekdays.DRAFT.sql, written first
- * because it is the half that can be tested without a database, and because the one rule Evan
- * set for it — a schedule change affects FUTURE occurrences, never the completion history
+ * Sunday". It is the logic half of docs/2026-11-08-chronicle-weekdays.DRAFT.sql, and the one rule
+ * Evan set for it — a schedule change affects FUTURE occurrences, never the completion history
  * already recorded — is a property of this arithmetic rather than of the table.
  *
- * Wiring it in needs the table, and the table needs approving. Until both, this module and its
- * tests are a claim about how the feature WILL behave, kept honest by being runnable.
+ * ⚠️ THE TABLE IS A DRAFT, NOT APPLIED TO PRODUCTION. Until it is, the goals reader sends no
+ * `days`, every goal reads as every day, and nothing here changes what anybody sees. How a day's
+ * verdict is drawn — and the rule that a met day stays met whatever the schedule says (§16f) — is
+ * `rowOf` in goal.ts, beside the record-only `marksOf` it is built on.
  */
 
 /**
@@ -88,46 +86,32 @@ export function maskOn(s: Schedule, day: string): DayMask {
 export const dueOn = (s: Schedule, day: string): boolean =>
   (maskOn(s, day) & (1 << weekday(day))) !== 0
 
-/** A day's verdict, with one more answer than `Mark` has: the goal was not for that day. */
-export type DayMark = Mark | 'off'
+const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+const LONG = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays']
+
+/** The name of a weekday, plural — for a control's label, where a letter alone says nothing. */
+export const dayName = (d: number): string => LONG[d] ?? ''
+
+/** The one-letter face of a weekday button. Two days share T and two share S; the label tells them apart. */
+export const dayLetter = (d: number): string => SHORT[d]?.[0] ?? ''
 
 /**
- * The marks `marksOf` gives a repeating day goal, with the days it was not for set to `off`.
+ * A mask in the words a row's chip uses: "every day", "weekdays", "weekends", "not Sun", or the
+ * days by name.
  *
- * `marks` is oldest first and its last entry is `on` — the same shape `marksOf` returns — so the
- * entry `k` places from the end is the day `k` days before `on`.
- *
- * ⚠️ A MET DAY THE GOAL WAS NOT FOR IS STILL `off`. Swimming on a Monday for a Tuesday goal is a
- * real swim and stays in the record — the minutes, the totals and every other goal see it — but
- * this goal was not asking about Monday, so Monday cannot be a day it was met on. Counting it
- * would let one extra session prop up a streak the schedule says was broken.
+ * ⚠️ MONDAY FIRST IN THE WORDS, SUNDAY FIRST IN THE BITS. The bits follow `Date.getDay()` (see
+ * DayMask); the words follow how a week is said aloud, where "Sun, Tue" reads as a typo for the
+ * week starting on the Sunday. Only the order of the words changes, never what they mean.
  */
-export function scheduledMarks(marks: readonly Mark[], on: string, s: Schedule): DayMark[] {
-  const end = localMidnight(on)
-  return marks.map((m, i) => {
-    const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (marks.length - 1 - i))
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-      d.getDate(),
-    ).padStart(2, '0')}`
-    return dueOn(s, iso) ? m : 'off'
-  })
-}
-
-/**
- * The run of met days at the end, stepping over the days the goal was not for.
- *
- * ⚠️ THE SAME RULE AS `streakOf` FOR TODAY: an unfinished current day does not break the run,
- * because the day is not over. And an `off` day neither extends nor breaks it — a Tuesday goal
- * met four Tuesdays running has a streak of four, not of one.
- */
-export function scheduledStreak(marks: readonly DayMark[]): number {
-  let run = 0
-  let i = marks.length - 1
-  if (marks[i] === 'now') i--
-  for (; i >= 0; i--) {
-    if (marks[i] === 'off') continue
-    if (marks[i] !== 'met') break
-    run++
-  }
-  return run
+export function daysText(mask: DayMask): string {
+  if ((mask & EVERY_DAY) === EVERY_DAY) return 'every day'
+  if (mask === maskOf([1, 2, 3, 4, 5])) return 'weekdays'
+  if (mask === maskOf([0, 6])) return 'weekends'
+  /* six days are said by the one left out: "not Sun" rather than six names in a row */
+  const out = [1, 2, 3, 4, 5, 6, 0].filter((d) => !(mask & (1 << d)))
+  if (out.length === 1) return `not ${SHORT[out[0]]}`
+  return [1, 2, 3, 4, 5, 6, 0]
+    .filter((d) => mask & (1 << d))
+    .map((d) => SHORT[d])
+    .join(', ')
 }

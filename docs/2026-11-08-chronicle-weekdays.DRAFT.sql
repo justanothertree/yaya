@@ -1,50 +1,79 @@
--- ⛔ DRAFT — NOT APPLIED, NOT APPROVED FOR PRODUCTION. Nothing in this file has been run against
--- any database. When it is applied, this header is replaced by the migration's name, the way the
--- four drafts of 29 Oct were (see docs/2026-10-29-the-four-drafts-applied.md) — a "not applied"
--- line left standing after the fact is exactly the sentence that goes stale.
+-- ⛔ DRAFT — NOT APPLIED TO PRODUCTION. Built on 8 Nov 2026 for implementation and LOCAL testing
+-- only, under OPEN-DECISIONS §16b, §16c, §16f and §16g, which Evan answered that day. Applying it
+-- is a separate approval. It has been run only in the `db guards` CI job's throwaway database,
+-- through a scratch branch. When it is applied for real, this header is replaced by the migration's
+-- name and the file moves to supabase/migrations.
 --
--- Selected-weekday recurrence for a repeating day goal: "swim on Tuesdays", "floss every day but
--- Sunday". The client half is src/chronicle/weekdays.ts, which is written and tested (17 tests,
--- seven perturbations each turned some red) and imported by nothing until this exists.
+-- Which days a goal is asking about: selected weekdays for a repeating daily goal ("swim on
+-- Tuesdays", "floss every day but Sunday"), and the day it was made, before which it asked about
+-- nothing at all. The client half is src/chronicle/weekdays.ts and `rowOf` in src/chronicle/goal.ts.
 --
--- ── THE ONE RULE, SET BY EVAN ───────────────────────────────────────────────────────────────
+-- ── EVAN'S RULES, AND WHERE EACH IS KEPT ────────────────────────────────────────────────────
 --
--- "Schedule changes affect future occurrences, not historical completion records."
+-- 1. "Schedule changes affect future occurrences, not historical completion records."
+--    The schedule is a HISTORY, not a column: each change is a row with the local day it starts,
+--    and every day is judged by the row in force on that day. A column could only say what the
+--    schedule IS, and the mark row judges thirty-one days of what it WAS. Kept here by the writer
+--    refusing any start before UTC's yesterday, and by the import adding a schedule only to a goal
+--    the same import created (below).
 --
--- That rules out the obvious shape — one `days` column on chronicle_goals — because a column can
--- only say what the schedule IS, and the streak and the mark row judge thirty-one days of what it
--- WAS. Changing "every day" to "Tuesdays" in a column would re-judge the whole past month under
--- the new rule the moment it was saved. So the schedule is a history: each change is a row with
--- the day it starts, and every day is judged by the row in force on that day.
+-- 2. "Weekday schedule edits take effect today for the current and future occurrences, but must
+--    not rewrite earlier history or erase a completion already recorded today."
+--    Today, because the room sends today's local date; earlier days, because of rule 1. The
+--    completion is kept by the CLIENT: a met day is drawn met whatever the schedule says of it
+--    (§16f), which is arithmetic over the record and the marks rather than anything stored here.
 --
--- ── WHERE THE RULES LIVE ────────────────────────────────────────────────────────────────────
+-- 3. "Periods before a goal's creation are not applicable — neither successes nor misses."
+--    The goals reader now sends each goal's `made`, its `created_at` as epoch milliseconds, and
+--    the client drops every window that ended before that local day. It is the same column the
+--    import already preserves, so a goal put back from a file keeps the day it was really made.
 --
--- Windows are already computed on the CLIENT — `chronicle_tally` takes the windows it is asked
--- about rather than knowing any rules, because a local day begins at local midnight and the
--- server does not know where anybody is. Scheduling is the same kind of rule, so it stays there:
--- this file adds storage and one writer, and `chronicle_tally` is untouched. That is also why the
--- profile block (`get_member_chronicle`) needs only to CARRY the rows; the arithmetic that reads
--- them is the same module either way.
+-- ── WHERE THE ARITHMETIC LIVES ──────────────────────────────────────────────────────────────
 --
+-- On the client, like every window here. `chronicle_tally` is asked about windows and knows no
+-- rules, because a local day begins at local midnight and the server does not know where anybody
+-- is. This file adds storage, one writer, and three readers that CARRY rows.
+--
+-- ── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────────────────────────────
+--
+--   get_member_chronicle   not patched. A friend's view of the goals strip cannot tell a Tuesday
+--                          goal's Wednesday from its Tuesday, because "today" there is the
+--                          member's local day and the server has no zone. So on a friend's view
+--                          an off-day goal still counts as open. Named in the integration queue
+--                          as a decision, rather than fixed by guessing a zone.
+--   chronicle_goal_save    not patched. The first proposal DELETED a goal's schedule when it
+--                          stopped being a repeating daily goal. That is a history erased by an
+--                          edit, which rule 1 forbids, so the rows stay: the writer refuses to add
+--                          to them while the goal is not daily, and the client reads them only for
+--                          a repeating daily goal. Make it daily again and its own past comes back.
+--   chronicle_tally        see "where the arithmetic lives".
+--
+-- ── ROLLBACK ────────────────────────────────────────────────────────────────────────────────
+--   1. ship the room without schedules — a goal with no rows reads as every day, as it does today
+--   2. re-run chronicle_goals_mine, chronicle_export and chronicle_import's previous text, saved
+--      from pg_get_functiondef before this is applied (CLAUDE.md §4's baseline-first rule)
+--   3. drop function public.chronicle_goal_days_set(uuid, smallint, date);
+--      drop table public.chronicle_goal_days;
+-- Schedules made in between are lost, and every goal falls back to every day.
+
 -- ── THE TABLE ───────────────────────────────────────────────────────────────────────────────
 
 create table if not exists public.chronicle_goal_days (
   goal      uuid not null references public.chronicle_goals(id) on delete cascade,
-  -- carried so the writer can check ownership in one place, and so the export can select by it
+  -- carried so the writer and the export can select by owner without a join
   owner     uuid not null references public.profiles(user_id) on delete cascade,
   -- the local day this schedule starts on, as the client names it
   from_day  date not null,
   -- seven bits, Sunday = bit 0 (Date.getDay()), and never zero: a goal for no days is a goal in
   -- no list, which the room has already had to fix once for quarter goals
-  days      smallint not null check (days between 1 and 127),
+  days      smallint not null,
   set_at    timestamptz not null default now(),
-  primary key (goal, from_day)
+  primary key (goal, from_day),
+  constraint chronicle_goal_days_mask check (days between 1 and 127)
 );
 
--- ⚠️ "ONLY A REPEATING DAY GOAL HAS A SCHEDULE" CANNOT BE A CHECK, because it is a fact about a
--- row in another table. It is enforced in the writer below — which makes this exactly the half-a-
--- rule shape CLAUDE.md §4 names for `chronicle_goals.counts`, and the reason the import (which
--- is the second write path) must be given the same guard in the server's own words.
+-- ⚠️ "ONLY A REPEATING DAY GOAL TAKES A NEW SCHEDULE" CANNOT BE A CHECK, because it is a fact about
+-- a row in another table. The writer and the import both keep it, in the same words.
 
 -- ── DENY-ALL, EXPLICITLY, INCLUDING anon ────────────────────────────────────────────────────
 -- pg_default_acl on `public` hands arwdDxtm to anon and authenticated on every new table, so
@@ -65,15 +94,18 @@ declare
   v_me uuid := auth.uid();
 begin
   if v_me is null then raise exception 'not authenticated'; end if;
+  if coalesce(public.is_suspended(v_me), false) then
+    raise exception 'your account is suspended';
+  end if;
   if p_days is null or p_days < 1 or p_days > 127 then
     raise exception 'a goal has to be for at least one day';
   end if;
 
   -- ⚠️ THE FORWARD-ONLY RULE, KEPT BY THE SERVER RATHER THAN TRUSTED TO THE CLIENT. A schedule
   -- dated in the past is a rewrite of history by another name. The server does not know the
-  -- member's time zone, and every local "today" on Earth falls within a day either side of UTC's,
-  -- so the bound is UTC's date minus one. That leaves a one-day window in which a member far east
-  -- of UTC could date a change to their own yesterday — named here rather than discovered.
+  -- member's zone, and every local "today" on Earth falls within a day either side of UTC's, so the
+  -- bound is UTC's date minus one. That leaves a one-day window in which a member far east of UTC
+  -- could date a change to their own yesterday — named here rather than discovered.
   if p_from is null or p_from < (now() at time zone 'utc')::date - 1 then
     raise exception 'a schedule change starts today or later';
   end if;
@@ -96,54 +128,112 @@ end $$;
 revoke all on function public.chronicle_goal_days_set(uuid, smallint, date) from public, anon;
 grant execute on function public.chronicle_goal_days_set(uuid, smallint, date) to authenticated;
 
--- ── THE READERS, DESCRIBED RATHER THAN WRITTEN ──────────────────────────────────────────────
+-- ── THE READERS CARRY THEM ──────────────────────────────────────────────────────────────────
+-- Patched in place rather than retyped, the way 20261103200705 did it: each substitution must
+-- match EXACTLY ONCE in the live text or the migration raises, so a function that has moved on
+-- since this was written stops the migration instead of being half-patched.
 --
--- Each is a `create or replace` of a live function, and §4 says a live function is replaced
--- from its LIVE body with a behavioural baseline taken first — so writing a body here, from a
--- copy that may already be stale, would be the wrong kind of help. What each must gain:
+-- ⚠️ AND EVERY ANCHOR IS ONE THAT NEITHER OF THE OTHER TWO DRAFTS REWRITES. The marks draft and the
+-- day-notes draft patch these same two functions; an anchor one of them consumes would make the
+-- three work in one order only, which is the mistake db630f5 fixed between the first two.
 --
---   chronicle_goals_mine      each goal carries `days: [{from, days}]`, empty for none
---   get_member_chronicle      the same, for goals the member has shared — the mark row on a
---                             profile is drawn by the same weekdays.ts, so it needs the rows
---   chronicle_export          a top-level `goal_days` list
---   chronicle_import          takes `goal_days`, add-never-replace keyed on (goal, from_day),
---                             and refuses a row whose goal is not a repeating day goal — the
---                             writer's guard, in the writer's words, because a rule only one
---                             path keeps is a rule the other path gets around
---   chronicle_goal_save       if a goal stops being a repeating day goal, its rows are DELETED,
---                             not left to be read by a goal they no longer describe
---
--- ⚠️ AND NOT chronicle_tally. See "where the rules live" above.
---
--- ── ISOLATED TESTS, AS REFUSALS ─────────────────────────────────────────────────────────────
---
--- To be run in a transaction that ends in a raise, against a throwaway database — the CI job
--- `db guards` already builds one from these migrations with `supabase db reset`, and runs exactly
--- one file in it. Running a second file there is a one-line workflow change, which is Evan's call
--- (OPEN-DECISIONS §16a). NOT against production: the fixtures write rows.
---
---   anon / authenticated: select, insert, update, delete, TRUNCATE on the table   all refused
---   anon executes chronicle_goal_days_set                                         refused
---   a member sets a schedule on ANOTHER member's goal                             refused
---   a member sets one on their own one-off goal, or their own weekly goal         refused
---   a member sets one dated two days ago (UTC)                                    refused
---   days = 0, days = 128                                                          refused
---   the same goal twice on one day                                                one row, the later mask
---   delete the goal                                                               its rows go too
---
--- And the standing check this project runs after every new function:
---
---   select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon
---   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
---   where n.nspname = 'public' and p.prokind = 'f' and has_function_privilege('anon', p.oid, 'execute');
---
--- ── RELEASE, EACH STEP INERT ALONE ──────────────────────────────────────────────────────────
---
---   1. this file: a table nobody reads and a writer nobody calls. Changes no behaviour.
---   2. the readers, one at a time, each a create-or-replace revertible to its git version.
---      A goal with no rows reads exactly as today.
---   3. the client: the day picker in the goal form, and weekdays.ts wired into `inScope`, the
---      mark row and the streak.
---
--- ROLLBACK at any step: `drop table public.chronicle_goal_days cascade` and the function. It loses
--- only schedules, and every goal falls back to "every day" — the behaviour before step 1.
+--   chronicle_goals_mine   each goal gains `made` (created_at, epoch ms) and `days`
+--   chronicle_export       each goal gains `days`, like `marks`: a schedule cannot travel in a
+--                          file without the goal it describes
+--   chronicle_import       puts `days` back for a goal THIS IMPORT CREATED, and for no other. A
+--                          goal already here keeps the history it has; interleaving rows from a
+--                          file into it would re-judge days that were already judged, which is
+--                          rule 1 broken through the back door.
+
+do $mig$
+declare
+  r record;
+  v_src text;
+  v_hits int;
+  v_done int := 0;
+begin
+  for r in
+    select * from (values
+      ('chronicle_goals_mine',
+       E'''at'', extract(epoch from g.updated_at) * 1000',
+       E'''at'', extract(epoch from g.updated_at) * 1000,\n'
+       || E'             /* the day it began asking — before it, nothing was met or missed */\n'
+       || E'             ''made'', extract(epoch from g.created_at) * 1000,\n'
+       || E'             ''days'', coalesce((\n'
+       || E'                select jsonb_agg(jsonb_build_object(\n'
+       || E'                         ''from'', to_char(d.from_day, ''YYYY-MM-DD''), ''days'', d.days)\n'
+       || E'                       order by d.from_day)\n'
+       || E'                  from public.chronicle_goal_days d where d.goal = g.id\n'
+       || E'             ), ''[]''::jsonb)'),
+      ('chronicle_export',
+       E'''repeat_every'', g.repeat_every, ''target''',
+       E'''repeat_every'', g.repeat_every,\n'
+       || E'               ''days'', coalesce((\n'
+       || E'                  select jsonb_agg(jsonb_build_object(\n'
+       || E'                           ''from'', d.from_day, ''days'', d.days, ''set_at'', d.set_at)\n'
+       || E'                         order by d.from_day)\n'
+       || E'                    from public.chronicle_goal_days d where d.goal = g.id\n'
+       || E'               ), ''[]''::jsonb),\n'
+       || E'               ''target'''),
+      ('chronicle_import',
+       E'n_goal int := 0;',
+       E'n_goal int := 0; n_days int := 0; dy jsonb; fresh_goals uuid[] := ''{}'';'),
+      ('chronicle_import',
+       E'+ coalesce(jsonb_array_length(p_doc->''goals''), 0)',
+       E'+ coalesce(jsonb_array_length(p_doc->''goals''), 0)\n'
+       || E'         /* the schedules ride inside the goals, so the outer wall counts them too */\n'
+       || E'         + coalesce((select sum(jsonb_array_length(gd->''days''))\n'
+       || E'                       from jsonb_array_elements(coalesce(p_doc->''goals'', ''[]''::jsonb)) gd\n'
+       || E'                      where jsonb_typeof(gd->''days'') = ''array''), 0)'),
+      ('chronicle_import',
+       E'n_goal := n_goal + 1; v_goals := v_goals + 1;',
+       E'n_goal := n_goal + 1; v_goals := v_goals + 1;\n'
+       || E'          fresh_goals := fresh_goals || (x->>''id'')::uuid;'),
+      ('chronicle_import',
+       E'  for x in select * from jsonb_array_elements(coalesce(p_doc->''plans'', ''[]''::jsonb)) loop',
+       E'  /* ⚠️ A SCHEDULE ONLY ARRIVES WITH ITS GOAL. Rows for a goal this import did not create\n'
+       || E'     are refused, so a goal already here keeps the history it has. The writer''s shape\n'
+       || E'     rules are kept as well: a repeating daily goal of yours, and a mask of 1 to 127. */\n'
+       || E'  for x in select * from jsonb_array_elements(coalesce(p_doc->''goals'', ''[]''::jsonb)) loop\n'
+       || E'    continue when jsonb_typeof(x->''days'') is distinct from ''array'';\n'
+       || E'    for dy in select * from jsonb_array_elements(x->''days'') loop\n'
+       || E'      begin\n'
+       || E'        if not ((x->>''id'')::uuid = any (fresh_goals))\n'
+       || E'           or not exists (select 1 from public.chronicle_goals g\n'
+       || E'                           where g.id = (x->>''id'')::uuid and g.owner = me\n'
+       || E'                             and g.scope = ''day'' and g.repeat_every is not null)\n'
+       || E'           or (dy->>''from'') is null\n'
+       || E'           or coalesce((dy->>''days'')::int, 0) not between 1 and 127 then\n'
+       || E'          refused := refused + 1;\n'
+       || E'        else\n'
+       || E'          insert into public.chronicle_goal_days (goal, owner, from_day, days, set_at)\n'
+       || E'          values ((x->>''id'')::uuid, me, (dy->>''from'')::date, (dy->>''days'')::smallint,\n'
+       || E'                  coalesce((dy->>''set_at'')::timestamptz, now()))\n'
+       || E'          on conflict (goal, from_day) do nothing;\n'
+       || E'          if found then n_days := n_days + 1; else refused := refused + 1; end if;\n'
+       || E'        end if;\n'
+       || E'      exception when others then refused := refused + 1;\n'
+       || E'      end;\n'
+       || E'    end loop;\n'
+       || E'  end loop;\n\n'
+       || E'  for x in select * from jsonb_array_elements(coalesce(p_doc->''plans'', ''[]''::jsonb)) loop'),
+      ('chronicle_import',
+       E'''goals'', n_goal,',
+       E'''goals'', n_goal, ''schedules'', n_days,')
+    ) as v(fn, old, new)
+  loop
+    select pg_get_functiondef(p.oid) into v_src
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prokind = 'f' and p.proname = r.fn;
+    if v_src is null then raise exception 'function % not found', r.fn; end if;
+
+    v_hits := (length(v_src) - length(replace(v_src, r.old, ''))) / length(r.old);
+    if v_hits <> 1 then
+      raise exception 'expected 1 of [%] in %, found %', r.old, r.fn, v_hits;
+    end if;
+
+    execute replace(v_src, r.old, r.new);
+    v_done := v_done + 1;
+  end loop;
+  if v_done <> 7 then raise exception 'expected 7 substitutions, made %', v_done; end if;
+end $mig$;

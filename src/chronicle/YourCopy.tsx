@@ -78,7 +78,9 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
         return
       }
       /* ⚠️ THE MARKS COUNT TOO: a file put back onto goals the account already has can add only
-         their days, and "everything in that file was already here" would be false about it */
+         their days, and "everything in that file was already here" would be false about it.
+         A goal's weekday SCHEDULE does not need the same: it only ever arrives with the goal it
+         belongs to (chronicle_import refuses it for a goal already here), so `goals` counts it */
       const added = got.activities + got.entries + got.goals + got.routines + got.plans + got.marks
       /**
        * ⚠️ COUNTED SEPARATELY, because "added 0" and "that file was already here" are different

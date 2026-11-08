@@ -183,7 +183,16 @@ type Store = {
    * `legacy`, so it is kept here by the same rule `chronicle_goal_progress` writes it by.
    */
   doneAt: Record<string, number>
+  /**
+   * Each goal's `created_at`, which the double's Goal does not carry and `chronicle_goals_mine`
+   * sends as `made` once the weekday draft is applied — see Goal.made.
+   */
+  made: Record<string, number>
+  /** `chronicle_goal_days`: a repeating daily goal's weekdays, one row per change */
+  days: PvDays[]
 }
+
+type PvDays = { goal: string; from: string; days: number; setAt: number }
 
 /**
  * The seed.
@@ -217,7 +226,19 @@ function seed(): Store {
     session: null,
     ...extra,
   })
-  return {
+  /**
+   * ⚠️ A WEEKDAY GOAL WHOSE DAYS ARE COUNTED FROM TODAY, so it shows the same shapes whatever day
+   * the workbench is opened on. It is for the days 0, 2, 4 and 5 back — today, and three days
+   * whose weekdays differ from today's and from each other's — and the drawing seed above has
+   * sittings on 0, 1, 2, 3, 5 and 6. So its row has met days it was for, met days it was NOT for
+   * (§16f: those stay met and count), a day it was for and missed (4), and an off day with nothing
+   * (8, the same weekday as 1). Its streak is FOUR under Evan's rule and would be TWO if met off
+   * days were skipped, so the two readings cannot be confused on screen. Tomorrow is not one of
+   * its days, so the Tomorrow tab shows the hiding. And it was made eight days ago, so its row is
+   * nine cells where every other goal's is thirty-one (§16g).
+   */
+  const fourDays = [0, 2, 4, 5].reduce((m, back) => m | (1 << at(back, 12).getDay()), 0)
+  const s: Store = {
     acts: [
       a('pv-draw', 'Drawing', 'locked', { session: 30, colour: '#8b5cf6' }),
       a('pv-write', 'Writing', 'locked', { metric: 'pages', colour: '#3d9ae5' }),
@@ -373,6 +394,16 @@ function seed(): Store {
         target: 20,
         unit: 'minutes',
         visibility: 'certain',
+      }),
+      goal({
+        id: 'pv-g-days',
+        title: 'Draw on my four days',
+        scope: 'day',
+        every: 1,
+        target: 30,
+        unit: 'minutes',
+        activity: 'pv-draw',
+        sort: 4,
       }),
       /* ⚠️ a guess AND a flag, so the row shows both chips at once and they have to fit */
       goal({
@@ -559,6 +590,10 @@ function seed(): Store {
     marks: [],
     /* Floss's tick from last night, under the old room: on the row, and nowhere else */
     doneAt: { 'pv-floss': at(1, 21, 30).getTime() },
+    made: { 'pv-g-days': at(8, 9).getTime() },
+    days: [
+      { goal: 'pv-g-days', from: localISO(at(8, 9)), days: fourDays, setAt: at(8, 9).getTime() },
+    ],
     routines: [
       {
         id: 'pv-r1',
@@ -571,6 +606,9 @@ function seed(): Store {
       },
     ],
   }
+  /* every other seeded goal was made two months ago, so its row is the full thirty-one */
+  for (const g of s.goals) s.made[g.id] ??= at(60, 9).getTime()
+  return s
 }
 
 /* ⚠️ the local calendar date of a Date, never toISOString().slice(0,10) — see dates.ts, which has
@@ -588,6 +626,8 @@ const blank = (): Store => ({
   plans: [],
   marks: [],
   doneAt: {},
+  made: {},
+  days: [],
 })
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
@@ -650,7 +690,14 @@ const mint = (p: string): string => `${p}-new-${next++}`
  */
 export const pvGoals = (): Goal[] =>
   db()
-    .goals.map((g) => ({ ...g }))
+    .goals.map((g) => ({
+      ...g,
+      made: db().made[g.id] ?? null,
+      days: db()
+        .days.filter((x) => x.goal === g.id)
+        .sort((a, b) => a.from.localeCompare(b.from))
+        .map((x) => ({ from: x.from, days: x.days })),
+    }))
     .sort((a, b) => b.priority - a.priority || a.sort - b.sort)
 export const pvActivities = (): Activity[] => db().acts.map((x) => ({ ...x }))
 export const pvRoutines = (): Routine[] =>
@@ -804,8 +851,10 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   /* ⚠️ an edit keeps the progress and the tick, which live in their own columns and are not on
      the save path — the same division the server makes. Overwriting them here would make the
      preview's edit destroy a tick that the real one preserves. */
-  if (i < 0) db().goals.push(made)
-  else
+  if (i < 0) {
+    db().goals.push(made)
+    db().made[id] = Date.now()
+  } else
     db().goals[i] = {
       ...made,
       progress: db().goals[i].progress,
@@ -823,6 +872,27 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
       shared: db().goals[i].shared,
     }
   return { id }
+}
+
+/**
+ * `chronicle_goal_days_set`, in its own words and in its own order — see the weekday draft.
+ *
+ * ⚠️ THE FORWARD-ONLY BOUND IS UTC'S YESTERDAY, as the server's is, not the member's: a double
+ * that refused by local date would agree with the server everywhere but the hours either side of
+ * midnight, which is exactly where somebody edits a schedule before bed.
+ */
+export const pvSetDays = (id: string, days: number, from: string): { why: string } | null => {
+  if (!Number.isInteger(days) || days < 1 || days > 127) {
+    return { why: 'a goal has to be for at least one day' }
+  }
+  const utcYesterday = new Date(Date.now() - DAY_MS).toISOString().slice(0, 10)
+  if (!from || from < utcYesterday) return { why: 'a schedule change starts today or later' }
+  const g = db().goals.find((x) => x.id === id && x.scope === 'day' && x.every != null)
+  if (!g) return { why: 'no such repeating daily goal' }
+  const row = db().days.find((x) => x.goal === id && x.from === from)
+  if (row) Object.assign(row, { days, setAt: Date.now() })
+  else db().days.push({ goal: id, from, days, setAt: Date.now() })
+  return null
 }
 
 export const pvProgress = (id: string, progress: number, done: boolean): boolean => {
@@ -914,7 +984,9 @@ export const pvDropGoal = (id: string): boolean => {
   db().goals = db().goals.filter((g) => g.id !== id)
   /* `on delete cascade`, and the row's own done_at goes with the row */
   db().marks = db().marks.filter((m) => m.goal !== id)
+  db().days = db().days.filter((x) => x.goal !== id)
   delete db().doneAt[id]
+  delete db().made[id]
   return true
 }
 
@@ -1383,8 +1455,14 @@ export const pvExport = (): Record<string, unknown> => ({
       counts: g.counts,
       est_mins: g.est,
       priority: g.priority,
-      created_at: EPOCH,
+      /* ⚠️ THE REAL MOMENT, not EPOCH: the import keeps it, and it is the day the goal began
+         asking, so a restore that lost it would put back a goal that had asked about nothing */
+      created_at: new Date(db().made[g.id] ?? 0).toISOString(),
       updated_at: EPOCH,
+      days: db()
+        .days.filter((x) => x.goal === g.id)
+        .sort((a, b) => a.from.localeCompare(b.from))
+        .map((x) => ({ from: x.from, days: x.days, set_at: new Date(x.setAt).toISOString() })),
       marks: db()
         .marks.filter((m) => m.goal === g.id)
         .sort((a, b) => a.scope.localeCompare(b.scope) || a.from.localeCompare(b.from))
@@ -1439,10 +1517,17 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
 
   const list = (k: string): Array<Record<string, unknown>> =>
     Array.isArray(d[k]) ? (d[k] as Array<Record<string, unknown>>) : []
-  const total = ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
-    (n, k) => n + list(k).length,
-    0,
-  )
+  /* ⚠️ THE MARKS AND THE SCHEDULES RIDE INSIDE THE GOALS, and the server's outer wall counts
+     them too — a file of one goal carrying a million schedule rows is not a file of one row */
+  const inside = (k: string) =>
+    list('goals').reduce((n, g) => n + (Array.isArray(g[k]) ? (g[k] as unknown[]).length : 0), 0)
+  const total =
+    ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
+      (n, k) => n + list(k).length,
+      0,
+    ) +
+    inside('marks') +
+    inside('days')
   if (total > 50_000) return { why: 'that file is too big to put back in one go' }
 
   const out: Putback = {
@@ -1452,8 +1537,11 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     routines: 0,
     plans: 0,
     marks: 0,
+    schedules: 0,
     skipped: 0,
   }
+  /** the goals THIS import created — the only ones a schedule may arrive with */
+  const fresh = new Set<string>()
   /**
    * What an account may hold, as the server counts it.
    *
@@ -1672,7 +1760,43 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     /* the row's own moment, kept — it is what `legacy` is read from */
     const doneMs = Date.parse(String(g.done_at ?? ''))
     if (Number.isFinite(doneMs)) db().doneAt[id] = doneMs
+    /* `coalesce(created_at, now())`, which is what keeps the day a restored goal began asking */
+    const madeMs = Date.parse(String(g.created_at ?? ''))
+    db().made[id] = Number.isFinite(madeMs) ? madeMs : Date.now()
+    fresh.add(id)
     out.goals++
+  }
+
+  /**
+   * The schedules, as `chronicle_import` puts them back: ONLY for a goal this same import created,
+   * so a goal already here keeps the history it has — interleaving a file's rows into it would
+   * re-judge days already judged. The writer's shape rules are kept too: a repeating daily goal,
+   * a mask of 1 to 127. Add, never replace.
+   */
+  for (const g of list('goals')) {
+    if (!Array.isArray(g.days)) continue
+    const id = str(g.id)
+    const goal = db().goals.find((x) => x.id === id && x.scope === 'day' && x.every != null)
+    for (const x of g.days as Array<Record<string, unknown>>) {
+      const from = str(x.from)
+      const days = numOr(x.days, 0)
+      if (
+        !id ||
+        !fresh.has(id) ||
+        !goal ||
+        !from ||
+        !Number.isInteger(days) ||
+        days < 1 ||
+        days > 127 ||
+        db().days.some((y) => y.goal === id && y.from === from)
+      ) {
+        out.skipped++
+        continue
+      }
+      const set = Date.parse(String(x.set_at ?? ''))
+      db().days.push({ goal: id, from, days, setAt: Number.isFinite(set) ? set : Date.now() })
+      out.schedules++
+    }
   }
 
   /**

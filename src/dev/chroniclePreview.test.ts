@@ -20,6 +20,8 @@ import {
   pvMoods,
   pvProgress,
   pvSetMark,
+  pvSetDays,
+  pvDropGoal,
   pvPlanDid,
   pvPlanSave,
   pvQuality,
@@ -950,6 +952,7 @@ describe('the file you can take away', () => {
       'priority',
       'created_at',
       'updated_at',
+      'days',
       'marks',
     ],
     routines: ['id', 'name', 'steps', 'created_at', 'updated_at'],
@@ -1177,6 +1180,7 @@ describe('putting a file back', () => {
       routines: 0,
       plans: 0,
       marks: 0,
+      schedules: 0,
       skipped: rows(file),
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...file, at: '' }))
@@ -1292,8 +1296,12 @@ describe('putting a file back', () => {
           counts: 'amount',
           est_mins: 45,
           priority: 2,
-          created_at: EPOCH,
+          /* ⚠️ NOT EPOCH: it is the day the goal began asking (Goal.made), and a fixture sitting on
+             the default would pass a restore that threw it away */
+          created_at: '2026-01-02T15:00:00.000Z',
           updated_at: EPOCH,
+          /* a weekly goal cannot have a schedule, so it carries the empty list every goal does */
+          days: [],
           /* one window, every field away from its default — a count, a tick, a set_at of its own */
           marks: [
             {
@@ -1306,6 +1314,33 @@ describe('putting a file back', () => {
               set_at: '2026-01-06T12:00:00.000Z',
             },
           ],
+        },
+        /* a repeating DAILY goal, the only kind a schedule belongs to — two changes, each with
+           its own mask and its own set_at, so a row the import drops or merges has to show */
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          title: 'Swim',
+          scope: 'day',
+          anchor: null,
+          repeat_every: 1,
+          target: null,
+          unit: null,
+          progress: 0,
+          done_at: null,
+          note: null,
+          sort: 4,
+          activity: null,
+          cat: null,
+          counts: 'minutes',
+          est_mins: null,
+          priority: 0,
+          created_at: '2026-01-03T09:00:00.000Z',
+          updated_at: EPOCH,
+          days: [
+            { from: '2026-01-03', days: 62, set_at: '2026-01-03T09:00:00.000Z' },
+            { from: '2026-02-01', days: 4, set_at: '2026-02-01T10:00:00.000Z' },
+          ],
+          marks: [],
         },
       ],
       routines: [
@@ -1334,10 +1369,11 @@ describe('putting a file back', () => {
     expect(got).toEqual({
       activities: 1,
       entries: 1,
-      goals: 1,
+      goals: 2,
       routines: 1,
       plans: 1,
       marks: 1,
+      schedules: 2,
       skipped: 0,
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify(file))
@@ -1348,7 +1384,12 @@ describe('putting a file back', () => {
     pvEmpty()
     const got = pvImport(file) as Record<string, number>
     const added = got.activities + got.entries + got.goals + got.routines + got.plans
+    /* the marks and the schedules ride inside the goals, so `rows` does not count them, and a
+       restore into an empty account must have put every one of them back */
     expect(added + got.skipped).toBe(rows(file))
+    const inside = (k: string) =>
+      (file.goals as Array<Record<string, unknown[]>>).reduce((n, g) => n + g[k].length, 0)
+    expect([got.marks, got.schedules]).toEqual([inside('marks'), inside('days')])
   })
 })
 
@@ -1745,5 +1786,132 @@ describe('a repeating goal, one window at a time', () => {
       { id: once, from: DAY },
     ])
     expect(Object.keys(got.legacy)).toEqual([g])
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF `chronicle_goal_days_set` AND OF THE IMPORT'S RULE FOR SCHEDULES. The
+ * server's are asked the same questions in supabase/tests/chronicle-weekdays.sql.
+ */
+describe('a weekday schedule', () => {
+  beforeEach(() => pvEmpty())
+  const today = new Date().toISOString().slice(0, 10)
+  const daily = () => {
+    const r = pvSaveGoal({
+      title: 'Swim',
+      scope: 'day',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    if ('why' in r) throw new Error(r.why)
+    return r.id
+  }
+
+  it('is set from today, and a second change on one day replaces the first', () => {
+    const id = daily()
+    expect(pvSetDays(id, 62, today)).toBeNull()
+    expect(pvSetDays(id, 4, today)).toBeNull()
+    expect(pvGoals().find((g) => g.id === id)?.days).toEqual([{ from: today, days: 4 }])
+  })
+
+  it('refuses what the server refuses, in its words', () => {
+    const id = daily()
+    const once = pvSaveGoal({
+      title: 'Once',
+      scope: 'day',
+      anchor: today,
+      every: null,
+      target: null,
+      unit: null,
+    })
+    const week = pvSaveGoal({
+      title: 'Weekly',
+      scope: 'week',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    if ('why' in once || 'why' in week) throw new Error('fixture')
+    const longAgo = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
+    expect([
+      pvSetDays(id, 0, today)?.why,
+      pvSetDays(id, 128, today)?.why,
+      pvSetDays(id, 4, longAgo)?.why,
+      pvSetDays(once.id, 4, today)?.why,
+      pvSetDays(week.id, 4, today)?.why,
+    ]).toEqual([
+      'a goal has to be for at least one day',
+      'a goal has to be for at least one day',
+      'a schedule change starts today or later',
+      'no such repeating daily goal',
+      'no such repeating daily goal',
+    ])
+  })
+
+  it('is kept through an edit, even one that stops the goal repeating', () => {
+    const id = daily()
+    pvSetDays(id, 4, today)
+    pvSaveGoal({
+      id,
+      title: 'Swim, renamed',
+      scope: 'day',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    pvSaveGoal({
+      id,
+      title: 'Swim, once',
+      scope: 'day',
+      anchor: today,
+      every: null,
+      target: null,
+      unit: null,
+    })
+    pvSaveGoal({
+      id,
+      title: 'Swim',
+      scope: 'day',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    expect(pvGoals().find((g) => g.id === id)?.days).toEqual([{ from: today, days: 4 }])
+  })
+
+  it('comes back only with the goal it belongs to — never onto a goal already here', () => {
+    const id = daily()
+    pvSetDays(id, 4, today)
+    const file = pvExport()
+    /* the goal is still here, with no schedule of its own: the file's must not be merged into it */
+    pvDropGoal(id)
+    const again = daily()
+    const tampered = {
+      ...file,
+      goals: (file.goals as Array<Record<string, unknown>>).map((g) =>
+        g.id === id ? { ...g, id: again } : g,
+      ),
+    }
+    expect(pvImport(tampered)).toMatchObject({ schedules: 0 })
+    expect(pvGoals().find((g) => g.id === again)?.days).toEqual([])
+    /* and into an empty account it all comes back */
+    pvEmpty()
+    expect(pvImport(file)).toMatchObject({ schedules: 1 })
+    expect(pvGoals().find((g) => g.id === id)?.days).toEqual([{ from: today, days: 4 }])
+  })
+
+  it('sends the day a goal was made, and keeps it through a restore', () => {
+    const id = daily()
+    const made = pvGoals().find((g) => g.id === id)?.made
+    expect(typeof made).toBe('number')
+    const file = pvExport()
+    pvEmpty()
+    pvImport(file)
+    expect(pvGoals().find((g) => g.id === id)?.made).toBe(made)
   })
 })
