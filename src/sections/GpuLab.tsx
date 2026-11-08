@@ -68,6 +68,7 @@ import { GatesDemo } from '../gpu/GatesDemo'
 import { SlideDemo } from '../gpu/SlideDemo'
 import { MixDemo } from '../gpu/MixDemo'
 import { IntervalsDemo } from '../gpu/IntervalsDemo'
+import { GraphDemo } from '../gpu/GraphDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -492,6 +493,12 @@ const DEMOS: readonly {
     name: 'Intervals',
     line: 'Intervals — two notes play: name the distance between them, from an octave to a semitone. Six stages, each opened by eight of ten, and the ones you miss come back more often.',
     Demo: IntervalsDemo,
+  },
+  {
+    id: 'graph',
+    name: 'Graph match',
+    line: 'Graph match — type an equation and lay its curve on the dashed one: lines, parabolas, V shapes, waves. Or graph anything, with sliders a, b and c to see what each number does.',
+    Demo: GraphDemo,
   },
 ]
 

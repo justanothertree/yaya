@@ -781,3 +781,65 @@
 .iv-verdict strong {
   flex: 1 1 220px;
 }
+
+/* Graph match: the equation box as wide as it can be, keys a thumb can hit, sliders that wrap */
+.graph-eq {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+.graph-eq input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  font-family: ui-monospace, monospace;
+  font-size: 1.05rem;
+}
+.graph-eq input[aria-invalid='true'] {
+  border-color: var(--accent-2);
+}
+.graph-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.graph-keys .btn {
+  min-width: 44px;
+  min-height: 40px;
+  font-family: ui-monospace, monospace;
+}
+.graph-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem 1rem;
+}
+.graph-slider {
+  display: grid;
+  gap: 0.2rem;
+  font-family: ui-monospace, monospace;
+}
+.graph-slider[data-unused] {
+  opacity: 0.5;
+}
+.graph-slider input {
+  width: 100%;
+  min-height: 32px;
+}
+.graph-said {
+  margin: 0;
+  min-height: 1.5em;
+}
+.graph-said code {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.graph-said mark {
+  background: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  color: inherit;
+  border-bottom: 2px solid var(--accent-2);
+}
+.graph-bad {
+  color: var(--accent-2);
+  font-weight: 600;
+}
