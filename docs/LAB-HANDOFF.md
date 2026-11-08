@@ -2678,6 +2678,7 @@ chains merge cleanly into each other.
 | 3a    | #45 | #34    | 🕘 Recent view                                                |
 | 3b    | #48 | #45    | 🎲 Surprise me                                                |
 | 3c    | #50 | #48    | Counts beside each kind; / to search                          |
+| 3d    | #55 | #50    | Back from a toy, the catalog is where you left it             |
 | 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
 | 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
 | 4c    | #47 | #44    | Beams                                                         |
@@ -2685,6 +2686,7 @@ chains merge cleanly into each other.
 | 4e    | #52 | #49    | Epicycles                                                     |
 | 4f    | #53 | #52    | Orbit                                                         |
 | 4g    | #54 | #53    | Wallpaper                                                     |
+| 4h    | #56 | #54    | Nonogram                                                      |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2729,6 +2731,54 @@ modes at both widths; one GPU device per mount.
 gone by the time Save was pressed, and the button now says so rather than doing nothing; the same
 path works offscreen. Real GPUs, drawing with a finger.
 
+### Follow-on: `claude/lab-nonogram-1`, stacked on #54 (8 Nov 2026) — a logic puzzle, Nonogram
+
+**Base:** `claude/lab-wallpaper-1` (#54), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Fill squares so every row and column matches its numbers — each number a run of
+  filled squares, in order — and the picture appears, sweeping into colour. Ten pictures from 5×5
+  to 15×15. ■ Fill / ✕ Cross out, a drag marks a run at once and holds to its row or column (a
+  thumb drifts), 💡 Hint, undo, start again; the numbers of a line that already fits go grey. Your
+  marks, time and hints are kept per puzzle in this browser, so a reload carries on.
+- **✏️ Make your own.** Draw on a 5–20 square grid and the numbers follow as you draw. The maker says
+  whether the drawing is a FAIR puzzle: one answer, reachable a line at a time — and if not, stripes
+  the squares that could go either way, or the ones where solving gets stuck. ▶ Solve it, ★ keep
+  (12, in this browser, refused rather than dropping an older one), 📋 copy its code — about a
+  dozen characters, e.g. `10x10.…` — and open a code somebody gave you. No hosting: a code is the
+  picture.
+- **Technique.** A line solver works out exactly what every arrangement of a line's runs agrees on
+  (two sweeps of a small table, forward and back), and line logic is repeated until nothing more
+  follows; a guess-and-propagate search counts answers when it stalls. The same solver drives the
+  hints: a hint names the line that settles the most squares from what is already marked, and
+  outlines wrong marks first. The board is one fullscreen shader; the numbers come from an atlas
+  drawn by the browser's own font at the cell's size.
+
+**Measured here:** 21 tests. The line solver against brute force on 3,000 random lines (half of them
+contradictory); answer counts against all 65,536 4×4 pictures; every built-in picture fair; hints
+taken one after another solve every picture and never say anything false; codes round-trip at every
+size and refuse padding, size and character errors; a full stored record (every field set) reads
+back, and a damaged one loses only what is damaged. Dropping the gap after a run, corrupting the
+solver's answer, removing the drag's line lock and counting only one answer each turn tests red.
+The solver first wrote said every built-in picture needed a guess — its gap after each run was never
+allowed to be empty — and two of the ten pictures (Cat, Snail) really were unfair until redrawn.
+On the GPU, offscreen, all ten: every square's centre paper when blank, every clue slot inked
+exactly when it holds a number (the grey 0 of an empty line is the only miss, and it is grey on
+purpose), filled and crossed squares where marked, and every square its picture's colour once
+revealed. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): solve Heart by drag
+and click, the next puzzle, a hint, a wrong mark caught, keyboard marking, reload, the maker's
+unfair → fair verdict, keep (and refusing it twice), copy and reopen by code, a bad code refused,
+remove with a confirm; `mobileAudit` zero in play and maker, and made to name the fault below when
+it was put back. One GPU device per mount.
+
+That pass found two faults: the maker's verdict used `.lab-score`, which never wraps, so the maker
+was 95 px wider than a phone and the page zoomed out; and the maker's grid moved as you drew,
+because the margin for the numbers grew with the drawing — it now reserves the most a line can need.
+The clock was first counted in frames, so it stopped when the GPU did; it is wall time between marks
+now (a gap over two minutes counts as two).
+
+**Not verified:** the stage in a page (the GPU limitation above), real GPUs, and a finger — 15×15
+puzzles are about 17 px a square on a phone.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2742,13 +2792,16 @@ path works offscreen. Real GPUs, drawing with a finger.
    on the 14 m level (about 17 px a metre)? Does watching the members go red teach you anything?
 4. **Real device — Wallpaper's ⬇ Save as PNG.** It could not be pressed with a live GPU here. Does
    it download a 1024-pixel picture in your browser, and does a finger draw where you expect?
-5. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+5. **Real device — Nonogram on a phone.** Solve the 10×10 Cat with a finger. Are the squares big
+   enough, and does a drag that drifts stay on its row as it should? The 15×15 ones are about 17 px
+   a square — too small, or fine with the drag?
+6. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
    the two-burn trick discoverable from the hints alone?
-6. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+7. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
    Is "tap again to turn" discoverable, or does it want its own button first?
-7. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+8. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-8. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+9. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-9. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
-   "You voted …" line read clearly?
+10. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+    "You voted …" line read clearly?

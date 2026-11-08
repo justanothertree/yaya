@@ -63,6 +63,7 @@ import { BridgeDemo } from '../gpu/BridgeDemo'
 import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
 import { OrbitDemo } from '../gpu/OrbitDemo'
 import { WallpaperDemo } from '../gpu/WallpaperDemo'
+import { NonogramDemo } from '../gpu/NonogramDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -457,6 +458,12 @@ const DEMOS: readonly {
     name: 'Wallpaper',
     line: 'Wallpaper — draw, and every stroke repeats across the wall by one of the seventeen ways a pattern can: turns, mirrors and glides. Then guess which group a pattern is.',
     Demo: WallpaperDemo,
+  },
+  {
+    id: 'nonogram',
+    name: 'Nonogram',
+    line: 'Nonogram — fill the squares so every row and column matches its numbers, and a picture appears. Then draw your own: it tells you whether logic alone can solve it.',
+    Demo: NonogramDemo,
   },
 ]
 

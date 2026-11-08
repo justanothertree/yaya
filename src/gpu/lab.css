@@ -565,3 +565,42 @@
   min-width: 0;
   text-overflow: ellipsis;
 }
+
+/* Nonogram: the puzzle list holds names like "10. Snail (15×15) ✓" and must shrink on a phone
+   rather than push the row sideways — the same fault Wallpaper's group list had */
+.nono-pick {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.nono-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+/* an input in a flex row floors at its size attribute (~200px) unless told it may shrink */
+.nono-name {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.nono-name input {
+  width: 100%;
+  min-width: 0;
+}
+.nono-code {
+  display: grid;
+  gap: 0.25rem;
+}
+.nono-code input {
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+}
+/* ⚠️ a sentence, so it wraps: as .lab-score (nowrap, for a figure) it took the maker 95px past a
+   390px phone, and the page zoomed out to fit it */
+.nono-verdict {
+  margin: 0;
+  font-weight: 600;
+}
+.nono-score {
+  white-space: normal;
+}
