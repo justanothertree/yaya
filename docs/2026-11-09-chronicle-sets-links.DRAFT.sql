@@ -581,7 +581,9 @@ begin
       /* ⚠️ A COUNTED SET ONLY COMES BACK WITH ITS SITTING — see the header */
       ('chronicle_import',
        E'      if nullif(x->>''exercise'', '''') is null\n',
-       E'      if nullif(x->>''exercise'', '''') is null\n'),
+       E'      if (coalesce((x->>''counted'')::boolean, false) and (x->>''entry'') is not null\n'
+       || E'          and not ((x->>''entry'')::uuid = any (fresh_entries)))\n'
+       || E'         or nullif(x->>''exercise'', '''') is null\n'),
       ('chronicle_import',
        E'exercise_name, entry, on_day, value,\n           created_at, updated_at)',
        E'exercise_name, entry, on_day, value,\n           created_at, updated_at, counted)'),

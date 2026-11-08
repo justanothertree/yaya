@@ -469,9 +469,7 @@ begin
        || E'    ) t\n    where t.kind = ''rating''', 1),
       ('chronicle_import',
        E'                              where e.id = (x->>''entry'')::uuid and e.owner = me)) then\n',
-       E'                              where e.id = (x->>''entry'')::uuid and e.owner = me))\n'
-       || E'         /* ⚠️ a converted person''s manual part is a value the grid owns (OPEN-DECISIONS §20e) */\n'
-       || E'         or ((x->>''entry'') is null and public.circuit_is_converted(x->>''person'')) then\n', 1)
+       E'                              where e.id = (x->>''entry'')::uuid and e.owner = me)) then\n', 1)
     ) as v(fn, old, new, want)
   loop
     select pg_get_functiondef(p.oid) into v_src

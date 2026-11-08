@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN P5 (perturbed): the links rule removed — a counted set comes back into any sitting.
+-- RUN P6 (perturbed): the conversion rule removed — a restore puts a retyped cell's pieces back.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
