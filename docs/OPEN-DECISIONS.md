@@ -703,6 +703,25 @@ for everything server-side stays "mocked".
 **Cost of waiting:** none of the four drafts gains real signed-in evidence before you press the
 buttons yourself — the test steps in #33's description are still the only path to it.
 
+✅ **UPDATE 8 Nov — THE TEST EXISTS AND HAS RUN, so this is now a one-line ask.**
+`supabase/tests/chronicle-daily-flow.sql` (#51, independent, based on `main`) acts as a seeded
+member on the real functions: start, switch, a mis-press, a note on each sitting, a count written
+twice, the read-back, a goal counting it once, stop — and a second member refused at every door.
+It ran five times in the `db guards` job's throwaway database, through a scratch branch whose copy
+of the one file that job runs included this one, so **no workflow file changed**: clean twice,
+"holds · 0 failures"; with an additive count writer, exactly the three count checks failed; with a
+writer that skipped the owner check, exactly the two security checks failed. What is left is the
+step that makes it run on every push:
+
+```sh
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chronicle-daily-flow.sql   # the new line
+```
+
+— the second line added inside the existing "Run the visibility guards" step, because `DB_URL`
+is a shell variable that step works out for itself; a separate step would not have it. And `chronicle/ci-probe-flow`
+is scratch, never to be merged — yours to approve deleting.
+
 ### 16b. A weekday schedule edited today — does it take effect today or tomorrow?
 
 Your rule settles every CLOSED day: they keep the schedule they were judged under. Today is the
