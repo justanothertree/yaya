@@ -77,8 +77,7 @@ begin
   insert into ids values ('act_a', a), ('act_b', b);
 
   e1 := public.chronicle_start(a);
-  perform pg_sleep(1.1);
-  e2 := public.chronicle_start(b);   -- e1 is over a second old: closed, not deleted
+  e2 := public.chronicle_start(b);   -- PERTURBED: no sleep, so this switch is a mis-press   -- e1 is over a second old: closed, not deleted
   e3 := public.chronicle_start(a);   -- e2 is not: a mis-press, deleted, no trace
   insert into ids values ('e1', e1), ('e2', e2), ('e3', e3);
 exception when others then
