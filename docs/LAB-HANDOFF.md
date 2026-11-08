@@ -2435,6 +2435,15 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   voted 👍 Like" and writes one row; ▶ Back to browsing returns to Highly rated with focus on Fold's
   card, now "👍 4 · 👎 0 · You: 👍"; a guest sees no totals and is told to sign in. (8 Nov, after
   #55 and #57 landed on #34.)
+- **Notes say how many there are to read** (branch `claude/lab-notecount-1`, stacked on #57): the
+  closed fold said "ideas, requests and bugs" whether a toy had twenty notes or none, and nobody
+  opens a fold to find it empty. It now says "3 to read", "20+ to read" or "none yet". ⚠️ The
+  count is the first page of notes THIS viewer was sent — the same `lab_comments_page` call the
+  fold made on opening, now made when the toy opens — so it counts what the visibility ladder
+  lets them read, never everybody's. The draft keeps an all-notes count from members on purpose,
+  and no SQL changes here. Measured against the real local stack: a stranger, a friend of a minor
+  and the minor saw 1, 2 and 2 — each exactly what PostgREST returned to them directly; one page
+  call per toy for a member and none for a guest; posting from the page took 2 to 3.
 - **CI note, not a code fault:** from about 08:50 on 8 Nov the `db guards` job often failed before
   running anything — `supabase/setup-cli` downloading the CLI got HTTP 504 three times. Every Lab
   head has a passing run of the same workflow on the same commit, some after one re-run of the

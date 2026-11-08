@@ -10,6 +10,7 @@ import {
   type Note,
   type NoteKind,
   type ReportReason,
+  notesSummary,
 } from './feedback'
 
 export type Viewer = { authed: boolean; suspended: boolean; isAdmin: boolean }
@@ -135,7 +136,6 @@ function Notes({
   name: string
   viewer: Viewer
 }) {
-  const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Note[] | null>(null)
   const [more, setMore] = useState(false)
   const [said, setSaid] = useState<string | null>(null)
@@ -155,20 +155,27 @@ function Notes({
       setBusy(false)
     }
   }
+  /* ⚠️ THE FIRST PAGE LOADS WITH THE TOY, NOT WITH THE FOLD. It used to wait for the fold to be
+     opened, so a closed fold said nothing about whether anybody had written anything — and nobody
+     opens a fold to find it empty. Now the summary can say how many there are to read: one call
+     per toy, for a signed-in member only, the same call the fold made anyway. */
   useEffect(() => {
-    if (open && viewer.authed && !loaded.current) {
+    if (viewer.authed && !loaded.current) {
       loaded.current = true
       void load()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, the first time the fold opens
-  }, [open, viewer.authed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as soon as there is somebody to ask for
+  }, [viewer.authed])
 
   const replace = (n: Note) => setItems((was) => (was ?? []).map((x) => (x.id === n.id ? n : x)))
   const drop = (id: string) => setItems((was) => (was ?? []).filter((x) => x.id !== id))
 
   return (
-    <details className="lab-notes" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>Notes on {name} — ideas, requests and bugs</summary>
+    <details className="lab-notes">
+      <summary>
+        Notes on {name} —{' '}
+        {viewer.authed ? notesSummary(items?.length ?? null, more) : 'ideas, requests and bugs'}
+      </summary>
       {!viewer.authed ? (
         <p className="muted">Sign in to read notes and leave one.</p>
       ) : (
