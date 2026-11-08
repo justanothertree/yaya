@@ -463,7 +463,7 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
             The sky as you would see it turning on the spot: north at both edges, south in the
             middle.{' '}
             {here && zonesWork
-              ? 'Clock time is what a clock there reads, summer time included (from this browser’s time-zone data, to about a minute); sun time puts noon where the sun is highest, which a clock can miss by an hour or more.'
+              ? 'Clock time is what a clock there reads, summer time included, from this browser’s time-zone data. Sunrise and sunset are an almanac’s calculation for a flat horizon — usually within a minute or two of a weather app, but several minutes out near the poles, where the sun skims the horizon. Sun time puts noon where the sun is highest, which a clock can miss by an hour or more.'
               : !here
                 ? 'A latitude alone has no time zone, so times here are sun time: noon is when the sun is highest, which a clock can miss by an hour or more.'
                 : 'This browser cannot read time zones, so times are sun time: noon is when the sun is highest.'}{' '}

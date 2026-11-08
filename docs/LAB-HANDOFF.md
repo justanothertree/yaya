@@ -3194,10 +3194,13 @@ the sound feels.
    wrong way, or scroll the page instead? Is Medium the right step up from Easy?
 8. **Real device — Intervals, with sound.** Play a round on a phone and on a laptop. Do the notes
    sound clean and at the right moment? Are the six stages a fair climb?
-9. **Taste — Sun path.** Pick the place nearest you and today: do sunrise and sunset match your
-   phone's weather app to about a minute, does the sky look like a sky, and is the ☀️ Sun time
-   switch clear enough to be worth keeping? (Safari: check the times read as clock time, not sun
-   time — that would mean its time-zone support is missing.)
+9. **Taste — Sun path.** Pick the place nearest you and today: are sunrise and sunset within a
+   minute or two of your phone's weather app, does the sky look like a sky, and is the ☀️ Sun time
+   switch clear enough to be worth keeping? Expect a minute or two at mid-latitudes, not to the
+   second — a weather app may count a different point in town, and near polar sunrise or sunset
+   (Tromsø in January, say) several minutes is within the documented error budget, before the
+   weather's own refraction. (Safari: check the times read as clock time, not sun time — that
+   would mean its time-zone support is missing.)
 10. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
     Is the reading ("darker, duller and more green") more help than the number?
 11. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
