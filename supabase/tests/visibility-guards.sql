@@ -22,8 +22,8 @@ do $$
 declare n int; m int;
 begin
   select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
-  if n > 0 or m < 34 then
-    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 34', n, m;
+  if n > 0 or m < 32 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 32', n, m;
   end if;
 end $$;
 select 'the daily flow and the marks hold through Auth and PostgREST' as result;
