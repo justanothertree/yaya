@@ -2683,6 +2683,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 3c    | #50 | #48    | Counts beside each kind; / to search                          |
 | 3d    | #55 | #50    | Back from a toy, the catalog is where you left it             |
 | 3e    | #57 | #55    | 🆕 New to you                                                 |
+| 3f    | #63 | #57    | The notes fold says how many there are to read                |
 | 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
 | 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
 | 4c    | #47 | #44    | Beams                                                         |
@@ -2696,6 +2697,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4k    | #60 | #59    | Games and puzzles become two kinds                            |
 | 4l    | #61 | #60    | Paint mixer                                                   |
 | 4m    | #62 | #61    | Intervals                                                     |
+| 4n    | —   | #62    | Graph match (branch `claude/lab-graph-1`)                     |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2947,6 +2949,38 @@ pill had covered them on a phone.
 
 **Not verified:** sound itself — this container has no speakers; that notes were scheduled at the
 right pitches is measured, how they sound is not. Real GPUs; Safari and Firefox audio.
+
+### Follow-on: `claude/lab-graph-1`, stacked on #62 (8 Nov 2026) — maths to see, Graph match
+
+**Base:** `claude/lab-intervals-1` (#62), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Type y = something and its curve lands on a plane over a dashed target: twelve
+  curves from y = x to 1/x, through slopes, parabolas moved and turned over, a V, waves taller and
+  faster, and half a sideways parabola. Three hints each — the family, what to change, then an
+  answer — and stars for fewer. **✏️ Graph anything** plots any equation, and a, b and c in it become
+  sliders: "a*sin(b*x) + c" is the way to see what each number does. Keys for what a thumb cannot
+  type (x, ², ^, brackets, sin(, abs(, sqrt(, a, b, c) insert at the cursor. A mistake is named and
+  marked where it is ("It stops too soon: 2x +▮"). Solved curves and the free plane kept here.
+- **Technique.** ⚠️ **What is typed is parsed, never run**: a tokeniser and a precedence-climbing
+  parser build a tree of + − × ÷ ^, nine functions, pi and e, and x, a, b, c — nothing else —
+  taking the forms people write by hand (2x, 3sin(x), sinx, (x−1)(x+1), x², ×, ÷, −). Each curve is
+  sampled at 1024 points; the shader draws both as polylines by the distance to their nearest
+  segments, breaks a segment that would jump more than the plane (so 1/x is not joined across its
+  asymptote), and gets undefined points as 1e30, not NaN, which a shader may assume never arrive.
+
+**Measured here:** 10 tests — 22 equations agree with the same functions written in plain
+JavaScript at six points each; precedence and associativity (−2² = −4, 2^3^2 = 512, 8/4/2 = 1);
+errors point at the right character; 3,000 random strings give an answer or a ParseError and
+nothing else; the source holds no eval or Function; x·x matches x² and a curve with holes does not;
+every level matches itself and no other. Making ^ left-associative, counting holes as matching or
+binding implied multiplication too tightly each turns tests red. On the GPU, offscreen: yours on
+its own points and not half a square off them, orange then green when matched, both arms of 1/x
+and nothing joining them. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): a
+match by typing, "2x" a square off, "2x +" marked, three hints to an answer and one star, the keys,
+free mode's sliders saved and back after a reload; `mobileAudit` zero in both modes; one GPU device
+per mount.
+
+**Not verified:** the stage in a page, real GPUs, and typing on a real phone keyboard.
 
 ## Questions and tests for Evan — a short queue, most useful first
 
