@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
+  EVERYTHING,
   FAVOURITES_KEY,
   RECENT_KEY,
   openedNow,
@@ -9,6 +10,7 @@ import {
   readFavourites,
   readFlags,
   toggleFavourite,
+  type Browse,
   type Flags,
 } from '../lab/catalog'
 import { labApi } from '../lab/feedback'
@@ -501,6 +503,10 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [recent, setRecent] = useState<string[]>(storedRecent)
   const [browsing, setBrowsing] = useState(false)
+  /* the catalog's search, list and kind, and the card a toy was last launched from: kept here
+     because the catalog itself is unmounted while a toy plays */
+  const [browse, setBrowse] = useState<Browse>(EVERYTHING)
+  const [fromCard, setFromCard] = useState<string | null>(null)
   const bar = useRef<HTMLDivElement | null>(null)
   /* "/" opens the catalog with the cursor in its search box, as on most sites with a search — but
      not shift+/, which is the site's own "?" for help; not while typing; and not while a toy has
@@ -678,9 +684,13 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           recent={recent}
           rated={visible.some((e) => e.flags.up !== undefined)}
           admin={viewer.isAdmin}
+          browse={browse}
+          onBrowse={setBrowse}
+          returning={fromCard === current.id}
           onFavourite={favourite}
           onLaunch={(id) => {
             launched.current = true
+            setFromCard(id)
             pick(id)
           }}
         />

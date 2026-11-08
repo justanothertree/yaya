@@ -3,7 +3,10 @@ import registry from '../sections/GpuLab.tsx?raw'
 import draft from '../../supabase/drafts/lab-catalog-and-feedback.sql?raw'
 import {
   CATEGORIES,
+  EVERYTHING,
   META,
+  arrange,
+  showingAll,
   byNewest,
   byRating,
   entries,
@@ -169,6 +172,50 @@ describe('the orders the page states', () => {
     )
     // printshop 7 Nov; fold and topple 6 Nov, topple listed after fold as in the Lab; swarm 5 Nov
     expect(byNewest(list).map((e) => e.id)).toEqual(['printshop', 'topple', 'fold', 'swarm'])
+  })
+})
+
+describe('what the catalog is showing', () => {
+  const list = entries(
+    [demo('swarm'), demo('fold', 'Fold'), demo('harp', 'Harp'), demo('topple'), demo('mobius')],
+    new Map([['topple', flags({ featured: true })]]),
+  )
+  const ids = (b: Partial<typeof EVERYTHING>, fav: string[] = [], rec: string[] = []) =>
+    arrange(list, { ...EVERYTHING, ...b }, fav, rec).map((e) => e.id)
+  it('everything: featured first, then the Lab’s order', () => {
+    expect(ids({})).toEqual(['topple', 'swarm', 'fold', 'harp', 'mobius'])
+  })
+  // ⚠️ by SOUND, not games: which kind a game or puzzle belongs to is a call the catalog revisits
+  // (games and puzzles were split), and a test about filtering must not break when it does
+  it('narrows by search, kind and list together', () => {
+    const sound = arrange(
+      entries(
+        [demo('swarm'), demo('harp', 'Harp'), demo('fold'), demo('music', 'Music')],
+        new Map(),
+      ),
+      { ...EVERYTHING, category: 'sound' },
+      [],
+      [],
+    ).map((e) => e.id)
+    expect(sound).toEqual(['harp', 'music'])
+    expect(ids({ category: 'sound' })).toEqual(['harp'])
+    expect(ids({ category: 'sound', query: 'fold' })).toEqual([])
+    expect(ids({ category: 'patterns', view: 'favourites' }, ['harp', 'swarm'])).toEqual(['swarm'])
+    expect(ids({ category: 'patterns', view: 'favourites' }, ['harp'])).toEqual([])
+  })
+  it('recent: the order they were opened in, not the Lab’s', () => {
+    expect(ids({ view: 'recent' }, [], ['mobius', 'swarm', 'harp'])).toEqual([
+      'mobius',
+      'swarm',
+      'harp',
+    ])
+  })
+  it('knows when it is showing everything, so the page can offer the way back to it', () => {
+    expect(showingAll(EVERYTHING)).toBe(true)
+    expect(showingAll({ ...EVERYTHING, query: '   ' })).toBe(true)
+    expect(showingAll({ ...EVERYTHING, query: 'x' })).toBe(false)
+    expect(showingAll({ ...EVERYTHING, view: 'new' })).toBe(false)
+    expect(showingAll({ ...EVERYTHING, category: 'sound' })).toBe(false)
   })
 })
 

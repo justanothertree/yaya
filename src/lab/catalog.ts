@@ -206,6 +206,39 @@ export function byNewest(list: readonly Entry[]): Entry[] {
   return [...list].sort((a, b) => b.added.localeCompare(a.added) || b.order - a.order)
 }
 
+/* ---------------------------------------------------------------- what the catalog is showing */
+
+export type View = 'all' | 'recent' | 'favourites' | 'new' | 'top'
+
+/** the catalog's search, list and kind. ⚠️ The Lab holds this, not the catalog: the catalog is
+ *  unmounted while a toy plays, and when this lived inside it every return from a toy started
+ *  again at All with the search empty, a long way above the card just left. */
+export type Browse = { query: string; view: View; category: Category | null }
+export const EVERYTHING: Browse = { query: '', view: 'all', category: null }
+export const showingAll = (b: Browse) => !b.query.trim() && b.view === 'all' && b.category === null
+
+/** the cards to show, in the order the page states for the list chosen */
+export function arrange(
+  list: readonly Entry[],
+  b: Browse,
+  favourites: readonly string[],
+  recent: readonly string[],
+): Entry[] {
+  let out = search(list, b.query)
+  if (b.category) out = out.filter((e) => e.category === b.category)
+  if (b.view === 'favourites') out = out.filter((e) => favourites.includes(e.id))
+  if (b.view === 'recent')
+    return out
+      .filter((e) => recent.includes(e.id))
+      .sort((x, y) => recent.indexOf(x.id) - recent.indexOf(y.id))
+  if (b.view === 'new') return byNewest(out)
+  if (b.view === 'top') return byRating(out)
+  // featured first, then the Lab's own order — the page says so above the list
+  return [...out].sort(
+    (x, y) => Number(y.flags.featured) - Number(x.flags.featured) || x.order - y.order,
+  )
+}
+
 /* ---------------------------------------------------------------- favourites, in this browser */
 
 export const FAVOURITES_KEY = 'lab_favourites_v1'
