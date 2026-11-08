@@ -190,3 +190,13 @@ export function checkNote(body: string): string | null {
   if (/[\x01-\x09\x0b-\x1f\x7f]/.test(t)) return 'Plain text only, please.'
   return null
 }
+
+/** what the closed notes fold says before anybody opens it — counted from the first page the
+ *  viewer was sent, so it is a count of what THIS viewer may read, never of everybody's notes
+ *  (the draft keeps that from members on purpose: it would be a picture of activity the ladder
+ *  hides). A full first page means there may be more, and says so rather than guessing. */
+export function notesSummary(count: number | null, more: boolean): string {
+  if (count === null) return 'ideas, requests and bugs'
+  if (!count) return 'none yet'
+  return `${count}${more ? '+' : ''} to read`
+}
