@@ -168,6 +168,7 @@ import {
   seekTo,
   hushScheduled,
 } from '../audio/looper'
+import { benchTroubleText, openWorkbench } from '../audio/workbench'
 
 /**
  * Somewhere to play.
@@ -964,6 +965,24 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const narrowBoard = useMediaQuery(PHONE_KEYBOARD)
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
   const [capMsg, setCapMsg] = useState<string | null>(null)
+  /**
+   * ⚠️ WHAT YOU WERE WORKING ON SURVIVED WALKING TO ANOTHER ROOM AND NOT A RELOAD, which is
+   * exactly what an in-memory module looks like from the outside: this component unmounts and
+   * looper.ts does not, so the layers were still there when you came back and gone when the
+   * page was made again. The room remembered nine playing settings and your saved rigs across
+   * the same reload, which is what made the one thing it forgot read as a fault. See
+   * workbench.ts — it is idempotent, so mounting twice costs nothing and restores once.
+   */
+  useEffect(
+    () =>
+      openWorkbench((t) => {
+        /* ⚠️ said, not swallowed: a recording that would not open, a disk that is full, or a
+           saved bench this page will not overwrite — see BenchTrouble */
+        setCapMsg(benchTroubleText(t))
+        window.setTimeout(() => setCapMsg(null), 9000)
+      }),
+    [],
+  )
   const [libOpen, setLibOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
 
