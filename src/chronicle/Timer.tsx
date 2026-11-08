@@ -6,8 +6,11 @@ import {
   dayNotesBetween,
   dropEntry,
   editEntry,
+  editEntryDay,
   editNote,
   fixRunning,
+  fixRunningDay,
+  setsBetween,
   setAmount,
   setEntryPicture,
   setQuality,
@@ -33,6 +36,7 @@ import { tilesFor } from './nowTiles'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
+import { dayOfStart, moveNote, type ChronSet } from './sets'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
@@ -340,6 +344,15 @@ export function Timer({
    * chose and the truncation is theirs.
    */
   const entWas = useRef<{ from: string; to: string | null } | null>(null)
+  /**
+   * The sets counted during the sitting being edited — see sets.ts.
+   *
+   * ⚠️ READ SO THE EDITOR CAN SAY WHAT A MOVE DOES NOT DO, and so a start moved across midnight
+   * takes them with it. Empty for every sitting until the sets draft is applied, and then for
+   * every sitting nobody counted sets in — and an editor with no sets is exactly the editor there
+   * has always been.
+   */
+  const [entSets, setEntSets] = useState<ChronSet[]>([])
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -530,6 +543,26 @@ export function Timer({
       dead = true
     }
   }, [seeing, bounds.toMs, beat, show])
+
+  const fixStart = fixEnt ? (log.find((e) => e.id === fixEnt)?.start ?? null) : null
+  useEffect(() => {
+    if (!fixEnt || !fixStart) {
+      setEntSets([])
+      return
+    }
+    let dead = false
+    /* the sets of a sitting are on the local day it starts — see dayOfStart */
+    const day = dayOfStart(fixStart)
+    const next = new Date(fixStart)
+    next.setDate(next.getDate() + 1)
+    void (async () => {
+      const got = await setsBetween(day, dayOfStart(next.toISOString()))
+      if (!dead) setEntSets(got.filter((x) => x.entry === fixEnt))
+    })()
+    return () => {
+      dead = true
+    }
+  }, [fixEnt, fixStart])
 
   const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
   const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
@@ -1003,7 +1036,11 @@ export function Timer({
       setBusy(true)
       const w = entWas.current
       const kept = w != null && forInput(w.from) === entFrom
-      const no = await fixRunning(kept ? w!.from : new Date(entFrom).toISOString(), entAct || null)
+      const from = kept ? w!.from : new Date(entFrom).toISOString()
+      /* ⚠️ A SITTING WITH SETS MOVES THEM WITH ITS START, in the same call — §15c */
+      const no = entSets.length
+        ? await fixRunningDay(from, entAct || null, dayOfStart(from))
+        : await fixRunning(from, entAct || null)
       setBusy(false)
       if (no) return moan(no.why)
       setFixEnt(null)
@@ -1026,27 +1063,37 @@ export function Timer({
     const sameFrom = was != null && forInput(was.from) === entFrom
     const sameTo = was?.to != null && forInput(was.to) === entTo
     setBusy(true)
-    const bad = await editEntry(
-      fixEnt,
-      sameFrom ? was!.from : new Date(entFrom).toISOString(),
-      sameTo ? was!.to! : new Date(entTo).toISOString(),
-      /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
+    const fromISO = sameFrom ? was!.from : new Date(entFrom).toISOString()
+    const toISO = sameTo ? was!.to! : new Date(entTo).toISOString()
+    /**
+     * ⚠️ A SITTING WITH SETS GOES THROUGH THE DAY EDITOR, which edits the span and moves the sets to
+     * the local day it now starts on IN ONE CALL (§15c) — two calls would leave a moment, or a
+     * failure, in which the Circuit grid and the sitting disagree about which day the reps were.
+     * The note is not sent at all on that path, and the server leaves it alone.
+     */
+    const bad = entSets.length
+      ? await editEntryDay(fixEnt, fromISO, toISO, entAct || null, dayOfStart(fromISO))
+      : await editEntry(
+          fixEnt,
+          fromISO,
+          toISO,
+          /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
          read null as "clear it" — so opening a session's editor and pressing Save, changing
          nothing, destroyed whatever you had written about it. The server now reads null as "leave
          it alone" so no caller can lose one by forgetting; this sends the box, so you can change
          one or empty it on purpose. */
-      /**
-       * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
-       * box now, not this session's note — sending it here would copy whatever is half-typed in
-       * that box into the legacy `note` column on every Save. The journal is the one home for
-       * what you write about a sitting; the column is frozen where it stood.
-       */
-      null,
-      /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
+          /**
+           * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
+           * box now, not this session's note — sending it here would copy whatever is half-typed in
+           * that box into the legacy `note` column on every Save. The journal is the one home for
+           * what you write about a sitting; the column is frozen where it stood.
+           */
+          null,
+          /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
          mistake this room allows and the only remedy used to be deleting the session and typing
          it in again — losing the amount, the rating and the day it was recorded. */
-      entAct || null,
-    )
+          entAct || null,
+        )
     /**
      * ⚠️ THE AMOUNT IS A SECOND CALL, and only when the activity has something to count. It is a
      * separate function on the server for a reason the migration records — three signatures would
@@ -2359,6 +2406,12 @@ export function Timer({
                   </option>
                 ))}
               </select>
+              {/* ⚠️ SAID AT THE MOMENT IT HAPPENS (§15c): a move takes the time to the new
+                  activity and leaves every set the exercise it was. Correct, and it looks like a
+                  bug — a goal's number moves and the Circuit's does not. */}
+              {entAct !== e.activity && moveNote(entSets, e.id) ? (
+                <p className="muted chron-move-note">{moveNote(entSets, e.id)}</p>
+              ) : null}
             </div>
 
             <div className="chron-frow">

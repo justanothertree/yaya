@@ -12,6 +12,7 @@ import {
 import type { NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
 import type { DayNote } from '../chronicle/journal'
 import type { Plan } from '../chronicle/plan'
+import type { ChronSet } from '../chronicle/sets'
 import { pvPictures } from './picturePreview'
 
 // ── DEV-ONLY chronicle preview store ─────────────────────────────────────────
@@ -193,6 +194,26 @@ type Store = {
   days: PvDays[]
   /** notes that belong to a day — `chronicle_notes` rows with no entry, see journal.ts */
   dayNotes: DayNote[]
+  /** `chronicle_sets` — see sets.ts and the sets draft */
+  sets: PvSet[]
+  /**
+   * The exercise lists of YOUR Circuit people, by person id — the part of `circuit_people` the
+   * set writer reads. Another member's people are not here at all, which is the double's way of
+   * saying the writer refuses them.
+   */
+  circuit: Record<string, Array<{ id: string; name: string }>>
+}
+
+type PvSet = {
+  id: string
+  person: string | null
+  exercise: string
+  name: string
+  entry: string | null
+  on: string
+  value: number
+  created: number
+  updated: number
 }
 
 type PvDays = { goal: string; from: string; days: number; setAt: number }
@@ -639,6 +660,42 @@ function seed(): Store {
         ],
       },
     ],
+    /**
+     * ⚠️ ONE SITTING WITH SETS, so the move dialog's sentence (§15c) can be seen at all: three
+     * days ago's gym, 15 Quad Curl and 10 Bench. The Circuit's own workout line for today is a
+     * different record (`circuit_logs`, read as a moment) and nothing reads these sets into the
+     * log yet — that is step 2 — so the two never show the same reps twice.
+     */
+    circuit: {
+      'pv-person': [
+        { id: 'pv-ex-quad', name: 'Quad Curl' },
+        { id: 'pv-ex-bench', name: 'Bench' },
+      ],
+    },
+    sets: [
+      {
+        id: 'pv-s1',
+        person: 'pv-person',
+        exercise: 'pv-ex-quad',
+        name: 'Quad Curl',
+        entry: 'pv-e10',
+        on: localISO(at(3, 7)),
+        value: 15,
+        created: at(3, 7, 20).getTime(),
+        updated: at(3, 7, 20).getTime(),
+      },
+      {
+        id: 'pv-s2',
+        person: 'pv-person',
+        exercise: 'pv-ex-bench',
+        name: 'Bench',
+        entry: 'pv-e10',
+        on: localISO(at(3, 7)),
+        value: 10,
+        created: at(3, 7, 30).getTime(),
+        updated: at(3, 7, 30).getTime(),
+      },
+    ],
   }
   /* every other seeded goal was made two months ago, so its row is the full thirty-one */
   for (const g of s.goals) s.made[g.id] ??= at(60, 9).getTime()
@@ -663,6 +720,8 @@ const blank = (): Store => ({
   made: {},
   days: [],
   dayNotes: [],
+  sets: [],
+  circuit: {},
 })
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
@@ -1238,6 +1297,8 @@ export const pvAddEntry = (
 
 export const pvDropEntry = (id: string): boolean => {
   db().ents = db().ents.filter((e) => e.id !== id)
+  /* `on delete cascade`: the sitting takes what it counted with it */
+  db().sets = db().sets.filter((x) => x.entry !== id)
   return true
 }
 
@@ -1314,6 +1375,123 @@ export const pvFixRunning = (
     return { why: 'that is not one of your activities' }
   /* ⚠️ null leaves each one alone — the rule every save path in this module keeps */
   Object.assign(e, { start: fromISO ?? e.start, activity: activity ?? e.activity })
+  return null
+}
+
+/* ── sets, in the sets draft's own words and order ─────────────────────────────────────── */
+
+/** every local day on Earth is within one of UTC's — the writer's bound, in the writer's terms */
+const nearStart = (day: string, startISO: string): boolean =>
+  Math.abs(Date.parse(day + 'T00:00:00Z') - Date.parse(startISO.slice(0, 10) + 'T00:00:00Z')) <=
+  86_400_000
+
+const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+
+/**
+ * `chronicle_set_add`. ⚠️ THE NAME COMES FROM THE PERSON'S OWN LIST, never from the caller (§15b),
+ * and the person and the sitting are checked by hand — the server's function cannot lean on
+ * circuit_people's policies, so neither does this.
+ */
+export const pvSetAdd = (
+  person: string,
+  exercise: string,
+  value: number,
+  day: string,
+  entry: string | null = null,
+): { id: string } | { why: string } => {
+  if (!(value > 0) || value > 1e9) return { why: 'that is not a number of anything' }
+  const list = db().circuit[person]
+  if (!list) return { why: 'no such person of yours' }
+  const ex = list.find((x) => x.id === exercise)
+  if (!ex || !ex.name.trim()) return { why: 'no such exercise' }
+  if (entry != null) {
+    const e = db().ents.find((x) => x.id === entry)
+    if (!e) return { why: 'no such session' }
+    if (!day || !nearStart(day, e.start)) {
+      return { why: 'that is not the day that session starts on' }
+    }
+  } else if (!day || day > utcDay(Date.now() + 86_400_000)) {
+    return { why: 'that day has not come yet' }
+  }
+  const id = mint('pv-s')
+  const now = Date.now()
+  db().sets.push({
+    id,
+    person,
+    exercise,
+    name: ex.name.trim().slice(0, 200),
+    entry,
+    on: day,
+    value,
+    created: now,
+    updated: now,
+  })
+  return { id }
+}
+
+/**
+ * The Circuit's side of the double: a person of YOURS with these exercises — what
+ * `circuit_people` holds for an account-linked person. ⚠️ A SEAM FOR TESTS, because the double has
+ * no Circuit of its own; replacing a list is how a rename or a deletion in the grid is shown.
+ */
+export const pvGiveCircuit = (person: string, exercises: Array<{ id: string; name: string }>) => {
+  db().circuit[person] = exercises.map((x) => ({ ...x }))
+}
+
+/** `chronicle_sets_between`: yours, half-open, with today's name looked up BY ID */
+export const pvSetsBetween = (from: string, to: string): ChronSet[] =>
+  db()
+    .sets.filter((x) => x.on >= from && x.on < to)
+    .sort((a, b) => a.on.localeCompare(b.on) || a.created - b.created || a.id.localeCompare(b.id))
+    .map((x) => ({
+      id: x.id,
+      entry: x.entry,
+      person: x.person,
+      exercise: x.exercise,
+      name: x.name,
+      now: (x.person && db().circuit[x.person]?.find((e) => e.id === x.exercise)?.name) || null,
+      on: x.on,
+      value: x.value,
+    }))
+
+/**
+ * `chronicle_entry_edit_day`: the day is judged FIRST, then the sitting is edited by its own
+ * rules, then its sets follow — and a refusal anywhere leaves both as they were, which the server
+ * gets from being one transaction and this gets from mutating last.
+ */
+export const pvEditEntryDay = (
+  id: string,
+  fromISO: string,
+  toISO: string,
+  activity: string | null,
+  day: string,
+): { why: string } | null => {
+  if (fromISO && (!day || !nearStart(day, fromISO))) {
+    return { why: 'that is not the day that session starts on' }
+  }
+  const no = pvEditEntry(id, fromISO, toISO, null, activity)
+  if (no) return no
+  for (const x of db().sets) {
+    if (x.entry === id && x.on !== day) Object.assign(x, { on: day, updated: Date.now() })
+  }
+  return null
+}
+
+/** `chronicle_running_fix_day`, the same for the sitting still running */
+export const pvFixRunningDay = (
+  fromISO: string | null,
+  activity: string | null,
+  day: string,
+): { why: string } | null => {
+  const e = db().ents.find((x) => x.end == null)
+  if (e && (!day || !nearStart(day, fromISO ?? e.start))) {
+    return { why: 'that is not the day that session starts on' }
+  }
+  const no = pvFixRunning(fromISO, activity)
+  if (no || !e) return no
+  for (const x of db().sets) {
+    if (x.entry === e.id && x.on !== day) Object.assign(x, { on: day, updated: Date.now() })
+  }
   return null
 }
 
@@ -1470,6 +1648,19 @@ export const pvExport = (): Record<string, unknown> => ({
       quality: e.quality,
       created_at: e.start,
     })),
+  sets: [...db().sets]
+    .sort((a, b) => a.on.localeCompare(b.on) || a.created - b.created || a.id.localeCompare(b.id))
+    .map((x) => ({
+      id: x.id,
+      person: x.person,
+      exercise: x.exercise,
+      name: x.name,
+      entry: x.entry,
+      on_day: x.on,
+      value: x.value,
+      created_at: new Date(x.created).toISOString(),
+      updated_at: new Date(x.updated).toISOString(),
+    })),
   goals: [...db().goals]
     .sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
     .map((g) => ({
@@ -1563,7 +1754,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
   const inside = (k: string) =>
     list('goals').reduce((n, g) => n + (Array.isArray(g[k]) ? (g[k] as unknown[]).length : 0), 0)
   const total =
-    ['activities', 'entries', 'goals', 'routines', 'plans', 'day_notes'].reduce(
+    ['activities', 'entries', 'sets', 'goals', 'routines', 'plans', 'day_notes'].reduce(
       (n, k) => n + list(k).length,
       0,
     ) +
@@ -1580,6 +1771,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     marks: 0,
     schedules: 0,
     notes: 0,
+    sets: 0,
     skipped: 0,
   }
   /** the goals THIS import created — the only ones a schedule may arrive with */
@@ -1731,6 +1923,50 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       quality: e.quality == null ? null : numOr(e.quality, 0),
     })
     out.entries++
+  }
+
+  /**
+   * The sets, after the sittings they hang off, as `chronicle_import` puts them back: a sitting
+   * that is yours or none, a number of something, a day that has come, a name — and add, never
+   * replace. ⚠️ A PERSON THAT IS NOT YOURS HERE BECOMES NONE, and the set keeps its exercise id and
+   * its name: it is never re-attached to an exercise by matching names (§15b).
+   */
+  for (const x of list('sets')) {
+    const id = str(x.id)
+    const exercise = str(x.exercise)
+    const name = typeof x.name === 'string' ? x.name.trim() : ''
+    const on = str(x.on_day)
+    const value = numOr(x.value, 0)
+    const entry = str(x.entry)
+    if (
+      !id ||
+      !exercise ||
+      !name ||
+      !on ||
+      on > new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) ||
+      !(value > 0) ||
+      value > 1e9 ||
+      (entry != null && !db().ents.some((e) => e.id === entry)) ||
+      db().sets.some((y) => y.id === id)
+    ) {
+      out.skipped++
+      continue
+    }
+    const person = str(x.person)
+    const created = Date.parse(String(x.created_at ?? ''))
+    const updated = Date.parse(String(x.updated_at ?? ''))
+    db().sets.push({
+      id,
+      person: person && db().circuit[person] ? person : null,
+      exercise,
+      name: name.slice(0, 200),
+      entry,
+      on,
+      value,
+      created: Number.isFinite(created) ? created : Date.now(),
+      updated: Number.isFinite(updated) ? updated : Date.now(),
+    })
+    out.sets++
   }
 
   for (const g of list('goals')) {

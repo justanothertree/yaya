@@ -12,6 +12,9 @@ import {
   pvEntries,
   pvExport,
   pvFixRunning,
+  pvFixRunningDay,
+  pvEditEntryDay,
+  pvSetsBetween,
   pvImport,
   pvMarksFor,
   pvSetMark,
@@ -51,6 +54,7 @@ import type { Goal, Scope } from './goal'
 import { NO_MARKS, type Marked, type MarkAt } from './marks'
 import { validMask, type DayMask, type Schedule } from './weekdays'
 import type { DayNote } from './journal'
+import type { ChronSet } from './sets'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
 
@@ -723,6 +727,74 @@ export async function editEntry(
   return error ? { why: error.message || 'that did not save' } : null
 }
 
+/* ── sets: one exercise's quantity on one day — see sets.ts ───────────────── */
+
+/**
+ * Your sets on [fromDay, toDay), half-open like every range here.
+ *
+ * ⚠️ EMPTY ON ANY REFUSAL, including the one every account gets until the sets draft is applied —
+ * the function does not exist yet, and a sitting with no sets is exactly what that means.
+ */
+export async function setsBetween(fromDay: string, toDay: string): Promise<ChronSet[]> {
+  if (previewMember) return pvSetsBetween(fromDay, toDay)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_sets_between', {
+    p_from: fromDay,
+    p_to: toDay,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    entry: r.entry == null ? null : String(r.entry),
+    person: r.person == null ? null : String(r.person),
+    exercise: String(r.exercise ?? ''),
+    name: String(r.name ?? ''),
+    now: r.now == null ? null : String(r.now),
+    on: String(r.on ?? ''),
+    value: num(r.value as number | string | null),
+  }))
+}
+
+/**
+ * Change a finished sitting AND move its sets to the local day it now starts on — one call, so
+ * the two cannot disagree (§15c).
+ *
+ * ⚠️ ONLY FOR A SITTING THAT HAS SETS. It wraps `chronicle_entry_edit` on the server and adds the
+ * day; a sitting with none goes on using `editEntry`, so nothing calls this until a sitting has
+ * sets, which nothing can make until the sets draft is applied.
+ */
+export async function editEntryDay(
+  id: string,
+  fromISO: string,
+  toISO: string,
+  activity: string | null,
+  day: string,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvEditEntryDay(id, fromISO, toISO, activity, day)
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_edit_day', {
+    p_id: id,
+    p_from: fromISO,
+    p_to: toISO,
+    p_activity: activity,
+    p_day: day,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/** The same for the sitting still running — `chronicle_running_fix`, and its sets' day with it. */
+export async function fixRunningDay(
+  fromISO: string | null,
+  activity: string | null,
+  day: string,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvFixRunningDay(fromISO, activity, day)
+  const { error } = await getSupabaseClient().rpc('chronicle_running_fix_day', {
+    p_from: fromISO,
+    p_activity: activity,
+    p_day: day,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
 /* ── routines ───────────────────────────────────────────────────────────────── */
 
 /** An ordered list of things you do together. `mins` is a suggestion, not a limit. */
@@ -952,6 +1024,8 @@ export type Putback = {
   schedules: number
   /** notes that belong to a day rather than a session — see journal.ts */
   notes: number
+  /** sets of an exercise put back — see sets.ts */
+  sets: number
   skipped: number
 }
 
@@ -985,6 +1059,7 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     marks: n('marks'),
     schedules: n('schedules'),
     notes: n('notes'),
+    sets: n('sets'),
     skipped: n('skipped'),
   }
 }
