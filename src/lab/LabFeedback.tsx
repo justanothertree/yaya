@@ -22,6 +22,8 @@ type Props = {
   viewer: Viewer
   /** the server's answer to a vote or an owner's change, for the catalog to show */
   onFlags: (id: string, patch: Partial<Flags>) => void
+  /** whether the database's catalog lists this experiment; undefined while that is not known */
+  listed?: boolean
 }
 
 /**
@@ -29,8 +31,20 @@ type Props = {
  * for Evan and for the members the site lets you reach. Guests can play everything; this is the
  * one part that needs an account, and it says so rather than hiding.
  */
-export function LabFeedback({ api, demo, name, flags, viewer, onFlags }: Props) {
+export function LabFeedback({ api, demo, name, flags, viewer, onFlags, listed }: Props) {
   if (!api) return null
+  /* ⚠️ A TOY NEWER THAN THE CATALOG IS NOT "GONE". The draft seeds the experiments the Lab had when
+     it was written and the owner's visit registers any added since — until then the server
+     answers every vote and note on it "no such experiment", which explain() reads, rightly for a
+     removed note, as "That isn't there any more". Said plainly instead, with nothing to press. */
+  if (listed === false)
+    return (
+      <section className="lab-feedback" aria-label={`Feedback on ${name}`}>
+        <p className="muted lab-hint">
+          {name} is new here: votes and notes open once it has been added to the catalog.
+        </p>
+      </section>
+    )
   return (
     <section className="lab-feedback" aria-label={`Feedback on ${name}`}>
       <Votes api={api} demo={demo} flags={flags} viewer={viewer} onFlags={onFlags} />

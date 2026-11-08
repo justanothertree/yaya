@@ -2459,9 +2459,14 @@ stays unapplied and untouched.
   while the same bitmap copied fine on a second device in the same page. Unexplained, so the toy
   uses the path that was seen to work. Real-GPU behaviour of either is untested.
 - **Voting on it:** Jigsaw is not in #31's seed list on purpose — that draft stays the reviewed
-  text. Once it is applied, the admin's next visit registers it (as the draft already describes);
-  until then a member's vote on Jigsaw is refused. `catalog.test.ts` now holds the seed to be the
-  first 51 ids of the registry, in order, rather than all of them.
+  text. Once it is applied, the admin's next visit registers it (as the draft already describes).
+  Until then the server refuses votes and notes on it with "no such experiment", which the page
+  used to translate as "That isn't there any more" — so a toy the catalog does not list yet now
+  says "Jigsaw is new here: votes and notes open once it has been added to the catalog", with
+  nothing to press. Checked on the real local stack: a member sees that line on Jigsaw and normal
+  votes on Topple; the owner's visit registers it (51 → 52 rows) and the member then gets votes.
+  With no catalog at all, as in production today, nothing changes. `catalog.test.ts` now holds
+  the seed to be the first 51 ids of the registry, in order, rather than all of them.
 - The site's floating "You're playing" pill appears while a toy plays a note and, on a phone, sits
   over the Picture select. That pill belongs to the shared audio UI, not the Lab, so it is noted
   here rather than changed.
