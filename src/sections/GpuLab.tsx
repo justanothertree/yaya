@@ -65,6 +65,20 @@ import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
+import { JigsawDemo } from '../gpu/JigsawDemo'
+import { PaletteDemo } from '../gpu/PaletteDemo'
+import { BeamsDemo } from '../gpu/BeamsDemo'
+import { BridgeDemo } from '../gpu/BridgeDemo'
+import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
+import { OrbitDemo } from '../gpu/OrbitDemo'
+import { WallpaperDemo } from '../gpu/WallpaperDemo'
+import { NonogramDemo } from '../gpu/NonogramDemo'
+import { GatesDemo } from '../gpu/GatesDemo'
+import { SlideDemo } from '../gpu/SlideDemo'
+import { MixDemo } from '../gpu/MixDemo'
+import { IntervalsDemo } from '../gpu/IntervalsDemo'
+import { GraphDemo } from '../gpu/GraphDemo'
+import { SunDemo } from '../gpu/SunDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -417,6 +431,91 @@ const DEMOS: readonly {
     line: 'Print shop — carve a lino block with a gouge and pull prints from it, ink over ink: a reduction linocut, cut and printed on the GPU.',
     Demo: PrintshopDemo,
   },
+  // after the catalog: registered in the database by the admin's next visit, not by the draft
+  {
+    id: 'jigsaw',
+    name: 'Jigsaw',
+    line: 'Jigsaw — six painted pictures or a photo of your own, cut into 12 to 154 pieces: drag them together on the felt, and they snap when they fit.',
+    Demo: JigsawDemo,
+  },
+  {
+    id: 'palette',
+    name: 'Palette',
+    line: 'Palette — pull a colour palette out of a picture or a photo of your own, lock what you like and re-roll the rest, see it redrawn in just those colours, and check which pairs read as text.',
+    Demo: PaletteDemo,
+  },
+  {
+    id: 'beams',
+    name: 'Beams',
+    line: 'Beams — place mirrors, splitters and colour filters to bring red, green and blue lasers to every target. Colours add: red and green make yellow.',
+    Demo: BeamsDemo,
+  },
+  {
+    id: 'bridge',
+    name: 'Bridge',
+    line: 'Bridge — build a bridge from road, timber and steel on a budget, then drive a cart across and watch every member strain, bend and snap.',
+    Demo: BridgeDemo,
+  },
+  {
+    id: 'epicycles',
+    name: 'Epicycles',
+    line: 'Epicycles — draw any shape and watch a chain of spinning arms redraw it: its Fourier series. Slide from one arm to a hundred and see the corners come in.',
+    Demo: EpicyclesDemo,
+  },
+  {
+    id: 'orbit',
+    name: 'Orbit',
+    line: 'Orbit — fly a probe round a planet with two buttons: speed up, slow down. Raise, lower and stretch the orbit onto the target, and escape — on as little fuel as the textbook says.',
+    Demo: OrbitDemo,
+  },
+  {
+    id: 'wallpaper',
+    name: 'Wallpaper',
+    line: 'Wallpaper — draw, and every stroke repeats across the wall by one of the seventeen ways a pattern can: turns, mirrors and glides. Then guess which group a pattern is.',
+    Demo: WallpaperDemo,
+  },
+  {
+    id: 'nonogram',
+    name: 'Nonogram',
+    line: 'Nonogram — fill the squares so every row and column matches its numbers, and a picture appears. Then draw your own: it tells you whether logic alone can solve it.',
+    Demo: NonogramDemo,
+  },
+  {
+    id: 'gates',
+    name: 'Logic gates',
+    line: 'Logic gates — wire switches to lamps through NAND and the gates you build from it, until the truth table is all ticks: NOT, AND, XOR, then adders that really add.',
+    Demo: GatesDemo,
+  },
+  {
+    id: 'slide',
+    name: 'Slide',
+    line: 'Slide — an ice puzzle: the puck slides until something stops it. Take every coin and come to rest on the goal in as few pushes as the solver did; then endless boards, each solved before you see it.',
+    Demo: SlideDemo,
+  },
+  {
+    id: 'mix',
+    name: 'Paint mixer',
+    line: 'Paint mixer — drop five paints into a cup to match a colour. They mix like real paint, light absorbed wavelength by wavelength, so yellow and blue make green; or mix freely and copy the colour.',
+    Demo: MixDemo,
+  },
+  {
+    id: 'intervals',
+    name: 'Intervals',
+    line: 'Intervals — two notes play: name the distance between them, from an octave to a semitone. Six stages, each opened by eight of ten, and the ones you miss come back more often.',
+    Demo: IntervalsDemo,
+  },
+  {
+    id: 'graph',
+    name: 'Graph match',
+    line: 'Graph match — type an equation and lay its curve on the dashed one: lines, parabolas, V shapes, waves. Or graph anything, with sliders a, b and c to see what each number does.',
+    Demo: GraphDemo,
+  },
+  {
+    id: 'sun',
+    name: 'Sun path',
+    line: 'Sun path — where the sun is for any place, day and hour: its path across the sky, sunrise, sunset, day length and a shadow. Then guess where the sun stands over Tromsø in March.',
+    Demo: SunDemo,
+  },
 ]
 
 type DemoId = string
@@ -512,6 +611,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
      owner hid, and add what a signed-in member may be shown. */
   const api = useMemo(() => labApi(), [])
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
+  /** the ids the database's catalog lists — null until it has answered, and if it never does */
+  const [inCatalog, setInCatalog] = useState<Set<string> | null>(null)
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [recent, setRecent] = useState<string[]>(storedRecent)
   const [seen, setSeen] = useState<readonly string[] | null>(storedSeen)
@@ -576,12 +677,27 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
       .catalog()
       .then(async (raw) => {
         if (!live) return
+        const ids = (r: unknown) =>
+          new Set(
+            Array.isArray(r)
+              ? r.flatMap((x) => {
+                  const id = (x as { id?: unknown })?.id
+                  return typeof id === 'string' ? [id] : []
+                })
+              : [],
+          )
         setFlags(readFlags(raw, KNOWN))
+        const seen = ids(raw)
         // the owner's own Lab registers an experiment the database has not met yet
-        const seen = new Set(Array.isArray(raw) ? raw.map((r) => (r as { id?: unknown })?.id) : [])
         const fresh = DEMOS.map((d) => d.id).filter((id) => !seen.has(id))
-        if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live)
-          setFlags(readFlags(await api.catalog(), KNOWN))
+        if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live) {
+          const again = await api.catalog()
+          if (!live) return
+          setFlags(readFlags(again, KNOWN))
+          return setInCatalog(ids(again))
+        }
+        // only an answer that is a list says what is missing from it
+        if (Array.isArray(raw)) setInCatalog(seen)
       })
       .catch((e: unknown) => {
         /* no catalog: every experiment stays listed, nothing counted — the Lab still plays */
@@ -756,6 +872,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
             flags={currentFlags}
             viewer={viewer}
             onFlags={patchFlags}
+            listed={inCatalog ? inCatalog.has(current.id) : undefined}
           />
 
           {report && <GpuReport report={report} />}

@@ -59,8 +59,13 @@ describe('the registry, the catalog and the database agree', () => {
     for (const d of dates) expect(d).toMatch(/^2026-\d\d-\d\d$/)
   })
 
-  it('the draft migration seeds exactly the experiments the Lab ships, in the same order', () => {
-    expect(SEEDED).toEqual(DEMO_IDS)
+  // the draft seeds the 51 the Lab had when it was written; a toy added since is registered by the
+  // admin's own visit (admin_lab_register), so the draft stays the reviewed text rather than being
+  // edited for every toy. What must hold is that the seed is the registry's START, in its order —
+  // a renamed or reordered id would still go red here
+  it('the draft migration seeds the experiments the Lab shipped, as the start of the registry', () => {
+    expect(SEEDED.length).toBe(51)
+    expect(DEMO_IDS.slice(0, SEEDED.length)).toEqual(SEEDED)
   })
 
   it('every kind has something in it', () => {
@@ -136,8 +141,9 @@ describe('finding one', () => {
     expect(search(list, '   ').length).toBe(3)
   })
   it('finds a kind by its name', () => {
-    // fold and mobius are games, harp is sound
-    expect(search(list, 'puzzles').map((e) => e.id)).toEqual(['mobius', 'fold'])
+    // fold is a puzzle, mobius a game, harp is sound
+    expect(search(list, 'puzzles').map((e) => e.id)).toEqual(['fold'])
+    expect(search(list, 'skill').map((e) => e.id)).toEqual(['mobius'])
     expect(search(list, 'music').map((e) => e.id)).toEqual(['harp'])
   })
   it('lists a hidden one to the admin only', () => {
