@@ -385,6 +385,22 @@ function NumField({
 }
 
 /**
+ * What a toggle does, said on the toggle — or, while it is disabled, why.
+ *
+ * ⚠️ ON THE BUTTON, NOT IN ITS `title`. Hold, Lead back, the bass and the fill each explained
+ * themselves only in a tooltip, and a tooltip does not exist on a phone — so on the device most
+ * people play this on, four controls said a word or two and nothing else, and a disabled one
+ * gave no reason at all. A second line of three or four words is the smallest thing that is
+ * always there; the `title` stays for the longer sentence a mouse can still reach.
+ *
+ * ⚠️ AND IT CHANGES WITH THE STATE rather than adding a line: the same slot says what the
+ * control does or why it cannot, so a disabled control costs no extra space to explain itself.
+ */
+function Why({ children }: { children: React.ReactNode }) {
+  return <span className="btn-why">{children}</span>
+}
+
+/**
  * One effect, as a slider.
  *
  * Reads the synth rather than holding the value, so the knob and the audio can never disagree —
@@ -2416,6 +2432,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   }
                 >
                   ↩ Lead back
+                  <Why>{pointless ? 'already ends there' : 'last bar leads home'}</Why>
                 </button>
               )
             })()}
@@ -2455,6 +2472,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   }
                 >
                   Follow the chords
+                  <Why>
+                    {!p
+                      ? 'pick chords first'
+                      : loop.layers.length >= MAX_LAYERS && !on
+                        ? 'no layer free'
+                        : 'root and fifth'}
+                  </Why>
                 </button>
               )
             })()}
@@ -2497,12 +2521,21 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     if (!loop.playing) startLoop()
                   }}
                   title={
-                    room
-                      ? 'A tom roll on the last bar, to end the phrase'
-                      : 'A fill needs more than one bar — on a one-bar loop every bar is the last one'
+                    !room
+                      ? 'A fill needs more than one bar — on a one-bar loop every bar is the last one'
+                      : loop.layers.length >= MAX_LAYERS && !on
+                        ? `All ${MAX_LAYERS} layers are in use — delete one to add a fill`
+                        : 'A tom roll on the last bar, to end the phrase — it follows the last bar if the length changes'
                   }
                 >
                   On the last bar
+                  <Why>
+                    {!room
+                      ? 'needs 2+ bars'
+                      : loop.layers.length >= MAX_LAYERS && !on
+                        ? 'no layer free'
+                        : 'tom roll to end'}
+                  </Why>
                 </button>
               )
             })()}
@@ -3005,6 +3038,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           }
         >
           🦶 Hold
+          <Why>{arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}</Why>
         </button>
 
         <button

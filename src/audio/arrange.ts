@@ -139,3 +139,36 @@ export function takeTimeAt(
   if (src == null) return null
   return src * barLen + (at - bar * barLen)
 }
+
+/**
+ * A plan that sounds only in its LAST bar, moved to the last bar of a loop that is now `bars`
+ * long — or null when this plan is not one of those, or the loop is too short to have an end.
+ *
+ * ⚠️ WHY THE FILL NEEDS THIS AND NOTHING ELSE DOES. "On the last bar" lays a drum fill as a plan
+ * of nulls and one slot, sized to the bar count AT THE MOMENT IT WAS PRESSED — and a bar past a
+ * plan's end is silent (see `partAt`). Measured: a fill laid on a two-bar loop that then grew to
+ * four played in bar TWO, the middle, and not in bar four; one laid on four that shrank to two
+ * never played at all — while the button went on reading pressed. The label was a promise the
+ * arrangement stopped keeping the first time anybody changed the length.
+ *
+ * ⚠️ ONLY A PLAN THAT IS EXACTLY "LAST SLOT ONLY" FOLLOWS. The fill can be dragged to another
+ * bar on purpose — its own comment says so — and an arrangement somebody chose is not this
+ * function's to move. Anything else answers null and is left alone.
+ *
+ * ⚠️ AND NOTHING MOVES BELOW TWO BARS. On a one-bar loop every bar is the last one, which is why
+ * the button is disabled there; leaving the old plan in place keeps it silent (its last slot is
+ * past the end) and lets a return to two or more find it again, where rewriting it to `[0]` would
+ * turn the fill into the groove.
+ */
+export function followLastBar(
+  plan: readonly (number | null)[] | undefined,
+  bars: number,
+): (number | null)[] | null {
+  if (!plan || !plan.length || !Number.isInteger(bars) || bars < 2) return null
+  const last = plan.length - 1
+  const src = plan[last]
+  if (src == null || !Number.isFinite(src)) return null
+  for (let i = 0; i < last; i++) if (plan[i] != null) return null
+  if (plan.length === bars) return null
+  return Array.from({ length: bars }, (_, i) => (i === bars - 1 ? src : null))
+}
