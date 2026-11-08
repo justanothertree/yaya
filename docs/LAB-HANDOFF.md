@@ -2701,7 +2701,8 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4o    | #65 | #64    | Sun path                                                      |
 | 4p    | #68 | #65    | Sun path on the clock                                         |
 | 4q    | #77 | #68    | Skipping stones                                               |
-| 4r    | —   | #77    | Colour sight (branch `claude/lab-seeing-1`)                   |
+| 4r    | #88 | #77    | Colour sight                                                  |
+| 4s    | —   | #88    | Soaring (branch `claude/lab-glide-1`)                         |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -3158,6 +3159,45 @@ Palette's pixels. A failed paint now leaves the page on the picture it shows and
 the dropdown moved and a tap picked the old picture's colours). Real screens, which shift every
 colour; and whether colour-blind people recognise what it shows.
 
+### Follow-on: `claude/lab-glide-1`, stacked on #88 (8 Nov 2026) — a game, Soaring
+
+**Base:** `claude/lab-seeing-1` (#88), only to keep the registry append-only. No SQL. Id `glide`,
+68th.
+
+- **What you do.** Race a glider across country, side-on: set the airspeed (slider or ↑ ↓) and
+  decide when to circle (button or Space) under a cumulus to climb. Instruments: height, the
+  variometer, distance to go, the glide you NEED to reach the finish and the glide you are GETTING
+  now — when getting beats need, go home. Five tasks: a final glide, a first thermal, a cloud
+  street, a weak day, a blue day with no clouds to mark the lift. Stars against par; bests kept.
+  The flight waits for ▶ Fly (or any first control), so the task can be read first.
+- **The skill is real gliding's** (MacCready 1954): fly faster through sinking air and slower in
+  lift, and only stop for a thermal stronger than you expect the next to be. Par is that strategy,
+  searched over settings 0–4 m/s; too low a setting dawdles, too greedy lands out.
+- ⚠️ **A toy model, labelled.** The polar is a parabola through a trainer's shape (0.7 m/s at
+  75 km/h, 1 in 31 at 90); circling is a button, not a turn; time runs ×12; heights are drawn far
+  taller than distances. ⚠️ **The first speed-to-fly formula had a sign slip** — it got slower as the
+  expected climb rose, the opposite of the theory — and was invisible at m = 0, where it still gave
+  best glide. The test that caught it compares the closed form with a plain search over speeds.
+
+**Measured here:** 14 tests — the polar through its points and shaped like a trainer; best glide and
+MacCready's speed for climbs 0.5–3 m/s in still, sinking and rising air, each against a numeric
+search sharing no algebra with the formula; speed rising with the day and with sink; a final glide
+going height × glide ratio, to within one step (and only long, never short — the step crosses the
+ground before it notices); circling climbing at lift less 1.3× min sink, and only in a core, and
+working towards it; every task with a par, and the thermal tasks impossible without circling; the
+final glide lost too slow or too fast; greed landing out; and MacCready's own result appearing
+unbidden — the best setting on a single thermal is within 0.25 m/s of the climb it gives. Five
+planted faults turn them red, the original sign slip among them. GPU, offscreen: cloud over the
+thermal at cloudbase and none on a blue day, glider, trail, ground and the chequered finish where
+the engine's own mapping puts them. UI at 1280 and an emulated iPhone 13 (mouse): waiting for ▶ Fly,
+a real final glide home at 90 km/h in 13:00 against par 11:46 (★★) and saved through a reload,
+landing out flying too fast, keys, circling (the variometer reads the simulation's own sum, ▼ 0.9
+m/s — an earlier version read the straight-flight sink while circling), `mobileAudit` zero, every
+control clear of the phone nav, devices released.
+
+**Not verified:** the stage in a page (lost GPU), real touch, real GPUs, and whether the tasks are
+fun at this pace — the thermal tasks were flown by the pilot function, not by hand.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -3206,3 +3246,5 @@ colour; and whether colour-blind people recognise what it shows.
 17. **Taste — Colour sight.** Does the test card make the point at a glance? If you know somebody
     colour-blind, would they recognise the "Deutan" side — and is the pair table the useful part,
     or the picture?
+18. **Taste — Soaring.** Fly the cloud street by hand. Is "need / getting" enough to know when to
+    go home? Is ×12 time too fast to think, or too slow to bother?

@@ -885,10 +885,11 @@ html:has(.lab) {
   margin: 0;
 }
 
-/* Skipping stones: a lake seen side-on wants a landscape stage. The shared one is as tall as the
+/* Skipping stones and Soaring: a scene seen side-on wants a landscape stage. The shared one is as tall as the
    viewport allows, which on a phone is taller than wide and puts eighteen metres of empty sky over a
    fourteen-metre lake; capped by the width it keeps a lake's proportions, and the shared floor. */
-.skip-room .lab-stage {
+.skip-room .lab-stage,
+.glide-room .lab-stage {
   height: min(62vh, 560px, 70vw);
 }
 /* the stone in the hand, as a gauge — the needle is its tilt, the green band the
@@ -966,4 +967,20 @@ html:has(.lab) {
   border-radius: 6px;
   border: 1px solid color-mix(in oklab, var(--text), transparent 70%);
   vertical-align: middle;
+}
+
+/* Soaring: the instruments, in a row that wraps */
+.glide-instruments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.glide-up {
+  color: #2e9e44;
+  font-weight: 600;
+}
+.glide-down {
+  color: #c0392b;
+  font-weight: 600;
 }

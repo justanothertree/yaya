@@ -72,6 +72,7 @@ import { GraphDemo } from '../gpu/GraphDemo'
 import { SunDemo } from '../gpu/SunDemo'
 import { SkipDemo } from '../gpu/SkipDemo'
 import { VisionDemo } from '../gpu/VisionDemo'
+import { GlideDemo } from '../gpu/GlideDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -520,6 +521,12 @@ const DEMOS: readonly {
     name: 'Colour sight',
     line: 'Colour sight — see a chart, a painting or your own picture as people with colour blindness do, and check whether two colours stay apart for everyone.',
     Demo: VisionDemo,
+  },
+  {
+    id: 'glide',
+    name: 'Soaring',
+    line: 'Soaring — race a glider across country on thermals: set your airspeed, circle under clouds to climb, and get home faster than par. The real gliding rule, in five tasks.',
+    Demo: GlideDemo,
   },
 ]
 
