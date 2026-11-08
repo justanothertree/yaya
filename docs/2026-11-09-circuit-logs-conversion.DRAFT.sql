@@ -200,8 +200,7 @@ begin
     select coalesce(a.eid, b.eid) as eid, coalesce(a.on_day, b.on_day) as on_day
       from (select eid, on_day, sum(value) as v from conv_candidates group by eid, on_day) a
       full join (select exercise_id as eid, on_day, sum(value) as v from public.chronicle_sets
-                  where person_id = p_person and entry is null and owner = v_owner
-                  group by exercise_id, on_day) b
+                  where person_id = p_person and source_log is not null group by exercise_id, on_day) b
         on a.eid = b.eid and a.on_day = b.on_day
      where a.v is distinct from b.v) z;
   if v_mismatch > 0 then

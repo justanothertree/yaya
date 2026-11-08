@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C4 (clean): the stray-set fix, the conversion through real Auth and PostgREST (89 checks), the one-clock marks fix, and a printed demonstration for OPEN-DECISIONS 20e.
+-- RUN P3 (perturbed): the reconciliation asks "has a source" again; the scan for stray sets is kept.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
