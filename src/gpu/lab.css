@@ -871,3 +871,42 @@
 .sun-reading {
   margin: 0;
 }
+
+/* Skipping stones: a lake seen side-on wants a landscape stage. The shared one is as tall as the
+   viewport allows, which on a phone is taller than wide and puts eighteen metres of empty sky over a
+   fourteen-metre lake; capped by the width it keeps a lake's proportions, and the shared floor. */
+.skip-room .lab-stage {
+  height: min(62vh, 560px, 70vw);
+}
+/* the stone in the hand, as a gauge — the needle is its tilt, the green band the
+   tilts that skip best. Turned by the frame loop through a ref, never through React. */
+.skip-gauge {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 44px;
+  flex: none;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--text), transparent 92%);
+}
+/* the stone side-on: the needle is its face, the green band the face at 20° (±4°) */
+.skip-gauge-good,
+.skip-gauge-needle {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 48px;
+  border-radius: 4px;
+  transform-origin: 50% 50%;
+}
+.skip-gauge-good {
+  height: 12px;
+  margin-top: -6px;
+  transform: rotate(-20deg);
+  background: color-mix(in oklab, #3fa34d, transparent 45%);
+}
+.skip-gauge-needle {
+  height: 4px;
+  margin-top: -2px;
+  background: var(--text);
+}

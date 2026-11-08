@@ -99,6 +99,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   intervals: { category: 'sound', added: '2026-11-08' },
   graph: { category: 'patterns', added: '2026-11-08' },
   sun: { category: 'nature', added: '2026-11-08' },
+  skip: { category: 'games', added: '2026-11-08' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */

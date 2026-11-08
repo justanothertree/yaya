@@ -2699,7 +2699,8 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4m    | #62 | #61    | Intervals                                                     |
 | 4n    | #64 | #62    | Graph match                                                   |
 | 4o    | #65 | #64    | Sun path                                                      |
-| 4p    | —   | #65    | Sun path on the clock (branch `claude/lab-sun-2`)             |
+| 4p    | #68 | #65    | Sun path on the clock                                         |
+| 4q    | —   | #68    | Skipping stones (branch `claude/lab-skip-1`)                  |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -3070,6 +3071,49 @@ real screen.
 GPUs, Firefox or Safari's `longOffset` support (the code falls back to sun time when it is missing),
 and whether "Clock time" / "Sun time" reads clearly to someone who has never thought about it.
 
+### Follow-on: `claude/lab-skip-1`, stacked on #68 (8 Nov 2026) — a game, Skipping stones
+
+**Base:** `claude/lab-sun-2` (#68), only to keep the registry append-only. No SQL. Id `skip`, 66th.
+
+- **What you do.** Drag back on the lake like a catapult (further is harder, the direction aims)
+  and let go; or set Power and Aim and hold 🤚 or Space. The stone in your hand wobbles flat and
+  steep every 1.6 s, shown on a little gauge with the best tilt in green: let go when it is about 20°
+  and it skips best. Each touch leaves a ring on the water and a note a step higher. Free throw, or
+  six challenges — three skips, past the buoy, ten, under a low bridge, the far bank, twenty — ticked
+  off and kept with your best skips and furthest throw.
+- **The mastery is the timing.** At full power the tilt must be within 16–24° for twenty skips, and
+  the wobble passes through that window for about 72 ms twice a swing. Of 3,000 random throws, about
+  30% make three skips and under 2% make twenty.
+- ⚠️ **A toy model, labelled as one.** Built in: Clanet, Hersen & Bocquet (Nature, 2004) — best at
+  a 20° tilt, nothing skips coming in steeper than about 45° or slower than a few m/s. Tuned, not
+  measured: the speed a bounce costs and how the tilt drifts as spin dies. The stone is drawn twice
+  life size. ⚠️ The first version got the one fact it is built on wrong — a 5° tilt out-skipped 20°,
+  because the tilt only ever crept upward, so starting flat bought room. Now an off tilt drifts
+  further off the way it leans, which puts the optimum at 20° as a consequence, not a constant.
+- **The wobble keeps real time,** not frame time: a stuttering GPU would otherwise freeze the stone
+  in the hand while the player's own timing ran on.
+- **The stage is landscape for this toy only** (`.skip-room`): the shared stage is taller than wide
+  on a phone, which put 18 m of sky over a 14 m lake. The water line also rises on a squarer stage
+  so about 5 m of sky shows — the highest throw's apex.
+
+**Measured here:** 14 tests — the best tilt within 2° of 20° at four speeds; a stone steeper than
+45° goes in; nothing skips under the slowest speed; the first touch lands where √(2h/g) says;
+speed only falls and hops after the first only shorten; a careless throw makes ≤ 4 and a good one ≥
+20; bridge and shore end a flight; every challenge passable and the last not by flailing; the save
+round-trips every field. Put back, each fault turns them red: the first model's tilt drift, no
+steepness limit, a lift that lengthens hops, a bounce that gains speed, the best tilt moved to 35°.
+On the GPU, offscreen at 1088×400 and at a phone's 1024×818: the aim dots on the computed arc and
+dark between them, the hand-held stone covering its face at 40° and not the flat, sky, water,
+deck, the water under the deck, buoy, the stone in flight, a ripple bright at exactly its 0.8 m
+radius and dark inside, the shore. Through the UI at 1280 and an emulated iPhone 13 (mouse, not
+touch): a 0.313 s hold (20°) throws 14–20 skips and 0.8 s (60°) none; the button says "In the air…"
+and ignores a press mid-flight; a cancelled press does not throw; drag and keys throw; Three skips
+ticks, saves and survives a reload; `mobileAudit` zero; devices released on leaving.
+
+**Not verified:** the stage in a page (this container's GPU is lost in-page), real touch — a drag
+with a finger, and whether the hold button is comfortable to time on a phone — real GPUs, and how
+the sound feels.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -3109,3 +3153,6 @@ and whether "Clock time" / "Sun time" reads clearly to someone who has never tho
     of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
 15. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
     "You voted …" line read clearly?
+16. **Real device — Skipping stones on a phone.** Throw with a finger: does dragging back feel like
+    aiming, and can you learn to let go at the green? Then try the 🤚 button. Is the 1.6 s wobble
+    learnable, or too fast? Does Twenty skips feel earned or impossible?
