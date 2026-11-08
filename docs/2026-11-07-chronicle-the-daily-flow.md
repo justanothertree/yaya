@@ -109,6 +109,12 @@ isolated permission test, and how to undo it.
 
 ### 5a. Selected weekdays
 
+> ⚠️ **SUPERSEDED 8 Nov 2026.** The single `days` column below cannot keep the rule Evan then set —
+> a schedule change affects future occurrences, never past completion — because one value says
+> what the schedule IS and the mark row judges what it WAS. The replacement is a history table in
+> `docs/2026-11-08-chronicle-weekdays.DRAFT.sql`, with its client half in `src/chronicle/weekdays.ts`.
+> Kept below as the record of the first attempt.
+
 **The shape.** A repeating `day` goal gains a mask of the weekdays it is for. A `smallint` bitmask
 (Sunday = bit 0, to match this project's Sunday-start week in `week.ts` and `Feed.tsx`) rather
 than an array, because it is seven booleans and the only queries over it are membership tests.
