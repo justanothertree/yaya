@@ -417,3 +417,457 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ── palette ─────────────────────────────────────────────────────── */
+.lab-fold summary {
+  cursor: pointer;
+  min-height: 32px;
+  padding: 0.3rem 0;
+}
+.lab-fold[open] {
+  display: grid;
+  gap: 0.6rem;
+}
+.pal-swatches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* a swatch is never narrower than its hex code and two tool buttons */
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 0.5rem;
+}
+.pal-swatch {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.pal-chip {
+  display: grid;
+  align-content: end;
+  min-height: 64px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pal-swatch[data-selected] .pal-chip {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.pal-hex {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.pal-share {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+.pal-tools {
+  display: flex;
+  gap: 0.25rem;
+}
+.pal-tools .btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0.2rem;
+}
+.pal-pairs,
+.pal-kept {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.pal-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.pal-sample {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-family: var(--font, inherit);
+  font-weight: 600;
+}
+.pal-out textarea {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.pal-kept-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.pal-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  cursor: pointer;
+}
+.pal-strip span {
+  flex: 1;
+}
+/* a range input is 16px tall by default: under the 24px floor for something a thumb drags */
+.pal-split {
+  min-height: 32px;
+}
+
+/* ── epicycles ───────────────────────────────────────────────────── */
+.epi-arms input {
+  min-height: 32px;
+  min-width: 140px;
+}
+
+/* ── orbit ───────────────────────────────────────────────────────── */
+/* the two burn buttons are what a thumb holds down: big, and either side of the readout */
+.orbit-burn {
+  justify-content: space-between;
+}
+.orbit-burn .btn {
+  min-height: 48px;
+  min-width: 128px;
+  touch-action: none;
+  user-select: none;
+}
+
+/* ── wallpaper ───────────────────────────────────────────────────── */
+/* a <select> is as wide as its longest option — "p6m — sixth turns and every mirror there can be"
+   is 478px, which took a phone's page 112px sideways. It takes the row it is given instead; the
+   open list still shows each option in full. */
+.wall-pick {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.wall-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* Nonogram: the puzzle list holds names like "10. Snail (15×15) ✓" and must shrink on a phone
+   rather than push the row sideways — the same fault Wallpaper's group list had */
+.nono-pick {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.nono-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+/* an input in a flex row floors at its size attribute (~200px) unless told it may shrink */
+.nono-name {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.nono-name input {
+  width: 100%;
+  min-width: 0;
+}
+.nono-code {
+  display: grid;
+  gap: 0.25rem;
+}
+.nono-code input {
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+}
+/* ⚠️ a sentence, so it wraps: as .lab-score (nowrap, for a figure) it took the maker 95px past a
+   390px phone, and the page zoomed out to fit it */
+.nono-verdict {
+  margin: 0;
+  font-weight: 600;
+}
+.nono-score {
+  white-space: normal;
+}
+
+/* Logic gates: the level list shrinks rather than pushing the row sideways on a phone */
+.gates-pick {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.gates-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+/* the truth table and the parts list side by side when there is room, stacked when not */
+.gates-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.gates-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+.gates-table caption {
+  text-align: left;
+  padding-bottom: 0.4rem;
+}
+.gates-table th,
+.gates-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.15rem 0.4rem;
+  text-align: center;
+}
+.gates-table tr[aria-current] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.gates-row {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.gates-bad {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+.gates-got {
+  font-weight: 400;
+  font-size: 0.85em;
+}
+.gates-parts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.gates-parts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.gates-parts li[aria-current] .gates-part-name {
+  outline: 2px solid var(--accent);
+}
+.gates-part-name {
+  min-width: 80px;
+}
+.gates-parts-head {
+  margin: 0 0 0.4rem;
+}
+.gates-parts select {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Slide: four push buttons as a cross, big enough for a thumb, the score beside them */
+.slide-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 52px) 1fr;
+  grid-template-rows: repeat(3, 44px);
+  gap: 4px;
+  align-items: center;
+}
+.slide-pad .btn {
+  min-height: 44px;
+  padding: 0;
+  font-size: 1.1rem;
+}
+.slide-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+.slide-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+.slide-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+.slide-down {
+  grid-column: 2;
+  grid-row: 3;
+}
+.slide-pad .btn[data-hint] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.slide-score {
+  grid-column: 4;
+  grid-row: 1 / 4;
+  padding-left: 0.75rem;
+  white-space: normal;
+}
+
+/* Paint mixer: five paints as big buttons in their own colour, a row on a wide screen and two
+   rows under a thumb */
+.mix-paints {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 0.5rem;
+}
+.mix-paint {
+  min-height: 52px;
+  font-weight: 700;
+  border: 2px solid var(--border);
+}
+.mix-paint:disabled {
+  opacity: 0.55;
+}
+.mix-count {
+  font-weight: 400;
+}
+.mix-reading {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Intervals: the answers as a grid of big buttons, each with what the interval sounds like */
+.iv-answers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+.iv-answer {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: start;
+  text-align: left;
+  min-height: 56px;
+  white-space: normal;
+}
+.iv-sound {
+  font-size: 0.8em;
+  font-weight: 400;
+  opacity: 0.8;
+}
+.iv-answer[data-state='right'] {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+.iv-answer[data-state='wrong'] {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 1px;
+}
+.iv-answer:disabled {
+  opacity: 1;
+}
+.iv-verdict strong {
+  flex: 1 1 220px;
+}
+
+/* Graph match: the equation box as wide as it can be, keys a thumb can hit, sliders that wrap */
+.graph-eq {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+.graph-eq input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  font-family: ui-monospace, monospace;
+  font-size: 1.05rem;
+}
+.graph-eq input[aria-invalid='true'] {
+  border-color: var(--accent-2);
+}
+.graph-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.graph-keys .btn {
+  min-width: 44px;
+  min-height: 40px;
+  font-family: ui-monospace, monospace;
+}
+.graph-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem 1rem;
+}
+.graph-slider {
+  display: grid;
+  gap: 0.2rem;
+  font-family: ui-monospace, monospace;
+}
+.graph-slider[data-unused] {
+  opacity: 0.5;
+}
+.graph-slider input {
+  width: 100%;
+  min-height: 32px;
+}
+.graph-said {
+  margin: 0;
+  min-height: 1.5em;
+}
+.graph-said code {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.graph-said mark {
+  background: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  color: inherit;
+  border-bottom: 2px solid var(--accent-2);
+}
+.graph-bad {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+/* Sun path: the compass under the panorama, edge to edge like the sky above it */
+.sun-compass {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.sun-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem 1rem;
+}
+.sun-sliders label {
+  display: grid;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.sun-sliders input {
+  width: 100%;
+  min-height: 32px;
+}
+.sun-reading {
+  margin: 0;
+}
