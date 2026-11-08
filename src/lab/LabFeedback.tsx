@@ -100,6 +100,16 @@ function Votes({
           <span className="sr-only"> — needs work{counted ? ` (${flags?.down} so far)` : ''}</span>
         </button>
       </div>
+      {/* your own vote in words, and a plain way to take it back — a pressed button alone is a
+          state some people do not read as "this is mine" */}
+      {can && mine && (
+        <span className="lab-mine">
+          You voted {mine === 1 ? '👍 Like' : '👎 Needs work'}
+          <button className="btn btn-ghost" disabled={busy} onClick={() => press(mine)}>
+            Remove my vote
+          </button>
+        </span>
+      )}
       <span className="muted lab-hint" aria-live="polite">
         {said ??
           (!viewer.authed
@@ -107,7 +117,7 @@ function Votes({
             : viewer.suspended
               ? 'This account can’t vote or post right now.'
               : mine
-                ? 'Your vote counts — press it again to take it back. Members see the totals, never a list of who voted.'
+                ? 'Press the other one to change it. Members see the totals, never a list of who voted.'
                 : 'Members see the totals, never a list of who voted.')}
       </span>
     </div>
