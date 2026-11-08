@@ -56,6 +56,7 @@ import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
+import { JigsawDemo } from '../gpu/JigsawDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -408,6 +409,13 @@ const DEMOS: readonly {
     line: 'Print shop — carve a lino block with a gouge and pull prints from it, ink over ink: a reduction linocut, cut and printed on the GPU.',
     Demo: PrintshopDemo,
   },
+  // after the catalog: registered in the database by the admin's next visit, not by the draft
+  {
+    id: 'jigsaw',
+    name: 'Jigsaw',
+    line: 'Jigsaw — six painted pictures or a photo of your own, cut into 12 to 154 pieces: drag them together on the felt, and they snap when they fit.',
+    Demo: JigsawDemo,
+  },
 ]
 
 type DemoId = string
@@ -487,6 +495,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
      owner hid, and add what a signed-in member may be shown. */
   const api = useMemo(() => labApi(), [])
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
+  /** the ids the database's catalog lists — null until it has answered, and if it never does */
+  const [inCatalog, setInCatalog] = useState<Set<string> | null>(null)
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [browsing, setBrowsing] = useState(false)
   const bar = useRef<HTMLDivElement | null>(null)
@@ -506,12 +516,27 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
       .catalog()
       .then(async (raw) => {
         if (!live) return
+        const ids = (r: unknown) =>
+          new Set(
+            Array.isArray(r)
+              ? r.flatMap((x) => {
+                  const id = (x as { id?: unknown })?.id
+                  return typeof id === 'string' ? [id] : []
+                })
+              : [],
+          )
         setFlags(readFlags(raw, KNOWN))
+        const seen = ids(raw)
         // the owner's own Lab registers an experiment the database has not met yet
-        const seen = new Set(Array.isArray(raw) ? raw.map((r) => (r as { id?: unknown })?.id) : [])
         const fresh = DEMOS.map((d) => d.id).filter((id) => !seen.has(id))
-        if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live)
-          setFlags(readFlags(await api.catalog(), KNOWN))
+        if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live) {
+          const again = await api.catalog()
+          if (!live) return
+          setFlags(readFlags(again, KNOWN))
+          return setInCatalog(ids(again))
+        }
+        // only an answer that is a list says what is missing from it
+        if (Array.isArray(raw)) setInCatalog(seen)
       })
       .catch(() => {
         /* no catalog: every experiment stays listed, nothing counted — the Lab still plays */
@@ -656,6 +681,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
             flags={currentFlags}
             viewer={viewer}
             onFlags={patchFlags}
+            listed={inCatalog ? inCatalog.has(current.id) : undefined}
           />
 
           {report && <GpuReport report={report} />}
