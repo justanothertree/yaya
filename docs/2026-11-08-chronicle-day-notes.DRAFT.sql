@@ -137,7 +137,7 @@ begin
        E'''plans'', coalesce((',
        E'''day_notes'', coalesce((\n'
        || E'      select jsonb_agg(jsonb_build_object(\n'
-       || E'               ''id'', dn.id, ''on_day'', dn.on_day, ''at'', dn.at, ''body'', dn.body)\n'
+       || E'               ''on_day'', dn.on_day, ''at'', dn.at, ''body'', dn.body)\n'
        || E'             order by dn.on_day, dn.at, dn.id)\n'
        || E'        from public.chronicle_notes dn where dn.owner = me and dn.entry is null), ''[]''::jsonb),\n'
        || E'    ''plans'', coalesce(('),
@@ -200,14 +200,3 @@ end $mig$;
 -- this note, not by running it: the marks draft's fifth substitution keyed on the whole line, and
 -- was changed (on `chronicle/marks-wired`) to key on `'plans', n_plan, ` alone, which neither
 -- draft moves. Both orders are run in the scratch harness.
-
-do $leak$
-declare v_src text;
-begin
-  select pg_get_functiondef('public.chronicle_friends_log(timestamptz, timestamptz)'::regprocedure) into v_src;
-  if position('e.started_at, e.ended_at, e.amount, a.metric' in v_src) = 0 then
-    raise exception 'perturbation anchor missing';
-  end if;
-  execute replace(v_src, 'e.started_at, e.ended_at, e.amount, a.metric',
-    'e.started_at, e.ended_at, e.amount, a.metric, (select string_agg(dn.body, '' '') from public.chronicle_notes dn where dn.owner = e.owner and dn.entry is null) as leaked');
-end $leak$;
