@@ -236,6 +236,13 @@ set search_path = public, pg_temp
 as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
+  /* ⚠️ SAID HERE, NOT LEFT TO THE FUNCTION IT WRAPS: the standing visibility guards ask every
+     member-callable writer to refuse a suspended member in its own body, and the first run of
+     this draft failed them for leaning on chronicle_entry_edit's check. A rule kept one call
+     down is a rule the next edit to that call can drop. */
+  if coalesce(public.is_suspended(auth.uid()), false) then
+    raise exception 'your account is suspended';
+  end if;
   if p_from is not null and (p_day is null or abs(p_day - (p_from at time zone 'utc')::date) > 1) then
     raise exception 'that is not the day that session starts on';
   end if;
@@ -257,6 +264,9 @@ declare
   v_start timestamptz;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if coalesce(public.is_suspended(auth.uid()), false) then
+    raise exception 'your account is suspended';
+  end if;
   perform public.chronicle_running_fix(p_from, p_activity);
   select e.id, e.started_at into v_id, v_start from public.chronicle_entries e
    where e.owner = auth.uid() and e.ended_at is null
