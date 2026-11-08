@@ -61,6 +61,7 @@ import { PaletteDemo } from '../gpu/PaletteDemo'
 import { BeamsDemo } from '../gpu/BeamsDemo'
 import { BridgeDemo } from '../gpu/BridgeDemo'
 import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
+import { OrbitDemo } from '../gpu/OrbitDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -443,6 +444,12 @@ const DEMOS: readonly {
     name: 'Epicycles',
     line: 'Epicycles — draw any shape and watch a chain of spinning arms redraw it: its Fourier series. Slide from one arm to a hundred and see the corners come in.',
     Demo: EpicyclesDemo,
+  },
+  {
+    id: 'orbit',
+    name: 'Orbit',
+    line: 'Orbit — fly a probe round a planet with two buttons: speed up, slow down. Raise, lower and stretch the orbit onto the target, and escape — on as little fuel as the textbook says.',
+    Demo: OrbitDemo,
   },
 ]
 

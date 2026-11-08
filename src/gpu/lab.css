@@ -539,3 +539,15 @@
   min-height: 32px;
   min-width: 140px;
 }
+
+/* ── orbit ───────────────────────────────────────────────────────── */
+/* the two burn buttons are what a thumb holds down: big, and either side of the readout */
+.orbit-burn {
+  justify-content: space-between;
+}
+.orbit-burn .btn {
+  min-height: 48px;
+  min-width: 128px;
+  touch-action: none;
+  user-select: none;
+}
