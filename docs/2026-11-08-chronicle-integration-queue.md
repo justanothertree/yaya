@@ -81,7 +81,7 @@ shows each resolution:
 It is #86's tree plus #91–#93, at the same commit as #93's head, so its full CI is about exactly that
 tree. #86 is left as the boundary it was reviewed as. The drafts it carries ran on the scratch
 branch, whose copies of every draft and SQL test were compared with this head's files and are
-byte-for-byte identical. Against those bytes, run C4 (42534559960) applied all eight drafts, held
+byte-for-byte identical. Against those bytes, run C6 (42536087861) applied all eight drafts, held
 every SQL suite, and passed 89 Auth/PostgREST checks:
 
 - the first tree's 54;
@@ -89,8 +89,14 @@ every SQL suite, and passed 89 Auth/PostgREST checks:
 - everything around the conversion: no member can call it, a set the grid never counted is reported
   by its id and taken back, and the readers after the switch.
 
-Planted faults were each named by their own checks: P1 and P2, four across the grid and the
-conversion; P3 and P4, the two halves of the stray-set fix. C4 also printed the §20e measurement.
+Planted faults were each named by their own checks:
+
+- P1 and P2: four across the grid and the conversion;
+- P3 and P4: the two halves of the stray-set fix;
+- P5: a counted set put back into a sitting that no longer held it, where a typed 9 read 2 after ✕,
+  restore, ✕;
+- P6: a restore putting a retyped cell's converted pieces back.
+
 None of it is a claim that #94's frontend ran anywhere but CI and the preview double.
 
 ## The combined tree — `chronicle/integration`, a draft PR to `main` that is never to be merged
