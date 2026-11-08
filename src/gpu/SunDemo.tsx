@@ -10,6 +10,7 @@ import {
   dateOf,
   dayOf,
   dayOfDate,
+  fromClock,
   fromView,
   path,
   points,
@@ -17,8 +18,12 @@ import {
   readSaved,
   shadow,
   sunAt,
+  toClock,
+  zoneOffset,
+  zoneWords,
   type Question,
   type Saved,
+  type Scale,
   type Sky,
 } from './sun'
 import { createSun, type SunView } from './sunEngine'
@@ -56,6 +61,12 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
   const [lat, setLat] = useState(first.lat)
   const [day, setDay] = useState(first.day)
   const [hour, setHour] = useState(15)
+  const [scale, setScale] = useState<Scale>(first.scale)
+  const year = useMemo(() => new Date().getFullYear(), [])
+  // a place with a zone this browser can read is told on its clock; a latitude alone cannot be
+  const here = PLACES.find((x) => x.name === place) ?? null
+  const zonesWork = useMemo(() => zoneOffset('Europe/London', Date.UTC(2026, 6, 1)) === 1, [])
+  const onClock = scale === 'clock' && here !== null && zonesWork
   const [playing, setPlaying] = useState(false)
   // the game
   const [q, setQ] = useState<Question | null>(null)
@@ -73,16 +84,32 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
     }
   }, [saved])
   useEffect(() => {
-    setSaved((s) => ({ ...s, place, lat, day }))
-  }, [place, lat, day])
+    setSaved((s) => ({ ...s, place, lat, day, scale }))
+  }, [place, lat, day, scale])
 
   // what is being shown: the explorer's settings, or the round's
+  // `hour` is on whichever clock is showing; the sky is asked in sun time
+  const P = mode === 'game' && q ? q.place : here
+  const lon = P?.lon ?? 0
   const L = mode === 'game' && q ? q.place.lat : lat
   const D = mode === 'game' && q ? q.day : day
-  const Hr = mode === 'game' && q ? q.hour : hour
-  const sun = useMemo(() => sunAt(L, D, Hr), [L, D, Hr])
-  const arc = useMemo(() => path(L, D), [L, D])
-  const today = useMemo(() => dayOf(L, D), [L, D])
+  const Hr =
+    mode === 'game' && q
+      ? q.solar
+      : onClock && here
+        ? (fromClock(here, year, day, hour) ?? hour)
+        : hour
+  const clockShown = mode === 'game' && q ? q.scale === 'clock' : onClock
+  const sun = useMemo(() => sunAt(L, D, Hr, year, lon), [L, D, Hr, year, lon])
+  const arc = useMemo(() => path(L, D, year, lon), [L, D, year, lon])
+  const today = useMemo(() => dayOf(L, D, year, lon), [L, D, year, lon])
+  /** a sun-time hour in the words of the clock being shown */
+  const told = (solar: number) => {
+    const c = clockShown && P ? toClock(P, year, D, solar) : null
+    return c
+      ? { text: clock(c.hour), late: c.hour >= 24, zone: zoneWords(P!, year, c.offset) }
+      : { text: clock(solar), late: false, zone: null }
+  }
 
   const engine = useRef<SunView | null>(null)
   const now = useRef({ sun, arc, guess, show: true, mode, playing, hour })
@@ -106,7 +133,7 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
 
   /* ── the game */
   const ask = () => {
-    setQ(question(Math.random))
+    setQ(question(Math.random, zonesWork ? scale : 'sun', year))
     setGuess(null)
     setAnswered(null)
   }
@@ -165,17 +192,31 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
   const where = up
     ? `${sun.elevation.toFixed(0)}° up, in the ${compass(sun.azimuth)}`
     : `below the horizon (${sun.elevation.toFixed(0)}°), ${compass(sun.azimuth)}`
+  /* ⚠️ A SUN-TIME READING IS NEVER CALLED "SUNRISE 03:44" — that sentence is a claim about a clock
+     and nobody's clock says it. On the clock the zone is named in the same breath; in sun time the
+     sentence says so before it gives a number. */
+  const shown = told(Hr)
+  const zoneName = P ? `${P.name} time` : ''
   const dayWords =
     today.kind === 'polar-day'
       ? 'The sun does not set today.'
       : today.kind === 'polar-night'
         ? 'The sun does not rise today.'
-        : `Sunrise ${clock(today.rise)} · sunset ${clock(today.set)} · ${hours(today.length)} of daylight`
+        : (() => {
+            const r = told(today.rise)
+            const s = told(today.set)
+            return clockShown
+              ? `Sunrise ${r.text} · sunset ${s.text}${s.late ? ' (after midnight)' : ''} · ${hours(today.length)} of daylight — ${zoneName}, ${s.zone}.`
+              : `In sun time it rises at ${r.text} and sets at ${s.text} · ${hours(today.length)} of daylight. A clock there reads differently.`
+          })()
+  const timeWords = clockShown
+    ? `${shown.text} ${zoneName} (${shown.zone})`
+    : `${shown.text} sun time`
   const label =
     mode === 'explore'
-      ? `Sky over ${place === CUSTOM ? latText(lat) : place} on ${dateOf(day)} at ${clock(hour)} sun time: the sun is ${where}. ${dayWords}`
+      ? `Sky over ${place === CUSTOM ? latText(lat) : place} on ${dateOf(day)} at ${timeWords}: the sun is ${where}. ${dayWords}`
       : q
-        ? `Where is the sun over ${q.place.name} on ${dateOf(q.day)} at ${clock(q.hour)}? ${guess ? `Your guess: ${guess.elevation.toFixed(0)}° up, ${compass(guess.azimuth)}.` : 'Tap the sky to guess.'}${answered !== null ? ` It was ${where}.` : ''}`
+        ? `Where is the sun over ${q.place.name} on ${dateOf(q.day)} at ${timeWords}? ${guess ? `Your guess: ${guess.elevation.toFixed(0)}° up, ${compass(guess.azimuth)}.` : 'Tap the sky to guess.'}${answered !== null ? ` It was ${where}.` : ''}`
         : `Where's the sun? ${over ?? ''}`
 
   return (
@@ -265,6 +306,27 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
                     <option value={CUSTOM}>{CUSTOM}…</option>
                   </select>
                 </label>
+                {here && zonesWork && (
+                  <div className="lab-group" role="group" aria-label="Which clock">
+                    {(['clock', 'sun'] as const).map((k) => (
+                      <button
+                        key={k}
+                        className="btn btn-ghost"
+                        aria-pressed={scale === k}
+                        onClick={() => {
+                          if (k === scale) return
+                          // the same moment, told on the other clock
+                          const solar = Hr
+                          const c = toClock(here, year, day, solar)
+                          setHour(k === 'clock' && c ? ((c.hour % 24) + 24) % 24 : solar)
+                          setScale(k)
+                        }}
+                      >
+                        {k === 'clock' ? '🕒 Clock time' : '☀️ Sun time'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <button
                   className="btn"
                   aria-pressed={playing}
@@ -308,7 +370,11 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
                   />
                 </label>
                 <label>
-                  <span>Sun time {clock(hour)}</span>
+                  <span>
+                    {onClock && here
+                      ? `${here.name} time ${clock(hour)} (${shown.zone})`
+                      : `Sun time ${clock(hour)}`}
+                  </span>
                   <input
                     type="range"
                     min={0}
@@ -351,7 +417,7 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
                 <p className="sun-reading" aria-live="polite">
                   <strong>
                     {round + 1} of {ROUNDS}: {q.place.name} ({latText(q.place.lat)}),{' '}
-                    {dateOf(q.day)}, {clock(q.hour)} sun time.
+                    {dateOf(q.day)}, {timeWords}.
                   </strong>{' '}
                   {answered === null
                     ? guess
@@ -395,9 +461,13 @@ export function SunDemo({ running, setRunning, onAdapter }: Props) {
 
           <p className="muted lab-hint">
             The sky as you would see it turning on the spot: north at both edges, south in the
-            middle. Times are <em>sun time</em> — noon is when the sun is highest — so they ignore
-            time zones and summer time, which can move a clock an hour or two from the sun. Keys: ←
-            → move the time
+            middle.{' '}
+            {here && zonesWork
+              ? 'Clock time is what a clock there reads, summer time included, from this browser’s time-zone data. Sunrise and sunset are an almanac’s calculation for a flat horizon — usually within a minute or two of a weather app, but several minutes out near the poles, where the sun skims the horizon. Sun time puts noon where the sun is highest, which a clock can miss by an hour or more.'
+              : !here
+                ? 'A latitude alone has no time zone, so times here are sun time: noon is when the sun is highest, which a clock can miss by an hour or more.'
+                : 'This browser cannot read time zones, so times are sun time: noon is when the sun is highest.'}{' '}
+            Keys: ← → move the time
             {mode === 'game'
               ? ', or the guess (↑ ↓ too, Shift for bigger steps; Enter to answer)'
               : ', Space plays the day'}
