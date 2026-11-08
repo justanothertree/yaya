@@ -62,6 +62,7 @@ import { BeamsDemo } from '../gpu/BeamsDemo'
 import { BridgeDemo } from '../gpu/BridgeDemo'
 import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
 import { OrbitDemo } from '../gpu/OrbitDemo'
+import { WallpaperDemo } from '../gpu/WallpaperDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -450,6 +451,12 @@ const DEMOS: readonly {
     name: 'Orbit',
     line: 'Orbit — fly a probe round a planet with two buttons: speed up, slow down. Raise, lower and stretch the orbit onto the target, and escape — on as little fuel as the textbook says.',
     Demo: OrbitDemo,
+  },
+  {
+    id: 'wallpaper',
+    name: 'Wallpaper',
+    line: 'Wallpaper — draw, and every stroke repeats across the wall by one of the seventeen ways a pattern can: turns, mirrors and glides. Then guess which group a pattern is.',
+    Demo: WallpaperDemo,
   },
 ]
 

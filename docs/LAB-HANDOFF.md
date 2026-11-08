@@ -2671,19 +2671,20 @@ order (or retarget the next one to `main` after its base merges). Checked with `
 against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
 chains merge cleanly into each other.
 
-| Order | PR  | Base   | What it is                                                    |
-| ----- | --- | ------ | ------------------------------------------------------------- |
-| 1     | #31 | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
-| 2     | #34 | #31    | One toolbar at every width; your own vote in words            |
-| 3a    | #45 | #34    | 🕘 Recent view                                                |
-| 3b    | #48 | #45    | 🎲 Surprise me                                                |
-| 3c    | #50 | #48    | Counts beside each kind; / to search                          |
-| 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
-| 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
-| 4c    | #47 | #44    | Beams                                                         |
-| 4d    | #49 | #47    | Bridge                                                        |
-| 4e    | #52 | #49    | Epicycles                                                     |
-| 4f    | #53 | #52    | Orbit                                                         |
+| Order | PR     | Base   | What it is                                                    |
+| ----- | ------ | ------ | ------------------------------------------------------------- |
+| 1     | #31    | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
+| 2     | #34    | #31    | One toolbar at every width; your own vote in words            |
+| 3a    | #45    | #34    | 🕘 Recent view                                                |
+| 3b    | #48    | #45    | 🎲 Surprise me                                                |
+| 3c    | #50    | #48    | Counts beside each kind; / to search                          |
+| 4a    | #40    | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
+| 4b    | #44    | #40    | Palette — uses Jigsaw's painted pictures                      |
+| 4c    | #47    | #44    | Beams                                                         |
+| 4d    | #49    | #47    | Bridge                                                        |
+| 4e    | #52    | #49    | Epicycles                                                     |
+| 4f    | #53    | #52    | Orbit                                                         |
+| 4g    | (next) | #53    | Wallpaper                                                     |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2694,6 +2695,39 @@ the SQL: with no catalog nothing about feedback changes, and once the SQL is app
 WebGPU canvas after a couple of frames, existing toys included, so no stage was seen in a page.
 Each toy was checked by rendering its engine offscreen and reading the pixels back, and through the
 real UI for everything that is not the picture. The real-device queue below is what that leaves.
+
+### Follow-on: `claude/lab-wallpaper-1`, stacked on #53 (8 Nov 2026) — a new maker, Wallpaper
+
+**Base:** `claude/lab-orbit-1` (#53), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Draw anywhere and every stroke repeats across the wall by one of the seventeen
+  wallpaper groups — every way a flat pattern can repeat, from p1 (only repeats) to p6m (sixth
+  turns and every mirror). Change the group and the same drawing becomes a different wallpaper.
+  Six inks, three widths, three papers, ▦ to show the cells, 🎲 Add a motif (a way to make one
+  without a pointer), undo, clear, ⭐ keep (12, in this browser) and ⬇ Save as PNG at 1024 px.
+  **❓ Which group?** shows a pattern and asks which of the seventeen it is; a wrong guess is told the
+  feature that tells them apart ("count the turns", "look for a mirror line").
+- **Technique:** each group is its list of operations from the International Tables. Every pixel
+  of the wall asks the drawing of one cell under each of them and blends the hits in an order
+  that does not matter, so the picture is exactly as symmetric as the group. While drawing, only
+  the box of the cell a new piece of stroke touched is repainted and sent to the GPU.
+
+**Measured here:** 8 tests — all seventeen present, each with the tables' number of operations;
+each is closed (any two operations compose to a third, up to a whole-cell shift); every operation
+is a rigid motion of the plane; the wall is unchanged by every operation of its group, and gains
+no symmetry it should not (p4 has no mirror, p3 no half turn). One wrong entry in p6m turns three
+red. On the GPU: all seventeen rendered offscreen and every operation checked on the picture's own
+pixels — 46,000 symmetric pairs, none differing. The dirty-box upload missed 0 pixels over 24
+wandering strokes, square and hex, and thousands with its padding removed. Save: the snapshot,
+read back and encoded, decodes as a 1024 × 1024 PNG with the same pixels. Through the UI at 1280 and
+an emulated iPhone 13 (mouse, not touch): draw, change group, motif, undo, keep → reload → open,
+the quiz's answer and Next. That pass found the Symmetry dropdown 478 px wide — a select is as wide
+as its longest option — taking a phone's page 112 px sideways; fixed. `mobileAudit` zero in both
+modes at both widths; one GPU device per mount.
+
+**Not verified:** the stage in a page, and the download itself in a page — here the page's GPU was
+gone by the time Save was pressed, and the button now says so rather than doing nothing; the same
+path works offscreen. Real GPUs, drawing with a finger.
 
 ## Questions and tests for Evan — a short queue, most useful first
 
@@ -2706,13 +2740,15 @@ real UI for everything that is not the picture. The real-device queue below is w
    work in your browser (Safari asks differently from Chrome)?
 3. **Real device — Bridge on a phone.** Build level 1 with a finger. Is a 1 m grid big enough to hit
    on the 14 m level (about 17 px a metre)? Does watching the members go red teach you anything?
-4. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+4. **Real device — Wallpaper's ⬇ Save as PNG.** It could not be pressed with a live GPU here. Does
+   it download a 1024-pixel picture in your browser, and does a finger draw where you expect?
+5. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
    the two-burn trick discoverable from the hints alone?
-5. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+6. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
    Is "tap again to turn" discoverable, or does it want its own button first?
-6. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+7. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-7. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+8. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-8. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+9. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?

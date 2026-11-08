@@ -551,3 +551,17 @@
   touch-action: none;
   user-select: none;
 }
+
+/* ── wallpaper ───────────────────────────────────────────────────── */
+/* a <select> is as wide as its longest option — "p6m — sixth turns and every mirror there can be"
+   is 478px, which took a phone's page 112px sideways. It takes the row it is given instead; the
+   open list still shows each option in full. */
+.wall-pick {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.wall-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
