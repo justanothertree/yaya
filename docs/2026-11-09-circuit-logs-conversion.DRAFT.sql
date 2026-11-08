@@ -165,6 +165,15 @@ begin
 
   -- ⚠️ A SET THE GRID HAS NEVER COUNTED, which the switch would start counting: no sitting, no
   -- source, held by the person's owner. That is exactly what the readers after the marker read.
+  for r in
+    select s.id, s.exercise_id, s.on_day, s.value from public.chronicle_sets s
+     where s.person_id = p_person and s.entry is null and s.source_log is null and s.owner = v_owner
+     order by s.on_day, s.exercise_id, s.id
+  loop
+    v_problems := v_problems || jsonb_build_array(jsonb_build_object(
+      'set', r.id, 'eid', r.exercise_id, 'on', to_char(r.on_day, 'YYYY-MM-DD'), 'val', r.value,
+      'why', 'a set with no sitting, which the grid has never counted — the switch would start counting it'));
+  end loop;
 
   v_report := jsonb_build_object(
     'person', p_person, 'cells', v_cells, 'total', v_total, 'kept_totals', v_kept,
