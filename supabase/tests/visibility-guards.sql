@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN N4: marks first, then day notes, everything clean, then real Auth + PostgREST.
+-- RUN W1: the marks test with weekly and monthly windows that are current but did not start today (E2).
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying step 1
