@@ -574,6 +574,9 @@ built, `lab_can_read_comment` is the one place that would consult it.
   against any abuse.
 - **Favourites live in this browser only** — never sent anywhere, so a second device does not have
   them. The page says so where they are shown. Syncing them is a later decision, not this pass.
+  **🕘 Recent** (the last twelve opened, #45) and **🆕 New to you** (which toys arrived since this
+  browser first came, #57) follow the same rule and say so on the page. If favourites ever sync,
+  these two are the questions to ask alongside it; neither is anybody's work, so neither has to.
 - **A suspended author's notes stop reaching other members** — suspension until now only stopped
   writing; this is the first reader to also hide.
 - **Hidden means retired:** no new votes or notes, even from the admin, and members cannot read its

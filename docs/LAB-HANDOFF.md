@@ -2382,3 +2382,87 @@ calls.
 - **Stable ids:** nothing in `DEMOS` changed. A new toy needs a line in `src/lab/catalog.ts`'s
   `META` (a kind and a date; `catalog.test.ts` fails without it) and is registered in the database
   by the admin's next visit.
+
+### Follow-on: `claude/lab-next-1`, stacked on #31 (8 Nov 2026)
+
+**Base:** `claude/lab-catalog-1` at `73506ac` (PR #31). It needs that PR's frontend and changes no
+SQL, so #31's release boundary is untouched: its draft stays unapplied.
+
+- **One toolbar at every width.** The 51-button wall above the toy is gone. Every width now gets
+  what phones already had: ‹ previous, a dropdown of all toys, next › — plus 🔎 Browse all 51 and
+  ★ Favourite on the same line, directly above the toy. The step buttons name their neighbour
+  ("Next experiment: Neon"). The toy starts about 210px higher on a desktop.
+- **Catalog:** the search box takes focus when the catalog opens (with a mouse only — on a phone it
+  would throw the keyboard over the list). Launching a card from far down the grid scrolls the
+  toolbar back to the top of the screen once the toy has rendered. The current toy's card says
+  "Last open", not "Playing": the catalog unmounts it.
+- **🕘 Recent** (branch `claude/lab-recent-1`, stacked on this one): a catalog view of the last
+  twelve experiments opened in this browser, most recent first — the first visit's included, and
+  whether it was opened from a card, the dropdown or ‹ ›. Labelled "remembered in this browser
+  only"; nothing is sent. Unlike favourites it forgets the oldest, which is safe only because no
+  other store mirrors it. It does not try to say which toys hold your work: several write a
+  default on first open, so "has saved data" would really mean "opened once".
+- **🎲 Surprise me** (branch `claude/lab-surprise-1`, stacked on the Recent branch): launches one
+  at random from whatever the catalog is showing — so choosing a Kind first means "surprise me with
+  a puzzle" — and never one in your Recent list while there are others to pick.
+- **Finding things faster** (branch `claude/lab-find-1`, stacked on Surprise me): the Kind dropdown
+  says how many each kind holds ("🎮 Games & puzzles (13)"), and **/** anywhere in the Lab opens the
+  catalog with the cursor in search — except shift+/ (the site's own help), while typing, and while
+  a toy has the keyboard (Pinball's right flipper is "/").
+- **Back where you left it** (branch `claude/lab-return-1`, stacked on Finding things faster): the
+  catalog's search, list and Kind used to live inside the catalog, which is unmounted while a toy
+  plays — so every ▶ Back to browsing started again at All with the search empty, at the top of
+  the grid. The Lab holds them now (for this visit, not in storage). Returning from a toy launched
+  from a card scrolls that card back into view and focuses its ▶, so Tab and Enter carry on from
+  there; arriving any other way (‹ ›, the dropdown) still puts the cursor in search. Since a
+  narrowed list now persists, **✕ Show everything** appears whenever it is narrowed, and moves
+  focus to search (mouse) or Kind (touch) rather than dropping it on the page. To try on a phone,
+  with the queue's phone test below: after launching from a search, ▶ Back to browsing — is the
+  search still in the box, with that card in view? (Kept out of the queue's own lines so this
+  branch and the toy branches never edit the same lines.)
+- **🆕 New to you** (branch `claude/lab-unseen-1`, stacked on Back where you left it): toys keep
+  arriving, and a returning visitor had no way to see which. The Browse button now says
+  "🔎 Browse all 59 · 2 new", the catalog says how many were added since you first came, and those
+  cards carry a 🆕 badge until opened — or until ✓ Mark as seen. ⚠️ A first visit meets everything
+  (with no record, every toy there is is written down as seen), so the badge means "added since you
+  started coming here" rather than fifty-nine badges on a first look. In this browser only
+  (`lab_seen_v1`, known ids only, so bounded by the registry); never sent. A damaged record is
+  read as a first visit.
+- **Re-checked on this chain's tip (#57) against the real local stack** — Supabase Auth issuing the
+  sessions, every call through PostgREST, #31's draft applied to the local database only: a
+  member's cards show actual totals including "👍 0 · 👎 0"; Fold's three include a minor's and an
+  unknown-age member's vote; 👍 Highly rated orders as its rule says; voting from the toy shows "You
+  voted 👍 Like" and writes one row; ▶ Back to browsing returns to Highly rated with focus on Fold's
+  card, now "👍 4 · 👎 0 · You: 👍"; a guest sees no totals and is told to sign in. (8 Nov, after
+  #55 and #57 landed on #34.)
+- **Notes say how many there are to read** (branch `claude/lab-notecount-1`, stacked on #57): the
+  closed fold said "ideas, requests and bugs" whether a toy had twenty notes or none, and nobody
+  opens a fold to find it empty. It now says "3 to read", "20+ to read" or "none yet". ⚠️ The
+  count is the first page of notes THIS viewer was sent — the same `lab_comments_page` call the
+  fold made on opening, now made when the toy opens — so it counts what the visibility ladder
+  lets them read, never everybody's. The draft keeps an all-notes count from members on purpose,
+  and no SQL changes here. Measured against the real local stack: a stranger, a friend of a minor
+  and the minor saw 1, 2 and 2 — each exactly what PostgREST returned to them directly; one page
+  call per toy for a member and none for a guest; posting from the page took 2 to 3.
+- **CI note, not a code fault:** from about 08:50 on 8 Nov the `db guards` job often failed before
+  running anything — `supabase/setup-cli` downloading the CLI got HTTP 504 three times. Every Lab
+  head has a passing run of the same workflow on the same commit, some after one re-run of the
+  failed job. Caching or retrying that download would be a workflow change, so it is left to Evan.
+- **Voting is two buttons (Evan's call, 8 Nov):** 👍 and 👎, each with its count; yours is
+  highlighted. Press it again to take the vote back, press the other to move it. The "You voted…"
+  line, the Remove my vote button and the explanatory sentence are gone. A screen reader hears
+  "Like, 3 votes" with pressed/not pressed, and "Your vote: like" / "Vote removed" after a press;
+  a failed vote still says why. A guest sees "Sign in to vote"; a suspended account sees "Voting is
+  paused for this account". The catalog card still shows "You: 👍". ⚠️ The queue's "You voted …" question is out of date: with the SQL applied,
+  the test is now to vote, switch, and press the highlighted button to take it back, and to say
+  whether the highlight is clear enough on its own. (The queue is left alone here so the two
+  chains still merge; it is rewritten when they are combined.)
+
+## Questions and tests for Evan — a short queue, most useful first
+
+1. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+   🔎 Browse at every width. Better, or do you miss seeing every name at once?
+2. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
+3. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+   "You voted …" line read clearly?

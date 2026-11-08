@@ -1,14 +1,23 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
+  EVERYTHING,
   FAVOURITES_KEY,
+  RECENT_KEY,
+  SEEN_KEY,
+  readSeen,
+  seeNow,
+  unseen,
+  openedNow,
+  readRecent,
   entries,
   listed,
   readFavourites,
   readFlags,
   toggleFavourite,
+  type Browse,
   type Flags,
 } from '../lab/catalog'
-import { labApi } from '../lab/feedback'
+import { labApi, noLabYet } from '../lab/feedback'
 import { LabCatalog } from '../lab/LabCatalog'
 import { LabFeedback, type Viewer } from '../lab/LabFeedback'
 import '../lab/lab-catalog.css'
@@ -464,6 +473,22 @@ function reportOf(adapter: GPUAdapter, format: string): Report {
 const GUEST: Viewer = { authed: false, suspended: false, isAdmin: false }
 const KNOWN = new Set(DEMOS.map((d) => d.id))
 
+function storedRecent() {
+  try {
+    return readRecent(localStorage.getItem(RECENT_KEY), KNOWN)
+  } catch {
+    return []
+  }
+}
+
+function storedSeen() {
+  try {
+    return readSeen(localStorage.getItem(SEEN_KEY), KNOWN)
+  } catch {
+    return null
+  }
+}
+
 function storedFavourites() {
   try {
     return readFavourites(localStorage.getItem(FAVOURITES_KEY), KNOWN)
@@ -488,7 +513,62 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const api = useMemo(() => labApi(), [])
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
+  const [recent, setRecent] = useState<string[]>(storedRecent)
+  const [seen, setSeen] = useState<readonly string[] | null>(storedSeen)
+  const see = (ids: readonly string[]) =>
+    setSeen((was) => {
+      const next = seeNow(was ?? [], ids)
+      if (next === was) return was
+      try {
+        localStorage.setItem(SEEN_KEY, JSON.stringify(next))
+      } catch {
+        /* private mode: nothing is new to you on the next visit either */
+      }
+      return next
+    })
+  // a first visit meets everything there is, so only what is added later says "new"
+  useEffect(() => {
+    if (seen === null) see(DEMOS.map((d) => d.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [browsing, setBrowsing] = useState(false)
+  /* the catalog's search, list and kind, and the card a toy was last launched from: kept here
+     because the catalog itself is unmounted while a toy plays */
+  const [browse, setBrowse] = useState<Browse>(EVERYTHING)
+  const [fromCard, setFromCard] = useState<string | null>(null)
+  const bar = useRef<HTMLDivElement | null>(null)
+  /* "/" opens the catalog with the cursor in its search box, as on most sites with a search — but
+     not shift+/, which is the site's own "?" for help; not while typing; and not while a toy has
+     the keyboard, since Pinball's right flipper is "/" */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t?.closest('input, textarea, select, [contenteditable="true"], .lab-keys')) return
+      e.preventDefault()
+      setBrowsing(true)
+      window.setTimeout(
+        () => document.querySelector<HTMLInputElement>('.lab-search input')?.focus(),
+        0,
+      )
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  /** a card can be a long way down the grid: launching one brings its toy back into view —
+   *  ⚠️ AFTER the render that swaps the catalog for the toy. Scrolling in the click itself raced
+   *  the page shrinking under it and stopped 216px past the toy on a desktop, measured. */
+  const launched = useRef(false)
+  useEffect(() => {
+    if (browsing || !launched.current) return
+    launched.current = false
+    bar.current?.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' })
+  }, [browsing, demo])
+  /* ⚠️ THE FRONTEND CAN REACH PRODUCTION BEFORE ITS SQL DOES. Measured with every lab_* call
+     answering as PostgREST does for a function that does not exist: a member was offered 👍 👎 and
+     a note form, and a vote came back "Couldn't reach the server". So a catalog that is MISSING —
+     not one that failed to arrive — closes feedback the way a build with no backend already does. */
+  const [noFeedback, setNoFeedback] = useState(false)
   useEffect(() => {
     if (!api) return
     let live = true
@@ -503,8 +583,9 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live)
           setFlags(readFlags(await api.catalog(), KNOWN))
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         /* no catalog: every experiment stays listed, nothing counted — the Lab still plays */
+        if (live && noLabYet(e)) setNoFeedback(true)
       })
     return () => {
       live = false
@@ -557,58 +638,78 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   /** the next or previous demo, round the end — browsing toys should not hit a wall */
   const step = (by: number) =>
     pick(shownDemos[(at + by + shownDemos.length) % shownDemos.length].id)
+  /* the experiment on screen is the one just opened — the first visit's included */
+  useEffect(() => {
+    see([current.id])
+    setRecent((was) => {
+      if (was[0] === current.id) return was
+      const next = openedNow(was, current.id)
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+      } catch {
+        /* private mode: kept for this visit */
+      }
+      return next
+    })
+  }, [current.id])
   const currentFlags = flags.get(current.id)
+  const fresh = unseen(visible, seen)
 
   return (
     <div className="lab">
-      {/* ⚠️ TWO PICKERS, ONE SHOWN. A row of buttons is right while it fits on one line; on a
-          phone seven were already two rows and pushed the canvas half off the first screen, and
-          every new toy made it worse. Below 640px it is a native dropdown — the phone's own
-          wheel — with buttons either side to step through, which is how people actually browse
-          toys. A width query, not a pointer one: the problem is room, not fingers. */}
-      <div className="lab-step">
-        <button className="btn btn-ghost" onClick={() => step(-1)} aria-label="Previous experiment">
-          ‹
-        </button>
-        <label className="lab-select">
-          <span className="sr-only">Which experiment</span>
-          <select value={current.id} onChange={(e) => pick(e.target.value)}>
-            {shownDemos.map((d, i) => (
-              <option key={d.id} value={d.id}>
-                {i + 1}. {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="btn btn-ghost" onClick={() => step(1)} aria-label="Next experiment">
-          ›
-        </button>
-      </div>
-      <div className="lab-picker" role="group" aria-label="Which experiment">
-        {shownDemos.map((d) => (
-          <button
-            key={d.id}
-            className="btn btn-ghost"
-            aria-pressed={!browsing && current.id === d.id}
-            onClick={() => pick(d.id)}
-          >
-            {d.name}
-          </button>
-        ))}
-      </div>
-      <div className="lab-controls lab-browse-bar">
-        <button className="btn" aria-pressed={browsing} onClick={() => setBrowsing((b) => !b)}>
-          {browsing ? `▶ Back to ${current.name}` : '🔎 Browse, search & favourites'}
-        </button>
-        {!browsing && (
+      {/* ⚠️ ONE PICKER NOW, AT EVERY WIDTH. It used to be a row of buttons on a wide screen and this
+          dropdown on a phone, because "a row of buttons is right while it fits on one line" — and at
+          51 experiments it was five rows above the toy, with search below them. The dropdown with
+          a step either side is what phones always had; the catalog (🔎) is how to look through
+          everything, and it sits on the same line, directly above the toy, as the way back. */}
+      <div className="lab-bar" ref={bar}>
+        <div className="lab-step">
           <button
             className="btn btn-ghost"
-            aria-pressed={favourites.includes(current.id)}
-            onClick={() => favourite(current.id)}
+            onClick={() => step(-1)}
+            aria-label={`Previous experiment: ${shownDemos[(at - 1 + shownDemos.length) % shownDemos.length].name}`}
           >
-            {favourites.includes(current.id) ? '★ A favourite' : '☆ Favourite'}
+            ‹
           </button>
-        )}
+          <label className="lab-select">
+            <span className="sr-only">Which experiment</span>
+            <select value={current.id} onChange={(e) => pick(e.target.value)}>
+              {shownDemos.map((d, i) => (
+                <option key={d.id} value={d.id}>
+                  {i + 1}. {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="btn btn-ghost"
+            onClick={() => step(1)}
+            aria-label={`Next experiment: ${shownDemos[(at + 1) % shownDemos.length].name}`}
+          >
+            ›
+          </button>
+        </div>
+        <div className="lab-controls lab-browse-bar">
+          <button
+            className="btn"
+            aria-pressed={browsing}
+            aria-keyshortcuts="/"
+            onClick={() => setBrowsing((b) => !b)}
+          >
+            {browsing
+              ? `▶ Back to ${current.name}`
+              : `🔎 Browse all ${shownDemos.length}${fresh.length ? ` · ${fresh.length} new` : ''}`}
+          </button>
+          {!browsing && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={favourites.includes(current.id)}
+              onClick={() => favourite(current.id)}
+            >
+              {favourites.includes(current.id) ? '★ A favourite' : '☆ Favourite'}
+            </button>
+          )}
+        </div>
       </div>
 
       {browsing ? (
@@ -619,10 +720,20 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           list={visible}
           current={current.id}
           favourites={favourites}
+          recent={recent}
           rated={visible.some((e) => e.flags.up !== undefined)}
           admin={viewer.isAdmin}
+          browse={browse}
+          onBrowse={setBrowse}
+          returning={fromCard === current.id}
+          fresh={fresh}
+          onSeeAll={() => see(fresh)}
           onFavourite={favourite}
-          onLaunch={pick}
+          onLaunch={(id) => {
+            launched.current = true
+            setFromCard(id)
+            pick(id)
+          }}
         />
       ) : (
         <>
@@ -639,7 +750,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           <current.Demo key={current.id} {...props} />
 
           <LabFeedback
-            api={api}
+            api={noFeedback ? null : api}
             demo={current.id}
             name={current.name}
             flags={currentFlags}

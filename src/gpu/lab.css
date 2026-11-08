@@ -158,20 +158,7 @@
   font-size: 0.85rem;
 }
 
-/* which experiment: a row of buttons, then one line saying what the chosen one is */
-.lab-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-.lab-picker .btn {
-  min-height: 36px;
-  padding: 0.45rem 0.9rem;
-}
-.lab-picker .btn.btn-ghost[aria-pressed='true'] {
-  background: color-mix(in oklab, var(--accent), transparent 78%);
-  border-color: var(--accent);
-}
+/* which experiment: one bar (step, dropdown, browse, favourite), then one line saying what it is */
 .lab-line {
   margin: 0;
   font-weight: 600;
@@ -192,8 +179,18 @@
 }
 
 /* the phone's picker: a dropdown between two steppers — see the note in GpuLab */
+.lab-bar {
+  /* clear of the site's fixed header when a launch scrolls the bar to the top */
+  scroll-margin-top: 72px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
 .lab-step {
-  display: none;
+  display: flex;
+  flex: 1 1 320px;
+  max-width: 520px;
   gap: 0.4rem;
   align-items: stretch;
 }
@@ -222,10 +219,7 @@
 }
 @media (max-width: 640px) {
   .lab-step {
-    display: flex;
-  }
-  .lab .lab-picker {
-    display: none;
+    max-width: none;
   }
 }
 

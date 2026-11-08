@@ -17,6 +17,22 @@
 .lab-badge-off {
   border-style: dashed;
 }
+/* added since this browser first came: the one badge meant to be noticed */
+.lab-badge-new {
+  border-color: var(--accent, currentColor);
+  font-weight: 600;
+}
+.lab-fresh {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lab-fresh span {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 
 .lab-search {
   flex: 1 1 14rem;
@@ -87,6 +103,11 @@
 }
 .lab-votes .btn {
   min-width: 64px;
+}
+/* the count sits inside its button: the highlight (lab.css, aria-pressed) says which one is yours */
+.lab-vote-n {
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
 }
 .lab-notes summary,
 .lab-owner summary {

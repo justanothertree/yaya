@@ -3,12 +3,22 @@ import registry from '../sections/GpuLab.tsx?raw'
 import draft from '../../supabase/drafts/lab-catalog-and-feedback.sql?raw'
 import {
   CATEGORIES,
+  EVERYTHING,
   META,
+  arrange,
+  showingAll,
   byNewest,
   byRating,
   entries,
   listed,
+  MAX_RECENT,
+  openedNow,
   readFavourites,
+  readRecent,
+  readSeen,
+  seeNow,
+  unseen,
+  surprise,
   readFlags,
   search,
   toggleFavourite,
@@ -168,6 +178,105 @@ describe('the orders the page states', () => {
   })
 })
 
+describe('what the catalog is showing', () => {
+  const list = entries(
+    [demo('swarm'), demo('fold', 'Fold'), demo('harp', 'Harp'), demo('topple'), demo('mobius')],
+    new Map([['topple', flags({ featured: true })]]),
+  )
+  const ids = (b: Partial<typeof EVERYTHING>, fav: string[] = [], rec: string[] = []) =>
+    arrange(list, { ...EVERYTHING, ...b }, fav, rec).map((e) => e.id)
+  it('everything: featured first, then the Lab’s order', () => {
+    expect(ids({})).toEqual(['topple', 'swarm', 'fold', 'harp', 'mobius'])
+  })
+  // ⚠️ by SOUND, not games: which kind a game or puzzle belongs to is a call the catalog revisits
+  // (games and puzzles were split), and a test about filtering must not break when it does
+  it('narrows by search, kind and list together', () => {
+    const sound = arrange(
+      entries(
+        [demo('swarm'), demo('harp', 'Harp'), demo('fold'), demo('music', 'Music')],
+        new Map(),
+      ),
+      { ...EVERYTHING, category: 'sound' },
+      [],
+      [],
+    ).map((e) => e.id)
+    expect(sound).toEqual(['harp', 'music'])
+    expect(ids({ category: 'sound' })).toEqual(['harp'])
+    expect(ids({ category: 'sound', query: 'fold' })).toEqual([])
+    expect(ids({ category: 'patterns', view: 'favourites' }, ['harp', 'swarm'])).toEqual(['swarm'])
+    expect(ids({ category: 'patterns', view: 'favourites' }, ['harp'])).toEqual([])
+  })
+  it('recent: the order they were opened in, not the Lab’s', () => {
+    expect(ids({ view: 'recent' }, [], ['mobius', 'swarm', 'harp'])).toEqual([
+      'mobius',
+      'swarm',
+      'harp',
+    ])
+  })
+  it('knows when it is showing everything, so the page can offer the way back to it', () => {
+    expect(showingAll(EVERYTHING)).toBe(true)
+    expect(showingAll({ ...EVERYTHING, query: '   ' })).toBe(true)
+    expect(showingAll({ ...EVERYTHING, query: 'x' })).toBe(false)
+    expect(showingAll({ ...EVERYTHING, view: 'new' })).toBe(false)
+    expect(showingAll({ ...EVERYTHING, category: 'sound' })).toBe(false)
+  })
+})
+
+describe('recently opened, kept in this browser', () => {
+  const known = new Set(['a', 'b', 'c', 'd'])
+  it('puts the one just opened first, once, and keeps the rest in the order they were opened', () => {
+    let r: string[] = []
+    for (const id of ['a', 'b', 'c', 'b', 'd']) r = openedNow(r, id)
+    expect(r).toEqual(['d', 'b', 'c', 'a'])
+    expect(openedNow(r, 'd')).toEqual(r)
+  })
+
+  it('remembers the last twelve and forgets the oldest', () => {
+    let r: string[] = []
+    for (let i = 0; i < 20; i++) r = openedNow(r, `t${i}`)
+    expect(r.length).toBe(MAX_RECENT)
+    expect(r[0]).toBe('t19')
+    expect(r[MAX_RECENT - 1]).toBe(`t${20 - MAX_RECENT}`)
+  })
+
+  it('reads back only ids the Lab has, without repeats, and nothing from junk', () => {
+    expect(readRecent(JSON.stringify(['c', 'gone', 'a', 'c', 7, null, 'b']), known)).toEqual([
+      'c',
+      'a',
+      'b',
+    ])
+    expect(readRecent('{"a":1}', known)).toEqual([])
+    expect(readRecent('nope', known)).toEqual([])
+    expect(readRecent(null, known)).toEqual([])
+  })
+})
+
+describe('surprise me', () => {
+  const list = ['a', 'b', 'c', 'd'].map((id, order) => ({
+    ...demo(id),
+    order,
+    category: 'games' as const,
+    added: '2026-11-01',
+    flags: flags(),
+  }))
+  it('never hands back one opened lately while there are others', () => {
+    for (let i = 0; i < 40; i++) {
+      const r = i / 40
+      expect(['c', 'd']).toContain(surprise(list, ['a', 'b'], () => r))
+    }
+  })
+  it('reaches every one it may choose from', () => {
+    const got = new Set([0, 0.3, 0.6, 0.99].map((r) => surprise(list, ['a'], () => r)))
+    expect([...got].sort()).toEqual(['b', 'c', 'd'])
+  })
+  it('when all were opened lately, anything but the one open now; nothing from nothing', () => {
+    for (const r of [0, 0.5, 0.999])
+      expect(surprise(list, ['b', 'a', 'c', 'd'], () => r)).not.toBe('b')
+    expect(surprise(list.slice(0, 1), ['a'], () => 0.5)).toBe('a')
+    expect(surprise([], [], () => 0.5)).toBeNull()
+  })
+})
+
 describe('favourites, kept in this browser', () => {
   const known = new Set(['a', 'b', 'c'])
   it('reads only known ids, once each, from whatever is stored', () => {
@@ -205,5 +314,28 @@ describe('a card’s line', () => {
       const kept = withoutName({ name: m[1], line: m[2] })
       expect(kept.length, m[1]).toBeGreaterThan(10)
     }
+  })
+})
+
+describe('new to you, kept in this browser', () => {
+  const known = new Set(['a', 'b', 'c'])
+  it('a browser that never wrote a record is a first visit, not one that has seen nothing', () => {
+    expect(readSeen(null, known)).toBeNull()
+    expect(readSeen('["a","zz","a",3]', known)).toEqual(['a'])
+    expect(readSeen('[]', known)).toEqual([])
+    // a damaged record starts again as a first visit: badges on everything would say nothing
+    expect(readSeen('{', known)).toBeNull()
+    expect(readSeen('{"a":1}', known)).toBeNull()
+  })
+  it('counts only the ones not met, and a first visit has none', () => {
+    const list = entries([demo('swarm'), demo('fold'), demo('harp')], new Map())
+    expect(unseen(list, null)).toEqual([])
+    expect(unseen(list, ['fold'])).toEqual(['swarm', 'harp'])
+    expect(unseen(list, ['swarm', 'fold', 'harp'])).toEqual([])
+  })
+  it('seeing one adds it once, and seeing nothing new changes nothing', () => {
+    const was = ['a']
+    expect(seeNow(was, ['b', 'a', 'b'].slice(0, 2))).toEqual(['a', 'b'])
+    expect(seeNow(was, ['a'])).toBe(was)
   })
 })

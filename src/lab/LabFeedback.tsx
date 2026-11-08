@@ -10,6 +10,7 @@ import {
   type Note,
   type NoteKind,
   type ReportReason,
+  notesSummary,
 } from './feedback'
 
 export type Viewer = { authed: boolean; suspended: boolean; isAdmin: boolean }
@@ -55,13 +56,19 @@ function Votes({
 }) {
   const [busy, setBusy] = useState(false)
   const [said, setSaid] = useState<string | null>(null)
-  useEffect(() => setSaid(null), [demo])
+  const [heard, setHeard] = useState('')
+  useEffect(() => {
+    setSaid(null)
+    setHeard('')
+  }, [demo])
   const mine = flags?.mine
   const can = viewer.authed && !viewer.suspended
   const press = async (v: 1 | -1) => {
+    if (busy) return
     const next = mine === v ? 0 : v
     setBusy(true)
     setSaid(null)
+    setHeard('')
     try {
       const r = await api.vote(demo, next)
       // the server's own count after this vote, everybody's included, rather than ours plus one
@@ -71,6 +78,9 @@ function Votes({
         down: counts ? r.down : flags?.down,
         mine: next === 0 ? undefined : next,
       })
+      setHeard(
+        next === 0 ? 'Vote removed' : next === 1 ? 'Your vote: like' : 'Your vote: needs work',
+      )
     } catch (e) {
       setSaid(explain(e))
     } finally {
@@ -78,37 +88,47 @@ function Votes({
     }
   }
   const counted = flags?.up !== undefined
+  /* ⚠️ TWO BUTTONS AND NOTHING ELSE, by Evan's call (8 Nov). The selected one is highlighted and
+     pressing it again takes the vote back; pressing the other moves it. What a sighted member reads
+     from the highlight, a screen reader hears from aria-pressed and from the quiet announcement
+     below — no "You voted…" line, no Remove button, no paragraph. A guest gets two words, because
+     two disabled buttons with no reason are a puzzle. */
+  const name = (v: 1 | -1) => {
+    const word = v === 1 ? 'Like' : 'Needs work'
+    const n = v === 1 ? flags?.up : flags?.down
+    return counted ? `${word}, ${n} ${n === 1 ? 'vote' : 'votes'}` : word
+  }
   return (
     <div className="lab-controls lab-votes">
       <div className="lab-group" role="group" aria-label="Your vote">
-        <button
-          className="btn btn-ghost"
-          aria-pressed={mine === 1}
-          disabled={!can || busy}
-          onClick={() => press(1)}
-        >
-          👍 {counted ? flags?.up : ''}
-          <span className="sr-only"> — I like it{counted ? ` (${flags?.up} so far)` : ''}</span>
-        </button>
-        <button
-          className="btn btn-ghost"
-          aria-pressed={mine === -1}
-          disabled={!can || busy}
-          onClick={() => press(-1)}
-        >
-          👎 {counted ? flags?.down : ''}
-          <span className="sr-only"> — needs work{counted ? ` (${flags?.down} so far)` : ''}</span>
-        </button>
+        {([1, -1] as const).map((v) => (
+          <button
+            key={v}
+            className="btn btn-ghost lab-vote"
+            aria-pressed={mine === v}
+            aria-label={name(v)}
+            /* not disabled while the vote is in flight: a button that disables under the
+               finger drops keyboard focus to the page — a second press is ignored instead */
+            disabled={!can}
+            aria-busy={busy || undefined}
+            onClick={() => press(v)}
+          >
+            {v === 1 ? '👍' : '👎'}
+            {counted && <span className="lab-vote-n">{v === 1 ? flags?.up : flags?.down}</span>}
+          </button>
+        ))}
       </div>
-      <span className="muted lab-hint" aria-live="polite">
-        {said ??
-          (!viewer.authed
-            ? 'Sign in to vote and leave notes — playing never needs an account.'
-            : viewer.suspended
-              ? 'This account can’t vote or post right now.'
-              : mine
-                ? 'Your vote counts — press it again to take it back. Members see the totals, never a list of who voted.'
-                : 'Members see the totals, never a list of who voted.')}
+      {!viewer.authed && <span className="muted">Sign in to vote</span>}
+      {viewer.authed && viewer.suspended && (
+        <span className="muted">Voting is paused for this account</span>
+      )}
+      {said && (
+        <span className="lab-warn" role="alert">
+          {said}
+        </span>
+      )}
+      <span className="sr-only" aria-live="polite">
+        {heard}
       </span>
     </div>
   )
@@ -125,7 +145,6 @@ function Notes({
   name: string
   viewer: Viewer
 }) {
-  const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Note[] | null>(null)
   const [more, setMore] = useState(false)
   const [said, setSaid] = useState<string | null>(null)
@@ -145,20 +164,27 @@ function Notes({
       setBusy(false)
     }
   }
+  /* ⚠️ THE FIRST PAGE LOADS WITH THE TOY, NOT WITH THE FOLD. It used to wait for the fold to be
+     opened, so a closed fold said nothing about whether anybody had written anything — and nobody
+     opens a fold to find it empty. Now the summary can say how many there are to read: one call
+     per toy, for a signed-in member only, the same call the fold made anyway. */
   useEffect(() => {
-    if (open && viewer.authed && !loaded.current) {
+    if (viewer.authed && !loaded.current) {
       loaded.current = true
       void load()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, the first time the fold opens
-  }, [open, viewer.authed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as soon as there is somebody to ask for
+  }, [viewer.authed])
 
   const replace = (n: Note) => setItems((was) => (was ?? []).map((x) => (x.id === n.id ? n : x)))
   const drop = (id: string) => setItems((was) => (was ?? []).filter((x) => x.id !== id))
 
   return (
-    <details className="lab-notes" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>Notes on {name} — ideas, requests and bugs</summary>
+    <details className="lab-notes">
+      <summary>
+        Notes on {name} —{' '}
+        {viewer.authed ? notesSummary(items?.length ?? null, more) : 'ideas, requests and bugs'}
+      </summary>
       {!viewer.authed ? (
         <p className="muted">Sign in to read notes and leave one.</p>
       ) : (
