@@ -1,11 +1,13 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN A: the drafts applied, every suite, then the flow and the marks through real Auth + PostgREST.
+-- RUN N1: marks first, then day notes; every suite, both new tests, then real Auth + PostgREST.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying step 1
 \ir ../../docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql
 \echo === applying step 3
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
+\echo === applying the day-notes draft (after marks)
+\ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
 \echo === the standing guards, against a schema with both drafts in it
 \ir visibility-guards.orig.sql
 \echo === the daily flow
@@ -14,6 +16,8 @@
 \ir chronicle-round-trip.sql
 \echo === the marks
 \ir chronicle-repeat-marks.sql
+\echo === the day notes
+\ir chronicle-day-notes.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
