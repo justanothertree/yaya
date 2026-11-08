@@ -642,6 +642,14 @@ means the log's own renderer learns a third row type, after the sitting and the 
 fold of its own above the log**. Not deciding it means the schema can land and nothing can draw
 it.
 
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Standalone private notes may appear as moment rows in the Day
+log, with a genuine timestamp and no duration. Don't invent a time where only a date is known."_
+So the log learns a third row type, and it adds nothing to any total. **The second sentence is a
+real constraint, not a restatement:** a day note carries the moment it was WRITTEN and the day it
+is ABOUT, and those differ whenever somebody writes about yesterday, or a file puts one back. Only
+a note written during the day it is about has a time on that day; any other is drawn with the
+date it was written and no clock time, rather than placed at a time the record does not hold.
+
 ### 15b. An exercise is a blob, so a set pointing at one has no foreign key
 
 `circuit_people.exercises` is a jsonb array, so `chronicle_sets.exercise_id` cannot be a
@@ -653,6 +661,14 @@ Three answers, in increasing cost: leave it and let a deleted exercise read as "
 **capture the name on the set at write time**, which makes the feed honest and the Circuit grid
 unable to show it; or lift exercises out of the blob into a table, which is a Circuit migration
 and a much larger thing than the workout work itself.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Exercise records retain stable exercise identity plus a
+snapshot of the name when recorded. Deleting an exercise definition must not destroy historical
+records. Never reconnect exercises by matching names."_ That is the middle answer: `exercise_id`
+stays the identity, the name is copied onto the set when it is written, and a set whose exercise
+has gone reads by that copy. **The last sentence rules out a tempting repair:** an exercise deleted
+and re-created with the same name is a different exercise, and its old sets stay attached to the
+old id under the old name rather than being folded into the new one.
 
 ### 15c. Moving a sitting to another activity does not move its sets
 
@@ -666,6 +682,14 @@ does not. The question is whether the move dialog says so, offers to take the se
 refuses to move a sitting that has them. The first is cheapest and the third is the only one that
 cannot surprise anybody.
 
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Moving a sitting between activities does not change which
+exercises its sets represent. Explain that consequence in the move UI. Editing its start across a
+date boundary must update associated set dates atomically, keeping feeds and tallies consistent
+without duplicates."_ So the first option, plus the case §16e added: the move dialog says the
+sets stay with their exercise, and a start edited across midnight moves the sets' day in the same
+statement as the sitting — one function, one transaction, so no reader can see the two disagree,
+and the set rows are updated in place rather than re-inserted, so nothing can count twice.
+
 ### 15d. Is `circuit_logs` ever retired?
 
 The release plan in `docs/2026-11-07-chronicle-recorded-once.md` §2f deliberately stops short of
@@ -677,6 +701,17 @@ That is a stable place to stop and it is two answers to one question, which this
 treats as a defect. Worth deciding now whether the unclaimed people are expected to be claimed
 eventually — in which case the split is temporary and fine — or never, in which case the split is
 the design and should be written down as such rather than left looking unfinished.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Account-linked people may use canonical sets while unclaimed
+people retain circuit_logs. Develop the model locally, but keep account-claim migration separately
+reviewable: verified ownership/claim permissions, idempotent operation, preservation of legacy data
+and a recovery plan. Do not invent claiming access or delete legacy records. Park claim-dependent
+work if those requirements remain unresolved."_ The split is the design. **Claiming is the part
+that is parked unless its four requirements can be met from what exists**: who may claim a
+`circuit_people` row is not something this project has decided (§3 is still open — no family
+account is linked to a real person), so a claim function would be inventing that permission. The
+sets model is built without it; the migration that moves a claimed person's rows is written up
+separately, as its own reviewable item, and is not a step any other release depends on.
 
 ---
 
@@ -786,6 +821,11 @@ which would show #33's commits again inside every one of them.
 
 ### 16e. Recommendations for §15, so they can be answered with a yes
 
+✅ **ALL FOUR ANSWERED 8 Nov 2026** — each answer is written under its own question in §15a–d, in
+Evan's words. 15a and 15b are as recommended; 15c is as recommended, with "atomically" and "without
+duplicates" made explicit; 15d is as recommended, with the claim itself parked behind four
+requirements.
+
 - **15a, where a standalone note goes:** a row in the day log with a time and **no length**,
   drawn like a moment (the rating rows already are) — not a fold. A note belongs to the day,
   and the Journal half (#37) is where it would also be listed beside every other note — which
@@ -820,6 +860,17 @@ which differ on every OTHER day too:
 
 `scheduledMarks` changes by one line either way. Nothing is built until you choose.
 
+✅ **ANSWERED BY EVAN, 8 Nov 2026 — the first option:** _"Keep earned completions and their streak
+credit when a schedule edit makes a completed day an off-day. Never erase earned history through a
+scheduling change."_ So a met day is drawn met and counts toward the streak whatever the schedule
+now says about it. **How it is built:** the rule is "a met day is met", with no special case for
+the day of the edit — because the only day an edit can reach is today (every earlier day keeps the
+schedule it was judged under), and a rule with a special case for today would be one that changes
+its answer at midnight. **One consequence to know about:** the same rule means an extra swim on a
+Wednesday, for a goal that has always been Tuesdays, also counts toward the streak. Nothing
+was erased there, so the decision does not forbid it — but it does not ask for it either. It is
+queued in the integration queue as a yes/no rather than decided here.
+
 ### 16g. A day before a goal existed that the record shows as met — met, or blank?
 
 Removing misses before creation needs the goal's creation date in the room (`chronicle_goals_mine`
@@ -834,6 +885,16 @@ is the days the RECORD answers for: you drew yesterday, and today you make "draw
 
 This changes what every NEW goal looks like on the 31-day row, weekdays or not, so it can ship
 before weekdays do.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026 — the first option:** _"Periods before a goal's creation are not
+applicable—neither successes nor misses. Older activity records remain intact, but don't
+manufacture a retroactive goal streak."_ So a window that ended before the goal's creation day is
+drawn as neither met nor missed, and a streak cannot reach back past it. The window that CONTAINS
+the creation day is judged normally, because the goal existed during it: a weekly goal made on a
+Wednesday is asked about that whole week. **What it needs:** the goals reader has to send
+`created_at`, which it does not today, so this rides in the weekday draft's reader change. Until
+that is applied the room has no creation date and draws every window as it does today — the
+same answer it gives now, not a new wrong one.
 
 ---
 
@@ -856,7 +917,8 @@ today is to untick and re-tick each day — which still shows the goal as done e
 **The fix is written and tested, and not applied:** one row per goal per window,
 `docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql`, with its client half in
 `src/chronicle/marks.ts` (9 tests; four perturbations, one of them reproducing today's behaviour
-exactly, each turned some red). It also gives a repeating tick-box a streak for the first time.
+exactly, each turned some red). It also makes a streak POSSIBLE for a repeating tick-box, which has never had the history
+for one — the room does not draw that row yet.
 
 ### 17a. Approve the per-window marks table?
 
