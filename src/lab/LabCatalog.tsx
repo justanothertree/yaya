@@ -34,6 +34,9 @@ type Props = {
   onBrowse: (b: Browse) => void
   /** come back from a toy launched here: the card it was launched from is put back in view */
   returning: boolean
+  /** added since this browser first came, and not opened yet */
+  fresh: readonly string[]
+  onSeeAll: () => void
   onFavourite: (id: string) => void
   onLaunch: (id: string) => void
 }
@@ -53,6 +56,8 @@ export function LabCatalog({
   browse,
   onBrowse,
   returning,
+  fresh,
+  onSeeAll,
   onFavourite,
   onLaunch,
 }: Props) {
@@ -78,6 +83,13 @@ export function LabCatalog({
     // once, as the catalog opens: a card moving under a later filter is not a reason to jump
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /** a button that removes itself when pressed must not take focus with it to the page: the
+   *  search with a mouse, the kind under a finger (no keyboard thrown over the list) */
+  const refocus = () => {
+    if (window.matchMedia?.('(pointer: fine)').matches) searchBox.current?.focus()
+    else kind.current?.focus()
+  }
 
   const shown = useMemo(
     () => arrange(list, browse, favourites, recent),
@@ -167,10 +179,7 @@ export function LabCatalog({
             className="btn btn-ghost"
             onClick={() => {
               onBrowse(EVERYTHING)
-              // the button goes with the filters, and focus must not go with it to the page
-              // itself: the search with a mouse, the kind under a finger (no keyboard thrown up)
-              if (window.matchMedia?.('(pointer: fine)').matches) searchBox.current?.focus()
-              else kind.current?.focus()
+              refocus()
             }}
           >
             ✕ Show everything
@@ -180,6 +189,24 @@ export function LabCatalog({
       <p className="muted lab-hint" aria-live="polite">
         {shown.length} of {list.length}. {rule}
       </p>
+      {fresh.length > 0 && (
+        <p className="lab-fresh">
+          <span>
+            🆕 {fresh.length === 1 ? 'One experiment has' : `${fresh.length} experiments have`} been
+            added since you first came — marked below until you open{' '}
+            {fresh.length === 1 ? 'it' : 'them'}. Remembered in this browser only.
+          </span>{' '}
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              onSeeAll()
+              refocus()
+            }}
+          >
+            ✓ Mark as seen
+          </button>
+        </p>
+      )}
       {shown.length ? (
         <ul className="lab-cards" ref={cards}>
           {shown.map((e) => (
@@ -188,6 +215,7 @@ export function LabCatalog({
               entry={e}
               current={e.id === current}
               favourite={favourites.includes(e.id)}
+              fresh={fresh.includes(e.id)}
               rated={rated}
               admin={admin}
               onFavourite={onFavourite}
@@ -206,6 +234,7 @@ function Card({
   entry: e,
   current,
   favourite,
+  fresh,
   rated,
   admin,
   onFavourite,
@@ -214,6 +243,7 @@ function Card({
   entry: Entry
   current: boolean
   favourite: boolean
+  fresh: boolean
   rated: boolean
   admin: boolean
   onFavourite: (id: string) => void
@@ -240,6 +270,7 @@ function Card({
       </div>
       <p className="lab-card-line">{withoutName(e)}</p>
       <p className="lab-card-meta muted">
+        {fresh && <span className="lab-badge lab-badge-new">🆕 New to you</span>}
         <span>{CATEGORIES.find((c) => c.id === e.category)?.label}</span>
         {e.flags.featured && <span className="lab-badge">⭐ Featured</span>}
         {e.flags.experiment && <span className="lab-badge">🧪 Rough edges</span>}

@@ -3,6 +3,10 @@ import {
   EVERYTHING,
   FAVOURITES_KEY,
   RECENT_KEY,
+  SEEN_KEY,
+  readSeen,
+  seeNow,
+  unseen,
   openedNow,
   readRecent,
   entries,
@@ -477,6 +481,14 @@ function storedRecent() {
   }
 }
 
+function storedSeen() {
+  try {
+    return readSeen(localStorage.getItem(SEEN_KEY), KNOWN)
+  } catch {
+    return null
+  }
+}
+
 function storedFavourites() {
   try {
     return readFavourites(localStorage.getItem(FAVOURITES_KEY), KNOWN)
@@ -502,6 +514,23 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [recent, setRecent] = useState<string[]>(storedRecent)
+  const [seen, setSeen] = useState<readonly string[] | null>(storedSeen)
+  const see = (ids: readonly string[]) =>
+    setSeen((was) => {
+      const next = seeNow(was ?? [], ids)
+      if (next === was) return was
+      try {
+        localStorage.setItem(SEEN_KEY, JSON.stringify(next))
+      } catch {
+        /* private mode: nothing is new to you on the next visit either */
+      }
+      return next
+    })
+  // a first visit meets everything there is, so only what is added later says "new"
+  useEffect(() => {
+    if (seen === null) see(DEMOS.map((d) => d.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [browsing, setBrowsing] = useState(false)
   /* the catalog's search, list and kind, and the card a toy was last launched from: kept here
      because the catalog itself is unmounted while a toy plays */
@@ -605,6 +634,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     pick(shownDemos[(at + by + shownDemos.length) % shownDemos.length].id)
   /* the experiment on screen is the one just opened — the first visit's included */
   useEffect(() => {
+    see([current.id])
     setRecent((was) => {
       if (was[0] === current.id) return was
       const next = openedNow(was, current.id)
@@ -617,6 +647,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     })
   }, [current.id])
   const currentFlags = flags.get(current.id)
+  const fresh = unseen(visible, seen)
 
   return (
     <div className="lab">
@@ -659,7 +690,9 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
             aria-keyshortcuts="/"
             onClick={() => setBrowsing((b) => !b)}
           >
-            {browsing ? `▶ Back to ${current.name}` : `🔎 Browse all ${shownDemos.length}`}
+            {browsing
+              ? `▶ Back to ${current.name}`
+              : `🔎 Browse all ${shownDemos.length}${fresh.length ? ` · ${fresh.length} new` : ''}`}
           </button>
           {!browsing && (
             <button
@@ -687,6 +720,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           browse={browse}
           onBrowse={setBrowse}
           returning={fromCard === current.id}
+          fresh={fresh}
+          onSeeAll={() => see(fresh)}
           onFavourite={favourite}
           onLaunch={(id) => {
             launched.current = true
