@@ -132,7 +132,7 @@ refused "B scheduling A's goal"
 rpc chronicle_goal_days_set "$ANON_KEY" "{\"p_goal\":\"$G\",\"p_days\":127,\"p_from\":\"$TODAY\"}"
 refused "anon scheduling A's goal"
 rpc chronicle_goals_mine "$TA" '{}'
-check "$(printf '%s' "$BODY" | jq -c --arg g "$G" '.[] | select(.id == $g) | .days')" "[{\"from\":\"$TODAY\",\"days\":4}]" "A reads its schedule back, after B's and anon's refused writes"
+check "$(printf '%s' "$BODY" | jq -cS --arg g "$G" '.[] | select(.id == $g) | .days')" "[{\"days\":4,\"from\":\"$TODAY\"}]" "A reads its schedule back, after B's and anon's refused writes"
 check "$(printf '%s' "$BODY" | jq -r --arg g "$G" '.[] | select(.id == $g) | (.made | type)')" "number" "A's goal says when it was made"
 rpc chronicle_goals_mine "$TB" '{}'
 check "$(printf '%s' "$BODY" | jq -r --arg g "$G" '[.[] | select(.id == $g)] | length')" "0" "B's goals do not include A's"

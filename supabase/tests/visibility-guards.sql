@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W7: weekdays first, then marks, then day notes; the API probe now asks the schedule writer too (41 checks).
+-- RUN W8: as W7, with the probe comparing the schedule with its keys sorted (jsonb orders keys its own way).
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the weekdays draft (FIRST)
