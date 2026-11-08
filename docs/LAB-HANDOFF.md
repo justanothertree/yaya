@@ -2700,7 +2700,8 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4n    | #64 | #62    | Graph match                                                   |
 | 4o    | #65 | #64    | Sun path                                                      |
 | 4p    | #68 | #65    | Sun path on the clock                                         |
-| 4q    | —   | #68    | Skipping stones (branch `claude/lab-skip-1`)                  |
+| 4q    | #77 | #68    | Skipping stones                                               |
+| 4r    | —   | #77    | Colour sight (branch `claude/lab-seeing-1`)                   |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -3114,6 +3115,49 @@ ticks, saves and survives a reload; `mobileAudit` zero; devices released on leav
 with a finger, and whether the hold button is comfortable to time on a phone — real GPUs, and how
 the sound feels.
 
+### Follow-on: `claude/lab-seeing-1`, stacked on #77 (8 Nov 2026) — a tool, Colour sight
+
+**Base:** `claude/lab-skip-1` (#77), only to keep the registry append-only. No SQL. Id `vision`,
+67th. Not in the release PR (#87); it is the next thing after it.
+
+- **What it does.** Shows a picture — a test card of the things colour-blind readers struggle with
+  (chart lines and a legend, a red/green status board, a traffic light, a spectrum, green text on
+  red), Jigsaw's paintings, or your own picture, which never leaves the device — typical on one side
+  of a divider and as a protan, deutan, tritan or achromat sees it on the other, with a severity
+  slider. Pick two colours (tap the picture, or the colour inputs) and a table shows the pair as
+  every kind sees it: in words, as a CIE 1976 ΔE, and as a WCAG contrast ratio.
+- ⚠️ **Derived, not copied.** The simulation matrices are worked out from two standard ones (sRGB →
+  XYZ under D65, and Hunt–Pointer–Estévez XYZ → cones) by Viénot, Brettel & Mollon's 1999 method,
+  because a check on remembered published matrices failed: the protan matrix I recalled did not
+  send the long-cone direction to zero against the cone matrix I recalled. Derived, the method's
+  own definition is testable.
+- **Labelled as a simulation.** Blue-yellow uses a rougher one-plane version; partial deficiency is
+  a straight mix with typical vision; the page says another model paints shades differently and to
+  trust which pairs collapse more than the exact tints.
+
+**Measured here:** 15 tests — each full deficiency is a projection of rank two; a change only the
+missing cone could see is invisible (confusion lines meet) while the other two cones' are kept;
+white and the anchors are left alone; against an **independent model, Machado, Oliveira &
+Fernandes (2009)** — copied matrices checked by every row summing to one — the ranking of 2,000
+pairs' differences agrees at Spearman 0.978 / 0.995 / 0.978 (protan / deutan / tritan), against
+0.83 / 0.72 / 0.51 for either model with typical vision; the shade itself differs by a median ΔE of
+8–12, which is why the test asks about ranking and not shade; red and green collapse for
+protan/deutan, red darkens only for protan, blue and green collapse for tritan; achromat keeps only
+lightness; severity runs typical → full; WCAG's quoted ratios exactly (21, 4.54 for #767676, 4.48
+for #777777, 7.00 for #595959). Six planted faults each turn tests red — above all the matrix
+applied to gamma-encoded sRGB, the commonest mistake in these tools. On the GPU, offscreen: the
+shader's output equals the module's `seen()` to the byte (0 difference) for eight colours under
+all four kinds, the left of the divider untouched, half severity exact. Through the UI at 1280 and
+an emulated iPhone 13 (mouse): kinds, severity only where it applies, typed colours, an uploaded
+picture picked from by tapping, saves through a reload, `mobileAudit` zero, every control above the
+phone nav when focused, devices released.
+
+**Not verified:** in-page rendering (lost GPU, as ever) — and with it painting one of Jigsaw's
+pictures in the page, whose GPU read-back failed in-page here; offscreen it returns exactly
+Palette's pixels. A failed paint now leaves the page on the picture it shows and says so (before,
+the dropdown moved and a tap picked the old picture's colours). Real screens, which shift every
+colour; and whether colour-blind people recognise what it shows.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -3159,3 +3203,6 @@ the sound feels.
 16. **Real device — Skipping stones on a phone.** Throw with a finger: does dragging back feel like
     aiming, and can you learn to let go at the green? Then try the 🤚 button. Is the 1.6 s wobble
     learnable, or too fast? Does Twenty skips feel earned or impossible?
+17. **Taste — Colour sight.** Does the test card make the point at a glance? If you know somebody
+    colour-blind, would they recognise the "Deutan" side — and is the pair table the useful part,
+    or the picture?
