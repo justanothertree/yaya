@@ -1008,3 +1008,89 @@ what people wrote, so that step says to export first and ask.
 Where the **Day** log draws one of these — a row with a time and no length, or a fold of its own
 — is still §15a, recommended in §16e. Until it is answered, a note with no session lives in the
 Journal only, which is a complete feature on its own rather than half of one.
+
+✅ **ANSWERED 8 Nov (§15a) and built** — #84, stacked on #76: a moment row in the Day log, with a
+time only when the note was written during that day. See §19.
+
+---
+
+## 19. Chronicle, the evening pass of 8 Nov 2026 — what was built, and what is asked
+
+Built under the answers recorded in §15 and §16, each as a draft PR. **Nothing is applied to any
+database, merged or deployed.**
+
+| PR  | Branch                     | On  | What                                                                         |
+| --- | -------------------------- | --- | ---------------------------------------------------------------------------- |
+| #83 | `chronicle/weekdays-wired` | #73 | weekdays and creation dates (§16b, §16c, §16f, §16g), with a runnable draft  |
+| #84 | `chronicle/day-log-notes`  | #76 | a note with no session as a moment in the Day log (§15a), frontend only      |
+| #85 | `chronicle/sets-model`     | #43 | step 1 of recorded-once (§15b, §15c, §15d), with a runnable draft            |
+| —   | on #73                     | —   | daily, weekly and monthly marks asked separately, at every boundary and zone |
+
+How they fit together, and what CI says about the combined tree, is
+`docs/2026-11-08-chronicle-integration-queue.md`.
+
+### 19a. An extra session on a day the schedule never asked about — does it count?
+
+Your §16f answer keeps an earned completion when an edit makes its day an off day. It is built as
+**"a met day is met"**, because the only day an edit can reach is today and a special case for
+today would change its answer at midnight. The same rule also counts a Wednesday swim for a goal
+that has always been Tuesdays.
+
+- **Count it (recommended, as built).** One rule, and nothing done is ever drawn as off. The cost
+  is that a streak can include days the schedule never asked for.
+- **Do not count it.** An off day stays a short tick even when met, except a day that an edit
+  turned off after it was met. The cost is a second rule that compares the schedule row's `set_at`
+  with when the day was met.
+
+### 19b. A friend's view of a weekday goal on its off day
+
+`get_member_chronicle` counts a repeating goal as open when its current window has no mark. The
+server has no zone, so it cannot tell a member's Wednesday from their Tuesday, and on a friend's
+view of a profile a Tuesdays goal still reads as open on a Wednesday. The member's own room is
+right.
+
+- **Leave it (recommended for now).** The friend's count is off by one on off days, and only there.
+- **Store a time zone name on each profile** so the server can work out the member's local day.
+  That is a new column of personal data and a settings screen, which is your call rather than mine.
+
+### 19c. Apply the weekday draft?
+
+**Recommendation: yes.** Apply it in any order with the other three drafts, then deploy the room
+(#83, which needs #73's room). It adds a table, a writer and two fields to the goals reader. Until
+the room ships, a goal with no schedule reads exactly as today. The rollback is written in the file.
+The same caveat as §17d applies: the substitutions were matched against CI's database, so a
+read-only look at production's `pg_get_functiondef` first is worth one call.
+
+### 19d. Apply the sets draft (step 1 of recorded-once)?
+
+**Recommendation: yes, whenever convenient. Nothing reads the table yet**, so applying it changes no
+number on any screen. #85's room only reads it to explain a move and to carry a moved sitting's
+sets. Step 2, where the tally, the Circuit grid and the day's feed read sets, is the next build. It
+changes three live readers, and each will be its own reviewable draft.
+
+### 19e. The claim migration (§15d) is parked, and here is exactly why
+
+§15d asks for verified ownership and claim permissions, an idempotent operation, preserved legacy
+data and a recovery plan before a claimed person's `circuit_logs` move to sets. The last three can
+be written. **The first does not exist:** `claim_person` lets any member of a group that contains
+an unclaimed person claim that person, first come, with no check that they ARE that person. Moving
+history on claim would hand somebody's whole log to whichever relative pressed the button first.
+
+**Question: what should make a claim verified?** For example, an admin approves it, or the person
+being claimed confirms it from their own account. Until that is decided, sets stay writable only
+for a person `owner_user_id` already names (#85), `circuit_logs` stays canonical for everybody
+else, and nothing is migrated.
+
+### 19f. Device and signed-in checks, for whenever you are on the site
+
+None of this can be exercised signed in from here, by instruction. Once the drafts are applied and
+the room deployed:
+
+1. Make a daily goal, tick it, then edit it to leave today out. It should stay ticked and say "not
+   due today".
+2. Look at the Tomorrow tab when tomorrow is an off day. The goal should not be there.
+3. Write a Journal note about yesterday. Yesterday's Day log should show it with "written <today>"
+   and no time.
+4. On a phone: the seven day toggles and the note row's ✎. The sitting editor's move sentence
+   needs a set to exist, and nothing on screen can write one until step 2, so it has no device
+   check yet.
