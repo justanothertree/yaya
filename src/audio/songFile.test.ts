@@ -204,6 +204,47 @@ describe('a song survives being written down', () => {
     const after = readSong(packSong(before))!
     expect(after.layers[0].play).toEqual(before.layers[0].play)
   })
+
+  /**
+   * ⚠️ BAR 32 IS THE SIGN BIT. The mask packs to one number, a bit per bar, and `1 << 31` is
+   * negative in JavaScript — so a 32-bar mask with bar 32 playing has always been stored as a
+   * negative number, and the reader took every negative number to mean "no mask". The muted
+   * bars came back playing. Only -1 is the sentinel; any other negative is a mask with its top
+   * bit set, and reading it as one repairs every song already saved that way.
+   */
+  it('and a 32-bar mask with bar 32 playing keeps its silent bars', () => {
+    const play = Array.from({ length: 32 }, (_, i) => i !== 0 && i !== 15)
+    const before = songFrom({
+      bars: 32,
+      layers: [
+        layerOf(
+          [
+            { t: 0, midi: 60, on: true },
+            { t: 0.5, midi: 60, on: false },
+          ],
+          { play },
+        ),
+      ],
+    })
+    const packed = packSong(before)
+    /* the form already on people's disks: the top bit makes it negative */
+    expect(packed.l[0].p).toBeLessThan(0)
+    expect(readSong(packed)!.layers[0].play).toEqual(play)
+  })
+
+  it('while -1 still means every bar', () => {
+    const before = songFrom({
+      layers: [
+        layerOf([
+          { t: 0, midi: 60, on: true },
+          { t: 0.5, midi: 60, on: false },
+        ]),
+      ],
+    })
+    const packed = packSong(before)
+    expect(packed.l[0].p).toBe(-1)
+    expect(readSong(packed)!.layers[0].play).toBeUndefined()
+  })
 })
 
 describe('a song file from somebody else', () => {
