@@ -1,117 +1,108 @@
-# Lab release queue — what is live, what is draft, and the order it can land in
+# Lab release — one reviewable integration, and what it depends on
 
-_Written 8 Nov 2026 from the open PR list and `main` at `ea67e52`. A snapshot: re-check with
-`git log origin/main` and the PR list before acting on it. Nothing here has been merged, deployed or
-applied — that is Evan's to do._
+_Written 8 Nov 2026 against `main` at `ea67e52`. A snapshot: re-check `git log origin/main` and the PR
+list before acting on it. Nothing here has been merged, deployed or applied — that is Evan's to do._
 
 ## What is on production now
 
 **evancook.dev serves `main`**, and only `main` (`deploy.yml` runs on push to `main`; there are no
-preview deployments). On `main` the Lab has **51 toys**, picked from the row of name buttons. It has
-**no catalog, no votes, no notes and no owner tools**, and none of the 14 toys below.
+preview deployments). On `main` the Lab has **51 toys**, picked from a row of name buttons, with
+**no catalog, no votes, no notes and no owner tools**.
 
-Everything else in this file is **draft-only**. To try any of it, run it locally from its branch:
+Everything below is **draft-only**. To try it, run it locally from its branch:
 
 ```bash
-git fetch origin && git checkout <branch> && npm install && npm run dev
+git fetch origin && git checkout claude/lab-release-1 && npm install && npm run dev
 ```
 
-then open `http://localhost:5173/#lab`. Every toy plays and the catalog lists them all. Votes and
-notes need the draft SQL in the Supabase project `.env.local` points at — production's does not have
-it — so against production they are absent on `lab-release-catalog` and later (#69), and on branches
-before #69 they are offered and fail. `docs/2026-11-07-lab-catalog-and-feedback.md` has the
-local-stack recipe for trying them for real.
+then open `http://localhost:5173/#lab`. Against the production Supabase project (which has no Lab
+SQL) the catalog lists every toy, every toy plays, and votes and notes are simply absent.
+`docs/2026-11-07-lab-catalog-and-feedback.md` has the local-stack recipe for trying them for real.
 
-## Three merge units, in this order
+## The release: one branch, one PR into `main`
 
-Each unit is stacked on the one before. The order is forced, not chosen: B and C both edit, and C
-appends to, the same three registries — `DEMOS` in `src/sections/GpuLab.tsx`, `META` in
-`src/lab/catalog.ts` and the end of `src/gpu/lab.css` — so two units that both append conflict
-unless one is already under the other.
+**`claude/lab-release-1`** — A + B + C + Skipping stones together, based on `main` (`ea67e52`). It is
+built only by merging the source branches; no commit was rebased or rewritten, and every source PR
+stays open for reviewing one change at a time.
 
-| #   | Unit                                   | PR to merge                       | Branch to try                | Needs                              |
-| --- | -------------------------------------- | --------------------------------- | ---------------------------- | ---------------------------------- |
-| A   | Catalog and feedback **foundation**    | #31 (as reviewed, `73506ac`)      | `claude/lab-catalog-1`       | `main`                             |
-| B   | Catalog and social improvements        | #71 (integration)                 | `claude/lab-release-catalog` | A                                  |
-| C   | 14 new toys, the kinds split, Sun path | #72 (integration)                 | `claude/lab-release-toys`    | B                                  |
-| SQL | The database half of A                 | none — `apply_migration`, by Evan | —                            | nothing: apply it BEFORE A deploys |
+| Part | What                                                   | Source PRs                                             | Branch, head at integration                               |
+| ---- | ------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------- |
+| A    | Catalog, votes, notes, owner tools — the foundation    | #31                                                    | `claude/lab-catalog-1` `73506ac`                          |
+| B    | Catalog and social improvements, the missing-SQL guard | #34 #45 #48 #50 #55 #57 #63 #66 #69, integrated as #71 | `claude/lab-release-catalog` `52225d7` (#69 at `05788ad`) |
+| C    | Fourteen toys, ids 52–65, and the kinds split          | #40 … #65, integrated as #72                           | `claude/lab-release-toys` `5491816`                       |
+| D    | Sun path on the clock, and Skipping stones (id 66)     | #68, #77                                               | `claude/lab-skip-1` `7f0636a` (#68 at `7013188`)          |
 
-**A is the release boundary for the database.** All of the SQL is in #31's
-`supabase/drafts/lab-catalog-and-feedback.sql`; nothing in B or C changes a line under `supabase/`
-(checked with `git diff --stat` across both chains). ⚠️ GitHub CI does **not** execute the draft
-SQL — the `db guards` job builds the schema without it. The SQL has been exercised only against a
-local Supabase stack (Auth + PostgREST), recorded in that doc.
+**Toys: 66.** Every id unique; the first 51 are `main`'s, in `main`'s order; 52–65 are the toy chain's;
+66 is `skip`. Checked by reading the registry, not through the app.
 
-⚠️ **Apply the SQL before A reaches `main`** — the order the SQL doc's own steps already give, and
-it matters more than it looks, because merging to `main` IS deploying. Measured on 8 Nov with every
-`lab_*` call answering as PostgREST does for a missing function: A alone offers a signed-in member
-👍 👎 and a note form, and a vote answers "Couldn't reach the server". Nothing is lost or written;
-it is just broken to look at. **#69 (the end of B) fixes that**: from B on, a Lab with no SQL behind
-it shows no feedback at all, exactly as production does today. So the safe orders are SQL → A → B →
-C, or A + B together → SQL → C.
+**Why one PR rather than A, then B, then C.** Merging is deploying. A alone, with no SQL behind it,
+offers a signed-in member 👍 👎 and a note form whose every press fails — measured on 8 Nov with
+each `lab_*` call answering as PostgREST does for a missing function. #69 (in B) closes that: a Lab
+whose functions are missing shows no feedback at all, as production does today. So A never ships
+without B; this branch is the unit.
 
-**B and C can wait as long as you like after A.**
+**#71 and #72 are superseded by this one** as the way to merge, and stay open as records.
 
-The individual stacked PRs (#34 … #69, #40 … #68) stay open for reviewing one change at a time; the
-two integration PRs, #71 and #72, are the same commits, to merge in one step each instead of thirty.
+## The SQL — separate, unapplied, and not touched by merging
 
-### B — catalog and social (on A)
+- **File:** `supabase/drafts/lab-catalog-and-feedback.sql`, md5 `5177fa6758ea2043365219b49c53afa8`,
+  last changed at `73506ac` (#31's head). Nothing after #31 changes a line under `supabase/`.
+- **Merging does not apply it.** It is a draft, not a migration, and no workflow pushes migrations or
+  reads `supabase/drafts/` (checked: `grep` across `.github/workflows`).
+- **Applying it** is the steps in `docs/2026-11-07-lab-catalog-and-feedback.md` (`apply_migration`,
+  name `lab_catalog_and_feedback`, the file's own text). It seeds the 51 original ids; ids 52–66
+  register the first time the admin opens the Lab after it is applied (verified: 51 → 66 rows).
+- **Order:** the frontend is safe either side of it. Applying it first means feedback opens the
+  moment the release deploys; applying it after means feedback stays hidden until then.
 
-All UI over A's functions; no SQL, no new toys.
+## What was verified, and where
 
-| PR  | What it adds                                                                   |
-| --- | ------------------------------------------------------------------------------ |
-| #34 | One toolbar above the toy (dropdown + 🔎 Browse instead of 51 name buttons)    |
-| #45 | 🕘 Recent — a view for coming back to what you were playing (browser-local)    |
-| #48 | 🎲 Surprise me — a toy you have not opened lately                              |
-| #50 | Counts beside each kind; `/` searches the catalog                              |
-| #55 | Back from a toy, the catalog is where you left it                              |
-| #57 | New to you — which toys arrived since you first came (browser-local)           |
-| #63 | The notes fold says how many there are to read (only what you may read)        |
-| #66 | Voting is two buttons; press yours again to take it back (your 8 Nov feedback) |
-| #69 | Before the SQL is applied, no votes or notes are offered (instead of failing)  |
+**On the exact combined tree** (`claude/lab-release-1`): typecheck, zero-warning lint, the full test
+suite and the build. GitHub's Lint, Test, Build and db guards run on the PR into `main`.
 
-### C — toys (on B)
+⚠️ **GitHub CI does not test the draft SQL** — `db guards` builds the schema without it. The SQL was
+exercised only here, on a throwaway local stack:
 
-Fourteen toys, ids 52–65, every id unchanged from its own PR, plus two catalog changes that only
-matter once there are toys newer than the SQL's seed list.
+- **Supabase Auth + PostgREST** (`supabase start`, the CI-pinned CLI, reset to the migrations, the
+  draft applied from this tree): `supabase/tests/visibility-guards.sql` and
+  `supabase/tests/lab-feedback.sql` hold; `scripts/lab-feedback-api.mjs` **59 of 59** through real
+  sessions — votes, notes and their audiences, reports, removal and restore, owner-only switches,
+  suspended accounts refused.
+- **Plain Postgres 16** (`build.sh`): the same two files hold; `lab-feedback-race.sh` — 24
+  simultaneous votes from one account leave one row, 30 voters 30 rows, the note limit holds at 5.
+- **The page, against that stack** (Chromium, desktop and an emulated iPhone 13, mouse input):
+  - Guest: two disabled buttons with no totals and "Sign in to vote"; no note box.
+  - Member: totals at once, zeros included — 0/0 → 1/0 (pressed) → 0/1 → 0/0, each matching the
+    table; nothing visible beside the two buttons; names such as "Like, 1 vote".
+  - A minor's vote counts (3 on Topple, with an unknown-age member's).
+  - Notes: a stranger reads only what reaches strangers; the minor's friends-only note reaches the
+    friend; the owner's queue shows the reported note; removing it hides it from the friend and
+    restoring brings it back; hiding Fold takes it out of a guest's 66 options and back.
+  - Writes that fail never look saved: a refused vote leaves the counts and pressed state as they
+    were, with "Couldn't reach the server — nothing was changed."; a failed note stays in its box,
+    unlisted, with the same sentence.
+- **Without the SQL** (every `lab_*` call answering PGRST202): no feedback anywhere, 66 options and
+  66 catalog cards, toys old and new launched through the toolbar, one GPU device live after six
+  mounts, the last toy remembered. **Offline** (calls aborted): the controls stay, and both writes
+  fail honestly as above — offline is not mistaken for "no SQL".
+- **Permissions fail closed.** The page's admin flag is `is_admin() === true`, so an unanswered
+  check is "not the owner"; and every write is a SECURITY DEFINER function that checks the caller
+  itself, so a wrong flag on the page can only show a button the server refuses.
 
-**Catalog changes carried here, and why they are not in B:**
-
-- `3bde242` (in #40) — a toy newer than the catalog says "new here: votes and notes open once it has
-  been added to the catalog", not that it is gone. The SQL seeds 51 ids; ids 52–65 are registered
-  the first time the admin opens the Lab after the SQL is applied (step 6 in the SQL doc).
-- #60 — games and puzzles become two kinds, moving 11 toys (old and new) into 🧩 Puzzles. It sits
-  after Slide because it re-labels toys added before it.
-
-**The toys, by kind** (the PR is where to review each one):
-
-| Kind                         | Toys                                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------------------- |
-| 🧩 Puzzles — find the answer | Jigsaw #40, Beams #47, Bridge #49, Nonogram #56, Logic gates #58, Slide #59, Paint mixer #61  |
-| 🎮 Games — skill and timing  | Orbit #53                                                                                     |
-| Tools and things to make     | Palette #44, Wallpaper #54 (🎨 make)                                                          |
-| Patterns, sound, nature      | Epicycles #52, Graph match #64 (patterns), Intervals #62 (sound), Sun path #65 + #68 (nature) |
-
-**Splitting C by kind is possible and not prepared.** The toys are in the order they were made, which
-mixes kinds; a puzzles-only release would mean re-applying fourteen toy commits in a new order and
-resolving the same three registry appends each time, which renumbers the toys' display positions
-(their ids would not change). Worth it only if you want to ship some kinds and hold others — say so
-and it is an hour's work.
-
-## Not Lab, and not touched here
-
-Open PRs from other threads, left exactly as they are: Chronicle #33, #36–#39, #41–#43, #46, #51, #67;
-Instrument #35; dependency bumps #11–#15; CI #10. #67 changes a workflow.
-
-**Stale:** #26, #27 and #28 (Lab toy batches 9–11) are still open, but every commit in them is
-already in `main` — they can be closed without merging. Not closed here, because closing somebody's
-PR is yours to decide.
+**Not verified anywhere:** in-page WebGPU rendering (this container loses its GPU in-page — stage
+pixels were checked offscreen only), real GPUs, real touch on a real phone (touch was emulated
+through the DevTools protocol), Firefox and Safari, and how anything looks or sounds to a person.
 
 ## Questions this needs from Evan
 
-1. **Merge order:** SQL, then A, B, C — or A + B together before the SQL? Or would you rather take
-   A and C and hold B?
-   (C is built on B, so holding B means rebuilding C on A: a mechanical job, but say so first.)
-2. **Split C by kind?** Only if you want to hold some kinds back.
-3. **Close #26–#28?** They are already in `main`.
+1. **Apply the SQL before or after merging `claude/lab-release-1`?** Either is safe now; before means
+   feedback opens with the deploy.
+2. **Close #26–#28?** Their commits are already in `main`.
+3. **Make the focus fix site-wide?** A focused control on a phone used to come to rest under the
+   bottom nav. `lab.css` fixes it for pages showing the Lab with `scroll-padding`; the same gap is
+   everywhere else, and the rule belongs in `index.css`.
+
+## Not Lab, and not touched here
+
+Open PRs from other threads are left exactly as they are: Chronicle, Instrument, dependency bumps,
+CI.
