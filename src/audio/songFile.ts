@@ -270,7 +270,7 @@ export type PackedSong = {
   /** layers: instrument, own length in ms, fx as five numbers, muted, notes as flat triples */
   l: Array<{
     i: string
-    /** arrangement bitmask, one bit per bar; -1 means "every bar" */
+    /** arrangement bitmask, one bit per bar (bar 32 is the sign bit); -1 means "every bar" */
     p: number
     /** how many bars that mask covers — see packSong; absent in files written before it */
     pb?: number
@@ -402,7 +402,12 @@ function readPacked(v: Record<string, unknown>): Song | null {
         ? Math.min(32, o.pb)
         : Math.round(num(v.bars, 1, 8, 2))
     const play =
-      bits < 0 ? undefined : Array.from({ length: span }, (_, i) => (bits & (1 << i)) !== 0)
+      /* ⚠️ ONLY -1 IS "EVERY BAR". Bar 32 is the sign bit — `1 << 31` is negative — so a mask
+         with bar 32 playing has always been stored as a negative number, and reading every
+         negative as "no mask" brought its silent bars back playing. Any other negative is a
+         mask with its top bit set, and `&` reads it as one; this also repairs every song already
+         saved that way. All 32 bits set is -1 too, and "every bar" is what that means anyway. */
+      bits === -1 ? undefined : Array.from({ length: span }, (_, i) => (bits & (1 << i)) !== 0)
     // ⚠️ -1 back to null, and every entry re-checked: this is a file, not our own memory
     const plan = Array.isArray(o.q)
       ? o.q
