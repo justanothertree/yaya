@@ -4,6 +4,7 @@ import {
   byNewest,
   byRating,
   search,
+  surprise,
   withoutName,
   type Category,
   type Entry,
@@ -108,6 +109,16 @@ export function LabCatalog({
             onChange={(e) => setQuery(e.target.value.slice(0, 60))}
           />
         </label>
+        <button
+          className="btn"
+          disabled={!shown.length}
+          onClick={() => {
+            const id = surprise(shown, recent)
+            if (id) onLaunch(id)
+          }}
+        >
+          🎲 Surprise me
+        </button>
         <div className="lab-group" role="group" aria-label="Which list">
           {VIEWS.map((v) => (
             <button

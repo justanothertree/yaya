@@ -12,6 +12,7 @@ import {
   openedNow,
   readFavourites,
   readRecent,
+  surprise,
   readFlags,
   search,
   toggleFavourite,
@@ -197,6 +198,32 @@ describe('recently opened, kept in this browser', () => {
     expect(readRecent('{"a":1}', known)).toEqual([])
     expect(readRecent('nope', known)).toEqual([])
     expect(readRecent(null, known)).toEqual([])
+  })
+})
+
+describe('surprise me', () => {
+  const list = ['a', 'b', 'c', 'd'].map((id, order) => ({
+    ...demo(id),
+    order,
+    category: 'games' as const,
+    added: '2026-11-01',
+    flags: flags(),
+  }))
+  it('never hands back one opened lately while there are others', () => {
+    for (let i = 0; i < 40; i++) {
+      const r = i / 40
+      expect(['c', 'd']).toContain(surprise(list, ['a', 'b'], () => r))
+    }
+  })
+  it('reaches every one it may choose from', () => {
+    const got = new Set([0, 0.3, 0.6, 0.99].map((r) => surprise(list, ['a'], () => r)))
+    expect([...got].sort()).toEqual(['b', 'c', 'd'])
+  })
+  it('when all were opened lately, anything but the one open now; nothing from nothing', () => {
+    for (const r of [0, 0.5, 0.999])
+      expect(surprise(list, ['b', 'a', 'c', 'd'], () => r)).not.toBe('b')
+    expect(surprise(list.slice(0, 1), ['a'], () => 0.5)).toBe('a')
+    expect(surprise([], [], () => 0.5)).toBeNull()
   })
 })
 

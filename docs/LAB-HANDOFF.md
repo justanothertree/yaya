@@ -2402,6 +2402,9 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   only"; nothing is sent. Unlike favourites it forgets the oldest, which is safe only because no
   other store mirrors it. It does not try to say which toys hold your work: several write a
   default on first open, so "has saved data" would really mean "opened once".
+- **🎲 Surprise me** (branch `claude/lab-surprise-1`, stacked on the Recent branch): launches one
+  at random from whatever the catalog is showing — so choosing a Kind first means "surprise me with
+  a puzzle" — and never one in your Recent list while there are others to pick.
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 
