@@ -15,6 +15,9 @@ import {
   openedNow,
   readFavourites,
   readRecent,
+  readSeen,
+  seeNow,
+  unseen,
   surprise,
   readFlags,
   search,
@@ -298,5 +301,28 @@ describe('a card’s line', () => {
       const kept = withoutName({ name: m[1], line: m[2] })
       expect(kept.length, m[1]).toBeGreaterThan(10)
     }
+  })
+})
+
+describe('new to you, kept in this browser', () => {
+  const known = new Set(['a', 'b', 'c'])
+  it('a browser that never wrote a record is a first visit, not one that has seen nothing', () => {
+    expect(readSeen(null, known)).toBeNull()
+    expect(readSeen('["a","zz","a",3]', known)).toEqual(['a'])
+    expect(readSeen('[]', known)).toEqual([])
+    // a damaged record starts again as a first visit: badges on everything would say nothing
+    expect(readSeen('{', known)).toBeNull()
+    expect(readSeen('{"a":1}', known)).toBeNull()
+  })
+  it('counts only the ones not met, and a first visit has none', () => {
+    const list = entries([demo('swarm'), demo('fold'), demo('harp')], new Map())
+    expect(unseen(list, null)).toEqual([])
+    expect(unseen(list, ['fold'])).toEqual(['swarm', 'harp'])
+    expect(unseen(list, ['swarm', 'fold', 'harp'])).toEqual([])
+  })
+  it('seeing one adds it once, and seeing nothing new changes nothing', () => {
+    const was = ['a']
+    expect(seeNow(was, ['b', 'a', 'b'].slice(0, 2))).toEqual(['a', 'b'])
+    expect(seeNow(was, ['a'])).toBe(was)
   })
 })

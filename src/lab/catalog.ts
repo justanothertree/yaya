@@ -302,3 +302,32 @@ export function surprise(
 /** opening one brings it to the front, once */
 export const openedNow = (list: readonly string[], id: string): string[] =>
   [id, ...list.filter((x) => x !== id)].slice(0, MAX_RECENT)
+
+/* What this browser has already met, so an experiment added since can say so. ⚠️ A FIRST VISIT
+   MEETS EVERYTHING: with no record, every experiment there is is written down as seen, so the
+   badge means "added since you started coming here" — not fifty-nine badges on a first look,
+   which would say nothing. An experiment stops being new to you once you open it, or when you
+   say you have seen them all. Kept in this browser only, like favourites; never sent. */
+export const SEEN_KEY = 'lab_seen_v1'
+
+/** the ids seen, known ones only; null when nothing was ever written — a first visit */
+export function readSeen(text: string | null, known: ReadonlySet<string>): string[] | null {
+  if (text === null) return null
+  try {
+    const v: unknown = JSON.parse(text)
+    if (!Array.isArray(v)) return null
+    return [...new Set(v.filter((x): x is string => typeof x === 'string' && known.has(x)))]
+  } catch {
+    return null
+  }
+}
+
+/** seen now as well as before — the same array when nothing is new, so a state update can bail */
+export function seeNow(seen: readonly string[], ids: readonly string[]): readonly string[] {
+  const fresh = ids.filter((id) => !seen.includes(id))
+  return fresh.length ? [...seen, ...fresh] : seen
+}
+
+/** the ones in a list this browser has not met */
+export const unseen = (list: readonly Entry[], seen: readonly string[] | null): string[] =>
+  seen ? list.filter((e) => !seen.includes(e.id)).map((e) => e.id) : []

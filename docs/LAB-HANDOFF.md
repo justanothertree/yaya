@@ -2417,6 +2417,14 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   there; arriving any other way (‹ ›, the dropdown) still puts the cursor in search. Since a
   narrowed list now persists, **✕ Show everything** appears whenever it is narrowed, and moves
   focus to search (mouse) or Kind (touch) rather than dropping it on the page.
+- **🆕 New to you** (branch `claude/lab-unseen-1`, stacked on Back where you left it): toys keep
+  arriving, and a returning visitor had no way to see which. The Browse button now says
+  "🔎 Browse all 59 · 2 new", the catalog says how many were added since you first came, and those
+  cards carry a 🆕 badge until opened — or until ✓ Mark as seen. ⚠️ A first visit meets everything
+  (with no record, every toy there is is written down as seen), so the badge means "added since you
+  started coming here" rather than fifty-nine badges on a first look. In this browser only
+  (`lab_seen_v1`, known ids only, so bounded by the registry); never sent. A damaged record is
+  read as a first visit.
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 
