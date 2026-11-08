@@ -2365,7 +2365,7 @@ layout and touch routing only. Automated play shows the rules hold, never that a
 
 Branch `claude/lab-catalog-1` from `main` at `3d073b6` (51 experiments, batch 12 merged as #30).
 No new toys. `docs/2026-11-07-lab-catalog-and-feedback.md` is the full record — permission
-review, release order, rollback and what each test is; `docs/OPEN-DECISIONS.md` §13 the policy
+review, release order, rollback and what each test is; `docs/OPEN-DECISIONS.md` §14 the policy
 calls.
 
 - **For everyone, no backend needed:** 🔎 Browse, search & favourites — search, a kind filter,

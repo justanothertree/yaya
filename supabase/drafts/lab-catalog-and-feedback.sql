@@ -26,21 +26,21 @@
 --   lab_comment_reports  one private report per (note, reporter). Only the admin reads them, and
 --                        even the admin is shown counts by reason, never who reported.
 --
--- WHO SEES WHAT — the rules reused, not invented (Evan's decisions, OPEN-DECISIONS §13):
+-- WHO SEES WHAT — the rules reused, not invented (Evan's decisions, OPEN-DECISIONS §14):
 --   • A vote is never shown to anybody but its voter. There is no function that returns voters.
 --   • Every member who may vote today counts — minors and unknown ages included; a suspended
 --     member's votes stop counting while suspended. A total is shown only to signed-in members,
---     and only once at least lab_vote_floor() OTHER members have voted (§13b says why, and what
+--     and only once at least lab_vote_floor() OTHER members have voted (§14b says why, and what
 --     the floor cannot do).
 --   • Guests get the owner's flags and nothing counted, and cannot read or write notes.
 --   • A note is read through can_see(author, 'members') — the profile ladder, so a minor's note
 --     reaches their friends and no other member — plus its author. The admin has NO standing
 --     access: they read a note the ladder keeps from them only after somebody reports it, and
---     only in the report queue (§13a).
+--     only in the report queue (§14a).
 --   • A suspended member writes nothing (votes, notes, reports), and their notes stop reaching
 --     other members.
 --   • There is no member-to-member block on this site (friendships are pending/accepted only),
---     so nothing here claims to honour one (§13d).
+--     so nothing here claims to honour one (§14d).
 
 create table public.lab_demos (
   id text primary key check (id ~ '^[a-z0-9][a-z0-9-]{0,39}$'),
@@ -123,7 +123,7 @@ on conflict (id) do nothing;
 /* ------------------------------------------------------------------ the rules, in one place */
 
 -- Is this a vote that counts: from a member who may vote today — a profile, not suspended.
--- EVERY such member counts, minors and unknown ages included (OPEN-DECISIONS §13b). A suspended
+-- EVERY such member counts, minors and unknown ages included (OPEN-DECISIONS §14b). A suspended
 -- member's earlier votes stop counting while they are suspended and count again after.
 create or replace function public.lab_vote_counts(p_voter uuid)
 returns boolean
@@ -142,7 +142,7 @@ $$;
 -- this many OTHER members have voted on it: "others" because a total of four that includes your
 -- own vote is three other people, and subtracting yourself is the first thing anybody would try.
 -- It stops a total from naming anybody by itself. It cannot stop somebody who watches a total
--- move while knowing who was just online — OPEN-DECISIONS §13b is that conflict, for Evan.
+-- move while knowing who was just online — OPEN-DECISIONS §14b is that conflict, for Evan.
 create or replace function public.lab_vote_floor()
 returns int
 language sql immutable
@@ -170,7 +170,7 @@ $$;
 
 -- May the caller read this note. Its author, and otherwise the profile ladder at 'members' —
 -- clamped to the author's own ceiling inside can_see, so a minor's note reaches their friends
--- only. ⚠️ THE ADMIN HAS NO BRANCH HERE, on purpose (OPEN-DECISIONS §13a): being the site's owner
+-- only. ⚠️ THE ADMIN HAS NO BRANCH HERE, on purpose (OPEN-DECISIONS §14a): being the site's owner
 -- is not a standing permission to read what somebody shared with friends — the same rule can_see
 -- itself keeps. The admin reaches a note they cannot otherwise see only when somebody REPORTS it,
 -- and only through admin_lab_reports. A removed note reaches its author alone; a suspended
@@ -461,7 +461,7 @@ end;
 $$;
 
 -- The author takes their note back. The row goes, and any report on it with it: what they
--- withdrew is not kept as evidence (OPEN-DECISIONS §13).
+-- withdrew is not kept as evidence (OPEN-DECISIONS §14).
 create or replace function public.lab_comment_delete(p_id uuid)
 returns boolean
 language plpgsql volatile security definer

@@ -232,44 +232,158 @@ const pointer = (el, type, down) => {
  * any difference at all is the instrument reacting to signal that does not exist.
  *
  * ⚠️ IT VALIDATES ITSELF, because a checker that has not been shown reading zero is a checker
- * reporting that it ran. Three guards come back in the result and all three must hold or the
- * number is void: the room was silent before each half (`quietBefore`), the backing really was
- * inaudible (`backingPeak`, must be at the floor), and the alone reading repeats afterwards
- * (`aloneAgain`, within a couple of percent). With the backing stopped in both halves this
- * reports about 0dB, which is the null control and the thing to run first if a result surprises
+ * reporting that it ran. Every guard in `DUCK_GUARDS` comes back in the result and every one of
+ * them must hold or `reading` says the number is void: the room was silent before each half
+ * (`quietBefore`, `quietBetween`), the backing really was inaudible (`backingPeak`, must be at
+ * the floor), the alone reading repeats afterwards (`aloneAgain`, within a couple of percent),
+ * and the null control is flat (`controlDb`). With the backing stopped in both halves this
+ * reports about 0dB, which is that null control and the thing to run first if a result surprises
  * you.
  *
  * ⚠️ AND IT PUTS THE FADERS BACK. A probe that leaves the room changed is one you cannot run
  * twice, and layer gains are the thing it has to move.
  */
-async function duckProbe(raw, keyIndex) {
+/**
+ * The bench both loudness probes stand on: one key, every layer fader, and the discipline about
+ * when a reading is allowed to be taken.
+ *
+ * ⚠️ IT PUTS THE FADERS BACK, through `restore`. A probe that leaves the room changed is one
+ * you cannot run twice, and layer gains are the thing these have to move.
+ */
+function rig(raw, keyIndex) {
   const el = keyAt(keyIndex)
   if (!el) return { error: 'no keys — is #instrument open?' }
   const faders = [...document.querySelectorAll('.inst-layers input[type=range]')]
   if (!faders.length) return { error: 'no layers — load a backing first' }
   const was = faders.map((f) => f.value)
-  const setAll = (v) => {
-    const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-    for (const f of faders) {
-      d.set.call(f, String(v))
-      f.dispatchEvent(new Event('input', { bubbles: true }))
-      f.dispatchEvent(new Event('change', { bubbles: true }))
-    }
+  const vset = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+  const write = (f, v) => {
+    vset.call(f, String(v))
+    f.dispatchEvent(new Event('input', { bubbles: true }))
+    f.dispatchEvent(new Event('change', { bubbles: true }))
   }
-  const press = async (ms) => {
-    pointer(el, 'pointerdown', true)
-    await wait(250)
+  const hold = (down) => pointer(el, 'pointerdown', down)
+  const peakFor = async (ms) => {
     let peak = 0
     const until = performance.now() + ms
     while (performance.now() < until) {
       peak = Math.max(peak, raw().peak)
       await wait(15)
     }
-    /* released on WINDOW, which is where the room listens — see the note in InstrumentRoom
-       about capture being dropped so a press can slide between keys */
-    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
     return +peak.toFixed(4)
   }
+  return {
+    faders,
+    setAll: (v) => faders.forEach((f) => write(f, v)),
+    restore: () => faders.forEach((f, i) => write(f, was[i])),
+    down: () => hold(true),
+    /* released on WINDOW, which is where the room listens — see the note in InstrumentRoom
+       about capture being dropped so a press can slide between keys */
+    up: () => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true })),
+    peakFor,
+    /** hold the key, wait out the attack, and report the highest sample while it is down */
+    press: async (ms) => {
+      hold(true)
+      await wait(250)
+      const peak = await peakFor(ms)
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
+      return peak
+    },
+  }
+}
+
+/**
+ * Every condition that has to hold before a `ducking()` number is allowed to mean anything.
+ *
+ * ⚠️ `!= null` RATHER THAN TRUTHY FOR THE QUIET READINGS, because `untilQuiet` answers with the
+ * LEVEL it settled at and the best possible answer is **0**. A truthiness test would call a
+ * perfectly silent room a failed guard — the same mistake as the one below with the sign flipped,
+ * voiding every good run instead of passing every bad one.
+ */
+const DUCK_GUARDS = [
+  {
+    name: 'quietBefore',
+    ok: (g) => g.quietBefore != null,
+    why: 'the room never went quiet before the first press',
+  },
+  {
+    name: 'quietBetween',
+    ok: (g) => g.quietBetween != null,
+    why: 'the room never went quiet between the presses',
+  },
+  {
+    name: 'backingReallySilent',
+    ok: (g) => g.backingReallySilent === true,
+    why: 'the backing could be heard, so this is not the experiment',
+  },
+  {
+    name: 'repeatable',
+    ok: (g) => g.repeatable === true,
+    why: 'the key read differently the second time, so the room was not in the same state twice',
+  },
+  {
+    name: 'controlIsFlat',
+    ok: (g) => g.controlIsFlat === true,
+    why: 'the null control was ducked too, so the probe is measuring its own machinery',
+  },
+]
+
+/**
+ * What the run is allowed to CLAIM, given its own guards. Pure, so `npm run test` can ask it.
+ *
+ * ⚠️ THE GUARDS WERE ALREADY HERE AND THE VERDICT DID NOT CONSULT THEM — the cry-wolf failure
+ * this whole file is built to avoid, arriving in the file that says so. `reading` was computed
+ * from `dB < -1` and nothing else, so a run whose guards had already refused it still printed
+ * **"your hands are ducked by a backing that cannot be heard"**: the confident sentence, in the
+ * voice of a finding, about a number its own result had marked void two lines above.
+ *
+ * Measured 7 Nov 2026, the first `ducking()` run of a release review — `repeatable: false`,
+ * `controlIsFlat: false`, `controlDb: -2.61`. The null control had been ducked within **0.07dB**
+ * of the finding, so what the probe had measured was its own machinery and the honest answer was
+ * "nothing was learned". The next run, from a settled room, had every guard green and said the
+ * OPPOSITE. Both printed a sentence; only one of them was entitled to.
+ *
+ * It took a person reading the `guards` object to throw the first one away, and that is the part
+ * that does not scale: the verdict is one quotable line and the guards are nine fields under it,
+ * so the line is what gets believed, pasted and written down. A refusal has to be louder than
+ * the finding it replaces, in the same field, or it is not a refusal.
+ *
+ * ⚠️ AND `dB == null` IS TOTAL DUCKING RATHER THAN NONE, which the old comparison had backwards.
+ * `dBof` answers null when the key read a flat 0 over the backing, and `null < -1` is false — so
+ * a key silenced completely came out as "no ducking from a silent backing", the most confident
+ * possible wrong answer, in the one case the fault is at its worst.
+ */
+export function duckVerdict(r) {
+  const g = r?.guards ?? {}
+  /* `repeatable` already folds this in, so it has to be asked first or a dead key reads as a
+     failed guard — true, and not the thing worth saying about it */
+  if (!(r?.alone > 0 && g.aloneAgain > 0)) {
+    return { reading: 'no sound from the key at all — nothing here is a measurement' }
+  }
+  const refused = DUCK_GUARDS.filter((gd) => !gd.ok(g))
+  if (refused.length) {
+    return {
+      refused: refused.map((gd) => gd.name),
+      reading:
+        `VOID — nothing was learned, whatever the dB says: ${refused.map((gd) => gd.why).join('; ')}. ` +
+        'Run it again from a settled room; a guard refusing is this probe working.',
+    }
+  }
+  if (r.dB == null) {
+    return { reading: 'the key was silenced completely by a backing that cannot be heard' }
+  }
+  return {
+    reading:
+      r.dB < -1
+        ? 'your hands are ducked by a backing that cannot be heard'
+        : 'no ducking from a silent backing',
+  }
+}
+
+async function duckProbe(raw, keyIndex) {
+  const r = rig(raw, keyIndex)
+  if (r.error) return r
+  const { setAll, press } = r
   /**
    * ⚠️ "THE ANALYSER IS QUIET" IS NOT "NOTHING IS COUNTED", and that caught this probe out on
    * its first run — the guards refused the reading and they were right.
@@ -345,7 +459,7 @@ async function duckProbe(raw, keyIndex) {
     const dB = dBof(overSilentBacking)
     const controlDb = dBof(overLoadedButStopped)
     const sound = alone > 0 && aloneAgain > 0
-    return {
+    const out = {
       alone,
       overSilentBacking,
       dB,
@@ -361,19 +475,68 @@ async function duckProbe(raw, keyIndex) {
         controlDb,
         controlIsFlat: controlDb != null && Math.abs(controlDb) < 1,
       },
-      reading: !sound
-        ? 'no sound from the key at all — nothing here is a measurement'
-        : dB < -1
-          ? 'your hands are ducked by a backing that cannot be heard'
-          : 'no ducking from a silent backing',
+    }
+    /* the WHOLE result, so there is one call and nothing to pass half of — see `duckVerdict` */
+    return { ...out, ...duckVerdict(out) }
+  } finally {
+    r.restore()
+  }
+}
+
+/**
+ * Does the room hand the headroom BACK? — the transition `ducking()` structurally cannot see.
+ *
+ * ⚠️ THE SAME BUG HAS A TRANSIENT FORM AND IT IS THE WORSE ONE. `ducking()` compares two
+ * steady states, so it would go green for a fix that carried the layer gain into the sum at
+ * note-on and left it there. Layer gain rides the part's BUS — `setLayerGain` says so — so a
+ * gain remembered on the voice disagrees with the signal for as long as that voice lasts.
+ *
+ * This holds one key over an AUDIBLE backing and then pulls every fader to zero underneath it,
+ * without letting go and without striking anything new. The backing goes; the question is where
+ * the key ends up. Measured 7 Nov with the fix: **0.4838** against **0.5253** for that key alone,
+ * which is 0.71dB. Measured the same morning without it: **0.2198**, 7.7dB down and STAYING
+ * there, because nothing was ever going to re-strike it.
+ *
+ * `alone` is taken first, with the transport stopped, so the comparison is against this room on
+ * this run rather than against a number written down here.
+ */
+async function recoverProbe(raw, keyIndex, from) {
+  const r = rig(raw, keyIndex)
+  if (r.error) return r
+  const play = (label) =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === label)
+  try {
+    r.setAll(from)
+    await wait(300)
+    const alone = await r.press(1200)
+    await wait(4500)
+    play('▶ Play')?.click()
+    await wait(2500)
+    r.down()
+    await wait(600)
+    const overBacking = await r.peakFor(400)
+    /* the only thing that moves is the fader — the key is still down */
+    r.setAll(0)
+    await wait(500)
+    const afterwards = await r.peakFor(600)
+    r.up()
+    play('⏹ Stop')?.click()
+    const dB =
+      alone > 0 && afterwards > 0 ? +(20 * Math.log10(afterwards / alone)).toFixed(2) : null
+    return {
+      alone,
+      overBacking,
+      afterwards,
+      dB,
+      reading:
+        dB == null
+          ? 'no sound from the key at all — nothing here is a measurement'
+          : dB < -2
+            ? 'the key is still ducked by a backing that has been turned off'
+            : 'the headroom came back without a new note',
     }
   } finally {
-    const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-    faders.forEach((f, i) => {
-      d.set.call(f, was[i])
-      f.dispatchEvent(new Event('input', { bubbles: true }))
-      f.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    r.restore()
   }
 }
 
@@ -381,6 +544,8 @@ function probes(level, raw) {
   return {
     /** see duckProbe — hold one key alone, then over a backing at fader zero */
     ducking: (keyIndex = 7) => duckProbe(raw, keyIndex),
+    /** see recoverProbe — pull the faders to zero under a key that is still held down */
+    recovers: (keyIndex = 7, from = 1) => recoverProbe(raw, keyIndex, from),
     /**
      * What silence reads as.
      *

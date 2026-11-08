@@ -5,7 +5,7 @@ has run on throwaway local databases only — Supabase's own local stack and a p
 Nothing here touched production, and the frontend works exactly as before until it is applied
 (verified: with every call failing, all 51 experiments list and play).
 
-⚠️ **One decision is Evan's before it is applied:** `docs/OPEN-DECISIONS.md` §13b — counting every
+⚠️ **One decision is Evan's before it is applied:** `docs/OPEN-DECISIONS.md` §14b — counting every
 member's vote, as decided, meets "a total must not reveal hidden activity" at small numbers. The
 draft shows a total only once three OTHER members have voted; what that floor cannot stop is
 written there, with the options.
@@ -21,7 +21,7 @@ written there, with the options.
   author, privately reportable, removable by the admin.
 - **Owner controls**: feature, mark as "rough edges", hide and restore — enforced in the database.
 
-Who sees what (Evan's decisions of 7 Nov, `docs/OPEN-DECISIONS.md` §13):
+Who sees what (Evan's decisions of 7 Nov, `docs/OPEN-DECISIONS.md` §14):
 
 - **Votes:** every member who may vote counts, minors and unknown ages included; nobody but the
   voter sees a vote; a total is shown to members only, once three other members have voted.
@@ -70,7 +70,7 @@ that is nothing; it is the query to look at first if the Lab ever has thousands 
 
 ## Release order — proposed for review, none of it done
 
-0. **Evan decides `OPEN-DECISIONS.md` §13b** — accept the three-other-members floor, raise it, or
+0. **Evan decides `OPEN-DECISIONS.md` §14b** — accept the three-other-members floor, raise it, or
    choose another option there. Anything but (1) is a change to the draft first, and the tests below
    are run again.
 1. **Re-run the local validation on the final draft** (below: "How to run it"), all three suites
