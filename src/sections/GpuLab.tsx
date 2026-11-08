@@ -64,6 +64,7 @@ import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
 import { OrbitDemo } from '../gpu/OrbitDemo'
 import { WallpaperDemo } from '../gpu/WallpaperDemo'
 import { NonogramDemo } from '../gpu/NonogramDemo'
+import { GatesDemo } from '../gpu/GatesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -464,6 +465,12 @@ const DEMOS: readonly {
     name: 'Nonogram',
     line: 'Nonogram — fill the squares so every row and column matches its numbers, and a picture appears. Then draw your own: it tells you whether logic alone can solve it.',
     Demo: NonogramDemo,
+  },
+  {
+    id: 'gates',
+    name: 'Logic gates',
+    line: 'Logic gates — wire switches to lamps through NAND and the gates you build from it, until the truth table is all ticks: NOT, AND, XOR, then adders that really add.',
+    Demo: GatesDemo,
   },
 ]
 

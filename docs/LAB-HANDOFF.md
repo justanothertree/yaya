@@ -2669,7 +2669,10 @@ Every PR below is a draft, small on its own, and stacked so each shows only its 
 changes SQL; #31's draft stays unapplied and GitHub CI does not run it. Merge each into `main` in
 order (or retarget the next one to `main` after its base merges). Checked with `git merge-tree`
 against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
-chains merge cleanly into each other.
+chains merge cleanly into each other — re-checked with #57 and #58 as the tips, and #55 alone
+against #58. ⚠️ That holds because the catalog chain never edits the question queue below (the
+toy chain renumbers it with every toy); a check for the catalog chain goes in its own section. The
+first time #55 added a sentence to a queue item, the two chains conflicted in this file.
 
 | Order | PR  | Base   | What it is                                                    |
 | ----- | --- | ------ | ------------------------------------------------------------- |
@@ -2679,6 +2682,7 @@ chains merge cleanly into each other.
 | 3b    | #48 | #45    | 🎲 Surprise me                                                |
 | 3c    | #50 | #48    | Counts beside each kind; / to search                          |
 | 3d    | #55 | #50    | Back from a toy, the catalog is where you left it             |
+| 3e    | #57 | #55    | 🆕 New to you                                                 |
 | 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
 | 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
 | 4c    | #47 | #44    | Beams                                                         |
@@ -2687,6 +2691,7 @@ chains merge cleanly into each other.
 | 4f    | #53 | #52    | Orbit                                                         |
 | 4g    | #54 | #53    | Wallpaper                                                     |
 | 4h    | #56 | #54    | Nonogram                                                      |
+| 4i    | #58 | #56    | Logic gates                                                   |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2779,6 +2784,43 @@ now (a gap over two minutes counts as two).
 **Not verified:** the stage in a page (the GPU limitation above), real GPUs, and a finger — 15×15
 puzzles are about 17 px a square on a phone.
 
+### Follow-on: `claude/lab-gates-1`, stacked on #56 (8 Nov 2026) — a builder, Logic gates
+
+**Base:** `claude/lab-nonogram-1` (#56), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Eleven levels, each a truth table to make true: switches on the left, lamps on
+  the right, gates between. NOT from a NAND, then AND, OR, XOR, a half adder, three-way parity, a
+  full adder, a chooser, majority, two-bit equality and a two-bit adder that really adds. Each
+  level offers NAND plus the gates earlier levels had you build. Wires glow when they carry a 1;
+  the truth table under the stage says, row by row, what each lamp should show and what yours does,
+  and choosing a row sets the switches. Stars for the gates actually reaching a lamp against the
+  fewest found (a spare gate lying about does not count).
+- **Three ways to wire, one rule.** Drag from an output to an input; tap one then the other; or the
+  **parts list**, where every gate input and every lamp has a dropdown of what can feed it — the
+  route for a keyboard, a screen reader, or a thumb that finds the pins small. Picking a wire up by
+  its end moves it, letting go in empty space removes it. A wire that would feed a gate its own
+  output is refused (and never offered in the dropdowns). Undo, clear, keys (1–4 switches, arrows
+  nudge, Delete, Z). Circuits and bests are kept per level in this browser.
+- **Technique.** Wires keyed by where they END (one wire per input falls out of the data shape);
+  evaluation memoised per gate; one instanced pass of soft shapes over a dotted board, labels from
+  a font atlas as in Nonogram.
+
+**Measured here:** 14 tests — a reference circuit for every level solves it at its par using only
+its palette; the adder tables really add; a wrong circuit fails exactly the rows it gets wrong;
+loops of any length refused; removing a gate removes its wires and nothing else; an unwired input
+reads 0 and is reported; placement never overlaps; every pin found where it is drawn; each level's
+circuit, moved off its default place, reads back exactly, and a damaged record loses only the bad
+parts. Breaking loop detection, XOR or wire removal each turns a test red. On the GPU, offscreen:
+the full adder at rows 000 and 101 — every wire's middle grey or green by its value except three
+greys sampled inside a lit neighbour's glow, lamps yellow exactly when lit; that pass found each
+wire segment's glow cut off square at its box, fixed. Through the UI at 1280 and an emulated iPhone
+13 (mouse, not touch): Not by dragging and the parts list (★★★, kept), And by tap-then-tap, a loop
+not offered, a table row setting the switches, a wire picked up and dropped then undone, a gate
+dragged, keys, reload; `mobileAudit` zero; one GPU device per mount. On the phone a board unit is
+about 15 px, so a press now takes a pin within 16 CSS px rather than 0.6 units (9 px).
+
+**Not verified:** the stage in a page, real GPUs, a finger on the pins.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2795,13 +2837,16 @@ puzzles are about 17 px a square on a phone.
 5. **Real device — Nonogram on a phone.** Solve the 10×10 Cat with a finger. Are the squares big
    enough, and does a drag that drifts stay on its row as it should? The 15×15 ones are about 17 px
    a square — too small, or fine with the drag?
-6. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+6. **Real device — Logic gates on a phone.** Build And with a finger on the stage, then Or using
+   only the parts list. Are the pins hittable, or is the list the way on a phone? Should the board
+   turn upright on a narrow screen?
+7. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
    the two-burn trick discoverable from the hints alone?
-7. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+8. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
    Is "tap again to turn" discoverable, or does it want its own button first?
-8. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+9. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-9. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
-   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-10. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+10. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
+11. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
     "You voted …" line read clearly?
