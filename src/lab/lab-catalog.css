@@ -104,18 +104,10 @@
 .lab-votes .btn {
   min-width: 64px;
 }
-.lab-mine {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  font-weight: 600;
-}
-.lab-mine .btn {
-  min-width: 0;
-  min-height: 32px;
-  padding: 0.3rem 0.7rem;
-  font-weight: 500;
+/* the count sits inside its button: the highlight (lab.css, aria-pressed) says which one is yours */
+.lab-vote-n {
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
 }
 .lab-notes summary,
 .lab-owner summary {

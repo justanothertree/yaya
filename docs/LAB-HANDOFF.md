@@ -2448,8 +2448,15 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   running anything — `supabase/setup-cli` downloading the CLI got HTTP 504 three times. Every Lab
   head has a passing run of the same workflow on the same commit, some after one re-run of the
   failed job. Caching or retrying that download would be a workflow change, so it is left to Evan.
-- **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
-  "You: 👍".
+- **Voting is two buttons (Evan's call, 8 Nov):** 👍 and 👎, each with its count; yours is
+  highlighted. Press it again to take the vote back, press the other to move it. The "You voted…"
+  line, the Remove my vote button and the explanatory sentence are gone. A screen reader hears
+  "Like, 3 votes" with pressed/not pressed, and "Your vote: like" / "Vote removed" after a press;
+  a failed vote still says why. A guest sees "Sign in to vote"; a suspended account sees "Voting is
+  paused for this account". The catalog card still shows "You: 👍". ⚠️ The queue's "You voted …" question is out of date: with the SQL applied,
+  the test is now to vote, switch, and press the highlighted button to take it back, and to say
+  whether the highlight is clear enough on its own. (The queue is left alone here so the two
+  chains still merge; it is rewritten when they are combined.)
 
 ## Questions and tests for Evan — a short queue, most useful first
 
