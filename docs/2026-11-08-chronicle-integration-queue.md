@@ -64,6 +64,8 @@ shows each resolution:
 
 - #39 and #46 are superseded by #83 and #73. I have not closed either.
 - The claim migration (§15d, OPEN-DECISIONS §19e) has no branch, by design.
+- Sets step 2 has no branch: what the tally, the Circuit grid and the day's feed should read
+  waits on three answers in OPEN-DECISIONS §19g.
 
 ## The combined tree — `chronicle/integration`, a draft PR to `main` that is never to be merged
 
