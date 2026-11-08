@@ -10,6 +10,7 @@ import {
   type Moods,
 } from '../chronicle/record'
 import type { NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
+import type { DayNote } from '../chronicle/journal'
 import type { Plan } from '../chronicle/plan'
 import { pvPictures } from './picturePreview'
 
@@ -190,6 +191,8 @@ type Store = {
   made: Record<string, number>
   /** `chronicle_goal_days`: a repeating daily goal's weekdays, one row per change */
   days: PvDays[]
+  /** notes that belong to a day — `chronicle_notes` rows with no entry, see journal.ts */
+  dayNotes: DayNote[]
 }
 
 type PvDays = { goal: string; from: string; days: number; setAt: number }
@@ -594,6 +597,37 @@ function seed(): Store {
     days: [
       { goal: 'pv-g-days', from: localISO(at(8, 9)), days: fourDays, setAt: at(8, 9).getTime() },
     ],
+    /**
+     * ⚠️ A NOTE WITH NO SESSION, written last night about last night — so the Journal has one row
+     * that opens no sitting, and the workbench shows the door and the list holding both kinds.
+     */
+    dayNotes: [
+      {
+        id: 'pv-dn1',
+        on: localISO(at(1, 12)),
+        at: at(1, 21, 40).toISOString(),
+        body: 'Slept badly. Skipped the run and walked instead.',
+      },
+      /**
+       * ⚠️ THE TWO SHAPES THE DAY LOG HAS TO TELL APART (§15a): one written during the day it is
+       * about, which has a time on that day, and one written the NEXT morning about the day
+       * before, which does not — so the log shows it at the head of its day with the date it was
+       * written. Today's is five past midnight so it is never in the future, whenever the
+       * workbench is opened.
+       */
+      {
+        id: 'pv-dn2',
+        on: localISO(at(2, 12)),
+        at: at(1, 9, 5).toISOString(),
+        body: 'About the day before: the knee was fine after all.',
+      },
+      {
+        id: 'pv-dn3',
+        on: localISO(at(0, 12)),
+        at: at(0, 0, 5).toISOString(),
+        body: 'Up late. Writing this down so tomorrow knows why.',
+      },
+    ],
     routines: [
       {
         id: 'pv-r1',
@@ -628,6 +662,7 @@ const blank = (): Store => ({
   doneAt: {},
   made: {},
   days: [],
+  dayNotes: [],
 })
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
@@ -1485,6 +1520,12 @@ export const pvExport = (): Record<string, unknown> => ({
       created_at: EPOCH,
       updated_at: EPOCH,
     })),
+  /* no id, like a sitting's notes: an id is this account's and a file is not */
+  day_notes: [...db().dayNotes]
+    .sort(
+      (a, b) => a.on.localeCompare(b.on) || a.at.localeCompare(b.at) || a.id.localeCompare(b.id),
+    )
+    .map((n) => ({ on_day: n.on, at: n.at, body: n.body })),
   plans: [...db().plans]
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || a.id.localeCompare(b.id))
     .map((p) => ({
@@ -1522,7 +1563,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
   const inside = (k: string) =>
     list('goals').reduce((n, g) => n + (Array.isArray(g[k]) ? (g[k] as unknown[]).length : 0), 0)
   const total =
-    ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
+    ['activities', 'entries', 'goals', 'routines', 'plans', 'day_notes'].reduce(
       (n, k) => n + list(k).length,
       0,
     ) +
@@ -1538,6 +1579,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     plans: 0,
     marks: 0,
     schedules: 0,
+    notes: 0,
     skipped: 0,
   }
   /** the goals THIS import created — the only ones a schedule may arrive with */
@@ -1838,6 +1880,31 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       })
       out.marks++
     }
+  }
+
+  /**
+   * The day notes, as `chronicle_import` puts them back: a day that has come, fifty to a day, and
+   * skipped when the same day, moment and words are already here — a file put back twice must not
+   * write a journal twice, and with no id there is nothing else to know it by.
+   */
+  for (const n of list('day_notes')) {
+    const on = str(n.on_day)
+    const body = typeof n.body === 'string' ? n.body.trim() : ''
+    const at = str(n.at) ?? new Date().toISOString()
+    const limit = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+    if (
+      !on ||
+      !body ||
+      body.length > 4000 ||
+      on > limit ||
+      db().dayNotes.filter((x) => x.on === on).length >= 50 ||
+      db().dayNotes.some((x) => x.on === on && x.at === at && x.body === body)
+    ) {
+      out.skipped++
+      continue
+    }
+    db().dayNotes.push({ id: mint('pv-dn'), on, at, body })
+    out.notes++
   }
 
   for (const p of list('plans')) {
@@ -2335,6 +2402,33 @@ export const pvMoments = (fromISO: string, toISO: string) => {
 }
 
 /** the journal, in the double — the same three rules the server keeps */
+/** `chronicle_day_note_add`, in its words and order */
+export const pvDayNoteAdd = (day: string, body: string): { why: string } | null => {
+  const text = body.trim()
+  if (!text) return { why: 'nothing to write down' }
+  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  /* UTC's date plus one, as the server bounds it, since it does not know the zone */
+  const limit = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+  if (!day || day > limit) return { why: 'that day has not come yet' }
+  if (db().dayNotes.filter((n) => n.on === day).length >= 50) {
+    return { why: 'that is 50 notes on one day' }
+  }
+  db().dayNotes.push({ id: mint('pv-dn'), on: day, at: new Date().toISOString(), body: text })
+  return null
+}
+
+/** `chronicle_day_notes_between`: `[from, to)` by day, newest day first; a refusal reads as none */
+export const pvDayNotes = (from: string, to: string): DayNote[] => {
+  const days = (Date.parse(to) - Date.parse(from)) / 86_400_000
+  if (!(days > 0) || days > 400) return []
+  return db()
+    .dayNotes.filter((n) => n.on >= from && n.on < to)
+    .sort(
+      (a, b) => b.on.localeCompare(a.on) || b.at.localeCompare(a.at) || a.id.localeCompare(b.id),
+    )
+    .map((n) => ({ ...n }))
+}
+
 export const pvNoteAdd = (entry: string, body: string): { why: string } | null => {
   const text = body.trim()
   if (!text) return { why: 'nothing to write down' }
@@ -2351,6 +2445,16 @@ export const pvNoteAdd = (entry: string, body: string): { why: string } | null =
 
 export const pvNoteEdit = (id: string, body: string): { why: string } | null => {
   const text = body.trim()
+  /* the server refuses this on edit as well as on add; the double accepted it */
+  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  /* a day note is the same row in the same table, so the same edit reaches it */
+  const d = db().dayNotes.findIndex((n) => n.id === id)
+  if (d >= 0) {
+    db().dayNotes = text
+      ? db().dayNotes.map((n) => (n.id === id ? { ...n, body: text } : n))
+      : db().dayNotes.filter((n) => n.id !== id)
+    return null
+  }
   for (const e of db().ents) {
     const at = e.notes.findIndex((n) => n.id === id)
     if (at < 0) continue

@@ -16607,6 +16607,36 @@ a.cz-msg-author:focus-visible {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+/* the box a note with no session is written in, and the one it is changed in — see JournalList */
+.chron-journal-write,
+.chron-journal-fix {
+  display: grid;
+  gap: 0.35rem;
+}
+.chron-journal-write textarea,
+.chron-journal-fix textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  font: inherit;
+}
+.chron-journal-write-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* the hint takes the slack and the buttons keep their size — a floor in px, because rem is fluid */
+.chron-journal-write-row .muted {
+  flex: 1 1 140px;
+  font-size: 0.8rem;
+}
+.chron-journal-said {
+  margin: 0;
+  font-size: 0.85rem;
+  /* the theme token, which the light theme darkens to stay readable on white */
+  color: var(--loss);
+}
 .chron-journal-more {
   justify-self: start;
 }
@@ -17163,6 +17193,34 @@ a.cz-msg-author:focus-visible {
 /* a workout is a day's fact rather than a minute's, and sits at the head of its day */
 .chron-moment.is-workout {
   background: rgba(255, 255, 255, 0.045);
+}
+/**
+ * A note with no session — §15a. A moment, not a sitting: no length and no clock range, and only
+ * the time it was written when it was written that day.
+ *
+ * ⚠️ IT CARRIES A ✎ WHERE A RATING DOES NOT, and that is the one departure from the rule above. A
+ * rating is changed in the room it was given in; a note is yours and is changed in the Journal,
+ * and a row with words in it and no way to reach their editor is a dead end on a phone. It has no
+ * ✕, so it still cannot be mistaken for a sitting's pair of controls.
+ */
+.chron-moment.is-note {
+  align-items: center;
+}
+.chron-moment.is-note .chron-moment-what {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+/* ⚠️ THREE LINES, THEN AN ELLIPSIS: a note can be four thousand characters, and the day's log is a
+   list of a day, not a place to read a letter — the Journal is where it is read whole */
+.chron-note-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 /**
