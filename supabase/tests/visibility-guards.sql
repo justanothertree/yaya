@@ -1,11 +1,13 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN L5 (perturbed): four faults in the links draft — unit check, counting, grid activity, uncounting.
+-- RUN G1: sets, links (with the cell lock), then the GRID draft; every suite plus the grid test.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
 \ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
 \echo === applying the links draft (step 2a, after step 1)
 \ir ../../docs/2026-11-09-chronicle-sets-links.DRAFT.sql
+\echo === applying the grid draft (step 2b)
+\ir ../../docs/2026-11-09-circuit-grid-sessions.DRAFT.sql
 \echo === applying the weekdays draft
 \ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
 \echo === applying step 1
@@ -30,6 +32,8 @@
 \ir chronicle-sets.sql
 \echo === the links
 \ir chronicle-sets-links.sql
+\echo === the grid
+\ir circuit-grid-sessions.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
