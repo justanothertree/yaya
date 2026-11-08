@@ -84,9 +84,18 @@ fn cover(@builtin(vertex_index) i: u32) -> Cover {
   return o;
 }
 
+// ⚠️ AN INTEGER HASH OF THE FLOAT'S BITS, NOT fract(sin(...)). The first version took
+// fract(p * 127.1) first, and on whole-number cells — which is how every caller here asks — that
+// repeats every ten cells, so the stars of the dusk sky and the reef's fish stood in a visible
+// lattice. PCG mixes all 32 bits, and asks nothing of sin's precision on any GPU.
+fn pcg(v: u32) -> u32 {
+  let s = v * 747796405u + 2891336453u;
+  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+
 fn hash(p: vec2f) -> f32 {
-  let q = fract(p * vec2f(127.1, 311.7));
-  return fract(sin(dot(q, vec2f(12.9898, 78.233)) * 43758.5453) + q.x * q.y);
+  return f32(pcg(bitcast<u32>(p.x) ^ pcg(bitcast<u32>(p.y)))) / 4294967295.0;
 }
 
 fn noise(p: vec2f) -> f32 {
