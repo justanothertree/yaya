@@ -3,7 +3,16 @@
 // supabase/tests/lab-feedback.sql, run against a real Postgres.
 import { describe, expect, it } from 'vitest'
 import draft from '../../supabase/drafts/lab-catalog-and-feedback.sql?raw'
-import { NOTE_MAX, checkNote, explain, labApi, notesSummary, readNote, readPage } from './feedback'
+import {
+  NOTE_MAX,
+  checkNote,
+  explain,
+  labApi,
+  noLabYet,
+  notesSummary,
+  readNote,
+  readPage,
+} from './feedback'
 
 /** each function the draft defines, with its parameter names, read from the SQL itself */
 const SIGNATURES = new Map(
@@ -108,6 +117,28 @@ describe('what a person is told', () => {
     const raised = [...draft.matchAll(/raise exception '([^']+)'/g)].map((m) => m[1])
     expect(raised.length).toBeGreaterThan(10)
     for (const r of raised) expect(explain({ message: r }), r).not.toMatch(/Couldn’t reach/)
+  })
+})
+
+describe('before the SQL is applied', () => {
+  // the error objects below are what supabase-js returned from the local PostgREST on 8 Nov — a
+  // function that does not exist, a function that refused, and a server that was not there
+  const missing = {
+    code: 'PGRST202',
+    details: 'Searched for the function public.lab_catalog without parameters …',
+    hint: null,
+    message:
+      'Could not find the function public.lab_catalog without parameters in the schema cache',
+  }
+  const refused = { code: '42501', details: null, hint: null, message: 'permission denied' }
+  const offline = { message: 'TypeError: fetch failed', details: '…', hint: '', code: '' }
+  it('closes feedback only when the database has no such function', () => {
+    expect(noLabYet(missing)).toBe(true)
+    expect(noLabYet(refused)).toBe(false)
+    // offline is a call that failed on the way: "couldn't reach the server" is true there
+    expect(noLabYet(offline)).toBe(false)
+    expect(noLabYet(new Error('x'))).toBe(false)
+    expect(noLabYet(null)).toBe(false)
   })
 })
 

@@ -104,6 +104,17 @@ export function explain(e: unknown): string {
   return 'Couldn’t reach the server — nothing was changed.'
 }
 
+/**
+ * Whether an error means the database has no Lab functions at all — PostgREST's answer for a
+ * function it cannot find — as against a call that failed on the way. Only the first is a reason to
+ * stop offering votes and notes: until the draft SQL is applied every press would fail, and say it
+ * "couldn't reach the server" about a server that answered.
+ */
+export function noLabYet(e: unknown): boolean {
+  const code = e && typeof e === 'object' && 'code' in e ? String(e.code) : ''
+  return code === 'PGRST202'
+}
+
 type Rpc = <T>(fn: string, args?: Record<string, unknown>) => Promise<T>
 
 function rpcWith(client: SupabaseClient | null): Rpc | null {
