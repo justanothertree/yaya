@@ -1,15 +1,15 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W5 (perturbed): five weekday faults — forward bound, owner, DateStyle, export set_at, import merge — each must be named.
+-- RUN W6: the weekdays draft FIRST, then marks, then day notes, and every suite.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
+\echo === applying the weekdays draft (FIRST)
+\ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
 \echo === applying step 1
 \ir ../../docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql
 \echo === applying step 3
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
 \echo === applying the day-notes draft (AFTER marks)
 \ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
-\echo === applying the weekdays draft (LAST)
-\ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
 \echo === the standing guards, against a schema with all three drafts in it
 \ir visibility-guards.orig.sql
 \echo === the daily flow
