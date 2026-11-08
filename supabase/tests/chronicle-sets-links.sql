@@ -316,9 +316,15 @@ where exists (select 1 from docs, jsonb_array_elements(body->'sets') s where k =
 do $$
 declare doc jsonb; res jsonb; back jsonb;
 begin
+  /* ⚠️ THE SITTINGS GO TOO. This used to delete only the sets, behind the API's back, which
+     leaves every amount still holding them, so a restored counted set fitted whatever the import
+     did. A counted set now comes back only with its sitting (G2 asks the other half), so the
+     round trip restores both, the way putting back a lost account does. */
   delete from public.chronicle_exercise_links where owner = (select me from subject);
+  delete from public.chronicle_entries where owner = (select me from subject);
   delete from public.chronicle_sets where owner = (select me from subject);
   doc := jsonb_build_object('kind', 'chronicle', 'version', 1,
+           'entries', (select body->'entries' from docs where k = 'orig'),
            'exercise_links', (select body->'exercise_links' from docs where k = 'orig'),
            'sets', (select body->'sets' from docs where k = 'orig'));
   perform set_config('role', 'authenticated', true);
@@ -328,6 +334,11 @@ begin
   if back->'exercise_links' is distinct from (select body->'exercise_links' from docs where k = 'orig')
      or back->'sets' is distinct from (select body->'sets' from docs where k = 'orig') then
     insert into fails values ('the round trip changed the links or the sets', res::text);
+  end if;
+  if (select jsonb_agg(jsonb_build_array(e->>'id', e->'amount') order by e->>'id') from jsonb_array_elements(back->'entries') e)
+     is distinct from (select jsonb_agg(jsonb_build_array(e->>'id', e->'amount') order by e->>'id')
+                         from docs, jsonb_array_elements(body->'entries') e where k = 'orig') then
+    insert into fails values ('the round trip changed a sitting''s count', res::text);
   end if;
   if (res->>'links')::int is distinct from 2 then
     insert into fails values ('the import did not count the links', res::text);
@@ -346,6 +357,52 @@ begin
 exception when others then insert into fails values ('the round trip raised', sqlerrm);
 end $$;
 reset role;
+
+-- ── G2. a counted set only comes back with its sitting ─────────────────────────────────────
+/* ⚠️ THROUGH THE PRODUCT'S OWN PATH, which G's round trip is not. ✕ in the sitting editor is
+   chronicle_set_drop, and it takes the set's value back out of the amount. A file restored after
+   that would bring the set back counted into a sitting that no longer holds it, and the next ✕
+   would take the value out a second time, from what was typed. */
+set local role authenticated;
+do $$
+declare e uuid; s uuid; got text;
+begin
+  perform public.chronicle_exercise_link('lk-mine', 'ex-quad', (select v from ids where k = 'gym'));
+  e := public.chronicle_entry_add((select v from ids where k = 'gym'),
+         (select t0 from t) - interval '10 hours', (select t0 from t) - interval '9 hours', null);
+  perform public.chronicle_entry_amount(e, 9);
+  s := public.chronicle_set_add('lk-mine', 'ex-quad', 7, (select today from t) - 1, e);   -- 9 → 16
+  insert into ids values ('g2_e', e), ('g2_s', s);
+  insert into docs values ('g2', public.chronicle_export());
+  perform public.chronicle_set_drop(s);                                                    -- 16 → 9
+  insert into docs values ('g2_res', public.chronicle_import((select body from docs where k = 'g2')));
+  -- the ✕ again: with the set kept out there is nothing to take back, and 9 stays 9
+  begin perform public.chronicle_set_drop(s); exception when others then got := sqlerrm; end;
+  insert into seen values ('g2_drop', to_jsonb(coalesce(got, 'it was taken back again')));
+exception when others then insert into fails values ('a restore after a drop raised', sqlerrm);
+end $$;
+reset role;
+insert into fails select 'a counted set came back into a sitting that no longer held it', ''
+where exists (select 1 from public.chronicle_sets where id = (select v from ids where k = 'g2_s'));
+insert into fails select 'the second ✕', (select v #>> '{}' from seen where k = 'g2_drop')
+where (select v #>> '{}' from seen where k = 'g2_drop') is distinct from 'no such set';
+insert into fails select 'a restore after a drop changed what was typed', coalesce(amount::text, 'null')
+from public.chronicle_entries where id = (select v from ids where k = 'g2_e') and amount is distinct from 9;
+/* and the half that still works: with the sitting gone as well, both come back together, and its
+   count holds the set again */
+set local role authenticated;
+do $$ begin
+  perform public.chronicle_entry_drop((select v from ids where k = 'g2_e'));
+  perform public.chronicle_import((select body from docs where k = 'g2'));
+exception when others then insert into fails values ('restoring the sitting with its set raised', sqlerrm);
+end $$;
+reset role;
+insert into fails select 'a sitting and its counted set restored together', coalesce(e.amount::text, 'null') || ' / ' || coalesce(s.counted::text, 'no set')
+from public.chronicle_entries e left join public.chronicle_sets s on s.id = (select v from ids where k = 'g2_s')
+where e.id = (select v from ids where k = 'g2_e')
+  and (e.amount is distinct from 16 or s.counted is distinct from true);
+insert into fails select 'the sitting did not come back at all', ''
+where not exists (select 1 from public.chronicle_entries where id = (select v from ids where k = 'g2_e'));
 
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$

@@ -50,6 +50,14 @@
 --                     is what a date-only grid contribution has to be compared with. An ask without
 --                     them counts exactly what it did before.
 --   export / import   `exercise_links` travel, and each set says whether it was counted.
+--                     ⚠️ A COUNTED SET ONLY COMES BACK WITH ITS SITTING. Its value is in the
+--                     sitting's amount only while the set exists: ✕ takes it back out. So a file
+--                     restored after a ✕ would bring the set back counted into a sitting that no
+--                     longer holds it, and the next ✕ would take the value out a second time,
+--                     from what was typed. Only a sitting this import created holds what the
+--                     file says, so a counted set for any other is refused, and counted with
+--                     the rest that are. An uncounted set, or one with no sitting, has no amount
+--                     to disagree with and is put back as before.
 --
 -- ── ROLLBACK ────────────────────────────────────────────────────────────────────────────────
 --   1. re-run chronicle_tally, chronicle_entry_amount, chronicle_export and chronicle_import's
@@ -564,7 +572,18 @@ begin
          this file stopped exactly there */
       ('chronicle_import',
        E'n_set int := 0;',
-       E'n_set int := 0; n_link int := 0;'),
+       E'n_set int := 0; n_link int := 0; fresh_entries uuid[] := ''{}'';'),
+      /* the sittings THIS import created: only theirs hold what the file's sets say */
+      ('chronicle_import',
+       E'          n_ent := n_ent + 1;\n',
+       E'          n_ent := n_ent + 1;\n'
+       || E'          fresh_entries := fresh_entries || (x->>''id'')::uuid;\n'),
+      /* ⚠️ A COUNTED SET ONLY COMES BACK WITH ITS SITTING — see the header */
+      ('chronicle_import',
+       E'      if nullif(x->>''exercise'', '''') is null\n',
+       E'      if (coalesce((x->>''counted'')::boolean, false) and (x->>''entry'') is not null\n'
+       || E'          and not ((x->>''entry'')::uuid = any (fresh_entries)))\n'
+       || E'         or nullif(x->>''exercise'', '''') is null\n'),
       ('chronicle_import',
        E'exercise_name, entry, on_day, value,\n           created_at, updated_at)',
        E'exercise_name, entry, on_day, value,\n           created_at, updated_at, counted)'),
@@ -611,5 +630,5 @@ begin
     execute replace(v_src, r.old, r.new);
     v_done := v_done + 1;
   end loop;
-  if v_done <> 11 then raise exception 'expected 11 substitutions, made %', v_done; end if;
+  if v_done <> 13 then raise exception 'expected 13 substitutions, made %', v_done; end if;
 end $mig$;
