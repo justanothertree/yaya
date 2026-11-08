@@ -228,3 +228,27 @@ export function readFavourites(text: string | null, known: ReadonlySet<string>):
 export function toggleFavourite(list: readonly string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id].slice(-MAX_FAVOURITES)
 }
+
+/* The experiments opened lately, most recent first — a history in this browser, not a library.
+   ⚠️ UNLIKE FAVOURITES IT FORGETS: the twelfth-newest falls off when another is opened. That is
+   safe here only because nothing else mirrors this list; it is not anybody's work, and it never
+   leaves the browser. */
+export const RECENT_KEY = 'lab_recent_v1'
+export const MAX_RECENT = 12
+
+export function readRecent(text: string | null, known: ReadonlySet<string>): string[] {
+  try {
+    const v: unknown = JSON.parse(text ?? '[]')
+    if (!Array.isArray(v)) return []
+    return [...new Set(v.filter((x): x is string => typeof x === 'string' && known.has(x)))].slice(
+      0,
+      MAX_RECENT,
+    )
+  } catch {
+    return []
+  }
+}
+
+/** opening one brings it to the front, once */
+export const openedNow = (list: readonly string[], id: string): string[] =>
+  [id, ...list.filter((x) => x !== id)].slice(0, MAX_RECENT)

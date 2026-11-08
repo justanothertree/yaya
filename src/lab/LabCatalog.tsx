@@ -9,10 +9,11 @@ import {
   type Entry,
 } from './catalog'
 
-type View = 'all' | 'favourites' | 'new' | 'top'
+type View = 'all' | 'recent' | 'favourites' | 'new' | 'top'
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'recent', label: '🕘 Recent' },
   { id: 'favourites', label: '★ Favourites' },
   { id: 'new', label: '🆕 New' },
   { id: 'top', label: '👍 Highly rated' },
@@ -22,6 +23,8 @@ type Props = {
   list: readonly Entry[]
   current: string
   favourites: readonly string[]
+  /** opened lately in this browser, most recent first */
+  recent: readonly string[]
   /** may this viewer see vote totals: a signed-in member, with the server reachable */
   rated: boolean
   admin: boolean
@@ -38,6 +41,7 @@ export function LabCatalog({
   list,
   current,
   favourites,
+  recent,
   rated,
   admin,
   onFavourite,
@@ -57,13 +61,17 @@ export function LabCatalog({
     let out = search(list, query)
     if (category) out = out.filter((e) => e.category === category)
     if (view === 'favourites') out = out.filter((e) => favourites.includes(e.id))
+    if (view === 'recent')
+      return out
+        .filter((e) => recent.includes(e.id))
+        .sort((a, b) => recent.indexOf(a.id) - recent.indexOf(b.id))
     if (view === 'new') return byNewest(out)
     if (view === 'top') return byRating(out)
     // featured first, then the Lab's own order — the page says so above the list
     return [...out].sort(
       (a, b) => Number(b.flags.featured) - Number(a.flags.featured) || a.order - b.order,
     )
-  }, [list, query, category, view, favourites])
+  }, [list, query, category, view, favourites, recent])
 
   const rule =
     view === 'top'
@@ -72,16 +80,20 @@ export function LabCatalog({
         : 'Sign in to see how members rated them — until then this is the Lab’s own order.'
       : view === 'new'
         ? 'Newest first, by the day each was added.'
-        : view === 'favourites'
-          ? 'Your favourites are kept in this browser only, and never sent anywhere.'
-          : 'Featured first, then in the order they were added.'
+        : view === 'recent'
+          ? `The last ${recent.length === 1 ? 'one' : recent.length} you opened, most recent first — remembered in this browser only.`
+          : view === 'favourites'
+            ? 'Your favourites are kept in this browser only, and never sent anywhere.'
+            : 'Featured first, then in the order they were added.'
 
   const empty =
     view === 'favourites' && !favourites.length
       ? 'No favourites yet — press ☆ on any experiment to keep it here.'
-      : query
-        ? `Nothing matches “${query}”.`
-        : 'Nothing here.'
+      : view === 'recent' && !recent.length
+        ? 'Nothing opened yet — the experiments you open will be listed here.'
+        : query
+          ? `Nothing matches “${query}”.`
+          : 'Nothing here.'
 
   return (
     <div className="lab-catalog">

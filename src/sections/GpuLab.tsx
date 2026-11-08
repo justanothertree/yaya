@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   FAVOURITES_KEY,
+  RECENT_KEY,
+  openedNow,
+  readRecent,
   entries,
   listed,
   readFavourites,
@@ -464,6 +467,14 @@ function reportOf(adapter: GPUAdapter, format: string): Report {
 const GUEST: Viewer = { authed: false, suspended: false, isAdmin: false }
 const KNOWN = new Set(DEMOS.map((d) => d.id))
 
+function storedRecent() {
+  try {
+    return readRecent(localStorage.getItem(RECENT_KEY), KNOWN)
+  } catch {
+    return []
+  }
+}
+
 function storedFavourites() {
   try {
     return readFavourites(localStorage.getItem(FAVOURITES_KEY), KNOWN)
@@ -488,6 +499,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const api = useMemo(() => labApi(), [])
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
+  const [recent, setRecent] = useState<string[]>(storedRecent)
   const [browsing, setBrowsing] = useState(false)
   const bar = useRef<HTMLDivElement | null>(null)
   /** a card can be a long way down the grid: launching one brings its toy back into view —
@@ -567,6 +579,19 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   /** the next or previous demo, round the end — browsing toys should not hit a wall */
   const step = (by: number) =>
     pick(shownDemos[(at + by + shownDemos.length) % shownDemos.length].id)
+  /* the experiment on screen is the one just opened — the first visit's included */
+  useEffect(() => {
+    setRecent((was) => {
+      if (was[0] === current.id) return was
+      const next = openedNow(was, current.id)
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+      } catch {
+        /* private mode: kept for this visit */
+      }
+      return next
+    })
+  }, [current.id])
   const currentFlags = flags.get(current.id)
 
   return (
@@ -627,6 +652,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           list={visible}
           current={current.id}
           favourites={favourites}
+          recent={recent}
           rated={visible.some((e) => e.flags.up !== undefined)}
           admin={viewer.isAdmin}
           onFavourite={favourite}

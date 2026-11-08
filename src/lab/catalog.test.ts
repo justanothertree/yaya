@@ -8,7 +8,10 @@ import {
   byRating,
   entries,
   listed,
+  MAX_RECENT,
+  openedNow,
   readFavourites,
+  readRecent,
   readFlags,
   search,
   toggleFavourite,
@@ -165,6 +168,35 @@ describe('the orders the page states', () => {
     )
     // printshop 7 Nov; fold and topple 6 Nov, topple listed after fold as in the Lab; swarm 5 Nov
     expect(byNewest(list).map((e) => e.id)).toEqual(['printshop', 'topple', 'fold', 'swarm'])
+  })
+})
+
+describe('recently opened, kept in this browser', () => {
+  const known = new Set(['a', 'b', 'c', 'd'])
+  it('puts the one just opened first, once, and keeps the rest in the order they were opened', () => {
+    let r: string[] = []
+    for (const id of ['a', 'b', 'c', 'b', 'd']) r = openedNow(r, id)
+    expect(r).toEqual(['d', 'b', 'c', 'a'])
+    expect(openedNow(r, 'd')).toEqual(r)
+  })
+
+  it('remembers the last twelve and forgets the oldest', () => {
+    let r: string[] = []
+    for (let i = 0; i < 20; i++) r = openedNow(r, `t${i}`)
+    expect(r.length).toBe(MAX_RECENT)
+    expect(r[0]).toBe('t19')
+    expect(r[MAX_RECENT - 1]).toBe(`t${20 - MAX_RECENT}`)
+  })
+
+  it('reads back only ids the Lab has, without repeats, and nothing from junk', () => {
+    expect(readRecent(JSON.stringify(['c', 'gone', 'a', 'c', 7, null, 'b']), known)).toEqual([
+      'c',
+      'a',
+      'b',
+    ])
+    expect(readRecent('{"a":1}', known)).toEqual([])
+    expect(readRecent('nope', known)).toEqual([])
+    expect(readRecent(null, known)).toEqual([])
   })
 })
 

@@ -2396,6 +2396,12 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   would throw the keyboard over the list). Launching a card from far down the grid scrolls the
   toolbar back to the top of the screen once the toy has rendered. The current toy's card says
   "Last open", not "Playing": the catalog unmounts it.
+- **🕘 Recent** (branch `claude/lab-recent-1`, stacked on this one): a catalog view of the last
+  twelve experiments opened in this browser, most recent first — the first visit's included, and
+  whether it was opened from a card, the dropdown or ‹ ›. Labelled "remembered in this browser
+  only"; nothing is sent. Unlike favourites it forgets the oldest, which is safe only because no
+  other store mirrors it. It does not try to say which toys hold your work: several write a
+  default on first open, so "has saved data" would really mean "opened once".
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 
