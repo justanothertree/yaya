@@ -15,6 +15,8 @@
 --   C  a dry run reports and writes nothing
 --   D  one entry that cannot become a set stops the whole person: reported with its log and
 --      position, nothing written, no marker, the logs untouched
+--   D2 so does a set the grid has never counted (no sitting, no source), reported by its id; taking
+--      it back lets the person convert. And a set written DURING a run fails the reconciliation
 --   E  a real run: one set per entry with its source, the logs byte for byte as they were,
 --      every cell reconciled, the marker set
 --   F  a re-run adds nothing, with the marker and without it
@@ -118,6 +120,78 @@ insert into fails select 'a stopped person still got sets or a marker', ''
 where exists (select 1 from public.chronicle_sets where person_id = 'cv-gone')
    or public.circuit_is_converted('cv-gone');
 
+-- ── D2. a set the grid has never counted stops the person too ─────────────────────────────
+/* ⚠️ A FIXTURE THAT HOLDS NOTHING STILL. Every other person here starts with no sets, so the
+   reconciliation could only ever compare the logs with what it had just written. This one already
+   holds a set with no sitting, made the way the API allows, on a day with no log. The grid has never
+   counted it, and after the switch it would. */
+insert into public.circuit_people (id, name, exercises, owner_user_id) values
+  ('cv-stray', 'Convert: stray', '[{"id":"ex-quad","name":"Quad Curl","unit":"reps","mult":1,"col":0,"row":0}]',
+   (select me from subject)),
+  ('cv-race', 'Convert: race', '[{"id":"ex-quad","name":"Quad Curl","unit":"reps","mult":1,"col":0,"row":0}]',
+   (select me from subject));
+insert into public.circuit_logs (id, person_id, date, entries) values
+  ('cv-s1', 'cv-stray', (select today from t) - 4, '[{"eid":"ex-quad","val":6}]'),
+  ('cv-r1', 'cv-race', (select today from t) - 4, '[{"eid":"ex-quad","val":8}]');
+select set_config('request.jwt.claims',
+  json_build_object('sub', (select me::text from subject), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  insert into ids values ('stray', public.chronicle_set_add('cv-stray', 'ex-quad', 5, (select today from t) - 1, null));
+exception when others then insert into fails values ('making a set with no sitting raised', sqlerrm);
+end $$;
+reset role;
+insert into seen values ('stray-dry', public.circuit_convert_person('cv-stray', false));
+insert into seen values ('stray', public.circuit_convert_person('cv-stray', true));
+insert into fails select 'the report of a set the grid never counted', (select v::text from seen where k = 'stray')
+where (select jsonb_build_array(v->'applied', v->'cells', jsonb_array_length(v->'problems'),
+                                v->'problems'->0->>'set', v->'problems'->0->>'on',
+                                (v->'problems'->0->>'val')::numeric)
+         from seen where k = 'stray')
+      is distinct from jsonb_build_array(false, 1, 1, (select v::text from ids where k = 'stray'),
+                                         to_char((select today from t) - 1, 'YYYY-MM-DD'), 5);
+insert into fails select 'the dry run and the real run disagree about it', (select v::text from seen where k = 'stray-dry')
+where (select v from seen where k = 'stray-dry') is distinct from (select v from seen where k = 'stray');
+insert into fails select 'a person stopped by a stray set still got sets or a marker', ''
+where exists (select 1 from public.chronicle_sets where person_id = 'cv-stray' and source_log is not null)
+   or public.circuit_is_converted('cv-stray');
+/* the way out the report points at: its owner takes the set back, and the person converts */
+set local role authenticated;
+do $$ begin perform public.chronicle_set_drop((select v from ids where k = 'stray'));
+exception when others then insert into fails values ('taking the stray set back raised', sqlerrm);
+end $$;
+reset role;
+insert into seen values ('stray-after', public.circuit_convert_person('cv-stray', true));
+insert into fails select 'converting once the stray set was taken back', (select v::text from seen where k = 'stray-after')
+where (select jsonb_build_array(v->'applied', v->'inserted', jsonb_array_length(v->'problems'))
+         from seen where k = 'stray-after')
+      is distinct from '[true, 1, 0]'::jsonb;
+
+/* ⚠️ AND A SET WRITTEN IN BETWEEN. The scan runs before the insert, so only the reconciliation can
+   notice one that arrives after it. A trigger stands in for the other writer: it adds a set with no
+   sitting to the same cell the moment this run writes its own. This file rolls back, and drops it. */
+create function public.cv_race_test() returns trigger language plpgsql as $f$
+begin
+  insert into public.chronicle_sets (owner, person_id, exercise_id, exercise_name, entry, on_day, value)
+  values (new.owner, new.person_id, new.exercise_id, new.exercise_name, null, new.on_day, 1);
+  return null;
+end $f$;
+create trigger cv_race_test after insert on public.chronicle_sets
+  for each row when (new.source_log = 'cv-r1') execute function public.cv_race_test();
+do $$
+declare got text;
+begin
+  begin perform public.circuit_convert_person('cv-race', true); exception when others then got := sqlerrm; end;
+  if got is distinct from 'conversion of cv-race does not reconcile in 1 cells — nothing was changed' then
+    insert into fails values ('a set written during the run', coalesce(got, 'it was converted'));
+  end if;
+end $$;
+drop trigger cv_race_test on public.chronicle_sets;
+drop function public.cv_race_test();
+insert into fails select 'a run that did not reconcile still left sets or a marker', ''
+where exists (select 1 from public.chronicle_sets where person_id = 'cv-race')
+   or public.circuit_is_converted('cv-race');
+
 -- ── E. a real run ───────────────────────────────────────────────────────────────────────────
 insert into seen values ('real', public.circuit_convert_person('cv-mine', true));
 insert into fails select 'the real run''s report', (select v::text from seen where k = 'real')
@@ -178,7 +252,7 @@ where (select jsonb_build_array(v->'converted',
          (select jsonb_agg(jsonb_build_array(m->>'on', m->>'exercise', (m->>'value')::numeric) order by m->>'on', m->>'exercise')
             from jsonb_array_elements(v->'manual') m where m->>'person' = 'cv-mine'))
          from seen where k = 'manual')
-      is distinct from jsonb_build_array(jsonb_build_array('cv-mine'), jsonb_build_array(
+      is distinct from jsonb_build_array(jsonb_build_array('cv-mine', 'cv-stray'), jsonb_build_array(
         jsonb_build_array(to_char((select today from t) - 5, 'YYYY-MM-DD'), 'ex-bench', 4),
         jsonb_build_array(to_char((select today from t) - 5, 'YYYY-MM-DD'), 'ex-quad', 10),
         jsonb_build_array(to_char((select today from t) - 3, 'YYYY-MM-DD'), 'ex-quad', 10)));

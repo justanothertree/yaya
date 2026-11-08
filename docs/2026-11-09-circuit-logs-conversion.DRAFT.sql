@@ -24,6 +24,14 @@
 --      Before the marker flips, every (person, exercise, day) is summed from the logs and from the
 --      sets just written, and any difference raises — the whole conversion rolls back. Unit is a
 --      property of the exercise, carried through by its id, so a cell cannot change unit on the way.
+--      ⚠️ AND IT IS AGAINST WHAT THE READERS WILL READ, not only what this run wrote. After the
+--      switch they read EVERY set with no sitting, and a person can already hold one: the sets
+--      writer takes `p_entry null` from the API, and an imported file restores them. Nothing before
+--      the switch counts such a set (the grid sums only sets with a sitting, and the goals read the
+--      logs), so it would start counting at the marker. Each one is reported as a problem by its id
+--      and stops the person like any other. Its owner can take it back with chronicle_set_drop, or
+--      the cutover can decide it should count. The reconciliation then compares the logs with every
+--      set the readers will read, so one written between the scan and the marker raises too.
 --
 -- "Preserve date-only records without inventing times; report records that cannot be converted
 --  rather than dropping them."
@@ -51,7 +59,8 @@
 --   delete from public.circuit_people_converted where person_id = '<id>';
 --   delete from public.chronicle_sets where person_id = '<id>' and source_log is not null;
 -- Readers go back to the logs, which were never changed. A manual part typed AFTER conversion lives
--- in a set with no source, and is the one thing a rollback must decide about — it says so.
+-- in a set with no source, and is the one thing a rollback must decide about — it says so. If it is
+-- left, a re-run reports it as a problem rather than counting it beside the logs it replaced.
 
 -- ── THE MARKER, IN A TABLE OF ITS OWN ───────────────────────────────────────────────────────
 -- ⚠️ NOT A COLUMN ON circuit_people. That table's own policies let an owner update their row, so a
@@ -154,6 +163,18 @@ begin
     end if;
   end loop;
 
+  -- ⚠️ A SET THE GRID HAS NEVER COUNTED, which the switch would start counting: no sitting, no
+  -- source, held by the person's owner. That is exactly what the readers after the marker read.
+  for r in
+    select s.id, s.exercise_id, s.on_day, s.value from public.chronicle_sets s
+     where s.person_id = p_person and s.entry is null and s.source_log is null and s.owner = v_owner
+     order by s.on_day, s.exercise_id, s.id
+  loop
+    v_problems := v_problems || jsonb_build_array(jsonb_build_object(
+      'set', r.id, 'eid', r.exercise_id, 'on', to_char(r.on_day, 'YYYY-MM-DD'), 'val', r.value,
+      'why', 'a set with no sitting, which the grid has never counted — the switch would start counting it'));
+  end loop;
+
   v_report := jsonb_build_object(
     'person', p_person, 'cells', v_cells, 'total', v_total, 'kept_totals', v_kept,
     'empty', v_empty, 'problems', v_problems,
@@ -172,13 +193,15 @@ begin
   on conflict (source_log, source_index) where source_log is not null do nothing;
   get diagnostics v_inserted = row_count;
 
-  -- ⚠️ RECONCILED BEFORE THE MARKER, by person, exercise and day: what the logs held and what the sets
-  -- with a source now hold must be the same number in every cell, or nothing happens at all
+  -- ⚠️ RECONCILED BEFORE THE MARKER, by person, exercise and day: what the logs held and every set the
+  -- readers will read once it is set must be the same number in every cell, or nothing happens at all.
+  -- The predicate is the readers' own, not "has a source", so nothing can be counted that was not here
   select count(*) into v_mismatch from (
     select coalesce(a.eid, b.eid) as eid, coalesce(a.on_day, b.on_day) as on_day
       from (select eid, on_day, sum(value) as v from conv_candidates group by eid, on_day) a
       full join (select exercise_id as eid, on_day, sum(value) as v from public.chronicle_sets
-                  where person_id = p_person and source_log is not null group by exercise_id, on_day) b
+                  where person_id = p_person and entry is null and owner = v_owner
+                  group by exercise_id, on_day) b
         on a.eid = b.eid and a.on_day = b.on_day
      where a.v is distinct from b.v) z;
   if v_mismatch > 0 then
