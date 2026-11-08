@@ -57,6 +57,7 @@
 --   2. re-run docs/2026-11-08-chronicle-sets.DRAFT.sql's function bodies (it is idempotent for
 --      functions), which restores the set writers without write-through
 --   3. drop function public.chronicle_manual_amount(uuid, date, date);
+--      drop function public.chronicle_cell_lock(text, text, date);
 --      drop function public.chronicle_my_exercises();
 --      drop function public.chronicle_exercise_link(text, text, uuid);
 --      drop function public.chronicle_link_ok(text, text, uuid);
@@ -207,6 +208,23 @@ begin
   ), '[]'::jsonb);
 end $$;
 
+-- ── ONE CELL AT A TIME ──────────────────────────────────────────────────────────────────────
+-- A Circuit cell — one person's exercise on one day — is written by two kinds of thing: a set
+-- counted during a sitting, and a total typed into the grid (the grid draft's circuit_cell_set,
+-- which works out the manual part as the total minus the sessions). Each takes this lock first, for
+-- the length of its own transaction, so the grid can never read the sessions, have a set land, and
+-- then write a manual part computed from a figure that is already out of date.
+
+create or replace function public.chronicle_cell_lock(p_person text, p_exercise text, p_day date)
+returns void
+language sql
+volatile
+set search_path = public, pg_temp
+as $$
+  select pg_advisory_xact_lock(hashtextextended(
+           coalesce(p_person, '') || '/' || coalesce(p_exercise, '') || '/' || coalesce(p_day::text, ''), 0))
+$$;
+
 -- ── THE SET WRITERS, NOW WRITING THROUGH ────────────────────────────────────────────────────
 -- Replaces the step-1 bodies. Every refusal they had is kept in the same words and order; what
 -- changes is the last few lines of each.
@@ -261,6 +279,7 @@ begin
     raise exception 'that day has not come yet';
   end if;
 
+  perform public.chronicle_cell_lock(p_person, p_exercise, p_day);
   insert into public.chronicle_sets (owner, person_id, exercise_id, exercise_name, entry, on_day, value, counted)
   values (v_me, p_person, p_exercise, left(v_name, 200), p_entry, p_day, p_value, v_counted)
   returning id into v_id;
@@ -286,10 +305,12 @@ begin
   if p_value is null or p_value <= 0 or p_value > 1e9 then
     raise exception 'that is not a number of anything';
   end if;
-  select s.id, s.entry, s.value, s.counted into r from public.chronicle_sets s
+  select s.id, s.entry, s.value, s.counted, s.person_id, s.exercise_id, s.on_day into r
+    from public.chronicle_sets s
    where s.id = p_id and s.owner = auth.uid()
      for update;
   if not found then raise exception 'no such set'; end if;
+  perform public.chronicle_cell_lock(r.person_id, r.exercise_id, r.on_day);
   if r.counted then
     update public.chronicle_entries
        set amount = nullif(greatest(0, least(coalesce(amount, 0) + (p_value - r.value), 1e9)), 0)
@@ -310,10 +331,12 @@ begin
   if coalesce(public.is_suspended(auth.uid()), false) then
     raise exception 'your account is suspended';
   end if;
-  select s.id, s.entry, s.value, s.counted into r from public.chronicle_sets s
+  select s.id, s.entry, s.value, s.counted, s.person_id, s.exercise_id, s.on_day into r
+    from public.chronicle_sets s
    where s.id = p_id and s.owner = auth.uid()
      for update;
   if not found then raise exception 'no such set'; end if;
+  perform public.chronicle_cell_lock(r.person_id, r.exercise_id, r.on_day);
   if r.counted then
     update public.chronicle_entries
        set amount = nullif(greatest(0, coalesce(amount, 0) - r.value), 0)
@@ -463,6 +486,7 @@ as $$
 $$;
 
 revoke all on function public.chronicle_unit(text) from public, anon;
+revoke all on function public.chronicle_cell_lock(text, text, date) from public, anon, authenticated;
 revoke all on function public.chronicle_link_ok(text, text, uuid) from public, anon, authenticated;
 revoke all on function public.chronicle_manual_amount(uuid, date, date) from public, anon, authenticated;
 revoke all on function public.chronicle_sets_uncount_if_unit_changed(uuid, text) from public, anon, authenticated;
