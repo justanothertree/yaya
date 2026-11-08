@@ -66,7 +66,7 @@ create table if not exists public.chronicle_sets (
   owner         uuid not null references public.profiles(user_id) on delete cascade,
   -- whose Circuit grid the exercise is defined on: the owner's own person. SET NULL, NOT CASCADE:
   -- a person's row going does not unmake what was done, and the set keeps its id and its name.
-  person_id     text references public.circuit_people(id) on delete cascade,
+  person_id     text references public.circuit_people(id) on delete set null,
   -- an id inside that person's `exercises` jsonb — no foreign key is possible into a blob, which
   -- is exactly why the name is also kept (§15b)
   exercise_id   text not null,
@@ -116,7 +116,7 @@ begin
 
   -- ⚠️ THE PERSON BY HAND: circuit_people's eight policies do not apply in here (§15d)
   select p.exercises into v_ex from public.circuit_people p
-   where p.id = p_person;
+   where p.id = p_person and p.owner_user_id = v_me;
   if not found then raise exception 'no such person of yours'; end if;
 
   -- ⚠️ THE NAME FROM THE DEFINITION, NEVER FROM THE CALLER (§15b). A name the client sends could
@@ -211,7 +211,7 @@ begin
                             jsonb_array_elements(case when jsonb_typeof(p.exercises) = 'array'
                                                       then p.exercises else '[]'::jsonb end) e
                       where p.id = s.person_id and p.owner_user_id = auth.uid()
-                        and e->>'name' = s.exercise_name
+                        and e->>'id' = s.exercise_id
                       limit 1),
              -- ⚠️ to_char, never ::text: the session's DateStyle would print "08/11/2026"
              'on', to_char(s.on_day, 'YYYY-MM-DD'), 'value', s.value)
@@ -248,6 +248,8 @@ begin
   end if;
   -- null leaves the note alone: the same promise every editor of a sitting makes
   perform public.chronicle_entry_edit(p_id, p_from, p_to, null, p_activity);
+  update public.chronicle_sets set on_day = p_day, updated_at = now()
+   where entry = p_id and owner = auth.uid() and on_day is distinct from p_day;
 end $$;
 
 create or replace function public.chronicle_running_fix_day(
@@ -348,7 +350,8 @@ begin
        || E'           created_at, updated_at)\n'
        || E'        values (\n'
        || E'          (x->>''id'')::uuid, me,\n'
-       || E'          x->>''person'',\n'
+       || E'          (select p.id from public.circuit_people p\n'
+       || E'            where p.id = x->>''person'' and p.owner_user_id = me),\n'
        || E'          x->>''exercise'', left(btrim(x->>''name''), 200), (x->>''entry'')::uuid,\n'
        || E'          (x->>''on_day'')::date, (x->>''value'')::numeric,\n'
        || E'          coalesce((x->>''created_at'')::timestamptz, now()),\n'
