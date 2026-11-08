@@ -2428,6 +2428,17 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   started coming here" rather than fifty-nine badges on a first look. In this browser only
   (`lab_seen_v1`, known ids only, so bounded by the registry); never sent. A damaged record is
   read as a first visit.
+- **Re-checked on this chain's tip (#57) against the real local stack** — Supabase Auth issuing the
+  sessions, every call through PostgREST, #31's draft applied to the local database only: a
+  member's cards show actual totals including "👍 0 · 👎 0"; Fold's three include a minor's and an
+  unknown-age member's vote; 👍 Highly rated orders as its rule says; voting from the toy shows "You
+  voted 👍 Like" and writes one row; ▶ Back to browsing returns to Highly rated with focus on Fold's
+  card, now "👍 4 · 👎 0 · You: 👍"; a guest sees no totals and is told to sign in. (8 Nov, after
+  #55 and #57 landed on #34.)
+- **CI note, not a code fault:** from about 08:50 on 8 Nov the `db guards` job often failed before
+  running anything — `supabase/setup-cli` downloading the CLI got HTTP 504 three times. Every Lab
+  head has a passing run of the same workflow on the same commit, some after one re-run of the
+  failed job. Caching or retrying that download would be a workflow change, so it is left to Evan.
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 
