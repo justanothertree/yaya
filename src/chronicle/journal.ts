@@ -171,3 +171,23 @@ export function dayLogNotes(
   }
   return out
 }
+
+/**
+ * How the Journal's box names the day it is writing about: "today", "yesterday", or the date.
+ *
+ * ⚠️ IT EXISTS SO A NOTE ABOUT A PAST DAY CAN BE WRITTEN FROM THAT DAY. A day note has always
+ * carried the day it is ABOUT apart from the moment it was written, and the Day log draws the two
+ * apart (`dayLogNotes`) — but the only box wrote about today, so the "written later" row could
+ * come from nowhere but a file. ✎ Note on a past day's log now opens this box on that day, and the
+ * box says which day it is, because a note filed under the wrong day is the one mistake here that
+ * nothing on screen would show you.
+ */
+export function aboutDay(day: string, today: string): string {
+  if (day === today) return 'today'
+  const [y, m, d] = day.split('-').map(Number)
+  const at = new Date(y, m - 1, d, 12)
+  const [ty, tm, td] = today.split('-').map(Number)
+  const yesterday = new Date(ty, tm - 1, td - 1, 12)
+  if (localISO(yesterday) === day) return 'yesterday'
+  return at.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
