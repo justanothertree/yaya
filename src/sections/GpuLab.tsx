@@ -59,6 +59,7 @@ import { ToppleDemo } from '../gpu/ToppleDemo'
 import { JigsawDemo } from '../gpu/JigsawDemo'
 import { PaletteDemo } from '../gpu/PaletteDemo'
 import { BeamsDemo } from '../gpu/BeamsDemo'
+import { BridgeDemo } from '../gpu/BridgeDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -429,6 +430,12 @@ const DEMOS: readonly {
     name: 'Beams',
     line: 'Beams — place mirrors, splitters and colour filters to bring red, green and blue lasers to every target. Colours add: red and green make yellow.',
     Demo: BeamsDemo,
+  },
+  {
+    id: 'bridge',
+    name: 'Bridge',
+    line: 'Bridge — build a bridge from road, timber and steel on a budget, then drive a cart across and watch every member strain, bend and snap.',
+    Demo: BridgeDemo,
   },
 ]
 
