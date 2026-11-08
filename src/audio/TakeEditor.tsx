@@ -273,10 +273,33 @@ export function TakeEditor({
     return () => window.clearInterval(t)
   }, [running])
 
+  /**
+   * The picture's outline, worked out once per zoom rather than once per frame.
+   *
+   * ⚠️ IT WAS IN THE DRAW, AND THE DRAW RUNS ON EVERY PLAYHEAD TICK. `peaks` walks every sample in
+   * view, and the playhead redraws twenty times a second — so playing a six-minute take walked
+   * all ~17 million samples twenty times a second. Measured in the pane on a desktop: the main
+   * thread busy **316ms of every second** while it played, with stalls up to 58ms, against 13ms
+   * idle. On a phone that is the keyboard and the audio scheduler both waiting behind a picture.
+   * The outline only changes with the recording, the width and the zoom; nothing about a moving
+   * line or a selection needs it again.
+   */
+  const cols = Math.max(1, Math.floor(width))
+  const env = useMemo(() => {
+    if (!source || !(width > 0)) return null
+    const rate = source.sampleRate
+    return peaks(
+      source.getChannelData(0),
+      cols,
+      Math.floor(view.from * rate),
+      Math.ceil(view.to * rate),
+    )
+  }, [source, cols, width, view.from, view.to])
+
   /* draw */
   useEffect(() => {
     const el = box.current
-    if (!el || !source || !(width > 0)) return
+    if (!el || !source || !env || !(width > 0)) return
     const dpr = Math.min(3, window.devicePixelRatio || 1)
     el.width = Math.max(1, Math.round(width * dpr))
     el.height = Math.round(TALL * dpr)
@@ -289,14 +312,6 @@ export function TakeEditor({
     const ink = css.getPropertyValue('--accent').trim() || '#22c55e'
     const dim = css.getPropertyValue('--muted').trim() || '#9090b0'
     const mid = TALL / 2
-    const cols = Math.max(1, Math.floor(width))
-    const rate = source.sampleRate
-    const env = peaks(
-      source.getChannelData(0),
-      cols,
-      Math.floor(view.from * rate),
-      Math.ceil(view.to * rate),
-    )
     const colAt = (t: number) => Math.round(timeToFrac(t, view) * width)
 
     /* everything, faint — so a cut reads as a window onto the recording rather than as the
@@ -361,7 +376,7 @@ export function TakeEditor({
         g.stroke()
       }
     }
-  }, [source, width, sel, edit, view, playAt, cursor])
+  }, [source, env, cols, width, sel, edit, view, playAt, cursor])
 
   /** Put a new edit in the history, store it, and tell the loop its audio changed. */
   const apply = useCallback(
