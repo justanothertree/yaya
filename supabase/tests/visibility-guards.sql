@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C2 (clean): the stray-set fix, and the conversion through real Auth and PostgREST (90 checks).
+-- RUN C3 (clean): C2, plus a printed demonstration for OPEN-DECISIONS 20e.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
@@ -38,6 +38,8 @@
 \ir circuit-grid-sessions.sql
 \echo === the conversion
 \ir circuit-logs-conversion.sql
+\echo === a demonstration for 20e, which prints and raises nothing
+\ir demo-20e.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
