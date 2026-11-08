@@ -77,7 +77,8 @@ begin
   insert into ids values ('act_a', a), ('act_b', b);
 
   e1 := public.chronicle_start(a);
-  e2 := public.chronicle_start(b);   -- PERTURBED: no sleep, so this switch is a mis-press   -- e1 is over a second old: closed, not deleted
+  perform pg_sleep(1.1);
+  e2 := public.chronicle_start(b);   -- e1 is over a second old: closed, not deleted
   e3 := public.chronicle_start(a);   -- e2 is not: a mis-press, deleted, no trace
   insert into ids values ('e1', e1), ('e2', e2), ('e3', e3);
 exception when others then
@@ -103,23 +104,37 @@ from public.chronicle_entries e1, public.chronicle_entries e3
 where e1.id = (select v from ids where k = 'e1') and e3.id = (select v from ids where k = 'e3')
   and (e3.started_at < e1.ended_at or e3.started_at - e1.ended_at > interval '1 second');
 
--- ── C. notes, a count, and what a refresh reads back ───────────────────────────────────────
+-- ── C. notes, a count, what a refresh reads back, a goal, and stop ─────────────────────────
+-- ⚠️ ONE BLOCK PER STEP, EACH WITH ITS OWN HANDLER, and the first version of this file was the
+-- proof of why. All five steps sat in one DO block, so the perturbation run that deleted the
+-- first sitting failed at the first note — "no such session" — and the handler swallowed every
+-- step after it. The additive-count fault put in beside it was never reached, and the run that
+-- was supposed to prove the count check could fail proved nothing about it. A step that fails
+-- now fails alone, and the next one still asks its question.
 set local role authenticated;
+
+do $$
+begin
+  perform public.chronicle_note_add((select v from ids where k = 'e1'), 'written about the closed one');
+  perform public.chronicle_note_add((select v from ids where k = 'e3'), 'written while it runs');
+exception when others then
+  insert into fails values ('writing the notes raised', sqlerrm);
+end $$;
+
+do $$
+begin
+  -- an ABSOLUTE write: the same number twice is the same number, never double
+  perform public.chronicle_entry_amount((select v from ids where k = 'e3'), 9);
+  perform public.chronicle_entry_amount((select v from ids where k = 'e3'), 9);
+exception when others then
+  insert into fails values ('writing the count raised', sqlerrm);
+end $$;
 
 do $$
 declare e1 uuid := (select v from ids where k = 'e1');
         e3 uuid := (select v from ids where k = 'e3');
-        a uuid := (select v from ids where k = 'act_a');
-        day_from timestamptz := date_trunc('day', now());
-        back jsonb; one jsonb; t jsonb; g uuid;
+        back jsonb; one jsonb;
 begin
-  perform public.chronicle_note_add(e1, 'written about the closed one');
-  perform public.chronicle_note_add(e3, 'written while it runs');
-
-  -- an ABSOLUTE write: the same number twice is the same number, never double
-  perform public.chronicle_entry_amount(e3, 9);
-  perform public.chronicle_entry_amount(e3, 9);
-
   -- what the room reads after a refresh
   back := public.chronicle_entries_between(now() - interval '1 day', now() + interval '1 day');
   select x into one from jsonb_array_elements(back) x where (x->>'id')::uuid = e3;
@@ -136,28 +151,41 @@ begin
       insert into fails values ('the running sitting''s note', jsonb_array_length(one->'notes')::text);
     end if;
   end if;
+  one := null;
   select x into one from jsonb_array_elements(back) x where (x->>'id')::uuid = e1;
   if one is null or jsonb_array_length(one->'notes') <> 1
      or one->'notes'->0->>'body' <> 'written about the closed one' then
     insert into fails values ('the note did not stay on the sitting it was written about',
                               coalesce(one::text, 'e1 missing'));
   end if;
+exception when others then
+  insert into fails values ('reading the day back raised', sqlerrm);
+end $$;
 
+do $$
+declare day_from timestamptz := date_trunc('day', now()); g uuid; t jsonb;
+begin
   -- a goal counting A's reps, today: 9, once — not 18 after the second write
   g := public.chronicle_goal_save(null, 'Flow check goal', 'day', null, 1, 5, 'reps', null, 0,
-                                  a, null, 'amount', null, 0);
+                                  (select v from ids where k = 'act_a'), null, 'amount', null, 0);
   insert into ids values ('goal', g);
   t := public.chronicle_tally(jsonb_build_array(jsonb_build_object(
          'key', 'today', 'id', g, 'from', day_from, 'to', day_from + interval '1 day')));
   if (t->>'today')::numeric is distinct from 9 then
-    insert into fails values ('the goal did not count the reps exactly once', coalesce(t->>'today', 'null'));
+    insert into fails values ('the goal did not count the reps exactly once',
+                              coalesce(t->>'today', 'null'));
   end if;
+exception when others then
+  insert into fails values ('the goal and its tally raised', sqlerrm);
+end $$;
 
+do $$
+begin
   -- stop, after a second so it closes rather than vanishes
   perform pg_sleep(1.1);
   perform public.chronicle_stop(null);
 exception when others then
-  insert into fails values ('the notes/count/tally sequence raised', sqlerrm);
+  insert into fails values ('stopping raised', sqlerrm);
 end $$;
 
 reset role;
