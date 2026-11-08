@@ -17,6 +17,7 @@ import {
   repeats,
   share,
   SCOPES,
+  startFor,
   streakAsks,
   streakKey,
   streakOf,
@@ -1298,5 +1299,56 @@ describe('profileGlyph', () => {
        glyph is "on your profile", not "off" */
     expect(profileGlyph('members').press).toBe('unshare')
     expect(profileGlyph('public').press).toBe('unshare')
+  })
+})
+
+/**
+ * ⚠️ THE FIXTURE IS `reading` ABOVE, every field set to something other than its default, for
+ * the reason CLAUDE.md §2 gives: a rule reading the wrong field has to have somewhere to be
+ * wrong. Each refusal below is also asserted against a list where only ONE field differs, so a
+ * guard that has been dropped cannot be covered by a neighbouring one.
+ */
+describe('the activity a goal can be started from', () => {
+  const onActivity = goal({ activity: 'a-read', counts: 'minutes', target: 30, unit: 'minutes' })
+
+  it('offers the activity a derived goal counts', () => {
+    expect(startFor(onActivity, [reading], null)).toEqual({
+      activity: 'a-read',
+      name: 'Reading',
+      running: false,
+    })
+  })
+
+  it('offers nothing for a tick-box goal, which names no activity at all', () => {
+    expect(startFor(goal(), [reading], null)).toBeNull()
+  })
+
+  it('offers nothing for a goal counting a whole category', () => {
+    /* a category names no single activity, so there is nothing for one button to start */
+    expect(startFor(goal({ cat: 'free' }), [reading], null)).toBeNull()
+  })
+
+  it('offers nothing when the source has been archived', () => {
+    /* chronicle_start refuses an activity with an archived_at — the button's only possible
+       answer would be an error, which is what the row's "archived" chip already says */
+    expect(startFor(onActivity, [{ ...reading, archived: true }], null)).toBeNull()
+  })
+
+  it('offers nothing when the source is one the site writes itself', () => {
+    expect(startFor(onActivity, [{ ...reading, auto: true }], null)).toBeNull()
+  })
+
+  it('offers nothing when the source is not in the list it was handed', () => {
+    /* the goals and the activities are two fetches — one can land before the other */
+    expect(startFor(onActivity, [], null)).toBeNull()
+  })
+
+  it('says it is running rather than offering to start it again', () => {
+    /* pressing Start on what you are already in closes that sitting and opens a new one */
+    expect(startFor(onActivity, [reading], 'a-read')?.running).toBe(true)
+  })
+
+  it('says it is not running when something else is', () => {
+    expect(startFor(onActivity, [reading], 'a-gym')?.running).toBe(false)
   })
 })

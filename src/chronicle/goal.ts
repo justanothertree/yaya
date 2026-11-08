@@ -343,6 +343,42 @@ export function lateIn(
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
 
+/** What the ▶ on an Aims row would start — see `startFor`. */
+export type StartFrom = { activity: string; name: string; running: boolean }
+
+/**
+ * The activity a goal can be started from, or null when there is nothing to start.
+ *
+ * ⚠️ THE ROOM KNEW WHAT TO DO AND HAD NO WAY TO DO IT. "Work out 20 minutes a day" is a goal
+ * pointing at an activity, and the only way to spend those minutes was to leave the Aims half,
+ * find that activity among the switch tiles on the Day half and press it there — so the two
+ * halves of one sentence lived on two screens. The goal already names its source; this is that
+ * name turned into a button.
+ *
+ * ⚠️ THE SAME THREE REFUSALS AS `tilesFor`, and deliberately the same three. `chronicle_start`
+ * refuses an activity with an `archived_at`, so a ▶ on one is a button whose only possible
+ * answer is an error — the lesson an archived routine step taught, and the row already says
+ * "archived" beside the source. An `auto` activity is written by the site itself and is not a
+ * thing a person starts. A category source names no single activity, so there is nothing for a
+ * ▶ to be about; `counts = 'minutes'` over a whole category is still only ever moved by starting
+ * one of the activities in it, which is what the Day half is for.
+ *
+ * ⚠️ AND IT REPORTS `running` RATHER THAN HIDING. Pressing Start on the activity you are already
+ * in closes that sitting and opens a new one — `chronicle_start` says so — which silently splits
+ * what you are doing in two. A row that says it is running is the useful half of that fact
+ * anyway: it is the only thing on the Aims half tying the clock at the top to the goal it feeds.
+ */
+export function startFor(
+  g: Goal,
+  acts: readonly Activity[],
+  runningActivity: string | null,
+): StartFrom | null {
+  if (!g.activity) return null
+  const a = acts.find((x) => x.id === g.activity)
+  if (!a || a.archived || a.auto) return null
+  return { activity: a.id, name: a.name, running: runningActivity === a.id }
+}
+
 /** What the ◍/◉/○ button in the Aims row shows, and what pressing it should do. */
 export type ProfileGlyph = { glyph: string; press: 'share' | 'unshare' | 'open-sharing' }
 

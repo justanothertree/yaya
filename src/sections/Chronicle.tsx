@@ -18,6 +18,7 @@ import {
   unitFor,
   weight,
   share,
+  startFor,
   today as todayISO,
   tomorrow as tomorrowISO,
   windowOf,
@@ -31,6 +32,7 @@ import {
   saveGoal,
   setProgress,
   shareGoal,
+  startTimer,
   tally,
 } from '../chronicle/cloud'
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
@@ -42,6 +44,7 @@ import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
 import { Lifetime } from '../chronicle/Lifetime'
 import { Toast } from '../circuit/ui/Toast'
+import { showToast } from '../circuit/toast'
 
 /**
  * Chronicle — what you are aiming at, at every cadence.
@@ -261,6 +264,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const [runs, setRuns] = useState<Record<string, number>>({})
   const [acts, setActs] = useState<Activity[]>([])
+  /**
+   * The activity the stopwatch is in, as the Timer below reports it — see its `onRunning`.
+   *
+   * ⚠️ NOT FETCHED HERE. The open sitting is in the Timer's own day log, and asking the server a
+   * second time would be two answers to one question with no rule about which is right.
+   */
+  const [runningAct, setRunningAct] = useState<string | null>(null)
   /* ⚠️ a counter rather than a callback chain: the rail reads its own two sums, and everything
      that could change them — starting, stopping, filling a gap, an edit, a plan — already ends in
      the same `load()` the goals half uses. One number to watch beats five places to remember. */
@@ -572,6 +582,36 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     await load()
   }
 
+  /**
+   * Start the activity a goal counts, from the row that names it.
+   *
+   * ⚠️ IT GOES THROUGH `chronicle_start` LIKE EVERY OTHER WAY IN, which is what makes one tap
+   * safe while something else is running: the function closes the open sitting, deletes a
+   * mis-press under a second, and opens the next, so the record stays continuous and there is
+   * nothing to tidy up afterwards. Switching is the same call as starting.
+   *
+   * ⚠️ AND IT REFUSES THE ONE YOU ARE ALREADY IN, which that same function would not: pressing
+   * Start on the running activity closes your sitting and opens a fresh one, splitting what you
+   * are doing in two with nothing on screen to say it happened. `startFor` carries the flag and
+   * the row draws a word instead of a button.
+   *
+   * The clock at the top of this half is the confirmation, so nothing is said on success; a
+   * refusal has no other voice and goes to the toast.
+   */
+  const startAt = async (from: { activity: string; name: string; running: boolean }) => {
+    if (busy || from.running) return
+    setBusy(true)
+    const bad = await startTimer(from.activity)
+    setBusy(false)
+    if (bad) {
+      showToast(bad.why.charAt(0).toUpperCase() + bad.why.slice(1))
+      return
+    }
+    /* the stopwatch is the Timer's, and `beat` is how this room tells it the record moved */
+    setBeat((n) => n + 1)
+    await load()
+  }
+
   const tick = async (g: Goal) => {
     if (busy) return
     /* ⚠️ BEFORE THE WRITE, not after: `load()` replaces the goals and the row is re-filtered on
@@ -722,17 +762,43 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        * is, so that is what it says.
        */}
       <div className="chron-halves">
-        {HALVES.map(([id, label, hint]) => (
-          <button
-            key={id}
-            aria-pressed={half === id}
-            className={'btn' + (half === id ? ' is-on' : ' btn-ghost')}
-            onClick={() => setHalf(id)}
-          >
-            {label}
-            <small>{hint}</small>
-          </button>
-        ))}
+        {HALVES.map(([id, label, hint]) => {
+          /**
+           * ⚠️ WHAT IS DUE, ON THE BUTTON THAT LEADS TO IT. The room opens on the Day half, which
+           * is about what you are doing and says nothing at all about what you meant to do — so
+           * "is there anything today" was a tap away and nothing on screen suggested taking it.
+           * This is the Today tab's own count, moved up one level: the same `counts` the horizon
+           * strip draws, never a second sum, because two numbers for one question is how they
+           * come to disagree.
+           *
+           * ⚠️ AND IT IS ABSENT AT ZERO RATHER THAN READING 0, which CLAUDE.md §2 is otherwise
+           * suspicious of — a figure that vanishes hides work instead of reporting it. It is
+           * right here because the number counts UNFINISHED things: nothing due and everything
+           * done are the same news, and the tab is still there to say which.
+           */
+          const due = id === 'aims' ? (counts['today'] ?? 0) : 0
+          return (
+            <button
+              key={id}
+              aria-pressed={half === id}
+              className={'btn' + (half === id ? ' is-on' : ' btn-ghost')}
+              onClick={() => setHalf(id)}
+            >
+              <span className="chron-half-top">
+                <span className="chron-half-name">{label}</span>
+                {due > 0 ? (
+                  <span className="chron-due" title={`${due} not finished today`}>
+                    {due}
+                    {/* ⚠️ OR THE BUTTON IS ANNOUNCED AS "AIMS 3", which is a number with no noun
+                        on it. `.sr-only` here is the absolute-clip kind, so it costs no layout. */}
+                    <span className="sr-only"> not finished today</span>
+                  </span>
+                ) : null}
+              </span>
+              <small>{hint}</small>
+            </button>
+          )
+        })}
       </div>
 
       <div className={'chron-body' + (acts.length ? '' : ' is-alone')}>
@@ -745,6 +811,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               void load()
             }}
             show={half}
+            onRunning={setRunningAct}
           />
         </div>
         {/**
@@ -924,6 +991,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     /* an activity that has been archived; a category source cannot be, so `cat` is never
                  gone and only a goal pointing at an activity can say this */
                     const srcGone = !!act?.archived
+                    /* what ▶ on this row would start, and whether it is already going — the rule
+                 and its three refusals are in `startFor` */
+                    const canStart = startFor(g, acts, runningAct)
                     /* the ◍/◉/○ button's state and what pressing it does — see profileGlyph,
                  which holds the rule that `certain` is not a toggle */
                     const onProfile = profileGlyph(g.visibility)
@@ -1056,11 +1126,28 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 {srcGone ? ' · archived' : ''}
                               </span>
                             ) : null}
+                            {/**
+                             * ⚠️ A WORD RATHER THAN A SECOND ▶. Pressing Start on the activity you are
+                             * already in is a real call that closes your sitting and opens a new one, so
+                             * the row must not offer it — and the fact is worth saying anyway: it is the
+                             * only thing on this half tying the clock at the top to the goal it is
+                             * filling. The chip takes the ▶'s place rather than sitting beside it.
+                             */}
+                            {canStart?.running ? (
+                              <span
+                                className="chron-chip is-going"
+                                title={`${canStart.name} is running now`}
+                              >
+                                running
+                              </span>
+                            ) : null}
                             {/* ⚠️ next to the delete rather than on the title, unlike the activity rows:
                         a goal's title is already a checkbox for the tick-box kind, and a label
                         that both ticks and opens an editor is a label you cannot press safely */}
                             {/**
-                             * ⚠️ THE THREE MOVE AS ONE, the way a log row's do — see `.chron-ent-do`. They
+                             * ⚠️ THREE OR FOUR, AND THEY MOVE AS ONE, the way a log row's do — see
+                             * `.chron-ent-do`. A goal that counts an activity carries a ▶ as well.
+                             * They
                              * were siblings of the title in a wrapping row, which is survivable with two
                              * of them and not with three: at 375 "Water the plants" put ✎ and ○ on the
                              * title's line and left ✕ alone on the next, under an empty space. Every
@@ -1068,6 +1155,37 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                              * same way the day log read clean this morning with its buttons orphaned.
                              */}
                             <span className="chron-goal-do">
+                              {/**
+                               * ⚠️ THE ROW THAT KNOWS WHAT TO DO CAN NOW DO IT. A goal counting an
+                               * activity named that activity in a chip and offered no way to begin it:
+                               * the switch tiles are on the other half, so "work out 20 minutes a day"
+                               * and the twenty minutes lived on two screens. One tap starts it, or
+                               * switches to it from whatever else is running — `chronicle_start` makes
+                               * both the same call and leaves no trace of a mis-press.
+                               */}
+                              {canStart && !canStart.running ? (
+                                <button
+                                  className="btn btn-ghost chron-x chron-go"
+                                  onClick={() => void startAt(canStart)}
+                                  disabled={busy}
+                                  /* ⚠️ THE SAME WORDS IN BOTH. `aria-label` wins over `title` as the
+                                     name, so a reader heard "Start Dishes" about a button whose own
+                                     tooltip said Switch — and switching is the thing it does that
+                                     needs saying, because something else is about to stop. */
+                                  aria-label={
+                                    runningAct
+                                      ? `Switch to ${canStart.name}`
+                                      : `Start ${canStart.name}`
+                                  }
+                                  title={
+                                    runningAct
+                                      ? `Switch to ${canStart.name}`
+                                      : `Start ${canStart.name}`
+                                  }
+                                >
+                                  ▶
+                                </button>
+                              ) : null}
                               <button
                                 className="btn btn-ghost chron-x"
                                 onClick={() => {

@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-07 (seventh pass — §11a is DONE, §11b and §11c are re-measured on top of it, and §13 is new; §12 untouched).
+Last reviewed: 2026-11-07 (eighth pass — §14 is new, from the Chronicle daily-flow pass; §11a is DONE, §11b and §11c are re-measured on top of it, §13 is new; §12 untouched).
 
 ---
 
@@ -497,3 +497,83 @@ buy. It also explains the one thing in `poly.ts` that looks like a loose end: `s
 a fader to 2 and the bus clamps it to 1.5, so the top quarter of the slider's travel does nothing.
 Closing that gap is a one-line change in either direction and both are audible, so it is here
 rather than done.
+
+---
+
+## 14. Three Chronicle calls, from the daily-flow pass (2026-11-07)
+
+Added closing the pass written up in `docs/2026-11-07-chronicle-the-daily-flow.md`. That pass
+shipped the two connectors the daily flow was missing and stopped at these three, each of which
+is a decision rather than a build. **Nothing here has been applied to the database.**
+
+### 14a. "Swim on Tuesdays" needs a column, and a rule about the days it is not for
+
+`chronicle_goals.repeat_every` is `1..52` and only **1** is honoured, deliberately — "every other
+week" needs a PHASE and a repeating goal has no anchor to take one from. Selected weekdays is the
+same gap wearing a different hat, and it is the one example in the brief the model genuinely
+cannot express today.
+
+**The proposal, with its DDL, isolated permission test and rollback, is §5a of that file.** The
+column is the small half and can be applied inert — nullable, read as "every day", which is
+today's behaviour. What needs deciding is not the column.
+
+⚠️ **The decision is what a Monday means to a Tuesday goal**, and getting it wrong is destructive
+in the one way the brief rules out. `late()` and `pastIn()` read "the window closed unfinished";
+with a mask they must read "the window closed unfinished **and it was one of yours**". The wrong
+reading turns one goal into six overdue rows a week — and rewrites the streak history of
+something somebody has actually been keeping, silently, the moment the column arrives. So the
+client half is not a follow-on patch; it is the part that has to be right first.
+
+**Cost of waiting:** weekday goals get written as daily ones and read as missed four days in five,
+which is what the seed's own "Swim on Tuesdays · EVERY DAY" row has been demonstrating.
+
+### 14b. A dated note with no sitting — what kind of thing is it?
+
+Asked for as "writing a note must not require starting a timer". Today every journal entry hangs
+off a `chronicle_entries` row, and `chronicle_note_add` checking that row's owner **is** the
+security model for a deny-all table. A note with no sitting has no owner to check, so this is a
+schema change however small the UI is.
+
+The schema is the easy part (a nullable `entry` with an `owner` and a `day`, or a second table).
+The decision is what a note that is not about a sitting IS, because three readers would have to
+be told:
+
+- **the day log** — does a note appear as a row in a list whose every other row is a span with a
+  length? The design doc already refused this for ratings and built `chronicle_moments` instead,
+  precisely so nothing fabricated could get into the totals;
+- **the export** — a new top-level list, and `chronicle_import`'s add-never-replace rule applied
+  to it;
+- **`chronicle_friends_log`** — which carries **no note at all** today, because the profile card
+  promises that. A standalone note is more personal than a sitting's note, not less, so the
+  default has to be that it never crosses, and that needs saying rather than inheriting.
+
+**Cost of waiting:** writing something down needs a sitting. In practice this is less painful
+than it sounds — ✎ on the sitting you are in the middle of opens the journal without stopping it
+— but "I had an idea" at a bus stop has nowhere to go.
+
+### 14c. Which module owns "what I did today"?
+
+The brief said to reuse the Circuit's exercise and session definitions for a workout flow. Having
+read both: **the Circuit has the exercise definitions and no session, and Chronicle has the whole
+session and no exercise library.**
+
+|                      | Circuit                                                    | Chronicle                                                                  |
+| -------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| a named thing you do | `Exercise` — name, unit, points multiplier, grid position  | `Activity` — name, category, colour, metric, per-sitting target            |
+| how it is recorded   | `DayLog` → `LogEntry {eid, val}`, typed into a number grid | a sitting with a start, an end, an amount, a rating, a journal and a photo |
+| a timer              | none                                                       | the whole stopwatch, surviving reload and tab close                        |
+| who sees it          | shared, scored, other people's columns — 707 logs          | one person's own record, private by default                                |
+
+So "reuse the Circuit's exercises" means deciding which of the two owns the day, which is
+**decision 3 from the design doc's §2, still open**: _"should the Circuit sit on chronicle now?"_
+
+- **Chronicle keeps its own activities** (what happens today): a workout is an activity named Gym
+  with `reps` as its metric, started from its goal's ▶, counted with +1/+5/+10, finished with
+  Stop. Costs nothing, and the Circuit's per-exercise breakdown stays a separate record of the
+  same hour.
+- **Chronicle reads Circuit exercises**: one gesture logs both, and the points grid gets a timer.
+  It also makes a private room depend on a shared, scored one, and gives two tables an opinion
+  about the same minutes — the "one home for a thing" rule in CLAUDE.md §5, pointed at data.
+
+**Cost of waiting:** nothing breaks. Both work. The hour is written down twice by hand if you
+want it in both places.

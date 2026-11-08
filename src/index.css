@@ -16463,6 +16463,49 @@ a.cz-msg-author:focus-visible {
   text-align: left;
   min-width: 0;
 }
+/**
+ * ⚠️ THE LABEL AND ITS COUNT ARE ONE LINE, under the hint rather than beside it. The button is a
+ * column — a word over a sentence — so a badge dropped in as a third child became a third line
+ * and made every half button taller for the sake of one of them.
+ */
+.chron-half-top {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+/* the word is what gets clipped if anything does; the count is two characters and must not */
+.chron-half-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/**
+ * What is due today, on the button that leads to it — see the note in Chronicle.tsx.
+ *
+ * ⚠️ NOT RED. The room keeps amber for a priority somebody chose themselves and has no alarming
+ * colour anywhere; a count of what you meant to do today is news, not a warning. It borrows the
+ * accent the pressed half already uses, and carries a border so it is still a distinct shape
+ * when the half it sits on is filled.
+ */
+.chron-due {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  min-width: 1.15rem;
+  padding: 0.18rem 0.3rem;
+  border-radius: 100px;
+  text-align: center;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.chron-halves .btn.is-on .chron-due {
+  border-color: currentColor;
+}
 .chron-halves .btn small {
   font-size: 0.72rem;
   color: var(--muted);
@@ -17191,6 +17234,11 @@ a.cz-msg-author:focus-visible {
  * which two of them survived and three did not: at 375 a short goal put ✎ and ◯ beside the title
  * and left ✕ alone on the next line, under an empty space. `nowrap` keeps them together and
  * `margin-left: auto` keeps them right, which is exactly what `.chron-ent-do` does for a log row.
+ *
+ * ⚠️ FOUR OF THEM ON A GOAL THAT COUNTS AN ACTIVITY, since the ▶. Measured at 375: the group is
+ * 206px wide against 151px with three, inside a 327px row, and the title keeps its 150px floor
+ * with 175px to spare. It costs no HEIGHT — such a row already wrapped the group onto its own
+ * line, and a four-button row and a three-button one both measure 156px tall.
  */
 .chron-goal-do {
   display: flex;
@@ -17257,6 +17305,27 @@ a.cz-msg-author:focus-visible {
 .chron-chip.is-auto.is-gone {
   opacity: 0.65;
   border-style: dashed;
+}
+/**
+ * The goal whose activity is running right now — see the note on `startFor`.
+ *
+ * ⚠️ IT TAKES THE ▶'S PLACE RATHER THAN SITTING BESIDE IT, so the row never offers to restart
+ * what it is already in. Same shape as every other chip; the colour is the one the room uses for
+ * a thing that is happening, which is the stopwatch's own green.
+ */
+/**
+ * ▶ on a goal row — start the activity it counts, or switch to it.
+ *
+ * ⚠️ IT IS THE ONLY AFFIRMATIVE CONTROL IN A GROUP OF THREE (change, share, delete), so it takes
+ * the stopwatch's green to say which one does the thing the row is about. The 44px floor comes
+ * from `.chron-goal-do .btn` with the rest of the group.
+ */
+.chron-goal-do .chron-go {
+  color: var(--accent);
+}
+.chron-chip.is-going {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .chron-chip.is-late {
   text-transform: none;

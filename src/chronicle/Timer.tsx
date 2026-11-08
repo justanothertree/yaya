@@ -147,6 +147,7 @@ export function Timer({
   beat,
   onChange,
   show,
+  onRunning,
 }: {
   day: string
   /**
@@ -154,6 +155,13 @@ export function Timer({
    * at once is most of what made Chronicle unreadable: **73 controls on one screen**, answering
    * nine different questions. The room is 38 and 37 now, and the note on `half` in
    * sections/Chronicle.tsx says why that figure is not the 86 I first wrote down.
+   *
+   * ⚠️ THOSE TWO FIGURES ARE OLDER THAN THE FIXTURE THEY WOULD BE RE-MEASURED AGAINST, so do not
+   * read them as today's count — §2's rule about a measured number in a comment, applied to this
+   * one before it misleads somebody. The aims half also gains one control per goal that can be
+   * started (see `startFor`), which is the only thing since that adds controls per ROW rather
+   * than per room. Measured on the preview seed, 7 Nov 2026, at 375: day **26** in-room controls,
+   * aims **40**, one of those being the ▶.
    *
    * ⚠️ THE STOPWATCH IS IN NEITHER HALF. Everything from the running clock down to the gap form
    * renders whatever `show` says, because a session you forgot to stop must not be able to hide
@@ -175,6 +183,16 @@ export function Timer({
    */
   beat?: number
   onChange?: () => void
+  /**
+   * What is running, told to the room above — the activity's id, or null.
+   *
+   * ⚠️ THE OPEN SITTING LIVES DOWN HERE AND THE AIMS HALF NEEDS IT. The ▶ on a goal row has to
+   * know whether it is about to restart the thing you are already in, which `chronicle_start`
+   * would do by closing that sitting and opening a new one. The alternative was a second
+   * `entriesBetween` in the room above, which is the same question asked twice of the server and
+   * two answers that can disagree for as long as one of them is stale.
+   */
+  onRunning?: (activity: string | null) => void
 }) {
   /**
    * The day being looked at, which is not always the day the room asked for.
@@ -333,6 +351,13 @@ export function Timer({
   }, [log, loadWeek])
 
   const running = log.find((e) => e.end == null) ?? null
+  /* ⚠️ ON THE ACTIVITY'S ID, NOT ON THE ENTRY. The room above only asks "is this goal's
+     activity the one running", so re-announcing on every reload of the same sitting would be a
+     render of the whole Aims list each time the day's log is re-fetched. */
+  const runningAct = running?.activity ?? null
+  useEffect(() => {
+    onRunning?.(runningAct)
+  }, [runningAct, onRunning])
   /* ⚠️ it follows `beat`, which already ticks once a second while something runs — and when
      nothing runs the log itself is the only thing that can change it, so the memo is honest
      either way rather than a clock the component does not own. */
