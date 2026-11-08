@@ -19732,3 +19732,13 @@ a.cz-msg-author:focus-visible {
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
 }
+/* the cursor's position between its two nudges — tabular, so the buttons do not shuffle
+   sideways under a thumb as the digits change */
+.take-edit-cursor {
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.take-edit-wave:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

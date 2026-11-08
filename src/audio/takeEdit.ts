@@ -208,6 +208,68 @@ export function toPlayed(edit: Edit, source: number): number | null {
   return null
 }
 
+/**
+ * Where to start playing so the first thing heard is this moment of the recording, or the first
+ * kept moment after it.
+ *
+ * ⚠️ NOT `toPlayed`, WHICH ANSWERS NULL FOR A MOMENT THAT WAS CUT. A tap lands wherever a
+ * finger lands, and a cut region is drawn right there on the picture — so "play from here"
+ * inside one has to mean "from the next thing you will hear", not "nothing". Null only past
+ * the end, where there is nothing left to play.
+ */
+export function playedFrom(edit: Edit, source: number): number | null {
+  const at = fin(source, -1)
+  let before = 0
+  for (const s of edit.keep) {
+    if (at < s.from) return before
+    if (at < s.to) return before + (at - s.from)
+    before += s.to - s.from
+  }
+  return null
+}
+
+/**
+ * Start the take at this moment of the recording, or end it there.
+ *
+ * ⚠️ IT CAN GIVE BACK AS WELL AS TAKE AWAY, which is what makes it the precise way to trim. A
+ * start placed BEFORE the first kept moment reaches back into what an earlier edit cut and
+ * restores it — the recording was never touched, so moving an edge outward is as cheap as
+ * moving it in. Only the outer edges move outward; a piece cut from the middle stays cut,
+ * because that was a separate decision and this button is about the ends.
+ *
+ * ⚠️ NULL WHEN IT WOULD DO NOTHING OR LEAVE NOTHING — an edge past the other edge, or the edge
+ * already where it was asked to go — so the button's disabled state is this function's answer
+ * rather than a second copy of its rules.
+ */
+export function trimTo(edit: Edit, side: 'start' | 'end', at: number, len: number): Edit | null {
+  if (!Number.isFinite(at) || !edit.keep.length) return null
+  const t = bound(at, 0, fin(len, 0))
+  const keep = edit.keep
+  const first = keep[0]
+  const last = keep[keep.length - 1]
+  let spans: Span[]
+  if (side === 'start') {
+    if (t > last.to - MIN_SPAN) return null
+    spans =
+      t <= first.from
+        ? [{ from: t, to: first.to }, ...keep.slice(1)]
+        : keep.map((s) => ({ from: Math.max(s.from, t), to: s.to }))
+  } else {
+    if (t < first.from + MIN_SPAN) return null
+    spans =
+      t >= last.to
+        ? [...keep.slice(0, -1), { from: last.from, to: t }]
+        : keep.map((s) => ({ from: s.from, to: Math.min(s.to, t) }))
+  }
+  const kept = spans.filter((s) => s.to - s.from >= MIN_SPAN)
+  if (!kept.length) return null
+  const next = normalise(kept, len)
+  const same =
+    next.keep.length === keep.length &&
+    next.keep.every((s, i) => s.from === keep[i].from && s.to === keep[i].to)
+  return same ? null : next
+}
+
 /** Each kept span as whole frames, which is the one unit preview, loop and export all ask in. */
 export function editFrames(
   edit: Edit,
@@ -307,94 +369,6 @@ export function peaks(data: ArrayLike<number>, columns: number, from = 0, to = -
     out[c * 2 + 1] = hi === -Infinity ? 0 : hi
   }
   return out
-}
-
-/* ── finding where the sound is, for "trim the ends" ──────────────────────────────────── */
-
-/**
- * How far below a take's own loudest moment still counts as silence: -40dB.
- *
- * ⚠️ RELATIVE TO THE TAKE, NEVER AN ABSOLUTE LEVEL, and that is the whole decision. A phone
- * held at arm's length in a quiet room records a voice that peaks around -30dBFS; a fixed
- * floor set anywhere useful for a close recording eats that one whole, and the operation whose
- * job is to remove silence would answer "it is all silence". Measured against the take's own
- * peak, the same recording turned down by a factor of a hundred trims to the same place — see
- * the test that scales the buffer and expects no change.
- */
-export const QUIET_BELOW = 0.01
-
-/**
- * How much is left on either side of the sound, in seconds.
- *
- * ⚠️ A MARGIN, BECAUSE A WORD DOES NOT START AT ITS PEAK. The attack of a sung note and the
- * breath before a consonant are both below the floor and both part of the sound — cut exactly
- * at the threshold and a trimmed take starts a syllable late, which is the one way this
- * operation can ruin a recording rather than tidy it.
- */
-export const QUIET_EDGE = 0.08
-
-/** The window a peak is measured over. Short enough that a gap between words is not sound. */
-const QUIET_WINDOW = 0.02
-
-/**
- * Where the sound in a recording begins and ends.
- *
- * ⚠️ PEAKS, LIKE `peaks` ABOVE AND FOR THE SAME REASON. An RMS window averages a transient
- * away, and the first thing in a take is usually a transient — the attack of a word, a chair.
- *
- * ⚠️ AND IT IS THE OUTERMOST LOUD WINDOW, NOT THE FIRST RUN OF THEM. A take is top-and-tailed,
- * not split: the gaps between words are below the floor too, and a function that stopped at
- * the first quiet window would return the first syllable.
- *
- * Returns null when there is nothing to find — no channels, no samples, or a take that is
- * silent all the way through, which is a recording to delete rather than one to trim. The
- * honest limit is a handling click at the very start: it sets the threshold's own peak and the
- * span then begins at zero, so nothing is trimmed. That is the right failure — it is a sound.
- */
-export function loudSpan(
-  channels: readonly ArrayLike<number>[],
-  len: number,
-  rate: number,
-): Span | null {
-  const seconds = fin(len, 0)
-  const hz = fin(rate, 0)
-  if (!channels.length || seconds <= 0 || hz <= 0) return null
-  const per = Math.max(1, Math.round(QUIET_WINDOW * hz))
-  let frames = Math.round(seconds * hz)
-  for (const d of channels) frames = Math.min(frames, d.length)
-  if (frames <= 0) return null
-
-  const windows = Math.ceil(frames / per)
-  const peak = new Float32Array(windows)
-  let loudest = 0
-  for (let w = 0; w < windows; w++) {
-    const a = w * per
-    const b = Math.min(frames, a + per)
-    let hi = 0
-    for (const d of channels)
-      for (let i = a; i < b; i++) {
-        const v = Math.abs(d[i])
-        /* NaN fails the comparison, so a corrupt sample cannot pin the threshold at the top */
-        if (v > hi) hi = v
-      }
-    peak[w] = hi
-    if (hi > loudest) loudest = hi
-  }
-  if (!(loudest > 0)) return null
-
-  const floor = loudest * QUIET_BELOW
-  let first = -1
-  let last = -1
-  for (let w = 0; w < windows; w++)
-    if (peak[w] > floor) {
-      if (first < 0) first = w
-      last = w
-    }
-  if (first < 0) return null
-
-  const from = bound((first * per) / hz - QUIET_EDGE, 0, seconds)
-  const to = bound(((last + 1) * per) / hz + QUIET_EDGE, 0, seconds)
-  return to - from >= MIN_SPAN ? { from, to } : null
 }
 
 /* ── the visible window, for zooming into a long take ─────────────────────────────────── */
