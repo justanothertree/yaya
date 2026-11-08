@@ -12,6 +12,8 @@ import { moveTab } from '../ui/tabStrip'
 import {
   finished,
   arrange,
+  settledFor,
+  type Settled,
   derived,
   inScope,
   lateIn,
@@ -563,19 +565,20 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * effect the finished goals drew at the top for one frame and then dropped to the bottom, which
    * is a row moving under somebody's eye on the very first look.
    */
-  const [settled, setSettled] = useState<{ view: string; ids: ReadonlySet<string> } | null>(null)
+  const [settled, setSettled] = useState<Settled | null>(null)
+  /* ⚠️ AND A NEW DAY IS AN ARRIVAL TOO — see `Settled` for what leaving `on` out of this did */
   useLayoutEffect(() => {
     if (!loaded) return
     setSettled((was) =>
-      was && was.view === view
+      was && was.view === view && was.on === on
         ? was
-        : { view, ids: new Set(mine.filter((g) => finished(g, got, on)).map((g) => g.id)) },
+        : { view, on, ids: new Set(mine.filter((g) => finished(g, got, on)).map((g) => g.id)) },
     )
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [view, loaded])
+  }, [view, loaded, on])
   const order = useMemo(
-    () => arrange(mine, overdue, settled?.view === view ? settled.ids : new Set<string>()),
-    [mine, overdue, settled, view],
+    () => arrange(mine, overdue, settledFor(settled, view, on)),
+    [mine, overdue, settled, view, on],
   )
 
   const add = async () => {
