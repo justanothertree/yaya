@@ -538,6 +538,25 @@ function seed(): Store {
         at: at(1, 21, 40).toISOString(),
         body: 'Slept badly. Skipped the run and walked instead.',
       },
+      /**
+       * ⚠️ THE TWO SHAPES THE DAY LOG HAS TO TELL APART (§15a): one written during the day it is
+       * about, which has a time on that day, and one written the NEXT morning about the day
+       * before, which does not — so the log shows it at the head of its day with the date it was
+       * written. Today's is five past midnight so it is never in the future, whenever the
+       * workbench is opened.
+       */
+      {
+        id: 'pv-dn2',
+        on: localISO(at(2, 12)),
+        at: at(1, 9, 5).toISOString(),
+        body: 'About the day before: the knee was fine after all.',
+      },
+      {
+        id: 'pv-dn3',
+        on: localISO(at(0, 12)),
+        at: at(0, 0, 5).toISOString(),
+        body: 'Up late. Writing this down so tomorrow knows why.',
+      },
     ],
     routines: [
       {

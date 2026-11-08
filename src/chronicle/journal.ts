@@ -138,3 +138,36 @@ export function matching(
       ((r.activity && name.get(r.activity)) || '').includes(q),
   )
 }
+
+/**
+ * A note with no session, placed in ONE day's log — the Day half's third kind of row, after a
+ * sitting and a moment (§15a, answered).
+ *
+ * ⚠️ IT HAS A TIME ON THAT DAY ONLY IF IT WAS WRITTEN DURING THAT DAY. Evan's words: "a genuine
+ * timestamp and no duration. Don't invent a time where only a date is known." A day note carries
+ * two facts — the moment it was written, and the day it is about — and they differ whenever
+ * somebody writes about yesterday, or a file puts one back. Placing "slept badly", written on
+ * Thursday about Tuesday, at Thursday's 8:14 in Tuesday's list would be a time Tuesday never had.
+ * So such a note goes to the head of the day with no clock, the way a workout with no hour does,
+ * and says when it was written instead.
+ *
+ * ⚠️ `fromMs` AND `toMs` ARE THE DAY'S OWN BOUNDS, `dayBounds` in the room, which is what makes a
+ * 25-hour day in November and a 23-hour one in March right without this knowing about either.
+ */
+export type DayLogNote = { at: number; timed: boolean; n: DayNote }
+
+export function dayLogNotes(
+  notes: readonly DayNote[],
+  day: string,
+  fromMs: number,
+  toMs: number,
+): DayLogNote[] {
+  const out: DayLogNote[] = []
+  for (const n of notes) {
+    if (n.on !== day) continue
+    const ms = Date.parse(n.at)
+    const timed = Number.isFinite(ms) && ms >= fromMs && ms < toMs
+    out.push({ at: timed ? ms : Infinity, timed, n })
+  }
+  return out
+}

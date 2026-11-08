@@ -3,6 +3,7 @@ import {
   addEntry,
   addNote,
   archiveActivity,
+  dayNotesBetween,
   dropEntry,
   editEntry,
   editNote,
@@ -30,6 +31,8 @@ import { seenPictures, type Kept } from '../pictures/cloud'
 import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
 import { JournalList } from './JournalList'
+import { dayLogNotes, type DayNote } from './journal'
+import { localISO } from '../circuit/dates'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
@@ -506,6 +509,28 @@ export function Timer({
     }
   }, [bounds.fromMs, bounds.toMs, beat])
 
+  /**
+   * The day's notes with no session — the third kind of row, after a sitting and a moment.
+   *
+   * ⚠️ PRIVATE, AND THIS IS YOUR OWN LOG: nothing here reaches Friends, which reads a different
+   * function that carries no note at all. Fetched again when the Journal half hands back, since
+   * that is where they are written and changed.
+   */
+  const [dayNotes, setDayNotes] = useState<DayNote[]>([])
+  useEffect(() => {
+    if (show !== 'day') return
+    let dead = false
+    void (async () => {
+      /* ⚠️ HALF-OPEN, like every range here: [this day, the next) — asking (day, day) asks for
+         nothing, and the reader refuses an empty range by returning none */
+      const got = await dayNotesBetween(seeing, localISO(new Date(bounds.toMs)))
+      if (!dead) setDayNotes(got)
+    })()
+    return () => {
+      dead = true
+    }
+  }, [seeing, bounds.toMs, beat, show])
+
   const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
   const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
   /**
@@ -517,7 +542,11 @@ export function Timer({
    */
   const stream = useMemo(() => {
     const rows: Array<
-      { at: number } & ({ kind: 'sat'; e: Entry } | { kind: 'moment'; m: Moment })
+      { at: number } & (
+        | { kind: 'sat'; e: Entry }
+        | { kind: 'moment'; m: Moment }
+        | { kind: 'note'; n: DayNote; timed: boolean }
+      )
     > = []
     for (const e of seeSite ? log : didMyself)
       rows.push({ at: Date.parse(e.start), kind: 'sat', e })
@@ -535,8 +564,12 @@ export function Timer({
       if (m.at) rows.push({ at: Date.parse(m.at), kind: 'moment', m })
       else if (m.on === seeing) rows.push({ at: Infinity, kind: 'moment', m })
     }
+    /* ⚠️ A NOTE HAS ITS TIME ONLY IF IT WAS WRITTEN THAT DAY — see `dayLogNotes`. One written
+       about this day from another goes to the head of it, with no clock, like a workout */
+    for (const x of dayLogNotes(dayNotes, seeing, bounds.fromMs, bounds.toMs))
+      rows.push({ at: x.at, kind: 'note', n: x.n, timed: x.timed })
     return rows.sort((x, y) => y.at - x.at)
-  }, [log, didMyself, moments, seeSite, seeing])
+  }, [log, didMyself, moments, dayNotes, seeSite, seeing, bounds.fromMs, bounds.toMs])
 
   const onSiteMs = useMemo(
     () => onSite.reduce((n, e) => n + overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()), 0),
@@ -1859,6 +1892,41 @@ export function Timer({
       {show === 'day' && stream.length > 0 && (
         <ul className="chron-log">
           {stream.map((row) => {
+            if (row.kind === 'note') {
+              const n = row.n
+              return (
+                <li key={`n-${n.id}`} className="chron-moment is-note">
+                  <span className="chron-moment-what">
+                    <span aria-hidden>📝</span>{' '}
+                    <span className="sr-only">A note only you can read: </span>
+                    <span className="chron-note-text">{n.body}</span>
+                  </span>
+                  {/* ⚠️ THE TIME IT WAS WRITTEN, OR THE DAY — never a time on this day that the
+                      note does not have. See `dayLogNotes`. */}
+                  <span className="muted chron-moment-when">
+                    {row.timed
+                      ? new Date(n.at).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : `written ${new Date(n.at).toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                        })}`}
+                  </span>
+                  {/* changed where it is written — one editor for a note, not two that drift */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost chron-x"
+                    aria-label="Change this note, in the Journal"
+                    onClick={() => onShow?.('journal')}
+                  >
+                    ✎
+                  </button>
+                </li>
+              )
+            }
             if (row.kind === 'moment') {
               const m = row.m
               const workout = m.kind === 'workout'

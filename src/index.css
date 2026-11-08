@@ -17194,6 +17194,34 @@ a.cz-msg-author:focus-visible {
 .chron-moment.is-workout {
   background: rgba(255, 255, 255, 0.045);
 }
+/**
+ * A note with no session — §15a. A moment, not a sitting: no length and no clock range, and only
+ * the time it was written when it was written that day.
+ *
+ * ⚠️ IT CARRIES A ✎ WHERE A RATING DOES NOT, and that is the one departure from the rule above. A
+ * rating is changed in the room it was given in; a note is yours and is changed in the Journal,
+ * and a row with words in it and no way to reach their editor is a dead end on a phone. It has no
+ * ✕, so it still cannot be mistaken for a sitting's pair of controls.
+ */
+.chron-moment.is-note {
+  align-items: center;
+}
+.chron-moment.is-note .chron-moment-what {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+/* ⚠️ THREE LINES, THEN AN ELLIPSIS: a note can be four thousand characters, and the day's log is a
+   list of a day, not a place to read a letter — the Journal is where it is read whole */
+.chron-note-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 
 /**
  * Tap to count, while the clock runs.

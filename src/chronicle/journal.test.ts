@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byDay, journalRows, matching } from './journal'
+import { byDay, dayLogNotes, journalRows, matching } from './journal'
 import type { Activity, Entry } from './record'
 
 /* local times, built the way the room builds them, so a day boundary is a day boundary here */
@@ -188,5 +188,81 @@ describe('notes with no session', () => {
       { id: 'd', on: '2026-11-02', at: noon('2026-11-02'), body: 'left knee again' },
     ])
     expect([matching(rows, 'knee', []).length, matching(rows, 'gym', []).length]).toEqual([1, 0])
+  })
+})
+
+/**
+ * ⚠️ §15a, ANSWERED: "a genuine timestamp and no duration. Don't invent a time where only a date
+ * is known." Each case below is a note whose two facts — written when, about which day — either
+ * agree or do not.
+ */
+describe("a note with no session, in one day's log", () => {
+  const note = (id: string, on: string, writtenOn: string, hh: number, mm = 0) => ({
+    id,
+    on,
+    at: at(writtenOn, hh, mm),
+    body: `note ${id}`,
+  })
+
+  it('has its time when it was written during the day it is about', () => {
+    const rows = dayLogNotes(
+      [note('a', '2026-11-03', '2026-11-03', 8, 14)],
+      '2026-11-03',
+      ms('2026-11-03'),
+      ms('2026-11-04'),
+    )
+    expect(rows.map((r) => [r.n.id, r.timed, r.at])).toEqual([
+      ['a', true, Date.parse(at('2026-11-03', 8, 14))],
+    ])
+  })
+
+  it('has NO time when it was written on another day, and goes to the head of the day', () => {
+    const rows = dayLogNotes(
+      [
+        note('later', '2026-11-03', '2026-11-05', 8, 14),
+        note('before', '2026-11-03', '2026-11-02', 23, 50),
+      ],
+      '2026-11-03',
+      ms('2026-11-03'),
+      ms('2026-11-04'),
+    )
+    expect(rows.map((r) => [r.n.id, r.timed, r.at])).toEqual([
+      ['later', false, Infinity],
+      ['before', false, Infinity],
+    ])
+  })
+
+  it('belongs to the day it is ABOUT, not the day it was written', () => {
+    const notes = [note('about-tue', '2026-11-03', '2026-11-05', 9)]
+    expect([
+      dayLogNotes(notes, '2026-11-05', ms('2026-11-05'), ms('2026-11-06')).length,
+      dayLogNotes(notes, '2026-11-03', ms('2026-11-03'), ms('2026-11-04')).length,
+    ]).toEqual([0, 1])
+  })
+
+  it('counts the first instant of the day in and the first of the next out', () => {
+    const rows = dayLogNotes(
+      [
+        { id: 'first', on: '2026-11-03', at: new Date(ms('2026-11-03')).toISOString(), body: '' },
+        { id: 'next', on: '2026-11-03', at: new Date(ms('2026-11-04')).toISOString(), body: '' },
+      ],
+      '2026-11-03',
+      ms('2026-11-03'),
+      ms('2026-11-04'),
+    )
+    expect(rows.map((r) => [r.n.id, r.timed])).toEqual([
+      ['first', true],
+      ['next', false],
+    ])
+  })
+
+  it('reads an unreadable moment as no time at all, never as midnight', () => {
+    const rows = dayLogNotes(
+      [{ id: 'x', on: '2026-11-03', at: 'not a date', body: '' }],
+      '2026-11-03',
+      ms('2026-11-03'),
+      ms('2026-11-04'),
+    )
+    expect(rows.map((r) => [r.timed, r.at])).toEqual([[false, Infinity]])
   })
 })
