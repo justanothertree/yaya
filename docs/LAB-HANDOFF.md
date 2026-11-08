@@ -2416,7 +2416,10 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   from a card scrolls that card back into view and focuses its ▶, so Tab and Enter carry on from
   there; arriving any other way (‹ ›, the dropdown) still puts the cursor in search. Since a
   narrowed list now persists, **✕ Show everything** appears whenever it is narrowed, and moves
-  focus to search (mouse) or Kind (touch) rather than dropping it on the page.
+  focus to search (mouse) or Kind (touch) rather than dropping it on the page. To try on a phone,
+  with the queue's phone test below: after launching from a search, ▶ Back to browsing — is the
+  search still in the box, with that card in view? (Kept out of the queue's own lines so this
+  branch and the toy branches never edit the same lines.)
 - **🆕 New to you** (branch `claude/lab-unseen-1`, stacked on Back where you left it): toys keep
   arriving, and a returning visitor had no way to see which. The Browse button now says
   "🔎 Browse all 59 · 2 new", the catalog says how many were added since you first came, and those
@@ -2433,7 +2436,6 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
 1. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
 2. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
-   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb? Then
-   ▶ Back to browsing: is "puzzle" still in the box, with that card in view?
+   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
 3. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?
