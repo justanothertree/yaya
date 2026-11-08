@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN G1: sets, links (with the cell lock), then the GRID draft; every suite plus the grid test.
+-- RUN G2: as G1, the grid test acting as a second member who is not an admin.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)

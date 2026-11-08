@@ -28,11 +28,18 @@ begin;
 
 create temp table fails(check_name text, detail text);
 create temp table ids(k text primary key, v uuid);
+/* ⚠️ THE OTHER MEMBER IS ONE WHO IS NOT AN ADMIN. circuit_can_edit_person lets an admin change
+   anybody's person, so with an admin here "another member is refused" cannot be asked — the first
+   run of this file found the seed's second member was one, through the fixture guard below */
 create temp table subject as
-  select (select p.user_id from public.profiles p where coalesce(p.suspended, false) = false
-           order by p.username limit 1) as me,
-         (select p.user_id from public.profiles p where coalesce(p.suspended, false) = false
-           order by p.username offset 1 limit 1) as other;
+  with m as (select p.user_id as me from public.profiles p where coalesce(p.suspended, false) = false
+              order by p.username limit 1)
+  select m.me,
+         (select p.user_id from public.profiles p
+           where coalesce(p.suspended, false) = false and p.user_id <> m.me
+             and not exists (select 1 from public.admin_users a where a.user_id = p.user_id)
+           order by p.username limit 1) as other
+    from m;
 create temp table t as
   select (date_trunc('day', now() at time zone 'utc') at time zone 'utc') as t0,
          (now() at time zone 'utc')::date as today;
