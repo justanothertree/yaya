@@ -1760,8 +1760,20 @@ const markedWith = (l: Layer, mark: string): string | null => {
   return at === -1 ? null : l.id.slice(at + mark.length)
 }
 export const beatPatternOf = (l: Layer): string | null => markedWith(l, BEAT_MARK)
-export const chordPatternOf = (l: Layer): string | null => markedWith(l, CHORD_MARK)
-export const bassPatternOf = (l: Layer): string | null => markedWith(l, BASS_MARK)
+/**
+ * ⚠️ A CHORD OR BASS TAG MAY CARRY A STYLE AFTER A DASH — `four-stabs`, `four-walk` — so the
+ * progression is what comes before it. Chord and bass pattern ids never contain a dash (beat ids
+ * do, which is why only these two split). A layer laid before styles existed has no dash and reads
+ * as the style it always was; a build that predates this reads `four-stabs` as an unknown
+ * progression, which leaves its picker unpressed and the notes playing — the safe way to be old.
+ */
+const before = (tag: string | null) => (tag === null ? null : tag.split('-')[0])
+const after = (tag: string | null) => (tag === null ? null : (tag.split('-')[1] ?? null))
+export const chordPatternOf = (l: Layer): string | null => before(markedWith(l, CHORD_MARK))
+export const bassPatternOf = (l: Layer): string | null => before(markedWith(l, BASS_MARK))
+/** the style a chord or bass layer was laid in, as tagged — null for the original one */
+export const chordStyleTagOf = (l: Layer): string | null => after(markedWith(l, CHORD_MARK))
+export const bassStyleTagOf = (l: Layer): string | null => after(markedWith(l, BASS_MARK))
 export const fillPatternOf = (l: Layer): string | null => markedWith(l, FILL_MARK)
 
 /**

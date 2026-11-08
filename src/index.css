@@ -2843,6 +2843,10 @@ section[id] {
 }
 /* the line under a toggle that says what it does, or why it is off — see `Why` in
    InstrumentRoom. Smaller and quieter than the label so the label is still what you read first. */
+/* a row's one reason, when every button in it is off for the same one (the bass, before chords) */
+.inst-beats-why {
+  font-size: 0.76rem;
+}
 .btn-why {
   display: block;
   margin-top: 0.12rem;
