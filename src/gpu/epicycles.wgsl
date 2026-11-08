@@ -64,8 +64,9 @@ fn line_vs(@builtin(vertex_index) i: u32, @builtin(instance_index) j: u32) -> Li
   let c = lines[j * 2u + 1u];
   let a = to_px(ab.xy);
   let b = to_px(ab.zw);
-  // a box round the capsule, a few pixels wider than it for the soft edge and glow
-  let pad = c.w * 3.0 + 2.0;
+  // a box round the capsule wide enough to hold its whole halo — a box narrower than the halo cut
+  // it off in a visible square round the pen
+  let pad = c.w * 5.0 + 4.0;
   let lo = min(a, b) - vec2f(pad);
   let hi = max(a, b) + vec2f(pad);
   let corner = lo + (hi - lo) * CORNERS[i];
@@ -85,7 +86,7 @@ fn line_fs(in: Line) -> @location(0) vec4f {
   let d = length(in.px - in.a - ab * t);
   let w = in.colour.w;
   let core = 1.0 - smoothstep(w - 0.5, w + 0.5, d);
-  let glow = exp(-d / (w * 2.5 + 1.0)) * 0.35;
+  let glow = exp(-d / (w * 1.5 + 1.0)) * 0.35;
   return vec4f(in.colour.rgb * (core + glow), 1.0);
 }
 
