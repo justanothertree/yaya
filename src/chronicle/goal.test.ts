@@ -3,6 +3,7 @@ import type { VisibilityTier } from '../circuit/types'
 import {
   ASKS_AT_ONCE,
   arrange,
+  settledFor,
   profileGlyph,
   inBatches,
   derived,
@@ -1432,5 +1433,32 @@ describe('a note turned into the first draft of a goal', () => {
 
   it('gives nothing for a note of nothing but space', () => {
     expect(ideaTitle(' \n\t ')).toBe('')
+  })
+})
+
+describe('the arrival snapshot, across midnight', () => {
+  /* a daily repeating goal: the same id on every day it is due */
+  const floss = goal({ id: 'floss', anchor: null, every: 1 })
+  const ids = (gs: Goal[]) => gs.map((g) => g.id)
+
+  it('answers for the day it was taken on', () => {
+    const snap = { view: 'today', on: '2026-11-07', ids: new Set(['floss']) }
+    expect([...settledFor(snap, 'today', '2026-11-07')]).toEqual(['floss'])
+  })
+
+  it('files a repeating goal finished yesterday as open today, not as done', () => {
+    /* the tab stayed open over midnight: same view, new day */
+    const snap = { view: 'today', on: '2026-11-07', ids: new Set(['floss']) }
+    const r = arrange([floss], [], settledFor(snap, 'today', '2026-11-08'))
+    expect([ids(r.open), ids(r.done)]).toEqual([['floss'], []])
+  })
+
+  it('answers nothing for a different tab', () => {
+    const snap = { view: 'today', on: '2026-11-07', ids: new Set(['floss']) }
+    expect(settledFor(snap, 'tomorrow', '2026-11-07').size).toBe(0)
+  })
+
+  it('answers nothing before any snapshot has been taken', () => {
+    expect(settledFor(null, 'today', '2026-11-07').size).toBe(0)
   })
 })
