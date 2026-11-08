@@ -17,7 +17,7 @@ import {
   type Browse,
   type Flags,
 } from '../lab/catalog'
-import { labApi } from '../lab/feedback'
+import { labApi, noLabYet } from '../lab/feedback'
 import { LabCatalog } from '../lab/LabCatalog'
 import { LabFeedback, type Viewer } from '../lab/LabFeedback'
 import '../lab/lab-catalog.css'
@@ -512,6 +512,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
      owner hid, and add what a signed-in member may be shown. */
   const api = useMemo(() => labApi(), [])
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
+  /* ⚠️ THE FRONTEND CAN REACH PRODUCTION BEFORE ITS SQL DOES. Measured with every lab_* call
+     answering as PostgREST does for a function that does not exist: a member was offered 👍 👎 and
+     a note form, and a vote came back "Couldn't reach the server". So a catalog that is MISSING —
+     not one that failed to arrive — closes feedback the way a build with no backend already does. */
+  const [noFeedback, setNoFeedback] = useState(false)
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [recent, setRecent] = useState<string[]>(storedRecent)
   const [seen, setSeen] = useState<readonly string[] | null>(storedSeen)
@@ -578,8 +583,9 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live)
           setFlags(readFlags(await api.catalog(), KNOWN))
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         /* no catalog: every experiment stays listed, nothing counted — the Lab still plays */
+        if (live && noLabYet(e)) setNoFeedback(true)
       })
     return () => {
       live = false
@@ -744,7 +750,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           <current.Demo key={current.id} {...props} />
 
           <LabFeedback
-            api={api}
+            api={noFeedback ? null : api}
             demo={current.id}
             name={current.name}
             flags={currentFlags}
