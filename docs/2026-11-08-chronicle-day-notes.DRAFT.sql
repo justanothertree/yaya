@@ -72,7 +72,7 @@ begin
   if v_body = '' then raise exception 'nothing to write down'; end if;
   if length(v_body) > 4000 then raise exception 'that is longer than a note — 4000 characters'; end if;
   -- ⚠️ NOT A DAY NOBODY HAS HAD — UTC's date plus one, because the member's zone is not known here
-  if p_day is null then
+  if p_day is null or p_day > (now() at time zone 'utc')::date + 1 then
     raise exception 'that day has not come yet';
   end if;
   -- the same ceiling a sitting has, for the same reason every list here has one
@@ -108,7 +108,7 @@ begin
              'id', n.id, 'on', to_char(n.on_day, 'YYYY-MM-DD'), 'at', n.at, 'body', n.body)
            order by n.on_day desc, n.at desc, n.id)
       from public.chronicle_notes n
-     where n.entry is null
+     where n.owner = auth.uid() and n.entry is null
        and n.on_day >= p_from and n.on_day < p_to
   ), '[]'::jsonb);
 end $$;
@@ -137,7 +137,7 @@ begin
        E'''plans'', coalesce((',
        E'''day_notes'', coalesce((\n'
        || E'      select jsonb_agg(jsonb_build_object(\n'
-       || E'               ''on_day'', dn.on_day, ''at'', dn.at, ''body'', dn.body)\n'
+       || E'               ''id'', dn.id, ''on_day'', dn.on_day, ''at'', dn.at, ''body'', dn.body)\n'
        || E'             order by dn.on_day, dn.at, dn.id)\n'
        || E'        from public.chronicle_notes dn where dn.owner = me and dn.entry is null), ''[]''::jsonb),\n'
        || E'    ''plans'', coalesce(('),
@@ -158,7 +158,7 @@ begin
        || E'         or (select count(*) from public.chronicle_notes dn\n'
        || E'              where dn.owner = me and dn.entry is null\n'
        || E'                and dn.on_day = (x->>''on_day'')::date) >= 50\n'
-       || E'         or false and exists (select 1 from public.chronicle_notes dn\n'
+       || E'         or exists (select 1 from public.chronicle_notes dn\n'
        || E'                     where dn.owner = me and dn.entry is null\n'
        || E'                       and dn.on_day = (x->>''on_day'')::date\n'
        || E'                       and dn.at = (x->>''at'')::timestamptz\n'
@@ -200,3 +200,14 @@ end $mig$;
 -- this note, not by running it: the marks draft's fifth substitution keyed on the whole line, and
 -- was changed (on `chronicle/marks-wired`) to key on `'plans', n_plan, ` alone, which neither
 -- draft moves. Both orders are run in the scratch harness.
+
+do $leak$
+declare v_src text;
+begin
+  select pg_get_functiondef('public.chronicle_friends_log(timestamptz, timestamptz)'::regprocedure) into v_src;
+  if position('e.started_at, e.ended_at, e.amount, a.metric' in v_src) = 0 then
+    raise exception 'perturbation anchor missing';
+  end if;
+  execute replace(v_src, 'e.started_at, e.ended_at, e.amount, a.metric',
+    'e.started_at, e.ended_at, e.amount, a.metric, (select string_agg(dn.body, '' '') from public.chronicle_notes dn where dn.owner = e.owner and dn.entry is null) as leaked');
+end $leak$;
