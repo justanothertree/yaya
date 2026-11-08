@@ -22,6 +22,8 @@
 --   D  the export carries every field of a mark and the import puts each one back — dropped one at
 --      a time to prove each is really carried — and a tampered file reaches nobody else's goal
 --   E  the profile: a repeating goal says how THIS window went, a one-off reads as it always did
+--   E2 the same for a week and a month ticked DAYS ago: still current, so still ✓ — and a closed
+--      week is not; the daily reset must not reach the longer scopes
 -- On failure it raises, naming every check that failed. A green run prints one row.
 
 begin;
@@ -44,7 +46,14 @@ create temp table win as
       ('yesterday', (now() at time zone 'utc')::date - 1,  1),
       ('ahead',     (now() at time zone 'utc')::date + 2,  1),
       ('week',      (now() at time zone 'utc')::date
-                     - extract(dow from (now() at time zone 'utc'))::int, 7)
+                     - extract(dow from (now() at time zone 'utc'))::int, 7),
+      /* ⚠️ WINDOWS THAT CONTAIN NOW WITHOUT STARTING TODAY. The 'week' row above starts today on
+         a Sunday, and a profile check made only of windows that start today cannot tell "this
+         window is current" from "this window started today" — which is the daily reset leaking
+         into the longer scopes, the one bug that would look like the fix working */
+      ('midweek',   (now() at time zone 'utc')::date - 3,  7),
+      ('midmonth',  (now() at time zone 'utc')::date - 10, 30),
+      ('lastweek',  (now() at time zone 'utc')::date - 10, 7)
     ) v(k, f, len);
 grant select on subject, win to authenticated, anon;
 grant select, insert on fails to authenticated, anon;
@@ -527,6 +536,51 @@ begin
                               'reached ' || (card->>'reached') || ', open ' || (card->>'open'));
   end if;
 exception when others then insert into fails values ('reading the profile raised', sqlerrm);
+end $$;
+reset role;
+
+-- ── E2. the profile, for the scopes longer than a day ───────────────────────────────────────
+/* ⚠️ ON THEIR OWN GOALS, because the card lists six and E already has four: a weekly and a monthly
+   tick made DAYS ago in windows still open, which must read ✓ — and a weekly tick whose window has
+   closed, which must not. A daily reset leaking into the longer scopes would turn the first two ○ */
+delete from public.chronicle_goals where owner = (select me from subject);
+set local role authenticated;
+do $$
+declare w record;
+begin
+  insert into ids values
+    ('p_week',  public.chronicle_goal_save(null, 'P: weekly, ticked this week', 'week', null, 1,
+                                           null, null, null, 1, null, null, 'minutes', null, 0)),
+    ('p_month', public.chronicle_goal_save(null, 'P: monthly, ticked this month', 'month', null, 1,
+                                           null, null, null, 2, null, null, 'minutes', null, 0)),
+    ('p_lastw', public.chronicle_goal_save(null, 'P: weekly, ticked last week', 'week', null, 1,
+                                           null, null, null, 3, null, null, 'minutes', null, 0));
+  select * into w from win where k = 'midweek';
+  perform public.chronicle_goal_mark((select v from ids where k = 'p_week'), w.f, w.s, w.e, null, true);
+  select * into w from win where k = 'midmonth';
+  perform public.chronicle_goal_mark((select v from ids where k = 'p_month'), w.f, w.s, w.e, null, true);
+  select * into w from win where k = 'lastweek';
+  perform public.chronicle_goal_mark((select v from ids where k = 'p_lastw'), w.f, w.s, w.e, null, true);
+exception when others then insert into fails values ('the longer scopes'' goals raised', sqlerrm);
+end $$;
+
+do $$
+declare card jsonb;
+begin
+  card := public.get_member_chronicle(
+            (select username::text from public.profiles where user_id = (select me from subject)), 7);
+  if (select jsonb_agg(jsonb_build_array(g->>'title', (g->>'done')::boolean) order by g->>'title')
+        from jsonb_array_elements(card->'goals') g)
+     is distinct from '[["P: monthly, ticked this month", true],
+                        ["P: weekly, ticked last week", false],
+                        ["P: weekly, ticked this week", true]]'::jsonb then
+    insert into fails values ('the profile resets a weekly or monthly tick', (card->'goals')::text);
+  end if;
+  if (card->>'reached')::int <> 2 or (card->>'open')::int <> 1 then
+    insert into fails values ('the profile counts the longer scopes the wrong way',
+                              'reached ' || (card->>'reached') || ', open ' || (card->>'open'));
+  end if;
+exception when others then insert into fails values ('reading the longer scopes raised', sqlerrm);
 end $$;
 reset role;
 
