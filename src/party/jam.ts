@@ -20,7 +20,14 @@ import {
   subscribeLoop,
   type Layer,
 } from '../audio/looper'
-import { packSong, readSong, songToLayers, toSong, type Song } from '../audio/songFile'
+import {
+  JAM_CEILINGS,
+  packSong,
+  readSong,
+  songToLayers,
+  toSong,
+  type Song,
+} from '../audio/songFile'
 import { showToast } from '../circuit/toast'
 import { clock, toLocalTime } from './clock'
 import { transport } from './transport'
@@ -554,7 +561,10 @@ export const jam = {
         if (typeof b?.lid !== 'string' || b.lid.length > 120) return
         const where = localIdFor(b.lid)
         if (!where) return
-        const song = readSong(b.song)
+        /* ⚠️ at the jam's own ceilings, not the Library's — a partner's layer above 1.5 plays at
+           1.5 here, as it always has. Raising that is a decision about the room's sound and is
+           waiting for one; see JAM_CEILINGS. */
+        const song = readSong(b.song, JAM_CEILINGS)
         const one = song && songToLayers(song)[0]
         if (!one) return
         const layer: Layer = {
@@ -606,7 +616,8 @@ export const jam = {
         return
       }
       if (m.kind === 'jam:song' && state.on) {
-        const song = readSong(m.body)
+        // the jam's ceilings, as above — an offered song longer than eight bars loads as eight
+        const song = readSong(m.body, JAM_CEILINGS)
         if (song) set({ offer: { from: m.from, name: m.name || 'Someone', song } })
         return
       }

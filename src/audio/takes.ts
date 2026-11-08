@@ -175,6 +175,21 @@ export async function getTake(id: string): Promise<TakeRow | null> {
   return row && sane(row) ? row : null
 }
 
+/**
+ * Is this recording in the store — yes, no, or the store could not say.
+ *
+ * ⚠️ THREE ANSWERS, BECAUSE getTake HAS TWO AND ONE OF THEM MEANS TWO THINGS. `null` from
+ * getTake is "there is no such row" and also "the store would not open" — private mode, blocked
+ * by settings, a transaction that failed. Something deciding whether a recording is GONE must
+ * not read the second as the first: that turns a browser that is having a bad moment into a
+ * loop that forgets where somebody's voice went. `count` answers a number when it can look and
+ * `run` answers null when it cannot, so the two finally come apart.
+ */
+export async function hasTake(id: string): Promise<boolean | null> {
+  const n = await run<number>('readonly', (s) => s.count(id))
+  return n === null ? null : n > 0
+}
+
 /** How many bytes of audio are held in total. */
 export async function takenBytes(): Promise<number> {
   return (await allTakes()).reduce((n, r) => n + r.bytes, 0)
