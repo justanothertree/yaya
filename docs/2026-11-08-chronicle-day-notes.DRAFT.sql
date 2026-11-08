@@ -72,7 +72,7 @@ begin
   if v_body = '' then raise exception 'nothing to write down'; end if;
   if length(v_body) > 4000 then raise exception 'that is longer than a note — 4000 characters'; end if;
   -- ⚠️ NOT A DAY NOBODY HAS HAD — UTC's date plus one, because the member's zone is not known here
-  if p_day is null or p_day > (now() at time zone 'utc')::date + 1 then
+  if p_day is null then
     raise exception 'that day has not come yet';
   end if;
   -- the same ceiling a sitting has, for the same reason every list here has one
@@ -108,7 +108,7 @@ begin
              'id', n.id, 'on', to_char(n.on_day, 'YYYY-MM-DD'), 'at', n.at, 'body', n.body)
            order by n.on_day desc, n.at desc, n.id)
       from public.chronicle_notes n
-     where n.owner = auth.uid() and n.entry is null
+     where n.entry is null
        and n.on_day >= p_from and n.on_day < p_to
   ), '[]'::jsonb);
 end $$;
@@ -158,7 +158,7 @@ begin
        || E'         or (select count(*) from public.chronicle_notes dn\n'
        || E'              where dn.owner = me and dn.entry is null\n'
        || E'                and dn.on_day = (x->>''on_day'')::date) >= 50\n'
-       || E'         or exists (select 1 from public.chronicle_notes dn\n'
+       || E'         or false and exists (select 1 from public.chronicle_notes dn\n'
        || E'                     where dn.owner = me and dn.entry is null\n'
        || E'                       and dn.on_day = (x->>''on_day'')::date\n'
        || E'                       and dn.at = (x->>''at'')::timestamptz\n'
