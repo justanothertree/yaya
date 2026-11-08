@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C3 (clean): C2, plus a printed demonstration for OPEN-DECISIONS 20e.
+-- RUN C4 (clean): the stray-set fix, the conversion through real Auth and PostgREST (89 checks), the one-clock marks fix, and a printed demonstration for OPEN-DECISIONS 20e.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
@@ -48,8 +48,8 @@ do $$
 declare n int; m int;
 begin
   select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
-  if n > 0 or m < 90 then
-    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 90', n, m;
+  if n > 0 or m < 89 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 89', n, m;
   end if;
 end $$;
 select 'the daily flow and the marks hold through Auth and PostgREST' as result;

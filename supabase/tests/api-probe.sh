@@ -108,7 +108,14 @@ ok2xx "A makes a repeating tick-box"; G=$(printf '%s' "$BODY" | jq -r '.')
 rpc chronicle_goal_mark "$TA" "{\"p_goal\":\"$G\",\"p_from\":\"$TODAY\",\"p_starts\":\"$FROM\",\"p_ends\":\"$TO\",\"p_progress\":null,\"p_done\":true}"
 ok2xx "A ticks it for today"
 rpc chronicle_goal_mark "$TA" "{\"p_goal\":\"$G\",\"p_from\":\"$NEXT\",\"p_starts\":\"$TO\",\"p_ends\":\"${AFTER}T00:00:00Z\",\"p_progress\":null,\"p_done\":true}"
-if [ "$(date -u +%H)" -lt 23 ]; then refused "A ticking tomorrow"; else pass "A ticking tomorrow: not asked, inside the hour's slack before midnight"; fi
+# ⚠️ ONE READING OF THE CLOCK, for both checks that depend on it. The server lets tomorrow be ticked
+# in the last hour before midnight UTC, so from 23:00 the tick may be let in, and then "tomorrow stays
+# untouched" is not the rule. C2 ran at 23:17 and failed that check for exactly this reason, while
+# the line above it already knew. Reading the hour twice could also disagree across 23:00.
+NEXT_CODE=$CODE; LATE=no; [ "$(date -u +%H)" -ge 23 ] && LATE=yes
+if [ "$LATE" = no ]; then refused "A ticking tomorrow"; else pass "A ticking tomorrow: not asked, inside the hour's slack before midnight (HTTP $NEXT_CODE)"; fi
+WANT_NEXT=false; NEXT_SAYS="tomorrow stays untouched"
+if [ "$LATE" = yes ] && [ "${NEXT_CODE#2}" != "$NEXT_CODE" ]; then WANT_NEXT=true; NEXT_SAYS="tomorrow holds the tick the slack let in"; fi
 rpc chronicle_goal_mark "$TB" "{\"p_goal\":\"$G\",\"p_from\":\"$TODAY\",\"p_starts\":\"$FROM\",\"p_ends\":\"$TO\",\"p_progress\":null,\"p_done\":false}"
 refused "B unticking A's goal"
 rpc chronicle_goal_mark "$ANON_KEY" "{\"p_goal\":\"$G\",\"p_from\":\"$TODAY\",\"p_starts\":\"$FROM\",\"p_ends\":\"$TO\",\"p_progress\":null,\"p_done\":false}"
@@ -116,7 +123,7 @@ refused "anon unticking A's goal"
 ASK="{\"p_asks\":[{\"id\":\"$G\",\"from\":\"$TODAY\"},{\"id\":\"$G\",\"from\":\"$NEXT\"}]}"
 rpc chronicle_goal_marks_for "$TA" "$ASK"
 check "$(printf '%s' "$BODY" | jq -c --arg k "$G@$TODAY" '.marks[$k]')" '{"done":true,"progress":0}' "A reads today's tick back, after B's and anon's refused unticks"
-check "$(printf '%s' "$BODY" | jq -r --arg k "$G@$NEXT" '.marks | has($k)')" "false" "tomorrow stays untouched"
+check "$(printf '%s' "$BODY" | jq -r --arg k "$G@$NEXT" '.marks | has($k)')" "$WANT_NEXT" "$NEXT_SAYS"
 rpc chronicle_goal_marks_for "$TB" "$ASK"
 check "$(printf '%s' "$BODY" | jq -c '.marks')" '{}' "B asking for A's marks gets nothing"
 rpc chronicle_goal_marks_for "$ANON_KEY" "$ASK"; refused "anon reading marks"
