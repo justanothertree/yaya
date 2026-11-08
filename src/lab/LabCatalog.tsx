@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CATEGORIES,
   byNewest,
@@ -43,6 +43,12 @@ export function LabCatalog({
   onFavourite,
   onLaunch,
 }: Props) {
+  const searchBox = useRef<HTMLInputElement | null>(null)
+  // opening the catalog is usually to look for something: the cursor waits in the search box —
+  // with a mouse only, since on a phone focusing it would throw the keyboard over the list
+  useEffect(() => {
+    if (window.matchMedia?.('(pointer: fine)').matches) searchBox.current?.focus()
+  }, [])
   const [query, setQuery] = useState('')
   const [view, setView] = useState<View>('all')
   const [category, setCategory] = useState<Category | null>(null)
@@ -83,6 +89,7 @@ export function LabCatalog({
         <label className="lab-search">
           <span className="sr-only">Search the experiments</span>
           <input
+            ref={searchBox}
             type="search"
             value={query}
             placeholder="Search — try “music” or “puzzle”"
@@ -187,8 +194,10 @@ function Card({
         {e.flags.featured && <span className="lab-badge">⭐ Featured</span>}
         {e.flags.experiment && <span className="lab-badge">🧪 Rough edges</span>}
         {admin && e.flags.hidden && <span className="lab-badge lab-badge-off">🙈 Hidden</span>}
-        {current && <span className="lab-badge">Playing</span>}
+        {/* not "Playing": the catalog unmounts the toy while it is open, so nothing is */}
+        {current && <span className="lab-badge">Last open</span>}
         {rated && <span>{`👍 ${up} · 👎 ${down}`}</span>}
+        {e.flags.mine && <span className="lab-badge">You: {e.flags.mine === 1 ? '👍' : '👎'}</span>}
       </p>
     </li>
   )

@@ -2382,3 +2382,28 @@ calls.
 - **Stable ids:** nothing in `DEMOS` changed. A new toy needs a line in `src/lab/catalog.ts`'s
   `META` (a kind and a date; `catalog.test.ts` fails without it) and is registered in the database
   by the admin's next visit.
+
+### Follow-on: `claude/lab-next-1`, stacked on #31 (8 Nov 2026)
+
+**Base:** `claude/lab-catalog-1` at `73506ac` (PR #31). It needs that PR's frontend and changes no
+SQL, so #31's release boundary is untouched: its draft stays unapplied.
+
+- **One toolbar at every width.** The 51-button wall above the toy is gone. Every width now gets
+  what phones already had: ‹ previous, a dropdown of all toys, next › — plus 🔎 Browse all 51 and
+  ★ Favourite on the same line, directly above the toy. The step buttons name their neighbour
+  ("Next experiment: Neon"). The toy starts about 210px higher on a desktop.
+- **Catalog:** the search box takes focus when the catalog opens (with a mouse only — on a phone it
+  would throw the keyboard over the list). Launching a card from far down the grid scrolls the
+  toolbar back to the top of the screen once the toy has rendered. The current toy's card says
+  "Last open", not "Playing": the catalog unmounts it.
+- **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
+  "You: 👍".
+
+## Questions and tests for Evan — a short queue, most useful first
+
+1. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+   🔎 Browse at every width. Better, or do you miss seeing every name at once?
+2. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
+3. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+   "You voted …" line read clearly?

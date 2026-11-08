@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   FAVOURITES_KEY,
   entries,
@@ -489,6 +489,16 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [browsing, setBrowsing] = useState(false)
+  const bar = useRef<HTMLDivElement | null>(null)
+  /** a card can be a long way down the grid: launching one brings its toy back into view —
+   *  ⚠️ AFTER the render that swaps the catalog for the toy. Scrolling in the click itself raced
+   *  the page shrinking under it and stopped 216px past the toy on a desktop, measured. */
+  const launched = useRef(false)
+  useEffect(() => {
+    if (browsing || !launched.current) return
+    launched.current = false
+    bar.current?.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' })
+  }, [browsing, demo])
   useEffect(() => {
     if (!api) return
     let live = true
@@ -561,54 +571,52 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
 
   return (
     <div className="lab">
-      {/* ⚠️ TWO PICKERS, ONE SHOWN. A row of buttons is right while it fits on one line; on a
-          phone seven were already two rows and pushed the canvas half off the first screen, and
-          every new toy made it worse. Below 640px it is a native dropdown — the phone's own
-          wheel — with buttons either side to step through, which is how people actually browse
-          toys. A width query, not a pointer one: the problem is room, not fingers. */}
-      <div className="lab-step">
-        <button className="btn btn-ghost" onClick={() => step(-1)} aria-label="Previous experiment">
-          ‹
-        </button>
-        <label className="lab-select">
-          <span className="sr-only">Which experiment</span>
-          <select value={current.id} onChange={(e) => pick(e.target.value)}>
-            {shownDemos.map((d, i) => (
-              <option key={d.id} value={d.id}>
-                {i + 1}. {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="btn btn-ghost" onClick={() => step(1)} aria-label="Next experiment">
-          ›
-        </button>
-      </div>
-      <div className="lab-picker" role="group" aria-label="Which experiment">
-        {shownDemos.map((d) => (
-          <button
-            key={d.id}
-            className="btn btn-ghost"
-            aria-pressed={!browsing && current.id === d.id}
-            onClick={() => pick(d.id)}
-          >
-            {d.name}
-          </button>
-        ))}
-      </div>
-      <div className="lab-controls lab-browse-bar">
-        <button className="btn" aria-pressed={browsing} onClick={() => setBrowsing((b) => !b)}>
-          {browsing ? `▶ Back to ${current.name}` : '🔎 Browse, search & favourites'}
-        </button>
-        {!browsing && (
+      {/* ⚠️ ONE PICKER NOW, AT EVERY WIDTH. It used to be a row of buttons on a wide screen and this
+          dropdown on a phone, because "a row of buttons is right while it fits on one line" — and at
+          51 experiments it was five rows above the toy, with search below them. The dropdown with
+          a step either side is what phones always had; the catalog (🔎) is how to look through
+          everything, and it sits on the same line, directly above the toy, as the way back. */}
+      <div className="lab-bar" ref={bar}>
+        <div className="lab-step">
           <button
             className="btn btn-ghost"
-            aria-pressed={favourites.includes(current.id)}
-            onClick={() => favourite(current.id)}
+            onClick={() => step(-1)}
+            aria-label={`Previous experiment: ${shownDemos[(at - 1 + shownDemos.length) % shownDemos.length].name}`}
           >
-            {favourites.includes(current.id) ? '★ A favourite' : '☆ Favourite'}
+            ‹
           </button>
-        )}
+          <label className="lab-select">
+            <span className="sr-only">Which experiment</span>
+            <select value={current.id} onChange={(e) => pick(e.target.value)}>
+              {shownDemos.map((d, i) => (
+                <option key={d.id} value={d.id}>
+                  {i + 1}. {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="btn btn-ghost"
+            onClick={() => step(1)}
+            aria-label={`Next experiment: ${shownDemos[(at + 1) % shownDemos.length].name}`}
+          >
+            ›
+          </button>
+        </div>
+        <div className="lab-controls lab-browse-bar">
+          <button className="btn" aria-pressed={browsing} onClick={() => setBrowsing((b) => !b)}>
+            {browsing ? `▶ Back to ${current.name}` : `🔎 Browse all ${shownDemos.length}`}
+          </button>
+          {!browsing && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={favourites.includes(current.id)}
+              onClick={() => favourite(current.id)}
+            >
+              {favourites.includes(current.id) ? '★ A favourite' : '☆ Favourite'}
+            </button>
+          )}
+        </div>
       </div>
 
       {browsing ? (
@@ -622,7 +630,10 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           rated={visible.some((e) => e.flags.up !== undefined)}
           admin={viewer.isAdmin}
           onFavourite={favourite}
-          onLaunch={pick}
+          onLaunch={(id) => {
+            launched.current = true
+            pick(id)
+          }}
         />
       ) : (
         <>
