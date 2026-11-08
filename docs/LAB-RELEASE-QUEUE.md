@@ -29,12 +29,12 @@ appends to, the same three registries — `DEMOS` in `src/sections/GpuLab.tsx`, 
 `src/lab/catalog.ts` and the end of `src/gpu/lab.css` — so two units that both append conflict
 unless one is already under the other.
 
-| #   | Unit                                   | PR to merge                           | Branch to try                | Needs                              |
-| --- | -------------------------------------- | ------------------------------------- | ---------------------------- | ---------------------------------- |
-| A   | Catalog and feedback **foundation**    | #31 (as reviewed, `73506ac`)          | `claude/lab-catalog-1`       | `main`                             |
-| B   | Catalog and social improvements        | integration PR, `lab-release-catalog` | `claude/lab-release-catalog` | A                                  |
-| C   | 14 new toys, the kinds split, Sun path | integration PR, `lab-release-toys`    | `claude/lab-release-toys`    | B                                  |
-| SQL | The database half of A                 | none — `apply_migration`, by Evan     | —                            | nothing: apply it BEFORE A deploys |
+| #   | Unit                                   | PR to merge                       | Branch to try                | Needs                              |
+| --- | -------------------------------------- | --------------------------------- | ---------------------------- | ---------------------------------- |
+| A   | Catalog and feedback **foundation**    | #31 (as reviewed, `73506ac`)      | `claude/lab-catalog-1`       | `main`                             |
+| B   | Catalog and social improvements        | #71 (integration)                 | `claude/lab-release-catalog` | A                                  |
+| C   | 14 new toys, the kinds split, Sun path | #72 (integration)                 | `claude/lab-release-toys`    | B                                  |
+| SQL | The database half of A                 | none — `apply_migration`, by Evan | —                            | nothing: apply it BEFORE A deploys |
 
 **A is the release boundary for the database.** All of the SQL is in #31's
 `supabase/drafts/lab-catalog-and-feedback.sql`; nothing in B or C changes a line under `supabase/`
@@ -53,7 +53,7 @@ C, or A + B together → SQL → C.
 **B and C can wait as long as you like after A.**
 
 The individual stacked PRs (#34 … #69, #40 … #68) stay open for reviewing one change at a time; the
-two integration PRs are the same commits, to merge in one step each instead of thirty.
+two integration PRs, #71 and #72, are the same commits, to merge in one step each instead of thirty.
 
 ### B — catalog and social (on A)
 
