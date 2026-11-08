@@ -32,6 +32,8 @@ begin;
 
 create temp table fails(check_name text, detail text);
 create temp table ids(k text primary key, v uuid);
+/* what section D's refusals are judged against — see the note before D */
+create temp table facts(k text primary key, n numeric);
 create temp table subject as
   select (select p.user_id from public.profiles p
            where coalesce(p.suspended, false) = false
@@ -201,6 +203,16 @@ from public.chronicle_notes where entry = (select v from ids where k = 'e3')
 having count(*) <> 1;
 
 -- ── D. another member, refused at every door ───────────────────────────────────────────────
+-- ⚠️ JUDGED AGAINST WHAT WAS THERE JUST BEFORE, NOT AGAINST 9. The first version compared the
+-- count to the number section C wrote, so when C itself wrote the wrong number — the additive-
+-- count perturbation, 18 — this section reported "a refused write still landed" about another
+-- member who had changed nothing. Right that something was wrong, wrong about who. A refusal is a
+-- claim that NOTHING CHANGED, so it is measured as exactly that.
+insert into facts select 'count_before_others', amount
+from public.chronicle_entries where id = (select v from ids where k = 'e3');
+insert into facts select 'notes_on_e1_before_others', count(*)
+from public.chronicle_notes where entry = (select v from ids where k = 'e1');
+
 select set_config('request.jwt.claims',
   json_build_object('sub', (select other::text from subject), 'role', 'authenticated')::text, true);
 set local role authenticated;
@@ -232,10 +244,14 @@ end $$;
 
 reset role;
 
-insert into fails select 'a refused write still landed', 'count is ' || coalesce(amount::text, 'null')
-from public.chronicle_entries where id = (select v from ids where k = 'e3') and amount is distinct from 9;
-insert into fails select 'a refused note still landed', count(*)::text
-from public.chronicle_notes where entry = (select v from ids where k = 'e1') having count(*) <> 1;
+insert into fails select 'a refused write still landed',
+       coalesce(amount::text, 'null') || ', was ' || coalesce((select n from facts where k = 'count_before_others')::text, 'null')
+from public.chronicle_entries where id = (select v from ids where k = 'e3')
+  and amount is distinct from (select n from facts where k = 'count_before_others');
+insert into fails select 'a refused note still landed',
+       count(*)::text || ', was ' || (select n from facts where k = 'notes_on_e1_before_others')::text
+from public.chronicle_notes where entry = (select v from ids where k = 'e1')
+having count(*) <> (select n from facts where k = 'notes_on_e1_before_others');
 
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$
