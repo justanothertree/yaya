@@ -103,7 +103,7 @@ begin
   -- ⚠️ ONLY A REPEATING GOAL HAS WINDOWS. A one-off keeps using chronicle_goal_progress, whose
   -- single row IS its single window — so a mark on one would be a second answer to one question.
   select g.scope into v_scope from public.chronicle_goals g
-   where g.id = p_goal and g.repeat_every is not null;
+   where g.id = p_goal and g.owner = auth.uid() and g.repeat_every is not null;
   if v_scope is null then raise exception 'no such repeating goal'; end if;
   if p_from is null or p_starts is null or p_ends is null then
     raise exception 'that window does not make sense';
@@ -124,7 +124,7 @@ begin
      set progress  = case when p_progress is null then m.progress
                           else greatest(0, least(p_progress, 1e9)) end,
          done_at   = case when p_done is null then m.done_at
-                          when p_done then coalesce(m.done_at, now())
+                          when p_done then now()
                           else null end,
          starts_at = excluded.starts_at,
          ends_at   = excluded.ends_at,
@@ -164,14 +164,14 @@ begin
   return jsonb_build_object(
     'marks', coalesce((
       select jsonb_object_agg(
-               m.goal::text || '@' || to_char(m.window_from, 'YYYY-MM-DD'),
+               m.goal::text || '@' || m.window_from::text,
                jsonb_build_object('progress', m.progress, 'done', m.done_at is not null))
         from (select distinct (a->>'id')::uuid as id, (a->>'from')::date as f
                 from jsonb_array_elements(p_asks) a) q
         -- ⚠️ YOURS ONLY, and only at the goal's CURRENT scope — see the note on the key
         join public.chronicle_goals g on g.id = q.id and g.owner = auth.uid()
         join public.chronicle_goal_marks m
-          on m.goal = g.id and m.window_from = q.f
+          on m.goal = g.id and m.scope = g.scope and m.window_from = q.f
     ), '{}'::jsonb),
     -- the ticks from before marks existed: one moment per repeating goal, placed by the client
     'legacy', coalesce((
@@ -210,7 +210,8 @@ begin
        || E'                  select jsonb_agg(jsonb_build_object(\n'
        || E'                           ''scope'', mk.scope, ''from'', mk.window_from,\n'
        || E'                           ''starts_at'', mk.starts_at, ''ends_at'', mk.ends_at,\n'
-       || E'                           ''progress'', mk.progress, ''done_at'', mk.done_at)\n'
+       || E'                           ''progress'', mk.progress, ''done_at'', mk.done_at,\n'
+       || E'                           ''set_at'', mk.set_at)\n'
        || E'                         order by mk.scope, mk.window_from)\n'
        || E'                    from public.chronicle_goal_marks mk where mk.goal = g.id\n'
        || E'               ), ''[]''::jsonb))'),
@@ -235,7 +236,7 @@ begin
        || E'    for mk in select * from jsonb_array_elements(x->''marks'') loop\n'
        || E'      begin\n'
        || E'        if not exists (select 1 from public.chronicle_goals g\n'
-       || E'                        where g.id = (x->>''id'')::uuid and g.owner = me\n'
+       || E'                        where g.id = (x->>''id'')::uuid\n'
        || E'                          and g.repeat_every is not null)\n'
        || E'           or (mk->>''starts_at'')::timestamptz > now() + interval ''1 hour'' then\n'
        || E'          refused := refused + 1;\n'
