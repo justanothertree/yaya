@@ -2471,15 +2471,66 @@ stays unapplied and untouched.
   over the Picture select. That pill belongs to the shared audio UI, not the Lab, so it is noted
   here rather than changed.
 
+### Follow-on: `claude/lab-palette-1`, stacked on #40 (8 Nov 2026) — a new tool, Palette
+
+**Base:** `claude/lab-jigsaw-1` (#40) — it paints Jigsaw's six pictures with Jigsaw's own shader, so
+it needs that branch. No SQL changes.
+
+- **What you do.** A picture — one of Jigsaw's six, or a photo of your own — and a palette found in
+  it, 2 to 10 colours, darkest first, each with how much of the picture it stands for. Tap a swatch
+  to see where it falls (everything else greys back); with one selected, tap the picture to replace
+  it with the colour there; with none selected, a tap adds that colour. 🔒 holds a colour while
+  🎲 re-rolls the rest round it, and a picked colour is locked automatically. Three views — the
+  picture, redrawn **flat** in only the palette's colours, or **dithered** with them — with a
+  before | after slider. _Readable as text_ lists every pair at WCAG contrast 3 or more, best
+  first, with AA / AAA / large-text-only. _Take it with you_ copies the hex codes or a `:root`
+  block of CSS custom properties (and shows the CSS to select by hand). ⭐ keeps palettes in this
+  browser, up to 24 — a 25th is refused, never by dropping an old one. Keys: R, 1 2 3, + −.
+- **A photo of your own is never uploaded and never kept**; only the palettes you keep are saved,
+  and the page says so. Locked colours carry over to a new picture (that is what a lock is for);
+  when every colour is locked the page says the new picture could change nothing.
+- **Technique:** the clustering is k-means++ in **OKLab**, on the CPU over every 16th pixel (about
+  50,000) — RGB means would pull every palette towards mud. The GPU does the per-pixel work: the
+  nearest palette colour for every pixel in OKLab with the same matrices, an 8 × 8 Bayer threshold
+  between the two nearest for the dithered view, the highlight and the split.
+- **Pattern to reuse:** "decide on the CPU where it can be tested, draw on the GPU where it is per
+  pixel" — and then check the two agree on every pixel.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 13 tests in `palette.test.ts`, written from the world's shape: Ottosson's published OKLab values
+  for white and the three primaries; WCAG's 21:1 and the textbook #777-on-white 4.48; a shuffled
+  picture of three known colours in 50 / 30 / 20 found exactly, with exactly those shares, on five
+  seeds; a locked colour held exactly; more colours always standing for a picture better; kept
+  palettes round-tripping with every field set. Made to fail by letting locked colours move and by
+  evicting the oldest kept palette.
+- **The GPU agrees with the CPU on every pixel:** rendered offscreen at 1024 × 768 for two
+  pictures, flat mode has 0 pixels that are not one of the six colours, and its per-colour counts
+  equal the CPU's own nearest-colour counts to 0.01% on all 786,432 pixels. Dithered: 0 strays in
+  97,536 sampled; left of the split, 8,030 of 8,030 sampled pixels are the untouched picture.
+- Driven through the real UI on the dev server, desktop 1280 and an emulated iPhone 13 (mouse, not
+  touch): pick, lock, re-roll (both locked colours survive), 2 and 10 as the bounds, keep → reload
+  → use, Copy CSS read back from the clipboard, a text file refused in words, a photo's own palette
+  (a dark green grid board at 86%, its lines, the teal square and the cream paper). `mobileAudit`
+  zero at both widths with every fold open, after the before | after slider was given a 32px height
+  (it was 16px). One GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas, as for Jigsaw), real GPUs, a
+real phone, and the clipboard outside Chromium — Safari and Firefox ask differently, and the CSS
+box is there for when copying is refused.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
    test browser here could not show its stage at all on 8 Nov. Does the picture appear and the
    pieces draw cleanly? Do 24 pieces feel big enough for a finger, and do they snap when you
    expect? Try your own photo once.
-2. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+2. **Real device — Palette.** Pick a photo from your camera roll on the phone. Does the palette look
+   like the photo? Does tapping the picture pick the colour under your finger? Does 📋 Copy CSS
+   work in your browser (Safari asks differently from Chrome)?
+3. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-3. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+4. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-4. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+5. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?
