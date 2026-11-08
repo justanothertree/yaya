@@ -372,6 +372,37 @@ export function arrange(
   return { open, late: [...late], done }
 }
 
+/**
+ * The longest title a goal may have.
+ *
+ * ⚠️ THE SERVER'S NUMBER, NOT A CHOICE MADE HERE: `chronicle_goals` checks
+ * `char_length(btrim(title)) between 1 and 120`. A shorter ceiling here would cut ideas that fit;
+ * a longer one would hand the save a title it refuses, and the form would say "that did not
+ * save" about a goal that looked fine.
+ */
+export const TITLE_MAX = 120
+
+/**
+ * A journal entry turned into the first draft of a goal's title.
+ *
+ * ⚠️ A DRAFT, FOR A FORM — never saved by itself. The note "ring the physio about the knee, and
+ * ask whether the left one is the same" is a perfectly good goal, but a long reflective entry is
+ * not, and only the person can tell which this is. So the text lands in the add form's title box,
+ * the form is the confirmation, and nothing is written until they press Add.
+ *
+ * ⚠️ ONE LINE, AND CUT AT A WORD. A journal entry can hold newlines and a goal title is drawn on
+ * one row; a title cut mid-word reads as a typo, so a long one stops at the last space that fits
+ * and says it was cut. A single unbroken run longer than the limit has no space to stop at and is
+ * cut where it has to be.
+ */
+export function ideaTitle(body: string): string {
+  const one = body.replace(/\s+/g, ' ').trim()
+  if (one.length <= TITLE_MAX) return one
+  const room = one.slice(0, TITLE_MAX - 1)
+  const space = room.lastIndexOf(' ')
+  return (space > 0 ? room.slice(0, space) : room).trimEnd() + '…'
+}
+
 /** What the ▶ on an Aims row would start — see `startFor`. */
 export type StartFrom = { activity: string; name: string; running: boolean }
 
