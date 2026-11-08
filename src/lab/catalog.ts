@@ -249,6 +249,23 @@ export function readRecent(text: string | null, known: ReadonlySet<string>): str
   }
 }
 
+/**
+ * One to try: picked at random from the list given (what the catalog is showing), preferring ones
+ * not opened lately — a surprise that hands back what you just closed is not one. When everything
+ * shown has been opened lately, anything but the one open now; null for an empty list.
+ */
+export function surprise(
+  list: readonly Entry[],
+  recent: readonly string[],
+  rand: () => number = Math.random,
+): string | null {
+  const fresh = list.filter((e) => !recent.includes(e.id))
+  const pool = fresh.length ? fresh : list.filter((e) => e.id !== recent[0])
+  const from = pool.length ? pool : list
+  if (!from.length) return null
+  return from[Math.min(from.length - 1, Math.floor(rand() * from.length))].id
+}
+
 /** opening one brings it to the front, once */
 export const openedNow = (list: readonly string[], id: string): string[] =>
   [id, ...list.filter((x) => x !== id)].slice(0, MAX_RECENT)
