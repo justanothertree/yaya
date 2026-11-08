@@ -323,6 +323,8 @@ export function Timer({
   const [fixEnt, setFixEnt] = useState<string | null>(null)
   /* bumped by ✎ Note with nothing running, so the Journal's box takes the cursor */
   const [writeNow, setWriteNow] = useState(0)
+  /* the day that box writes about — a past day's ✎ Note sends that day, today's sends nothing */
+  const [writeDay, setWriteDay] = useState<string | undefined>(undefined)
   const [entAct, setEntAct] = useState('')
   const [entNote, setEntNote] = useState('')
   /**
@@ -1502,22 +1504,44 @@ export function Timer({
         ) : seeing !== todayISO() ? (
           /* ⚠️ a timer runs in the present or not at all. On another day the controls would be a
              lie — there is nothing to time — so the day offers the repair tools instead. */
-          <span className="muted">
+          <>
+            <span className="muted">
+              {/**
+               * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. The condition here is "not
+               * today", which is true in both directions, and the copy was written for one of them:
+               * stepping forward to Saturday said "Looking back. Use ⏱ Fill a gap to add time",
+               * which is wrong twice — you are looking forward, and you cannot have spent time on a
+               * day you have not lived. Pointing somebody at Fill a gap there invites them to record
+               * work they have not done.
+               *
+               * ⚠️ AND IT POINTS AT THE THING THAT IS ACTUALLY FOR THIS. A future day is what the
+               * planner is for, and the plan list is a few inches further down the same column.
+               */}
+              {seeing > todayISO()
+                ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
+                : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
+            </span>
             {/**
-             * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. The condition here is "not
-             * today", which is true in both directions, and the copy was written for one of them:
-             * stepping forward to Saturday said "Looking back. Use ⏱ Fill a gap to add time",
-             * which is wrong twice — you are looking forward, and you cannot have spent time on a
-             * day you have not lived. Pointing somebody at Fill a gap there invites them to record
-             * work they have not done.
-             *
-             * ⚠️ AND IT POINTS AT THE THING THAT IS ACTUALLY FOR THIS. A future day is what the
-             * planner is for, and the plan list is a few inches further down the same column.
+             * ⚠️ A NOTE ABOUT THIS DAY, FROM THIS DAY. The Journal's box only ever wrote about
+             * today, so "slept badly on Tuesday", remembered on Thursday, had to be filed under
+             * Thursday. On a past day this opens the same box on THIS day; the note keeps the moment
+             * it was written, and this day's log shows it with that date and no clock. Not on a day
+             * still to come: the writer refuses one, and you cannot have noticed anything about it.
              */}
-            {seeing > todayISO()
-              ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
-              : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
-          </span>
+            {seeing < todayISO() ? (
+              <button
+                className="btn btn-ghost chron-jot"
+                onClick={() => {
+                  setWriteDay(seeing)
+                  setWriteNow((n) => n + 1)
+                  onShow?.('journal')
+                }}
+              >
+                ✎ Note
+                <span className="sr-only"> — write something down about this day</span>
+              </button>
+            ) : null}
+          </>
         ) : (
           /**
            * ⚠️ A NOTE WITHOUT A TIMER, which is the whole of "writing a note must not require
@@ -1529,6 +1553,7 @@ export function Timer({
           <button
             className="btn btn-ghost chron-jot"
             onClick={() => {
+              setWriteDay(undefined)
               setWriteNow((n) => n + 1)
               onShow?.('journal')
             }}
@@ -1840,6 +1865,7 @@ export function Timer({
           acts={acts}
           beat={beat}
           writeNow={writeNow}
+          writeDay={writeDay}
           onOpen={(row, e) => {
             /* ⚠️ THE DAY FIRST, THEN THE HALF, in one handler so they commit together: with the
                half changed alone, the effect that resets `seeing` would run against 'journal' */

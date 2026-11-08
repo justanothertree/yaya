@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { localISO } from '../circuit/dates'
 import { addDayNote, dayNotesBetween, editNote, entriesBetween } from './cloud'
-import { byDay, journalRows, matching, type DayNote, type JournalRow } from './journal'
+import { aboutDay, byDay, journalRows, matching, type DayNote, type JournalRow } from './journal'
 import { dayBounds, type Activity, type Entry } from './record'
 
 /** how far back the list reaches at first, and how much each "further back" adds */
@@ -52,6 +52,7 @@ export function JournalList({
   acts,
   beat,
   writeNow,
+  writeDay,
   onOpen,
 }: {
   acts: readonly Activity[]
@@ -59,6 +60,12 @@ export function JournalList({
   beat?: number
   /** bumped when ✎ Note was pressed with nothing running, so the box below is where the cursor is */
   writeNow?: number
+  /**
+   * The day the box writes ABOUT when ✎ Note brought you here — a past day from that day's log,
+   * or nothing for today. Read when `writeNow` moves, and let go after a save, so the next note
+   * is about today unless you come back the same way.
+   */
+  writeDay?: string
   onOpen: (row: JournalRow & { sat: string }, sitting: Entry) => void
 }) {
   const [days, setDays] = useState(STEP_DAYS)
@@ -72,6 +79,8 @@ export function JournalList({
   const [busy, setBusy] = useState(false)
   /* the day note being changed, and what it says so far */
   const [fixing, setFixing] = useState<{ id: string; body: string } | null>(null)
+  /* the day the box is writing about, when it is not today */
+  const [about, setAbout] = useState<string | null>(null)
   const box = useRef<HTMLTextAreaElement>(null)
 
   /* the window, re-derived each render from the day it is — a tab left open overnight moves on */
@@ -100,7 +109,12 @@ export function JournalList({
   }, [fromMs, toMs, beat, mine])
 
   useEffect(() => {
-    if (writeNow) box.current?.focus()
+    if (!writeNow) return
+    setAbout(writeDay && writeDay !== localISO(new Date()) ? writeDay : null)
+    box.current?.focus()
+    /* ⚠️ ON THE BUMP ALONE: `writeDay` arrives with it, and a later change to it on its own is the
+       room moving on, not a request to write about that day */
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [writeNow])
 
   const rows = useMemo(
@@ -121,7 +135,7 @@ export function JournalList({
   const write = async () => {
     if (busy || !draft.trim()) return
     setBusy(true)
-    const bad = await addDayNote(today, draft)
+    const bad = await addDayNote(about ?? today, draft)
     setBusy(false)
     if (bad) {
       setSaid(bad.why.charAt(0).toUpperCase() + bad.why.slice(1))
@@ -129,6 +143,7 @@ export function JournalList({
     }
     setDraft('')
     setSaid(null)
+    setAbout(null)
     setMine((n) => n + 1)
   }
 
@@ -170,7 +185,9 @@ export function JournalList({
        */}
       <div className="chron-journal-write">
         <label htmlFor="chron-journal-new" className="sr-only">
-          Write something down for today
+          {about
+            ? `Write something down about ${aboutDay(about, today)}`
+            : 'Write something down for today'}
         </label>
         <textarea
           id="chron-journal-new"
@@ -179,10 +196,27 @@ export function JournalList({
           maxLength={4000}
           value={draft}
           onChange={(ev) => setDraft(ev.target.value)}
-          placeholder="Write something down for today…"
+          placeholder={
+            about
+              ? `Write something down about ${aboutDay(about, today)}…`
+              : 'Write something down for today…'
+          }
         />
         <div className="chron-journal-write-row">
-          <span className="muted">Only you can read these. No session needed.</span>
+          {about ? (
+            <span className="muted">
+              About {aboutDay(about, today)}.{' '}
+              <button
+                type="button"
+                className="btn btn-ghost chron-journal-today"
+                onClick={() => setAbout(null)}
+              >
+                Write about today instead
+              </button>
+            </span>
+          ) : (
+            <span className="muted">Only you can read these. No session needed.</span>
+          )}
           <button
             type="button"
             className="btn"

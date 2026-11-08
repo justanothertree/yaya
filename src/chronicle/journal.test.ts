@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byDay, dayLogNotes, journalRows, matching } from './journal'
+import { aboutDay, byDay, dayLogNotes, journalRows, matching } from './journal'
 import type { Activity, Entry } from './record'
 
 /* local times, built the way the room builds them, so a day boundary is a day boundary here */
@@ -264,5 +264,23 @@ describe("a note with no session, in one day's log", () => {
       ms('2026-11-04'),
     )
     expect(rows.map((r) => [r.timed, r.at])).toEqual([[false, Infinity]])
+  })
+})
+
+describe('the day the Journal box is writing about', () => {
+  it('is named today, yesterday, or by its date', () => {
+    expect([aboutDay('2026-11-08', '2026-11-08'), aboutDay('2026-11-07', '2026-11-08')]).toEqual([
+      'today',
+      'yesterday',
+    ])
+    expect(aboutDay('2026-11-03', '2026-11-08')).toMatch(/3/)
+    expect(aboutDay('2026-11-03', '2026-11-08')).not.toMatch(/today|yesterday/)
+  })
+
+  it('knows yesterday across a month and a year', () => {
+    expect([aboutDay('2026-10-31', '2026-11-01'), aboutDay('2026-12-31', '2027-01-01')]).toEqual([
+      'yesterday',
+      'yesterday',
+    ])
   })
 })
