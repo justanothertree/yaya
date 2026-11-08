@@ -530,6 +530,12 @@ cannot express today.
 column is the small half and can be applied inert — nullable, read as "every day", which is
 today's behaviour. What needs deciding is not the column.
 
+⚠️ **SUPERSEDED 8 Nov: A COLUMN CANNOT KEEP THE RULE BELOW.** One `days` value on the goal says
+what the schedule IS, and the mark row judges thirty-one days of what it WAS — so the answer that
+follows rules the column out. The replacement is a history table, one row per change, in
+`docs/2026-11-08-chronicle-weekdays.DRAFT.sql`, and its client half is written and tested in
+`src/chronicle/weekdays.ts`. Both unapplied and unwired; see §16b and §16c for what is left.
+
 ✅ **ANSWERED: a schedule change affects future occurrences, not past completion history.** So
 `days` is read FORWARD only — the windows already behind you keep the verdict they were given
 under the schedule in force at the time, and a goal that becomes Tuesdays-only today does not
@@ -671,3 +677,85 @@ That is a stable place to stop and it is two answers to one question, which this
 treats as a defect. Worth deciding now whether the unclaimed people are expected to be claimed
 eventually — in which case the split is temporary and fine — or never, in which case the split is
 the design and should be written down as such rather than left looking unfinished.
+
+---
+
+## 16. Chronicle, the continuous pass (2026-11-08)
+
+Concrete recommendations, each parked on its own so the frontend work around it keeps moving.
+**Nothing in this section has been applied to any database**, and none of it blocks the four
+draft PRs (#33 → #36 → #37 → #38), which are frontend only.
+
+### 16a. Real signed-in checks need one line in a workflow — may I add it?
+
+This machine has no Docker and no Postgres, so there is no local Supabase to test against, and
+the brief rules out writing fixtures into production. **But CI already has the environment:** the
+`db guards` job runs `supabase start` and `supabase db reset` — a throwaway database built from
+these migrations and the seed, with members in it — and then runs exactly one SQL file,
+`supabase/tests/visibility-guards.sql`, through psql.
+
+**Recommendation:** add one step to `db-guards.yml` that runs `supabase/tests/chronicle-*.sql`
+the same way. That gives the start → switch → note → amount → stop flow a real run, as a
+simulated member against the real functions, on every push, without a credential or a byte of
+production. It is a workflow change, which the brief reserves for you; until then the evidence
+for everything server-side stays "mocked".
+
+**Cost of waiting:** none of the four drafts gains real signed-in evidence before you press the
+buttons yourself — the test steps in #33's description are still the only path to it.
+
+### 16b. A weekday schedule edited today — does it take effect today or tomorrow?
+
+Your rule settles every CLOSED day: they keep the schedule they were judged under. Today is the
+one day it does not reach, because today's window is still open.
+
+- **Today (recommended).** "From today I swim on Tuesdays", said on a Tuesday, makes today due —
+  which is what the sentence means. The cost: a goal finished this morning under "every day" and
+  then changed to exclude today stops counting today, so its streak may drop by one.
+- **Tomorrow.** Today keeps the old schedule whatever happens; nothing that already happened
+  today can be re-judged. The cost: the Tuesday example above does nothing until next week.
+
+The client half (`weekdays.ts`) is indifferent — it judges each day by the entry in force — so
+this is decided entirely by the date the form sends. The draft writer refuses anything before
+UTC's yesterday, which permits either.
+
+### 16c. A goal CREATED as "Tuesdays" — what does it say about the days before it existed?
+
+The mark row looks back 31 days whether or not the goal existed then; today a new daily goal
+that counts an activity shows those days as missed — `streakAsks` asks about every window back to
+31 regardless of when the goal was made. A Tuesday goal given its schedule from today would be judged "every day"
+for the thirty days before it, and show twenty-six misses for Mondays it never asked about.
+
+**Recommendation:** at creation only, the form writes the schedule from the earliest date there
+is, so the goal's first schedule is its schedule for all of the past. That is not a rewrite of
+history — there is none before the goal — but it does mean the draft writer must allow one
+backdated row in exactly that case (a goal with no schedule rows yet, created today), and that
+exception is the kind that wants deciding rather than discovering.
+
+### 16d. The stacked drafts only get one of the four CI checks
+
+`lint`, `test` and `build` run on pull requests **to `main`** only; `db guards` runs on every push.
+So #36, #37 and #38 — based on each other so each diff is one commit — have had `db guards` in CI
+and lint, typecheck, tests and build **locally, at each exact head**. The full set runs on each as
+it is retargeted to `main`. Nothing to decide unless you would rather they targeted `main` now,
+which would show #33's commits again inside every one of them.
+
+### 16e. Recommendations for §15, so they can be answered with a yes
+
+- **15a, where a standalone note goes:** a row in the day log with a time and **no length**,
+  drawn like a moment (the rating rows already are) — not a fold. A note belongs to the day,
+  and the Journal half (#37) is where it would also be listed beside every other note — which
+  `journalRows` will need teaching, since today it only reads notes that hang off a sitting.
+- **15b, exercise identity:** keep `exercise_id` (the blob's ids are stable — `Exercise.id`) and
+  **capture the name on the set when it is written**, so a deleted exercise still reads by name.
+  Lifting exercises out of the blob is a Circuit migration and not worth it for this alone.
+- **15c, moving a sitting:** the move dialog **says so** — "the 12 Quad Curl stay with Quad Curl"
+  — rather than refusing or offering to move them. And a related case surfaced since: editing a
+  sitting's START across midnight must move its sets' day in the SAME call, because the day a set
+  counts for is a local date the client computes, and two writes would leave a window where the
+  Circuit grid and the sitting disagree about which day the reps were. The recorded-once proposal
+  stored that day as "carried rather than derived"; for a set that has a sitting it should follow
+  the sitting.
+- **15d, `circuit_logs`:** treat the split as **the design**, and say so in the migration: sets
+  are canonical for a person with an account, `circuit_logs` stays canonical for an unclaimed one.
+  Claiming a person migrates their rows at that moment, in the claim function — one path, at the
+  one point the answer changes.
