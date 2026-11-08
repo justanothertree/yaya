@@ -1125,3 +1125,68 @@ else**. Step 1 (#85) does not depend on them.
    with a dry-run count, and applying it would be its own approval. It is NOT the claim migration
    in §19e. Nobody becomes linked by it, and an unclaimed person's logs stay exactly where they
    are.
+
+✅ **ANSWERED BY EVAN, 9 Nov 2026 — all three, with rules.** His words, then what each means for
+the build. Approved for implementation and isolated testing only; nothing here is approval to
+apply anything to production.
+
+1. _"UNITS: YES. Link exercises to activities only when their actual normalized units match.
+   Don't infer compatibility from names or mix seconds with reps. Preserve unmapped legacy
+   records; queue ambiguous mappings instead of guessing."_
+   - One normalisation table, in SQL and in TypeScript, kept in step by a test. An exercise's unit
+     and an activity's metric each map to a canonical unit or to nothing.
+   - A link needs both to map and to agree. "Nothing" never matches anything: an exercise in
+     `other`, or an activity counting "laps", is listed as **needs a decision** rather than linked.
+   - Names never take part, and an unlinked exercise's records stay exactly where they are.
+   - The check runs at write AND at read, because either side's unit can change after linking.
+2. _"GRID EDITS: YES, WITH THESE RULES. If sessions contribute 12 and I enter 20, store an
+   editable manual contribution of 8. Saving 20 again must still total 20—not 28. Later sessions
+   add normally; don't keep adjusting the manual contribution to hold the total at 20. Reject
+   totals below the session contribution with a clear explanation and a discoverable way to
+   correct the underlying sessions. Don't silently clamp the number, delete sessions or overwrite
+   their recorded amounts. Enforce permissions and concurrent-update correctness on the server
+   too."_
+   - A cell is written as a TOTAL. The server works out `manual = total − sessions` against the
+     sessions as they stand, and stores the manual part.
+   - A second save of the same total writes the same manual part, so the total stays 20.
+   - A later session adds to the total; the manual part is untouched until the cell is typed
+     into again.
+   - A total below the sessions is refused, naming the session amount, with a link to that day
+     in Chronicle.
+   - The client sends what it SAW (sessions and manual). If either has moved, the save is refused
+     and the cell shows the new figures, rather than guessing which of two meanings "20" had.
+3. _"EXISTING LOGS: YES TO A SEPARATE CONVERSION DRAFT. … Preserve originals and stable source
+   identifiers. Re-running conversion must not duplicate records. Reconcile amounts by person,
+   exercise, day and unit. Preserve date-only records without inventing times; report records
+   that cannot be converted rather than dropping them. Keep the existing reader until conversion
+   is validated, then switch without missing or double-counting records. Freezing legacy writes
+   belongs to that coordinated future cutover—not an independent production change now."_
+   - Its own branch and its own draft.
+   - Each set made from a log carries the log's id and the entry's position as its source. A
+     unique key on that source makes a re-run add nothing.
+   - Duplicate rows for one person and day are summed per exercise and reported.
+   - `__total__` entries, exercises no longer on the person's list, and units that do not
+     normalise are reported, never dropped.
+   - The grid reads the legacy log until a person is marked converted, in the same transaction
+     as their conversion. After that it reads sets only, so there is no window in which a day is
+     read twice or not at all.
+   - Nothing freezes or deletes legacy writes.
+
+---
+
+## 20. Chronicle — every open question, in one place (9 Nov 2026)
+
+The answers above unblock sets step 2 and the conversion draft, and nothing else. Every other open
+item is here, as the question and its recommendation. Its own section holds the reasoning.
+
+| §   | Question                                                                                  | Recommendation                                                                                                      | Blocks                                                     |
+| --- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 17d | Apply the per-window marks draft (step 1) to production?                                  | Yes. Then deploy the room, then step 3 (the profile reader), after one read-only look at production's function text | releasing #73 and #83; nothing in development              |
+| 18a | Apply the day-notes draft?                                                                | Yes, in either order with the others                                                                                | releasing #76 and #84                                      |
+| 19a | Does an extra session on a day the schedule never asked about count toward the streak?    | Yes, as built                                                                                                       | nothing (it is the built behaviour; a no changes one rule) |
+| 19b | On a friend's view, a Tuesdays goal reads open on a Wednesday. Leave it, or store a zone? | Leave it for now                                                                                                    | nothing                                                    |
+| 19c | Apply the weekday draft?                                                                  | Yes, in any order with the others                                                                                   | releasing #83                                              |
+| 19d | Apply the sets draft (step 1)?                                                            | Yes; nothing reads it until step 2                                                                                  | releasing #85 and step 2                                   |
+| 19e | What should make claiming a Circuit person verified?                                      | An admin approves it, or the person confirms from their own account                                                 | moving history at claim time; nothing else                 |
+
+Device and signed-in checks are §19f, and grow with each build.
