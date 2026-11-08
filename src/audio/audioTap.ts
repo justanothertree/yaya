@@ -127,6 +127,14 @@ export function readWaveform(id: TapId, into: Uint8Array): boolean {
  * same run. Both halves of that miss are real — bytes could not have shown 1.100 at all, and
  * one read a second sees 4.3% of the audio.
  *
+ * ⚠️ AND THE 1.100 IS A MEASURED CLAIM WITH A DATE ON IT, falsified a day later by a change in
+ * a different file. The ducking fix of 7 Nov put the layer faders into the polyphony sum, so a
+ * hot layer now ducks instead of leaning on the limiter: the identical four-layers-at-maximum run
+ * reads **1.0287** with 4 windows past full scale where it read 1.1507 with 20 the same morning.
+ * What the paragraph above is ABOUT is unaffected — bytes still cannot report a peak over 1, and
+ * that is why this reads floats — but do not expect 1.100 back from that configuration. See
+ * docs/2026-11-07-the-sum-and-the-signal.md.
+ *
  * Bytes stay the default for DRAWING: a scope wants 0..255 and a clamp is what a scope hitting
  * its edge should look like. This is for measuring.
  */

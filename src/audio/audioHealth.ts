@@ -48,6 +48,14 @@ export type AudioHealth = {
    * scale, while this strip read `clip ~0 · out ~0.898` through the same run. Bytes could not
    * have shown 1.100 at any sampling rate — see readFloatWave in audioTap.
    *
+   * ⚠️ AND THE 1.100 IS A MEASURED CLAIM WITH A DATE ON IT, falsified a day later by a change in
+   * a different file. The ducking fix of 7 Nov put the layer faders into the polyphony sum, so a
+   * hot layer now ducks instead of leaning on the limiter: the identical four-layers-at-maximum run
+   * reads **1.0287** with 4 windows past full scale where it read 1.1507 with 20 the same morning.
+   * What the paragraph above is ABOUT is unaffected — bytes still cannot report a peak over 1, and
+   * that is why this reads floats — but do not expect 1.100 back from that configuration. See
+   * docs/2026-11-07-the-sum-and-the-signal.md.
+   *
    * Both are fixed here rather than in a worklet, which is what the note that used to sit below
    * proposed: the 20Hz sampler that already latches `preMax` scans this too, taking coverage
    * from 4.3% to about 85%, and it reads floats. What is left is the 15% between windows, which

@@ -1,11 +1,14 @@
-# The vocal editor — where it stands, 6 Nov 2026
+# The vocal editor — where it stands, 7 Nov 2026
 
-Three passes over the recording/editing workflow in the Instrument's takes panel. This is the
+Four passes over the recording/editing workflow in the Instrument's takes panel. This is the
 handoff: what exists, the one decision that shapes all of it, what is verified and by what, and
 what only a person with a microphone and a phone can answer.
 
-Nothing in Instrument synthesis, the preset levels or the layer fader was touched. The three
-loudness calls in `OPEN-DECISIONS.md` §11 are exactly as they were.
+The preset levels and the layer fader's ceiling are still untouched. ⚠️ **§11a of
+`OPEN-DECISIONS.md` is no longer open**: the zero-volume ducking was fixed on 7 Nov, which is
+Instrument synthesis rather than takes and has its own write-up in
+`docs/2026-11-07-the-sum-and-the-signal.md`. §11b and §11c are re-measured on top of it and still
+waiting on an ear.
 
 ---
 
@@ -173,6 +176,47 @@ that same double-invoke; this is the third.
 **This one has no test**, honestly: it is React lifecycle wiring, it needs a DOM, and vitest here
 is for the pure modules. The evidence is the measurement above and the control beside it.
 
+## 3b. The fourth pass: the editor threw your zoom away on every edit
+
+One defect, found by reading the lifecycle and reproduced in the pane before it was touched.
+
+`row.blob` is a **new object every time the list is refreshed** — `allTakes` is
+`store.getAll()`, and IndexedDB structured-clones on the way out — and `apply` refreshes the list
+after every Keep, Cut, Trim, Undo and Redo, because the ✎ marker on the row has to follow the
+edit. The editor's decode effect depended on that blob, so "decode once" was a comment rather
+than a fact, and its last line put the view back to the whole recording.
+
+Measured on a one-minute take:
+
+|                  |                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| zoomed to        | **3.75s of 60.00s shown**                                                                                                |
+| press Trim ends  | the edit is perfect — 55.66s of 60.00s — and the label reads **whole recording**                                         |
+| same with Undo   | from **7.50s of 60.00s** back to **whole recording**                                                                     |
+| wasted each time | a 5.3MB blob re-read, a **70ms** decode, and a fresh 2.9-million-sample `loudSpan` pass whose answer cannot have changed |
+
+On the six-minute take this editor was built against that is a 9.3MB read and about half a second
+of decode, per press. But the cost is the lesser half: being thrown out to a picture where one
+pixel is most of a second, immediately after finding a boundary at a quarter of a second, is the
+one thing being zoomed in is FOR.
+
+The fix is the dependency: `row.id` is the identity of the AUDIO, where the blob is only the
+identity of one read of it. Nothing rewrites a take's bytes — `setTakeLog` copies the row and
+replaces the log alone, and a recording or an opened file always mints a new id — and TakesPanel
+keys the editor by id, so a different take is a different component.
+
+Verified after, on the same take: the zoom survives **Trim ends, Undo, Redo, Whole take and Undo
+again**, all at 3.75s of 60.00s. Cut a middle piece → 54.00s in 2 pieces; Keep → 41.99s; undo
+twice and take a different turn → Redo correctly gone. The blob is **5,292,044 bytes** before and
+after, decoding to 60.0000s. `editedBuffer` renders **55.66s** against the label's **55.66s**, so
+the one renderer still answers one way. The history survives a reload. The preview was measured
+through an analyser on the take bus — silent **0**, playing **0.42**, silent **0** again after
+Stop — rather than inferred from the button changing.
+
+At 375px the editor reports 12 visible controls, nothing under 24×24, nothing past the right
+edge and no page scroll; the sweep was first made to speak by injecting a 16×16 control and a
+600px one, which it named, and it returned to zero when they were removed.
+
 ## 4. Two things the browser found that reading would not
 
 **`ResizeObserver` fires zero times in the Browser pane right now** — not even the initial
@@ -201,7 +245,8 @@ Five minutes on a phone, in this order:
 3. **Record something, then tap away to another room before stopping.** Come back. The take
    should be in the list and your phone should have stopped showing the recording dot. If you
    would rather it had thrown it away, say so — OPEN-DECISIONS §12a.
-4. **Zoom in on a short word and select just that word.** Is the slider usable with a thumb?
+4. **Zoom in on a short word and select just that word**, then cut it. Is the slider usable with
+   a thumb — and does the picture stay where you put it? (It did not until 7 Nov; see §3b.)
 5. **Undo twice, redo once, reload the page.** Everything should be where you left it.
 
 Compressed import is no longer on this list: mp3 and m4a are both measured end to end in §3. It

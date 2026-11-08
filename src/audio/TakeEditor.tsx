@@ -80,7 +80,31 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
   const [view, setView] = useState<View>(() => ({ from: 0, to: row.len }))
   const zoomed = view.to - view.from < len - 1e-6
 
-  /* decode once; the blob is the thing that persists and everything else is derived from it */
+  /**
+   * Decode once — and ONCE HAS TO MEAN ONCE, which it did not.
+   *
+   * ⚠️ `row.blob` IS A NEW OBJECT EVERY TIME THE LIST IS REFRESHED, so "decode once" was a
+   * comment rather than a fact. `allTakes` is `store.getAll()` and IndexedDB structured-clones
+   * on the way out, so an unchanged row comes back holding a fresh Blob — and `apply` refreshes
+   * the list after every Keep, Cut, Trim, Undo and Redo, because the ✎ marker in the row has
+   * to follow the edit. This effect therefore re-ran on each of them, and its last line put the
+   * view back to the whole recording.
+   *
+   * Measured in the pane on a one-minute take: zoomed to **3.75s of 60.00s shown**, pressed
+   * Trim ends, and the label read **whole recording** again — with the edit itself perfectly
+   * correct. Same with Undo, from 7.50s. That is the one thing you are zoomed in FOR: you find a
+   * boundary at a quarter of a second, cut, and are thrown back to a picture where a pixel is
+   * most of a second. It also re-read the blob and re-decoded it every time — 70ms and a 5MB
+   * read for a minute of audio, around half a second for the six-minute take this editor was
+   * built against, plus a fresh 2.9-million-sample `loudSpan` pass for a button whose answer
+   * cannot have changed.
+   *
+   * `row.id` is the identity of the AUDIO, where the blob is only the identity of one read of
+   * it: this editor never rewrites bytes — `setTakeLog` copies the row and replaces the log
+   * alone, and a new recording or an opened file always mints a new id — so the same id is
+   * always the same sound. A different take is a different `key` in TakesPanel and so a
+   * different component, which is what makes this honest rather than merely cheaper.
+   */
   useEffect(() => {
     let alive = true
     setBad(false)
@@ -94,9 +118,10 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     return () => {
       alive = false
     }
-    // the log is re-read from the decoded length, so it is not a dependency of decoding
+    // the blob, the log and the trim all belong to this id, and the log is owned by `apply` from
+    // here on — see above for why re-running this on a new Blob object was the bug
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row.blob])
+  }, [row.id])
 
   /**
    * ⚠️ ONE FUNCTION BUILDS WHAT YOU HEAR, HERE AND IN THE LOOP AND IN THE EXPORT. Three

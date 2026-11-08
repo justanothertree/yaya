@@ -1,4 +1,6 @@
 import { registerTap } from './audioTap'
+import { busGain, polyGain } from './poly'
+import type { Ringing } from './poly'
 import { makeGain, releaseGain } from './mixer'
 import { broadcastBus, resumeAudio, sharedCtx } from './context'
 import { storedNumber } from '../ui/storedNumber'
@@ -792,8 +794,10 @@ type Bus = {
   /** LFO depth for this part; voices connect it to their detune */
   vib: GainNode
   set(fx: Fx): void
-  /** how loud this whole part is, 0..1.5 — see Layer.gain */
+  /** how loud this whole part is, 0..BUS_CEILING — see Layer.gain */
   level(v: number): void
+  /** what `level` is worth right now, mid-glide included — see faderOf */
+  gain(): number
   dispose(): void
   /** ctx time this bus last had a note, so eviction can leave ringing tails alone */
   used: number
@@ -838,142 +842,17 @@ let verbBuf: AudioBuffer | null = null
 const POLY_DOWN = 0.012
 const POLY_UP = 0.35
 /**
- * The level the limiter starts working at: -3dBFS, matching its threshold, with a little margin.
+ * Everything still making sound, so the scaler can be asked how much room is left.
  *
- * ⚠️ THE CRACKLE WAS INTERMODULATION FROM THE LIMITER, proved rather than guessed. A capture of
- * the fault contained spectral lines at 73.2, 120.1, 155.3 and 193.4Hz — the exact arithmetic
- * DIFFERENCES between the notes being played. Linear mixing of sines cannot produce those; only a
- * nonlinearity can. Reproduced offline with the same nine notes: through the limiter they sit at
- * -59 to -64dB, and with it bypassed, or with the signal merely kept under threshold, they are at
- * -180dB, which is numerical zero.
- *
- * That is why it needed a pure tone to hear. IMD products are discrete lines, not noise, so they
- * have nothing to hide behind on a sine and vanish inside the harmonics of a rich patch.
- *
- * ⚠️ No limiter setting fixes it. Softer knees and slower attacks do lower the IMD, but only by
- * letting the peak through — measured, a 40dB knee drops distortion 39dB and raises the output
- * peak to 2.55, which hard-clips at the converter and is worse. The input has to come down.
+ * ⚠️ THE ARITHMETIC IS IN poly.ts AND THAT IS NOT TIDYING. The rule it keeps was plainly wrong
+ * for two months — the sum was measured in the PATCH's level and the signal in the LAYER's, so a
+ * backing with every fader at zero took 5-7dB off your hands — and nothing could ask about it,
+ * because this file opens an AudioContext and `npm run test` has no audio. It is numbers now, and
+ * `poly.test.ts` puts the question. What stays here is the graph: when to re-evaluate, how fast to
+ * glide, and which bus to push it to.
  */
-const LIMIT_AT = 0.7
-
-/**
- * Everything still making sound, as the sum of the levels it peaks at.
- *
- * ⚠️ NOT A VOICE COUNT, for two reasons this investigation turned up.
- *
- * First, noteOff DELETES a voice while its release is still ringing, so counting the map missed
- * every tail. That is the whole "organ pops on one voice" report: spamming a key retriggers, the
- * map holds one, and five or six tails are still sounding and still summing. The strip said
- * `voices 1` and was telling the truth about the wrong thing.
- *
- * Second, a count cannot tell a whistle from an organ. Summing the LEVELS makes a mixed
- * arrangement come out right, and lets the rule below be exact rather than a guess.
- */
-type Ringing = {
-  at: number
-  a: number
-  d: number
-  /**
-   * The level this voice peaks at.
-   *
-   * ⚠️ THE PATCH'S LEVEL, NOT THE LAYER'S — so the sum below is measured in a different unit
-   * from the signal, and A BACKING AT ZERO VOLUME STILL DUCKS YOUR HANDS. `noteOn` takes
-   * `part.gain` and hands it to `busFor` → `b.level()`, which multiplies at the bus INPUT,
-   * downstream of the polyphony gain. Nothing here ever sees it.
-   *
-   * Measured 6 Nov 2026 in the pane with `ducking()` from scripts/sound-probe.js — four-layer
-   * backing loaded, every layer fader dragged to 0 so it contributes nothing at all, and every
-   * one of the probe's guards green:
-   *
-   *     backing running, no key           peak 0        (silent, as it must be)
-   *     C4 held, backing loaded, STOPPED  peak 0.5334   ->  0.00dB   <- the null control
-   *     C4 held, silent backing RUNNING   peak 0.2879   -> -5.36dB
-   *     C4 held again at the end          peak 0.5334   (identical, to the last digit)
-   *
-   * Same key, same code path, same loaded layers; the only difference is whether a backing you
-   * cannot hear is running. Five and a bit decibels taken off the thing you are playing, to make
-   * room for signal that does not exist.
-   *
-   * ⚠️ AND IT IS A RANGE RATHER THAN A CONSTANT, which is the part that makes it audible. The
-   * sum follows the backing's envelopes, so the duck follows its note density: a hand-run on the
-   * same key an hour earlier measured -6.74dB, and the two differ by where in the bar the note
-   * landed. A held note therefore PUMPS in time with music that is making no sound.
-   *
-   * It cuts the other way at the top of the fader: the gain escapes the scaling entirely, which
-   * is why `in` reads 2.567 against a threshold of 0.707 with four layers at 2x. The sum is
-   * simply not the sum of what is sounding.
-   *
-   * ⚠️ AND IT MAY BE THE COMPLAINT ALREADY RECORDED IN presets.test.ts — "the layer volume is
-   * almost not loud enough for some of the instruments". Turning a layer DOWN does not only
-   * make that layer quieter; it leaves it counting its full patch level against everything
-   * else, so the room gets quieter around it and the fader feels like it has no authority.
-   *
-   * ⚠️ NOT FIXED HERE ON PURPOSE. The fix is one multiplication — carry the layer gain into
-   * this `peak` and into `target` — and it changes loudness in BOTH directions: hands come back
-   * up over a quiet backing, and a hot layer starts ducking properly instead of leaning on the
-   * limiter. Which of those is wanted, and where the balance between hands and backing should
-   * then sit, is a thing an ear decides. `scripts/sound-probe.js` has `ducking()`, which runs
-   * the measurement above in one paste and validates its own silence.
-   */
-  peak: number
-  /** absolute sustain level, and the floor a one-shot decays to */
-  target: number
-  /** release time constant, once released */
-  tau: number
-  /** ctx time the release began; Infinity while the key is still down */
-  off: number
-  /** when it stops mattering and the entry can go */
-  until: number
-}
 const ringing: Ringing[] = []
 
-/**
- * How loud this voice is RIGHT NOW, not how loud it peaks.
- *
- * ⚠️ COUNTING THE PEAK MADE BELL DUCK ITSELF INTO SILENCE. Bell is a one-shot: d 2.4s, r 1.4s,
- * sustain zero. Its entry therefore lived for 3.8 seconds, and the first version counted its full
- * 0.4 the whole time — so four bell notes summed to 1.6 and pulled the instrument down to 0.44,
- * on the strength of level that had decayed away almost a second earlier. Every decaying patch
- * was over-counted; bell just has the longest tail and the highest peak, so it was worst.
- *
- * This is the same arithmetic the release code already does, and for the same stated reason: the
- * envelope is segments we scheduled ourselves from numbers we still hold, so its value at any
- * instant is arithmetic rather than something to ask the engine for.
- */
-function levelAt(r: Ringing, now: number): number {
-  if (now <= r.at) return 0
-  let v: number
-  if (now < r.at + r.a) v = r.peak * ((now - r.at) / r.a)
-  else if (now < r.at + r.a + r.d)
-    v = r.peak * Math.pow(r.target / r.peak, (now - r.at - r.a) / r.d)
-  else v = r.target
-  if (now > r.off) v *= Math.exp(-(now - r.off) / r.tau)
-  return v
-}
-
-function soundingLevel(): number {
-  const now = ctx ? ctx.currentTime : 0
-  let sum = 0
-  for (let i = ringing.length - 1; i >= 0; i--) {
-    if (ringing[i].until <= now) ringing.splice(i, 1)
-    else sum += levelAt(ringing[i], now)
-  }
-  return sum
-}
-
-/**
- * The gain one voice should have right now. Never above 1 — this only ever takes away.
- *
- * ⚠️ TAKES AWAY ONLY WHAT IS NECESSARY, which is the whole difference from the 1/sqrt(n) version
- * this replaces. sqrt reduced from the second note onward whether or not anything was close to
- * distorting, which cost 2.7dB on fast passages and made the instrument feel muted for no benefit
- * — a real complaint, and a fair one. This holds the sum at the limiter threshold and otherwise
- * does nothing at all: one note and two notes are now at FULL level, where sqrt had already taken
- * 3dB off the pair.
- *
- * It is also exactly enough. At the threshold the limiter measures zero intermodulation, so this
- * is the loudest the instrument can be while producing none.
- */
 /** The release time constant actually used — floored, because a faster one clicks by physics. */
 function releaseTau(sh: { r: number }): number {
   return Math.max(0.04, sh.r / 5)
@@ -997,9 +876,25 @@ function releaseSpan(sh: { r: number }): number {
   return Math.max(sh.r, releaseTau(sh) * 5)
 }
 
+/**
+ * A part's fader AS THE BUS IS APPLYING IT THIS INSTANT, and 0 for a part with no bus.
+ *
+ * ⚠️ READ BACK OFF THE GRAPH RATHER THAN REMEMBERED, which is the half of the fix that is not
+ * one multiplication. `setLayerGain` rides the bus — its own comment says it "takes effect on
+ * whatever is already ringing" — so a gain copied into the voice at note-on would disagree with
+ * the signal for as long as the longest note already sounding. Measured before the fix: holding a
+ * key over an audible backing and then pulling every fader to zero left that key at 0.2198 where
+ * it reads 0.5312 alone, and it STAYED there, because nothing was going to re-strike it.
+ *
+ * An evicted or disposed bus is disconnected, so a ring that outlives its bus is silent and 0 is
+ * the honest answer. evictBus already refuses to take a bus whose tail could still be sounding.
+ */
+function faderOf(part: string): number {
+  return buses.get(part)?.gain() ?? 0
+}
+
 function polyTarget(): number {
-  const sum = soundingLevel()
-  return sum <= LIMIT_AT ? 1 : LIMIT_AT / sum
+  return polyGain(ringing, ctx ? ctx.currentTime : 0, faderOf)
 }
 
 /**
@@ -1358,8 +1253,11 @@ function makeBus(c: AudioContext): Bus {
     level(v: number) {
       /* ⚠️ ramped like every other live control. Setting a gain outright while a note is
          sounding is a step in the waveform, which is a click — the same lesson as the release. */
-      ramp(input.gain, Math.max(0, Math.min(1.5, v)))
+      ramp(input.gain, busGain(v))
     },
+    /* ⚠️ the LIVE value, not the target. A fader mid-glide is partly applied, and the sum
+       has to be about what is reaching the speakers now — see poly.ts. */
+    gain: () => input.gain.value,
     set(fx: Fx) {
       ramp(wet.gain, fx.echo * 0.55)
       echoConnect(fx.echo > 0.001)
@@ -1770,9 +1668,20 @@ export function noteOn(
   const c = ensure()
   resumeAudio()
   const at = Math.max(when ?? 0, c.currentTime + SAFE_START)
-  const bus = busFor(c, part?.key ?? LIVE_PART, part?.fx ?? fxSnapshot(), part?.gain)
+  const partKey = part?.key ?? LIVE_PART
+  const bus = busFor(c, partKey, part?.fx ?? fxSnapshot(), part?.gain)
 
   if (instrument === 'drums') {
+    /* ⚠️ A DRUM HIT REGISTERS NO RING, so drums are invisible to the polyphony scaler and
+       always have been — a kit is noise bursts and short tones built here rather than a voice
+       with an envelope this file holds the numbers for. It is not obviously wrong (a kick is
+       percussive and the limiter handles it) but it does mean the sum is a sum of the PITCHED
+       parts only, and the beat picker's layers are drums.
+
+       See OPEN-DECISIONS §13b, "Drums are invisible to the scaler" — NAMED as well as numbered
+       on purpose, because an unmerged Lab draft adds a §13 of its own whose 13b is about who
+       may read a minor's vote. A number is the one part of a cross-reference somebody else can
+       change without touching this file. */
     hitDrum(c, midi, at, bus)
     return
   }
@@ -1800,7 +1709,6 @@ export function noteOn(
    * swoop nobody played. A repeat of the same note is skipped too, since sliding to where you
    * already are is a ramp that does nothing but cost a scheduled event.
    */
-  const partKey = part?.key ?? LIVE_PART
   const glideTime = (part?.fx ?? fxSnapshot()).glide * 0.3
   const previous = lastPitch.get(partKey)
   const glideFrom =
@@ -1965,6 +1873,8 @@ export function noteOn(
     tau: Math.max(0.005, sh.r / 5),
     off: Infinity,
     until: Infinity,
+    /* whose sound this is, so the scaler can ask that bus what its fader is doing — see faderOf */
+    part: partKey,
   }
   ringing.push(mine)
 
