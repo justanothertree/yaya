@@ -2213,6 +2213,27 @@ describe('an exercise linked to an activity', () => {
     expect(amount(s)).toBe(25)
   })
 
+  it('brings a counted set back only with its sitting, because only then does the file hold it', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    pvAmount(s, 9)
+    const a = pvSetAdd('p-1', 'ex-quad', 7, DAY, s)
+    if ('why' in a) throw new Error('fixture')
+    expect(amount(s)).toBe(16)
+    const doc = pvExport()
+    expect(pvSetDrop(a.id)).toBeNull()
+    expect(amount(s)).toBe(9)
+    /* ✕ and then a restore: the sitting is still here and no longer holds the 7 */
+    pvImport(doc)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.id)).not.toContain(a.id)
+    expect(amount(s)).toBe(9)
+    /* with the sitting gone as well, both come back, and its count holds the set again */
+    expect(pvDropEntry(s)).toBe(true)
+    pvImport(doc)
+    expect(amount(s)).toBe(16)
+    expect(pvSetsBetween(DAY, '2026-10-13').find((x) => x.id === a.id)?.counted).toBe(true)
+  })
+
   it('takes counted sets back out of a sitting moved to another unit, and only then', () => {
     pvLinkExercise('p-1', 'ex-quad', gym)
     const lifting = idOf(pvSaveActivity('Lifting', 'free', null, undefined, 'reps'))
