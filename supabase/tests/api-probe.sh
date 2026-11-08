@@ -137,6 +137,37 @@ check "$(printf '%s' "$BODY" | jq -r --arg g "$G" '.[] | select(.id == $g) | (.m
 rpc chronicle_goals_mine "$TB" '{}'
 check "$(printf '%s' "$BODY" | jq -r --arg g "$G" '[.[] | select(.id == $g)] | length')" "0" "B's goals do not include A's"
 
+# ── the sets (the sets draft is applied earlier in this run) ──
+psql "$DB_URL" -qX -v ON_ERROR_STOP=1 <<SQL
+insert into public.circuit_people (id, name, exercises, owner_user_id)
+values ('api-probe-a', 'Probe A', '[{"id":"ex-quad","name":"Quad Curl","unit":"reps","mult":1,"col":0,"row":0}]', '$UA');
+SQL
+YDAY=$(date -u -d yesterday +%F)
+rpc chronicle_set_add "$TA" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_value\":20,\"p_day\":\"$TODAY\",\"p_entry\":null}"
+ok2xx "A adds a set to its own person's exercise"
+rpc chronicle_set_add "$TB" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_value\":5,\"p_day\":\"$TODAY\",\"p_entry\":null}"
+refused "B adding a set to A's person"
+rpc chronicle_set_add "$ANON_KEY" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_value\":5,\"p_day\":\"$TODAY\",\"p_entry\":null}"
+refused "anon adding a set"
+rpc chronicle_set_add "$TA" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_value\":12,\"p_day\":\"$TODAY\",\"p_entry\":\"$E1\"}"
+ok2xx "A adds a set during its sitting"
+SETS="{\"p_from\":\"$YDAY\",\"p_to\":\"$AFTER\"}"
+rpc chronicle_sets_between "$TA" "$SETS"
+check "$(printf '%s' "$BODY" | jq -c '[.[] | .value] | sort')" '[12,20]' "A reads its two sets back, after B's and anon's refused writes"
+rpc chronicle_sets_between "$TB" "$SETS"
+check "$(printf '%s' "$BODY" | jq -c '.')" '[]' "B reading sets sees none of A's"
+rpc chronicle_sets_between "$ANON_KEY" "$SETS"; refused "anon reading sets"
+rpc chronicle_entries_between "$TA" "{\"p_from\":\"$FROM\",\"p_to\":\"$TO\"}"
+ONE=$(printf '%s' "$BODY" | jq -c --arg e "$E1" '.[] | select(.id == $e)')
+norm() { printf '%s' "$1" | jq -r 'sub("\\.[0-9]+";"") | sub("\\+00:00$";"Z") | fromdateiso8601 - 86400 | todateiso8601'; }
+S0=$(norm "$(printf '%s' "$ONE" | jq -r '.start')"); S1=$(norm "$(printf '%s' "$ONE" | jq -r '.end')")
+MOVE="{\"p_id\":\"$E1\",\"p_from\":\"$S0\",\"p_to\":\"$S1\",\"p_activity\":null,\"p_day\":\"$YDAY\"}"
+rpc chronicle_entry_edit_day "$TB" "$MOVE"; refused "B moving A's sitting"
+rpc chronicle_entry_edit_day "$ANON_KEY" "$MOVE"; refused "anon moving A's sitting"
+rpc chronicle_entry_edit_day "$TA" "$MOVE"; ok2xx "A moves its sitting a day back, with its sets"
+rpc chronicle_sets_between "$TA" "$SETS"
+check "$(printf '%s' "$BODY" | jq -r --arg e "$E1" '[.[] | select(.entry == $e) | .on] | join(",")')" "$YDAY" "the sitting's set moved to the day before, once"
+
 # ── the tables themselves, straight through the REST surface ──
 # ⚠️ A REFUSAL OR AN EMPTY LIST, and which one is printed. A table can hold everything out by
 # having no grants (refused) or by RLS with no policies (200 and []); the difference is worth
@@ -150,7 +181,7 @@ table() {
     *) fail "$1 reading $2 directly — HTTP $CODE $BODY" ;;
   esac
 }
-for t in chronicle_goal_marks chronicle_entries chronicle_goal_days; do
+for t in chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets; do
   table A "$t" "$TA"
   table anon "$t" "$ANON_KEY"
 done

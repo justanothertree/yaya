@@ -189,12 +189,21 @@ select set_config('request.jwt.claims',
   json_build_object('sub', (select me::text from subject), 'role', 'authenticated')::text, true);
 set local role authenticated;
 do $$
-declare got text;
+declare got text; got2 text; got3 text;
 begin
   begin perform public.chronicle_set_add('sets-mine', 'ex-quad', 5, (select today from t));
   exception when others then got := sqlerrm; end;
-  if got is distinct from 'your account is suspended' then
-    insert into fails values ('refusing a suspended member', coalesce(got, 'it was accepted'));
+  begin perform public.chronicle_entry_edit_day((select v from ids where k = 'entry'),
+          (select t0 from t) - interval '14 hours', (select t0 from t) - interval '13 hours', null,
+          (select today from t) - 1);
+  exception when others then got2 := sqlerrm; end;
+  begin perform public.chronicle_running_fix_day(null, null, (select today from t));
+  exception when others then got3 := sqlerrm; end;
+  if got is distinct from 'your account is suspended'
+     or got2 is distinct from 'your account is suspended'
+     or got3 is distinct from 'your account is suspended' then
+    insert into fails values ('refusing a suspended member',
+      coalesce(got, 'add accepted') || ' / ' || coalesce(got2, 'edit accepted') || ' / ' || coalesce(got3, 'fix accepted'));
   end if;
 end $$;
 reset role;

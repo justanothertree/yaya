@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN S2: as S1, with the two wrappers refusing a suspended member in their own bodies.
+-- RUN S3: all four drafts and every suite; the API probe asks the set writers too (54 checks).
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the weekdays draft (FIRST)
@@ -34,8 +34,8 @@ do $$
 declare n int; m int;
 begin
   select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
-  if n > 0 or m < 41 then
-    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 41', n, m;
+  if n > 0 or m < 54 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 54', n, m;
   end if;
 end $$;
 select 'the daily flow and the marks hold through Auth and PostgREST' as result;
