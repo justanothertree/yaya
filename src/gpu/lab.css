@@ -747,3 +747,37 @@
   margin: 0;
   font-weight: 600;
 }
+
+/* Intervals: the answers as a grid of big buttons, each with what the interval sounds like */
+.iv-answers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+.iv-answer {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: start;
+  text-align: left;
+  min-height: 56px;
+  white-space: normal;
+}
+.iv-sound {
+  font-size: 0.8em;
+  font-weight: 400;
+  opacity: 0.8;
+}
+.iv-answer[data-state='right'] {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+.iv-answer[data-state='wrong'] {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 1px;
+}
+.iv-answer:disabled {
+  opacity: 1;
+}
+.iv-verdict strong {
+  flex: 1 1 220px;
+}
