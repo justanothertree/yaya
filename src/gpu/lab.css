@@ -604,3 +604,83 @@
 .nono-score {
   white-space: normal;
 }
+
+/* Logic gates: the level list shrinks rather than pushing the row sideways on a phone */
+.gates-pick {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.gates-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+/* the truth table and the parts list side by side when there is room, stacked when not */
+.gates-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.gates-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+.gates-table caption {
+  text-align: left;
+  padding-bottom: 0.4rem;
+}
+.gates-table th,
+.gates-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.15rem 0.4rem;
+  text-align: center;
+}
+.gates-table tr[aria-current] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.gates-row {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.gates-bad {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+.gates-got {
+  font-weight: 400;
+  font-size: 0.85em;
+}
+.gates-parts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.gates-parts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.gates-parts li[aria-current] .gates-part-name {
+  outline: 2px solid var(--accent);
+}
+.gates-part-name {
+  min-width: 80px;
+}
+.gates-parts-head {
+  margin: 0 0 0.4rem;
+}
+.gates-parts select {
+  max-width: 100%;
+  min-width: 0;
+}
