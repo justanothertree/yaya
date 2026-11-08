@@ -66,6 +66,7 @@ import { WallpaperDemo } from '../gpu/WallpaperDemo'
 import { NonogramDemo } from '../gpu/NonogramDemo'
 import { GatesDemo } from '../gpu/GatesDemo'
 import { SlideDemo } from '../gpu/SlideDemo'
+import { MixDemo } from '../gpu/MixDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -478,6 +479,12 @@ const DEMOS: readonly {
     name: 'Slide',
     line: 'Slide — an ice puzzle: the puck slides until something stops it. Take every coin and come to rest on the goal in as few pushes as the solver did; then endless boards, each solved before you see it.',
     Demo: SlideDemo,
+  },
+  {
+    id: 'mix',
+    name: 'Paint mixer',
+    line: 'Paint mixer — drop five paints into a cup to match a colour. They mix like real paint, light absorbed wavelength by wavelength, so yellow and blue make green; or mix freely and copy the colour.',
+    Demo: MixDemo,
   },
 ]
 
