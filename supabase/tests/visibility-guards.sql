@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN M: the repeat-marks drafts, applied to the throwaway database for real (it is thrown away
+-- RUN A: the drafts applied, every suite, then the flow and the marks through real Auth + PostgREST.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying step 1
@@ -14,3 +14,16 @@
 \ir chronicle-round-trip.sql
 \echo === the marks
 \ir chronicle-repeat-marks.sql
+\echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
+create table public.api_probe(ok boolean not null, detail text not null);
+\! bash supabase/tests/api-probe.sh
+select ok, detail from public.api_probe order by ok, detail;
+do $$
+declare n int; m int;
+begin
+  select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
+  if n > 0 or m < 34 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 34', n, m;
+  end if;
+end $$;
+select 'the daily flow and the marks hold through Auth and PostgREST' as result;
