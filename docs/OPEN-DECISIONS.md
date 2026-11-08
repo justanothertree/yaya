@@ -1091,9 +1091,12 @@ the room deployed:
 2. Look at the Tomorrow tab when tomorrow is an off day. The goal should not be there.
 3. On yesterday's Day log, press ✎ Note and write something. Yesterday's log should then show it
    with "written <today>" and no time.
-4. On a phone: the seven day toggles and the note row's ✎. The sitting editor's move sentence
-   needs a set to exist, and nothing on screen can write one until step 2, so it has no device
-   check yet.
+4. On a phone: the seven day toggles and the note row's ✎.
+5. Link an exercise in an activity's editor; start that activity; count a few sets; Undo one. Then
+   open the Circuit: the cell should say how much came from sessions, and typing a total below it
+   should be refused, saying so.
+6. With sets counted on a sitting, change its activity in its editor: the move sentence should say
+   the sets stay with their exercises. (Until the counter could write sets this had no device check.)
 
 ### 19g. Sets, step 2: three questions before anything reads them
 
@@ -1172,6 +1175,22 @@ apply anything to production.
      read twice or not at all.
    - Nothing freezes or deletes legacy writes.
 
+**Built on 9 Nov, as three follow-on branches from the integration boundary, none applied:**
+
+- `chronicle/sets-links`: links (1).
+  - A unit table kept identical in SQL and TypeScript.
+  - Counted sets written through into their sitting's amount, so no reader of an amount changed.
+  - Goals adding the grid's typed part by local day.
+  - The counter's sets mode, and the activity editor's "From the Circuit" row.
+- `chronicle/sets-grid`: cells (2).
+  - circuit_session_sums, behind the Circuit's own see rule.
+  - circuit_cell_set storing total − sessions under a lock every set writer shares, with stale and
+    below-sessions saves refused.
+  - The board showing totals.
+  - A cell saying "12 from Chronicle sessions · change them there".
+- `chronicle/sets-conversion`: the separate conversion proposal (3), and the switch every reader
+  makes at its marker.
+
 ---
 
 ## 20. Chronicle — every open question, in one place (9 Nov 2026)
@@ -1188,5 +1207,14 @@ item is here, as the question and its recommendation. Its own section holds the 
 | 19c | Apply the weekday draft?                                                                  | Yes, in any order with the others                                                                                   | releasing #83                                              |
 | 19d | Apply the sets draft (step 1)?                                                            | Yes; nothing reads it until step 2                                                                                  | releasing #85 and step 2                                   |
 | 19e | What should make claiming a Circuit person verified?                                      | An admin approves it, or the person confirms from their own account                                                 | moving history at claim time; nothing else                 |
+
+**Raised by the §19g build, 9 Nov:**
+
+| §   | Question                                                                                                                                                                      | Recommendation                                                                                                                         | Blocks                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 20a | A set counted in Chronicle shows in that person's Circuit column, which their circuits can see — while the rest of Chronicle is private unless shared. Is that what you want? | Yes: it is "see it in both places", the sitting's time and activity stay private, and the counter says it in one line where it happens | releasing the grid branch                  |
+| 20b | A Circuit board does not refresh when Chronicle writes a set: the new total appears on its next load or the next Circuit change. Add the sets table to realtime?              | Not yet. It is a publication change and a payload to design; a reload is honest about it                                               | nothing                                    |
+| 20c | Apply the links draft, then the grid draft?                                                                                                                                   | Yes, after the sets draft (19d), in that order. Nothing changes for a member until they link an exercise or sessions write sets        | releasing `sets-links` and `sets-grid`     |
+| 20d | The conversion: when, and with which freeze of legacy writes?                                                                                                                 | Not until you choose a cutover. It is written, tested on fixtures and dry-runnable; applying it needs the freeze it says it needs      | converting anybody; nothing in development |
 
 Device and signed-in checks are §19f, and grow with each build.
