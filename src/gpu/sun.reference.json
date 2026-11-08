@@ -1,0 +1,1246 @@
+{
+  "about": "Sunrise and sunset on the local clock for the Sun path toy's places in 2026, from an implementation that shares no code with src/gpu/sun.ts: astral 3.2 (NOAA/Meeus solar position, refraction-adjusted horizon) with Python's zoneinfo (its own copy of the IANA time-zone database). Hours are counted from local midnight on the date, so 24.03 is just after midnight the next day. riseOff/setOff are the UTC offsets in force at the event. null: astral finds no sunrise (polar day or night). London 21 Jun agrees with the Met Office's published 04:43 / 21:21 BST. Generated 8 Nov 2026 by scripts/sun-reference.py.",
+  "rows": [
+    { "place": "Longyearbyen", "month": 1, "date": 15, "rise": null, "set": null },
+    {
+      "place": "Longyearbyen",
+      "month": 3,
+      "date": 20,
+      "rise": 5.8758,
+      "riseOff": 1.0,
+      "set": 18.3508,
+      "setOff": 1.0
+    },
+    { "place": "Longyearbyen", "month": 5, "date": 10, "rise": null, "set": null },
+    { "place": "Longyearbyen", "month": 6, "date": 21, "rise": null, "set": null },
+    { "place": "Longyearbyen", "month": 8, "date": 5, "rise": null, "set": null },
+    {
+      "place": "Longyearbyen",
+      "month": 9,
+      "date": 22,
+      "rise": 6.4778,
+      "riseOff": 2.0,
+      "set": 19.1278,
+      "setOff": 2.0
+    },
+    { "place": "Longyearbyen", "month": 11, "date": 8, "rise": null, "set": null },
+    { "place": "Longyearbyen", "month": 12, "date": 21, "rise": null, "set": null },
+    {
+      "place": "Longyearbyen",
+      "month": 3,
+      "date": 29,
+      "rise": 5.678,
+      "riseOff": 2.0,
+      "set": 20.4752,
+      "setOff": 2.0
+    },
+    {
+      "place": "Tromsø",
+      "month": 1,
+      "date": 15,
+      "rise": 11.4752,
+      "riseOff": 1.0,
+      "set": 12.316,
+      "setOff": 1.0
+    },
+    {
+      "place": "Tromsø",
+      "month": 3,
+      "date": 20,
+      "rise": 5.7396,
+      "riseOff": 1.0,
+      "set": 18.0167,
+      "setOff": 1.0
+    },
+    {
+      "place": "Tromsø",
+      "month": 5,
+      "date": 10,
+      "rise": 2.4585,
+      "riseOff": 2.0,
+      "set": 22.9947,
+      "setOff": 2.0
+    },
+    { "place": "Tromsø", "month": 6, "date": 21, "rise": null, "set": null },
+    {
+      "place": "Tromsø",
+      "month": 8,
+      "date": 5,
+      "rise": 2.8532,
+      "riseOff": 2.0,
+      "set": 22.7332,
+      "setOff": 2.0
+    },
+    {
+      "place": "Tromsø",
+      "month": 9,
+      "date": 22,
+      "rise": 6.4084,
+      "riseOff": 2.0,
+      "set": 18.7861,
+      "setOff": 2.0
+    },
+    {
+      "place": "Tromsø",
+      "month": 11,
+      "date": 8,
+      "rise": 8.7642,
+      "riseOff": 1.0,
+      "set": 14.1443,
+      "setOff": 1.0
+    },
+    { "place": "Tromsø", "month": 12, "date": 21, "rise": null, "set": null },
+    {
+      "place": "Tromsø",
+      "month": 3,
+      "date": 29,
+      "rise": 6.0564,
+      "riseOff": 2.0,
+      "set": 19.614,
+      "setOff": 2.0
+    },
+    {
+      "place": "Tromsø",
+      "month": 10,
+      "date": 25,
+      "rise": 7.636,
+      "riseOff": 1.0,
+      "set": 15.2794,
+      "setOff": 1.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 1,
+      "date": 15,
+      "rise": 10.9161,
+      "riseOff": 0.0,
+      "set": 16.3336,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 3,
+      "date": 20,
+      "rise": 7.4831,
+      "riseOff": 0.0,
+      "set": 19.7168,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 5,
+      "date": 10,
+      "rise": 4.5095,
+      "riseOff": 0.0,
+      "set": 22.3369,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 6,
+      "date": 21,
+      "rise": 2.9585,
+      "riseOff": 0.0,
+      "set": 24.0276,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 8,
+      "date": 5,
+      "rise": 4.8039,
+      "riseOff": 0.0,
+      "set": 22.2822,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 9,
+      "date": 22,
+      "rise": 7.1845,
+      "riseOff": 0.0,
+      "set": 19.4706,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 11,
+      "date": 8,
+      "rise": 9.5633,
+      "riseOff": 0.0,
+      "set": 16.8026,
+      "setOff": 0.0
+    },
+    {
+      "place": "Reykjavík",
+      "month": 12,
+      "date": 21,
+      "rise": 11.373,
+      "riseOff": 0.0,
+      "set": 15.4891,
+      "setOff": 0.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 1,
+      "date": 15,
+      "rise": 8.5678,
+      "riseOff": 0.0,
+      "set": 16.1791,
+      "setOff": 0.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 3,
+      "date": 20,
+      "rise": 6.2574,
+      "riseOff": 0.0,
+      "set": 18.4353,
+      "setOff": 0.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 5,
+      "date": 10,
+      "rise": 5.1722,
+      "riseOff": 1.0,
+      "set": 21.1555,
+      "setOff": 1.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 6,
+      "date": 21,
+      "rise": 4.4459,
+      "riseOff": 1.0,
+      "set": 22.0402,
+      "setOff": 1.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 8,
+      "date": 5,
+      "rise": 5.4131,
+      "riseOff": 1.0,
+      "set": 21.191,
+      "setOff": 1.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 9,
+      "date": 22,
+      "rise": 6.9701,
+      "riseOff": 1.0,
+      "set": 19.1936,
+      "setOff": 1.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 11,
+      "date": 8,
+      "rise": 7.5772,
+      "riseOff": 0.0,
+      "set": 16.2922,
+      "setOff": 0.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 12,
+      "date": 21,
+      "rise": 8.708,
+      "riseOff": 0.0,
+      "set": 15.6532,
+      "setOff": 0.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 3,
+      "date": 29,
+      "rise": 6.8625,
+      "riseOff": 1.0,
+      "set": 19.7411,
+      "setOff": 1.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 3,
+      "date": 30,
+      "rise": 6.8188,
+      "riseOff": 1.0,
+      "set": 19.775,
+      "setOff": 1.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 10,
+      "date": 25,
+      "rise": 7.0821,
+      "riseOff": 0.0,
+      "set": 16.7959,
+      "setOff": 0.0
+    },
+    {
+      "place": "Edinburgh",
+      "month": 10,
+      "date": 26,
+      "rise": 7.1172,
+      "riseOff": 0.0,
+      "set": 16.7573,
+      "setOff": 0.0
+    },
+    {
+      "place": "London",
+      "month": 1,
+      "date": 15,
+      "rise": 7.9961,
+      "riseOff": 0.0,
+      "set": 16.3418,
+      "setOff": 0.0
+    },
+    {
+      "place": "London",
+      "month": 3,
+      "date": 20,
+      "rise": 6.0611,
+      "riseOff": 0.0,
+      "set": 18.2207,
+      "setOff": 0.0
+    },
+    {
+      "place": "London",
+      "month": 5,
+      "date": 10,
+      "rise": 5.2833,
+      "riseOff": 1.0,
+      "set": 20.6317,
+      "setOff": 1.0
+    },
+    {
+      "place": "London",
+      "month": 6,
+      "date": 21,
+      "rise": 4.7252,
+      "riseOff": 1.0,
+      "set": 21.3529,
+      "setOff": 1.0
+    },
+    {
+      "place": "London",
+      "month": 8,
+      "date": 5,
+      "rise": 5.5096,
+      "riseOff": 1.0,
+      "set": 20.6912,
+      "setOff": 1.0
+    },
+    {
+      "place": "London",
+      "month": 9,
+      "date": 22,
+      "rise": 6.7797,
+      "riseOff": 1.0,
+      "set": 18.9791,
+      "setOff": 1.0
+    },
+    {
+      "place": "London",
+      "month": 11,
+      "date": 8,
+      "rise": 7.1088,
+      "riseOff": 0.0,
+      "set": 16.3542,
+      "setOff": 0.0
+    },
+    {
+      "place": "London",
+      "month": 12,
+      "date": 21,
+      "rise": 8.068,
+      "riseOff": 0.0,
+      "set": 15.8851,
+      "setOff": 0.0
+    },
+    {
+      "place": "London",
+      "month": 3,
+      "date": 29,
+      "rise": 6.719,
+      "riseOff": 1.0,
+      "set": 19.4734,
+      "setOff": 1.0
+    },
+    {
+      "place": "London",
+      "month": 3,
+      "date": 30,
+      "rise": 6.6811,
+      "riseOff": 1.0,
+      "set": 19.5014,
+      "setOff": 1.0
+    },
+    {
+      "place": "London",
+      "month": 10,
+      "date": 25,
+      "rise": 6.6979,
+      "riseOff": 0.0,
+      "set": 16.7741,
+      "setOff": 0.0
+    },
+    {
+      "place": "London",
+      "month": 10,
+      "date": 26,
+      "rise": 6.727,
+      "riseOff": 0.0,
+      "set": 16.7415,
+      "setOff": 0.0
+    },
+    {
+      "place": "New York",
+      "month": 1,
+      "date": 15,
+      "rise": 7.3022,
+      "riseOff": -5.0,
+      "set": 16.887,
+      "setOff": -5.0
+    },
+    {
+      "place": "New York",
+      "month": 3,
+      "date": 20,
+      "rise": 6.9921,
+      "riseOff": -4.0,
+      "set": 19.133,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 5,
+      "date": 10,
+      "rise": 5.7378,
+      "riseOff": -4.0,
+      "set": 20.0209,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 6,
+      "date": 21,
+      "rise": 5.4225,
+      "riseOff": -4.0,
+      "set": 20.5077,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 8,
+      "date": 5,
+      "rise": 5.9488,
+      "riseOff": -4.0,
+      "set": 20.1087,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 9,
+      "date": 22,
+      "rise": 6.7314,
+      "riseOff": -4.0,
+      "set": 18.8809,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 11,
+      "date": 8,
+      "rise": 6.581,
+      "riseOff": -5.0,
+      "set": 16.7361,
+      "setOff": -5.0
+    },
+    {
+      "place": "New York",
+      "month": 12,
+      "date": 21,
+      "rise": 7.2804,
+      "riseOff": -5.0,
+      "set": 16.5268,
+      "setOff": -5.0
+    },
+    {
+      "place": "New York",
+      "month": 3,
+      "date": 8,
+      "rise": 7.3186,
+      "riseOff": -4.0,
+      "set": 18.9167,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 3,
+      "date": 9,
+      "rise": 7.2919,
+      "riseOff": -4.0,
+      "set": 18.935,
+      "setOff": -4.0
+    },
+    {
+      "place": "New York",
+      "month": 11,
+      "date": 1,
+      "rise": 6.4439,
+      "riseOff": -5.0,
+      "set": 16.8664,
+      "setOff": -5.0
+    },
+    {
+      "place": "New York",
+      "month": 11,
+      "date": 2,
+      "rise": 6.4633,
+      "riseOff": -5.0,
+      "set": 16.8465,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 1,
+      "date": 15,
+      "rise": 7.8898,
+      "riseOff": 0.0,
+      "set": 17.6476,
+      "setOff": 0.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 3,
+      "date": 20,
+      "rise": 6.6739,
+      "riseOff": 0.0,
+      "set": 18.8029,
+      "setOff": 0.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 5,
+      "date": 10,
+      "rise": 6.4931,
+      "riseOff": 1.0,
+      "set": 20.6156,
+      "setOff": 1.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 6,
+      "date": 21,
+      "rise": 6.2052,
+      "riseOff": 1.0,
+      "set": 21.0745,
+      "setOff": 1.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 8,
+      "date": 5,
+      "rise": 6.6948,
+      "riseOff": 1.0,
+      "set": 20.7149,
+      "setOff": 1.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 9,
+      "date": 22,
+      "rise": 7.4069,
+      "riseOff": 1.0,
+      "set": 19.559,
+      "setOff": 1.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 11,
+      "date": 8,
+      "rise": 7.1859,
+      "riseOff": 0.0,
+      "set": 17.4819,
+      "setOff": 0.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 12,
+      "date": 21,
+      "rise": 7.8526,
+      "riseOff": 0.0,
+      "set": 17.3023,
+      "setOff": 0.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 3,
+      "date": 29,
+      "rise": 7.4396,
+      "riseOff": 1.0,
+      "set": 19.9473,
+      "setOff": 1.0
+    },
+    {
+      "place": "Lisbon",
+      "month": 10,
+      "date": 25,
+      "rise": 6.9345,
+      "riseOff": 0.0,
+      "set": 17.7431,
+      "setOff": 0.0
+    },
+    {
+      "place": "Cairo",
+      "month": 1,
+      "date": 15,
+      "rise": 6.8649,
+      "riseOff": 2.0,
+      "set": 17.286,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cairo",
+      "month": 3,
+      "date": 20,
+      "rise": 5.9889,
+      "riseOff": 2.0,
+      "set": 18.102,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cairo",
+      "month": 5,
+      "date": 10,
+      "rise": 6.0892,
+      "riseOff": 3.0,
+      "set": 19.6326,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 6,
+      "date": 21,
+      "rise": 5.9115,
+      "riseOff": 3.0,
+      "set": 19.9834,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 8,
+      "date": 5,
+      "rise": 6.2767,
+      "riseOff": 3.0,
+      "set": 19.7525,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 9,
+      "date": 22,
+      "rise": 6.7248,
+      "riseOff": 3.0,
+      "set": 18.8613,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 11,
+      "date": 8,
+      "rise": 6.2399,
+      "riseOff": 2.0,
+      "set": 17.0455,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cairo",
+      "month": 12,
+      "date": 21,
+      "rise": 6.7808,
+      "riseOff": 2.0,
+      "set": 16.9882,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cairo",
+      "month": 4,
+      "date": 24,
+      "rise": 6.3202,
+      "riseOff": 3.0,
+      "set": 19.4603,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 4,
+      "date": 25,
+      "rise": 6.3037,
+      "riseOff": 3.0,
+      "set": 19.471,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 10,
+      "date": 29,
+      "rise": 7.1111,
+      "riseOff": 3.0,
+      "set": 18.1731,
+      "setOff": 3.0
+    },
+    {
+      "place": "Cairo",
+      "month": 10,
+      "date": 30,
+      "rise": 6.1235,
+      "riseOff": 2.0,
+      "set": 17.1588,
+      "setOff": 2.0
+    },
+    {
+      "place": "Mumbai",
+      "month": 1,
+      "date": 15,
+      "rise": 7.2486,
+      "riseOff": 5.5,
+      "set": 18.3476,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 3,
+      "date": 20,
+      "rise": 6.7169,
+      "riseOff": 5.5,
+      "set": 18.8201,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 5,
+      "date": 10,
+      "rise": 6.1033,
+      "riseOff": 5.5,
+      "set": 19.0639,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 6,
+      "date": 21,
+      "rise": 6.033,
+      "riseOff": 5.5,
+      "set": 19.3091,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 8,
+      "date": 5,
+      "rise": 6.2785,
+      "riseOff": 5.5,
+      "set": 19.2019,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 9,
+      "date": 22,
+      "rise": 6.4587,
+      "riseOff": 5.5,
+      "set": 18.5799,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 11,
+      "date": 8,
+      "rise": 6.7038,
+      "riseOff": 5.5,
+      "set": 18.0315,
+      "setOff": 5.5
+    },
+    {
+      "place": "Mumbai",
+      "month": 12,
+      "date": 21,
+      "rise": 7.1199,
+      "riseOff": 5.5,
+      "set": 18.0952,
+      "setOff": 5.5
+    },
+    {
+      "place": "Singapore",
+      "month": 1,
+      "date": 15,
+      "rise": 7.2107,
+      "riseOff": 8.0,
+      "set": 19.257,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 3,
+      "date": 20,
+      "rise": 7.153,
+      "riseOff": 8.0,
+      "set": 19.2552,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 5,
+      "date": 10,
+      "rise": 6.9356,
+      "riseOff": 8.0,
+      "set": 19.1029,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 6,
+      "date": 21,
+      "rise": 7.0107,
+      "riseOff": 8.0,
+      "set": 19.2053,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 8,
+      "date": 5,
+      "rise": 7.0974,
+      "riseOff": 8.0,
+      "set": 19.2615,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 9,
+      "date": 22,
+      "rise": 6.9076,
+      "riseOff": 8.0,
+      "set": 19.0109,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 11,
+      "date": 8,
+      "rise": 6.778,
+      "riseOff": 8.0,
+      "set": 18.8349,
+      "setOff": 8.0
+    },
+    {
+      "place": "Singapore",
+      "month": 12,
+      "date": 21,
+      "rise": 7.0238,
+      "riseOff": 8.0,
+      "set": 19.0646,
+      "setOff": 8.0
+    },
+    {
+      "place": "Quito",
+      "month": 1,
+      "date": 15,
+      "rise": 6.3264,
+      "riseOff": -5.0,
+      "set": 18.4523,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 3,
+      "date": 20,
+      "rise": 6.3027,
+      "riseOff": -5.0,
+      "set": 18.4054,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 5,
+      "date": 10,
+      "rise": 6.1207,
+      "riseOff": -5.0,
+      "set": 18.2224,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 6,
+      "date": 21,
+      "rise": 6.2101,
+      "riseOff": -5.0,
+      "set": 18.315,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 8,
+      "date": 5,
+      "rise": 6.2809,
+      "riseOff": -5.0,
+      "set": 18.3819,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 9,
+      "date": 22,
+      "rise": 6.058,
+      "riseOff": -5.0,
+      "set": 18.1602,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 11,
+      "date": 8,
+      "rise": 5.9006,
+      "riseOff": -5.0,
+      "set": 18.0191,
+      "setOff": -5.0
+    },
+    {
+      "place": "Quito",
+      "month": 12,
+      "date": 21,
+      "rise": 6.1359,
+      "riseOff": -5.0,
+      "set": 18.2663,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 1,
+      "date": 15,
+      "rise": 5.9214,
+      "riseOff": -5.0,
+      "set": 18.6651,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 3,
+      "date": 20,
+      "rise": 6.2055,
+      "riseOff": -5.0,
+      "set": 18.3093,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 5,
+      "date": 10,
+      "rise": 6.279,
+      "riseOff": -5.0,
+      "set": 17.8715,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 6,
+      "date": 21,
+      "rise": 6.46,
+      "riseOff": -5.0,
+      "set": 17.8744,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 8,
+      "date": 5,
+      "rise": 6.4269,
+      "riseOff": -5.0,
+      "set": 18.0472,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 9,
+      "date": 22,
+      "rise": 5.9645,
+      "riseOff": -5.0,
+      "set": 18.0658,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 11,
+      "date": 8,
+      "rise": 5.5651,
+      "riseOff": -5.0,
+      "set": 18.1662,
+      "setOff": -5.0
+    },
+    {
+      "place": "Lima",
+      "month": 12,
+      "date": 21,
+      "rise": 5.6921,
+      "riseOff": -5.0,
+      "set": 18.5193,
+      "setOff": -5.0
+    },
+    {
+      "place": "Sydney",
+      "month": 1,
+      "date": 15,
+      "rise": 5.9942,
+      "riseOff": 11.0,
+      "set": 20.1473,
+      "setOff": 11.0
+    },
+    {
+      "place": "Sydney",
+      "month": 3,
+      "date": 20,
+      "rise": 6.9693,
+      "riseOff": 11.0,
+      "set": 19.1122,
+      "setOff": 11.0
+    },
+    {
+      "place": "Sydney",
+      "month": 5,
+      "date": 10,
+      "rise": 6.6093,
+      "riseOff": 10.0,
+      "set": 17.1048,
+      "setOff": 10.0
+    },
+    {
+      "place": "Sydney",
+      "month": 6,
+      "date": 21,
+      "rise": 7.0046,
+      "riseOff": 10.0,
+      "set": 16.8918,
+      "setOff": 10.0
+    },
+    {
+      "place": "Sydney",
+      "month": 8,
+      "date": 5,
+      "rise": 6.7464,
+      "riseOff": 10.0,
+      "set": 17.3004,
+      "setOff": 10.0
+    },
+    {
+      "place": "Sydney",
+      "month": 9,
+      "date": 22,
+      "rise": 5.7595,
+      "riseOff": 10.0,
+      "set": 17.8509,
+      "setOff": 10.0
+    },
+    {
+      "place": "Sydney",
+      "month": 11,
+      "date": 8,
+      "rise": 5.8165,
+      "riseOff": 11.0,
+      "set": 19.4859,
+      "setOff": 11.0
+    },
+    {
+      "place": "Sydney",
+      "month": 12,
+      "date": 21,
+      "rise": 5.6801,
+      "riseOff": 11.0,
+      "set": 20.0878,
+      "setOff": 11.0
+    },
+    {
+      "place": "Sydney",
+      "month": 4,
+      "date": 5,
+      "rise": 6.1702,
+      "riseOff": 10.0,
+      "set": 17.7531,
+      "setOff": 10.0
+    },
+    {
+      "place": "Sydney",
+      "month": 4,
+      "date": 6,
+      "rise": 6.1827,
+      "riseOff": 10.0,
+      "set": 17.7313,
+      "setOff": 10.0
+    },
+    {
+      "place": "Sydney",
+      "month": 10,
+      "date": 4,
+      "rise": 6.4828,
+      "riseOff": 11.0,
+      "set": 18.9934,
+      "setOff": 11.0
+    },
+    {
+      "place": "Sydney",
+      "month": 10,
+      "date": 5,
+      "rise": 6.4602,
+      "riseOff": 11.0,
+      "set": 19.0058,
+      "setOff": 11.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 1,
+      "date": 15,
+      "rise": 5.8527,
+      "riseOff": 2.0,
+      "set": 19.9984,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 3,
+      "date": 20,
+      "rise": 6.8267,
+      "riseOff": 2.0,
+      "set": 18.9565,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 5,
+      "date": 10,
+      "rise": 7.4666,
+      "riseOff": 2.0,
+      "set": 17.9524,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 6,
+      "date": 21,
+      "rise": 7.8586,
+      "riseOff": 2.0,
+      "set": 17.7459,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 8,
+      "date": 5,
+      "rise": 7.5935,
+      "riseOff": 2.0,
+      "set": 18.1574,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 9,
+      "date": 22,
+      "rise": 6.6036,
+      "riseOff": 2.0,
+      "set": 18.7078,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 11,
+      "date": 8,
+      "rise": 5.6642,
+      "riseOff": 2.0,
+      "set": 19.3444,
+      "setOff": 2.0
+    },
+    {
+      "place": "Cape Town",
+      "month": 12,
+      "date": 21,
+      "rise": 5.5356,
+      "riseOff": 2.0,
+      "set": 19.9435,
+      "setOff": 2.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 1,
+      "date": 15,
+      "rise": 5.3809,
+      "riseOff": -3.0,
+      "set": 22.0243,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 3,
+      "date": 20,
+      "rise": 7.5799,
+      "riseOff": -3.0,
+      "set": 19.7536,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 5,
+      "date": 10,
+      "rise": 9.1805,
+      "riseOff": -3.0,
+      "set": 17.7958,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 6,
+      "date": 21,
+      "rise": 9.9874,
+      "riseOff": -3.0,
+      "set": 17.1816,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 8,
+      "date": 5,
+      "rise": 9.2474,
+      "riseOff": -3.0,
+      "set": 18.0706,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 9,
+      "date": 22,
+      "rise": 7.3626,
+      "riseOff": -3.0,
+      "set": 19.5185,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 11,
+      "date": 8,
+      "rise": 5.5078,
+      "riseOff": -3.0,
+      "set": 21.0774,
+      "setOff": -3.0
+    },
+    {
+      "place": "Ushuaia",
+      "month": 12,
+      "date": 21,
+      "rise": 4.8643,
+      "riseOff": -3.0,
+      "set": 22.1816,
+      "setOff": -3.0
+    }
+  ]
+}
