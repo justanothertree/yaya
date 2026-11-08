@@ -644,11 +644,25 @@ export const finished = (
  * so a tally that computed its own windows would disagree with the view above it for one day in
  * seven, forever. The server is given ranges and does arithmetic it cannot have an opinion about.
  */
-export function tallyAsks(
-  goals: Goal[],
-  on: string,
-): Array<{ key: string; id: string; from: string; to: string }> {
-  const out: Array<{ key: string; id: string; from: string; to: string }> = []
+/**
+ * One question to the tally: a goal's window as instants, and as the LOCAL days it covers.
+ *
+ * ⚠️ BOTH, BECAUSE A SITTING HAS AN INSTANT AND A CIRCUIT GRID ENTRY HAS ONLY A DATE. The instants
+ * place sittings; the dates place what was typed into the grid for a linked exercise, which the
+ * server cannot turn into an instant without a zone it does not have. A server that predates the
+ * links draft ignores the two dates and answers exactly as before.
+ */
+export type TallyAsk = {
+  key: string
+  id: string
+  from: string
+  to: string
+  from_day: string
+  to_day: string
+}
+
+export function tallyAsks(goals: Goal[], on: string): TallyAsk[] {
+  const out: TallyAsk[] = []
   for (const g of goals) {
     if (!derived(g)) continue
     const w = goalWindow(g, on)
@@ -657,7 +671,14 @@ export function tallyAsks(
     if (!w) continue
     const from = dayStartISO(w.from)
     /* ⚠️ a key per WINDOW, not per goal — see windowKey, and the bug it is named after */
-    out.push({ key: windowKey(g.id, from), id: g.id, from, to: dayStartISO(w.to) })
+    out.push({
+      key: windowKey(g.id, from),
+      id: g.id,
+      from,
+      to: dayStartISO(w.to),
+      from_day: w.from,
+      to_day: w.to,
+    })
   }
   return out
 }
@@ -848,22 +869,21 @@ export const streakKey = (id: string, back: number): string => `${id}|${back}`
  * and a hand-moved goal keeps its progress in a single column — there is no per-window history to
  * count, so a streak would be invented rather than measured.
  */
-export function streakAsks(
-  goals: Goal[],
-  on: string,
-  back = STREAK_BACK,
-): Array<{ key: string; id: string; from: string; to: string }> {
-  const out: Array<{ key: string; id: string; from: string; to: string }> = []
+export function streakAsks(goals: Goal[], on: string, back = STREAK_BACK): TallyAsk[] {
+  const out: TallyAsk[] = []
   for (const g of goals) {
     if (!repeats(g) || !derived(g) || g.target == null) continue
     for (let i = 0; i <= back; i++) {
       const w = windowBack(g.scope, on, i)
       if (!w) break
+      /* the local days too, so the row of a month counts the grid's days the way the meter does */
       out.push({
         key: streakKey(g.id, i),
         id: g.id,
         from: dayStartISO(w.from),
         to: dayStartISO(w.to),
+        from_day: w.from,
+        to_day: w.to,
       })
     }
   }

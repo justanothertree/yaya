@@ -19,6 +19,7 @@ const set = (over: Partial<ChronSet> = {}): ChronSet => ({
   now: 'Quad Curls',
   on: '2026-11-07',
   value: 12,
+  counted: true,
   ...over,
 })
 

@@ -11,6 +11,11 @@ import {
   fixRunning,
   fixRunningDay,
   setsBetween,
+  myExercises,
+  linkExercise,
+  addSet,
+  dropSet,
+  type MyExercise,
   setAmount,
   setEntryPicture,
   setQuality,
@@ -36,7 +41,8 @@ import { tilesFor } from './nowTiles'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
-import { dayOfStart, moveNote, type ChronSet } from './sets'
+import { countedIn, dayOfStart, moveNote, setName, type ChronSet } from './sets'
+import { fit, fitText, unitOf } from './units'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
@@ -355,6 +361,22 @@ export function Timer({
    * has always been.
    */
   const [entSets, setEntSets] = useState<ChronSet[]>([])
+  /**
+   * Every exercise on your own Circuit people, and what each is linked to — see units.ts.
+   *
+   * ⚠️ EMPTY UNTIL THE LINKS DRAFT IS APPLIED, and then for anybody with no Circuit person: the
+   * activity editor shows no "From the Circuit" row and the counter counts as it always has.
+   */
+  const [exercises, setExercises] = useState<MyExercise[] | null>(null)
+  /* the exercise the counter is counting, when the running activity has linked ones */
+  const [pickEx, setPickEx] = useState<string | null>(null)
+  /**
+   * The sets this visit's counter wrote, newest last — what Undo takes back.
+   *
+   * ⚠️ A REF AND NOT THE TALLY'S OWN HISTORY, because a set is a row on the server with an id, and
+   * taking one back is deleting THAT row; the tally only knows numbers.
+   */
+  const setStack = useRef<Array<{ id: string; value: number; name: string }>>([])
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -545,6 +567,17 @@ export function Timer({
       dead = true
     }
   }, [seeing, bounds.toMs, beat, show])
+
+  useEffect(() => {
+    let dead = false
+    void (async () => {
+      const got = await myExercises()
+      if (!dead) setExercises(got)
+    })()
+    return () => {
+      dead = true
+    }
+  }, [beat])
 
   const fixStart = fixEnt ? (log.find((e) => e.id === fixEnt)?.start ?? null) : null
   useEffect(() => {
@@ -876,7 +909,55 @@ export function Timer({
     setTally(fresh(was))
     setRepsFailed(false)
     repsSaved.current = was
+    setStack.current = []
   }, [runId])
+
+  /**
+   * A press on the counter, for an exercise linked to the running activity — a SET, not a number.
+   *
+   * ⚠️ THE AMOUNT IS NOT WRITTEN FROM HERE. `chronicle_set_add` adds a counted set to its sitting's
+   * amount in the same statement, so this moves the screen and tells the flush the server already
+   * has it (`repsSaved`). Letting the absolute flush run as well would race the set: a flush that
+   * landed first and a set after it counts the same reps twice.
+   */
+  const pressSet = async (by: number, x: MyExercise) => {
+    if (!running) return
+    setRepsFailed(false)
+    repsSaved.current = (repsSaved.current ?? 0) + by
+    setTally((t) => bumpTally(t, by))
+    const r = await addSet(x.person, x.exercise, by, dayOfStart(running.start), running.id)
+    if ('why' in r) {
+      repsSaved.current = (repsSaved.current ?? 0) - by
+      setTally((t) => bumpTally(t, -by))
+      return moan(r.why)
+    }
+    setStack.current.push({ id: r.id, value: by, name: x.name })
+  }
+
+  /** Undo, in sets mode: the last set this visit wrote, and exactly what it added */
+  const dropLastSet = async () => {
+    const last = setStack.current.pop()
+    if (!last) return
+    repsSaved.current = Math.max(0, (repsSaved.current ?? 0) - last.value)
+    setTally((t) => bumpTally(t, -last.value))
+    const bad = await dropSet(last.id)
+    if (bad) {
+      setStack.current.push(last)
+      repsSaved.current = (repsSaved.current ?? 0) + last.value
+      setTally((t) => bumpTally(t, last.value))
+      moan(bad.why)
+    }
+  }
+
+  /** link or unlink one exercise, in the server's words when it refuses */
+  const toggleLink = async (x: MyExercise, activity: string | null) => {
+    if (busy) return
+    setBusy(true)
+    const bad = await linkExercise(x.person, x.exercise, activity)
+    setExercises(await myExercises())
+    setBusy(false)
+    if (bad) moan(bad.why)
+  }
 
   /* tapped fast, written slowly: one round trip a beat after the last tap rather than one each */
   useEffect(() => {
@@ -1407,6 +1488,17 @@ export function Timer({
               if (!metric) return null
               const at = reps ?? 0
               /**
+               * ⚠️ SETS MODE, WHEN THE ACTIVITY HAS EXERCISES LINKED TO IT. Each press is then a set
+               * of the chosen exercise, which the Circuit sees and the count includes — see
+               * `pressSet`. An activity with none counts exactly as it always has.
+               */
+              const linked = running
+                ? (exercises ?? []).filter((x) => x.activity === running.activity && x.ok)
+                : []
+              const chosen =
+                linked.find((x) => `${x.person}/${x.exercise}` === pickEx) ?? linked[0] ?? null
+              const lastSet = setStack.current[setStack.current.length - 1]
+              /**
                * ⚠️ THE UPDATER FORM, FOR THE REASON THE NUDGE BUTTONS IN THE EDITOR ALREADY
                * CARRY IN A COMMENT — and now through `tally.ts`, which is where the arithmetic
                * can be asked a question. Measured in the pane before the fix: three `+5` presses
@@ -1460,50 +1552,91 @@ export function Timer({
                     </output>
                     {state}
                   </div>
+                  {chosen ? (
+                    <div className="chron-tally-ex" role="group" aria-label="Which exercise">
+                      {linked.map((x) => {
+                        const key = `${x.person}/${x.exercise}`
+                        const on = key === `${chosen.person}/${chosen.exercise}`
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            className={'btn btn-ghost chron-tally-pick' + (on ? ' is-on' : '')}
+                            aria-pressed={on}
+                            onClick={() => setPickEx(key)}
+                          >
+                            {x.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
                   <div className="chron-tally-steps">
                     {[1, 5, 10].map((n) => (
                       <button
                         key={n}
                         className="btn btn-ghost chron-tally-up"
-                        onClick={() => press(n)}
+                        onClick={() => (chosen ? void pressSet(n, chosen) : press(n))}
                         disabled={busy}
-                        aria-label={`Add ${n} ${metric}`}
+                        aria-label={
+                          chosen ? `Add a set of ${n} ${chosen.name}` : `Add ${n} ${metric}`
+                        }
                       >
                         +{n}
                       </button>
                     ))}
                   </div>
-                  <div className="chron-tally-fix">
-                    <button
-                      className="btn btn-ghost chron-tally-down"
-                      onClick={() => press(-1)}
-                      disabled={busy || at === 0}
-                      aria-label={`Take 1 off — ${metric}`}
-                    >
-                      −1
-                    </button>
-                    {/**
-                     * ⚠️ UNDO TAKES BACK THE LAST PRESS, WHATEVER ITS SIZE. `−1` was the only
-                     * correction, so a `+10` meant as a `+1` was nine more taps to repair, made
-                     * between sets with the wrong number on screen the whole time. The label says
-                     * where it goes back to, because "Undo" alone does not say how far.
-                     */}
-                    <button
-                      className="btn btn-ghost chron-tally-undo"
-                      onClick={() => {
-                        setRepsFailed(false)
-                        setTally((t) => undoTally(t))
-                      }}
-                      disabled={busy || back === undefined}
-                      aria-label={
-                        back === undefined
-                          ? 'Nothing to undo'
-                          : `Undo — back to ${countText(back ?? 0)} ${metric}`
-                      }
-                    >
-                      ↶ Undo
-                    </button>
-                  </div>
+                  {chosen ? (
+                    <div className="chron-tally-fix">
+                      {/* ⚠️ ONE CORRECTION IN SETS MODE: Undo takes back the last SET, which is
+                          what a mis-press made. A −1 would have to edit some set, and which one
+                          is a question nobody between sets should have to answer. */}
+                      <button
+                        className="btn btn-ghost chron-tally-undo"
+                        onClick={() => void dropLastSet()}
+                        disabled={busy || !lastSet}
+                        aria-label={
+                          lastSet
+                            ? `Undo — take back ${countText(lastSet.value)} ${lastSet.name}`
+                            : 'Nothing to undo'
+                        }
+                      >
+                        ↶ Undo
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="chron-tally-fix">
+                      <button
+                        className="btn btn-ghost chron-tally-down"
+                        onClick={() => press(-1)}
+                        disabled={busy || at === 0}
+                        aria-label={`Take 1 off — ${metric}`}
+                      >
+                        −1
+                      </button>
+                      {/**
+                       * ⚠️ UNDO TAKES BACK THE LAST PRESS, WHATEVER ITS SIZE. `−1` was the only
+                       * correction, so a `+10` meant as a `+1` was nine more taps to repair, made
+                       * between sets with the wrong number on screen the whole time. The label says
+                       * where it goes back to, because "Undo" alone does not say how far.
+                       */}
+                      <button
+                        className="btn btn-ghost chron-tally-undo"
+                        onClick={() => {
+                          setRepsFailed(false)
+                          setTally((t) => undoTally(t))
+                        }}
+                        disabled={busy || back === undefined}
+                        aria-label={
+                          back === undefined
+                            ? 'Nothing to undo'
+                            : `Undo — back to ${countText(back ?? 0)} ${metric}`
+                        }
+                      >
+                        ↶ Undo
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })()}
@@ -2240,6 +2373,14 @@ export function Timer({
         const finishing = fixEnt == null
         const a = byId.get(e.activity)
         const metric = byId.get(entAct)?.metric
+        /**
+         * What the sitting's counted sets hold, which its count may not go below — unless this
+         * save moves it to an activity in another unit, which takes them back out on the server.
+         */
+        const unitMoves = unitOf(a?.metric) !== unitOf(metric)
+        const floor = unitMoves ? 0 : countedIn(entSets, e.id)
+        const asked = entAmount.trim() === '' ? 0 : Number(entAmount)
+        const below = !!e.end && floor > 0 && Number.isFinite(asked) && asked < floor
         const len = minsBetweenLocal(entFrom, entTo)
         const was = entWas.current
         const untouched =
@@ -2400,7 +2541,7 @@ export function Timer({
                   </button>
                   <button
                     className="btn"
-                    disabled={busy || (len ?? 0) < 0}
+                    disabled={busy || (len ?? 0) < 0 || below}
                     onClick={() => void saveEnt(metric)}
                   >
                     Save
@@ -2491,6 +2632,54 @@ export function Timer({
                 />
               </div>
             )}
+
+            {/**
+             * ⚠️ THE SETS THIS SITTING COUNTED, AND THE WAY TO TAKE ONE BACK. Its count holds the
+             * counted ones, so it cannot be lowered below them here — the server refuses that too —
+             * and the line under the field says so and says where the fix is: ✕ on a set takes back
+             * exactly what it added. A set that is not counted is shown as such, so the two numbers
+             * on this dialog never look like they disagree for no reason.
+             */}
+            {entSets.some((x) => x.entry === e.id) ? (
+              <div className="chron-sets">
+                <span className="muted">Sets</span>
+                <ul>
+                  {entSets
+                    .filter((x) => x.entry === e.id)
+                    .map((x) => (
+                      <li key={x.id}>
+                        {countText(x.value)} {setName(x)}
+                        {x.counted ? null : <span className="muted"> · not in the count</span>}
+                        <button
+                          type="button"
+                          className="btn btn-ghost chron-set-x"
+                          disabled={busy}
+                          aria-label={`Take back ${countText(x.value)} ${setName(x)}`}
+                          onClick={async () => {
+                            setBusy(true)
+                            const bad = await dropSet(x.id)
+                            setBusy(false)
+                            if (bad) return moan(bad.why)
+                            setEntSets((all) => all.filter((y) => y.id !== x.id))
+                            if (x.counted && entAmount.trim() !== '') {
+                              const n = Number(entAmount)
+                              if (Number.isFinite(n)) setEntAmount(String(Math.max(0, n - x.value)))
+                            }
+                            await after()
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+                {below ? (
+                  <p className="chron-sets-floor" role="alert">
+                    Its sets count {countText(floor)} {metric}. Take one back above to go lower.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             {/**
              * ⚠️ THE DOOR TO THE COUNTER, FOR AN ACTIVITY THAT HAS NONE. The `+1 / +5 / +10` row on
@@ -2787,6 +2976,82 @@ export function Timer({
                    * the quick switch for the two states it can express, and it defers when the
                    * value is the third.
                    */}
+                  {/**
+                   * ⚠️ FROM THE CIRCUIT: WHICH EXERCISES COUNT TOWARD THIS, decided by units and
+                   * never by names (§19g). Three kinds of row — ones that fit, as toggles; ones in a
+                   * different unit, said plainly; and ones whose unit nobody can compare, listed as
+                   * needing a decision rather than linked by a guess. It reads the SAVED metric,
+                   * because that is what the server compares.
+                   */}
+                  {(() => {
+                    const act = byId.get(fixAct ?? '')
+                    if (!act || !exercises?.length) return null
+                    const rows = exercises.map((x) => ({ x, f: fit(x.unit, act.metric) }))
+                    const can = rows.filter((r) => r.f.ok).map((r) => r.x)
+                    const other = rows.filter((r) => !r.f.ok && r.f.why === 'different')
+                    const unsure = rows.filter((r) => !r.f.ok && r.f.why === 'unknown')
+                    if (!act.metric?.trim()) {
+                      return (
+                        <p className="muted chron-links-note">
+                          Give this a count (reps, minutes, miles…) to link Circuit exercises to it.
+                        </p>
+                      )
+                    }
+                    return (
+                      <div
+                        className="chron-links"
+                        role="group"
+                        aria-label="Circuit exercises this counts"
+                      >
+                        <span className="muted">From the Circuit, in {act.metric}</span>
+                        {can.map((x) => {
+                          const mine = x.activity === act.id
+                          const elsewhere =
+                            x.activity && x.activity !== act.id ? byId.get(x.activity)?.name : null
+                          return (
+                            <button
+                              key={`${x.person}/${x.exercise}`}
+                              type="button"
+                              className={'btn btn-ghost chron-link' + (mine ? ' is-on' : '')}
+                              aria-pressed={mine}
+                              disabled={busy}
+                              onClick={() => void toggleLink(x, mine ? null : act.id)}
+                            >
+                              {x.name}
+                              {elsewhere ? (
+                                <span className="muted"> · counts as {elsewhere}</span>
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                        {can.length === 0 ? (
+                          <span className="muted">none in {act.metric}</span>
+                        ) : null}
+                        {other.length ? (
+                          <p className="muted chron-links-note">
+                            Not here: {other.map((r) => `${r.x.name} (${r.x.unit})`).join(', ')}.
+                          </p>
+                        ) : null}
+                        {unsure.length ? (
+                          <p className="muted chron-links-note">
+                            Needs a decision — these units cannot be compared with anything:{' '}
+                            {unsure.map((r) => `${r.x.name} (${r.x.unit || 'none'})`).join(', ')}.
+                          </p>
+                        ) : null}
+                        {exercises.some((x) => x.activity === act.id && x.ok === false) ? (
+                          <p className="muted chron-links-note">
+                            A link here no longer agrees on units, so it counts nothing until it
+                            does:{' '}
+                            {exercises
+                              .filter((x) => x.activity === act.id && x.ok === false)
+                              .map((x) => `${x.name} (${fitText(fit(x.unit, act.metric))})`)
+                              .join(', ')}
+                            .
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
                   {byId.get(fixAct ?? '')?.visibility === 'certain' ? (
                     <p className="muted chron-share-note">
                       Shared with the friends you chose. Change who in <strong>Sharing</strong>.

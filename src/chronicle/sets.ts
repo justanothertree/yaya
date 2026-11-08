@@ -26,7 +26,17 @@ export type ChronSet = {
   /** the LOCAL day it counts for */
   on: string
   value: number
+  /**
+   * Whether this set is IN its sitting's amount — written through when it was counted, for an
+   * exercise linked to that sitting's activity in a unit they share. A set that is not counted is
+   * still a set: the Circuit sees it, the sitting's count does not.
+   */
+  counted: boolean
 }
+
+/** How much of a sitting's count its sets hold — the floor the server holds that count to. */
+export const countedIn = (sets: readonly ChronSet[], entry: string): number =>
+  sets.reduce((n, s) => (s.entry === entry && s.counted ? n + s.value : n), 0)
 
 /**
  * What a set is called on screen: the exercise's name today, or the one it had when the set was

@@ -17097,6 +17097,59 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
+/* which Circuit exercises an activity counts, in the activity editor — see units.ts */
+.chron-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+}
+.chron-link,
+.chron-tally-pick {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.7rem;
+}
+.chron-link.is-on,
+.chron-tally-pick.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.chron-links-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.78rem;
+}
+/* which exercise the counter is counting, in sets mode */
+.chron-tally-ex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* a sitting's sets in its editor, each with the way to take it back */
+.chron-sets ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+.chron-sets li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* ⚠️ PIXELS: the root size is fluid, and a touch target is a length */
+.chron-set-x {
+  min-width: 32px;
+  min-height: 32px;
+}
+.chron-sets-floor {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--warn, #f0b429);
+}
 /* what a move does not take with it — see moveNote in sets.ts */
 .chron-move-note {
   margin: 0.35rem 0 0;

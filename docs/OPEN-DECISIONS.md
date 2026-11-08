@@ -1126,7 +1126,7 @@ else**. Step 1 (#85) does not depend on them.
    in §19e. Nobody becomes linked by it, and an unclaimed person's logs stay exactly where they
    are.
 
-✅ **ANSWERED BY EVAN, 9 Nov 2026 — all three, with rules.** His words, then what each means for
+✅ **ANSWERED BY EVAN, 9 Nov 2026 — all three, with rules.** Evan's words, then what each means for
 the build. Approved for implementation and isolated testing only; nothing here is approval to
 apply anything to production.
 

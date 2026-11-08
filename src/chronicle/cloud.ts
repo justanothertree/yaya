@@ -15,6 +15,10 @@ import {
   pvFixRunningDay,
   pvEditEntryDay,
   pvSetsBetween,
+  pvMyExercises,
+  pvLinkExercise,
+  pvSetAdd,
+  pvSetDrop,
   pvImport,
   pvMarksFor,
   pvSetMark,
@@ -634,7 +638,14 @@ export async function dropEntry(id: string): Promise<boolean> {
  * of a duplicate — so a streak was unaskable. Omitting the key still answers by goal id.
  */
 export async function tally(
-  asks: Array<{ id: string; from: string; to: string; key?: string }>,
+  asks: Array<{
+    id: string
+    from: string
+    to: string
+    key?: string
+    from_day?: string
+    to_day?: string
+  }>,
 ): Promise<Record<string, number>> {
   if (!asks.length) return {}
   if (previewMember) return pvTally(asks)
@@ -751,7 +762,87 @@ export async function setsBetween(fromDay: string, toDay: string): Promise<Chron
     now: r.now == null ? null : String(r.now),
     on: String(r.on ?? ''),
     value: num(r.value as number | string | null),
+    /* absent from the step-1 reader, which never counted anything */
+    counted: r.counted === true,
   }))
+}
+
+/**
+ * Every exercise on your own Circuit people, with its unit as written and as normalised, and the
+ * activity it counts toward if it is linked — see units.ts and the links draft.
+ *
+ * ⚠️ EMPTY ON ANY REFUSAL, which is what every account gets until the links draft is applied: no
+ * exercises to offer is exactly the room before this existed.
+ */
+export type MyExercise = {
+  person: string
+  exercise: string
+  name: string
+  unit: string
+  canon: string | null
+  activity: string | null
+  /** whether the link still agrees, null when there is no link */
+  ok: boolean | null
+}
+
+export async function myExercises(): Promise<MyExercise[]> {
+  if (previewMember) return pvMyExercises()
+  const { data, error } = await getSupabaseClient().rpc('chronicle_my_exercises')
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    person: String(r.person),
+    exercise: String(r.exercise),
+    name: String(r.name ?? ''),
+    unit: String(r.unit ?? ''),
+    canon: r.canon == null ? null : String(r.canon),
+    activity: r.activity == null ? null : String(r.activity),
+    ok: r.ok == null ? null : r.ok === true,
+  }))
+}
+
+/** Link an exercise to an activity, or unlink it with null — refused in the server's words. */
+export async function linkExercise(
+  person: string,
+  exercise: string,
+  activity: string | null,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvLinkExercise(person, exercise, activity)
+  const { error } = await getSupabaseClient().rpc('chronicle_exercise_link', {
+    p_person: person,
+    p_exercise: exercise,
+    p_activity: activity,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Count a set. With a sitting and a link that agrees, the server adds it to the sitting's amount in
+ * the same statement — so the counter must NOT also write that amount, or it counts twice.
+ */
+export async function addSet(
+  person: string,
+  exercise: string,
+  value: number,
+  day: string,
+  entry: string | null,
+): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvSetAdd(person, exercise, value, day, entry)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_set_add', {
+    p_person: person,
+    p_exercise: exercise,
+    p_value: value,
+    p_day: day,
+    p_entry: entry,
+  })
+  if (error || typeof data !== 'string') return { why: error?.message || 'that did not save' }
+  return { id: data }
+}
+
+/** Take a set back — and, if it was counted, exactly what it added to its sitting. */
+export async function dropSet(id: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvSetDrop(id)
+  const { error } = await getSupabaseClient().rpc('chronicle_set_drop', { p_id: id })
+  return error ? { why: error.message || 'that did not save' } : null
 }
 
 /**
@@ -1026,6 +1117,8 @@ export type Putback = {
   notes: number
   /** sets of an exercise put back — see sets.ts */
   sets: number
+  /** exercise-to-activity links put back, only where the units agree here — see units.ts */
+  links: number
   skipped: number
 }
 
@@ -1060,6 +1153,7 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     schedules: n('schedules'),
     notes: n('notes'),
     sets: n('sets'),
+    links: n('links'),
     skipped: n('skipped'),
   }
 }

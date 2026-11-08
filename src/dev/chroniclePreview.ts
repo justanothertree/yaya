@@ -9,10 +9,11 @@ import {
   type Entry,
   type Moods,
 } from '../chronicle/record'
-import type { NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
+import type { MyExercise, NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
 import type { DayNote } from '../chronicle/journal'
 import type { Plan } from '../chronicle/plan'
 import type { ChronSet } from '../chronicle/sets'
+import { fit, fitText, unitOf } from '../chronicle/units'
 import { pvPictures } from './picturePreview'
 
 // ── DEV-ONLY chronicle preview store ─────────────────────────────────────────
@@ -201,7 +202,23 @@ type Store = {
    * set writer reads. Another member's people are not here at all, which is the double's way of
    * saying the writer refuses them.
    */
-  circuit: Record<string, Array<{ id: string; name: string }>>
+  circuit: Record<string, PvExercise[]>
+  /** `chronicle_exercise_links`: an exercise of yours counts toward one activity of yours */
+  links: PvLink[]
+  /**
+   * The part of `circuit_logs` the goals read for a linked exercise — what was typed into the grid,
+   * by date. ⚠️ ONLY YOUR OWN PEOPLE'S, and only for the goals: the double has no Circuit board.
+   */
+  circuitLogs: PvLog[]
+}
+
+type PvExercise = { id: string; name: string; unit?: string }
+type PvLink = { person: string; exercise: string; activity: string; created: number }
+type PvLog = {
+  id: string
+  person: string
+  date: string
+  entries: Array<{ eid: string; val: number }>
 }
 
 type PvSet = {
@@ -214,6 +231,8 @@ type PvSet = {
   value: number
   created: number
   updated: number
+  /** whether it is IN its sitting's amount — see ChronSet.counted */
+  counted: boolean
 }
 
 type PvDays = { goal: string; from: string; days: number; setAt: number }
@@ -666,12 +685,45 @@ function seed(): Store {
      * different record (`circuit_logs`, read as a moment) and nothing reads these sets into the
      * log yet — that is step 2 — so the two never show the same reps twice.
      */
+    /**
+     * ⚠️ FOUR EXERCISES, ONE FOR EACH THING A LINK CAN BE: two in reps that Gym counts, one in
+     * seconds that Gym cannot, and one in "other" that nothing can be compared with — so the
+     * activity editor's three kinds of row all have something to show.
+     */
     circuit: {
       'pv-person': [
-        { id: 'pv-ex-quad', name: 'Quad Curl' },
-        { id: 'pv-ex-bench', name: 'Bench' },
+        { id: 'pv-ex-quad', name: 'Quad Curl', unit: 'reps' },
+        { id: 'pv-ex-bench', name: 'Bench', unit: 'reps' },
+        { id: 'pv-ex-plank', name: 'Plank', unit: 'sec' },
+        { id: 'pv-ex-what', name: 'Mystery move', unit: 'other' },
       ],
     },
+    links: [
+      {
+        person: 'pv-person',
+        exercise: 'pv-ex-quad',
+        activity: 'pv-gym',
+        created: at(10, 9).getTime(),
+      },
+      {
+        person: 'pv-person',
+        exercise: 'pv-ex-bench',
+        activity: 'pv-gym',
+        created: at(10, 9).getTime(),
+      },
+    ],
+    /* a day of Quad Curl typed into the grid with no sitting, two days ago — what a Gym goal adds */
+    circuitLogs: [
+      {
+        id: 'pv-cl1',
+        person: 'pv-person',
+        date: localISO(at(2, 12)),
+        entries: [
+          { eid: 'pv-ex-quad', val: 20 },
+          { eid: 'pv-ex-plank', val: 90 },
+        ],
+      },
+    ],
     sets: [
       {
         id: 'pv-s1',
@@ -683,6 +735,8 @@ function seed(): Store {
         value: 15,
         created: at(3, 7, 20).getTime(),
         updated: at(3, 7, 20).getTime(),
+        /* counted: pv-e10's 55 reps hold these 15 and the 10 below, and 30 counted by hand */
+        counted: true,
       },
       {
         id: 'pv-s2',
@@ -694,6 +748,7 @@ function seed(): Store {
         value: 10,
         created: at(3, 7, 30).getTime(),
         updated: at(3, 7, 30).getTime(),
+        counted: true,
       },
     ],
   }
@@ -722,6 +777,8 @@ const blank = (): Store => ({
   dayNotes: [],
   sets: [],
   circuit: {},
+  links: [],
+  circuitLogs: [],
 })
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
@@ -849,8 +906,33 @@ function worth(g: Goal, fromISO: string, toISO: string): number {
   return total
 }
 
+/**
+ * `chronicle_manual_amount`: what was typed into the grid for exercises linked to this activity,
+ * on [fromDay, toDay) — every log row for a day, units that still agree, nothing with a sitting.
+ */
+const manualOf = (activity: string, fromDay: string, toDay: string): number =>
+  db()
+    .links.filter((l) => l.activity === activity && linkOk(l.person, l.exercise, l.activity))
+    .reduce(
+      (n, l) =>
+        n +
+        db()
+          .circuitLogs.filter((g) => g.person === l.person && g.date >= fromDay && g.date < toDay)
+          .flatMap((g) => g.entries)
+          .filter((x) => x.eid === l.exercise && x.val > 0)
+          .reduce((m, x) => m + x.val, 0),
+      0,
+    )
+
 export const pvTally = (
-  asks: Array<{ id: string; from: string; to: string; key?: string }>,
+  asks: Array<{
+    id: string
+    from: string
+    to: string
+    key?: string
+    from_day?: string
+    to_day?: string
+  }>,
 ): Record<string, number> => {
   const out: Record<string, number> = {}
   for (const ask of asks) {
@@ -860,7 +942,11 @@ export const pvTally = (
        say about that". The room never asks (tallyAsks skips them), so nothing was wrong on
        screen; the contract was. */
     if (!g || (!g.activity && !g.cat)) continue
-    out[ask.key ?? ask.id] = worth(g, ask.from, ask.to)
+    out[ask.key ?? ask.id] =
+      worth(g, ask.from, ask.to) +
+      (g.counts === 'amount' && g.activity && ask.from_day && ask.to_day
+        ? manualOf(g.activity, ask.from_day, ask.to_day)
+        : 0)
   }
   return out
 }
@@ -1387,6 +1473,33 @@ const nearStart = (day: string, startISO: string): boolean =>
 
 const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
 
+/** `chronicle_link_ok`: your person, its exercise, your activity, and units that normalise and agree */
+const linkOk = (person: string | null, exercise: string, activity: string | null): boolean => {
+  const ex = person ? db().circuit[person]?.find((x) => x.id === exercise) : undefined
+  const act = activity ? db().acts.find((a) => a.id === activity) : undefined
+  return !!ex && !!act && fit(ex.unit, act.metric).ok
+}
+
+const linkFor = (person: string | null, exercise: string): PvLink | undefined =>
+  db().links.find((l) => l.person === person && l.exercise === exercise)
+
+/** what a sitting's counted sets hold — the floor its count is held to */
+const countedOf = (entry: string): number =>
+  db().sets.reduce((n, x) => (x.entry === entry && x.counted ? n + x.value : n), 0)
+
+/** a move between units takes the counted sets back out, and uncounts them */
+const uncountIfUnitChanged = (entry: string, wasUnit: string | null) => {
+  const e = db().ents.find((x) => x.id === entry)
+  const now = unitOf(db().acts.find((a) => a.id === e?.activity)?.metric)
+  if (!e || now === wasUnit) return
+  const back = countedOf(entry)
+  e.amount = Math.max(0, (e.amount ?? 0) - back) || null
+  for (const x of db().sets) if (x.entry === entry && x.counted) x.counted = false
+}
+
+const unitOfEntry = (entry: string): string | null =>
+  unitOf(db().acts.find((a) => a.id === db().ents.find((x) => x.id === entry)?.activity)?.metric)
+
 /**
  * `chronicle_set_add`. ⚠️ THE NAME COMES FROM THE PERSON'S OWN LIST, never from the caller (§15b),
  * and the person and the sitting are checked by hand — the server's function cannot lean on
@@ -1413,6 +1526,13 @@ export const pvSetAdd = (
   } else if (!day || day > utcDay(Date.now() + 86_400_000)) {
     return { why: 'that day has not come yet' }
   }
+  /* ⚠️ COUNTED ONLY WITH A SITTING, A LINK TO ITS ACTIVITY, AND UNITS THAT STILL AGREE — and then
+     written through to its amount, as chronicle_set_add does in the same statement */
+  const sit = entry != null ? db().ents.find((x) => x.id === entry) : undefined
+  const counted =
+    !!sit &&
+    linkFor(person, exercise)?.activity === sit.activity &&
+    linkOk(person, exercise, sit.activity)
   const id = mint('pv-s')
   const now = Date.now()
   db().sets.push({
@@ -1425,8 +1545,71 @@ export const pvSetAdd = (
     value,
     created: now,
     updated: now,
+    counted,
   })
+  if (counted && sit) sit.amount = Math.min((sit.amount ?? 0) + value, 1e9)
   return { id }
+}
+
+/** `chronicle_set_change`: one number, and what it added to its sitting moves with it */
+export const pvSetChange = (id: string, value: number): { why: string } | null => {
+  if (!(value > 0) || value > 1e9) return { why: 'that is not a number of anything' }
+  const x = db().sets.find((y) => y.id === id)
+  if (!x) return { why: 'no such set' }
+  const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
+  if (sit) sit.amount = Math.max(0, Math.min((sit.amount ?? 0) + (value - x.value), 1e9)) || null
+  Object.assign(x, { value, updated: Date.now() })
+  return null
+}
+
+/** `chronicle_set_drop`: gone, and exactly what it added to its sitting with it */
+export const pvSetDrop = (id: string): { why: string } | null => {
+  const x = db().sets.find((y) => y.id === id)
+  if (!x) return { why: 'no such set' }
+  const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
+  if (sit) sit.amount = Math.max(0, (sit.amount ?? 0) - x.value) || null
+  db().sets = db().sets.filter((y) => y.id !== id)
+  return null
+}
+
+/** `chronicle_my_exercises`: every exercise on your own people, its units, and its link */
+export const pvMyExercises = (): MyExercise[] =>
+  Object.entries(db().circuit).flatMap(([person, list]) =>
+    list.map((x) => {
+      const l = linkFor(person, x.id)
+      return {
+        person,
+        exercise: x.id,
+        name: x.name,
+        unit: x.unit ?? '',
+        canon: unitOf(x.unit),
+        activity: l?.activity ?? null,
+        ok: l ? linkOk(person, x.id, l.activity) : null,
+      }
+    }),
+  )
+
+/** `chronicle_exercise_link`, in its own order and its own three refusals */
+export const pvLinkExercise = (
+  person: string,
+  exercise: string,
+  activity: string | null,
+): { why: string } | null => {
+  const list = db().circuit[person]
+  if (!list) return { why: 'no such person of yours' }
+  const ex = list.find((x) => x.id === exercise)
+  if (!ex) return { why: 'no such exercise' }
+  if (activity == null) {
+    db().links = db().links.filter((l) => !(l.person === person && l.exercise === exercise))
+    return null
+  }
+  const act = db().acts.find((a) => a.id === activity && !a.archived)
+  if (!act) return { why: 'that is not one of your activities' }
+  const why = fitText(fit(ex.unit, act.metric))
+  if (why) return { why }
+  db().links = db().links.filter((l) => !(l.person === person && l.exercise === exercise))
+  db().links.push({ person, exercise, activity, created: Date.now() })
+  return null
 }
 
 /**
@@ -1434,8 +1617,22 @@ export const pvSetAdd = (
  * `circuit_people` holds for an account-linked person. ⚠️ A SEAM FOR TESTS, because the double has
  * no Circuit of its own; replacing a list is how a rename or a deletion in the grid is shown.
  */
-export const pvGiveCircuit = (person: string, exercises: Array<{ id: string; name: string }>) => {
+export const pvGiveCircuit = (person: string, exercises: PvExercise[]) => {
   db().circuit[person] = exercises.map((x) => ({ ...x }))
+}
+
+/** A day typed into the Circuit grid for one of YOUR people — the other half of the same seam. */
+export const pvGiveCircuitLog = (
+  person: string,
+  date: string,
+  entries: Array<{ eid: string; val: number }>,
+) => {
+  db().circuitLogs.push({
+    id: mint('pv-cl'),
+    person,
+    date,
+    entries: entries.map((x) => ({ ...x })),
+  })
 }
 
 /** `chronicle_sets_between`: yours, half-open, with today's name looked up BY ID */
@@ -1452,6 +1649,7 @@ export const pvSetsBetween = (from: string, to: string): ChronSet[] =>
       now: (x.person && db().circuit[x.person]?.find((e) => e.id === x.exercise)?.name) || null,
       on: x.on,
       value: x.value,
+      counted: x.counted,
     }))
 
 /**
@@ -1469,11 +1667,13 @@ export const pvEditEntryDay = (
   if (fromISO && (!day || !nearStart(day, fromISO))) {
     return { why: 'that is not the day that session starts on' }
   }
+  const was = unitOfEntry(id)
   const no = pvEditEntry(id, fromISO, toISO, null, activity)
   if (no) return no
   for (const x of db().sets) {
     if (x.entry === id && x.on !== day) Object.assign(x, { on: day, updated: Date.now() })
   }
+  uncountIfUnitChanged(id, was)
   return null
 }
 
@@ -1487,15 +1687,19 @@ export const pvFixRunningDay = (
   if (e && (!day || !nearStart(day, fromISO ?? e.start))) {
     return { why: 'that is not the day that session starts on' }
   }
+  const was = e ? unitOfEntry(e.id) : null
   const no = pvFixRunning(fromISO, activity)
   if (no || !e) return no
   for (const x of db().sets) {
     if (x.entry === e.id && x.on !== day) Object.assign(x, { on: day, updated: Date.now() })
   }
+  uncountIfUnitChanged(e.id, was)
   return null
 }
 
 export const pvAmount = (id: string, amount: number | null): boolean => {
+  /* ⚠️ NOT BELOW ITS COUNTED SETS — chronicle_entry_amount's refusal, which a boolean cannot word */
+  if ((amount ?? 0) < countedOf(id)) return false
   const e = db().ents.find((x) => x.id === id)
   if (e) e.amount = amount
   return !!e
@@ -1658,6 +1862,7 @@ export const pvExport = (): Record<string, unknown> => ({
       entry: x.entry,
       on_day: x.on,
       value: x.value,
+      counted: x.counted,
       created_at: new Date(x.created).toISOString(),
       updated_at: new Date(x.updated).toISOString(),
     })),
@@ -1701,6 +1906,15 @@ export const pvExport = (): Record<string, unknown> => ({
           done_at: m.doneAt == null ? null : new Date(m.doneAt).toISOString(),
           set_at: new Date(m.setAt).toISOString(),
         })),
+    })),
+  /* before routines, where chronicle_export puts them */
+  exercise_links: [...db().links]
+    .sort((a, b) => a.person.localeCompare(b.person) || a.exercise.localeCompare(b.exercise))
+    .map((l) => ({
+      person: l.person,
+      exercise: l.exercise,
+      activity: l.activity,
+      created_at: new Date(l.created).toISOString(),
     })),
   routines: [...db().routines]
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -1772,6 +1986,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     schedules: 0,
     notes: 0,
     sets: 0,
+    links: 0,
     skipped: 0,
   }
   /** the goals THIS import created — the only ones a schedule may arrive with */
@@ -1956,6 +2171,8 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     const created = Date.parse(String(x.created_at ?? ''))
     const updated = Date.parse(String(x.updated_at ?? ''))
     db().sets.push({
+      /* counted only WITH a sitting: the file's amount already holds it */
+      counted: entry != null && x.counted === true,
       id,
       person: person && db().circuit[person] ? person : null,
       exercise,
@@ -2141,6 +2358,34 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     }
     db().dayNotes.push({ id: mint('pv-dn'), on, at, body })
     out.notes++
+  }
+
+  /**
+   * The links, as `chronicle_import` puts them back: only where they agree HERE — your person, your
+   * activity, units that normalise and match. One that does not is skipped, never guessed into place.
+   */
+  for (const l of list('exercise_links')) {
+    const person = str(l.person)
+    const exercise = str(l.exercise)
+    const activity = str(l.activity)
+    if (
+      !person ||
+      !exercise ||
+      !activity ||
+      !linkOk(person, exercise, activity) ||
+      linkFor(person, exercise)
+    ) {
+      out.skipped++
+      continue
+    }
+    const made = Date.parse(String(l.created_at ?? ''))
+    db().links.push({
+      person,
+      exercise,
+      activity,
+      created: Number.isFinite(made) ? made : Date.now(),
+    })
+    out.links++
   }
 
   for (const p of list('plans')) {
