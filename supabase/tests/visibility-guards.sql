@@ -1,13 +1,13 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN N3: day notes first, then marks, with the day-notes fixture fixed; every suite, both new tests, then real Auth + PostgREST.
+-- RUN N4: marks first, then day notes, everything clean, then real Auth + PostgREST.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
-\echo === applying the day-notes draft (BEFORE marks)
-\ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
 \echo === applying step 1
 \ir ../../docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql
 \echo === applying step 3
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
+\echo === applying the day-notes draft (AFTER marks)
+\ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
 \echo === the standing guards, against a schema with both drafts in it
 \ir visibility-guards.orig.sql
 \echo === the daily flow
