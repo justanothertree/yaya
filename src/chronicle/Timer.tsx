@@ -29,6 +29,7 @@ import { HoldButton } from '../ui/HoldButton'
 import { seenPictures, type Kept } from '../pictures/cloud'
 import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
+import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
   clockOfLocal,
@@ -655,8 +656,14 @@ export function Timer({
   const flushReps = async () => {
     if (!runId || reps === repsSaved.current) return
     const want = reps
-    if (await setAmount(runId, want)) repsSaved.current = want
-    else moan('those reps did not save')
+    if (await setAmount(runId, want)) {
+      repsSaved.current = want
+      setRepsFailed(false)
+      setRepsSavedAt(Date.now())
+    } else {
+      setRepsFailed(true)
+      moan('those reps did not save')
+    }
   }
 
   /**
@@ -738,14 +745,30 @@ export function Timer({
    * the number this screen is showing, where `amount = amount + n` would double a rep for every
    * retry.
    */
-  const [reps, setReps] = useState<number | null>(null)
+  /* ⚠️ ONE VALUE FOR THE COUNT AND ITS UNDO HISTORY — see tally.ts for why they cannot be two */
+  const [tally, setTally] = useState<Tally>(() => fresh(null))
+  const reps = tally.n
+  /**
+   * Whether the last flush failed, so the row can say so and offer to try again.
+   *
+   * ⚠️ THE ROW USED TO SAY NOTHING EITHER WAY. A failed write sent one toast and then waited for
+   * the next tap to try again — so a count you stopped tapping at, on a bad connection, sat on
+   * screen looking saved while the sitting held the old number. Between sets is exactly when you
+   * stop tapping.
+   */
+  const [repsFailed, setRepsFailed] = useState(false)
+  /* ⚠️ A RE-RENDER ON EVERY SAVE, which is all this is for. `repsSaved` is a ref because the
+     flush guard must read the latest value, and a ref changing draws nothing — so "saving…"
+     would sit on screen until the clock's next tick happened to repaint it. */
+  const [, setRepsSavedAt] = useState(0)
   const repsSaved = useRef<number | null>(null)
   const liveReps = useRef<number | null>(null)
   liveReps.current = running?.amount ?? null
   useEffect(() => {
     /* the count belongs to the sitting exactly as a journal entry does */
     const was = liveReps.current
-    setReps(was)
+    setTally(fresh(was))
+    setRepsFailed(false)
     repsSaved.current = was
   }, [runId])
 
@@ -1152,7 +1175,10 @@ export function Timer({
       <div className="chron-timer">
         {running ? (
           <>
-            <span className="chron-run" aria-live="off">
+            {/* ⚠️ `role="timer"`, which is what this is. Its implicit live setting is already
+                `off` — a clock announcing every second would drown everything else on the page —
+                so the role adds the name a screen reader gives it without adding any noise. */}
+            <span className="chron-run" role="timer" aria-live="off">
               {clockText(Date.now() - Date.parse(running.start))}
             </span>
             <span className="chron-run-name">
@@ -1191,8 +1217,8 @@ export function Timer({
              *
              * ⚠️ AND THE STEPS ARE +1 / +5 / +10 RATHER THAN A NUMBER FIELD. The whole request
              * was "simple ui buttons to easily tap add reps" — a keyboard between sets is the
-             * thing being replaced, not the thing to offer. The one ✕ undoes a mis-tap, which is
-             * the only other thing a thumb needs here.
+             * thing being replaced, not the thing to offer. `−1` and Undo are the only other
+             * things a thumb needs here — see the note on Undo below.
              */}
             {(() => {
               const metric = running ? (byId.get(running.activity)?.metric ?? null) : null
@@ -1200,45 +1226,102 @@ export function Timer({
               const at = reps ?? 0
               /**
                * ⚠️ THE UPDATER FORM, FOR THE REASON THE NUDGE BUTTONS IN THE EDITOR ALREADY
-               * CARRY IN A COMMENT. `at` is read from the render that drew the button, so two
-               * taps that both land before React has committed the first compute from the same
-               * number and the second overwrites rather than adds — a tap counted and thrown
-               * away, on the one control in this room whose entire job is counting taps.
-               *
-               * Measured in the pane: three `+5` presses inside one task gave **5 reps**, and
-               * with the updater they give **15**. A thumb cannot press three times inside one
-               * task, which is why this had never shown up from use — a real double-tap is a
-               * macrotask apart and was correct both before and after (two `+1` at gaps of 0,
-               * 16, 40, 80 and 150ms all gave 2). What makes it worth fixing anyway is that the
-               * window is not a constant: it is "before React commits", which on a slow render
-               * is as long as the render takes, and the failure is silent.
+               * CARRY IN A COMMENT — and now through `tally.ts`, which is where the arithmetic
+               * can be asked a question. Measured in the pane before the fix: three `+5` presses
+               * inside one task gave **5 reps**; through the updater they give **15**. A thumb
+               * cannot press three times inside one task, but the window is "before React
+               * commits", which on a slow render is as long as the render takes.
                */
-              const bump = (by: number) =>
-                setReps((cur) => Math.max(0, Math.round((cur ?? 0) + by)))
+              const press = (by: number) => {
+                setRepsFailed(false)
+                setTally((t) => bumpTally(t, by))
+              }
+              const back = undoTo(tally)
+              /**
+               * What the row says about the server's copy.
+               *
+               * ⚠️ NOTHING AT ALL WHEN THERE IS NOTHING TO SAY. "0 reps · saved" on a sitting
+               * that has counted nothing is a word about a non-event; the state appears the
+               * moment there is a number for it to be about.
+               */
+              const saving = reps !== repsSaved.current
+              const state = repsFailed ? (
+                <button
+                  className="btn btn-ghost chron-tally-retry"
+                  onClick={() => void flushReps()}
+                  disabled={busy}
+                >
+                  not saved — try again
+                </button>
+              ) : saving ? (
+                <span className="muted chron-tally-state">saving…</span>
+              ) : at > 0 ? (
+                <span className="muted chron-tally-state">saved</span>
+              ) : null
               return (
-                <div className="chron-tally">
-                  <span className="chron-tally-at">
-                    <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
-                  </span>
-                  {[1, 5, 10].map((n) => (
+                /**
+                 * ⚠️ BUILT FOR BETWEEN SETS. The count is the biggest thing in the row because it
+                 * is the thing you glance at with your hands full; the three steps share the full
+                 * width so the one you want is under the thumb wherever it lands; and the two
+                 * corrections sit on their own line so a correction is never one finger-width
+                 * from the thing it corrects.
+                 *
+                 * ⚠️ AND THE UNIT IS SAID OUT LOUD. The buttons read "+5" on screen, which is
+                 * unambiguous beside "24 reps", and "Add 5 reps" to a screen reader, which has no
+                 * "beside". The count is an `<output>` that announces politely, so a run of taps
+                 * reads back as the number they arrived at rather than every step on the way.
+                 */
+                <div className="chron-tally" role="group" aria-label={`Count ${metric}`}>
+                  <div className="chron-tally-head">
+                    <output className="chron-tally-at" aria-live="polite" aria-atomic="true">
+                      <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
+                    </output>
+                    {state}
+                  </div>
+                  <div className="chron-tally-steps">
+                    {[1, 5, 10].map((n) => (
+                      <button
+                        key={n}
+                        className="btn btn-ghost chron-tally-up"
+                        onClick={() => press(n)}
+                        disabled={busy}
+                        aria-label={`Add ${n} ${metric}`}
+                      >
+                        +{n}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="chron-tally-fix">
                     <button
-                      key={n}
-                      className="btn btn-ghost chron-tally-up"
-                      onClick={() => bump(n)}
-                      disabled={busy}
+                      className="btn btn-ghost chron-tally-down"
+                      onClick={() => press(-1)}
+                      disabled={busy || at === 0}
+                      aria-label={`Take 1 off — ${metric}`}
                     >
-                      +{n}
+                      −1
                     </button>
-                  ))}
-                  <button
-                    className="btn btn-ghost chron-tally-down"
-                    onClick={() => bump(-1)}
-                    disabled={busy || at === 0}
-                    aria-label={`One fewer ${metric}`}
-                    title={`One fewer ${metric}`}
-                  >
-                    −1
-                  </button>
+                    {/**
+                     * ⚠️ UNDO TAKES BACK THE LAST PRESS, WHATEVER ITS SIZE. `−1` was the only
+                     * correction, so a `+10` meant as a `+1` was nine more taps to repair, made
+                     * between sets with the wrong number on screen the whole time. The label says
+                     * where it goes back to, because "Undo" alone does not say how far.
+                     */}
+                    <button
+                      className="btn btn-ghost chron-tally-undo"
+                      onClick={() => {
+                        setRepsFailed(false)
+                        setTally((t) => undoTally(t))
+                      }}
+                      disabled={busy || back === undefined}
+                      aria-label={
+                        back === undefined
+                          ? 'Nothing to undo'
+                          : `Undo — back to ${countText(back ?? 0)} ${metric}`
+                      }
+                    >
+                      ↶ Undo
+                    </button>
+                  </div>
                 </div>
               )
             })()}

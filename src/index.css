@@ -17095,9 +17095,11 @@ a.cz-msg-author:focus-visible {
 /**
  * Tap to count, while the clock runs.
  *
- * ⚠️ WRAPS RATHER THAN SCROLLS, unlike the horizon strip two rooms over — there are only ever
- * five controls here and they are the ones a thumb goes to between sets, so a second line is
- * better than a row that hides one of them off the edge.
+ * ⚠️ THREE ROWS NOW, NOT ONE THAT WRAPS. It was five controls in a wrapping line, which put the
+ * count, the three steps and `−1` wherever the width happened to break them — at 375 the `−1`
+ * landed beside the `+10` it corrects. The count gets a line of its own and is the largest thing
+ * in the row, the steps share the full width in equal columns, and the two corrections sit
+ * underneath, apart from what they correct.
  *
  * ⚠️ 44px, NOT 24. The WCAG floor is the outside bar; this is a control somebody taps thirty
  * times in a row with their hands shaking, which is the case the comfortable size is for.
@@ -17111,25 +17113,60 @@ a.cz-msg-author:focus-visible {
  * guessing would have said "a padding somewhere".
  */
 .chron-tally {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
+  display: grid;
+  gap: 0.4rem;
   width: 100%;
+  /* ⚠️ A CEILING IN PIXELS, because equal columns across a desktop timer made three 329px
+     buttons — a thumb-sized row stretched to the width of a room nobody uses with a thumb.
+     440px is a phone held sideways; below it the row is the full width, as it should be. */
+  max-width: 440px;
 }
+.chron-tally-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+/* the number you glance at with your hands full — the biggest thing in the row */
 .chron-tally-at {
-  flex: 1 1 auto;
-  min-width: 4.5rem;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 1.05rem;
+}
+.chron-tally-at strong {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+.chron-tally-state {
+  font-size: 0.78rem;
+}
+/* equal columns, so the step you want is under the thumb wherever it lands */
+.chron-tally-steps,
+.chron-tally-fix {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+.chron-tally-fix {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .chron-timer .chron-tally .btn {
   min-width: 52px;
   min-height: 44px;
   font-variant-numeric: tabular-nums;
 }
-.chron-tally-down {
-  margin-left: auto;
+/* ⚠️ THE STEPS ARE TALLER THAN THE CORRECTIONS. 56px is the size the Now room's tiles were, for
+   the same reason — the control tapped thirty times in a row — and it makes the two rows read as
+   two different kinds of thing without a word of explanation. */
+.chron-timer .chron-tally .chron-tally-up {
+  min-height: 56px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+/* the retry is a sentence, not a step: it takes the width it needs, and the 44px floor above */
+.chron-timer .chron-tally .chron-tally-retry {
+  min-width: 0;
+  font-size: 0.78rem;
 }
 
 /* the tick that decides whether any of the above can exist */
