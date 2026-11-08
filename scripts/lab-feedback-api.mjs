@@ -140,12 +140,24 @@ try {
       .error,
   )
 
-  /* ── votes: everyone eligible counts, a floor under every total, nobody named ── */
+  /* ── votes: everyone eligible counts, actual totals at once (no floor), nobody named ── */
+  const zero = row((await call(unknown.c, 'lab_catalog')).data, 'fluid')
+  ok(
+    'an experiment nobody has voted on shows 0 and 0, not nothing',
+    zero?.up === 0 && zero?.down === 0 && !('few' in zero),
+    JSON.stringify(zero),
+  )
   const v1 = await call(adult.c, 'lab_vote', { p_demo: 'life', p_value: 1 })
   ok(
-    'a first vote answers with the voter’s own and no total',
-    v1.data?.mine === 1 && v1.data?.few === true && !('up' in v1.data),
+    'a first vote answers with the voter’s own and the actual total: one',
+    v1.data?.mine === 1 && v1.data?.up === 1 && v1.data?.down === 0 && !('few' in v1.data),
     JSON.stringify(v1),
+  )
+  const seenAtOnce = row((await call(friend.c, 'lab_catalog')).data, 'life')
+  ok(
+    'another member sees that single vote at once',
+    seenAtOnce?.up === 1 && seenAtOnce?.down === 0 && !('mine' in seenAtOnce),
+    JSON.stringify(seenAtOnce),
   )
   for (const m of [minor, unknown, friend])
     await call(m.c, 'lab_vote', { p_demo: 'life', p_value: 1 })
@@ -157,24 +169,16 @@ try {
   )
   const mineMinor = row((await call(minor.c, 'lab_catalog')).data, 'life')
   ok(
-    'a voter sees the total once three others have voted',
+    'the minor sees the same total, and their own vote',
     mineMinor?.up === 4 && mineMinor?.mine === 1,
     JSON.stringify(mineMinor),
   )
-  // three voters on fluid: each voter sees two others — under the floor; a non-voter sees three
-  for (const m of [adult, minor, friend])
-    await call(m.c, 'lab_vote', { p_demo: 'fluid', p_value: -1 })
-  const fAdult = row((await call(adult.c, 'lab_catalog')).data, 'fluid')
-  const fUnknown = row((await call(unknown.c, 'lab_catalog')).data, 'fluid')
+  for (const m of [adult, minor]) await call(m.c, 'lab_vote', { p_demo: 'fluid', p_value: -1 })
+  const fFriend = row((await call(friend.c, 'lab_catalog')).data, 'fluid')
   ok(
-    'a voter cannot subtract themselves under the floor',
-    fAdult?.few === true && !('down' in fAdult),
-    JSON.stringify(fAdult),
-  )
-  ok(
-    'a non-voter sees the total once three have voted',
-    fUnknown?.down === 3,
-    JSON.stringify(fUnknown),
+    'two votes show as two, to somebody who cast neither',
+    fFriend?.up === 0 && fFriend?.down === 2 && !('mine' in fFriend),
+    JSON.stringify(fFriend),
   )
   const everything = JSON.stringify((await call(friend.c, 'lab_catalog')).data)
   ok(

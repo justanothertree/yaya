@@ -2373,7 +2373,7 @@ calls.
   them. Browsing unmounts the running experiment, so no card ever mounts a GPU device; choosing one
   mounts it fresh, the same as the picker.
 - **For signed-in members, once the draft is applied:** 👍 / 👎 under each experiment — every
-  member's vote counts, and a total shows once three other members have voted — and a Notes fold for
+  member's vote counts, and members see the actual totals at once, zeros included — and a Notes fold for
   ideas, requests and bugs, read by the same rules as a profile. Guests can still play everything.
 - **For the admin:** Owner controls under each experiment — ⭐ Featured, 🧪 Rough edges,
   🙈 Hidden — and the queue of reported and removed notes. The admin reads notes like any member; a

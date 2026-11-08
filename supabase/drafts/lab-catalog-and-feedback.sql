@@ -29,9 +29,9 @@
 -- WHO SEES WHAT — the rules reused, not invented (Evan's decisions, OPEN-DECISIONS §14):
 --   • A vote is never shown to anybody but its voter. There is no function that returns voters.
 --   • Every member who may vote today counts — minors and unknown ages included; a suspended
---     member's votes stop counting while suspended. A total is shown only to signed-in members,
---     and only once at least lab_vote_floor() OTHER members have voted (§14b says why, and what
---     the floor cannot do).
+--     member's votes stop counting while suspended. Signed-in members see the actual totals at
+--     once, zeros included. Evan accepts that a small total can let somebody infer who voted
+--     (§14b): no list of voters exists, but no floor hides a small number either.
 --   • Guests get the owner's flags and nothing counted, and cannot read or write notes.
 --   • A note is read through can_see(author, 'members') — the profile ladder, so a minor's note
 --     reaches their friends and no other member — plus its author. The admin has NO standing
@@ -136,36 +136,21 @@ as $$
   );
 $$;
 
--- ⚠️ THE FLOOR UNDER EVERY TOTAL. Counting everybody means a total can be one person — and then it
--- is that person's vote, shown to every member, which for a minor is exactly the activity their
--- Friends ceiling keeps from non-friends. So a total is shown to a caller only once at least
--- this many OTHER members have voted on it: "others" because a total of four that includes your
--- own vote is three other people, and subtracting yourself is the first thing anybody would try.
--- It stops a total from naming anybody by itself. It cannot stop somebody who watches a total
--- move while knowing who was just online — OPEN-DECISIONS §14b is that conflict, for Evan.
-create or replace function public.lab_vote_floor()
-returns int
-language sql immutable
-set search_path = public, pg_temp
-as $$ select 3 $$;
-
--- The totals for one experiment as the caller may see them: {up, down} once enough other members
--- have voted, or {few: true} before that. Never who; never a total the floor does not allow.
+-- The totals for one experiment, as every signed-in member sees them: votes up and down from
+-- members who may vote, zeros included. Never who. ⚠️ THERE IS NO FLOOR, by Evan's decision of
+-- 8 Nov (OPEN-DECISIONS §14b): a total of one is shown as one, and somebody may infer whose it is.
+-- That was weighed and accepted for Lab ratings; what stays private is the per-person record —
+-- no function returns a voter.
 create or replace function public.lab_totals(p_demo text)
 returns jsonb
 language sql stable security definer
 set search_path = public, pg_temp
 as $$
-  with v as (
-    select v.user_id, v.value from public.lab_votes v
-    where v.demo_id = p_demo and public.lab_vote_counts(v.user_id)
-  )
-  select case
-    when (select count(*) from v where v.user_id is distinct from auth.uid()) < public.lab_vote_floor()
-      then jsonb_build_object('few', true)
-    else jsonb_build_object('up', (select count(*) from v where v.value = 1),
-                            'down', (select count(*) from v where v.value = -1))
-  end;
+  select jsonb_build_object(
+    'up', count(*) filter (where v.value = 1),
+    'down', count(*) filter (where v.value = -1))
+  from public.lab_votes v
+  where v.demo_id = p_demo and public.lab_vote_counts(v.user_id);
 $$;
 
 -- May the caller read this note. Its author, and otherwise the profile ladder at 'members' —
@@ -239,8 +224,8 @@ $$;
 
 /* ------------------------------------------------------------------ the catalog */
 
--- The owner's flags for every experiment, and — for a signed-in member — the totals the floor
--- allows (lab_totals) and the caller's own vote. Callable by guests, who get the flags and nothing
+-- The owner's flags for every experiment, and — for a signed-in member — the totals (lab_totals,
+-- zeros included) and the caller's own vote. Callable by guests, who get the flags and nothing
 -- counted. A hidden experiment reaches anybody but the admin as its id and `hidden: true`, and
 -- nothing else. The admin also gets how many notes of each kind THEY CAN READ, and how many notes
 -- have an open report.
@@ -664,7 +649,7 @@ $$;
 -- exactly the roles that use it. The helpers are granted to nobody: they run inside the functions
 -- that call them, as the definer.
 revoke all on function
-  public.lab_vote_counts(uuid), public.lab_vote_floor(), public.lab_totals(text),
+  public.lab_vote_counts(uuid), public.lab_totals(text),
   public.lab_can_read_comment(uuid, boolean),
   public.lab_admin_may_moderate(public.lab_comments),
   public.lab_demo_open(text), public.lab_comment_json(public.lab_comments),

@@ -4,7 +4,6 @@ import {
   NOTE_KINDS,
   NOTE_MAX,
   REPORT_REASONS,
-  VOTE_FLOOR,
   checkNote,
   explain,
   type LabApi,
@@ -65,14 +64,11 @@ function Votes({
     setSaid(null)
     try {
       const r = await api.vote(demo, next)
-      // ⚠️ THE ANSWER REPLACES THE TOTALS, IT DOES NOT TOP THEM UP: a vote taken back can put an
-      // experiment under the floor, and an old number left standing would be one the server has
-      // just declined to show
+      // the server's own count after this vote, everybody's included, rather than ours plus one
       const counts = typeof r?.up === 'number' && typeof r?.down === 'number'
       onFlags(demo, {
-        up: counts ? r.up : undefined,
-        down: counts ? r.down : undefined,
-        few: !counts && r?.few === true ? true : undefined,
+        up: counts ? r.up : flags?.up,
+        down: counts ? r.down : flags?.down,
         mine: next === 0 ? undefined : next,
       })
     } catch (e) {
@@ -82,7 +78,6 @@ function Votes({
     }
   }
   const counted = flags?.up !== undefined
-  const floor = `Totals appear once ${VOTE_FLOOR} other members have voted, so no number can point at one person.`
   return (
     <div className="lab-controls lab-votes">
       <div className="lab-group" role="group" aria-label="Your vote">
@@ -111,7 +106,9 @@ function Votes({
             ? 'Sign in to vote and leave notes — playing never needs an account.'
             : viewer.suspended
               ? 'This account can’t vote or post right now.'
-              : `${mine ? 'Your vote counts, and only you see which way it went — press it again to take it back.' : 'Nobody else sees who voted which way.'}${flags?.few ? ` ${floor}` : ''}`)}
+              : mine
+                ? 'Your vote counts — press it again to take it back. Members see the totals, never a list of who voted.'
+                : 'Members see the totals, never a list of who voted.')}
       </span>
     </div>
   )

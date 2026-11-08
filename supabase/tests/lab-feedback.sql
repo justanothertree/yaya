@@ -134,8 +134,9 @@ begin
   perform set_config('role', 'authenticated', true);
   j := public.lab_vote('swarm', 1);
   asked := asked + 1;
-  -- the only vote there is: the voter is told their own, and no total (the floor)
-  if (j ->> 'mine')::int <> 1 or j ? 'up' or j ? 'down' or not (j ->> 'few')::boolean then
+  -- the only vote there is: the voter is told their own, and the actual total at once — one
+  if (j ->> 'mine')::int <> 1 or (j ->> 'up')::int is distinct from 1
+     or (j ->> 'down')::int is distinct from 0 or j ? 'few' then
     fails := array_append(fails, (('3: first vote answered ' || j::text))::text);
   end if;
   j := public.lab_vote('swarm', 1);
@@ -201,44 +202,60 @@ begin
     fails := array_append(fails, ('3: the catalog names a voter')::text);
   end if;
 
-  -- THE FLOOR: a total is shown only once three OTHER members have voted. Three votes on fluid —
-  -- from the minor, the adult and the friend.
-  foreach t in array array[m::text, a::text, f::text] loop
-    perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
-    perform set_config('role', 'authenticated', true);
-    perform public.lab_vote('fluid', -1);
-    perform set_config('role', 'postgres', true);
-  end loop;
-  -- [viewer, sees a total]: a voter sees two others, so no total — subtracting yourself is the
-  -- first thing anybody would try; a non-voter sees three others, so the total
-  for t, n in select * from (values (m::text, 0), (a::text, 0), (f::text, 0), (s::text, 1), (o::text, 1)) q loop
+  -- NO FLOOR (Evan, 8 Nov): every member sees the actual totals at once — zeros included, and a
+  -- single vote as a single vote, to a voter and a non-voter alike. Nothing names the voter.
+  for t in select unnest(array[m::text, a::text, s::text, o::text]) loop
     perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
     perform set_config('role', 'authenticated', true);
     select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fluid';
     perform set_config('role', 'postgres', true);
     asked := asked + 1;
-    if (n = 1 and ((row_for ->> 'down')::int is distinct from 3 or row_for ? 'few'))
-       or (n = 0 and (row_for ? 'up' or row_for ? 'down' or not (row_for ->> 'few')::boolean)) then
-      fails := array_append(fails, (format('3: the floor shows %s fluid as %s',
+    if (row_for ->> 'up')::int is distinct from 0 or (row_for ->> 'down')::int is distinct from 0
+       or row_for ? 'few' then
+      fails := array_append(fails, (format('3: an unvoted experiment shows %s as %s',
         (select username from public.profiles where user_id = t::uuid), row_for))::text);
     end if;
   end loop;
-  -- one more voter, and the three who had voted each see three others
-  perform set_config('request.jwt.claims', json_build_object('sub', s, 'role', 'authenticated')::text, true);
+  -- one vote, from the minor: the minor and everybody else see 0 up, 1 down straight away
+  perform set_config('request.jwt.claims', json_build_object('sub', m, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
-  j := public.lab_vote('fluid', 1);
+  j := public.lab_vote('fluid', -1);
   perform set_config('role', 'postgres', true);
+  asked := asked + 1;
+  if (j ->> 'up')::int is distinct from 0 or (j ->> 'down')::int is distinct from 1 then
+    fails := array_append(fails, ('3: a single vote answered ' || j::text)::text);
+  end if;
+  for t, n in select * from (values (m::text, -1), (a::text, 0), (s::text, 0), (o::text, 0)) q loop
+    perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fluid';
+    perform set_config('role', 'postgres', true);
+    asked := asked + 1;
+    if (row_for ->> 'up')::int is distinct from 0 or (row_for ->> 'down')::int is distinct from 1
+       or row_for ? 'few' or (n = -1) <> ((row_for ->> 'mine')::int is not distinct from -1)
+       or (n = 0 and row_for ? 'mine') then
+      fails := array_append(fails, (format('3: one vote shows %s fluid as %s',
+        (select username from public.profiles where user_id = t::uuid), row_for))::text);
+    end if;
+  end loop;
+  -- three more voters: every member sees the four, moving with each vote
+  foreach t in array array[a::text, f::text, s::text] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', t, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    j := public.lab_vote('fluid', case when t = s::text then 1 else -1 end);
+    perform set_config('role', 'postgres', true);
+  end loop;
   asked := asked + 1;
   if (j ->> 'up')::int <> 1 or (j ->> 'down')::int <> 3 then
     fails := array_append(fails, ('3: the fourth vote answered ' || j::text)::text);
   end if;
-  perform set_config('request.jwt.claims', json_build_object('sub', m, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', o, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
   select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fluid';
   perform set_config('role', 'postgres', true);
   asked := asked + 1;
-  if (row_for ->> 'up')::int <> 1 or (row_for ->> 'down')::int <> 3 then
-    fails := array_append(fails, ('3: past the floor the minor sees ' || coalesce(row_for::text, 'nothing'))::text);
+  if (row_for ->> 'up')::int <> 1 or (row_for ->> 'down')::int <> 3 or row_for ? 'mine' then
+    fails := array_append(fails, ('3: after four votes the admin sees ' || coalesce(row_for::text, 'nothing'))::text);
   end if;
   -- a suspended member cannot vote
   perform set_config('request.jwt.claims', json_build_object('sub', x, 'role', 'authenticated')::text, true);
@@ -747,10 +764,10 @@ begin
   perform set_config('role', 'authenticated', true);
   select e into row_for from jsonb_array_elements(public.lab_catalog()) e where e ->> 'id' = 'fold';
   asked := asked + 1;
-  -- its one vote is still the voter's own (no total: one vote is under the floor), and its note
+  -- its one vote is still the voter's own and still in the total, and its note is back
   n := jsonb_array_length(public.lab_comments_page('fold') -> 'items');
   perform set_config('role', 'postgres', true);
-  if (row_for ->> 'mine')::int <> 1 or not (row_for ->> 'few')::boolean or n <> 1
+  if (row_for ->> 'mine')::int <> 1 or (row_for ->> 'up')::int is distinct from 1 or n <> 1
      or (select count(*) from public.lab_votes where demo_id = 'fold') <> 1 then
     fails := array_append(fails, (('10: restored fold lost its history: ' || coalesce(row_for::text, 'not listed')))::text);
   end if;

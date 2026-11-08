@@ -3,7 +3,7 @@
 // supabase/tests/lab-feedback.sql, run against a real Postgres.
 import { describe, expect, it } from 'vitest'
 import draft from '../../supabase/drafts/lab-catalog-and-feedback.sql?raw'
-import { NOTE_MAX, VOTE_FLOOR, checkNote, explain, labApi, readNote, readPage } from './feedback'
+import { NOTE_MAX, checkNote, explain, labApi, readNote, readPage } from './feedback'
 
 /** each function the draft defines, with its parameter names, read from the SQL itself */
 const SIGNATURES = new Map(
@@ -126,8 +126,8 @@ describe('the note box agrees with the table', () => {
     expect(checkNote(`a${'\nb'.repeat(9)}`)).not.toBeNull()
     expect(checkNote('bell\x07')).not.toBeNull()
   })
-  it('says the same floor the database keeps', () => {
-    expect(draft).toContain(`as $$ select ${VOTE_FLOOR} $$;`)
+  it('keeps no floor under the totals — Evan’s decision of 8 Nov, OPEN-DECISIONS §14b', () => {
+    expect(draft).not.toMatch(/lab_vote_floor|'few'/)
   })
   it('uses the table’s own bounds', () => {
     expect(draft).toContain(`char_length(body) between 2 and ${NOTE_MAX}`)

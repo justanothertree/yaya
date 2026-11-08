@@ -619,7 +619,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           list={visible}
           current={current.id}
           favourites={favourites}
-          rated={visible.some((e) => e.flags.up !== undefined || e.flags.few === true)}
+          rated={visible.some((e) => e.flags.up !== undefined)}
           admin={viewer.isAdmin}
           onFavourite={favourite}
           onLaunch={pick}

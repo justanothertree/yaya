@@ -89,27 +89,9 @@ describe('reading what the server sends', () => {
     expect(m.get('b')).toEqual(flags({ hidden: true }))
   })
 
-  it('reads the floor: no total yet, and no number of any kind with it', () => {
-    const m = readFlags(
-      [
-        { id: 'a', few: true, mine: -1 },
-        { id: 'b', few: true, up: 4, down: 1 },
-      ],
-      known,
-    )
-    expect(m.get('a')).toEqual({ ...flags({ mine: -1 }), few: true })
-    // a total and the floor cannot both be true: the total is what was sent, so it wins
-    expect(m.get('b')).toEqual(flags({ up: 4, down: 1 }))
-  })
-  it('puts an experiment under the floor with the unvoted, at the end of Highly rated', () => {
-    const list = entries(
-      [demo('under'), demo('rated'), demo('none')],
-      new Map([
-        ['under', flags({ few: true, mine: 1 })],
-        ['rated', flags({ up: 1, down: 3 })],
-      ]),
-    )
-    expect(byRating(list).map((e) => e.id)).toEqual(['rated', 'under', 'none'])
+  it('reads zeros as a total — nothing voted is 0 and 0, not missing', () => {
+    const m = readFlags([{ id: 'a', up: 0, down: 0 }], known)
+    expect(m.get('a')).toEqual(flags({ up: 0, down: 0 }))
   })
 
   it('drops what it does not expect: unknown ids, bad counts, half a total, a mine that is not ±1', () => {

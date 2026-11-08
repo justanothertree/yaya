@@ -26,9 +26,6 @@ export type ReportReason = (typeof REPORT_REASONS)[number]['id']
 export const NOTE_MIN = 2
 export const NOTE_MAX = 500
 export const NOTE_MAX_BREAKS = 8
-/** how many OTHER members must have voted before a total is shown — the database's
- *  lab_vote_floor(), here only so the page can say it; feedback.test.ts holds the two together */
-export const VOTE_FLOOR = 3
 
 export type Note = {
   id: string
@@ -124,7 +121,7 @@ export function labApi(rpc: Rpc | null = rpcWith(getSupabaseClientOrNull())) {
   return {
     catalog: () => rpc<unknown>('lab_catalog'),
     vote: (demo: string, value: 1 | -1 | 0) =>
-      rpc<{ up?: number; down?: number; few?: boolean; mine?: 1 | -1 | null }>('lab_vote', {
+      rpc<{ up?: number; down?: number; mine?: 1 | -1 | null }>('lab_vote', {
         p_demo: demo,
         p_value: value,
       }),

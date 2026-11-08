@@ -500,12 +500,12 @@ rather than done.
 
 ---
 
-## 14. The Lab's votes and notes — Evan's decisions, and the one conflict left (updated 2026-11-07)
+## 14. The Lab's votes and notes — Evan's decisions (7 Nov, and 8 Nov for the totals)
 
 **Built, as a draft:** `supabase/drafts/lab-catalog-and-feedback.sql`, NOT applied to production.
-`docs/2026-11-07-lab-catalog-and-feedback.md` has the apply order and the rollback. Evan decided
-the three policy questions on 7 Nov; this section says how each is built, and §14b ends with the
-one place where two of the decisions pull against each other.
+`docs/2026-11-07-lab-catalog-and-feedback.md` has the apply order and the rollback. Evan decided the
+three policy questions on 7 Nov and settled the one conflict they left on 8 Nov (§14b); nothing in
+this section is waiting on a decision any more.
 
 ### 14a. ✅ DECIDED — notes keep their audience; no standing admin access
 
@@ -519,39 +519,29 @@ anything else answers "no such note", the same as a note that does not exist. Th
 note counts count only the notes they can read. A removed note stays in the queue so it can be
 restored. Tested both in SQL and through the real API (§14e).
 
-### 14b. ✅ DECIDED, with ⚠️ ONE CONFLICT FOR EVAN — every member's vote counts
+### 14b. ✅ DECIDED — every member's vote counts, and members see the actual totals at once
 
 Every member who may vote today counts — adults, minors and unknown ages alike; a suspended
-member's earlier votes stop counting while they are suspended. Individual votes are shown to
-nobody but the voter, and no function returns voters.
+member's earlier votes stop counting while they are suspended. A signed-in member sees the actual
+👍 and 👎 totals for every experiment straight away, **zeros included** — a single vote shows as one.
+Individual votes are shown to nobody but the voter, and no function returns a list of voters.
 
-**The conflict.** Evan's decision also says a total must not reveal activity the site otherwise
-hides — and a minor's Lab vote is activity their Friends ceiling keeps from non-friends. Counting
-it in a total every member sees is where the two meet:
+**How it got here.** The 7 Nov decision paired "count everybody" with "a total must not reveal
+activity the site otherwise hides", and those meet at small numbers: a total of one is somebody's
+vote, and a minor's Lab activity is otherwise kept to their friends. The first draft answered with a
+floor — no total until three OTHER members had voted — and recorded that even a floor cannot stop
+somebody watching a total move while knowing who was online.
 
-- **What is built: a floor.** A total is shown to a member only once **three OTHER members** have
-  voted on that experiment (`lab_vote_floor()`); until then they see "Not enough votes to show yet"
-  and no number at all, not even zero. "Other" matters: without it, somebody who voted could
-  subtract their own vote and read the rest. With it, no total by itself ever narrows to one person.
-  Tested: a voter among three sees no total; a non-voter sees it; a fourth voter makes it visible to
-  all four.
-- **What the floor cannot stop: watching it move.** Once a total is showing, each new vote changes
-  it by one. Somebody who notices "harp went from 4 to 5 just now" and also knows a particular minor
-  was online then can guess that minor voted, and which way. The floor makes that need outside
-  knowledge and timing; it does not make it impossible. No rule that keeps totals both live and
-  exact can.
-- **So this is Evan's call before the SQL is applied**, and nothing here pretends to have settled
-  it. The choices, cheapest first: **(1)** accept the floor as enough for a few dozen people who
-  mostly know each other; **(2)** raise the floor (one number in `lab_vote_floor()`); **(3)** show
-  totals as a daily snapshot rather than live, so a single vote is not seen arriving; **(4)** leave
-  minors out of the shared total after all — which is the exclusion Evan's decision rules out, so
-  it is listed only to be complete. Nothing was silently excluded and nothing was silently weakened:
-  the draft as written is option (1).
+**Evan's decision, 8 Nov: no floor.** Show the actual totals immediately, including zero. Evan
+accepts that people may infer who voted from a small or moving total; preventing that is not a
+requirement for Lab ratings. What stays private is the per-person record — nobody but the voter sees
+which way they voted, and there is no list of voters. `lab_vote_floor()` is gone and `lab_totals`
+returns `{up, down}` for every member; `src/lab/feedback.test.ts` fails if a floor comes back.
 
 ### 14c. ✅ DECIDED — guests browse and play; ratings and notes are members-only
 
 A guest gets the catalog's flags (featured, rough edges, hidden) so retired toys stay hidden for
-them too, and nothing counted — no totals, not even the floor's marker, no notes. Every write needs
+them too, and nothing counted — no totals and no notes. Every write needs
 a session, refused by the grant and again by each function's first line. Playing never needed an
 account and still does not.
 
@@ -565,11 +555,13 @@ built, `lab_can_read_comment` is the one place that would consult it.
 ### 14e. How the decisions above were checked, and what that does NOT cover
 
 - **SQL, real Postgres 17** (Supabase's own image, started by the pinned CLI, schema from the repo's
-  `sql_paths`): `supabase/tests/lab-feedback.sql`, 126 cases, each rule broken once to watch it fail.
+  `sql_paths`): `supabase/tests/lab-feedback.sql`, 130 cases, each rule broken once to watch it fail
+  — including a floor put back and a zero total hidden, both of which it names.
 - **The real API**: `scripts/lab-feedback-api.mjs` signs accounts up through Supabase Auth and makes
   every call under test through PostgREST with the session Auth issued — guest, separate members, a
-  minor, an unknown age, the admin, a suspended member. 58 cases; it also fails by name when the
-  admin's old reading branch is put back.
+  minor, an unknown age, the admin, a suspended member. 59 cases — among them a 0-and-0 total, a
+  single vote seen at once by somebody who did not cast it, and the minor's vote in the total; it
+  also fails by name when the admin's old reading branch is put back.
 - **Not covered:** production's own Auth settings and gateway, which differ from a local stack only
   in configuration; real devices; Firefox and Safari.
 
