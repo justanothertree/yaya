@@ -21,6 +21,9 @@ has run.
 | #76 | `chronicle/day-notes`       | #43    | frontend + DB draft          | db guards only (draft unapplied) |
 | #84 | `chronicle/day-log-notes`   | #76    | frontend                     | db guards only                   |
 | #85 | `chronicle/sets-model`      | #43    | frontend + DB draft          | db guards only (draft unapplied) |
+| #91 | `chronicle/sets-links`      | #86    | frontend + DB draft          | db guards only (draft unapplied) |
+| #92 | `chronicle/sets-grid`       | #91    | frontend + DB draft          | db guards only (draft unapplied) |
+| #93 | `chronicle/sets-conversion` | #92    | proposal (DB draft)          | db guards only (draft unapplied) |
 | #51 | `chronicle/flow-test`       | `main` | DB test                      | lint, test, build, db guards     |
 | #67 | `chronicle/flow-in-ci`      | #51    | CI (one line)                | db guards — both suites ran      |
 | #39 | `chronicle/weekday-logic`   | #38    | proposal — superseded by #83 | —                                |
@@ -60,12 +63,26 @@ shows each resolution:
 - the double's store and import;
 - two adjacent effects in Timer.tsx.
 
+7. **#91 → #92 → #93 — sets step 2 and the conversion proposal**, follow-ons to the #86 boundary,
+   under OPEN-DECISIONS §19g:
+   - (a) apply the links draft, then the grid draft, after #85's;
+   - (b) merge and deploy #91 and #92;
+   - #93 is a proposal: it is NOT for applying until a cutover is chosen with its freeze (§20d).
+
 **Parked:**
 
 - #39 and #46 are superseded by #83 and #73. I have not closed either.
 - The claim migration (§15d, OPEN-DECISIONS §19e) has no branch, by design.
 - Sets step 2 has no branch: what the tally, the Circuit grid and the day's feed should read
   waits on three answers in OPEN-DECISIONS §19g.
+
+## The second combined tree — `chronicle/integration-2`, #94, also never to be merged
+
+It is #86's tree plus #91–#93, at the same commit as #93's head, so its full CI is about exactly that
+tree. #86 is left as the boundary it was reviewed as. The drafts it carries ran on the scratch
+branch, whose copies of every draft and SQL test were compared with this head's files and are
+byte-for-byte identical. The 68-check Auth/PostgREST run (C1) was against those bytes; it is not a
+claim that #94's frontend ran anywhere but CI and the preview double.
 
 ## The combined tree — `chronicle/integration`, a draft PR to `main` that is never to be merged
 
