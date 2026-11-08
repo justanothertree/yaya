@@ -2686,7 +2686,7 @@ chains merge cleanly into each other.
 | 4e    | #52 | #49    | Epicycles                                                     |
 | 4f    | #53 | #52    | Orbit                                                         |
 | 4g    | #54 | #53    | Wallpaper                                                     |
-| 4h    | —   | #54    | Nonogram (branch `claude/lab-nonogram-1`)                     |
+| 4h    | #56 | #54    | Nonogram                                                      |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
