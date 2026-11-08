@@ -411,10 +411,17 @@ revoke all on function public.circuit_manual_sums(date, date) from public, anon;
 grant execute on function public.circuit_manual_sums(date, date) to authenticated;
 revoke all on function public.circuit_cell_set(text, text, date, numeric, numeric, numeric) from public, anon;
 
--- ── THE DAY'S WORKOUT LINE, SWITCHED BY THE SAME MARKER ─────────────────────────────────────
+-- ── THE DAY'S WORKOUT LINE, SWITCHED BY THE SAME MARKER — AND A RESTORE ─────────────────────
 -- chronicle_moments is live, so it is patched in place: the logs half reads only `__total__` entries
 -- for a converted person (the imported days that were never cells), and a second half reads that
 -- person's sets with no sitting. Each anchor must match its expected count or this raises.
+--
+-- ⚠️ chronicle_import leaves out a converted person's sets with no sitting (OPEN-DECISIONS §20e).
+-- After the switch a cell's manual part is a value the grid owns, not an event: the cell writer
+-- replaces it with a new set, so a file made before a retype still holds the pieces it replaced,
+-- and import, which matches by id, would put them back beside it. Measured before this: converted
+-- at 10, retyped to 25, restored, the cell read 35. Left out, they are counted with the rest that
+-- are, and the originals stay in circuit_logs. Nothing changes for a person until they convert.
 
 do $mig$
 declare
@@ -459,7 +466,12 @@ begin
        || E'       where public.circuit_is_converted(s.person_id)\n'
        || E'         and s.on_day >= (v_from - interval ''1 day'')::date\n'
        || E'         and s.on_day <= (v_to + interval ''1 day'')::date\n'
-       || E'    ) t\n    where t.kind = ''rating''', 1)
+       || E'    ) t\n    where t.kind = ''rating''', 1),
+      ('chronicle_import',
+       E'                              where e.id = (x->>''entry'')::uuid and e.owner = me)) then\n',
+       E'                              where e.id = (x->>''entry'')::uuid and e.owner = me))\n'
+       || E'         /* ⚠️ a converted person''s manual part is a value the grid owns (OPEN-DECISIONS §20e) */\n'
+       || E'         or ((x->>''entry'') is null and public.circuit_is_converted(x->>''person'')) then\n', 1)
     ) as v(fn, old, new, want)
   loop
     select pg_get_functiondef(p.oid) into v_src
@@ -473,5 +485,5 @@ begin
     execute replace(v_src, r.old, r.new);
     v_done := v_done + 1;
   end loop;
-  if v_done <> 3 then raise exception 'expected 3 substitutions, made %', v_done; end if;
+  if v_done <> 4 then raise exception 'expected 4 substitutions, made %', v_done; end if;
 end $mig$;

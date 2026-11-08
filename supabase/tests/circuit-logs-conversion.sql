@@ -22,6 +22,7 @@
 --   F  a re-run adds nothing, with the marker and without it
 --   G  the readers switch at the marker: the workout line, the grid's manual part, the goals,
 --      and a typed cell — nothing read twice, nothing dropped, `__total__` days still read in place
+--   H  a file made before a cell was retyped does not put the pieces it replaced back (§20e)
 -- On failure it raises, naming every check that failed. A green run prints one row.
 
 begin;
@@ -236,6 +237,8 @@ begin
   insert into seen values ('tally', public.chronicle_tally(jsonb_build_array(jsonb_build_object(
     'key', 'w', 'id', g, 'from', (select t0 from t) - interval '7 days', 'to', (select t0 from t),
     'from_day', (select today from t) - 7, 'to_day', (select today from t)))));
+  -- the file H restores: made now, before the cell below is typed
+  insert into seen values ('doc', public.chronicle_export());
 exception when others then insert into fails values ('reading after the switch raised', sqlerrm);
 end $$;
 reset role;
@@ -292,6 +295,31 @@ end $$;
 reset role;
 insert into fails select 'another member sees a converted person''s cells', (select v::text from seen where k = 'theirs')
 where (select v from seen where k = 'theirs') <> '{"converted": [], "manual": []}'::jsonb;
+
+-- ── H. a restore after a retype ────────────────────────────────────────────────────────────
+/* the file was made in G before the cell was typed, so it still holds the two converted sets the
+   typing replaced (7 and 3). Import matches by id and the typed set is a new one, so without the
+   rule the cell would read 18 + 7 + 3. */
+select set_config('request.jwt.claims',
+  json_build_object('sub', (select me::text from subject), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  insert into seen values ('restore', public.chronicle_import((select v from seen where k = 'doc')));
+  insert into seen values ('after-restore', public.circuit_manual_sums((select today from t) - 7, (select today from t)));
+exception when others then insert into fails values ('restoring after the switch raised', sqlerrm);
+end $$;
+reset role;
+insert into fails select 'the file''s doc has no converted sets to offer, so H proves nothing', ''
+where not exists (select 1 from seen, jsonb_array_elements(v->'sets') x
+                   where k = 'doc' and x->>'person' = 'cv-mine' and x->>'entry' is null
+                     and x->>'on_day' = to_char((select today from t) - 3, 'YYYY-MM-DD'));
+insert into fails select 'a restore put a retyped cell''s old pieces back', (select v::text from seen where k = 'after-restore')
+where (select jsonb_agg(m->'value') from seen, jsonb_array_elements(v->'manual') m
+        where k = 'after-restore' and m->>'person' = 'cv-mine' and m->>'exercise' = 'ex-quad'
+          and m->>'on' = to_char((select today from t) - 3, 'YYYY-MM-DD'))
+      is distinct from '[18]'::jsonb;
+insert into fails select 'a restore wrote a set with no sitting for a converted person', (select v::text from seen where k = 'restore')
+where ((select v from seen where k = 'restore')->>'sets')::int <> 0;
 
 -- ── the verdict ─────────────────────────────────────────────────────────────────────────────
 do $$

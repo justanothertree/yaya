@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C5 (clean): C4 restored after P3 and P4 — the stray-set fix, 89 API checks, the 20e demonstration.
+-- RUN P5 (perturbed): the links rule removed — a counted set comes back into any sitting.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
