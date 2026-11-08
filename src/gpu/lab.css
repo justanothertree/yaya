@@ -533,3 +533,9 @@
 .pal-split {
   min-height: 32px;
 }
+
+/* ── epicycles ───────────────────────────────────────────────────── */
+.epi-arms input {
+  min-height: 32px;
+  min-width: 140px;
+}

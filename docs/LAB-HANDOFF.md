@@ -2606,6 +2606,34 @@ uses nothing of the toys below it. No SQL changes.
 On a phone the 1 m grid is about 28 px a metre on the short levels and 17 px on the 14 m one —
 tight for a fingertip; that is a real-device question.
 
+### Follow-on: `claude/lab-epicycles-1`, stacked on #49 (8 Nov 2026) — a new maker, Epicycles
+
+**Base:** `claude/lab-bridge-1` (#49), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Draw any shape on the stage in one stroke (it is closed for you), or pick a
+  heart, star, square, key or knot. A chain of turning arms — the drawing's Fourier series, each
+  arm spinning a whole number of times a loop — redraws it, the pen leaving a glowing trail. Slide
+  from one arm to all of them and watch it sharpen; the line says how far it strays at most.
+  🎯 Fewest that look right finds the fewest arms that keep within 1% of its size everywhere (a
+  hand-drawn circle: 1; the square: 10). ⭐ keeps your drawings in this browser, up to 16. Keys:
+  ← → arms, F fewest.
+- **Technique:** the series is a plain DFT of the drawing resampled evenly along its length,
+  sorted longest arm first. Every line and circle is an instanced quad drawn as a soft capsule or
+  ring and added, so a pixel only pays for what covers it.
+- **"Looks right" is the worst stray, not the mean:** a square redrawn by three arms is within 1%
+  on average and nowhere near square — the mean hides the corners. The first test of `fewest`
+  caught it.
+
+**Measured here:** 7 tests — a circle traced once is its centre and exactly one arm turning once
+(clockwise, minus one); every arm redraws the drawing to 1e-12; more arms never stray further;
+the chain's pen lands where geometry says; saving round-trips and refuses junk. Made to fail by
+sorting the arms shortest first (4 red). Offscreen renders of a heart, a square at 4 and 60 arms
+and a key, the pen's own pixel lit in each. Through the UI at 1280 and an emulated iPhone 13
+(mouse, not touch): a circle drawn with the pointer is 1 arm; the square needs 10 by F; keep →
+reload → use; a dot is refused in words. `mobileAudit` zero at both; one GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas), real GPUs, a finger.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the

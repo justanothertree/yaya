@@ -60,6 +60,7 @@ import { JigsawDemo } from '../gpu/JigsawDemo'
 import { PaletteDemo } from '../gpu/PaletteDemo'
 import { BeamsDemo } from '../gpu/BeamsDemo'
 import { BridgeDemo } from '../gpu/BridgeDemo'
+import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -436,6 +437,12 @@ const DEMOS: readonly {
     name: 'Bridge',
     line: 'Bridge — build a bridge from road, timber and steel on a budget, then drive a cart across and watch every member strain, bend and snap.',
     Demo: BridgeDemo,
+  },
+  {
+    id: 'epicycles',
+    name: 'Epicycles',
+    line: 'Epicycles — draw any shape and watch a chain of spinning arms redraw it: its Fourier series. Slide from one arm to a hundred and see the corners come in.',
+    Demo: EpicyclesDemo,
   },
 ]
 
