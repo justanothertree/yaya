@@ -322,6 +322,41 @@ begin
   delete from public.chronicle_sets where id = p_id;
 end $$;
 
+-- ── THE READER SAYS WHICH SETS ARE COUNTED ─────────────────────────────────────────────────
+-- Replaces the step-1 reader with one more field, so the sitting editor can say how much of a
+-- count its sets hold before somebody tries to lower it below that.
+
+create or replace function public.chronicle_sets_between(p_from date, p_to date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  if p_from is null or p_to is null or p_to < p_from then
+    raise exception 'that range ends before it starts';
+  end if;
+  if p_to - p_from > 400 then raise exception 'that is too long a range'; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id', s.id, 'entry', s.entry, 'person', s.person_id, 'exercise', s.exercise_id,
+             'name', s.exercise_name,
+             'now', (select nullif(btrim(e->>'name'), '')
+                       from public.circuit_people p,
+                            jsonb_array_elements(case when jsonb_typeof(p.exercises) = 'array'
+                                                      then p.exercises else '[]'::jsonb end) e
+                      where p.id = s.person_id and p.owner_user_id = auth.uid()
+                        and e->>'id' = s.exercise_id
+                      limit 1),
+             'on', to_char(s.on_day, 'YYYY-MM-DD'), 'value', s.value, 'counted', s.counted)
+           order by s.on_day, s.created_at, s.id)
+      from public.chronicle_sets s
+     where s.owner = auth.uid() and s.on_day >= p_from and s.on_day < p_to
+  ), '[]'::jsonb);
+end $$;
+
 -- ── A MOVE BETWEEN UNITS UNCOUNTS ───────────────────────────────────────────────────────────
 -- Replaces the step-1 day editors. Their refusals and their day-moving are unchanged.
 
@@ -443,6 +478,7 @@ revoke all on function public.chronicle_set_change(uuid, numeric) from public, a
 revoke all on function public.chronicle_set_drop(uuid) from public, anon;
 revoke all on function public.chronicle_entry_edit_day(uuid, timestamptz, timestamptz, uuid, date) from public, anon;
 revoke all on function public.chronicle_running_fix_day(timestamptz, uuid, date) from public, anon;
+revoke all on function public.chronicle_sets_between(date, date) from public, anon;
 
 -- ── THE LIVE FUNCTIONS, PATCHED IN PLACE ────────────────────────────────────────────────────
 -- Each substitution must match EXACTLY ONCE in the live text, or the migration raises. Every anchor
