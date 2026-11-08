@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN L3: as L1, the import declaration patched before the loop that uses it (L2 repeated L1 by mistake).
+-- RUN L4: the links draft after the sets draft; the links test reads amounts as the owner, not the member.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)

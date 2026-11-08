@@ -252,13 +252,22 @@ where ((select v from seen where k = 'without')->>'w')::numeric is distinct from
 -- ── F. moves, late links, and links that stop agreeing ─────────────────────────────────────
 set local role authenticated;
 do $$
-declare e uuid;
 begin
   -- within a unit: reps to reps — nothing moves
   perform public.chronicle_entry_edit_day((select v from ids where k = 's'),
     (select t0 from t) - interval '14 hours', (select t0 from t) - interval '13 hours',
     (select v from ids where k = 'tread'), (select today from t) - 1);
-  insert into seen values ('within', (select to_jsonb(x) from (select amount from public.chronicle_entries where id = (select v from ids where k = 's')) x));
+exception when others then insert into fails values ('moving within a unit raised', sqlerrm);
+end $$;
+reset role;
+/* read as the table's owner — the member cannot read the table, which is the point of it */
+insert into seen select 'within', to_jsonb(x) from (select amount from public.chronicle_entries
+  where id = (select v from ids where k = 's')) x;
+
+set local role authenticated;
+do $$
+declare e uuid;
+begin
   -- to seconds: the counted 15 come back out, and the 25 counted by hand stay
   perform public.chronicle_entry_edit_day((select v from ids where k = 's'),
     (select t0 from t) - interval '14 hours', (select t0 from t) - interval '13 hours',
@@ -342,7 +351,8 @@ reset role;
 do $$
 declare n int; msg text;
 begin
-  select count(*), string_agg('  - ' || check_name || ': ' || detail, E'\n') into n, msg from fails;
+  /* coalesce, or a check with no detail vanishes from the list while still being counted */
+  select count(*), string_agg('  - ' || check_name || ': ' || coalesce(detail, ''), E'\n') into n, msg from fails;
   if n > 0 then raise exception E'CHRONICLE SET LINKS FAILED -- % check(s):\n%', n, msg; end if;
 end $$;
 
