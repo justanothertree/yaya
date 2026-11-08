@@ -3128,6 +3128,19 @@ section[id] {
   flex: 1 1 4rem;
   min-width: 0;
 }
+/* ⚠️ 28px, THE TAKE EDITOR'S SCROLLBAR RULE AND FOR ITS REASON: a range is 16px tall by default,
+   under the 24px floor, and this panel is offered for every take now rather than only a placed
+   one. Measured at 375: all six sliders 16px; the audit named the one without the spacing to
+   excuse it. Not the selects — they are already sized by the touch rule for fields. */
+.inst-takes-knob input[type='range'] {
+  height: 28px;
+}
+/* the line that says why Chop is not here — its own row, so it never squeezes a slider */
+.inst-takes-note {
+  flex: 1 1 100%;
+  min-width: 160px;
+  font-size: 0.76rem;
+}
 .inst-oct {
   display: inline-flex;
   align-items: center;

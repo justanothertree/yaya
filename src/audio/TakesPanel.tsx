@@ -6,6 +6,7 @@ import {
   allTakes,
   dropTake,
   putTake,
+  setTakeVoice,
   takenBytes,
   TAKE_CAP,
   TAKE_MAX_SECONDS,
@@ -13,7 +14,7 @@ import {
   type TakeRow,
 } from './takes'
 import { liftTake, muteTake, placeTake, subscribeLoop, loopState, takeFx, takeChop } from './looper'
-import { PLAIN_VOICE, type VoiceFx } from './takeFx'
+import { makeAudition, PLAIN_VOICE, readVoiceFx, type Audition, type VoiceFx } from './takeFx'
 import { CHOP_RATES, CHOP_SHAPES, NO_CHOP, type ChopShape } from './chop'
 import { bounceStems, type Stem, type StemProgress } from './stems'
 import { TakeEditor } from './TakeEditor'
@@ -49,7 +50,7 @@ const KNOBS: [keyof VoiceFx, string, string][] = [
   ['space', 'Space', 'The room it sounds like it was sung in'],
 ]
 
-const fxOf = (fx: VoiceFx | undefined): VoiceFx => ({ ...PLAIN_VOICE, ...fx })
+const fxOf = (fx: Partial<VoiceFx> | undefined): VoiceFx => ({ ...PLAIN_VOICE, ...fx })
 
 /**
  * What this take plays right now, read from its stored history.
@@ -95,7 +96,26 @@ export function TakesPanel() {
   const [held, setHeld] = useState(0)
   const [playing, setPlaying] = useState<string | null>(null)
   const [say, setSay] = useState('')
-  const out = useRef<{ src: AudioBufferSourceNode; gain: GainNode } | null>(null)
+  const out = useRef<{
+    id: string
+    src: AudioBufferSourceNode
+    gain: GainNode
+    aud: Audition
+  } | null>(null)
+  /**
+   * Each recording's own sound, as the panel last set it — seeded from the stored rows and then
+   * owned here, because a write to the row is coalesced and the slider must not wait for it.
+   * A PLACED take answers from the loop instead (see `soundOf`), which is where it is heard.
+   */
+  const [sounds, setSounds] = useState<Record<string, VoiceFx>>({})
+  /**
+   * ⚠️ "AS RECORDED" IS A COMPARISON, NOT A MODE: it lives in the open ⚙ panel and is switched
+   * off when the panel closes. A preview that had silently stayed dry since last week would be
+   * the exact confusion this control exists to remove.
+   */
+  const [dry, setDry] = useState(false)
+  /** row writes waiting to settle, one per recording — see `keepSound` */
+  const pend = useRef(new Map<string, { fx: VoiceFx; timer: number }>())
   /**
    * The live recording, where a cleanup can reach it.
    *
@@ -137,7 +157,15 @@ export function TakesPanel() {
   )
 
   const refresh = useCallback(async () => {
-    setRows(await allTakes())
+    const got = await allTakes()
+    setRows(got)
+    /* ⚠️ only recordings not already held: a row re-read while a write is still settling would
+       otherwise put the slider back to where it was a moment ago */
+    setSounds((had) => {
+      const next = { ...had }
+      for (const r of got) if (!(r.id in next)) next[r.id] = fxOf(readVoiceFx(r.voice))
+      return next
+    })
     setUsed(await takenBytes())
   }, [])
 
@@ -175,6 +203,8 @@ export function TakesPanel() {
      * App.tsx has two notes about this same double-invoke; this is the third.
      */
     alive.current = true
+    /* the same Map for the life of the panel — held here so the cleanup reads the one it wrote */
+    const waiting = pend.current
     return () => {
       alive.current = false
       try {
@@ -182,6 +212,13 @@ export function TakesPanel() {
       } catch {
         /* never started */
       }
+      out.current?.aud.dispose()
+      /* a sound still settling is written now rather than lost with the panel */
+      for (const [id, p] of waiting) {
+        window.clearTimeout(p.timer)
+        void setTakeVoice(id, p.fx)
+      }
+      waiting.clear()
       const r = goingRef.current
       goingRef.current = null
       /* nothing can be told about this — the panel has gone — so the only report is the row */
@@ -199,8 +236,63 @@ export function TakesPanel() {
     } catch {
       /* already finished on its own */
     }
+    on.aud.dispose()
     setPlaying(null)
   }, [])
+
+  /**
+   * What a take sounds like now: the loop's copy while it is placed — that is the one being heard
+   * — and the recording's own otherwise.
+   */
+  const soundOf = useCallback(
+    (id: string): VoiceFx => {
+      const placed = onLoop.find((t) => t.id === id)
+      return placed ? fxOf(placed.fx) : (sounds[id] ?? PLAIN_VOICE)
+    },
+    [onLoop, sounds],
+  )
+
+  /**
+   * ⚠️ COALESCED, because the row write carries the whole recording. `setTakeVoice` is a
+   * read-modify-write of a row whose blob is the take itself, and a slider dragged across its
+   * range is dozens of changes a second — so a recording's sound reaches the disk 400ms after
+   * it stops moving, and is flushed before anything that reads it back (placing it, leaving).
+   */
+  const keepSound = useCallback((id: string, fx: VoiceFx) => {
+    const was = pend.current.get(id)
+    if (was) window.clearTimeout(was.timer)
+    const timer = window.setTimeout(() => {
+      pend.current.delete(id)
+      void setTakeVoice(id, fx)
+    }, 400)
+    pend.current.set(id, { fx, timer })
+  }, [])
+  const flushSound = useCallback(async (id: string) => {
+    const p = pend.current.get(id)
+    if (!p) return
+    window.clearTimeout(p.timer)
+    pend.current.delete(id)
+    await setTakeVoice(id, p.fx)
+  }, [])
+
+  /** Change a take's sound — wherever it is being heard, and on the recording itself. */
+  const setSound = useCallback(
+    (id: string, change: Partial<VoiceFx>) => {
+      const next = { ...soundOf(id), ...change }
+      setSounds((had) => ({ ...had, [id]: next }))
+      if (onLoop.some((t) => t.id === id)) takeFx(id, change)
+      keepSound(id, next)
+      if (out.current?.id === id && !dry) out.current.aud.hear(next)
+    },
+    [soundOf, onLoop, keepSound, dry],
+  )
+
+  /* the comparison is heard the moment it is pressed, on whatever is previewing */
+  useEffect(() => {
+    const on = out.current
+    if (on) on.aud.hear(dry ? null : soundOf(on.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the switch, not every slider
+  }, [dry])
 
   const play = useCallback(
     async (row: TakeRow) => {
@@ -220,18 +312,28 @@ export function TakesPanel() {
       /* ⚠️ the takes' bus, so this obeys the instrument fader — and see takeBus for why
          it is not makeGain, which would play into nowhere and steal the slider on the way */
       const gain = ctx.createGain()
+      gain.connect(takeBus())
+      /* ⚠️ THROUGH ITS SOUND — the loop's own chain — unless the comparison says as recorded */
+      const aud = makeAudition(ctx, gain)
+      aud.hear(dry ? null : soundOf(row.id))
       const src = ctx.createBufferSource()
       src.buffer = buf
-      src.connect(gain)
-      gain.connect(takeBus())
+      src.connect(aud.in)
       src.onended = () => {
-        if (out.current?.src === src) stopPlaying()
+        if (out.current?.src !== src) return
+        out.current = null
+        setPlaying(null)
+        /* the echo and the room ring on after the last sample, so they are let finish */
+        window.setTimeout(() => {
+          aud.dispose()
+          gain.disconnect()
+        }, 4000)
       }
-      out.current = { src, gain }
+      out.current = { id: row.id, src, gain, aud }
       setPlaying(row.id)
       src.start()
     },
-    [stopPlaying],
+    [stopPlaying, dry, soundOf],
   )
 
   const begin = useCallback(async () => {
@@ -353,9 +455,11 @@ export function TakesPanel() {
     async (row: TakeRow) => {
       const on = onLoop.some((t) => t.id === row.id)
       if (on) return liftTake(row.id)
+      /* the placement starts from the recording's sound, so one still settling is written first */
+      await flushSound(row.id)
       if (!(await placeTake(row.id))) setSay('That take will not play in this browser.')
     },
-    [onLoop],
+    [onLoop, flushSound],
   )
 
   /**
@@ -497,18 +601,20 @@ export function TakesPanel() {
                   {onLoop.find((t) => t.id === r.id)?.muted ? '🔇' : '🔊'}
                 </button>
               )}
-              {/* ⚠️ ONLY ONCE IT IS ON THE LOOP, because that is when the chain exists and
-                  when a change is audible. Six sliders on a take nobody has placed is a wall of
-                  controls for something that is not playing. */}
-              {onLoop.some((t) => t.id === r.id) && (
-                <button
-                  className={'btn btn-ghost' + (open === r.id ? ' is-on' : '')}
-                  onClick={() => setOpen(open === r.id ? null : r.id)}
-                  title="How it sounds"
-                >
-                  ⚙
-                </button>
-              )}
+              {/* ⚠️ EVERY TAKE, NOT ONLY A PLACED ONE. This was offered only once a take was in
+                  the loop, "because that is when the chain exists" — so a recording could not
+                  be given a sound, or heard with one, until it was part of the song. The sound
+                  belongs to the recording now and a preview plays through the same chain. */}
+              <button
+                className={'btn btn-ghost' + (open === r.id ? ' is-on' : '')}
+                onClick={() => {
+                  setDry(false)
+                  setOpen(open === r.id ? null : r.id)
+                }}
+                title="How it sounds"
+              >
+                ⚙<span className="sr-only">How it sounds</span>
+              </button>
               {/* ⚠️ SEEING IT IS A SEPARATE THING FROM EFFECTING IT, and it is available
                   whether or not the take is on the loop — the first question anybody has about
                   a recording is where the singing starts, and that is not a question about the
@@ -565,10 +671,11 @@ export function TakesPanel() {
         <TakeEditor
           key={cut}
           row={rows.find((r) => r.id === cut)!}
+          sound={dry ? null : soundOf(cut)}
           onChanged={() => void refresh()}
         />
       )}
-      {open !== null && onLoop.some((t) => t.id === open) && (
+      {open !== null && rows.some((r) => r.id === open) && (
         <div className="inst-takes-fx">
           {KNOBS.map(([key, label, hint]) => (
             <label key={key} className="inst-takes-knob" title={hint}>
@@ -578,65 +685,88 @@ export function TakesPanel() {
                 min={key === 'tone' ? -1 : 0}
                 max={key === 'echoTime' ? 0.8 : 1}
                 step={0.02}
-                value={fxOf(onLoop.find((t) => t.id === open)?.fx)[key]}
-                onChange={(e) => takeFx(open, { [key]: Number(e.target.value) })}
+                value={soundOf(open)[key]}
+                onChange={(e) => setSound(open, { [key]: Number(e.target.value) })}
                 /* ⚠️ the instrument's keyboard listens on window, and a range takes only
                    arrows and Home/End — none of which are notes. See the note in
                    InstrumentRoom about the two sliders that swallowed every key. */
               />
             </label>
           ))}
+          {/* ⚠️ "Flat" resets the SETTINGS and "As recorded" bypasses them: the chain at its
+              settings' centre still filters the rumble (see `tone` in takeFx), so the two are
+              different sounds, and the old title here — "Back to how it was recorded" —
+              described the second while doing the first. */}
           <button
             className="btn btn-ghost"
-            onClick={() => takeFx(open, PLAIN_VOICE)}
-            title="Back to how it was recorded"
+            onClick={() => setSound(open, PLAIN_VOICE)}
+            title="Every setting back to the middle"
           >
             Flat
           </button>
+          <button
+            className={'btn btn-ghost' + (dry ? ' is-on' : '')}
+            aria-pressed={dry}
+            onClick={() => setDry(!dry)}
+            title="Hear the preview without any of this — press again for the sound"
+          >
+            As recorded
+          </button>
           {/* ⚠️ THE CHOP SITS WITH THE REST, because from where somebody is standing it is
               one more thing you do to a take — even though underneath it is the only control
-              here that is timed against the bar rather than applied to a signal. */}
-          <label className="inst-takes-knob" title="How it is cut up against the bar">
-            <span className="muted">Chop</span>
-            <select
-              value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).shape}
-              onChange={(e) => takeChop(open, { shape: e.target.value as ChopShape })}
-            >
-              {CHOP_SHAPES.map((sh) => (
-                <option key={sh} value={sh} title={CHOP_SAYS[sh]}>
-                  {sh === 'off' ? 'none' : sh}
-                </option>
-              ))}
-            </select>
-          </label>
-          {(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).shape !== 'off' && (
-            <>
-              <label className="inst-takes-knob" title="How many cuts to a bar">
-                <span className="muted">Per bar</span>
-                <select
-                  value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).rate}
-                  onChange={(e) => takeChop(open, { rate: Number(e.target.value) })}
-                >
-                  {CHOP_RATES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="inst-takes-knob" title="How much of it">
-                <span className="muted">Depth</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.02}
-                  value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).amount}
-                  onChange={(e) => takeChop(open, { amount: Number(e.target.value) })}
-                />
-              </label>
-            </>
+              here that is timed against the bar rather than applied to a signal. And that is
+              why it is only HERE once the take is in the loop: it is cut against the loop's
+              bars, and a preview on its own has none. Said in one line rather than hidden. */}
+          {!onLoop.some((t) => t.id === open) && (
+            <span className="muted inst-takes-note">
+              Previews play with this sound. Chop needs the loop's beat — put it in the loop to use
+              it.
+            </span>
           )}
+          {onLoop.some((t) => t.id === open) && (
+            <label className="inst-takes-knob" title="How it is cut up against the bar">
+              <span className="muted">Chop</span>
+              <select
+                value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).shape}
+                onChange={(e) => takeChop(open, { shape: e.target.value as ChopShape })}
+              >
+                {CHOP_SHAPES.map((sh) => (
+                  <option key={sh} value={sh} title={CHOP_SAYS[sh]}>
+                    {sh === 'off' ? 'none' : sh}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {onLoop.some((t) => t.id === open) &&
+            (onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).shape !== 'off' && (
+              <>
+                <label className="inst-takes-knob" title="How many cuts to a bar">
+                  <span className="muted">Per bar</span>
+                  <select
+                    value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).rate}
+                    onChange={(e) => takeChop(open, { rate: Number(e.target.value) })}
+                  >
+                    {CHOP_RATES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="inst-takes-knob" title="How much of it">
+                  <span className="muted">Depth</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.02}
+                    value={(onLoop.find((t) => t.id === open)?.chop ?? NO_CHOP).amount}
+                    onChange={(e) => takeChop(open, { amount: Number(e.target.value) })}
+                  />
+                </label>
+              </>
+            )}
         </div>
       )}
       {/* ⚠️ WITH THE TAKES, because a stem is the same idea one step on: a take is one part

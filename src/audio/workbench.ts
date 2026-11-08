@@ -13,7 +13,7 @@ import {
 import { keptAt } from '../library/kept'
 import { packSong, readSong, songToLayers, toSong, type PackedSong } from './songFile'
 import { hasTake, TAKE_MAX_SECONDS } from './takes'
-import { type VoiceFx } from './takeFx'
+import { readVoiceFx, type VoiceFx } from './takeFx'
 
 /**
  * What you are working on, kept across a refresh.
@@ -168,17 +168,6 @@ const fin = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
  * slider and renders as NaN, which no clamp downstream ever sees — so the question asked here is
  * only "is this a number", and the ranges stay where they belong.
  */
-function readVoiceFx(v: unknown): Partial<VoiceFx> | undefined {
-  if (!v || typeof v !== 'object') return undefined
-  const o = v as Record<string, unknown>
-  const out: Partial<VoiceFx> = {}
-  for (const k of ['tone', 'squeeze', 'double', 'echo', 'echoTime', 'space'] as const) {
-    const n = fin(o[k])
-    if (n !== null) out[k] = n
-  }
-  return Object.keys(out).length ? out : undefined
-}
-
 function readChop(v: unknown): Partial<Chop> | undefined {
   if (!v || typeof v !== 'object') return undefined
   const o = v as Record<string, unknown>

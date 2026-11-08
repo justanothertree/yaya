@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ECHO_MAX, ECHO_MIN, PLAIN_VOICE, voiceTargets, type VoiceFx } from './takeFx'
+import { ECHO_MAX, ECHO_MIN, PLAIN_VOICE, readVoiceFx, voiceTargets, type VoiceFx } from './takeFx'
 
 /**
  * What a recorded voice is put through, asked instead of assumed.
@@ -230,5 +230,28 @@ describe('every send answers its own knob', () => {
       }
       expect(last).toBeGreaterThan(0)
     }
+  })
+})
+
+/**
+ * A recording's sound read back off its row — written by this build, an older one, or a hand.
+ * The expectations are what a person set, not a reconstruction of the reader.
+ */
+describe('a take keeps its own sound', () => {
+  it('reads back every setting it was given', () => {
+    const set = { tone: -0.3, squeeze: 0.25, double: 0.4, echo: 0.6, echoTime: 0.45, space: 0.5 }
+    expect(readVoiceFx(set)).toEqual(set)
+  })
+
+  it('keeps what it can read and drops what it cannot, one field at a time', () => {
+    expect(readVoiceFx({ echo: 0.6, space: 'lots', tone: NaN, double: null })).toEqual({
+      echo: 0.6,
+    })
+  })
+
+  it('and answers nothing for a row with no sound, rather than a flat one', () => {
+    /* absent means "never set", which the caller fills with PLAIN_VOICE — not a stored flat */
+    for (const v of [undefined, null, 7, 'echo', {}, { echo: 'x' }])
+      expect(readVoiceFx(v)).toBe(undefined)
   })
 })
