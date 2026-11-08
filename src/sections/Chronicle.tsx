@@ -18,9 +18,10 @@ import {
   inScope,
   lateIn,
   pastIn,
-  marksOf,
+  offOn,
+  rowOf,
   streakAsks,
-  streakOf,
+  streakFrom,
   lastDay,
   reached,
   repeats,
@@ -34,21 +35,44 @@ import {
   startFor,
   today as todayISO,
   tomorrow as tomorrowISO,
+  windowKey,
   windowOf,
   type Goal,
   type Scope,
 } from '../chronicle/goal'
 import {
   dropGoal,
+  marksFor,
   myActivities,
   myGoals,
   saveGoal,
+  setDays,
+  setMark,
   setProgress,
   shareGoal,
   startTimer,
   tally,
 } from '../chronicle/cloud'
+import {
+  asOf,
+  markAsks,
+  markOpen,
+  markWindow,
+  NO_MARKS,
+  type Marked,
+  type MarkAt,
+} from '../chronicle/marks'
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
+import {
+  EVERY_DAY,
+  dayLetter,
+  dayName,
+  daysText,
+  maskOn,
+  validMask,
+  weekday,
+  type DayMask,
+} from '../chronicle/weekdays'
 import { Timer } from '../chronicle/Timer'
 import { Friends } from '../chronicle/Friends'
 import { Sharing } from '../chronicle/Sharing'
@@ -289,6 +313,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const [target, setTarget] = useState('')
   const [unit, setUnit] = useState('')
   const [every, setEvery] = useState(false)
+  /**
+   * Which weekdays a repeating daily goal is for, as the form holds it — see weekdays.ts.
+   *
+   * ⚠️ SAVED FROM TODAY, NEVER FROM THE DAY THE GOAL WAS MADE. Evan's rule: an edit reaches today
+   * and the days after it, and every earlier day keeps the schedule it was judged under.
+   */
+  const [wdays, setWdays] = useState<DayMask>(EVERY_DAY)
   const [say, setSay] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   /**
@@ -300,6 +331,11 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * numbers without re-reading every goal.
    */
   const [got, setGot] = useState<Record<string, number>>({})
+  /**
+   * What you said about each window of each repeating goal you move by hand — see marks.ts. The
+   * goal row's own `done` and `progress` are one window's worth and stop being read for these.
+   */
+  const [marked, setMarked] = useState<Marked>(NO_MARKS)
   /**
    * The run of windows behind each repeating goal.
    *
@@ -399,6 +435,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const tabsId = useId()
   const panelId = `${tabsId}-panel`
+  /**
+   * ⚠️ THE DAY IS A DEPENDENCY, read on every render. Every view's window comes from the clock, and
+   * a memo keyed only on the data kept yesterday's counts on the strip all morning for a page left
+   * open overnight — "Today 0" over a floss that is due — until something else happened to reload.
+   * The same shape as `Settled` (a new day is an arrival), one memo over.
+   */
+  const day = todayISO()
   /** how many of each view has something in it, so the strip says where the work is */
   const counts = useMemo(() => {
     const out: Record<string, number> = {}
@@ -406,14 +449,19 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       const when = x.when()
       /* ⚠️ THE LATE ONES COUNT TOO, or the strip reads 0 over a tab that has rows in it. They
          are unfinished work in that window's list, which is the only thing this number means. */
-      out[x.id] = (goals ?? []).filter(
-        (g) =>
-          (inScope(g, x.scope, when) && !finished(g, got, when)) ||
-          lateIn(g, got, x.scope, when, todayISO()),
-      ).length
+      /* ⚠️ EACH VIEW JUDGES A REPEATING GOAL BY ITS OWN WINDOW — today's floss on Today,
+         tomorrow's on Tomorrow — which is what `asOf` gives it; the row's one flag would be the
+         same answer on every tab, which is the defect marks.ts exists to end */
+      out[x.id] = (goals ?? [])
+        .map((g) => asOf(g, marked.marks, when, marked.legacy))
+        .filter(
+          (g) =>
+            (inScope(g, x.scope, when) && !finished(g, got, when)) ||
+            lateIn(g, got, x.scope, when, day),
+        ).length
     }
     return out
-  }, [goals, got])
+  }, [goals, got, marked, day])
 
   /**
    * The horizons actually on the strip: the three core ones, plus any that holds something.
@@ -445,7 +493,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       return
     }
     const [mine, a] = await Promise.all([myGoals(), myActivities()])
+    /**
+     * ⚠️ THE MARKS ARE SET WITH THE GOALS, NOT AFTER THEM. A repeating tick-box reads its done
+     * state from its mark, so goals painted before their marks arrive would draw every one of them
+     * unticked for the length of a round trip and then flip — after every tick, since a tick
+     * reloads. The tally can arrive later; a meter filling in is not a box changing its mind.
+     */
+    const mk = await marksFor(markAsks(mine, [todayISO(), tomorrowISO()]))
     setGoals(mine)
+    setMarked(mk)
     setActs(a)
     /**
      * ⚠️ EVERY DERIVED GOAL, NOT JUST THE ONES ON SCREEN. Asking per view would mean the counts on
@@ -530,11 +586,38 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     [fixing, goals],
   )
 
+  /**
+   * Every goal as it stands in the window on screen — see `asOf`. A one-off comes through as it
+   * is; a repeating goal carries THIS window's tick and count rather than the row's.
+   *
+   * ⚠️ EVERY LIST AND FIGURE BELOW READS THIS, NOT `goals`, which is the point of naming it. The
+   * list, the late list, the Done snapshot and the "N left" line under the heading are four answers
+   * about one set of rows; one of them reading the raw goals would be a line saying "1 left" over a
+   * floss that is ticked, which is exactly the shape CLAUDE.md §2 warns about.
+   */
+  const goalsOn = useMemo(
+    () => (goals ?? []).map((g) => asOf(g, marked.marks, on, marked.legacy)),
+    [goals, marked, on],
+  )
+
   /* ⚠️ memoised on the list and the view, because `inScope` runs per goal per render and the
      filter is the only work this component does that grows with somebody's history */
+  /**
+   * ⚠️ AND A REPEATING DAILY GOAL ON ONE OF ITS OFF DAYS IS LISTED WHEN IT WAS DONE ANYWAY — an
+   * extra swim, or a tick made before an edit left today out. Evan's rule is that a schedule never
+   * erases an earned completion, and a finished row disappearing from the list the moment its
+   * schedule changed would look exactly like the completion being erased. `kept` holds it through
+   * an untick, so the row does not vanish from under the thumb that pressed it — the same reason
+   * late goals are kept.
+   */
   const mine = useMemo(
-    () => (goals ?? []).filter((g) => inScope(g, v.scope, on)),
-    [goals, v.scope, on],
+    () =>
+      goalsOn.filter(
+        (g) =>
+          inScope(g, v.scope, on) ||
+          (v.scope === 'day' && offOn(g, on) && (finished(g, got, on) || kept.includes(g.id))),
+      ),
+    [goalsOn, got, kept, v.scope, on],
   )
 
   /**
@@ -547,10 +630,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const overdue = useMemo(
     () =>
-      (goals ?? []).filter(
+      goalsOn.filter(
         (g) => pastIn(g, v.scope, on, todayISO()) && (!finished(g, got, on) || kept.includes(g.id)),
       ),
-    [goals, got, v.scope, on, kept],
+    [goalsOn, got, v.scope, on, kept],
   )
 
   /**
@@ -630,16 +713,39 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
           })
         : null,
     })
+    /**
+     * ⚠️ THE SCHEDULE IS ITS OWN WRITE, AFTER THE GOAL, and only when it CHANGED. Writing it on
+     * every save would add a row per edit for nothing, and a goal saved as "every day" with no
+     * rows is already every day. A one-off has none to write; a goal that stops repeating keeps
+     * the rows it had — they are history, and the server keeps them for if it repeats again.
+     */
+    const was = beingFixed ? maskOn(beingFixed.days ?? [], todayISO()) : EVERY_DAY
+    const days =
+      !('why' in r) && saveScope === 'day' && every && wdays !== was
+        ? await setDays(r.id, wdays, todayISO())
+        : null
     setBusy(false)
     if ('why' in r) {
       setSay(r.why)
       window.setTimeout(() => setSay(null), 6000)
       return
     }
+    /* the goal saved and its days did not: said, and the form closes on what DID save */
+    if (days) {
+      setSay(`Saved, but not the days: ${days.why}`)
+      window.setTimeout(() => setSay(null), 6000)
+    }
+    /* ⚠️ A GOAL SAVED FOR DAYS THAT LEAVE THIS ONE OUT STAYS ON SCREEN FOR THE VISIT, saying
+       "not due today". Without this, adding "floss, not Sundays" on a Sunday made the row vanish
+       the moment Save was pressed — which reads as the save having failed. */
+    if (!days && saveScope === 'day' && every && (wdays & (1 << weekday(on))) === 0) {
+      setKept((k) => (k.includes(r.id) ? k : [...k, r.id]))
+    }
     setTitle('')
     setTarget('')
     setUnit('')
     setEvery(false)
+    setWdays(EVERY_DAY)
     setSrc('')
     setWhy('')
     setCountWhat('minutes')
@@ -650,10 +756,38 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     await load()
   }
 
+  /**
+   * Write one window of a repeating goal, and show it at once.
+   *
+   * ⚠️ THE ROOM IS TOLD BEFORE THE RELOAD, so the box changes under the thumb that pressed it
+   * rather than a round trip later. A refusal undoes nothing because nothing was assumed: the mark
+   * is only set locally once the server has said yes, and the refusal goes to the toast — the one
+   * a person can meet is a page left open across midnight, ticking a window that has not begun.
+   */
+  const mark = async (g: Goal, at: MarkAt, progress: number | null, done: boolean | null) => {
+    const bad = await setMark(g.id, at, progress, done)
+    if (bad) {
+      showToast(bad.why.charAt(0).toUpperCase() + bad.why.slice(1))
+      return
+    }
+    const key = windowKey(g.id, at.from)
+    setMarked((m) => ({
+      ...m,
+      marks: {
+        ...m.marks,
+        [key]: { progress: progress ?? g.progress, done: done ?? g.done },
+      },
+    }))
+  }
+
   const bump = async (g: Goal, by: number) => {
     if (busy) return
     setBusy(true)
-    await setProgress(g.id, Math.max(0, g.progress + by), g.done)
+    /* ⚠️ a repeating goal's count is this window's, from the mark — see `asOf`; a one-off's is
+       the row's, which is its only window */
+    const at = markWindow(g, on)
+    if (at) await mark(g, at, Math.max(0, g.progress + by), null)
+    else await setProgress(g.id, Math.max(0, g.progress + by), g.done)
     setBusy(false)
     await load()
   }
@@ -702,6 +836,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setTarget('')
     setUnit('')
     setEvery(false)
+    setWdays(EVERY_DAY)
     setSrc('')
     setWhy('')
     setCountWhat('minutes')
@@ -714,9 +849,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     if (busy) return
     /* ⚠️ BEFORE THE WRITE, not after: `load()` replaces the goals and the row is re-filtered on
        that render, so an id remembered afterwards arrives too late to keep anything on screen */
-    if (pastIn(g, v.scope, on, todayISO())) setKept((k) => (k.includes(g.id) ? k : [...k, g.id]))
+    if (pastIn(g, v.scope, on, todayISO()) || offOn(g, on)) {
+      setKept((k) => (k.includes(g.id) ? k : [...k, g.id]))
+    }
     setBusy(true)
-    await setProgress(g.id, g.progress, !g.done)
+    const at = markWindow(g, on)
+    if (at) await mark(g, at, null, !g.done)
+    else await setProgress(g.id, g.progress, !g.done)
     setBusy(false)
     await load()
   }
@@ -1025,7 +1164,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
              * sentence below, and "0 left" under a heading is a line that only ever states the obvious.
              */}
             {(() => {
-              const w = weight(goals ?? [], got, v.scope, on, todayISO())
+              const w = weight(goalsOn, got, v.scope, on, todayISO())
               if (!w.left) return null
               const parts = [`${w.left} left`]
               if (w.mins > 0) parts.push(`about ${spanText(w.mins * 60_000)}`)
@@ -1085,7 +1224,11 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                      * away — the room was paying for a month of history and showing one number. These
                      * are the same answers, read instead of discarded: no query, no state, no load.
                      */
-                    const marks = marksOf(g, runs)
+                    /* ⚠️ THE ROW, NOT THE RECORD: windows from before the goal was made are left
+                       off, and a day the schedule leaves out is `off` unless it was met — see
+                       `rowOf`. The chip's number below is read from the same row, so the two can
+                       never disagree about which days counted. */
+                    const marks = rowOf(g, runs, on)
                     const act = g.activity ? acts.find((a) => a.id === g.activity) : null
                     const from = g.activity
                       ? (act?.name ?? 'an activity')
@@ -1103,6 +1246,12 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     /* what ▶ on this row would start, and whether it is already going — the rule
                  and its three refusals are in `startFor` */
                     const canStart = startFor(g, acts, runningAct)
+                    /* ⚠️ TOMORROW'S FLOSS CANNOT BE TICKED TODAY — the writer refuses a window that
+                       has not begun — so the controls say so rather than offering a press that
+                       would only come back as a refusal */
+                    /* only where there IS a box or a ± — a goal the record counts has nothing to
+                       press, and "opens tomorrow" on it was a line about a control it never had */
+                    const notYet = !auto && !markOpen(g, on, todayISO())
                     /* the ◍/◉/○ button's state and what pressing it does — see profileGlyph,
                  which holds the rule that `certain` is not a toggle */
                     const onProfile = profileGlyph(g.visibility)
@@ -1131,6 +1280,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 <input
                                   type="checkbox"
                                   checked={g.done}
+                                  disabled={notYet}
                                   onChange={() => void tick(g)}
                                 />
                                 <span>{g.title}</span>
@@ -1142,7 +1292,21 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         cadence and the room already knows it, so a chip saying only that a thing
                         repeats is a label that raises the question it should answer */}
                             {repeats(g) ? (
-                              <span className="chron-chip">every {g.scope}</span>
+                              <span className="chron-chip">
+                                {g.scope === 'day'
+                                  ? daysText(maskOn(g.days ?? [], on))
+                                  : `every ${g.scope}`}
+                              </span>
+                            ) : null}
+                            {/* ⚠️ said, because a row on a list it is not due on needs a reason
+                                to be there — it was done anyway, or before today was left out */}
+                            {offOn(g, on) ? (
+                              <span className="muted chron-notyet">
+                                not due {v.id === 'tomorrow' ? 'tomorrow' : 'today'}
+                              </span>
+                            ) : null}
+                            {notYet ? (
+                              <span className="muted chron-notyet">opens tomorrow</span>
                             ) : null}
                             {/**
                              * ⚠️ A CADENCE THE ROOM HAS NO VIEW FOR SAYS SO. `homeFor` lists a quarter goal
@@ -1206,7 +1370,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                              * means anything. It earns its place on the second window.
                              */}
                             {(() => {
-                              const run = streakOf(g, runs)
+                              const run = streakFrom(marks)
                               return run >= 2 ? (
                                 <span
                                   className="chron-chip is-run"
@@ -1314,6 +1478,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                   setTarget(g.target == null ? '' : String(g.target))
                                   setUnit(g.unit ?? '')
                                   setEvery(repeats(g))
+                                  setWdays(maskOn(g.days ?? [], todayISO()))
                                   setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
                                   setCountWhat(g.counts)
                                   setEst(g.est == null ? '' : String(g.est))
@@ -1417,11 +1582,18 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 <>
                                   <button
                                     className="btn btn-ghost"
+                                    disabled={notYet}
+                                    aria-label={`One less for ${g.title}`}
                                     onClick={() => void bump(g, -1)}
                                   >
                                     −
                                   </button>
-                                  <button className="btn btn-ghost" onClick={() => void bump(g, 1)}>
+                                  <button
+                                    className="btn btn-ghost"
+                                    disabled={notYet}
+                                    aria-label={`One more for ${g.title}`}
+                                    onClick={() => void bump(g, 1)}
+                                  >
                                     +
                                   </button>
                                 </>
@@ -1634,6 +1806,43 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         />
                         <span>every {v.scope}</span>
                       </label>
+                    )}
+                    {/**
+                     * ⚠️ ONLY FOR A REPEATING DAILY GOAL, the one shape a weekday means anything for.
+                     * Seven toggles rather than a list of ticks, because the choice is a pattern and
+                     * a row of letters shows the whole week at once. Each says its day in words, for
+                     * a screen reader and for the two Ts and two Ss; the last day left cannot be
+                     * unpressed, because a goal for no days is one the server refuses.
+                     */}
+                    {(beingFixed?.scope ?? v.scope) === 'day' && every && (
+                      <div className="chron-wdays" role="group" aria-label="On these days">
+                        {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                          const picked = (wdays & (1 << d)) !== 0
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              className={'chron-wday' + (picked ? ' is-on' : '')}
+                              aria-pressed={picked}
+                              aria-label={dayName(d)}
+                              onClick={() => {
+                                const next = wdays ^ (1 << d)
+                                if (validMask(next)) setWdays(next)
+                              }}
+                            >
+                              {dayLetter(d)}
+                            </button>
+                          )
+                        })}
+                        {/* ⚠️ THE RULE, SAID WHERE IT APPLIES. An edit that changes the days and
+                            does not say from when would leave somebody wondering whether last
+                            week's misses just became something else. */}
+                        {beingFixed && wdays !== maskOn(beingFixed.days ?? [], todayISO()) ? (
+                          <span className="muted chron-wdays-note">
+                            From today. Earlier days keep the old days.
+                          </span>
+                        ) : null}
+                      </div>
                     )}
                     <button
                       className="btn"

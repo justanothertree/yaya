@@ -16607,6 +16607,36 @@ a.cz-msg-author:focus-visible {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+/* the box a note with no session is written in, and the one it is changed in — see JournalList */
+.chron-journal-write,
+.chron-journal-fix {
+  display: grid;
+  gap: 0.35rem;
+}
+.chron-journal-write textarea,
+.chron-journal-fix textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  font: inherit;
+}
+.chron-journal-write-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* the hint takes the slack and the buttons keep their size — a floor in px, because rem is fluid */
+.chron-journal-write-row .muted {
+  flex: 1 1 140px;
+  font-size: 0.8rem;
+}
+.chron-journal-said {
+  margin: 0;
+  font-size: 0.85rem;
+  /* the theme token, which the light theme darkens to stay readable on white */
+  color: var(--loss);
+}
 .chron-journal-more {
   justify-self: start;
 }
@@ -17067,6 +17097,11 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
+/* what a move does not take with it — see moveNote in sets.ts */
+.chron-move-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
 .chron-when-len {
   font-size: 0.82rem;
   color: var(--muted);
@@ -17163,6 +17198,34 @@ a.cz-msg-author:focus-visible {
 /* a workout is a day's fact rather than a minute's, and sits at the head of its day */
 .chron-moment.is-workout {
   background: rgba(255, 255, 255, 0.045);
+}
+/**
+ * A note with no session — §15a. A moment, not a sitting: no length and no clock range, and only
+ * the time it was written when it was written that day.
+ *
+ * ⚠️ IT CARRIES A ✎ WHERE A RATING DOES NOT, and that is the one departure from the rule above. A
+ * rating is changed in the room it was given in; a note is yours and is changed in the Journal,
+ * and a row with words in it and no way to reach their editor is a dead end on a phone. It has no
+ * ✕, so it still cannot be mistaken for a sitting's pair of controls.
+ */
+.chron-moment.is-note {
+  align-items: center;
+}
+.chron-moment.is-note .chron-moment-what {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+/* ⚠️ THREE LINES, THEN AN ELLIPSIS: a note can be four thousand characters, and the day's log is a
+   list of a day, not a place to read a letter — the Journal is where it is read whole */
+.chron-note-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 /**
@@ -17405,6 +17468,11 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   padding: 0.05rem 0.4rem;
 }
+/* a repeating goal's window that has not begun — Tomorrow's floss — says so in words, because a
+   greyed-out box with only a tooltip to explain it does not exist on a phone */
+.chron-notyet {
+  font-size: 0.75rem;
+}
 /* ⚠️ IT OPTS OUT OF THE UPPERCASE, for the same reason `is-est` does: this chip carries a DATE,
    and "WAS FOR WED, 14 OCT" shouts a proper noun at somebody about a thing they already feel bad
    about. No colour either — the room keeps amber for a priority somebody chose themselves, and a
@@ -17544,6 +17612,40 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   font-size: 0.86rem;
   color: var(--muted);
+}
+/* which weekdays a repeating daily goal is for — see the picker in Chronicle.tsx */
+.chron-wdays {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+/* ⚠️ PIXELS, because the root size is fluid and a touch target is a length: 32px clears WCAG's
+   24px floor with room to spare on the one control here a thumb presses seven of in a row */
+.chron-wday {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chron-wday.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.chron-wday:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chron-wdays-note {
+  flex-basis: 100%;
+  font-size: 0.75rem;
 }
 .chron-say {
   margin: 0.5rem 0 0;
@@ -18815,6 +18917,14 @@ a.cz-msg-author:focus-visible {
 .chron-marks i.is-now {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* ⚠️ A DAY THE GOAL WAS NOT FOR IS THINNER, NOT FAINTER. Faint is what a miss already is, and an
+   off day is not a quieter miss — it is a day nothing was asked. A short tick keeps the row a
+   calendar, so a Tuesday goal still reads as one cell a week, in its place. */
+.chron-marks i.is-off {
+  height: 4px;
+  margin-top: 3px;
+  opacity: 0.6;
 }
 
 /* a flagged goal, and a guess at how long it takes — see Chronicle.tsx */

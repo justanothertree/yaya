@@ -1,4 +1,5 @@
 import type { Goal, Scope } from '../chronicle/goal'
+import type { Marked, MarkAt } from '../chronicle/marks'
 import { SPANS_AT_ONCE } from '../chronicle/year'
 import { today as todayISO } from '../chronicle/goal'
 import {
@@ -9,7 +10,9 @@ import {
   type Moods,
 } from '../chronicle/record'
 import type { NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
+import type { DayNote } from '../chronicle/journal'
 import type { Plan } from '../chronicle/plan'
+import type { ChronSet } from '../chronicle/sets'
 import { pvPictures } from './picturePreview'
 
 // ── DEV-ONLY chronicle preview store ─────────────────────────────────────────
@@ -152,13 +155,68 @@ const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): G
   }
 }
 
+/**
+ * One window of one repeating goal, the way `chronicle_goal_marks` keeps it — see marks.ts.
+ *
+ * ⚠️ KEYED ON THE SCOPE AS WELL AS THE DATE, like the table, so a goal changed from daily to weekly
+ * here stops reading a Sunday's tick as the week's, the same as it does there.
+ */
+type PvMark = {
+  goal: string
+  scope: Scope
+  from: string
+  starts: string
+  ends: string
+  progress: number
+  doneAt: number | null
+  setAt: number
+}
+
 type Store = {
   acts: Activity[]
   ents: Entry[]
   goals: Goal[]
   routines: Routine[]
   plans: Plan[]
+  marks: PvMark[]
+  /**
+   * The moment the ROW says each goal was done — the server's `done_at`, which the double's Goal
+   * keeps only as a boolean. A repeating goal's is what `chronicle_goal_marks_for` hands back as
+   * `legacy`, so it is kept here by the same rule `chronicle_goal_progress` writes it by.
+   */
+  doneAt: Record<string, number>
+  /**
+   * Each goal's `created_at`, which the double's Goal does not carry and `chronicle_goals_mine`
+   * sends as `made` once the weekday draft is applied — see Goal.made.
+   */
+  made: Record<string, number>
+  /** `chronicle_goal_days`: a repeating daily goal's weekdays, one row per change */
+  days: PvDays[]
+  /** notes that belong to a day — `chronicle_notes` rows with no entry, see journal.ts */
+  dayNotes: DayNote[]
+  /** `chronicle_sets` — see sets.ts and the sets draft */
+  sets: PvSet[]
+  /**
+   * The exercise lists of YOUR Circuit people, by person id — the part of `circuit_people` the
+   * set writer reads. Another member's people are not here at all, which is the double's way of
+   * saying the writer refuses them.
+   */
+  circuit: Record<string, Array<{ id: string; name: string }>>
 }
+
+type PvSet = {
+  id: string
+  person: string | null
+  exercise: string
+  name: string
+  entry: string | null
+  on: string
+  value: number
+  created: number
+  updated: number
+}
+
+type PvDays = { goal: string; from: string; days: number; setAt: number }
 
 /**
  * The seed.
@@ -192,7 +250,19 @@ function seed(): Store {
     session: null,
     ...extra,
   })
-  return {
+  /**
+   * ⚠️ A WEEKDAY GOAL WHOSE DAYS ARE COUNTED FROM TODAY, so it shows the same shapes whatever day
+   * the workbench is opened on. It is for the days 0, 2, 4 and 5 back — today, and three days
+   * whose weekdays differ from today's and from each other's — and the drawing seed above has
+   * sittings on 0, 1, 2, 3, 5 and 6. So its row has met days it was for, met days it was NOT for
+   * (§16f: those stay met and count), a day it was for and missed (4), and an off day with nothing
+   * (8, the same weekday as 1). Its streak is FOUR under Evan's rule and would be TWO if met off
+   * days were skipped, so the two readings cannot be confused on screen. Tomorrow is not one of
+   * its days, so the Tomorrow tab shows the hiding. And it was made eight days ago, so its row is
+   * nine cells where every other goal's is thirty-one (§16g).
+   */
+  const fourDays = [0, 2, 4, 5].reduce((m, back) => m | (1 << at(back, 12).getDay()), 0)
+  const s: Store = {
     acts: [
       a('pv-draw', 'Drawing', 'locked', { session: 30, colour: '#8b5cf6' }),
       a('pv-write', 'Writing', 'locked', { metric: 'pages', colour: '#3d9ae5' }),
@@ -310,6 +380,13 @@ function seed(): Store {
     ],
     goals: [
       /**
+       * ⚠️ A REPEATING TICK-BOX WHOSE ROW STILL SAYS DONE, which is the shape of every one the old
+       * room ever ticked: `done` on the goal itself, from last night. Today it must read UNticked —
+       * the reset the row could never perform — and that tick stays true of the night it was made.
+       * Before marks, this goal read ticked on every day for ever.
+       */
+      goal({ id: 'pv-floss', title: 'Floss', scope: 'day', every: 1, done: true }),
+      /**
        * ⚠️ TWO OF THESE ARE SHARED AND THE REST ARE NOT, because a fixture where every goal is
        * private makes the profile block's goals list untestable and one where they all are makes
        * the per-goal tick a no-op. Both switches have to be exercisable from the seed, or the
@@ -341,6 +418,16 @@ function seed(): Store {
         target: 20,
         unit: 'minutes',
         visibility: 'certain',
+      }),
+      goal({
+        id: 'pv-g-days',
+        title: 'Draw on my four days',
+        scope: 'day',
+        every: 1,
+        target: 30,
+        unit: 'minutes',
+        activity: 'pv-draw',
+        sort: 4,
       }),
       /* ⚠️ a guess AND a flag, so the row shows both chips at once and they have to fit */
       goal({
@@ -524,6 +611,44 @@ function seed(): Store {
         note: null,
       },
     ],
+    marks: [],
+    /* Floss's tick from last night, under the old room: on the row, and nowhere else */
+    doneAt: { 'pv-floss': at(1, 21, 30).getTime() },
+    made: { 'pv-g-days': at(8, 9).getTime() },
+    days: [
+      { goal: 'pv-g-days', from: localISO(at(8, 9)), days: fourDays, setAt: at(8, 9).getTime() },
+    ],
+    /**
+     * ⚠️ A NOTE WITH NO SESSION, written last night about last night — so the Journal has one row
+     * that opens no sitting, and the workbench shows the door and the list holding both kinds.
+     */
+    dayNotes: [
+      {
+        id: 'pv-dn1',
+        on: localISO(at(1, 12)),
+        at: at(1, 21, 40).toISOString(),
+        body: 'Slept badly. Skipped the run and walked instead.',
+      },
+      /**
+       * ⚠️ THE TWO SHAPES THE DAY LOG HAS TO TELL APART (§15a): one written during the day it is
+       * about, which has a time on that day, and one written the NEXT morning about the day
+       * before, which does not — so the log shows it at the head of its day with the date it was
+       * written. Today's is five past midnight so it is never in the future, whenever the
+       * workbench is opened.
+       */
+      {
+        id: 'pv-dn2',
+        on: localISO(at(2, 12)),
+        at: at(1, 9, 5).toISOString(),
+        body: 'About the day before: the knee was fine after all.',
+      },
+      {
+        id: 'pv-dn3',
+        on: localISO(at(0, 12)),
+        at: at(0, 0, 5).toISOString(),
+        body: 'Up late. Writing this down so tomorrow knows why.',
+      },
+    ],
     routines: [
       {
         id: 'pv-r1',
@@ -535,7 +660,46 @@ function seed(): Store {
         ],
       },
     ],
+    /**
+     * ⚠️ ONE SITTING WITH SETS, so the move dialog's sentence (§15c) can be seen at all: three
+     * days ago's gym, 15 Quad Curl and 10 Bench. The Circuit's own workout line for today is a
+     * different record (`circuit_logs`, read as a moment) and nothing reads these sets into the
+     * log yet — that is step 2 — so the two never show the same reps twice.
+     */
+    circuit: {
+      'pv-person': [
+        { id: 'pv-ex-quad', name: 'Quad Curl' },
+        { id: 'pv-ex-bench', name: 'Bench' },
+      ],
+    },
+    sets: [
+      {
+        id: 'pv-s1',
+        person: 'pv-person',
+        exercise: 'pv-ex-quad',
+        name: 'Quad Curl',
+        entry: 'pv-e10',
+        on: localISO(at(3, 7)),
+        value: 15,
+        created: at(3, 7, 20).getTime(),
+        updated: at(3, 7, 20).getTime(),
+      },
+      {
+        id: 'pv-s2',
+        person: 'pv-person',
+        exercise: 'pv-ex-bench',
+        name: 'Bench',
+        entry: 'pv-e10',
+        on: localISO(at(3, 7)),
+        value: 10,
+        created: at(3, 7, 30).getTime(),
+        updated: at(3, 7, 30).getTime(),
+      },
+    ],
   }
+  /* every other seeded goal was made two months ago, so its row is the full thirty-one */
+  for (const g of s.goals) s.made[g.id] ??= at(60, 9).getTime()
+  return s
 }
 
 /* ⚠️ the local calendar date of a Date, never toISOString().slice(0,10) — see dates.ts, which has
@@ -545,7 +709,20 @@ const localISO = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const BLANK = 'dev_chron_blank'
-const blank = (): Store => ({ acts: [], ents: [], goals: [], routines: [], plans: [] })
+const blank = (): Store => ({
+  acts: [],
+  ents: [],
+  goals: [],
+  routines: [],
+  plans: [],
+  marks: [],
+  doneAt: {},
+  made: {},
+  days: [],
+  dayNotes: [],
+  sets: [],
+  circuit: {},
+})
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
 const asked = (): boolean => {
@@ -607,7 +784,14 @@ const mint = (p: string): string => `${p}-new-${next++}`
  */
 export const pvGoals = (): Goal[] =>
   db()
-    .goals.map((g) => ({ ...g }))
+    .goals.map((g) => ({
+      ...g,
+      made: db().made[g.id] ?? null,
+      days: db()
+        .days.filter((x) => x.goal === g.id)
+        .sort((a, b) => a.from.localeCompare(b.from))
+        .map((x) => ({ from: x.from, days: x.days })),
+    }))
     .sort((a, b) => b.priority - a.priority || a.sort - b.sort)
 export const pvActivities = (): Activity[] => db().acts.map((x) => ({ ...x }))
 export const pvRoutines = (): Routine[] =>
@@ -761,8 +945,10 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   /* ⚠️ an edit keeps the progress and the tick, which live in their own columns and are not on
      the save path — the same division the server makes. Overwriting them here would make the
      preview's edit destroy a tick that the real one preserves. */
-  if (i < 0) db().goals.push(made)
-  else
+  if (i < 0) {
+    db().goals.push(made)
+    db().made[id] = Date.now()
+  } else
     db().goals[i] = {
       ...made,
       progress: db().goals[i].progress,
@@ -782,10 +968,102 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   return { id }
 }
 
+/**
+ * `chronicle_goal_days_set`, in its own words and in its own order — see the weekday draft.
+ *
+ * ⚠️ THE FORWARD-ONLY BOUND IS UTC'S YESTERDAY, as the server's is, not the member's: a double
+ * that refused by local date would agree with the server everywhere but the hours either side of
+ * midnight, which is exactly where somebody edits a schedule before bed.
+ */
+export const pvSetDays = (id: string, days: number, from: string): { why: string } | null => {
+  if (!Number.isInteger(days) || days < 1 || days > 127) {
+    return { why: 'a goal has to be for at least one day' }
+  }
+  const utcYesterday = new Date(Date.now() - DAY_MS).toISOString().slice(0, 10)
+  if (!from || from < utcYesterday) return { why: 'a schedule change starts today or later' }
+  const g = db().goals.find((x) => x.id === id && x.scope === 'day' && x.every != null)
+  if (!g) return { why: 'no such repeating daily goal' }
+  const row = db().days.find((x) => x.goal === id && x.from === from)
+  if (row) Object.assign(row, { days, setAt: Date.now() })
+  else db().days.push({ goal: id, from, days, setAt: Date.now() })
+  return null
+}
+
 export const pvProgress = (id: string, progress: number, done: boolean): boolean => {
   const g = db().goals.find((x) => x.id === id)
   if (g) Object.assign(g, { progress, done })
+  /* `done_at = case when p_done then coalesce(done_at, now()) else null end`, as the server says */
+  if (g && done) db().doneAt[id] ??= Date.now()
+  if (g && !done) delete db().doneAt[id]
   return !!g
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * `chronicle_goal_mark`, in its own words and in its own order — see the draft SQL.
+ *
+ * ⚠️ EVERY REFUSAL IS COPIED, because the room's behaviour on a refusal is the thing being
+ * checked here. "That window has not started" is the one a person can meet, from a page left open
+ * across midnight; a double that accepted it would show a tick the real site throws away.
+ */
+export const pvSetMark = (
+  id: string,
+  at: MarkAt,
+  progress: number | null,
+  done: boolean | null,
+): { why: string } | null => {
+  const g = db().goals.find((x) => x.id === id && x.every != null)
+  if (!g) return { why: 'no such repeating goal' }
+  const s = Date.parse(at.starts)
+  const e = Date.parse(at.ends)
+  if (!at.from || !Number.isFinite(s) || !Number.isFinite(e)) {
+    return { why: 'that window does not make sense' }
+  }
+  if (s > Date.now() + 3_600_000) return { why: 'that window has not started' }
+  /* chronicle_goal_marks_window_shape, which the writer reports in the same words */
+  const drift = Math.abs(Date.parse(new Date(s).toISOString().slice(0, 10)) - Date.parse(at.from))
+  if (!(e > s) || e > s + 367 * DAY_MS || drift > DAY_MS) {
+    return { why: 'that window does not make sense' }
+  }
+  const clamp = (n: number) => Math.max(0, Math.min(n, 1e9))
+  const m = db().marks.find((x) => x.goal === id && x.scope === g.scope && x.from === at.from)
+  if (!m) {
+    db().marks.push({
+      goal: id,
+      scope: g.scope,
+      from: at.from,
+      starts: at.starts,
+      ends: at.ends,
+      progress: clamp(progress ?? 0),
+      doneAt: done ? Date.now() : null,
+      setAt: Date.now(),
+    })
+    return null
+  }
+  /* null means "I am not talking about this" */
+  if (progress != null) m.progress = clamp(progress)
+  if (done != null) m.doneAt = done ? (m.doneAt ?? Date.now()) : null
+  m.starts = at.starts
+  m.ends = at.ends
+  m.setAt = Date.now()
+  return null
+}
+
+/** `chronicle_goal_marks_for`: the marks asked about, at each goal's current scope, and legacy. */
+export const pvMarksFor = (asks: ReadonlyArray<{ id: string; from: string }>): Marked => {
+  const out: Marked = { marks: {}, legacy: {} }
+  /* the server raises past 1200, and the client turns any refusal into no marks at all */
+  if (asks.length > 1200) return out
+  for (const a of asks) {
+    const g = db().goals.find((x) => x.id === a.id)
+    if (!g) continue
+    const m = db().marks.find((x) => x.goal === g.id && x.scope === g.scope && x.from === a.from)
+    if (m) out.marks[`${g.id}@${a.from}`] = { progress: m.progress, done: m.doneAt != null }
+    const was = db().doneAt[g.id]
+    if (g.every != null && was != null) out.legacy[g.id] = was
+  }
+  return out
 }
 
 /** ⚠️ owner-scoped by construction here, the way the `owner = auth.uid()` clause does it there */
@@ -798,6 +1076,11 @@ export const pvShareGoal = (id: string, on: boolean): boolean => {
 
 export const pvDropGoal = (id: string): boolean => {
   db().goals = db().goals.filter((g) => g.id !== id)
+  /* `on delete cascade`, and the row's own done_at goes with the row */
+  db().marks = db().marks.filter((m) => m.goal !== id)
+  db().days = db().days.filter((x) => x.goal !== id)
+  delete db().doneAt[id]
+  delete db().made[id]
   return true
 }
 
@@ -1014,6 +1297,8 @@ export const pvAddEntry = (
 
 export const pvDropEntry = (id: string): boolean => {
   db().ents = db().ents.filter((e) => e.id !== id)
+  /* `on delete cascade`: the sitting takes what it counted with it */
+  db().sets = db().sets.filter((x) => x.entry !== id)
   return true
 }
 
@@ -1090,6 +1375,123 @@ export const pvFixRunning = (
     return { why: 'that is not one of your activities' }
   /* ⚠️ null leaves each one alone — the rule every save path in this module keeps */
   Object.assign(e, { start: fromISO ?? e.start, activity: activity ?? e.activity })
+  return null
+}
+
+/* ── sets, in the sets draft's own words and order ─────────────────────────────────────── */
+
+/** every local day on Earth is within one of UTC's — the writer's bound, in the writer's terms */
+const nearStart = (day: string, startISO: string): boolean =>
+  Math.abs(Date.parse(day + 'T00:00:00Z') - Date.parse(startISO.slice(0, 10) + 'T00:00:00Z')) <=
+  86_400_000
+
+const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+
+/**
+ * `chronicle_set_add`. ⚠️ THE NAME COMES FROM THE PERSON'S OWN LIST, never from the caller (§15b),
+ * and the person and the sitting are checked by hand — the server's function cannot lean on
+ * circuit_people's policies, so neither does this.
+ */
+export const pvSetAdd = (
+  person: string,
+  exercise: string,
+  value: number,
+  day: string,
+  entry: string | null = null,
+): { id: string } | { why: string } => {
+  if (!(value > 0) || value > 1e9) return { why: 'that is not a number of anything' }
+  const list = db().circuit[person]
+  if (!list) return { why: 'no such person of yours' }
+  const ex = list.find((x) => x.id === exercise)
+  if (!ex || !ex.name.trim()) return { why: 'no such exercise' }
+  if (entry != null) {
+    const e = db().ents.find((x) => x.id === entry)
+    if (!e) return { why: 'no such session' }
+    if (!day || !nearStart(day, e.start)) {
+      return { why: 'that is not the day that session starts on' }
+    }
+  } else if (!day || day > utcDay(Date.now() + 86_400_000)) {
+    return { why: 'that day has not come yet' }
+  }
+  const id = mint('pv-s')
+  const now = Date.now()
+  db().sets.push({
+    id,
+    person,
+    exercise,
+    name: ex.name.trim().slice(0, 200),
+    entry,
+    on: day,
+    value,
+    created: now,
+    updated: now,
+  })
+  return { id }
+}
+
+/**
+ * The Circuit's side of the double: a person of YOURS with these exercises — what
+ * `circuit_people` holds for an account-linked person. ⚠️ A SEAM FOR TESTS, because the double has
+ * no Circuit of its own; replacing a list is how a rename or a deletion in the grid is shown.
+ */
+export const pvGiveCircuit = (person: string, exercises: Array<{ id: string; name: string }>) => {
+  db().circuit[person] = exercises.map((x) => ({ ...x }))
+}
+
+/** `chronicle_sets_between`: yours, half-open, with today's name looked up BY ID */
+export const pvSetsBetween = (from: string, to: string): ChronSet[] =>
+  db()
+    .sets.filter((x) => x.on >= from && x.on < to)
+    .sort((a, b) => a.on.localeCompare(b.on) || a.created - b.created || a.id.localeCompare(b.id))
+    .map((x) => ({
+      id: x.id,
+      entry: x.entry,
+      person: x.person,
+      exercise: x.exercise,
+      name: x.name,
+      now: (x.person && db().circuit[x.person]?.find((e) => e.id === x.exercise)?.name) || null,
+      on: x.on,
+      value: x.value,
+    }))
+
+/**
+ * `chronicle_entry_edit_day`: the day is judged FIRST, then the sitting is edited by its own
+ * rules, then its sets follow — and a refusal anywhere leaves both as they were, which the server
+ * gets from being one transaction and this gets from mutating last.
+ */
+export const pvEditEntryDay = (
+  id: string,
+  fromISO: string,
+  toISO: string,
+  activity: string | null,
+  day: string,
+): { why: string } | null => {
+  if (fromISO && (!day || !nearStart(day, fromISO))) {
+    return { why: 'that is not the day that session starts on' }
+  }
+  const no = pvEditEntry(id, fromISO, toISO, null, activity)
+  if (no) return no
+  for (const x of db().sets) {
+    if (x.entry === id && x.on !== day) Object.assign(x, { on: day, updated: Date.now() })
+  }
+  return null
+}
+
+/** `chronicle_running_fix_day`, the same for the sitting still running */
+export const pvFixRunningDay = (
+  fromISO: string | null,
+  activity: string | null,
+  day: string,
+): { why: string } | null => {
+  const e = db().ents.find((x) => x.end == null)
+  if (e && (!day || !nearStart(day, fromISO ?? e.start))) {
+    return { why: 'that is not the day that session starts on' }
+  }
+  const no = pvFixRunning(fromISO, activity)
+  if (no || !e) return no
+  for (const x of db().sets) {
+    if (x.entry === e.id && x.on !== day) Object.assign(x, { on: day, updated: Date.now() })
+  }
   return null
 }
 
@@ -1246,6 +1648,19 @@ export const pvExport = (): Record<string, unknown> => ({
       quality: e.quality,
       created_at: e.start,
     })),
+  sets: [...db().sets]
+    .sort((a, b) => a.on.localeCompare(b.on) || a.created - b.created || a.id.localeCompare(b.id))
+    .map((x) => ({
+      id: x.id,
+      person: x.person,
+      exercise: x.exercise,
+      name: x.name,
+      entry: x.entry,
+      on_day: x.on,
+      value: x.value,
+      created_at: new Date(x.created).toISOString(),
+      updated_at: new Date(x.updated).toISOString(),
+    })),
   goals: [...db().goals]
     .sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
     .map((g) => ({
@@ -1258,7 +1673,7 @@ export const pvExport = (): Record<string, unknown> => ({
       unit: g.unit,
       progress: g.progress,
       /* `done` is a boolean here and a moment there, the same as `archived` above */
-      done_at: g.done ? EPOCH : null,
+      done_at: g.done ? new Date(db().doneAt[g.id] ?? 0).toISOString() : null,
       note: g.note,
       sort: g.sort,
       activity: g.activity,
@@ -1266,8 +1681,26 @@ export const pvExport = (): Record<string, unknown> => ({
       counts: g.counts,
       est_mins: g.est,
       priority: g.priority,
-      created_at: EPOCH,
+      /* ⚠️ THE REAL MOMENT, not EPOCH: the import keeps it, and it is the day the goal began
+         asking, so a restore that lost it would put back a goal that had asked about nothing */
+      created_at: new Date(db().made[g.id] ?? 0).toISOString(),
       updated_at: EPOCH,
+      days: db()
+        .days.filter((x) => x.goal === g.id)
+        .sort((a, b) => a.from.localeCompare(b.from))
+        .map((x) => ({ from: x.from, days: x.days, set_at: new Date(x.setAt).toISOString() })),
+      marks: db()
+        .marks.filter((m) => m.goal === g.id)
+        .sort((a, b) => a.scope.localeCompare(b.scope) || a.from.localeCompare(b.from))
+        .map((m) => ({
+          scope: m.scope,
+          from: m.from,
+          starts_at: m.starts,
+          ends_at: m.ends,
+          progress: m.progress,
+          done_at: m.doneAt == null ? null : new Date(m.doneAt).toISOString(),
+          set_at: new Date(m.setAt).toISOString(),
+        })),
     })),
   routines: [...db().routines]
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -1278,6 +1711,12 @@ export const pvExport = (): Record<string, unknown> => ({
       created_at: EPOCH,
       updated_at: EPOCH,
     })),
+  /* no id, like a sitting's notes: an id is this account's and a file is not */
+  day_notes: [...db().dayNotes]
+    .sort(
+      (a, b) => a.on.localeCompare(b.on) || a.at.localeCompare(b.at) || a.id.localeCompare(b.id),
+    )
+    .map((n) => ({ on_day: n.on, at: n.at, body: n.body })),
   plans: [...db().plans]
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || a.id.localeCompare(b.id))
     .map((p) => ({
@@ -1310,10 +1749,17 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
 
   const list = (k: string): Array<Record<string, unknown>> =>
     Array.isArray(d[k]) ? (d[k] as Array<Record<string, unknown>>) : []
-  const total = ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
-    (n, k) => n + list(k).length,
-    0,
-  )
+  /* ⚠️ THE MARKS AND THE SCHEDULES RIDE INSIDE THE GOALS, and the server's outer wall counts
+     them too — a file of one goal carrying a million schedule rows is not a file of one row */
+  const inside = (k: string) =>
+    list('goals').reduce((n, g) => n + (Array.isArray(g[k]) ? (g[k] as unknown[]).length : 0), 0)
+  const total =
+    ['activities', 'entries', 'sets', 'goals', 'routines', 'plans', 'day_notes'].reduce(
+      (n, k) => n + list(k).length,
+      0,
+    ) +
+    inside('marks') +
+    inside('days')
   if (total > 50_000) return { why: 'that file is too big to put back in one go' }
 
   const out: Putback = {
@@ -1322,8 +1768,14 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     goals: 0,
     routines: 0,
     plans: 0,
+    marks: 0,
+    schedules: 0,
+    notes: 0,
+    sets: 0,
     skipped: 0,
   }
+  /** the goals THIS import created — the only ones a schedule may arrive with */
+  const fresh = new Set<string>()
   /**
    * What an account may hold, as the server counts it.
    *
@@ -1473,6 +1925,50 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     out.entries++
   }
 
+  /**
+   * The sets, after the sittings they hang off, as `chronicle_import` puts them back: a sitting
+   * that is yours or none, a number of something, a day that has come, a name — and add, never
+   * replace. ⚠️ A PERSON THAT IS NOT YOURS HERE BECOMES NONE, and the set keeps its exercise id and
+   * its name: it is never re-attached to an exercise by matching names (§15b).
+   */
+  for (const x of list('sets')) {
+    const id = str(x.id)
+    const exercise = str(x.exercise)
+    const name = typeof x.name === 'string' ? x.name.trim() : ''
+    const on = str(x.on_day)
+    const value = numOr(x.value, 0)
+    const entry = str(x.entry)
+    if (
+      !id ||
+      !exercise ||
+      !name ||
+      !on ||
+      on > new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) ||
+      !(value > 0) ||
+      value > 1e9 ||
+      (entry != null && !db().ents.some((e) => e.id === entry)) ||
+      db().sets.some((y) => y.id === id)
+    ) {
+      out.skipped++
+      continue
+    }
+    const person = str(x.person)
+    const created = Date.parse(String(x.created_at ?? ''))
+    const updated = Date.parse(String(x.updated_at ?? ''))
+    db().sets.push({
+      id,
+      person: person && db().circuit[person] ? person : null,
+      exercise,
+      name: name.slice(0, 200),
+      entry,
+      on,
+      value,
+      created: Number.isFinite(created) ? created : Date.now(),
+      updated: Number.isFinite(updated) ? updated : Date.now(),
+    })
+    out.sets++
+  }
+
   for (const g of list('goals')) {
     const id = str(g.id)
     if (
@@ -1539,7 +2035,112 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       est: g.est_mins == null ? null : numOr(g.est_mins, 0) || null,
       priority: (numOr(g.priority, 0) || 0) as Goal['priority'],
     })
+    /* the row's own moment, kept — it is what `legacy` is read from */
+    const doneMs = Date.parse(String(g.done_at ?? ''))
+    if (Number.isFinite(doneMs)) db().doneAt[id] = doneMs
+    /* `coalesce(created_at, now())`, which is what keeps the day a restored goal began asking */
+    const madeMs = Date.parse(String(g.created_at ?? ''))
+    db().made[id] = Number.isFinite(madeMs) ? madeMs : Date.now()
+    fresh.add(id)
     out.goals++
+  }
+
+  /**
+   * The schedules, as `chronicle_import` puts them back: ONLY for a goal this same import created,
+   * so a goal already here keeps the history it has — interleaving a file's rows into it would
+   * re-judge days already judged. The writer's shape rules are kept too: a repeating daily goal,
+   * a mask of 1 to 127. Add, never replace.
+   */
+  for (const g of list('goals')) {
+    if (!Array.isArray(g.days)) continue
+    const id = str(g.id)
+    const goal = db().goals.find((x) => x.id === id && x.scope === 'day' && x.every != null)
+    for (const x of g.days as Array<Record<string, unknown>>) {
+      const from = str(x.from)
+      const days = numOr(x.days, 0)
+      if (
+        !id ||
+        !fresh.has(id) ||
+        !goal ||
+        !from ||
+        !Number.isInteger(days) ||
+        days < 1 ||
+        days > 127 ||
+        db().days.some((y) => y.goal === id && y.from === from)
+      ) {
+        out.skipped++
+        continue
+      }
+      const set = Date.parse(String(x.set_at ?? ''))
+      db().days.push({ goal: id, from, days, setAt: Number.isFinite(set) ? set : Date.now() })
+      out.schedules++
+    }
+  }
+
+  /**
+   * The marks, after every goal, as `chronicle_import` does it: the goal must be yours and
+   * repeating, the window must have begun, and a window already there is kept — add, never
+   * replace. A goal the account already had still gets its missing windows back.
+   */
+  for (const g of list('goals')) {
+    if (!Array.isArray(g.marks)) continue
+    const goal = db().goals.find((x) => x.id === str(g.id) && x.every != null)
+    for (const m of g.marks as Array<Record<string, unknown>>) {
+      const scope = str(m.scope) as Scope | null
+      const from = str(m.from)
+      const starts = str(m.starts_at)
+      const ends = str(m.ends_at)
+      if (
+        !goal ||
+        !scope ||
+        !from ||
+        !starts ||
+        !ends ||
+        Date.parse(starts) > Date.now() + 3_600_000 ||
+        db().marks.some((x) => x.goal === goal.id && x.scope === scope && x.from === from)
+      ) {
+        out.skipped++
+        continue
+      }
+      const done = Date.parse(String(m.done_at ?? ''))
+      const set = Date.parse(String(m.set_at ?? ''))
+      db().marks.push({
+        goal: goal.id,
+        scope,
+        from,
+        starts,
+        ends,
+        progress: Math.max(0, Math.min(numOr(m.progress, 0), 1e9)),
+        doneAt: Number.isFinite(done) ? done : null,
+        setAt: Number.isFinite(set) ? set : Date.now(),
+      })
+      out.marks++
+    }
+  }
+
+  /**
+   * The day notes, as `chronicle_import` puts them back: a day that has come, fifty to a day, and
+   * skipped when the same day, moment and words are already here — a file put back twice must not
+   * write a journal twice, and with no id there is nothing else to know it by.
+   */
+  for (const n of list('day_notes')) {
+    const on = str(n.on_day)
+    const body = typeof n.body === 'string' ? n.body.trim() : ''
+    const at = str(n.at) ?? new Date().toISOString()
+    const limit = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+    if (
+      !on ||
+      !body ||
+      body.length > 4000 ||
+      on > limit ||
+      db().dayNotes.filter((x) => x.on === on).length >= 50 ||
+      db().dayNotes.some((x) => x.on === on && x.at === at && x.body === body)
+    ) {
+      out.skipped++
+      continue
+    }
+    db().dayNotes.push({ id: mint('pv-dn'), on, at, body })
+    out.notes++
   }
 
   for (const p of list('plans')) {
@@ -2037,6 +2638,33 @@ export const pvMoments = (fromISO: string, toISO: string) => {
 }
 
 /** the journal, in the double — the same three rules the server keeps */
+/** `chronicle_day_note_add`, in its words and order */
+export const pvDayNoteAdd = (day: string, body: string): { why: string } | null => {
+  const text = body.trim()
+  if (!text) return { why: 'nothing to write down' }
+  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  /* UTC's date plus one, as the server bounds it, since it does not know the zone */
+  const limit = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+  if (!day || day > limit) return { why: 'that day has not come yet' }
+  if (db().dayNotes.filter((n) => n.on === day).length >= 50) {
+    return { why: 'that is 50 notes on one day' }
+  }
+  db().dayNotes.push({ id: mint('pv-dn'), on: day, at: new Date().toISOString(), body: text })
+  return null
+}
+
+/** `chronicle_day_notes_between`: `[from, to)` by day, newest day first; a refusal reads as none */
+export const pvDayNotes = (from: string, to: string): DayNote[] => {
+  const days = (Date.parse(to) - Date.parse(from)) / 86_400_000
+  if (!(days > 0) || days > 400) return []
+  return db()
+    .dayNotes.filter((n) => n.on >= from && n.on < to)
+    .sort(
+      (a, b) => b.on.localeCompare(a.on) || b.at.localeCompare(a.at) || a.id.localeCompare(b.id),
+    )
+    .map((n) => ({ ...n }))
+}
+
 export const pvNoteAdd = (entry: string, body: string): { why: string } | null => {
   const text = body.trim()
   if (!text) return { why: 'nothing to write down' }
@@ -2053,6 +2681,16 @@ export const pvNoteAdd = (entry: string, body: string): { why: string } | null =
 
 export const pvNoteEdit = (id: string, body: string): { why: string } | null => {
   const text = body.trim()
+  /* the server refuses this on edit as well as on add; the double accepted it */
+  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  /* a day note is the same row in the same table, so the same edit reaches it */
+  const d = db().dayNotes.findIndex((n) => n.id === id)
+  if (d >= 0) {
+    db().dayNotes = text
+      ? db().dayNotes.map((n) => (n.id === id ? { ...n, body: text } : n))
+      : db().dayNotes.filter((n) => n.id !== id)
+    return null
+  }
   for (const e of db().ents) {
     const at = e.notes.findIndex((n) => n.id === id)
     if (at < 0) continue

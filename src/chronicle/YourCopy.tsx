@@ -77,7 +77,12 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
         showToast(got.why.charAt(0).toUpperCase() + got.why.slice(1))
         return
       }
-      const added = got.activities + got.entries + got.goals + got.routines + got.plans
+      /* ⚠️ THE MARKS AND THE DAY NOTES COUNT TOO: a file that only adds days to goals already
+         here, or only notes, is not "everything in that file was already here". A goal's
+         weekday SCHEDULE does not need the same: it only ever arrives with the goal it
+         belongs to (chronicle_import refuses it for a goal already here), so `goals` counts it */
+      const added =
+        got.activities + got.entries + got.goals + got.routines + got.plans + got.marks + got.notes
       /**
        * ⚠️ COUNTED SEPARATELY, because "added 0" and "that file was already here" are different
        * things to be told and only one of them sounds like a failure. The same distinction the
@@ -85,7 +90,7 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
        */
       showToast(
         added
-          ? `Added ${added} — ${got.entries} sessions, ${got.activities} activities, ${got.goals} goals.`
+          ? `Added ${added} — ${got.entries} sessions, ${got.activities} activities, ${got.goals} goals${got.marks ? `, ${got.marks} check-offs` : ''}${got.notes ? `, ${got.notes} notes` : ''}.`
           : got.skipped
             ? 'Everything in that file was already here'
             : 'There was nothing in that file',

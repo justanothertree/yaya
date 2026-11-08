@@ -3,10 +3,14 @@ import {
   addEntry,
   addNote,
   archiveActivity,
+  dayNotesBetween,
   dropEntry,
   editEntry,
+  editEntryDay,
   editNote,
   fixRunning,
+  fixRunningDay,
+  setsBetween,
   setAmount,
   setEntryPicture,
   setQuality,
@@ -30,6 +34,9 @@ import { seenPictures, type Kept } from '../pictures/cloud'
 import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
 import { JournalList } from './JournalList'
+import { dayLogNotes, type DayNote } from './journal'
+import { localISO } from '../circuit/dates'
+import { dayOfStart, moveNote, type ChronSet } from './sets'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
@@ -207,7 +214,7 @@ export function Timer({
    * that sitting" is three moves — the day, the editor, the half — and the last belongs to the
    * room above.
    */
-  onShow?: (half: 'day') => void
+  onShow?: (half: 'day' | 'journal') => void
   /**
    * Hand a journal entry to the room as the first draft of a goal — see `ideaTitle` in goal.ts.
    *
@@ -318,6 +325,8 @@ export function Timer({
   /** how the span being edited went, '' for unrated — see Entry.quality */
   const [entMood, setEntMood] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
+  /* bumped by ✎ Note with nothing running, so the Journal's box takes the cursor */
+  const [writeNow, setWriteNow] = useState(0)
   const [entAct, setEntAct] = useState('')
   const [entNote, setEntNote] = useState('')
   /**
@@ -335,6 +344,15 @@ export function Timer({
    * chose and the truncation is theirs.
    */
   const entWas = useRef<{ from: string; to: string | null } | null>(null)
+  /**
+   * The sets counted during the sitting being edited — see sets.ts.
+   *
+   * ⚠️ READ SO THE EDITOR CAN SAY WHAT A MOVE DOES NOT DO, and so a start moved across midnight
+   * takes them with it. Empty for every sitting until the sets draft is applied, and then for
+   * every sitting nobody counted sets in — and an editor with no sets is exactly the editor there
+   * has always been.
+   */
+  const [entSets, setEntSets] = useState<ChronSet[]>([])
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -504,6 +522,48 @@ export function Timer({
     }
   }, [bounds.fromMs, bounds.toMs, beat])
 
+  /**
+   * The day's notes with no session — the third kind of row, after a sitting and a moment.
+   *
+   * ⚠️ PRIVATE, AND THIS IS YOUR OWN LOG: nothing here reaches Friends, which reads a different
+   * function that carries no note at all. Fetched again when the Journal half hands back, since
+   * that is where they are written and changed.
+   */
+  const [dayNotes, setDayNotes] = useState<DayNote[]>([])
+  useEffect(() => {
+    if (show !== 'day') return
+    let dead = false
+    void (async () => {
+      /* ⚠️ HALF-OPEN, like every range here: [this day, the next) — asking (day, day) asks for
+         nothing, and the reader refuses an empty range by returning none */
+      const got = await dayNotesBetween(seeing, localISO(new Date(bounds.toMs)))
+      if (!dead) setDayNotes(got)
+    })()
+    return () => {
+      dead = true
+    }
+  }, [seeing, bounds.toMs, beat, show])
+
+  const fixStart = fixEnt ? (log.find((e) => e.id === fixEnt)?.start ?? null) : null
+  useEffect(() => {
+    if (!fixEnt || !fixStart) {
+      setEntSets([])
+      return
+    }
+    let dead = false
+    /* the sets of a sitting are on the local day it starts — see dayOfStart */
+    const day = dayOfStart(fixStart)
+    const next = new Date(fixStart)
+    next.setDate(next.getDate() + 1)
+    void (async () => {
+      const got = await setsBetween(day, dayOfStart(next.toISOString()))
+      if (!dead) setEntSets(got.filter((x) => x.entry === fixEnt))
+    })()
+    return () => {
+      dead = true
+    }
+  }, [fixEnt, fixStart])
+
   const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
   const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
   /**
@@ -515,7 +575,11 @@ export function Timer({
    */
   const stream = useMemo(() => {
     const rows: Array<
-      { at: number } & ({ kind: 'sat'; e: Entry } | { kind: 'moment'; m: Moment })
+      { at: number } & (
+        | { kind: 'sat'; e: Entry }
+        | { kind: 'moment'; m: Moment }
+        | { kind: 'note'; n: DayNote; timed: boolean }
+      )
     > = []
     for (const e of seeSite ? log : didMyself)
       rows.push({ at: Date.parse(e.start), kind: 'sat', e })
@@ -533,8 +597,12 @@ export function Timer({
       if (m.at) rows.push({ at: Date.parse(m.at), kind: 'moment', m })
       else if (m.on === seeing) rows.push({ at: Infinity, kind: 'moment', m })
     }
+    /* ⚠️ A NOTE HAS ITS TIME ONLY IF IT WAS WRITTEN THAT DAY — see `dayLogNotes`. One written
+       about this day from another goes to the head of it, with no clock, like a workout */
+    for (const x of dayLogNotes(dayNotes, seeing, bounds.fromMs, bounds.toMs))
+      rows.push({ at: x.at, kind: 'note', n: x.n, timed: x.timed })
     return rows.sort((x, y) => y.at - x.at)
-  }, [log, didMyself, moments, seeSite, seeing])
+  }, [log, didMyself, moments, dayNotes, seeSite, seeing, bounds.fromMs, bounds.toMs])
 
   const onSiteMs = useMemo(
     () => onSite.reduce((n, e) => n + overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()), 0),
@@ -968,7 +1036,11 @@ export function Timer({
       setBusy(true)
       const w = entWas.current
       const kept = w != null && forInput(w.from) === entFrom
-      const no = await fixRunning(kept ? w!.from : new Date(entFrom).toISOString(), entAct || null)
+      const from = kept ? w!.from : new Date(entFrom).toISOString()
+      /* ⚠️ A SITTING WITH SETS MOVES THEM WITH ITS START, in the same call — §15c */
+      const no = entSets.length
+        ? await fixRunningDay(from, entAct || null, dayOfStart(from))
+        : await fixRunning(from, entAct || null)
       setBusy(false)
       if (no) return moan(no.why)
       setFixEnt(null)
@@ -991,27 +1063,37 @@ export function Timer({
     const sameFrom = was != null && forInput(was.from) === entFrom
     const sameTo = was?.to != null && forInput(was.to) === entTo
     setBusy(true)
-    const bad = await editEntry(
-      fixEnt,
-      sameFrom ? was!.from : new Date(entFrom).toISOString(),
-      sameTo ? was!.to! : new Date(entTo).toISOString(),
-      /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
+    const fromISO = sameFrom ? was!.from : new Date(entFrom).toISOString()
+    const toISO = sameTo ? was!.to! : new Date(entTo).toISOString()
+    /**
+     * ⚠️ A SITTING WITH SETS GOES THROUGH THE DAY EDITOR, which edits the span and moves the sets to
+     * the local day it now starts on IN ONE CALL (§15c) — two calls would leave a moment, or a
+     * failure, in which the Circuit grid and the sitting disagree about which day the reps were.
+     * The note is not sent at all on that path, and the server leaves it alone.
+     */
+    const bad = entSets.length
+      ? await editEntryDay(fixEnt, fromISO, toISO, entAct || null, dayOfStart(fromISO))
+      : await editEntry(
+          fixEnt,
+          fromISO,
+          toISO,
+          /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
          read null as "clear it" — so opening a session's editor and pressing Save, changing
          nothing, destroyed whatever you had written about it. The server now reads null as "leave
          it alone" so no caller can lose one by forgetting; this sends the box, so you can change
          one or empty it on purpose. */
-      /**
-       * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
-       * box now, not this session's note — sending it here would copy whatever is half-typed in
-       * that box into the legacy `note` column on every Save. The journal is the one home for
-       * what you write about a sitting; the column is frozen where it stood.
-       */
-      null,
-      /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
+          /**
+           * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
+           * box now, not this session's note — sending it here would copy whatever is half-typed in
+           * that box into the legacy `note` column on every Save. The journal is the one home for
+           * what you write about a sitting; the column is frozen where it stood.
+           */
+          null,
+          /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
          mistake this room allows and the only remedy used to be deleting the session and typing
          it in again — losing the amount, the rating and the day it was recorded. */
-      entAct || null,
-    )
+          entAct || null,
+        )
     /**
      * ⚠️ THE AMOUNT IS A SECOND CALL, and only when the activity has something to count. It is a
      * separate function on the server for a reason the migration records — three signatures would
@@ -1483,7 +1565,25 @@ export function Timer({
               ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
               : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
           </span>
-        ) : null}
+        ) : (
+          /**
+           * ⚠️ A NOTE WITHOUT A TIMER, which is the whole of "writing a note must not require
+           * starting a timer". With a session running, ✎ Note writes about it; with nothing
+           * running it used to be absent, so writing anything down meant timing something first.
+           * This goes to the Journal and puts the cursor in its box — the one place a note with
+           * no session is written and changed.
+           */
+          <button
+            className="btn btn-ghost chron-jot"
+            onClick={() => {
+              setWriteNow((n) => n + 1)
+              onShow?.('journal')
+            }}
+          >
+            ✎ Note
+            <span className="sr-only"> — write something down, no session needed</span>
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
@@ -1786,6 +1886,7 @@ export function Timer({
         <JournalList
           acts={acts}
           beat={beat}
+          writeNow={writeNow}
           onOpen={(row, e) => {
             /* ⚠️ THE DAY FIRST, THEN THE HALF, in one handler so they commit together: with the
                half changed alone, the effect that resets `seeing` would run against 'journal' */
@@ -1838,6 +1939,41 @@ export function Timer({
       {show === 'day' && stream.length > 0 && (
         <ul className="chron-log">
           {stream.map((row) => {
+            if (row.kind === 'note') {
+              const n = row.n
+              return (
+                <li key={`n-${n.id}`} className="chron-moment is-note">
+                  <span className="chron-moment-what">
+                    <span aria-hidden>📝</span>{' '}
+                    <span className="sr-only">A note only you can read: </span>
+                    <span className="chron-note-text">{n.body}</span>
+                  </span>
+                  {/* ⚠️ THE TIME IT WAS WRITTEN, OR THE DAY — never a time on this day that the
+                      note does not have. See `dayLogNotes`. */}
+                  <span className="muted chron-moment-when">
+                    {row.timed
+                      ? new Date(n.at).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : `written ${new Date(n.at).toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                        })}`}
+                  </span>
+                  {/* changed where it is written — one editor for a note, not two that drift */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost chron-x"
+                    aria-label="Change this note, in the Journal"
+                    onClick={() => onShow?.('journal')}
+                  >
+                    ✎
+                  </button>
+                </li>
+              )
+            }
             if (row.kind === 'moment') {
               const m = row.m
               const workout = m.kind === 'workout'
@@ -2270,6 +2406,12 @@ export function Timer({
                   </option>
                 ))}
               </select>
+              {/* ⚠️ SAID AT THE MOMENT IT HAPPENS (§15c): a move takes the time to the new
+                  activity and leaves every set the exercise it was. Correct, and it looks like a
+                  bug — a goal's number moves and the Circuit's does not. */}
+              {entAct !== e.activity && moveNote(entSets, e.id) ? (
+                <p className="muted chron-move-note">{moveNote(entSets, e.id)}</p>
+              ) : null}
             </div>
 
             <div className="chron-frow">

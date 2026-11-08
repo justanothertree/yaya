@@ -1,6 +1,7 @@
 name: db guards
 
-# Runs supabase/tests/visibility-guards.sql against a throwaway local database on every push.
+# Runs supabase/tests/visibility-guards.sql, then supabase/tests/chronicle-daily-flow.sql, against a
+# throwaway local database on every push.
 #
 # ⚠️ NO PRODUCTION CREDENTIALS ARE USED OR WANTED HERE. The database this builds is created by
 # `supabase start`, lives for the length of the job and is thrown away. Giving Actions a
@@ -80,7 +81,14 @@ jobs:
       - name: Apply migrations and seed
         run: supabase db reset
 
-      - name: Run the visibility guards
+      # ⚠️ THE CHRONICLE FLOW RUNS IN THIS STEP, NOT A STEP OF ITS OWN, because DB_URL is worked out
+      # here and a shell variable does not outlive the step that set it. It acts as a seeded
+      # member on the real functions — start, switch, a note, a count, the read-back, a goal, stop,
+      # and a second member refused at each — inside a transaction that rolls back, like the guards.
+      # It runs AFTER them and only if they pass (bash -e), so a broken guard is never hidden behind
+      # a later green. What it does NOT cover: Supabase Auth and PostgREST. It sets the role and the
+      # JWT claim itself, so a browser session is still a separate kind of evidence.
+      - name: Run the visibility guards and the chronicle flow
         run: |
           DB_URL="$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')"
           if [ -z "$DB_URL" ]; then
@@ -88,6 +96,7 @@ jobs:
           fi
           # ON_ERROR_STOP turns the suite's own RAISE into a failed job
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chronicle-daily-flow.sql
 
       - name: Stop the database
         if: always()

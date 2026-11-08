@@ -68,6 +68,8 @@ create table if not exists public.chronicle_sets (
   entry       uuid references public.chronicle_entries(id) on delete cascade,
   -- the day it counts for, carried rather than derived: an amount does not split at
   -- midnight (see record.ts), and a set typed into the grid has only ever had a day
+  -- ⚠️ REFINED 8 Nov (OPEN-DECISIONS §16e): for a set WITH a sitting this must follow the
+  -- sitting — editing its start across midnight moves the sets' day in the same call
   on_day      date not null,
   value       numeric not null check (value > 0 and value <= 1e9),
   created_at  timestamptz not null default now(),
