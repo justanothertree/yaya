@@ -330,10 +330,14 @@ begin
   if v_holding > 1 then
     raise exception 'that day has % logs holding this exercise — put them together before changing it', v_holding;
   end if;
+  if p_seen_sessions is distinct from v_sessions or p_seen_manual is distinct from v_manual then
+    raise exception 'that day changed while you were typing — it is now % (% from sessions)',
+      v_sessions + v_manual, v_sessions;
+  end if;
   if p_total < v_sessions then
     raise exception 'sessions count % on that day — lower them in Chronicle, in that day''s log', v_sessions;
   end if;
-  v_new := p_total;
+  v_new := p_total - v_sessions;
 
   if v_conv then
     -- ⚠️ ONE MANUAL SET PER CELL AFTER THIS: the converted ones it replaces keep their originals in

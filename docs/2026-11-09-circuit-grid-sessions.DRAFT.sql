@@ -74,7 +74,7 @@ begin
                and s.on_day >= p_from and s.on_day < p_to
                -- a set counts in a column only while its owner still owns that person
                and p.owner_user_id = s.owner
-               and s.owner = auth.uid()
+               and public.circuit_can_see_person(s.person_id)
              group by s.person_id, s.exercise_id, s.on_day) z
   ), '[]'::jsonb);
 end $$;
