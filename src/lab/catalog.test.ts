@@ -185,10 +185,23 @@ describe('what the catalog is showing', () => {
   it('everything: featured first, then the Lab’s order', () => {
     expect(ids({})).toEqual(['topple', 'swarm', 'fold', 'harp', 'mobius'])
   })
+  // ⚠️ by SOUND, not games: which kind a game or puzzle belongs to is a call the catalog revisits
+  // (games and puzzles were split), and a test about filtering must not break when it does
   it('narrows by search, kind and list together', () => {
-    expect(ids({ category: 'games' })).toEqual(['topple', 'fold', 'mobius'])
-    expect(ids({ category: 'games', query: 'fold' })).toEqual(['fold'])
-    expect(ids({ category: 'games', view: 'favourites' }, ['harp', 'mobius'])).toEqual(['mobius'])
+    const sound = arrange(
+      entries(
+        [demo('swarm'), demo('harp', 'Harp'), demo('fold'), demo('music', 'Music')],
+        new Map(),
+      ),
+      { ...EVERYTHING, category: 'sound' },
+      [],
+      [],
+    ).map((e) => e.id)
+    expect(sound).toEqual(['harp', 'music'])
+    expect(ids({ category: 'sound' })).toEqual(['harp'])
+    expect(ids({ category: 'sound', query: 'fold' })).toEqual([])
+    expect(ids({ category: 'patterns', view: 'favourites' }, ['harp', 'swarm'])).toEqual(['swarm'])
+    expect(ids({ category: 'patterns', view: 'favourites' }, ['harp'])).toEqual([])
   })
   it('recent: the order they were opened in, not the Lab’s', () => {
     expect(ids({ view: 'recent' }, [], ['mobius', 'swarm', 'harp'])).toEqual([
