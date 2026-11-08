@@ -194,6 +194,12 @@ update public.profiles set suspended = false where user_id = (select me from sub
 -- ── C. what the goals reader hands back ────────────────────────────────────────────────────
 /* ⚠️ UNDER A DateStyle THAT PRINTS DAY FIRST: a `from` built by casting a date to text would come
    back "08/11/2026", which the client would read as no date at all */
+/* the creation moment, read as the owner of the table before acting as the member — the member
+   cannot read the table, which is the point of it */
+create temp table made as
+  select extract(epoch from created_at) * 1000 as ms from public.chronicle_goals
+   where id = (select v from ids where k = 'swim');
+grant select on made to authenticated, anon;
 set local datestyle = 'SQL, DMY';
 set local role authenticated;
 do $$
@@ -206,8 +212,7 @@ begin
        jsonb_build_object('from', to_char((select today from d), 'YYYY-MM-DD'), 'days', 4)) then
     insert into fails values ('the reader''s schedule', coalesce((g->'days')::text, 'missing'));
   end if;
-  made_ms := (select extract(epoch from created_at) * 1000 from public.chronicle_goals
-               where id = (select v from ids where k = 'swim'));
+  made_ms := (select ms from made);
   if (g->>'made') is null or abs((g->>'made')::numeric - made_ms) > 1 then
     insert into fails values ('the reader''s creation moment', coalesce(g->>'made', 'missing') || ' vs ' || made_ms);
   end if;

@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W3: all three drafts — marks, day notes, then weekdays — and every suite, the weekday test included.
+-- RUN W4: all three drafts — marks, day notes, then weekdays — and every suite; the weekday fixture reads created_at as owner.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying step 1
