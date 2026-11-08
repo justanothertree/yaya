@@ -7,6 +7,7 @@ import { refreshTakeAudio } from './looper'
 import { editedBuffer } from './takeAudio'
 import { toWav } from './wav'
 import { heardTime } from './heard'
+import { makeAudition, type Audition, type VoiceFx } from './takeFx'
 import {
   canRedo,
   canUndo,
@@ -75,7 +76,19 @@ const ms = (n: number) => `${n.toFixed(3)}s`
  */
 const TAP_PX = 4
 
-export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => void }) {
+/**
+ * @param sound what the take is heard through — its own sound, or null for as recorded. The
+ *   panel owns it; the editor only plays through it, so the list's ▶ and this one agree.
+ */
+export function TakeEditor({
+  row,
+  sound,
+  onChanged,
+}: {
+  row: TakeRow
+  sound: VoiceFx | null
+  onChanged: () => void
+}) {
   const box = useRef<HTMLCanvasElement | null>(null)
   const [source, setSource] = useState<AudioBuffer | null>(null)
   const [bad, setBad] = useState(false)
@@ -91,7 +104,12 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
    * must not jump across the gap the way a played-time position would.
    */
   const [cursor, setCursor] = useState<number | null>(null)
-  const out = useRef<{ src: AudioBufferSourceNode; began: number; from: number } | null>(null)
+  const out = useRef<{
+    src: AudioBufferSourceNode
+    aud: Audition
+    began: number
+    from: number
+  } | null>(null)
   const [say, setSay] = useState('')
   const [width, setWidth] = useState(0)
 
@@ -190,6 +208,7 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     } catch {
       /* already finished on its own */
     }
+    on.aud.dispose()
   }, [])
 
   /* ⚠️ a preview left running sings over whatever room you went to next */
@@ -202,19 +221,33 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
       stop()
       resumeAudio()
       const ctx = sharedCtx()
+      /* ⚠️ THROUGH THE TAKE'S SOUND, the same chain the loop uses — see makeAudition */
+      const aud = makeAudition(ctx, takeBus())
+      aud.hear(sound)
       const src = ctx.createBufferSource()
       src.buffer = heard
-      src.connect(takeBus())
+      src.connect(aud.in)
       src.onended = () => {
-        if (out.current?.src === src) stop()
+        if (out.current?.src !== src) return
+        out.current = null
+        setPlayAt(null)
+        /* the echo and the room ring on past the last sample, so they are let finish */
+        window.setTimeout(() => aud.dispose(), 4000)
       }
       const from = Math.max(0, Math.min(heard.duration, at))
-      out.current = { src, began: ctx.currentTime, from }
+      out.current = { src, aud, began: ctx.currentTime, from }
       src.start(0, from)
       setPlayAt(from)
     },
-    [heard, stop],
+    [heard, stop, sound],
   )
+
+  /* a slider moved, or the comparison pressed, while this plays — heard at once */
+  const soundKey = JSON.stringify(sound)
+  useEffect(() => {
+    out.current?.aud.hear(sound)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the key is the sound's identity
+  }, [soundKey])
 
   /**
    * ⚠️ A TIMER, NOT requestAnimationFrame. CLAUDE.md has rAF firing in the pane on 28 Oct and
@@ -686,8 +719,18 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
         >
           Whole take
         </button>
-        <button className="btn btn-ghost" onClick={save} disabled={!heard} title="Download a WAV">
-          ⬇ Save a copy
+        {/* ⚠️ AS RECORDED, AND IT SAYS SO. The copy has always been the edited take without its
+            sound — and with previews now playing through that sound, an unlabelled "Save a
+            copy" would hand back something other than what was just heard. Whether it should
+            carry the sound is a decision about what an export means, so it is named, not made:
+            see docs/2026-11-08-a-take-has-its-own-sound.md. ⬇ Stems is the processed export. */}
+        <button
+          className="btn btn-ghost"
+          onClick={save}
+          disabled={!heard}
+          title="A WAV of the edited take, without its sound settings"
+        >
+          ⬇ Save as recorded
         </button>
         <span className="muted take-edit-says">
           {whole

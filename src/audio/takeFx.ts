@@ -386,3 +386,87 @@ export function makeVoiceChain(ctx: AudioContext, to: AudioNode): VoiceChain {
     },
   }
 }
+
+/**
+ * A take's sound, read back from wherever it was kept — a saved bench, or the recording's own row.
+ *
+ * ⚠️ PARTIAL, AND MERGED OVER PLAIN_VOICE BY THE CALLER. Each field is checked on its own and an
+ * unusable one is simply absent, so a row written by a later build with a seventh knob still
+ * gives back the six this one knows. The chain clamps every value on the way in (see
+ * `voiceTargets`), so this only has to refuse what is not a number at all.
+ */
+export function readVoiceFx(v: unknown): Partial<VoiceFx> | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Record<string, unknown>
+  const out: Partial<VoiceFx> = {}
+  for (const k of ['tone', 'squeeze', 'double', 'echo', 'echoTime', 'space'] as const) {
+    const n = o[k]
+    if (typeof n === 'number' && Number.isFinite(n)) out[k] = n
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/**
+ * Hearing a take on its own — through its sound, or as recorded — and changing between the
+ * two while it plays.
+ *
+ * ⚠️ TWO PATHS SIDE BY SIDE, NOT ONE CHAIN SET TO "FLAT". The chain at PLAIN_VOICE is not dry:
+ * Tone's centre is an 80Hz rumble filter (see `tone` above), so "as recorded" through the chain
+ * would quietly take the low end off and call it the original. The dry path is a wire.
+ *
+ * ⚠️ AND A CROSSFADE, NOT A RECONNECT, so the comparison is made while it plays: the ear judges a
+ * difference best across a switch it can hear happen, and rebuilding the graph mid-take would
+ * click and restart the echo's tail. The same chain the loop uses (`makeVoiceChain`), so what an
+ * audition plays is what the loop will — apart from Chop, which belongs to the loop's bars.
+ */
+export type Audition = {
+  in: AudioNode
+  /** null is as recorded; anything else is that sound */
+  hear(fx: VoiceFx | null): void
+  dispose(): void
+}
+
+export function makeAudition(ctx: AudioContext, to: AudioNode): Audition {
+  const input = ctx.createGain()
+  const dry = ctx.createGain()
+  const wet = ctx.createGain()
+  /* ⚠️ THE WET FADER IS AFTER THE CHAIN, NOT BEFORE IT. Faded at the input, a switch to "as
+     recorded" only stopped NEW sound going in: the echoes and the room already inside the
+     delay lines rang on through it. Measured mid-take: the silent gap after a phrase still
+     carried a quarter of its echo. Faded at the output, the comparison is the comparison. */
+  const chain = makeVoiceChain(ctx, wet)
+  input.connect(dry)
+  dry.connect(to)
+  input.connect(chain.in)
+  wet.connect(to)
+  let first = true
+  let gone = false
+  return {
+    in: input,
+    hear(fx) {
+      if (gone) return
+      if (fx) chain.set(fx)
+      /* the first call sets the levels outright — both gains start at 1, and ramping from there
+         would play the take twice over for the first few milliseconds */
+      if (first) {
+        first = false
+        dry.gain.value = fx ? 0 : 1
+        wet.gain.value = fx ? 1 : 0
+        return
+      }
+      const t = ctx.currentTime
+      dry.gain.setTargetAtTime(fx ? 0 : 1, t, 0.012)
+      wet.gain.setTargetAtTime(fx ? 1 : 0, t, 0.012)
+    },
+    dispose() {
+      gone = true
+      chain.dispose()
+      for (const n of [input, dry, wet])
+        try {
+          n.disconnect()
+        } catch {
+          /* already gone with its context */
+        }
+    },
+  }
+}

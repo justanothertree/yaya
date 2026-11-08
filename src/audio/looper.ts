@@ -1,6 +1,6 @@
 import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
-import { makeVoiceChain, PLAIN_VOICE, type VoiceChain, type VoiceFx } from './takeFx'
+import { makeVoiceChain, PLAIN_VOICE, readVoiceFx, type VoiceChain, type VoiceFx } from './takeFx'
 import { chopEnvelope, stutterAt, NO_CHOP, type Chop } from './chop'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
@@ -1864,8 +1864,8 @@ export function soleDrumPiece(l: Layer): number | null {
  * to another machine, which is the cost takes.ts documents.
  */
 export async function placeTake(id: string, at = 0): Promise<boolean> {
+  const row = await getTake(id)
   if (!heard.has(id)) {
-    const row = await getTake(id)
     if (!row) return false
     const buf = await decodeTake(row.blob)
     if (!buf) return false
@@ -1885,16 +1885,23 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
      */
     heard.set(id, cutTo(buf, row))
   }
+  /**
+   * ⚠️ IT ARRIVES SOUNDING THE WAY THE RECORDING DOES — its own `voice`, kept on the row — where
+   * every placement used to start flat. That is what lets a sound be set before a take is in
+   * the loop, and what stops lifting it out and putting it back from throwing the sound away.
+   * A take already placed keeps the sound it has; this only names a NEW placement's.
+   */
+  const fx: VoiceFx = { ...PLAIN_VOICE, ...readVoiceFx(row?.voice) }
   if (!chains.has(id)) {
     const chain = makeVoiceChain(sharedCtx(), takeBus())
-    chain.set(PLAIN_VOICE)
+    chain.set(fx)
     chains.set(id, chain)
   }
   const had = state.takes.some((t) => t.id === id)
   set({
     takes: had
       ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
-      : [...state.takes, { id, at, fx: { ...PLAIN_VOICE } }],
+      : [...state.takes, { id, at, fx }],
   })
   return true
 }
