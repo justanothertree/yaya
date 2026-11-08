@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { VisibilityTier } from '../circuit/types'
 import {
   ASKS_AT_ONCE,
+  arrange,
   profileGlyph,
   inBatches,
   derived,
@@ -1350,5 +1351,44 @@ describe('the activity a goal can be started from', () => {
 
   it('says it is not running when something else is', () => {
     expect(startFor(onActivity, [reading], 'a-gym')?.running).toBe(false)
+  })
+})
+
+describe('the order a window lists its goals in', () => {
+  const a = goal({ id: 'a', priority: 2 })
+  const b = goal({ id: 'b', priority: 1 })
+  const c = goal({ id: 'c' })
+  const old = goal({ id: 'old', anchor: '2026-10-01' })
+  const ids = (gs: Goal[]) => gs.map((g) => g.id)
+
+  it('puts what was already finished on arrival after everything still to do', () => {
+    const r = arrange([a, b, c], [old], new Set(['a']))
+    expect([ids(r.open), ids(r.late), ids(r.done)]).toEqual([['b', 'c'], ['old'], ['a']])
+  })
+
+  it('keeps the arrival order inside each section, which is priority', () => {
+    /* nothing here re-ranks — the order handed in is the order kept */
+    const r = arrange([a, b, c], [], new Set(['a', 'c']))
+    expect([ids(r.open), ids(r.done)]).toEqual([['b'], ['a', 'c']])
+  })
+
+  it('leaves a goal finished during the visit where it was', () => {
+    /* the snapshot is what decides the section, never the goal's state now — so ticking `b`
+       after arriving, which the caller sees as finished, still lists it among the open ones */
+    const r = arrange([a, b, c], [], new Set<string>())
+    expect(ids(r.open)).toEqual(['a', 'b', 'c'])
+    expect(r.done).toEqual([])
+  })
+
+  it('leaves a goal unticked during the visit in the done section until the next arrival', () => {
+    /* the other direction of the same rule: a row does not jump up the list either */
+    const r = arrange([a, b], [], new Set(['b']))
+    expect(ids(r.done)).toEqual(['b'])
+  })
+
+  it('never puts a late goal among the done ones', () => {
+    /* a late goal is listed for being unfinished; the snapshot is about this window's own */
+    const r = arrange([a], [old], new Set(['old']))
+    expect([ids(r.late), ids(r.done)]).toEqual([['old'], []])
   })
 })

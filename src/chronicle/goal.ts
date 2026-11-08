@@ -343,6 +343,35 @@ export function lateIn(
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
 
+/**
+ * A window's list, in the order somebody holding a phone wants it.
+ *
+ * ⚠️ WHAT IS LEFT FIRST. The list was ordered by priority alone, so a goal finished this morning
+ * sat at the top of the evening's list with a line through it, and the three things still to do
+ * were underneath it. Done things are the least actionable rows on the screen and they were
+ * taking the best position on it.
+ *
+ * ⚠️ BUT NOTHING MOVES WHILE YOU ARE LOOKING. `settled` is the set of goals that were ALREADY
+ * finished when you arrived at this view, and it is a snapshot: tick something now and it stays
+ * where it is, struck through, exactly as before. The room learned this the hard way with late
+ * goals — a tick that moves its own row puts the row out from under the thumb, and the untick
+ * you then want is somewhere else. So a section is decided on arrival and kept for the visit,
+ * and the next arrival sorts again.
+ *
+ * Within each section the order is the one it arrived in, which is priority, then sort, then
+ * creation — nothing here re-ranks anything.
+ */
+export function arrange(
+  mine: readonly Goal[],
+  late: readonly Goal[],
+  settled: ReadonlySet<string>,
+): { open: Goal[]; late: Goal[]; done: Goal[] } {
+  const open: Goal[] = []
+  const done: Goal[] = []
+  for (const g of mine) (settled.has(g.id) ? done : open).push(g)
+  return { open, late: [...late], done }
+}
+
 /** What the ▶ on an Aims row would start — see `startFor`. */
 export type StartFrom = { activity: string; name: string; running: boolean }
 

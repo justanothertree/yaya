@@ -1,7 +1,17 @@
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { moveTab } from '../ui/tabStrip'
 import {
   finished,
+  arrange,
   derived,
   inScope,
   lateIn,
@@ -211,6 +221,15 @@ const wasFor = (g: Goal): string => {
 
 export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const [goals, setGoals] = useState<Goal[] | null>(null)
+  /**
+   * Whether the goals AND the record's answer for them have both arrived at least once.
+   *
+   * ⚠️ BOTH, because `load` sets the goals before it awaits the tally — so there is a render in
+   * which every derived goal reads 0 and looks unfinished. A snapshot taken there would file
+   * nothing as done, and the arrival sort below would quietly never happen for the goals the
+   * record answers for, which are most of the ones that finish themselves.
+   */
+  const [loaded, setLoaded] = useState(false)
   const [view, setView] = useState('today')
   /**
    * Which half of the room is on screen.
@@ -419,6 +438,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const load = useCallback(async () => {
     if (!authed) {
       setGoals([])
+      setLoaded(true)
       return
     }
     const [mine, a] = await Promise.all([myGoals(), myActivities()])
@@ -438,6 +458,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       ).values(),
     ]
     setGot(asks.length ? await tally(asks) : {})
+    setLoaded(true)
     /**
      * ⚠️ THE STREAKS ARE NOT AWAITED, and that is a measured decision rather than a style one.
      * A streak asks about THIRTY-ONE windows per repeating goal, so ten of them is 310 questions
@@ -527,6 +548,33 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         (g) => pastIn(g, v.scope, on, todayISO()) && (!finished(g, got, on) || kept.includes(g.id)),
       ),
     [goals, got, v.scope, on, kept],
+  )
+
+  /**
+   * Which of this window's goals were already finished when you arrived at it — see `arrange`.
+   *
+   * ⚠️ A SNAPSHOT, TAKEN ONCE PER ARRIVAL, which is why the effect reads the goals and the tally
+   * without depending on them. Depending on them would re-sort the list on every tick, which is
+   * the row moving out from under the thumb that `arrange` exists to prevent. Leaving the tab and
+   * coming back — or leaving the room — is the arrival that sorts again.
+   *
+   * ⚠️ A LAYOUT EFFECT, so the list is never painted in the unsorted order first. With a plain
+   * effect the finished goals drew at the top for one frame and then dropped to the bottom, which
+   * is a row moving under somebody's eye on the very first look.
+   */
+  const [settled, setSettled] = useState<{ view: string; ids: ReadonlySet<string> } | null>(null)
+  useLayoutEffect(() => {
+    if (!loaded) return
+    setSettled((was) =>
+      was && was.view === view
+        ? was
+        : { view, ids: new Set(mine.filter((g) => finished(g, got, on)).map((g) => g.id)) },
+    )
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [view, loaded])
+  const order = useMemo(
+    () => arrange(mine, overdue, settled?.view === view ? settled.ids : new Set<string>()),
+    [mine, overdue, settled, view],
   )
 
   const add = async () => {
@@ -991,8 +1039,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 ordinary goal that wants the same tick, meter, editor and ✕ as any other — a second
                 copy of this block would be the place where those four quietly drift apart. The
                 heading is emitted at the boundary instead. */}
-                  {[...mine, ...overdue].map((g, i) => {
-                    const isLate = i >= mine.length
+                  {[...order.open, ...order.late, ...order.done].map((g, i) => {
+                    const isLate =
+                      i >= order.open.length && i < order.open.length + order.late.length
                     const s = share(g, got, on)
                     const done = finished(g, got, on)
                     const auto = derived(g)
@@ -1026,7 +1075,17 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     const onProfile = profileGlyph(g.visibility)
                     return (
                       <Fragment key={g.id}>
-                        {i === mine.length ? (
+                        {/**
+                         * ⚠️ THE SECOND HEADING, FOR WHAT WAS ALREADY DONE WHEN YOU ARRIVED. Same
+                         * shape as "From before" and for the same reason: a row that is not part of
+                         * what this list is for needs saying why it is here, and a screen reader
+                         * reads the struck-through title of a finished goal exactly as it reads an
+                         * unfinished one.
+                         */}
+                        {order.done.length > 0 && i === order.open.length + order.late.length ? (
+                          <li className="chron-before">Done</li>
+                        ) : null}
+                        {order.late.length > 0 && i === order.open.length ? (
                           /* ⚠️ AN <li> BECAUSE IT LIVES IN A <ul>: a heading between two list items is
                        not a child a list may have. It keeps its text for a screen reader, which
                        is the only thing saying why these rows are not part of the window above. */
