@@ -22,14 +22,21 @@ export type JournalRow = {
   /** when it was written, ISO */
   at: string
   body: string
-  /** the sitting it belongs to */
-  entry: string
-  activity: string
-  /** the local day it was written — where it is listed */
+  /** the sitting it belongs to — null for a note that belongs to a day instead */
+  entry: string | null
+  activity: string | null
+  /** the local day it is listed under: the day it was written, or the day a day note is about */
   day: string
-  /** the local day its sitting began — where it opens */
-  sat: string
+  /** the local day its sitting began — where it opens; null for a day note, which opens here */
+  sat: string | null
 }
+
+/**
+ * A note that belongs to a DAY rather than a sitting — "writing a note must not require starting a
+ * timer". Private, in the export, never on anybody's timeline: see
+ * docs/2026-11-08-chronicle-day-notes.DRAFT.sql, which is not applied yet.
+ */
+export type DayNote = { id: string; on: string; at: string; body: string }
 
 /**
  * Every note written inside `[fromMs, toMs)`, newest first.
@@ -42,7 +49,12 @@ export type JournalRow = {
  * ⚠️ AND ONCE PER NOTE. Two windows fetched separately and joined can carry the same sitting
  * twice; a note listed twice reads as having been written twice.
  */
-export function journalRows(entries: readonly Entry[], fromMs: number, toMs: number): JournalRow[] {
+export function journalRows(
+  entries: readonly Entry[],
+  fromMs: number,
+  toMs: number,
+  dayNotes: readonly DayNote[] = [],
+): JournalRow[] {
   const seen = new Set<string>()
   const out: JournalRow[] = []
   for (const e of entries) {
@@ -61,8 +73,38 @@ export function journalRows(entries: readonly Entry[], fromMs: number, toMs: num
       })
     }
   }
-  /* newest first; the id breaks a tie so two notes in the same millisecond keep one order */
-  return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (a.id < b.id ? -1 : 1))
+  /**
+   * A day note is listed under the day it is ABOUT, which is the day it was written unless you
+   * wrote it later — so it is placed by its date, never by the moment, and ends at `toMs` like
+   * everything else: a window ending at local midnight is the day before that midnight's date.
+   */
+  const fromDay = localISO(new Date(fromMs))
+  const toDay = localISO(new Date(toMs))
+  for (const n of dayNotes) {
+    if (!(n.on >= fromDay && n.on < toDay) || seen.has(n.id)) continue
+    seen.add(n.id)
+    out.push({
+      id: n.id,
+      at: n.at,
+      body: n.body,
+      entry: null,
+      activity: null,
+      day: n.on,
+      sat: null,
+    })
+  }
+  /**
+   * Newest DAY first, then newest moment; the id breaks a tie.
+   *
+   * ⚠️ BY DAY BEFORE MOMENT, because `byDay` groups in arrival order. A note about Monday written on
+   * Tuesday has Tuesday's moment, and sorted by moment alone it would arrive among Tuesday's rows
+   * and open a "Monday" group ABOVE Tuesday's. For a sitting's note the two orders are the same,
+   * since its day is the day of its moment.
+   */
+  return out.sort(
+    (a, b) =>
+      b.day.localeCompare(a.day) || Date.parse(b.at) - Date.parse(a.at) || (a.id < b.id ? -1 : 1),
+  )
 }
 
 /** The rows grouped by the day they were written, in the order they arrived. */
@@ -91,6 +133,8 @@ export function matching(
   if (!q) return [...rows]
   const name = new Map(acts.map((a) => [a.id, a.name.toLocaleLowerCase()]))
   return rows.filter(
-    (r) => r.body.toLocaleLowerCase().includes(q) || (name.get(r.activity) ?? '').includes(q),
+    (r) =>
+      r.body.toLocaleLowerCase().includes(q) ||
+      ((r.activity && name.get(r.activity)) || '').includes(q),
   )
 }

@@ -9,6 +9,8 @@ import {
   pvImport,
   pvSaveRoutine,
   pvNoteAdd,
+  pvDayNoteAdd,
+  pvDayNotes,
   pvNoteEdit,
   pvRoutines,
   pvAmount,
@@ -949,6 +951,8 @@ describe('the file you can take away', () => {
       'updated_at',
     ],
     routines: ['id', 'name', 'steps', 'created_at', 'updated_at'],
+    /* no id, like a sitting's notes — an id is this account's and a file is not */
+    day_notes: ['on_day', 'at', 'body'],
     plans: ['id', 'activity', 'starts_at', 'ends_at', 'note', 'created_at'],
   } as const
 
@@ -969,6 +973,9 @@ describe('the file you can take away', () => {
     pvSaveRoutine('Morning', [{ activity: draw, mins: 20 }])
     pvPlanSave(draw, h(16), h(17), null)
     pvPlanSave(draw, h(14), h(15), null)
+    /* two day notes, the LATER day written first, so the order test below has something to sort */
+    pvDayNoteAdd(DAY, 'the later day')
+    pvDayNoteAdd('2026-10-01', 'the earlier day')
   })
 
   it('says what it is, so a reader can refuse a file that is not one', () => {
@@ -1014,6 +1021,7 @@ describe('the file you can take away', () => {
     )
     expect(by(doc.routines, 'id')).toEqual(sorted(by(doc.routines, 'id')))
     expect(by(doc.plans, 'starts_at', true)).toEqual(sorted(by(doc.plans, 'starts_at', true)))
+    expect(by(doc.day_notes, 'on_day')).toEqual(sorted(by(doc.day_notes, 'on_day')))
   })
 
   /**
@@ -1172,6 +1180,7 @@ describe('putting a file back', () => {
       goals: 0,
       routines: 0,
       plans: 0,
+      notes: 0,
       skipped: rows(file),
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...file, at: '' }))
@@ -1300,6 +1309,8 @@ describe('putting a file back', () => {
           updated_at: EPOCH,
         },
       ],
+      /* written the day after the day it is about, so neither field can stand in for the other */
+      day_notes: [{ on_day: DAY, at: h(30), body: 'a note with no session' }],
       plans: [
         {
           id: '55555555-5555-4555-8555-555555555555',
@@ -1320,6 +1331,7 @@ describe('putting a file back', () => {
       goals: 1,
       routines: 1,
       plans: 1,
+      notes: 1,
       skipped: 0,
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify(file))
@@ -1657,5 +1669,54 @@ describe('correcting the session you are in the middle of', () => {
     const before = pvEntries(dayStart(), dayEnd())
     pvFixRunning(new Date(Date.now() - 10 * 60_000).toISOString(), gym)
     expect(pvEntries(dayStart(), dayEnd())).toEqual(before)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF `chronicle_day_note_add` AND `chronicle_day_notes_between`. The server's
+ * are asked the same questions in supabase/tests/chronicle-day-notes.sql; these keep the copy from
+ * accepting what the site would refuse.
+ */
+describe('a note with no session', () => {
+  it('is written for a day and read back for that day only', () => {
+    expect(pvDayNoteAdd(DAY, '  slept badly  ')).toBeNull()
+    expect(pvDayNotes(DAY, '2026-10-13').map((n) => [n.on, n.body])).toEqual([[DAY, 'slept badly']])
+    expect(pvDayNotes('2026-10-13', '2026-10-14')).toEqual([])
+  })
+
+  it('refuses what the server refuses, in its words', () => {
+    const far = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10)
+    expect([
+      pvDayNoteAdd(DAY, '   ')?.why,
+      pvDayNoteAdd(DAY, 'x'.repeat(4001))?.why,
+      pvDayNoteAdd(far, 'too soon')?.why,
+    ]).toEqual([
+      'nothing to write down',
+      'that is longer than a note — 4000 characters',
+      'that day has not come yet',
+    ])
+  })
+
+  it('takes fifty to a day and not fifty-one', () => {
+    for (let i = 0; i < 50; i++) expect(pvDayNoteAdd(DAY, `n${i}`)).toBeNull()
+    expect(pvDayNoteAdd(DAY, 'one more')?.why).toBe('that is 50 notes on one day')
+  })
+
+  it('is changed, and emptied away, by the same edit a session note uses', () => {
+    pvDayNoteAdd(DAY, 'first draft')
+    const [n] = pvDayNotes(DAY, '2026-10-13')
+    expect(pvNoteEdit(n.id, 'second draft')).toBeNull()
+    expect(pvDayNotes(DAY, '2026-10-13')[0].body).toBe('second draft')
+    expect(pvNoteEdit(n.id, '')).toBeNull()
+    expect(pvDayNotes(DAY, '2026-10-13')).toEqual([])
+  })
+
+  it('goes back once from a file put back twice', () => {
+    pvDayNoteAdd(DAY, 'kept')
+    const file = pvExport()
+    pvEmpty()
+    expect(pvImport(file)).toMatchObject({ notes: 1 })
+    expect(pvImport(file)).toMatchObject({ notes: 0 })
+    expect(pvDayNotes(DAY, '2026-10-13')).toHaveLength(1)
   })
 })

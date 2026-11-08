@@ -207,7 +207,7 @@ export function Timer({
    * that sitting" is three moves — the day, the editor, the half — and the last belongs to the
    * room above.
    */
-  onShow?: (half: 'day') => void
+  onShow?: (half: 'day' | 'journal') => void
   /**
    * Hand a journal entry to the room as the first draft of a goal — see `ideaTitle` in goal.ts.
    *
@@ -318,6 +318,8 @@ export function Timer({
   /** how the span being edited went, '' for unrated — see Entry.quality */
   const [entMood, setEntMood] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
+  /* bumped by ✎ Note with nothing running, so the Journal's box takes the cursor */
+  const [writeNow, setWriteNow] = useState(0)
   const [entAct, setEntAct] = useState('')
   const [entNote, setEntNote] = useState('')
   /**
@@ -1483,7 +1485,25 @@ export function Timer({
               ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
               : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
           </span>
-        ) : null}
+        ) : (
+          /**
+           * ⚠️ A NOTE WITHOUT A TIMER, which is the whole of "writing a note must not require
+           * starting a timer". With a session running, ✎ Note writes about it; with nothing
+           * running it used to be absent, so writing anything down meant timing something first.
+           * This goes to the Journal and puts the cursor in its box — the one place a note with
+           * no session is written and changed.
+           */
+          <button
+            className="btn btn-ghost chron-jot"
+            onClick={() => {
+              setWriteNow((n) => n + 1)
+              onShow?.('journal')
+            }}
+          >
+            ✎ Note
+            <span className="sr-only"> — write something down, no session needed</span>
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
@@ -1786,6 +1806,7 @@ export function Timer({
         <JournalList
           acts={acts}
           beat={beat}
+          writeNow={writeNow}
           onOpen={(row, e) => {
             /* ⚠️ THE DAY FIRST, THEN THE HALF, in one handler so they commit together: with the
                half changed alone, the effect that resets `seeing` would run against 'journal' */

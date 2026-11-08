@@ -51,7 +51,12 @@ insert into fails select 'FIXTURE: no member to act as', 'seed the database firs
 where (select me from subject) is null;
 insert into fails select 'FIXTURE: the two members are not friends',
        'a friend''s readers are the whole point of section C'
-where not coalesce(public.are_friends((select me from subject), (select other from subject)), false);
+/* ⚠️ THE TABLE, NOT are_friends: that helper answers only about the CALLER, and here the caller
+   is nobody — so it said "not friends" about a pair the seed makes friends on purpose */
+where not exists (select 1 from public.friendships f
+                   where f.status = 'accepted'
+                     and f.user_a = least((select me from subject), (select other from subject))
+                     and f.user_b = greatest((select me from subject), (select other from subject)));
 
 -- ── A. no door for anon, a door for a member, and a table that is still deny-all ───────────
 insert into fails select 'anon can execute', f
@@ -202,7 +207,11 @@ select set_config('request.jwt.claims',
 do $$
 declare a uuid; e uuid;
 begin
-  a := public.chronicle_activity_save(null, 'Day-notes shared work', 'free', null, null, null, true);
+  a := public.chronicle_activity_save(null, 'Day-notes shared work', 'free', null, null, null, null);
+  /* ⚠️ THE TIER IS SET BY ITS OWN SETTER. chronicle_activity_save reads p_shared on an update only,
+     so passing true on the insert left the activity private — and the friend's log empty, which
+     the fixture check below caught before it could pass for privacy */
+  perform public.chronicle_activity_set_visibility(a, 'friends');
   perform public.chronicle_share_timeline(true);
   e := public.chronicle_start(a);
   perform pg_sleep(1.1);

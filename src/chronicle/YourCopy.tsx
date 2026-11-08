@@ -77,7 +77,8 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
         showToast(got.why.charAt(0).toUpperCase() + got.why.slice(1))
         return
       }
-      const added = got.activities + got.entries + got.goals + got.routines + got.plans
+      /* ⚠️ A DAY NOTE COUNTS TOO, or a file holding only notes would be "already here" */
+      const added = got.activities + got.entries + got.goals + got.routines + got.plans + got.notes
       /**
        * ⚠️ COUNTED SEPARATELY, because "added 0" and "that file was already here" are different
        * things to be told and only one of them sounds like a failure. The same distinction the
@@ -85,7 +86,7 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
        */
       showToast(
         added
-          ? `Added ${added} — ${got.entries} sessions, ${got.activities} activities, ${got.goals} goals.`
+          ? `Added ${added} — ${got.entries} sessions, ${got.activities} activities, ${got.goals} goals${got.notes ? `, ${got.notes} notes` : ''}.`
           : got.skipped
             ? 'Everything in that file was already here'
             : 'There was nothing in that file',

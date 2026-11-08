@@ -16607,6 +16607,36 @@ a.cz-msg-author:focus-visible {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+/* the box a note with no session is written in, and the one it is changed in — see JournalList */
+.chron-journal-write,
+.chron-journal-fix {
+  display: grid;
+  gap: 0.35rem;
+}
+.chron-journal-write textarea,
+.chron-journal-fix textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  font: inherit;
+}
+.chron-journal-write-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* the hint takes the slack and the buttons keep their size — a floor in px, because rem is fluid */
+.chron-journal-write-row .muted {
+  flex: 1 1 140px;
+  font-size: 0.8rem;
+}
+.chron-journal-said {
+  margin: 0;
+  font-size: 0.85rem;
+  /* the theme token, which the light theme darkens to stay readable on white */
+  color: var(--loss);
+}
 .chron-journal-more {
   justify-self: start;
 }

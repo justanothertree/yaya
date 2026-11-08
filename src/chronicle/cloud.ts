@@ -38,11 +38,14 @@ import {
   pvMoments,
   pvEntryPicture,
   pvNoteAdd,
+  pvDayNoteAdd,
+  pvDayNotes,
   pvNoteEdit,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
 import { SPANS_AT_ONCE } from './year'
 import type { Goal, Scope } from './goal'
+import type { DayNote } from './journal'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
 
@@ -426,6 +429,37 @@ export async function setEntryPicture(
   return error ? { why: error.message || 'that did not save' } : null
 }
 
+/**
+ * The notes that belong to days rather than sittings, for the days `[fromDay, toDay)`.
+ *
+ * ⚠️ EMPTY ON FAILURE, which includes the function not existing yet — the draft is not applied —
+ * so the Journal goes on listing what it always listed rather than showing nothing.
+ */
+export async function dayNotesBetween(fromDay: string, toDay: string): Promise<DayNote[]> {
+  if (previewMember) return pvDayNotes(fromDay, toDay)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_day_notes_between', {
+    p_from: fromDay,
+    p_to: toDay,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    on: String(r.on),
+    at: String(r.at),
+    body: String(r.body ?? ''),
+  }))
+}
+
+/** Write something down about a day, with no session — see chronicle_day_note_add. */
+export async function addDayNote(day: string, body: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvDayNoteAdd(day, body)
+  const { error } = await getSupabaseClient().rpc('chronicle_day_note_add', {
+    p_day: day,
+    p_body: body,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
 /** ⚠️ an empty body DELETES it — see chronicle_note_edit for why that is right here and nowhere else */
 export async function editNote(id: string, body: string): Promise<{ why: string } | null> {
   if (previewMember) return pvNoteEdit(id, body)
@@ -798,6 +832,8 @@ export type Putback = {
   goals: number
   routines: number
   plans: number
+  /** notes that belong to a day rather than a session — see journal.ts */
+  notes: number
   skipped: number
 }
 
@@ -828,6 +864,7 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     goals: n('goals'),
     routines: n('routines'),
     plans: n('plans'),
+    notes: n('notes'),
     skipped: n('skipped'),
   }
 }

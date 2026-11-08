@@ -147,3 +147,46 @@ describe('searching what you wrote', () => {
     expect(matching(rows, '   ', [gym])).toHaveLength(3)
   })
 })
+
+describe('notes with no session', () => {
+  /* local noon of a local date, so the fixtures mean the same day in any zone the suite runs in */
+  const noon = (iso: string) => new Date(`${iso}T12:00:00`).toISOString()
+  const dayStart = (iso: string) => new Date(`${iso}T00:00:00`).getTime()
+
+  it('lists a day note under the day it is about, even when written on another', () => {
+    const rows = journalRows([], dayStart('2026-11-01'), dayStart('2026-11-08'), [
+      {
+        id: 'd1',
+        on: '2026-11-03',
+        at: noon('2026-11-05'),
+        body: 'about Tuesday, written Thursday',
+      },
+    ])
+    expect(rows.map((r) => [r.day, r.entry, r.sat])).toEqual([['2026-11-03', null, null]])
+  })
+
+  it('keeps the days in order when a note about one day is written on a later one', () => {
+    const rows = journalRows([], dayStart('2026-11-01'), dayStart('2026-11-08'), [
+      { id: 'late', on: '2026-11-03', at: noon('2026-11-06'), body: 'about the 3rd' },
+      { id: 'mid', on: '2026-11-05', at: noon('2026-11-05'), body: 'about the 5th' },
+    ])
+    /* sorted by moment alone, the 3rd's note (written on the 6th) would come first and open a
+       "3rd" group above the 5th's */
+    expect(byDay(rows).map(([d]) => d)).toEqual(['2026-11-05', '2026-11-03'])
+  })
+
+  it('stops at the end of the window by date, like everything else', () => {
+    const rows = journalRows([], dayStart('2026-11-01'), dayStart('2026-11-08'), [
+      { id: 'in', on: '2026-11-07', at: noon('2026-11-07'), body: 'last day in' },
+      { id: 'out', on: '2026-11-08', at: noon('2026-11-08'), body: 'first day out' },
+    ])
+    expect(rows.map((r) => r.id)).toEqual(['in'])
+  })
+
+  it('is found by its words, and a search for an activity does not trip over it', () => {
+    const rows = journalRows([], dayStart('2026-11-01'), dayStart('2026-11-08'), [
+      { id: 'd', on: '2026-11-02', at: noon('2026-11-02'), body: 'left knee again' },
+    ])
+    expect([matching(rows, 'knee', []).length, matching(rows, 'gym', []).length]).toEqual([1, 0])
+  })
+})
