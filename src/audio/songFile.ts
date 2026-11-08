@@ -54,7 +54,7 @@ const MAX_NAME = 60
  * library.test.ts, which reads the store back through a fresh module. That makes the fix safe
  * for everything already kept: what is stored is already inside the old ceilings, so no saved
  * song changes its level or its length. What changes is the next keep, and anything read off
- * the wire — a jam partner's layer above 1.5 now plays at the level they set rather than at 1.5.
+ * the wire, which is why the jam does not use these — see JAM_CEILINGS below.
  *
  * Neither was a decision; both are a ceiling that moved in one file. These match what the
  * looper ALREADY offers and change nothing about it: MAX_BARS in looper.ts and the fader's
@@ -65,6 +65,40 @@ const MAX_NAME = 60
  */
 const MAX_BARS = 32
 const MAX_GAIN = 2
+
+/**
+ * How long a song, and how loud a layer, a reader will take. Every other limit in this file is
+ * the same for every reader; these two are not, for the reason on JAM_CEILINGS.
+ *
+ * ⚠️ ONLY `bars` AND `gain` ARE HERE BECAUSE ONLY THOSE TWO MOVED. The plan and play arrays, a
+ * mask's own `pb` and the packing loop were bounded at 32 before the ceilings above were named,
+ * so a reader asking for eight bars still takes a 32-entry plan — exactly as every reader did.
+ */
+export type SongCeilings = { readonly bars: number; readonly gain: number }
+
+/** What is KEPT: the Library, the bench, a backup, the account, a profile block. */
+const KEPT: SongCeilings = { bars: MAX_BARS, gain: MAX_GAIN }
+
+/**
+ * ⚠️ WHAT A JAM PARTNER'S DATA HAS ALWAYS BEEN READ AT, AND STILL IS — so correcting what the
+ * Library keeps does not quietly change what a jam sounds like.
+ *
+ * Both jam readers (`jam:layer` and `jam:song`) take a stranger's live state through readSong,
+ * never through a keep, so raising the ceilings above would have changed the room's sound with
+ * nothing stored involved. Three things the jam does today follow from these two numbers, and
+ * all three are kept exactly as they were:
+ *
+ *   · a partner's layer pushed above 1.5 plays at 1.5 on your machine
+ *   · an edit you make to it (mute, fader, arrangement) goes back to them read at 1.5 — and
+ *     because `localIdFor` maps a message about THEIR OWN layer onto it, that turns their layer
+ *     down at the source
+ *   · a song offered to the room that is longer than eight bars loads as eight
+ *
+ * The second and third read like bugs, and probably are. They are also sound policy for a live
+ * room, which is not this file's to settle in passing: raising them is deleting this constant and
+ * the two arguments that name it, and it waits for that decision. jam.test.ts pins all three.
+ */
+export const JAM_CEILINGS: SongCeilings = { bars: 8, gain: 1.5 }
 /** Current format. Bumped only for a change old readers could not survive. */
 const VERSION = 1
 
@@ -193,7 +227,7 @@ function readPlay(v: unknown): boolean[] | undefined {
   return v.slice(0, MAX_BARS).map((x) => x !== false)
 }
 
-function readLayer(v: unknown, budget: number): SongLayer | null {
+function readLayer(v: unknown, budget: number, ceil: SongCeilings): SongLayer | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
   const inst =
@@ -231,27 +265,32 @@ function readLayer(v: unknown, budget: number): SongLayer | null {
     len,
     fx: readFx(o.fx),
     muted: o.muted === true,
-    gain: typeof o.gain === 'number' ? num(o.gain, 0, MAX_GAIN, 1) : undefined,
+    gain: typeof o.gain === 'number' ? num(o.gain, 0, ceil.gain, 1) : undefined,
     play: readPlay(o.play),
     plan: readPlan(o.plan),
     kind: readMark(o.kind) ?? undefined,
   }
 }
 
-/** Read a song from anywhere. Returns null rather than throwing — a bad file is not a crash. */
-export function readSong(v: unknown): Song | null {
+/**
+ * Read a song from anywhere. Returns null rather than throwing — a bad file is not a crash.
+ *
+ * `ceil` is what the reader will take for length and loudness: what the room offers, unless the
+ * caller is the jam — see JAM_CEILINGS.
+ */
+export function readSong(v: unknown, ceil: SongCeilings = KEPT): Song | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Record<string, unknown>
   // ⚠️ Both forms, forever. Songs kept before the compact encoding existed are still in
   // people's libraries, and a reader that dropped them would quietly delete work.
-  if (o.v === 2 || Array.isArray(o.l)) return readPacked(o)
+  if (o.v === 2 || Array.isArray(o.l)) return readPacked(o, ceil)
   if (!Array.isArray(o.layers)) return null
 
   const layers: SongLayer[] = []
   let budget = MAX_EVENTS_TOTAL
   for (const raw of o.layers.slice(0, MAX_LAYERS)) {
     if (budget <= 0) break
-    const l = readLayer(raw, budget)
+    const l = readLayer(raw, budget, ceil)
     if (!l) continue
     budget -= l.events.length
     layers.push(l)
@@ -262,7 +301,7 @@ export function readSong(v: unknown): Song | null {
     v: VERSION,
     name: typeof o.name === 'string' ? o.name.slice(0, MAX_NAME).trim() || 'Untitled' : 'Untitled',
     bpm: Math.round(num(o.bpm, 40, 200, 96)),
-    bars: Math.round(num(o.bars, 1, MAX_BARS, 2)),
+    bars: Math.round(num(o.bars, 1, ceil.bars, 2)),
     layers,
   }
 }
@@ -391,7 +430,7 @@ export function packSong(song: Song): PackedSong {
 }
 
 /** Read the compact form. Same caps and the same normaliser as the verbose one. */
-function readPacked(v: Record<string, unknown>): Song | null {
+function readPacked(v: Record<string, unknown>, ceil: SongCeilings): Song | null {
   if (!Array.isArray(v.l)) return null
   const layers: SongLayer[] = []
   let budget = MAX_EVENTS_TOTAL
@@ -436,7 +475,7 @@ function readPacked(v: Record<string, unknown>): Song | null {
     const span =
       typeof o.pb === 'number' && Number.isInteger(o.pb) && o.pb > 0
         ? Math.min(MAX_BARS, o.pb)
-        : Math.round(num(v.bars, 1, MAX_BARS, 2))
+        : Math.round(num(v.bars, 1, ceil.bars, 2))
     const play =
       bits < 0 ? undefined : Array.from({ length: span }, (_, i) => (bits & (1 << i)) !== 0)
     // ⚠️ -1 back to null, and every entry re-checked: this is a file, not our own memory
@@ -448,7 +487,7 @@ function readPacked(v: Record<string, unknown>): Song | null {
           )
       : undefined
     const gain =
-      typeof o.v === 'number' && Number.isFinite(o.v) ? num(o.v / 100, 0, MAX_GAIN, 1) : undefined
+      typeof o.v === 'number' && Number.isFinite(o.v) ? num(o.v / 100, 0, ceil.gain, 1) : undefined
     layers.push({
       instrument: inst,
       events,
@@ -466,7 +505,7 @@ function readPacked(v: Record<string, unknown>): Song | null {
     v: VERSION,
     name: typeof v.name === 'string' ? v.name.slice(0, MAX_NAME).trim() || 'Untitled' : 'Untitled',
     bpm: Math.round(num(v.bpm, 40, 200, 96)),
-    bars: Math.round(num(v.bars, 1, MAX_BARS, 2)),
+    bars: Math.round(num(v.bars, 1, ceil.bars, 2)),
     layers,
   }
 }

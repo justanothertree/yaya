@@ -74,6 +74,12 @@ Two things in it are worth repeating here because they are easy to undo later:
 - **An empty bench is written down too** — as the removal of the key. "Clear all" has to reach
   this file, or a reload puts back what somebody just deleted, which is a worse bug than the one
   being fixed.
+- ⚠️ **"Clear all" clears LAYERS, and always has.** It sits inside the layer list and calls
+  `clearLayers`; a recording placed in the loop has its own controls in the takes panel and
+  survives it. The bench saves what the screen shows, so after Clear all with a take still placed
+  a reload gives back no layers and that one take — exactly the room as it was left. Only an
+  arrangement with nothing in it removes the key. Whether Clear all _should_ lift takes too is a
+  question about the button, not about saving, and is not changed here.
 
 Measured: a two-layer arrangement with one placed take is **736–774 bytes** of localStorage.
 
@@ -124,11 +130,53 @@ That shapes what the fix can and cannot change:
 - **The next keep holds what the room offered.**
 - **The runtime is untouched.** `MAX_BARS` in looper.ts, `setLayerGain`'s 0..2, every preset level
   and the 2× ceiling are exactly as they were; the parser now agrees with them, nothing more.
-- ⚠️ **One live path does change: the jam.** A partner's layer arrives through `packSong`/`readSong`
-  straight from their live state, never through a keep, so a layer they pushed to 1.8 used to play
-  at 1.5 on your machine and now plays at 1.8 — the level they hear. Nothing stored is involved,
-  but it is a change to what a jam sounds like above 1.5, and it is recorded here rather than left
-  to be discovered.
+- **The live jam is untouched too** — see the next section, which is where the first version of
+  this change got it wrong.
+
+## ⚠️ Every reader of the parser, and why the jam keeps its old ceilings
+
+`readSong` has seven callers, and the first version of this change raised the ceiling for all of
+them while describing two. Asked one by one:
+
+| reader                             | what it reads                        | effect of the corrected ceilings                                                                                                                            |
+| ---------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `saveToLibrary`                    | a keep                               | the next keep holds what the room offered — **the fix**                                                                                                     |
+| `workbench.ts`                     | this bench                           | restores what the room offered — **the fix**                                                                                                                |
+| `library.ts` on load               | what is stored                       | stored songs are already inside the old ceilings: **no change**                                                                                             |
+| `backup.ts` import                 | a backup file                        | written from the Library, so inside the old ceilings: **no change**                                                                                         |
+| `library/cloud.ts`                 | account rows                         | written from the Library, so inside the old ceilings: **no change**                                                                                         |
+| `songBlockConfig.ts`               | a profile song                       | a newly kept 16-bar song now plays 16 bars to visitors. **Gain cannot change what they hear**: `songPlayer.ts` ignores `gain`, `play` and `plan` altogether |
+| `jam.ts` — `jam:layer`, `jam:song` | a partner's LIVE state, never a keep | **would have changed the room's sound** — so it does not                                                                                                    |
+
+The jam reads at `JAM_CEILINGS = { bars: 8, gain: 1.5 }` — `main`'s exact literals, at exactly the
+sites that held them (the plan and play arrays and a mask's own `pb` were already 32 for everybody,
+and still are). `readSong` takes the ceilings as an optional argument whose default is what the
+room offers, so only the two jam call sites name it. Raising the jam to the full range is deleting
+that constant and those two arguments, and **it waits for a decision**, because what it changes is
+what a live room sounds like.
+
+### What the jam does today, measured rather than read
+
+`src/party/jam.test.ts` runs **two real rooms** — each a fresh module instance of `jam.ts` and
+`looper.ts`, joined by a stand-in for the party channel and nothing else — and pins today's
+behaviour. All three tests pass against `main`'s own `songFile.ts` and `jam.ts` (copied in and run,
+then restored byte-identical), and all three fail with `JAM_CEILINGS` taken out of the jam:
+
+- a partner's layer at **1.8 plays at 1.5** on your machine
+- ⚠️ **and its author's own layer drops to 1.5 the moment a partner receives it**, with nobody
+  touching anything. Found by the test, not by reading. The receiver's echo guard —
+  `sentLayers.set(…)` after `putSharedLayer` — is written one line too late: the looper notifies
+  synchronously, so the jam's own diff runs _inside_ `putSharedLayer`, finds a layer it has no
+  record of sending, and sends it back. Its author receives a message about its own layer,
+  `localIdFor` maps it home, and it is applied as the partner read it. At equal ceilings that echo
+  is a wasted message per change and a `releaseLayer` on the author's take; above 1.5 it moves the
+  author's fader.
+- an offered song longer than **8 bars loads as 8**
+
+Both the echo and the ceiling are on `main` and both are left exactly as they were. The echo is a
+bug by any reading and its fix is small (record the guard before applying, forget it if the desk
+is full), but it changes what a live jam sends — so it is named here and not folded into a change
+about saving.
 
 `readPlay`'s comment in the same file reads "Bounded at MAX_BARS like everything else here" while
 `bars` was bounded at 8, which is the tell. Both are named constants now — `MAX_BARS` and
@@ -148,8 +196,9 @@ own change.
 All of this in an isolated worktree on `fix/instrument-bench-survives-reload` from `main`, served
 on its own origin (`:5174`, confirmed to be the worktree by a function that exists only there).
 
-- **39 tests**: 31 in `workbench.test.ts`, 5 added to `songFile.test.ts`, 3 in a new
-  `library.test.ts` — on fixtures where every field is something other than its default. The
+- **46 tests**: 31 in `workbench.test.ts`, 9 added to `songFile.test.ts` (5 for the Library's
+  ceilings, 4 for the jam's), 3 in a new `library.test.ts` and 3 in a new `jam.test.ts` — on
+  fixtures where every field is something other than its default. The
   wiring tests run in node, which has no IndexedDB and is therefore exactly the "store will not
   open" browser.
 - **Made to fail first.** Seventeen perturbations of the pure half, ten of the wiring and six of
@@ -174,13 +223,33 @@ on its own origin (`:5174`, confirmed to be the worktree by a function that exis
     forced `pagehide` flush
   - **Clear all → reload: empty**, key gone, no notice
   - the longest message at 375px wraps inside the page — no sideways scroll, no spill
-- `npm run typecheck`, `eslint . --max-warnings 0`, **149 files / 2,801 tests** (main's 2,762 plus
-  these 39 and nothing else), `npm run build`.
+- **The jam ceilings, made to fail**: each of the four parser claims broken on its own (jam gain 2,
+  jam bars 32, the packed fallback reading past 8, a plan bounded at 8) and caught by the test
+  named for it; the jam's call sites stripped of `JAM_CEILINGS` sent all three two-room tests red.
+- **In the PRODUCTION bundle** (`vite build` + `vite preview` from the worktree, on `:4174`, an
+  origin with no IndexedDB and no saved bench before it started), driven through the room's own
+  controls and real keystrokes, with a recording seeded as the exact row `putTake` writes:
+  - 140 / 4 typed into the fields, Four chords and Boom bap picked, the pad muted, the drums at
+    **1.8**, the recording placed, muted, with Tone −0.4 / Even 0.7 / Space 0.6 and tremolo 16 ×
+    0.66 → reload: **every one of those on screen**, both picker buttons pressed, no notice, the
+    saved key byte-identical, and the recording's bytes and two-step history identical
+  - recording lifted and the muted layer deleted → reload: **still lifted, still deleted**, the
+    recording still in its list
+  - one copy made undecodable and another deleted → reload: _"1 recording on your loop could not be
+    opened — its place is kept. 1 recording on your loop is no longer in this browser."_; the first
+    still carried after a later change
+  - `localStorage.setItem` refusing this key → said **once**, the last good copy kept, a second
+    refusal silent, saving resumed when it was allowed
+  - a `v: 2` key → said on load, **byte-identical** after a new layer and a `pagehide`
+  - Clear all → reload: no layers (and the placed recording, which Clear all does not touch);
+    lifting that too removed the key, and the next reload was empty at 96 / 2
+- `npm run typecheck`, `eslint . --max-warnings 0`, **150 files / 2,808 tests** (main's 2,762 plus
+  these 46 and nothing else), `npm run build`.
 
 ## Still unverified
 
-Dev server, Chromium. **Nothing has been listened to** — every reading above is a number, and the
-restored take's audio was proved by its buffer length rather than by an ear. The production bundle
-was not re-checked in a browser: the bug was the absence of a write path rather than a branch a
-build could strip, which is reasoning and not a measurement. A genuinely blocked IndexedDB was
-exercised in node, not in a browser. Firefox and Safari are untested.
+Chromium only. **Nothing has been listened to** — every reading above is a number, and the
+restored take's audio was proved by its buffer length rather than by an ear. A genuinely blocked
+IndexedDB was exercised in node, not in a browser; an undecodable recording was exercised in the
+built bundle. The two-room jam tests are node, not two browsers on a relay. Firefox and Safari are
+untested.
