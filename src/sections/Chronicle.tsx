@@ -23,6 +23,7 @@ import {
   reached,
   repeats,
   homeFor,
+  ideaTitle,
   profileGlyph,
   tallyAsks,
   unitFor,
@@ -684,6 +685,28 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     await load()
   }
 
+  /**
+   * Open the add form empty, or with a title already in it.
+   *
+   * ⚠️ CLEARED ON THE WAY IN, or opening Add straight after a Cancel would show the goal you were
+   * editing and quietly save over it — which is why this is one function for both doors: the
+   * ＋ button and a journal entry handed over by `onIdea`. A second copy of these ten lines is
+   * where one field would quietly stop being cleared.
+   */
+  const openAdd = (draft: string) => {
+    setFixing(null)
+    setTitle(draft)
+    setTarget('')
+    setUnit('')
+    setEvery(false)
+    setSrc('')
+    setWhy('')
+    setCountWhat('minutes')
+    setEst('')
+    setPri(0)
+    setAdding(true)
+  }
+
   const tick = async (g: Goal) => {
     if (busy) return
     /* ⚠️ BEFORE THE WRITE, not after: `load()` replaces the goals and the row is re-filtered on
@@ -887,6 +910,13 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             show={half}
             onRunning={setRunningAct}
             onShow={setHalf}
+            onIdea={(text) => {
+              /* today, because an idea written down is usually a thing to do soon — and the form
+                 says "Add to today", so where it will land is never a guess */
+              setHalf('aims')
+              setView('today')
+              openAdd(ideaTitle(text))
+            }}
           />
         </div>
         {/**
@@ -1620,24 +1650,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      /* ⚠️ cleared on the way in, or opening Add straight after a Cancel would show the
-                   goal you were editing and quietly save over it */
-                      setFixing(null)
-                      setTitle('')
-                      setTarget('')
-                      setUnit('')
-                      setEvery(false)
-                      setSrc('')
-                      setWhy('')
-                      setCountWhat('minutes')
-                      setEst('')
-                      setPri(0)
-                      setAdding(true)
-                    }}
-                  >
+                  <button className="btn" onClick={() => openAdd('')}>
                     ＋ Add to {v.label.toLowerCase()}
                   </button>
                 )}

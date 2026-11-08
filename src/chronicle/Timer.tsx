@@ -151,6 +151,7 @@ export function Timer({
   show,
   onRunning,
   onShow,
+  onIdea,
 }: {
   day: string
   /**
@@ -206,6 +207,15 @@ export function Timer({
    * room above.
    */
   onShow?: (half: 'day') => void
+  /**
+   * Hand a journal entry to the room as the first draft of a goal — see `ideaTitle` in goal.ts.
+   *
+   * ⚠️ THE ROOM ABOVE OWNS THE GOAL FORM, so this only says what was written; the form opens
+   * there, prefilled, and nothing is saved until the person presses Add. "A dated note or idea
+   * can become a task" was in the first brief for this room, and the note was the one half of the
+   * room with no way into the other.
+   */
+  onIdea?: (text: string) => void
 }) {
   /**
    * The day being looked at, which is not always the day the room asked for.
@@ -2099,6 +2109,25 @@ export function Timer({
                         })()
                       }}
                     />
+                    {onIdea && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost chron-idea"
+                        aria-label="Make this a goal for today"
+                        onClick={(ev) => {
+                          /* ⚠️ THE BOX'S TEXT, NOT `n.body`. The box is edited in place and saves
+                             on blur, so a line changed and then sent straight here would
+                             otherwise arrive as the version from before the change. */
+                          const box = ev.currentTarget.parentElement?.querySelector('textarea')
+                          const text = box?.value ?? n.body
+                          setFixEnt(null)
+                          setJustDid(null)
+                          onIdea(text)
+                        }}
+                      >
+                        ＋ Goal
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

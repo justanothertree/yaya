@@ -26,6 +26,8 @@ import {
   likeForLike,
   marksOf,
   homeFor,
+  ideaTitle,
+  TITLE_MAX,
   SHOWN_SCOPES,
   tallyAsks,
   tallyKey,
@@ -1390,5 +1392,45 @@ describe('the order a window lists its goals in', () => {
     /* a late goal is listed for being unfinished; the snapshot is about this window's own */
     const r = arrange([a], [old], new Set(['old']))
     expect([ids(r.late), ids(r.done)]).toEqual([['old'], []])
+  })
+})
+
+describe('a note turned into the first draft of a goal', () => {
+  it('passes a short note through, trimmed', () => {
+    expect(ideaTitle('  ring the physio  ')).toBe('ring the physio')
+  })
+
+  it('makes one line of a note written on several', () => {
+    expect(ideaTitle('ring the physio\n\nabout the   knee')).toBe('ring the physio about the knee')
+  })
+
+  it('never hands the save a title longer than the table allows', () => {
+    /* 120 is the server's CHECK, asserted as a number so a change to either side is noticed */
+    expect(TITLE_MAX).toBe(120)
+    const long = 'word '.repeat(60)
+    expect(ideaTitle(long).length).toBeLessThanOrEqual(120)
+  })
+
+  it('cuts a long note at a word, and says it was cut', () => {
+    /* ⚠️ ELEVEN-CHARACTER UNITS, so the 119th character lands INSIDE a word. With six-letter
+       words it landed exactly on a word's end, and a cut that ignored word boundaries passed —
+       the fixture was making the one thing under test come out right by arithmetic. */
+    const t = ideaTitle('abcdefghij '.repeat(20))
+    expect(t.endsWith(' abcdefghij…')).toBe(true)
+    expect(t.length).toBeLessThanOrEqual(120)
+  })
+
+  it('cuts an unbroken run where it has to, rather than returning nothing', () => {
+    const t = ideaTitle('x'.repeat(200))
+    expect([t.length, t.endsWith('…')]).toEqual([120, true])
+  })
+
+  it('keeps a note of exactly the limit whole', () => {
+    const exact = 'y'.repeat(120)
+    expect(ideaTitle(exact)).toBe(exact)
+  })
+
+  it('gives nothing for a note of nothing but space', () => {
+    expect(ideaTitle(' \n\t ')).toBe('')
   })
 })
