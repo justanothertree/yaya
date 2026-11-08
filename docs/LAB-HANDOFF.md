@@ -2405,6 +2405,10 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
 - **🎲 Surprise me** (branch `claude/lab-surprise-1`, stacked on the Recent branch): launches one
   at random from whatever the catalog is showing — so choosing a Kind first means "surprise me with
   a puzzle" — and never one in your Recent list while there are others to pick.
+- **Finding things faster** (branch `claude/lab-find-1`, stacked on Surprise me): the Kind dropdown
+  says how many each kind holds ("🎮 Games & puzzles (13)"), and **/** anywhere in the Lab opens the
+  catalog with the cursor in search — except shift+/ (the site's own help), while typing, and while
+  a toy has the keyboard (Pinball's right flipper is "/").
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 

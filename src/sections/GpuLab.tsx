@@ -502,6 +502,24 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [recent, setRecent] = useState<string[]>(storedRecent)
   const [browsing, setBrowsing] = useState(false)
   const bar = useRef<HTMLDivElement | null>(null)
+  /* "/" opens the catalog with the cursor in its search box, as on most sites with a search — but
+     not shift+/, which is the site's own "?" for help; not while typing; and not while a toy has
+     the keyboard, since Pinball's right flipper is "/" */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t?.closest('input, textarea, select, [contenteditable="true"], .lab-keys')) return
+      e.preventDefault()
+      setBrowsing(true)
+      window.setTimeout(
+        () => document.querySelector<HTMLInputElement>('.lab-search input')?.focus(),
+        0,
+      )
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   /** a card can be a long way down the grid: launching one brings its toy back into view —
    *  ⚠️ AFTER the render that swaps the catalog for the toy. Scrolling in the click itself raced
    *  the page shrinking under it and stopped 216px past the toy on a desktop, measured. */
@@ -629,7 +647,12 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
           </button>
         </div>
         <div className="lab-controls lab-browse-bar">
-          <button className="btn" aria-pressed={browsing} onClick={() => setBrowsing((b) => !b)}>
+          <button
+            className="btn"
+            aria-pressed={browsing}
+            aria-keyshortcuts="/"
+            onClick={() => setBrowsing((b) => !b)}
+          >
             {browsing ? `▶ Back to ${current.name}` : `🔎 Browse all ${shownDemos.length}`}
           </button>
           {!browsing && (

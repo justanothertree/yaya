@@ -141,10 +141,10 @@ export function LabCatalog({
             value={category ?? ''}
             onChange={(e) => setCategory((e.target.value || null) as Category | null)}
           >
-            <option value="">Every kind</option>
+            <option value="">Every kind ({list.length})</option>
             {CATEGORIES.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.label}
+                {c.label} ({list.filter((e) => e.category === c.id).length})
               </option>
             ))}
           </select>
