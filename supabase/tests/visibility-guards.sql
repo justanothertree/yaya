@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN N2: day notes FIRST, then marks; every suite, both new tests, then real Auth + PostgREST.
+-- RUN N3: day notes first, then marks, with the day-notes fixture fixed; every suite, both new tests, then real Auth + PostgREST.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the day-notes draft (BEFORE marks)
