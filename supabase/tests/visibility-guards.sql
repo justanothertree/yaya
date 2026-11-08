@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN P1 (perturbed): grid sessions owner-only; cell stores total whole; stale saves believed; a stopped person converted anyway.
+-- RUN C2 (clean): the stray-set fix, and the conversion through real Auth and PostgREST (90 checks).
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
@@ -46,8 +46,8 @@ do $$
 declare n int; m int;
 begin
   select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
-  if n > 0 or m < 68 then
-    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 68', n, m;
+  if n > 0 or m < 90 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 90', n, m;
   end if;
 end $$;
 select 'the daily flow and the marks hold through Auth and PostgREST' as result;

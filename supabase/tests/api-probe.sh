@@ -193,6 +193,44 @@ check "$(printf '%s' "$BODY" | jq -c '[.[] | select(.person == "api-probe-a") | 
 rpc circuit_session_sums "$TB" "$SUMS"
 check "$(printf '%s' "$BODY" | jq -c '[.[] | select(.person == "api-probe-a")]')" '[]' "B, in no circuit with A, sees none of A's sessions"
 
+# ── the conversion (a proposal, applied earlier in this run) ──
+# No member may run it, so it is run here as the database owner, the way a cutover would be. What
+# the API is asked is everything around it: that nobody can call it, what it says about a set the
+# grid never counted (A's own 20, added above with no sitting), the way out of that, and the
+# readers after the switch.
+CONV='{"p_person":"api-probe-a","p_apply":true}'
+rpc circuit_convert_person "$TA" "$CONV"; refused "A converting its own person"
+rpc circuit_convert_person "$TB" "$CONV"; refused "B converting A's person"
+rpc circuit_convert_person "$ANON_KEY" "$CONV"; refused "anon converting a person"
+conv() { psql "$DB_URL" -qtAX -v ON_ERROR_STOP=1 -c "select public.circuit_convert_person('api-probe-a', $1)"; }
+rpc chronicle_sets_between "$TA" "$SETS"
+STRAY=$(printf '%s' "$BODY" | jq -r '[.[] | select(.entry == null) | .id] | if length == 1 then .[0] else "" end')
+check "$([ -n "$STRAY" ] && echo one)" "one" "A holds one set with no sitting, made through the API"
+R=$(conv false)
+check "$(printf '%s' "$R" | jq -c --arg s "$STRAY" '[.applied, (.problems | length), (.problems[0].set == $s), .problems[0].val, .problems[0].on]')" "[false,1,true,20,\"$TODAY\"]" "the dry run reports that set by its id, as one the grid never counted"
+R=$(conv true)
+check "$(printf '%s' "$R" | jq -c '[.applied, (.problems | length)]')" '[false,1]' "the real run is stopped by it too"
+rpc chronicle_set_drop "$TB" "{\"p_id\":\"$STRAY\"}"; refused "B taking A's set back"
+rpc chronicle_set_drop "$ANON_KEY" "{\"p_id\":\"$STRAY\"}"; refused "anon taking a set back"
+rpc chronicle_set_drop "$TA" "{\"p_id\":\"$STRAY\"}"; ok2xx "A takes its stray set back, the way the report points"
+R=$(conv true)
+check "$(printf '%s' "$R" | jq -c '[.applied, .inserted, .cells, .total, (.problems | length)]')" '[true,1,1,6,0]' "then the person converts: the one typed cell, 6"
+rpc circuit_manual_sums "$TA" "$SUMS"
+check "$(printf '%s' "$BODY" | jq -c '[[.converted[] | select(. == "api-probe-a")], [.manual[] | select(.person == "api-probe-a") | [.on, .value]]]')" "[[\"api-probe-a\"],[[\"$YDAY\",6]]]" "A's grid reads the typed 6 from sets now, and nothing else"
+rpc circuit_manual_sums "$TB" "$SUMS"
+check "$(printf '%s' "$BODY" | jq -cS '.')" '{"converted":[],"manual":[]}' "B, in no circuit with A, sees none of it"
+rpc circuit_manual_sums "$ANON_KEY" "$SUMS"; refused "anon reading the manual sums"
+rpc circuit_session_sums "$TA" "$SUMS"
+check "$(printf '%s' "$BODY" | jq -c '[.[] | select(.person == "api-probe-a") | .value]')" '[19]' "the sessions are still 19 after the switch, not read twice"
+CELL2="{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_day\":\"$YDAY\",\"p_total\":30,\"p_seen_sessions\":19,\"p_seen_manual\":6}"
+rpc circuit_cell_set "$TB" "$CELL2"; refused "B typing into A's converted cell"
+rpc circuit_cell_set "$TA" "$CELL2"
+check "$(printf '%s' "$BODY" | jq -c '[.total, .sessions, .manual]')" '[30,19,11]' "A types 30 into the converted cell, and 11 is stored"
+rpc circuit_cell_set "$TA" "$CELL2"; refused "A saving the converted cell again from the stale screen"
+rpc circuit_manual_sums "$TA" "$SUMS"
+check "$(printf '%s' "$BODY" | jq -c '[.manual[] | select(.person == "api-probe-a") | [.on, .value]]')" "[[\"$YDAY\",11]]" "the converted cell reads 11, once"
+check "$(conv true | jq -c '[.already, .applied]')" '[true,false]' "a second conversion is answered already, and adds nothing"
+
 # ── the tables themselves, straight through the REST surface ──
 # ⚠️ A REFUSAL OR AN EMPTY LIST, and which one is printed. A table can hold everything out by
 # having no grants (refused) or by RLS with no policies (200 and []); the difference is worth
@@ -206,7 +244,7 @@ table() {
     *) fail "$1 reading $2 directly — HTTP $CODE $BODY" ;;
   esac
 }
-for t in chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets chronicle_exercise_links; do
+for t in chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets chronicle_exercise_links circuit_people_converted; do
   table A "$t" "$TA"
   table anon "$t" "$ANON_KEY"
 done
