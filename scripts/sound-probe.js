@@ -232,11 +232,12 @@ const pointer = (el, type, down) => {
  * any difference at all is the instrument reacting to signal that does not exist.
  *
  * ⚠️ IT VALIDATES ITSELF, because a checker that has not been shown reading zero is a checker
- * reporting that it ran. Three guards come back in the result and all three must hold or the
- * number is void: the room was silent before each half (`quietBefore`), the backing really was
- * inaudible (`backingPeak`, must be at the floor), and the alone reading repeats afterwards
- * (`aloneAgain`, within a couple of percent). With the backing stopped in both halves this
- * reports about 0dB, which is the null control and the thing to run first if a result surprises
+ * reporting that it ran. Every guard in `DUCK_GUARDS` comes back in the result and every one of
+ * them must hold or `reading` says the number is void: the room was silent before each half
+ * (`quietBefore`, `quietBetween`), the backing really was inaudible (`backingPeak`, must be at
+ * the floor), the alone reading repeats afterwards (`aloneAgain`, within a couple of percent),
+ * and the null control is flat (`controlDb`). With the backing stopped in both halves this
+ * reports about 0dB, which is that null control and the thing to run first if a result surprises
  * you.
  *
  * ⚠️ AND IT PUTS THE FADERS BACK. A probe that leaves the room changed is one you cannot run
@@ -288,6 +289,94 @@ function rig(raw, keyIndex) {
       window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
       return peak
     },
+  }
+}
+
+/**
+ * Every condition that has to hold before a `ducking()` number is allowed to mean anything.
+ *
+ * ⚠️ `!= null` RATHER THAN TRUTHY FOR THE QUIET READINGS, because `untilQuiet` answers with the
+ * LEVEL it settled at and the best possible answer is **0**. A truthiness test would call a
+ * perfectly silent room a failed guard — the same mistake as the one below with the sign flipped,
+ * voiding every good run instead of passing every bad one.
+ */
+const DUCK_GUARDS = [
+  {
+    name: 'quietBefore',
+    ok: (g) => g.quietBefore != null,
+    why: 'the room never went quiet before the first press',
+  },
+  {
+    name: 'quietBetween',
+    ok: (g) => g.quietBetween != null,
+    why: 'the room never went quiet between the presses',
+  },
+  {
+    name: 'backingReallySilent',
+    ok: (g) => g.backingReallySilent === true,
+    why: 'the backing could be heard, so this is not the experiment',
+  },
+  {
+    name: 'repeatable',
+    ok: (g) => g.repeatable === true,
+    why: 'the key read differently the second time, so the room was not in the same state twice',
+  },
+  {
+    name: 'controlIsFlat',
+    ok: (g) => g.controlIsFlat === true,
+    why: 'the null control was ducked too, so the probe is measuring its own machinery',
+  },
+]
+
+/**
+ * What the run is allowed to CLAIM, given its own guards. Pure, so `npm run test` can ask it.
+ *
+ * ⚠️ THE GUARDS WERE ALREADY HERE AND THE VERDICT DID NOT CONSULT THEM — the cry-wolf failure
+ * this whole file is built to avoid, arriving in the file that says so. `reading` was computed
+ * from `dB < -1` and nothing else, so a run whose guards had already refused it still printed
+ * **"your hands are ducked by a backing that cannot be heard"**: the confident sentence, in the
+ * voice of a finding, about a number its own result had marked void two lines above.
+ *
+ * Measured 7 Nov 2026, the first `ducking()` run of a release review — `repeatable: false`,
+ * `controlIsFlat: false`, `controlDb: -2.61`. The null control had been ducked within **0.07dB**
+ * of the finding, so what the probe had measured was its own machinery and the honest answer was
+ * "nothing was learned". The next run, from a settled room, had every guard green and said the
+ * OPPOSITE. Both printed a sentence; only one of them was entitled to.
+ *
+ * It took a person reading the `guards` object to throw the first one away, and that is the part
+ * that does not scale: the verdict is one quotable line and the guards are nine fields under it,
+ * so the line is what gets believed, pasted and written down. A refusal has to be louder than
+ * the finding it replaces, in the same field, or it is not a refusal.
+ *
+ * ⚠️ AND `dB == null` IS TOTAL DUCKING RATHER THAN NONE, which the old comparison had backwards.
+ * `dBof` answers null when the key read a flat 0 over the backing, and `null < -1` is false — so
+ * a key silenced completely came out as "no ducking from a silent backing", the most confident
+ * possible wrong answer, in the one case the fault is at its worst.
+ */
+export function duckVerdict(r) {
+  const g = r?.guards ?? {}
+  /* `repeatable` already folds this in, so it has to be asked first or a dead key reads as a
+     failed guard — true, and not the thing worth saying about it */
+  if (!(r?.alone > 0 && g.aloneAgain > 0)) {
+    return { reading: 'no sound from the key at all — nothing here is a measurement' }
+  }
+  const refused = DUCK_GUARDS.filter((gd) => !gd.ok(g))
+  if (refused.length) {
+    return {
+      refused: refused.map((gd) => gd.name),
+      reading:
+        `VOID — nothing was learned, whatever the dB says: ${refused.map((gd) => gd.why).join('; ')}. ` +
+        'Run it again from a settled room; a guard refusing is this probe working.',
+    }
+  }
+  if (r.dB == null) {
+    return { reading: 'the key was silenced completely by a backing that cannot be heard' }
+  }
+  return {
+    reading:
+      r.dB < -1
+        ? 'your hands are ducked by a backing that cannot be heard'
+        : 'no ducking from a silent backing',
   }
 }
 
@@ -370,7 +459,7 @@ async function duckProbe(raw, keyIndex) {
     const dB = dBof(overSilentBacking)
     const controlDb = dBof(overLoadedButStopped)
     const sound = alone > 0 && aloneAgain > 0
-    return {
+    const out = {
       alone,
       overSilentBacking,
       dB,
@@ -386,12 +475,9 @@ async function duckProbe(raw, keyIndex) {
         controlDb,
         controlIsFlat: controlDb != null && Math.abs(controlDb) < 1,
       },
-      reading: !sound
-        ? 'no sound from the key at all — nothing here is a measurement'
-        : dB < -1
-          ? 'your hands are ducked by a backing that cannot be heard'
-          : 'no ducking from a silent backing',
     }
+    /* the WHOLE result, so there is one call and nothing to pass half of — see `duckVerdict` */
+    return { ...out, ...duckVerdict(out) }
   } finally {
     r.restore()
   }
