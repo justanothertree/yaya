@@ -103,7 +103,7 @@ begin
   -- ⚠️ ONLY A REPEATING GOAL HAS WINDOWS. A one-off keeps using chronicle_goal_progress, whose
   -- single row IS its single window — so a mark on one would be a second answer to one question.
   select g.scope into v_scope from public.chronicle_goals g
-   where g.id = p_goal and g.owner = auth.uid() and g.repeat_every is not null;
+   where g.id = p_goal and g.repeat_every is not null;
   if v_scope is null then raise exception 'no such repeating goal'; end if;
   if p_from is null or p_starts is null or p_ends is null then
     raise exception 'that window does not make sense';
@@ -171,7 +171,7 @@ begin
         -- ⚠️ YOURS ONLY, and only at the goal's CURRENT scope — see the note on the key
         join public.chronicle_goals g on g.id = q.id and g.owner = auth.uid()
         join public.chronicle_goal_marks m
-          on m.goal = g.id and m.scope = g.scope and m.window_from = q.f
+          on m.goal = g.id and m.window_from = q.f
     ), '{}'::jsonb),
     -- the ticks from before marks existed: one moment per repeating goal, placed by the client
     'legacy', coalesce((
@@ -210,8 +210,7 @@ begin
        || E'                  select jsonb_agg(jsonb_build_object(\n'
        || E'                           ''scope'', mk.scope, ''from'', mk.window_from,\n'
        || E'                           ''starts_at'', mk.starts_at, ''ends_at'', mk.ends_at,\n'
-       || E'                           ''progress'', mk.progress, ''done_at'', mk.done_at,\n'
-       || E'                           ''set_at'', mk.set_at)\n'
+       || E'                           ''progress'', mk.progress, ''done_at'', mk.done_at)\n'
        || E'                         order by mk.scope, mk.window_from)\n'
        || E'                    from public.chronicle_goal_marks mk where mk.goal = g.id\n'
        || E'               ), ''[]''::jsonb))'),

@@ -43,15 +43,7 @@ begin
     select * from (values
       ('(gl.done_at is not null) as done,',
        '(case when gl.repeat_every is null then gl.done_at is not null'
-       || E'\n                  else ' || format(v_now, 'gl') || E' end) as done,'),
-      (E'count(*) filter (where g.done_at is not null and g.done_at >= v_from),\n'
-       || E'         count(*) filter (where g.done_at is null)',
-       E'count(*) filter (where case when g.repeat_every is null\n'
-       || E'                                then g.done_at is not null and g.done_at >= v_from\n'
-       || E'                                else ' || format(v_now, 'g') || E' end),\n'
-       || E'         count(*) filter (where case when g.repeat_every is null\n'
-       || E'                                then g.done_at is null\n'
-       || E'                                else not ' || format(v_now, 'g') || E' end)')
+       || E'\n                  else ' || format(v_now, 'gl') || E' end) as done,')
     ) as v(old, new)
   loop
     select pg_get_functiondef(p.oid) into v_src
@@ -67,5 +59,5 @@ begin
     execute replace(v_src, r.old, r.new);
     v_done := v_done + 1;
   end loop;
-  if v_done <> 2 then raise exception 'expected 2 substitutions, made %', v_done; end if;
+  if v_done <> 1 then raise exception 'expected 2 substitutions, made %', v_done; end if;
 end $mig$;

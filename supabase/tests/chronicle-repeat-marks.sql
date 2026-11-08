@@ -484,6 +484,11 @@ begin
                                            null, 1, null, null, 'minutes', null, 0)),
     ('p_now',   public.chronicle_goal_save(null, 'P: ticked today', 'day', null, 1, null, null,
                                            null, 2, null, null, 'minutes', null, 0)),
+    /* ⚠️ A SECOND "TICKED TODAY", AND THE COUNTS DEPEND ON IT. With one, the right answer is
+       reached 2 / open 1 — and so is the OLD reader's, which counts the stale row tick as reached
+       and today's mark as open: a check that agrees with the bug it is for. Two separate them. */
+    ('p_now2',  public.chronicle_goal_save(null, 'P: also ticked today', 'day', null, 1, null, null,
+                                           null, 4, null, null, 'minutes', null, 0)),
     ('p_once',  public.chronicle_goal_save(null, 'P: one-off, done', 'day',
                                            (select f from win where k = 'today'), null, null, null,
                                            null, 3, null, null, 'minutes', null, 0));
@@ -493,6 +498,7 @@ begin
   perform public.chronicle_goal_mark((select v from ids where k = 'p_stale'), w.f, w.s, w.e, null, true);
   select * into w from win where k = 'today';
   perform public.chronicle_goal_mark((select v from ids where k = 'p_now'), w.f, w.s, w.e, null, true);
+  perform public.chronicle_goal_mark((select v from ids where k = 'p_now2'), w.f, w.s, w.e, null, true);
   perform public.chronicle_goal_progress((select v from ids where k = 'p_once'), 0, true);
 exception when others then insert into fails values ('the profile''s goals raised', sqlerrm);
 end $$;
@@ -508,15 +514,15 @@ begin
   end if;
   for g in select * from jsonb_array_elements(card->'goals') loop
     if (g->>'title' = 'P: ticked yesterday' and (g->>'done')::boolean)
-       or (g->>'title' = 'P: ticked today' and not (g->>'done')::boolean)
+       or (g->>'title' like 'P: %ticked today' and not (g->>'done')::boolean)
        or (g->>'title' = 'P: one-off, done' and not (g->>'done')::boolean) then
       insert into fails values ('the profile says the wrong thing about ' || (g->>'title'), g::text);
     end if;
   end loop;
-  if jsonb_array_length(card->'goals') <> 3 then
+  if jsonb_array_length(card->'goals') <> 4 then
     insert into fails values ('the profile lists the wrong goals', (card->'goals')::text);
   end if;
-  if (card->>'reached')::int <> 2 or (card->>'open')::int <> 1 then
+  if (card->>'reached')::int <> 3 or (card->>'open')::int <> 1 then
     insert into fails values ('the profile counts the wrong way',
                               'reached ' || (card->>'reached') || ', open ' || (card->>'open'));
   end if;
