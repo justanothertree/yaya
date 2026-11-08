@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN S5 (perturbed): five faults in the sets draft — person owner, name lookup, day editor, person cascade, import person.
+-- RUN S6: the EXACT integration tree (origin/chronicle/integration merged in) — every draft applied, every suite, 54 API checks.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
