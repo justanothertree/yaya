@@ -722,6 +722,13 @@ step that makes it run on every push:
 is a shell variable that step works out for itself; a separate step would not have it. And `chronicle/ci-probe-flow`
 is scratch, never to be merged — yours to approve deleting.
 
+✅ **DONE 8 Nov — approved as a narrowly scoped change.** #67, stacked on #51 because it runs the
+file #51 adds: the one line inside the existing step, the step renamed to say so, and the header
+line. Its own `db guards` run used the workflow at that commit and printed both verdicts in one
+job — `all visibility guards hold · 0`, then `the chronicle daily flow holds · 0`. The failing
+direction was shown before it existed, by the scratch runs above: the same `psql -v
+ON_ERROR_STOP=1 -f` on this file failed the job when the test raised.
+
 ### 16b. A weekday schedule edited today — does it take effect today or tomorrow?
 
 Your rule settles every CLOSED day: they keep the schedule they were judged under. Today is the
@@ -749,6 +756,25 @@ is, so the goal's first schedule is its schedule for all of the past. That is no
 history — there is none before the goal — but it does mean the draft writer must allow one
 backdated row in exactly that case (a goal with no schedule rows yet, created today), and that
 exception is the kind that wants deciding rather than discovering.
+
+✅ **ANSWERED 8 Nov, for 16b and 16c together — and the answer differs from what I recommended in
+two places, so those two are held rather than built.** Your words: _"Weekday schedule edits take
+effect today for the current and future occurrences, but must not rewrite earlier history or erase
+a completion already recorded today. New goals must not create missed occurrences before their
+creation date."_
+
+- **Agreed, and already how `weekdays.ts` works:** an edit takes effect today; every earlier day
+  keeps the schedule it was judged under, because the schedule is a history and `maskOn` reads the
+  entry in force on each day.
+- **Different — today's completion.** My "today" accepted a cost: a goal finished this morning and
+  then edited to exclude today "stops counting today, so its streak may drop by one", because
+  `scheduledMarks` turns a met off-day into `off`. Your rule forbids exactly that. See 16f.
+- **Different — before creation.** My "yes" only stopped OFF-days before creation reading as
+  misses, by back-dating the first schedule row; a SCHEDULED day before creation would still have
+  been a miss, as it is for every new daily goal today (the 31-day row asks about every window back
+  to 31 regardless of when the goal was made). Your rule removes every miss before creation, for
+  every goal, which is better — and it makes the back-dated row and the draft writer's exception for
+  it unnecessary. See 16g.
 
 ### 16d. The stacked drafts only get one of the four CI checks
 
@@ -778,6 +804,36 @@ which would show #33's commits again inside every one of them.
   are canonical for a person with an account, `circuit_logs` stays canonical for an unclaimed one.
   Claiming a person migrates their rows at that moment, in the claim function — one path, at the
   one point the answer changes.
+
+### 16f. A day that was met, under a schedule that now calls it off — met, or off?
+
+Your rule says an edit must not erase a completion already recorded today. Two ways to keep that,
+which differ on every OTHER day too:
+
+- **A met day is met, whatever the schedule says (recommended).** One rule with no special day:
+  today's finished goal stays finished and keeps counting toward the streak after an edit, and so
+  does an extra swim on a Wednesday for a Tuesdays goal. Nothing that was done is ever drawn as
+  "off". The cost: a streak can include days the schedule did not ask for.
+- **A met off-day is shown as done but skipped by the streak, like an off day.** The streak stays
+  strictly about the schedule. The cost: today's completion stops counting toward the streak after
+  the edit, which may be what you meant by "erase".
+
+`scheduledMarks` changes by one line either way. Nothing is built until you choose.
+
+### 16g. A day before a goal existed that the record shows as met — met, or blank?
+
+Removing misses before creation needs the goal's creation date in the room (`chronicle_goals_mine`
+does not send `created_at` today — a reader change, the marks reader could carry it). The open half
+is the days the RECORD answers for: you drew yesterday, and today you make "draw every day".
+
+- **Blank (recommended).** The goal did not exist, so it neither met nor missed; the row starts on
+  the creation day and so does the streak. It reads your "don't invent historical successes" the
+  strict way.
+- **Met.** It is a true fact about the record, and it is what the 31-day row shows today. The cost:
+  a goal made this morning can open with a ten-day streak.
+
+This changes what every NEW goal looks like on the 31-day row, weekdays or not, so it can ship
+before weekdays do.
 
 ---
 
@@ -818,3 +874,50 @@ to and assigning one would invent a history.
 
 It would stop new goals being made that work once. **Recommendation: no** — it would hide what
 the existing ones are, and it is a change to undo the day the fix ships. Better to ship 17a.
+
+✅ **UPDATE 8 Nov — 17a approved for implementation and local testing, and done; applying it is
+the next approval (17d).** Built on `chronicle/marks-wired`, draft PR #73, stacked on the frontend
+tip (#43):
+
+- **The draft is runnable**, in three steps that are each inert alone: the table, writer, reader and
+  the export/import carrying `marks` (`docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql`); the room
+  (#73's frontend commit); and the profile reader
+  (`docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql`), which must land after the room or
+  every repeating goal on every profile would read ○.
+- **The window is keyed by goal, scope and local date, and carries its two instants**, so the
+  server can tell which mark is current without knowing anybody's zone, and refuses a window that
+  has not begun.
+- **Evidence:** `supabase/tests/chronicle-repeat-marks.sql`, as a seeded member against the real
+  functions in CI's throwaway database, with the drafts applied: clean twice; seven faults put in,
+  each named by its own check; and the standing visibility guards, the daily flow and the
+  export/import round trip all still hold with the drafts in place. In the preview double, desktop
+  and 375: Floss unticked today though its row says done, ticked for one day only, "opens tomorrow"
+  on the Tomorrow tab.
+
+**17b, done differently from the recommendation above — and the reason is your own rule.** I
+proposed copying the row's `done_at` into a mark for the window containing it. The server cannot
+place it honestly: the window is local, and an 8pm tick in California is the next day in UTC. So
+nothing is copied. The reader hands the row's `done_at` to the room as `legacy`, and the room lights
+the one local window containing it; a mark, once there is one, wins. Evidence preserved, placed
+where it is true, nothing written on anybody's behalf, nothing invented. The row's `progress` is
+still not read for a repeating goal. One visible consequence: a profile cannot place the old tick
+either, so a goal ticked under the old room reads ○ to friends for the rest of that one window.
+
+**17c is moot** once 17d is done.
+
+**One behaviour to know about:** the Tomorrow tab no longer ticks a repeating goal. It shows
+tomorrow's own window, which has not begun, so the box and ± are disabled and say "opens tomorrow".
+Before, ticking it there ticked the one shared flag — today's too.
+
+### 17d. Approve applying step 1 to production?
+
+**Recommendation: yes, then deploy the room, then step 3.** In that order each step is inert alone,
+and the rollback for each is written in its file. Two things to know first:
+
+- **The substitutions into `chronicle_export` and `chronicle_import` were matched against CI's
+  database**, which is built from the schema baseline, not from production. The migration raises
+  if any substitution does not match exactly once, so a production function that has moved on stops
+  it rather than being half-patched — but it is worth one read-only look at production's text
+  (`pg_get_functiondef`) before applying, which I have not done, by instruction.
+- **The room must not ship before step 1.** Until the table exists, every tick on a repeating goal
+  would come back refused.
