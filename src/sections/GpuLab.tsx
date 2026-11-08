@@ -79,6 +79,7 @@ import { MixDemo } from '../gpu/MixDemo'
 import { IntervalsDemo } from '../gpu/IntervalsDemo'
 import { GraphDemo } from '../gpu/GraphDemo'
 import { SunDemo } from '../gpu/SunDemo'
+import { SkipDemo } from '../gpu/SkipDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -515,6 +516,12 @@ const DEMOS: readonly {
     name: 'Sun path',
     line: 'Sun path — where the sun is for any place, day and hour: its path across the sky, sunrise, sunset, day length and a shadow. Then guess where the sun stands over Tromsø in March.',
     Demo: SunDemo,
+  },
+  {
+    id: 'skip',
+    name: 'Skipping stones',
+    line: 'Skipping stones — drag back, let go while the stone is nearly flat, and count the skips. Six challenges, from three skips to twenty and under a bridge.',
+    Demo: SkipDemo,
   },
 ]
 
