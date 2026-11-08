@@ -5166,6 +5166,19 @@ select {
   min-width: 6rem;
   accent-color: var(--accent);
 }
+/* the play row's volume shares a line with the octave rather than taking one of its own; a
+   pixel floor because rem is fluid here (see CLAUDE.md §6) */
+.inst-playbar .appearance-slider {
+  flex: 1 1 10rem;
+  min-width: 150px;
+}
+/* ⚠️ and the slider gives way inside it, with a floor in pixels: the shared rule's 6rem minimum
+   pushed the "70%" 29px past the edge of a 375 screen — measured, the first time this row was
+   given a narrower label. Zero would let the slider vanish, so 60px. */
+.inst-playbar .appearance-slider input[type='range'] {
+  flex: 1 1 4rem;
+  min-width: 60px;
+}
 .appearance-slider-val {
   min-width: 2.6rem;
   text-align: right;
@@ -8019,11 +8032,26 @@ a.cz-msg-author:focus-visible {
      desktop, picker-then-keys reads as a workflow; on a phone it just means the
      instrument is off screen. */
   .inst-keys {
+    order: -4;
+  }
+  /* ⚠️ THEN WHAT YOUR HANDS USE ON IT, THEN THE PICKER — everything else keeps its written
+     order. The slide is written BEFORE the keys (on a desktop it sits under them by layout), so
+     at order 0 it used to land after the picker and a health note, 150px from the keys it moves.
+     The play row (octave, volume, Hold, Panic) moved up from below the song; see the note on it
+     in InstrumentRoom. */
+  .inst-keyslide {
+    order: -3;
+  }
+  .inst-playbar {
     order: -2;
   }
-  /* the picker follows it; everything else keeps its written order */
   .inst-bar {
     order: -1;
+  }
+  /* the typing light explains a hardware keyboard, which a phone has not got — and on this row
+     it cost a line of its own */
+  .inst-playbar .inst-keylight {
+    display: none;
   }
 
   /* Thumbs, not cursors: 25 keys at 25px are slivers. Below this the row scrolls
@@ -8707,23 +8735,16 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-/* ── instruments: a grid on a desktop, a menu on a phone ──────────────────────
-   Same shape as the paint room's brushes — see the note in InstrumentRoom. */
+/* ── instruments: a menu, on every screen ─────────────────────────────────────
+   Same shape as the paint room's brushes — see the note in InstrumentRoom for why the desktop
+   grid joined the phone's menu. The grid keeps its own layout once open. */
 .inst-pick-open {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
-@media (max-width: 40rem) {
-  .inst-pick-open {
-    display: inline-flex;
-  }
-  .inst-picks {
-    display: none;
-  }
-  .inst-picks.is-open {
-    display: grid;
-  }
+.inst-picks:not(.is-open) {
+  display: none;
 }
 
 /**

@@ -1856,14 +1856,134 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       </div>
 
       {/**
+       * ⚠️ WHAT YOUR HANDS NEED WHILE THEY ARE ON THE KEYS, DIRECTLY UNDER THEM. Octave, Volume,
+       * Hold and Panic sat in a row below the whole song — measured with an arrangement loaded,
+       * 1,150px under the keyboard at 1440×900 and 1,350px under it on a phone — so changing
+       * octave or catching a chord with Hold meant scrolling away from the thing being played.
+       * Evan's note asked for exactly this group. The row moved; nothing in it changed.
+       */}
+      <div className="inst-row inst-playbar">
+        <span className="muted inst-oct">
+          Octave
+          <button
+            className="btn"
+            onClick={() => setOctave((o) => shiftOctave(o, -1))}
+            disabled={octave <= 1}
+            aria-label="Octave down"
+          >
+            −
+          </button>
+          <strong>{octave}</strong>
+          <button
+            className="btn"
+            onClick={() => setOctave((o) => shiftOctave(o, 1))}
+            disabled={octave >= 6}
+            aria-label="Octave up"
+          >
+            +
+          </button>
+        </span>
+
+        <label className="appearance-slider">
+          <span className="muted">Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={vol}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              setVol(v)
+              setVolume('instrument', v)
+            }}
+          />
+          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
+        </label>
+        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
+            typing sometimes plays and sometimes does not */}
+        <span
+          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
+          title={
+            keysLive
+              ? 'Your computer keyboard plays notes'
+              : 'Typing is going into a control — click the page to play with the keys again'
+          }
+        >
+          <span aria-hidden>⌨</span>
+          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
+        </span>
+
+        {/**
+         * A stuck note is the one failure every synth has, and hunting for the key that caused
+         * it is miserable. One button, always there.
+         *
+         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
+         * transport running, so the loop immediately scheduled the next repetition and whatever
+         * you were panicking about came straight back — you had to hit it, then find Stop, and
+         * in between the thing was still playing. "Make it stop" has one meaning.
+         */}
+        {/**
+         * The pedal every keyboard has and this one did not.
+         *
+         * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
+         * the only safe answer anyway: notes ringing with no finger and no pedal would be
+         * unreachable by anything except Panic.
+         *
+         * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
+         * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
+         * that visibly does nothing is worse than one that is not offered. The title says so
+         * rather than the button vanishing, which would make the setting hard to find again.
+         */}
+        <button
+          className={'btn' + (hold ? ' is-on' : '')}
+          aria-pressed={hold}
+          disabled={arp !== 'off'}
+          onClick={() => {
+            if (hold)
+              for (const v of pedal.release()) {
+                noteOff(v.voice)
+                report(v.midi, false)
+              }
+            setHold(!hold)
+          }}
+          title={
+            arp !== 'off'
+              ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
+              : hold
+                ? 'Notes keep ringing after you let go — click to let them stop'
+                : 'Keep notes ringing after you let go, like a piano pedal'
+          }
+        >
+          🦶 Hold
+          <Why>{arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}</Why>
+        </button>
+
+        <button
+          className="btn"
+          onClick={() => {
+            stopLoop()
+            hush('all')
+          }}
+          title="Silence everything and stop the loop"
+        >
+          ⏹ Panic
+        </button>
+      </div>
+
+      {/**
        * ⚠️ A MENU ON A PHONE, exactly like the paint room's brushes and for the same measurement:
        * two dozen instruments in a four-wide grid is six rows and about seven hundred pixels of
        * picker, so the keys are the only thing on screen and everything else — the knobs, the
        * looper, the recorder — is below a wall you have to scroll past to reach.
        *
-       * The grid is untouched on a desktop, where it fits and browsing it is the point. One list
-       * either way, shown or hidden by a media query: two renderings would drift, and the second
-       * would be the one nobody tested.
+       * ⚠️ AND NOW A MENU ON A DESKTOP TOO, which this note used to rule out: "the grid is
+       * untouched on a desktop, where it fits and browsing it is the point". It fits, at 323px —
+       * and those 323px were what kept ▶ Play below the fold at 1440×900 with the keys on
+       * screen, the one thing the room's grouping exists to avoid. The button names the sound
+       * you have, so the choice is never hidden, and on a desktop the menu stays open while you
+       * try sounds, which keeps browsing the point. One list either way: two renderings would
+       * drift, and the second would be the one nobody tested.
        */}
       <div className="inst-bar">
         <button
@@ -1887,9 +2007,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 // a loop playing underneath is not yours to interrupt
                 hush()
                 setInst(id)
-                /* closes on a phone, where it is a menu; ignored on a desktop, where the grid is
-                   always open and this flag is not read */
-                setPicksOpen(false)
+                /* closes on a phone, where it covers the page; stays open on a desktop, where
+                   trying three sounds in a row is the point of opening it */
+                if (window.matchMedia('(max-width: 40rem)').matches) setPicksOpen(false)
               }}
             >
               <span aria-hidden>{icon}</span>
@@ -2932,6 +3052,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         </ul>
       )}
 
+      {/* ⚠️ RECORDING SITS WITH THE SONG IT IS RECORDED INTO. 🎤 Record a take was below the
+          sound knobs, the octave row and the scale row — 1,600px down at 1440×900 — while
+          everything it is placed into (the transport, the layers) was 500px above it. */}
+      <TakesPanel />
+
       <div className="inst-row inst-knobs">
         {KNOBS.map(([k, label, hint]) => (
           <KnobRow key={k} k={k} label={label} hint={hint} />
@@ -2962,115 +3087,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           siblings has never decided where it draws — see .inst-wrap.has-visuals. Below the
           breakpoint the wrap is a plain flex column, and there it was 593px of visuals
           standing between the picker and ▶ Play. */}
-
-      <div className="inst-row">
-        <span className="muted inst-oct">
-          Octave
-          <button
-            className="btn"
-            onClick={() => setOctave((o) => shiftOctave(o, -1))}
-            disabled={octave <= 1}
-            aria-label="Octave down"
-          >
-            −
-          </button>
-          <strong>{octave}</strong>
-          <button
-            className="btn"
-            onClick={() => setOctave((o) => shiftOctave(o, 1))}
-            disabled={octave >= 6}
-            aria-label="Octave up"
-          >
-            +
-          </button>
-        </span>
-
-        <label className="appearance-slider">
-          <span className="muted">Volume</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={vol}
-            onChange={(e) => {
-              const v = Number(e.target.value)
-              setVol(v)
-              setVolume('instrument', v)
-            }}
-          />
-          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
-        </label>
-        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
-            typing sometimes plays and sometimes does not */}
-        <span
-          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
-          title={
-            keysLive
-              ? 'Your computer keyboard plays notes'
-              : 'Typing is going into a control — click the page to play with the keys again'
-          }
-        >
-          <span aria-hidden>⌨</span>
-          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
-        </span>
-
-        {/**
-         * A stuck note is the one failure every synth has, and hunting for the key that caused
-         * it is miserable. One button, always there.
-         *
-         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
-         * transport running, so the loop immediately scheduled the next repetition and whatever
-         * you were panicking about came straight back — you had to hit it, then find Stop, and
-         * in between the thing was still playing. "Make it stop" has one meaning.
-         */}
-        {/**
-         * The pedal every keyboard has and this one did not.
-         *
-         * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
-         * the only safe answer anyway: notes ringing with no finger and no pedal would be
-         * unreachable by anything except Panic.
-         *
-         * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
-         * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
-         * that visibly does nothing is worse than one that is not offered. The title says so
-         * rather than the button vanishing, which would make the setting hard to find again.
-         */}
-        <button
-          className={'btn' + (hold ? ' is-on' : '')}
-          aria-pressed={hold}
-          disabled={arp !== 'off'}
-          onClick={() => {
-            if (hold)
-              for (const v of pedal.release()) {
-                noteOff(v.voice)
-                report(v.midi, false)
-              }
-            setHold(!hold)
-          }}
-          title={
-            arp !== 'off'
-              ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
-              : hold
-                ? 'Notes keep ringing after you let go — click to let them stop'
-                : 'Keep notes ringing after you let go, like a piano pedal'
-          }
-        >
-          🦶 Hold
-          <Why>{arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}</Why>
-        </button>
-
-        <button
-          className="btn"
-          onClick={() => {
-            stopLoop()
-            hush('all')
-          }}
-          title="Silence everything and stop the loop"
-        >
-          ⏹ Panic
-        </button>
-      </div>
 
       {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
           degrees, so there is no wrong note left to press. */}
@@ -3332,7 +3348,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           library is where it belongs — but the library row collapses, and a recording you can
           only reach by opening a panel is one nobody finds. It is not in the layer list either,
           on purpose: a take is not a Layer. See TakesPanel. */}
-      <TakesPanel />
 
       <p className="muted inst-note">
         Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
