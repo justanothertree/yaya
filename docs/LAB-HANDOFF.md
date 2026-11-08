@@ -2663,6 +2663,38 @@ device per mount.
 
 **Not verified:** the stage in a page, real GPUs, holding a button with a thumb.
 
+## Review and merge order — the open Lab PRs (8 Nov 2026)
+
+Every PR below is a draft, small on its own, and stacked so each shows only its own change. None
+changes SQL; #31's draft stays unapplied and GitHub CI does not run it. Merge each into `main` in
+order (or retarget the next one to `main` after its base merges). Checked with `git merge-tree`
+against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
+chains merge cleanly into each other.
+
+| Order | PR  | Base   | What it is                                                    |
+| ----- | --- | ------ | ------------------------------------------------------------- |
+| 1     | #31 | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
+| 2     | #34 | #31    | One toolbar at every width; your own vote in words            |
+| 3a    | #45 | #34    | 🕘 Recent view                                                |
+| 3b    | #48 | #45    | 🎲 Surprise me                                                |
+| 3c    | #50 | #48    | Counts beside each kind; / to search                          |
+| 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
+| 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
+| 4c    | #47 | #44    | Beams                                                         |
+| 4d    | #49 | #47    | Bridge                                                        |
+| 4e    | #52 | #49    | Epicycles                                                     |
+| 4f    | #53 | #52    | Orbit                                                         |
+
+The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
+stacked only so the registry stays append-only without conflicts. A toy can merge before or after
+the SQL: with no catalog nothing about feedback changes, and once the SQL is applied a member sees
+"new here" under a toy until the owner's next visit registers it, then votes as usual.
+
+**One limitation applies to every toy PR:** on 8 Nov this container's headless Chromium lost every
+WebGPU canvas after a couple of frames, existing toys included, so no stage was seen in a page.
+Each toy was checked by rendering its engine offscreen and reading the pixels back, and through the
+real UI for everything that is not the picture. The real-device queue below is what that leaves.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
