@@ -159,7 +159,7 @@ check "$(printf '%s' "$BODY" | jq -c '.')" '[]' "B reading sets sees none of A's
 rpc chronicle_sets_between "$ANON_KEY" "$SETS"; refused "anon reading sets"
 rpc chronicle_entries_between "$TA" "{\"p_from\":\"$FROM\",\"p_to\":\"$TO\"}"
 ONE=$(printf '%s' "$BODY" | jq -c --arg e "$E1" '.[] | select(.id == $e)')
-norm() { printf '%s' "$1" | jq -r 'sub("\\.[0-9]+";"") | sub("\\+00:00$";"Z") | fromdateiso8601 - 86400 | todateiso8601'; }
+norm() { printf '%s' "$1" | jq -R -r 'sub("\\.[0-9]+";"") | sub("\\+00:00$";"Z") | fromdateiso8601 - 86400 | todateiso8601'; }
 S0=$(norm "$(printf '%s' "$ONE" | jq -r '.start')"); S1=$(norm "$(printf '%s' "$ONE" | jq -r '.end')")
 MOVE="{\"p_id\":\"$E1\",\"p_from\":\"$S0\",\"p_to\":\"$S1\",\"p_activity\":null,\"p_day\":\"$YDAY\"}"
 rpc chronicle_entry_edit_day "$TB" "$MOVE"; refused "B moving A's sitting"

@@ -1,8 +1,10 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN S3: all four drafts and every suite; the API probe asks the set writers too (54 checks).
+-- RUN S4: the SETS draft FIRST, then weekdays, marks, day notes; every suite; the probe reads a raw string as one (jq -R).
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
-\echo === applying the weekdays draft (FIRST)
+\echo === applying the sets draft (FIRST)
+\ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
+\echo === applying the weekdays draft
 \ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
 \echo === applying step 1
 \ir ../../docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql
@@ -10,8 +12,6 @@
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
 \echo === applying the day-notes draft (AFTER marks)
 \ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
-\echo === applying the sets draft (LAST)
-\ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
 \echo === the standing guards, against a schema with all three drafts in it
 \ir visibility-guards.orig.sql
 \echo === the daily flow
