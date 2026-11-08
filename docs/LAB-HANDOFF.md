@@ -2671,20 +2671,20 @@ order (or retarget the next one to `main` after its base merges). Checked with `
 against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
 chains merge cleanly into each other.
 
-| Order | PR     | Base   | What it is                                                    |
-| ----- | ------ | ------ | ------------------------------------------------------------- |
-| 1     | #31    | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
-| 2     | #34    | #31    | One toolbar at every width; your own vote in words            |
-| 3a    | #45    | #34    | 🕘 Recent view                                                |
-| 3b    | #48    | #45    | 🎲 Surprise me                                                |
-| 3c    | #50    | #48    | Counts beside each kind; / to search                          |
-| 4a    | #40    | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
-| 4b    | #44    | #40    | Palette — uses Jigsaw's painted pictures                      |
-| 4c    | #47    | #44    | Beams                                                         |
-| 4d    | #49    | #47    | Bridge                                                        |
-| 4e    | #52    | #49    | Epicycles                                                     |
-| 4f    | #53    | #52    | Orbit                                                         |
-| 4g    | (next) | #53    | Wallpaper                                                     |
+| Order | PR  | Base   | What it is                                                    |
+| ----- | --- | ------ | ------------------------------------------------------------- |
+| 1     | #31 | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
+| 2     | #34 | #31    | One toolbar at every width; your own vote in words            |
+| 3a    | #45 | #34    | 🕘 Recent view                                                |
+| 3b    | #48 | #45    | 🎲 Surprise me                                                |
+| 3c    | #50 | #48    | Counts beside each kind; / to search                          |
+| 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
+| 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
+| 4c    | #47 | #44    | Beams                                                         |
+| 4d    | #49 | #47    | Bridge                                                        |
+| 4e    | #52 | #49    | Epicycles                                                     |
+| 4f    | #53 | #52    | Orbit                                                         |
+| 4g    | #54 | #53    | Wallpaper                                                     |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
