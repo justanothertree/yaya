@@ -759,3 +759,43 @@ which would show #33's commits again inside every one of them.
   are canonical for a person with an account, `circuit_logs` stays canonical for an unclaimed one.
   Claiming a person migrates their rows at that moment, in the claim function — one path, at the
   one point the answer changes.
+
+---
+
+## 17. A repeating goal ticked by hand never resets — found 8 Nov 2026
+
+**This is a live defect, not a proposal for something new**, and it is the first example in the
+brief Chronicle was rebuilt from: _"Floss every day: simple check-off."_
+
+`chronicle_goals` keeps one `done_at` and one `progress` per goal. A one-off goal has one window,
+so that is right. A **repeating** goal moved by hand — a tick-box, or a count moved with − and + —
+keeps the same flag and the same count in every window after the first. "Floss every day", ticked
+once, reads ticked on every later day; "Stretch 20 minutes a day" starts day two at yesterday's
+total. Goals the **record** answers for are unaffected, because the tally is asked per window.
+
+**Evidence:** read from `chronicle_goal_progress` and from `finished()` in goal.ts, and shown in
+the preview double, which keeps the same single flag: a new daily tick-box ticked on Today was
+already ticked on Tomorrow. **Not exercised against production**, by instruction. The workaround
+today is to untick and re-tick each day — which still shows the goal as done every morning.
+
+**The fix is written and tested, and not applied:** one row per goal per window,
+`docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql`, with its client half in
+`src/chronicle/marks.ts` (9 tests; four perturbations, one of them reproducing today's behaviour
+exactly, each turned some red). It also gives a repeating tick-box a streak for the first time.
+
+### 17a. Approve the per-window marks table?
+
+**Recommendation: yes, before anything else on the Chronicle list.** It is the difference between
+the daily check-off working and working once. Three inert steps, each revertible on its own.
+
+### 17b. What to do with the repeating goals that already carry a tick or a count
+
+Nothing is deleted either way. **Recommendation:** copy a repeating goal's existing `done_at`
+into a mark for the window that contains it — a true fact, it was done then — and leave its
+`progress` on the row, unread, because nothing records which window a hand-moved count belonged
+to and assigning one would invent a history.
+
+### 17c. Hide "every day" on tick-box goals until 17a lands?
+
+It would stop new goals being made that work once. **Recommendation: no** — it would hide what
+the existing ones are, and it is a change to undo the day the fix ships. Better to ship 17a.
