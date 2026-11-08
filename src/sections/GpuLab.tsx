@@ -71,6 +71,7 @@ import { IntervalsDemo } from '../gpu/IntervalsDemo'
 import { GraphDemo } from '../gpu/GraphDemo'
 import { SunDemo } from '../gpu/SunDemo'
 import { SkipDemo } from '../gpu/SkipDemo'
+import { VisionDemo } from '../gpu/VisionDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -513,6 +514,12 @@ const DEMOS: readonly {
     name: 'Skipping stones',
     line: 'Skipping stones — drag back, let go while the stone is nearly flat, and count the skips. Six challenges, from three skips to twenty and under a bridge.',
     Demo: SkipDemo,
+  },
+  {
+    id: 'vision',
+    name: 'Colour sight',
+    line: 'Colour sight — see a chart, a painting or your own picture as people with colour blindness do, and check whether two colours stay apart for everyone.',
+    Demo: VisionDemo,
   },
 ]
 

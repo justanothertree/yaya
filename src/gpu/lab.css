@@ -923,3 +923,47 @@ html:has(.lab) {
   margin-top: -2px;
   background: var(--text);
 }
+
+/* Colour sight: two colours checked against every kind of colour vision at once */
+.vision-pair {
+  display: grid;
+  gap: 0.5rem;
+}
+.vision-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+.vision-pick input[type='color'] {
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+}
+.vision-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.vision-table th,
+.vision-table td {
+  text-align: left;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.vision-table tr[aria-current='true'] {
+  background: color-mix(in oklab, var(--accent), transparent 85%);
+}
+.vision-swatch {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--text), transparent 70%);
+  vertical-align: middle;
+}
