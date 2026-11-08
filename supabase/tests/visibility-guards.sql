@@ -1,9 +1,11 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN S6: the EXACT integration tree (origin/chronicle/integration merged in) — every draft applied, every suite, 54 API checks.
+-- RUN L1: every draft, then the LINKS draft (step 2a) after the sets draft; every suite plus the links test.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
 \ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
+\echo === applying the links draft (step 2a, after step 1)
+\ir ../../docs/2026-11-09-chronicle-sets-links.DRAFT.sql
 \echo === applying the weekdays draft
 \ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
 \echo === applying step 1
@@ -26,6 +28,8 @@
 \ir chronicle-weekdays.sql
 \echo === the sets
 \ir chronicle-sets.sql
+\echo === the links
+\ir chronicle-sets-links.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
