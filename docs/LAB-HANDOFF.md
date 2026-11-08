@@ -2695,6 +2695,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4j    | #59 | #58    | Slide                                                         |
 | 4k    | #60 | #59    | Games and puzzles become two kinds                            |
 | 4l    | #61 | #60    | Paint mixer                                                   |
+| 4m    | #62 | #61    | Intervals                                                     |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2914,6 +2915,39 @@ both modes; one GPU device per mount.
 **Not verified:** the stage in a page, real GPUs, and colours on a real screen — the paints were
 tuned by their numbers and an sRGB render, so whether they look like paint is a question for eyes.
 
+### Follow-on: `claude/lab-intervals-1`, stacked on #61 (8 Nov 2026) — an ear trainer, Intervals
+
+**Base:** `claude/lab-mix-1` (#61), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Two notes play (rising, falling, together, or mixed); name the distance between
+  them. Rounds of ten; six stages, from octave / fifth / major third (easy to tell apart) to all
+  twelve, each opened by eight of ten right. Every answer button says what the interval sounds like
+  ("sad, the minor chord's heart"); a wrong answer names the truth and offers **▶ Hear yours** — the
+  interval you chose, from the same first note — to hear the difference. Questions lean towards the
+  intervals you miss (up to four times as often), never the same one twice running. Stats, opened
+  stages and bests kept in this browser. Keys 1–9, Q, W, E answer, Space replays, Enter next.
+- **The picture is the pitch spiral**: every semitone from C3 to G5 on a spiral that turns once an
+  octave, so an octave is the same angle one ring out. Before an answer the notes are only ripples
+  from the centre — the picture must not give the answer away; after it, both appear and the arc
+  between them lights green or amber.
+
+**Measured here:** 8 tests — twelve intervals, one per distance; each stage keeps the last one's and
+the first three are at least three semitones apart; questions stay in C3–G5, go the way asked, never
+repeat the last, and are answered by their own notes; a missed interval comes up four times as often
+— drawn 40,000 times, not computed; records round-trip and damage is dropped. Weakening the lean,
+letting a note out of range or allowing a repeat each turns a test red. On the GPU, offscreen: before
+an answer the notes' places look like every other semitone; after it both dots appear and the arc is
+green when right, amber when wrong, an octave a full turn. Through the UI at 1280 and an emulated
+iPhone 13 (mouse, not touch) the probe **answered by ear** — it recorded every frequency the page gave
+an oscillator and turned each burst's lowest back into a note — and so played a perfect round,
+opening stage 2; then a wrong answer, "hear yours" playing the chosen interval from the same note,
+keys, reload. `mobileAudit` zero with all twelve answers showing; one GPU device per mount. That pass
+fixed "a Octave" and moved the verdict and Next above the answers, where the site's floating audio
+pill had covered them on a phone.
+
+**Not verified:** sound itself — this container has no speakers; that notes were scheduled at the
+right pitches is measured, how they sound is not. Real GPUs; Safari and Firefox audio.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2935,15 +2969,17 @@ tuned by their numbers and an sRGB render, so whether they look like paint is a 
    turn upright on a narrow screen?
 7. **Real device — Slide on a phone.** Do a few Endless boards by swiping. Does a swipe ever go the
    wrong way, or scroll the page instead? Is Medium the right step up from Easy?
-8. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
+8. **Real device — Intervals, with sound.** Play a round on a phone and on a laptop. Do the notes
+   sound clean and at the right moment? Are the six stages a fair climb?
+9. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
    Is the reading ("darker, duller and more green") more help than the number?
-9. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
-   the two-burn trick discoverable from the hints alone?
-10. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+10. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+    the two-burn trick discoverable from the hints alone?
+11. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
     Is "tap again to turn" discoverable, or does it want its own button first?
-11. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+12. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
     🔎 Browse at every width. Better, or do you miss seeing every name at once?
-12. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+13. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
     of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-13. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+14. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
     "You voted …" line read clearly?
