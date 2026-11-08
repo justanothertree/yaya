@@ -70,6 +70,10 @@ import {
   basslineEvents,
   leadBackStep,
   leadsBack,
+  BASS_STYLES,
+  CHORD_STYLES,
+  type BassStyle,
+  type ChordStyle,
   progressionEvents,
   type ChordPattern,
 } from '../audio/chordPatterns'
@@ -145,8 +149,10 @@ import {
   splitDrumLayer,
   beatPatternOf,
   bassPatternOf,
+  bassStyleTagOf,
   fillPatternOf,
   chordPatternOf,
+  chordStyleTagOf,
   soleDrumPiece,
   setBars,
   setBpm,
@@ -167,6 +173,7 @@ import {
   undoLast,
   seekTo,
   hushScheduled,
+  type Layer,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
 
@@ -397,6 +404,18 @@ function NumField({
  * ⚠️ AND IT CHANGES WITH THE STATE rather than adding a line: the same slot says what the
  * control does or why it cannot, so a disabled control costs no extra space to explain itself.
  */
+/** The sound each chord style starts on — see layChords for when a change of style may change it. */
+const CHORD_SOUND: Record<ChordStyle, InstrumentId> = {
+  pad: 'pad',
+  stabs: 'keys',
+  offbeat: 'keys',
+  pulse: 'keys',
+}
+const styleOfChord = (l: Layer): ChordStyle =>
+  CHORD_STYLES.find((x) => x.id === chordStyleTagOf(l))?.id ?? 'pad'
+const styleOfBass = (l: Layer): BassStyle =>
+  BASS_STYLES.find((x) => x.id === bassStyleTagOf(l))?.id ?? 'rootfifth'
+
 function Why({ children }: { children: React.ReactNode }) {
   return <span className="btn-why">{children}</span>
 }
@@ -786,6 +805,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      where the pedal is silently down means your first chord never stops and nothing on screen
      says why — the one setting whose wrong state is indistinguishable from a broken synth. */
   const [hold, setHold] = useState(false)
+  /* a style chosen before there is a backing to play it — see chordStyleNow */
+  const [chordStylePick, setChordStylePick] = useState<ChordStyle>('pad')
+  const [bassStylePick, setBassStylePick] = useState<BassStyle>('rootfifth')
   /** whether the pedal currently down was put there by Shift rather than by the button */
   const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
@@ -1262,15 +1284,32 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * `triadAt` exists to prevent, one level up: the pad and the bass agreeing about a chord is
    * worth nothing if the room can hand them different progressions.
    */
-  const layBass = (p: ChordPattern, lead = leadBack) => {
+  /**
+   * The style the backing is in: the loaded layer's when there is one — what you are hearing —
+   * and otherwise the one last chosen, so a style can be picked before the chords are.
+   */
+  const chordStyleNow = (): ChordStyle => {
+    const l = loopState().layers.find((x) => chordPatternOf(x) !== null)
+    return l ? styleOfChord(l) : chordStylePick
+  }
+  const bassStyleNow = (): BassStyle => {
+    const l = loopState().layers.find((x) => bassPatternOf(x) !== null)
+    return l ? styleOfBass(l) : bassStylePick
+  }
+
+  const layBass = (p: ChordPattern, lead = leadBack, style: BassStyle = bassStyleNow()) => {
     const { events, len } = basslineEvents(
       p,
       loopLength(),
       scale === 'chromatic' ? MAJOR_DEGREES : degrees,
       scale === 'chromatic' ? 0 : root,
       lead,
+      style,
+      60 / loopState().bpm,
     )
-    return addPatternLayer(events, len, p.id, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
+    /* the original style keeps the original tag, so a song saved before styles reads the same */
+    const tag = style === 'rootfifth' ? p.id : `${p.id}-${style}`
+    return addPatternLayer(events, len, tag, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
   }
 
   /**
@@ -1288,19 +1327,30 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * lead-back on the pad but not under it changes chord half a bar apart. Both now come from
    * here, so there is no version of this a caller can get half right.
    */
-  const layChords = (p: ChordPattern, lead = leadBack) => {
+  const layChords = (p: ChordPattern, lead = leadBack, style: ChordStyle = chordStyleNow()) => {
     const { events, len } = progressionEvents(
       p,
       loopLength(),
       scale === 'chromatic' ? MAJOR_DEGREES : degrees,
       scale === 'chromatic' ? 0 : root,
       lead,
+      style,
+      60 / loopState().bpm,
     )
-    const id = addPatternLayer(events, len, p.id, {
+    const was = loopState().layers.find((l) => chordPatternOf(l) !== null) ?? null
+    const id = addPatternLayer(events, len, style === 'pad' ? p.id : `${p.id}-${style}`, {
       mark: '-chords:',
-      instrument: 'pad',
+      instrument: CHORD_SOUND[style],
       gain: 0.42,
     })
+    /**
+     * ⚠️ A STAB ON A PAD SOUND IS BARELY THERE — the pad swells in, and a note a quarter of a beat
+     * long ends before it has. So a change of style brings the style's own sound with it, but
+     * ONLY if the layer still has the sound the old style gave it: somebody who put their chords
+     * on a harp chose that, and a style button is not theirs to overrule it.
+     */
+    if (id && was && was.instrument === CHORD_SOUND[styleOfChord(was)])
+      setLayerInstrument(id, CHORD_SOUND[style])
     if (id && loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p, lead)
     return id
   }
@@ -2551,7 +2601,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                * controls in one row cannot mean two different things.
                */
               const loaded = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
-              const shown = p && loaded ? leadsBack(loaded.events, p) : leadBack
+              const shown = p && loaded ? leadsBack(loaded.events, p, loaded.len) : leadBack
               return (
                 <button
                   className={'btn' + (shown ? '' : ' btn-ghost')}
@@ -2577,6 +2627,35 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             })()}
           </div>
           {/**
+           * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the beat rows below have
+           * always offered and the backing never did. Picking one re-lays what is loaded in that
+           * style; with nothing loaded it is remembered for the next progression you pick.
+           */}
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Played as</span>
+            {(() => {
+              const loaded = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+              const p = loaded ? CHORD_PATTERNS.find((x) => x.id === chordPatternOf(loaded)) : null
+              const shown = loaded ? styleOfChord(loaded) : chordStylePick
+              return CHORD_STYLES.map((st) => (
+                <button
+                  key={st.id}
+                  className={'btn' + (shown === st.id ? '' : ' btn-ghost')}
+                  aria-pressed={shown === st.id}
+                  onClick={() => {
+                    setChordStylePick(st.id)
+                    if (!p || !loaded) return
+                    layChords(p, leadsBack(loaded.events, p, loaded.len), st.id)
+                    if (!loop.playing) startLoop()
+                  }}
+                  title={st.hint}
+                >
+                  {st.name}
+                </button>
+              ))
+            })()}
+          </div>
+          {/**
            * ⚠️ ONE BUTTON THAT FOLLOWS, NOT A SECOND PICKER. A bassline has to play the same
            * progression as the pad above it — a bass on Fifties under chords on Wistful is a
            * backing track at war with itself, and nothing on screen would explain why it
@@ -2588,37 +2667,39 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             {(() => {
               const live = loop.layers.map((l) => chordPatternOf(l)).find((x) => x) ?? null
               const p = CHORD_PATTERNS.find((x) => x.id === live)
-              const on = loop.layers.some((l) => bassPatternOf(l) !== null)
+              const bass = loop.layers.find((l) => bassPatternOf(l) !== null) ?? null
+              const chords = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+              const full = loop.layers.length >= MAX_LAYERS && !bass
+              const shown = bass ? styleOfBass(bass) : null
               return (
-                <button
-                  className={'btn' + (on ? '' : ' btn-ghost')}
-                  aria-pressed={on}
-                  disabled={
-                    !p ||
-                    (loop.layers.length >= MAX_LAYERS &&
-                      !loop.layers.some((l) => bassPatternOf(l) !== null))
-                  }
-                  onClick={() => {
-                    if (!p) return
-                    /* the same builder the chord picker uses when it swaps — see layBass */
-                    if (!layBass(p)) return
-                    if (!loop.playing) startLoop()
-                  }}
-                  title={
-                    p
-                      ? `A root-and-fifth bass under ${p.name}`
-                      : 'Pick some chords first — the bass follows them'
-                  }
-                >
-                  Follow the chords
-                  <Why>
-                    {!p
-                      ? 'pick chords first'
-                      : loop.layers.length >= MAX_LAYERS && !on
-                        ? 'no layer free'
-                        : 'root and fifth'}
-                  </Why>
-                </button>
+                <>
+                  {BASS_STYLES.map((st) => (
+                    <button
+                      key={st.id}
+                      className={'btn' + (shown === st.id ? '' : ' btn-ghost')}
+                      aria-pressed={shown === st.id}
+                      disabled={!p || full}
+                      onClick={() => {
+                        if (!p) return
+                        setBassStylePick(st.id)
+                        /* the lead-back the chords HAVE, so the bass turns when they do */
+                        const lead = chords ? leadsBack(chords.events, p, chords.len) : leadBack
+                        if (!layBass(p, lead, st.id)) return
+                        if (!loop.playing) startLoop()
+                      }}
+                      title={p ? `${st.name} — ${st.hint}, under ${p.name}` : st.hint}
+                    >
+                      {st.name}
+                    </button>
+                  ))}
+                  {/* ⚠️ ONE REASON FOR THE ROW, not one per button — four disabled buttons each
+                      saying "pick chords first" is the clutter the captions were meant to avoid */}
+                  {(!p || full) && (
+                    <span className="muted inst-beats-why">
+                      {!p ? 'follows the chords — pick some first' : 'no layer free'}
+                    </span>
+                  )}
+                </>
               )
             })()}
           </div>
