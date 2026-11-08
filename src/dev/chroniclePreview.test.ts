@@ -27,6 +27,12 @@ import {
   pvTally,
   pvVisit,
   pvTotals,
+  pvDropEntry,
+  pvEditEntryDay,
+  pvFixRunningDay,
+  pvGiveCircuit,
+  pvSetAdd,
+  pvSetsBetween,
 } from './chroniclePreview'
 import type { NewGoal } from '../chronicle/cloud'
 import { localMidnight } from '../chronicle/record'
@@ -928,6 +934,17 @@ describe('the file you can take away', () => {
       'quality',
       'created_at',
     ],
+    sets: [
+      'id',
+      'person',
+      'exercise',
+      'name',
+      'entry',
+      'on_day',
+      'value',
+      'created_at',
+      'updated_at',
+    ],
     goals: [
       'id',
       'title',
@@ -969,6 +986,10 @@ describe('the file you can take away', () => {
     pvSaveRoutine('Morning', [{ activity: draw, mins: 20 }])
     pvPlanSave(draw, h(16), h(17), null)
     pvPlanSave(draw, h(14), h(15), null)
+    /* a set counted during the nine o'clock sitting, so the sets list has a row to be about */
+    pvGiveCircuit('p-1', [{ id: 'ex-1', name: 'Quad Curl' }])
+    const nine = pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9))
+    pvSetAdd('p-1', 'ex-1', 12, DAY, nine?.id ?? null)
   })
 
   it('says what it is, so a reader can refuse a file that is not one', () => {
@@ -1048,7 +1069,7 @@ describe('putting a file back', () => {
   })
 
   const rows = (doc: Record<string, unknown>) =>
-    ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
+    ['activities', 'entries', 'sets', 'goals', 'routines', 'plans'].reduce(
       (n, k) => n + (Array.isArray(doc[k]) ? (doc[k] as unknown[]).length : 0),
       0,
     )
@@ -1172,6 +1193,7 @@ describe('putting a file back', () => {
       goals: 0,
       routines: 0,
       plans: 0,
+      sets: 0,
       skipped: rows(file),
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...file, at: '' }))
@@ -1269,6 +1291,21 @@ describe('putting a file back', () => {
           created_at: h(9),
         },
       ],
+      /* every field away from its default: a person, a sitting, a fraction, and two moments of
+         its own — and a name the Circuit has since changed, which the file must not take */
+      sets: [
+        {
+          id: '77777777-7777-4777-8777-777777777777',
+          person: 'p-1',
+          exercise: 'ex-1',
+          name: 'Quad Curl',
+          entry: '22222222-2222-4222-8222-222222222222',
+          on_day: DAY,
+          value: 12.5,
+          created_at: '2026-01-02T03:04:05.000Z',
+          updated_at: '2026-01-03T03:04:05.000Z',
+        },
+      ],
       goals: [
         {
           id: '33333333-3333-4333-8333-333333333333',
@@ -1313,6 +1350,7 @@ describe('putting a file back', () => {
     }
 
     pvEmpty()
+    pvGiveCircuit('p-1', [{ id: 'ex-1', name: 'Quad Curls' }])
     const got = pvImport(file)
     expect(got).toEqual({
       activities: 1,
@@ -1320,6 +1358,7 @@ describe('putting a file back', () => {
       goals: 1,
       routines: 1,
       plans: 1,
+      sets: 1,
       skipped: 0,
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify(file))
@@ -1657,5 +1696,122 @@ describe('correcting the session you are in the middle of', () => {
     const before = pvEntries(dayStart(), dayEnd())
     pvFixRunning(new Date(Date.now() - 10 * 60_000).toISOString(), gym)
     expect(pvEntries(dayStart(), dayEnd())).toEqual(before)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF THE SETS DRAFT'S WRITERS. The server's are asked the same questions in
+ * supabase/tests/chronicle-sets.sql; these keep the copy from accepting what the site would refuse.
+ */
+describe('a set', () => {
+  /* the outer beforeEach has already emptied the store and made `draw` */
+  beforeEach(() => {
+    pvGiveCircuit('p-1', [
+      { id: 'ex-quad', name: 'Quad Curl' },
+      { id: 'ex-bench', name: 'Bench' },
+    ])
+  })
+  const sitting = () => {
+    pvAddEntry(draw, h(9), h(10), null)
+    return pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9))!.id
+  }
+
+  it("takes its name from the person's list, and is refused in the server's words", () => {
+    const e = sitting()
+    const ok = pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    expect('id' in ok).toBe(true)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.name, x.now, x.value])).toEqual([
+      ['Quad Curl', 'Quad Curl', 12],
+    ])
+    const far = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+    expect([
+      why(pvSetAdd('p-2', 'ex-quad', 1, DAY)),
+      why(pvSetAdd('p-1', 'ex-none', 1, DAY)),
+      why(pvSetAdd('p-1', 'ex-quad', 0, DAY)),
+      why(pvSetAdd('p-1', 'ex-quad', 1, far)),
+      why(pvSetAdd('p-1', 'ex-quad', 1, DAY, 'nobody')),
+      why(pvSetAdd('p-1', 'ex-quad', 1, '2026-10-20', e)),
+    ]).toEqual([
+      'no such person of yours',
+      'no such exercise',
+      'that is not a number of anything',
+      'that day has not come yet',
+      'no such session',
+      'that is not the day that session starts on',
+    ])
+  })
+
+  it('keeps its old name when the exercise goes, and does not join one re-made under that name', () => {
+    pvSetAdd('p-1', 'ex-quad', 12, DAY)
+    pvGiveCircuit('p-1', [{ id: 'ex-quad-2', name: 'Quad Curl' }])
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.exercise, x.name, x.now])).toEqual([
+      ['ex-quad', 'Quad Curl', null],
+    ])
+  })
+
+  it('moves to the new day with its sitting, in the same call — and not at all on a refusal', () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    const back = (n: number) => new Date(Date.parse(h(9)) - n * 86_400_000).toISOString()
+    const backTo = (n: number) => new Date(Date.parse(h(10)) - n * 86_400_000).toISOString()
+    /* a day that is not the new start's, and a span that runs backwards: neither moves anything */
+    expect(pvEditEntryDay(e, back(1), backTo(1), null, '2026-10-01')?.why).toBe(
+      'that is not the day that session starts on',
+    )
+    expect(pvEditEntryDay(e, backTo(1), back(1), null, '2026-10-11')?.why).toBe(
+      'that span ends before it starts',
+    )
+    expect(pvSetsBetween('2026-10-01', '2026-10-20').map((x) => x.on)).toEqual([DAY])
+    /* and the real thing */
+    expect(pvEditEntryDay(e, back(1), backTo(1), null, '2026-10-11')).toBeNull()
+    expect(pvSetsBetween('2026-10-01', '2026-10-20').map((x) => [x.on, x.value])).toEqual([
+      ['2026-10-11', 12],
+    ])
+  })
+
+  it('stays what it is when its sitting moves to another activity', () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    const weights = idOf(pvSaveActivity('Weights', 'free', null, undefined, 'reps'))
+    expect(pvEditEntry(e, h(9), h(10), null, weights)).toBeNull()
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.exercise, x.entry, x.on])).toEqual([
+      ['ex-quad', e, DAY],
+    ])
+  })
+
+  it('goes with its sitting when the sitting is deleted', () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    pvSetAdd('p-1', 'ex-bench', 8, DAY)
+    pvDropEntry(e)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.exercise)).toEqual(['ex-bench'])
+  })
+
+  it('follows a running sitting whose start is fixed back past midnight', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date(h(1)))
+      expect(pvStart(draw)).toBeNull()
+      const e = pvEntries(dayStart(), dayEnd()).find((x) => x.end == null)!.id
+      pvSetAdd('p-1', 'ex-quad', 5, DAY, e)
+      const before = new Date(Date.parse(h(1)) - 3 * 3_600_000).toISOString()
+      expect(pvFixRunningDay(before, null, '2026-10-11')).toBeNull()
+      expect(pvSetsBetween('2026-10-11', '2026-10-13').map((x) => x.on)).toEqual(['2026-10-11'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("comes back from a file onto nobody's person when the person is not yours here", () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    const file = pvExport()
+    pvEmpty()
+    /* the sitting comes back with the file; the person does not exist in this account */
+    expect(pvImport(file)).toMatchObject({ sets: 1 })
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.person, x.name, x.now])).toEqual([
+      [null, 'Quad Curl', null],
+    ])
   })
 })

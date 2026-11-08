@@ -17067,6 +17067,11 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
+/* what a move does not take with it — see moveNote in sets.ts */
+.chron-move-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
 .chron-when-len {
   font-size: 0.82rem;
   color: var(--muted);
