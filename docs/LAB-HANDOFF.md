@@ -2519,6 +2519,48 @@ it needs that branch. No SQL changes.
 real phone, and the clipboard outside Chromium — Safari and Firefox ask differently, and the CSS
 box is there for when copying is refused.
 
+### Follow-on: `claude/lab-beams-1`, stacked on #44 (8 Nov 2026) — a new puzzle, Beams
+
+**Base:** `claude/lab-palette-1` (#44), only so the registry stays append-only without a merge
+conflict; it uses nothing of Palette's or Jigsaw's. No SQL changes.
+
+- **What you do.** Ten levels of lasers on a grid. Choose a piece — mirror, splitter, or a colour
+  filter — and tap a lit square to place it; tap a piece to select it and again to turn it; ↻ Turn
+  and ✕ Take back do the same. A target lights when exactly its colour arrives, and colours add:
+  red and green make yellow, all three white, and too much is as wrong as too little. Each level
+  has a stock of pieces and a par; 💡 Show a way puts in a fewest-pieces solution (not kept as a
+  best); 🧹 Clear empties the board. **Fully playable from the keyboard**: arrows move a cursor
+  that the canvas's label describes in words ("a target wanting yellow, getting red"), Enter places
+  or turns, T turns, Delete takes back, 1–n choose a piece.
+- **Kept in this browser:** the best (fewest pieces) per level, the level open, and its pieces —
+  every piece checked on the way back in against the level's free cells and its stock.
+- **Technique:** one fragment pass draws the board, each piece as a distance field in its cell,
+  and every beam as light — a hot core and a wide halo, added, so crossing beams mix the way the
+  rules say colours do.
+- **Pattern to reuse:** "let a solver hold the levels to account." Five of the first ten levels as
+  drawn could not be solved, one had a shortcut that made it trivial, and one "needed" a filter it
+  did not; each was found by `solve()`, not by playing. Each level's par is what the solver proves
+  minimal, and a test holds it there in both directions.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 12 tests in `beams.test.ts`: reflection checked against the geometry of a mirror at 45°; walls,
+  edges, splitters, filters and additive colour; a genuine ring of mirrors terminates (made to fail
+  by removing the loop guard — the first fixture was not really a ring, and stayed green without
+  it); every level dark until something is placed, solvable within its stock, with exactly its par
+  and not one piece fewer; saving with every field set, and refusing pieces on walls, emitters,
+  targets, off the board or beyond the stock.
+- Offscreen render of every level, open and solved: the midpoint of every beam carries its colour
+  (81 of 81).
+- Through the real UI at 1280 and an emulated iPhone 13 (mouse, not touch): place → solved → best
+  kept; over-stock refused in words; select, turn, turn back, take back; level 2 solved by keyboard
+  alone (this found the cursor carrying over from the previous level's board — fixed); a fixed piece
+  says so; Show a way solves without a best; reload restores level and pieces. `mobileAudit` zero
+  at both widths. One GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas, as for Jigsaw), real GPUs and
+real touch. Whether the ten levels are fun, and whether their difficulty climbs well, is taste.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2528,9 +2570,11 @@ box is there for when copying is refused.
 2. **Real device — Palette.** Pick a photo from your camera roll on the phone. Does the palette look
    like the photo? Does tapping the picture pick the colour under your finger? Does 📋 Copy CSS
    work in your browser (Safari asks differently from Chrome)?
-3. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+3. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+   Is "tap again to turn" discoverable, or does it want its own button first?
+4. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-4. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+5. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-5. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+6. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?
