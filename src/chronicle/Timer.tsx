@@ -35,6 +35,7 @@ import {
   CATS,
   clockOfLocal,
   clockText,
+  longRun,
   COLOURS,
   dayBounds,
   gapSince,
@@ -1279,6 +1280,31 @@ export function Timer({
                     {far.over ? `${aim}m done` : `${Math.ceil(far.left)}m left of ${aim}m`}
                   </span>
                 </span>
+              )
+            })()}
+            {/**
+             * ⚠️ A FACT AND THE WAY OUT, NEVER A QUESTION THAT HAS TO BE ANSWERED. The clock reads
+             * 14:03:22 for a timer left running overnight and says nothing about yesterday, so
+             * this says when it began — and that the dialog Stop opens is where the real finishing
+             * time is set. It asks nothing and blocks nothing: somebody genuinely at it for five
+             * hours reads one line and carries on, which is the whole difference between a fact
+             * and a nag. The rule for when it appears is `longRun`, with its own tests.
+             */}
+            {(() => {
+              const long = longRun(running.start, Date.now())
+              if (!long) return null
+              const t = new Date(running.start)
+              const time = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+              const when =
+                long.daysAgo === 0
+                  ? time
+                  : long.daysAgo === 1
+                    ? `${time} yesterday`
+                    : `${t.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`
+              return (
+                <p className="chron-longrun">
+                  Running since {when}. Forgot to stop? Press Stop, then set when you finished.
+                </p>
               )
             })()}
             {/**

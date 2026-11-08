@@ -18105,6 +18105,14 @@ a.cz-msg-author:focus-visible {
   width: 100%;
 }
 /* ⚠️ monospace and tabular, or a running clock jiggles every second as the digits change width */
+/* when a running sitting began, once that is worth saying — see `longRun` in record.ts. A full-width
+   line under the clock rather than a chip beside it, because it is a sentence and has to wrap. */
+.chron-longrun {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
 .chron-run {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
