@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C1: sets, links, grid, then the CONVERSION draft; every suite plus the conversion test.
+-- RUN P1 (perturbed): grid sessions owner-only; cell stores total whole; stale saves believed; a stopped person converted anyway.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
