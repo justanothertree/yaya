@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W2 (perturbed): the profile reads "current" as "began within a day" — E2 must fail and E must not.
+-- RUN W3: all three drafts — marks, day notes, then weekdays — and every suite, the weekday test included.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying step 1
@@ -8,7 +8,9 @@
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
 \echo === applying the day-notes draft (AFTER marks)
 \ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
-\echo === the standing guards, against a schema with both drafts in it
+\echo === applying the weekdays draft (LAST)
+\ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
+\echo === the standing guards, against a schema with all three drafts in it
 \ir visibility-guards.orig.sql
 \echo === the daily flow
 \ir chronicle-daily-flow.sql
@@ -18,6 +20,8 @@
 \ir chronicle-repeat-marks.sql
 \echo === the day notes
 \ir chronicle-day-notes.sql
+\echo === the weekdays
+\ir chronicle-weekdays.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
