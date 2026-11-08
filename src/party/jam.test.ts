@@ -19,10 +19,12 @@ import { toSong } from '../audio/songFile'
  * Every path here is synchronous (a looper change fires the jam's diff inline, and a handler's
  * replies are sent before it returns), so setting `net.machine` around each act is exact.
  *
- * ⚠️ THESE PIN TODAY'S BEHAVIOUR, NOT A DECISION ABOUT IT. All three outcomes come from
- * JAM_CEILINGS in songFile.ts, which keeps the jam reading at exactly what it read before the
- * Library's ceilings were corrected. If the jam is ever raised to the room's full range, these
- * are the tests that should change — on purpose, in that change.
+ * ⚠️ TWO KINDS OF TEST LIVE HERE, AND ONLY ONE IS A DECISION. The ceiling tests — 1.5 here, an
+ * edit going home at 1.5, an offered song at eight bars — pin today's behaviour, which comes from
+ * JAM_CEILINGS in songFile.ts and waits for a decision about the room's sound; if the jam is ever
+ * raised to the full range they are the tests that should change, on purpose, in that change.
+ * The echo tests pin a FIX: receiving a layer, or somebody joining, sends nobody's layer back to
+ * its author. Those should never change.
  */
 
 type Envelope = { from: string; name: string; kind: string; body: unknown }
@@ -32,6 +34,8 @@ const net = vi.hoisted(() => ({
   machine: '',
   handlers: new Map<string, (m: Envelope) => void>(),
   outbox: [] as Envelope[],
+  /** every message ever sent, for counting — `outbox` is drained as it is delivered */
+  sent: [] as Envelope[],
 }))
 
 vi.mock('../voice/voiceSession', () => ({
@@ -42,7 +46,9 @@ vi.mock('../voice/voiceSession', () => ({
     return () => net.handlers.delete(me)
   },
   sendParty: (kind: string, body: unknown) =>
-    net.outbox.push({ from: net.machine, name: net.machine.toUpperCase(), kind, body }),
+    void [net.outbox, net.sent].forEach((q) =>
+      q.push({ from: net.machine, name: net.machine.toUpperCase(), kind, body }),
+    ),
   voiceSession: { subscribe: () => () => {}, getState: () => ({ inCall: true }) },
 }))
 vi.mock('./clock', () => ({ clock: { start: () => () => {} }, toLocalTime: () => null }))
@@ -98,6 +104,7 @@ const loud = (id: string): Layer => ({
 beforeEach(() => {
   net.handlers.clear()
   net.outbox.length = 0
+  net.sent.length = 0
   vi.stubGlobal('window', {
     setInterval: () => 0,
     clearInterval: () => {},
@@ -118,26 +125,76 @@ describe('a jam reads a partner at the ceilings it always has', () => {
     expect(gainOf(b, (l) => l.from === 'a')).toBe(1.5)
   })
 
-  /**
-   * ⚠️ AND IT COMES BACK TO ITS AUTHOR AT 1.5 THE MOMENT A PARTNER HAS IT — nobody editing
-   * anything. Found by this file, not by reading, and true on main before any of this.
-   *
-   * The receiver's echo guard (`sentLayers.set(…)` after `putSharedLayer`) is written one line
-   * too late: the looper notifies its listeners synchronously, so the jam's own diff runs INSIDE
-   * putSharedLayer, sees a layer it has no record of sending, and sends it to the room. Its author
-   * receives a message about its own layer, `localIdFor` maps it home, and it is applied — as the
-   * partner read it. At equal ceilings that echo is a wasted message and a `releaseLayer` on the
-   * author's take; above 1.5 it is the author's fader moving.
-   */
-  it('and its author hears it turned down to 1.5 as soon as a partner receives it', async () => {
+  /* the ceiling still reaches home through a real edit — that part is policy, not the echo */
+  it('and when they edit it, it goes back to its author at 1.5', async () => {
     const a = await machine('a')
     a.lp.loadSong(96, 2, [loud('mine-1')])
     join(a)
-    expect(gainOf(a, (l) => l.id === 'mine-1')).toBe(1.8)
+    const b = await machine('b')
+    join(b)
+    const theirs = b.lp.loopState().layers.find((l) => l.from === 'a')!
+    as('b', () => b.lp.toggleMute(theirs.id))
+    deliver()
+    const mine = a.lp.loopState().layers.find((l) => l.id === 'mine-1')!
+    expect(mine.muted).toBe(true)
+    expect(mine.gain).toBe(1.5)
+  })
+
+  /**
+   * ⚠️ AND ITS AUTHOR KEEPS IT AS THEY SET IT — receiving a layer sends nothing back.
+   *
+   * This test first pinned the opposite, and it was true on main: the receiver's echo guard was
+   * recorded one line after `putSharedLayer`, but the looper notifies synchronously, so the jam's
+   * own diff ran INSIDE it, saw a layer it had no record of sending, and sent it back. The author
+   * applied a message about its own layer — as the partner read it — so a fader at 1.8 dropped to
+   * 1.5 at home the moment anybody joined, and every edit cost a round trip and a `releaseLayer`
+   * that cut the author's own sounding notes. The guard is recorded before the layer lands now.
+   */
+  it('and its author keeps it as they set it — a partner receiving it sends nothing back', async () => {
+    const a = await machine('a')
+    a.lp.loadSong(96, 2, [loud('mine-1')])
+    join(a)
+    const before = a.lp.loopState().layers.find((l) => l.id === 'mine-1')
 
     const b = await machine('b')
     join(b)
-    expect(gainOf(a, (l) => l.id === 'mine-1')).toBe(1.5)
+    expect(gainOf(a, (l) => l.id === 'mine-1')).toBe(1.8)
+    /* not re-applied at all: the same object, so nothing of the author's was released */
+    expect(a.lp.loopState().layers.find((l) => l.id === 'mine-1')).toBe(before)
+    /* B has no layer of its own, so anything it sent as a layer was an echo */
+    expect(net.sent.filter((m) => m.from === 'b' && m.kind === 'jam:layer')).toHaveLength(0)
+  })
+
+  it('nor does a third person joining', async () => {
+    const a = await machine('a')
+    a.lp.loadSong(96, 2, [loud('mine-1')])
+    join(a)
+    join(await machine('b'))
+    join(await machine('c'))
+    expect(gainOf(a, (l) => l.id === 'mine-1')).toBe(1.8)
+  })
+
+  /* what re-sending everything was FOR, asked directly: a newcomer still gets every layer, from
+     its author, with any edit somebody else made to it */
+  it('and a newcomer still gets every layer, edits included', async () => {
+    const a = await machine('a')
+    a.lp.loadSong(96, 2, [loud('mine-1')])
+    join(a)
+    const b = await machine('b')
+    join(b)
+    as('b', () => b.lp.addLayers([{ ...loud('theirs-1'), gain: 0.7 }]))
+    deliver()
+    const held = b.lp.loopState().layers.find((l) => l.from === 'a')!
+    as('b', () => b.lp.toggleMute(held.id))
+    deliver()
+
+    const c = await machine('c')
+    join(c)
+    const fromA = c.lp.loopState().layers.find((l) => l.from === 'a')
+    const fromB = c.lp.loopState().layers.find((l) => l.from === 'b')
+    expect(fromA?.muted).toBe(true)
+    expect(fromB?.gain).toBe(0.7)
+    expect(c.lp.loopState().layers).toHaveLength(2)
   })
 
   it('and a song offered to the room longer than eight bars arrives as eight', async () => {
