@@ -2669,7 +2669,10 @@ Every PR below is a draft, small on its own, and stacked so each shows only its 
 changes SQL; #31's draft stays unapplied and GitHub CI does not run it. Merge each into `main` in
 order (or retarget the next one to `main` after its base merges). Checked with `git merge-tree`
 against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
-chains merge cleanly into each other.
+chains merge cleanly into each other — re-checked with #57 and #58 as the tips, and #55 alone
+against #58. ⚠️ That holds because the catalog chain never edits the question queue below (the
+toy chain renumbers it with every toy); a check for the catalog chain goes in its own section. The
+first time #55 added a sentence to a queue item, the two chains conflicted in this file.
 
 | Order | PR  | Base   | What it is                                                    |
 | ----- | --- | ------ | ------------------------------------------------------------- |
