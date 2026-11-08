@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellChanges, sessionsIn, withSessions } from './sessions'
+import { cellChanges, sessionsIn, withConverted, withSessions } from './sessions'
 import type { DayLog } from './types'
 
 /** every field away from its default — a picture on the row, two exercises, a value with a fraction */
@@ -103,5 +103,49 @@ describe('what a save sends', () => {
     expect(cellChanges(seen, next)).toEqual([
       { eid: 'row', total: 3, seenSessions: 0, seenManual: 0 },
     ])
+  })
+})
+
+describe('a converted person, read from sets', () => {
+  const logs = [
+    log({ id: 'a', entries: [{ eid: 'quad', val: 7 }] }),
+    log({
+      id: 'b',
+      entries: [
+        { eid: 'quad', val: 3 },
+        { eid: '__total__', val: 50 },
+      ],
+    }),
+    log({ id: 'other', personId: 'p2', entries: [{ eid: 'quad', val: 9 }] }),
+  ]
+  const typed = [{ person: 'p1', exercise: 'quad', on: '2026-11-07', value: 10 }]
+
+  it('reads the typed part from sets, never also from the logs still holding the originals', () => {
+    const out = withConverted(logs, new Set(['p1']), typed)
+    const quad = out
+      .filter((l) => l.personId === 'p1')
+      .flatMap((l) => l.entries)
+      .filter((e) => e.eid === 'quad')
+      .reduce((n, e) => n + e.val, 0)
+    expect(quad).toBe(10)
+  })
+
+  it('keeps an imported total read in place, since it was never a cell', () => {
+    const out = withConverted(logs, new Set(['p1']), typed)
+    expect(out.flatMap((l) => l.entries).filter((e) => e.eid === '__total__')).toEqual([
+      { eid: '__total__', val: 50 },
+    ])
+  })
+
+  it('does not call the typed part sessions', () => {
+    const out = withConverted(logs, new Set(['p1']), typed)
+    expect(out.filter((l) => l.personId === 'p1').every((l) => !l.sessions)).toBe(true)
+  })
+
+  it('leaves everybody not converted exactly as they were', () => {
+    expect(withConverted(logs, new Set(['p1']), typed).find((l) => l.id === 'other')).toEqual(
+      logs[2],
+    )
+    expect(withConverted(logs, new Set(), typed)).toEqual(logs)
   })
 })

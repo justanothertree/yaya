@@ -18,7 +18,7 @@ import type {
 import { ratingId, voteId } from './types'
 import { getSupabaseClient, subscribeLogged } from '../finance/client'
 import { CellRefused } from './cellRefused'
-import { cellChanges, sessionsIn, withSessions, type SessionSum } from './sessions'
+import { cellChanges, sessionsIn, withConverted, withSessions, type SessionSum } from './sessions'
 
 const TABLES = [
   'circuit_people',
@@ -286,6 +286,8 @@ export function createSupabaseAdapter(): CircuitAdapter {
     const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12)
     const since = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 399, 12)
     const sessionsCall = sb.rpc('circuit_session_sums', { p_from: day(since), p_to: day(tomorrow) })
+    /* a converted person's typed cells — none, on a server without the conversion draft */
+    const manualCall = sb.rpc('circuit_manual_sums', { p_from: day(since), p_to: day(tomorrow) })
     const [ppl, logs, movies, wl, pgroups, groups, pools, votes, ratings] = await Promise.all([
       sb.from('circuit_people').select('*'),
       sb.from('circuit_logs').select('*'),
@@ -314,7 +316,21 @@ export function createSupabaseAdapter(): CircuitAdapter {
           value: Number(r.value) || 0,
         }))
       : []
-    const merged = withSessions(((logs.data as LogRow[] | null) ?? []).map(rowToLog), sums)
+    const manualRes = await manualCall
+    const conv = (manualRes.data ?? null) as { converted?: unknown; manual?: unknown } | null
+    const converted = new Set(Array.isArray(conv?.converted) ? conv.converted.map(String) : [])
+    const typed: SessionSum[] = Array.isArray(conv?.manual)
+      ? (conv.manual as Array<Record<string, unknown>>).map((r) => ({
+          person: String(r.person),
+          exercise: String(r.exercise),
+          on: String(r.on),
+          value: Number(r.value) || 0,
+        }))
+      : []
+    const merged = withSessions(
+      withConverted(((logs.data as LogRow[] | null) ?? []).map(rowToLog), converted, typed),
+      sums,
+    )
     lastLogs = new Map(merged.map((l) => [l.id, l]))
     linked = new Set(
       ((ppl.data as PersonRow[] | null) ?? []).filter((r) => !!r.owner_user_id).map((r) => r.id),

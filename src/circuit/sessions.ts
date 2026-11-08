@@ -95,3 +95,33 @@ export function cellChanges(prev: DayLog | undefined, next: DayLog): CellChange[
   }
   return out
 }
+
+/**
+ * A converted person's typed cells, read from sets instead of the logs that still hold the originals
+ * — the client half of the conversion draft's switch.
+ *
+ * ⚠️ THE SAME MARKER AS THE SERVER'S READERS. Before a person is converted the logs ARE the manual
+ * part and this changes nothing; after, their exercise cells come from `manual` and their logs are
+ * read only for `__total__` days, which were never cells and were never converted. One person is
+ * never read both ways, so a cell is neither shown twice nor dropped.
+ */
+export function withConverted(
+  logs: readonly DayLog[],
+  converted: ReadonlySet<string>,
+  manual: readonly SessionSum[],
+): DayLog[] {
+  if (!converted.size) return [...logs]
+  const out = logs.map((l) =>
+    converted.has(l.personId)
+      ? { ...l, entries: l.entries.filter((e) => e.eid === '__total__') }
+      : l,
+  )
+  const mine = manual.filter((x) => converted.has(x.person) && x.value > 0)
+  return withSessions(out, mine).map((l) => {
+    if (!converted.has(l.personId)) return l
+    /* `withSessions` marks what it adds as sessions; these are the typed part, so they are not */
+    const { sessions: _typed, ...rest } = l
+    void _typed
+    return rest
+  })
+}

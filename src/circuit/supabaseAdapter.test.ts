@@ -31,7 +31,9 @@ const fake = {
     }
   },
   rpc(name: string, args: Record<string, unknown>) {
-    if (name !== 'circuit_session_sums') calls.push({ kind: 'rpc', name, args })
+    /* the two readers run on every load; the calls recorded are the writes */
+    if (name !== 'circuit_session_sums' && name !== 'circuit_manual_sums')
+      calls.push({ kind: 'rpc', name, args })
     return Promise.resolve({ data: null, error: null, ...rpcAnswer(name, args) })
   },
   channel: () => ({ on: () => undefined }),
