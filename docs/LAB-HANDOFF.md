@@ -2634,6 +2634,67 @@ reload → use; a dot is refused in words. `mobileAudit` zero at both; one GPU d
 
 **Not verified:** the stage in a page (this container's WebGPU canvas), real GPUs, a finger.
 
+### Follow-on: `claude/lab-orbit-1`, stacked on #52 (8 Nov 2026) — a new skill game, Orbit
+
+**Base:** `claude/lab-epicycles-1` (#52), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Fly a probe round a planet with two held buttons — ◀ Slow down and Speed up ▶
+  — while a dotted line shows where that leaves you. Five levels: raise the orbit onto a ring, lower
+  it, stretch it to an ellipse, go far out, escape. Fuel is Δv, and each finish is scored against the
+  least the formula allows (a Hohmann transfer, or escape speed): ★★★ within 10%. Time warp ×1/3/8
+  for coasting, dropping to ×1 during a burn; burns run at half pace so the one a level needs is a
+  held second. Keys: hold ← / →, W warp, R restart; Enter or Space held on a button burns too.
+- **Kept in this browser:** the least Δv each level was done in — refused if lower than physics
+  allows.
+- **Technique:** leapfrog (velocity Verlet) under GM = 1, so a circle stays a circle; orbital
+  elements from vis-viva; a fullscreen pass for space, the planet and the goal bands, and instanced
+  capsules for the trail, the prediction, the probe and its flame.
+
+**Measured here:** 9 tests — a circular orbit after fifty laps has the same radius to 1e-6 and the
+same energy to 1e-9 (an Euler integrator in its place fails it, and the levels test with it); √2 ×
+circular speed is exactly escape; an ellipse's apoapsis matches vis-viva by hand; the predicted
+path is the path flown; Hohmann's Δv matches the hand formula; an autopilot flies every level
+within its fuel and within 10% of the least. Offscreen renders mid-burn and in orbit, the probe's
+own pixel lit. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): pointer and
+keyboard burns, restart, running out of fuel, and Away finished with a best kept. That pass found
+the burn buttons' pointer-leave stopping a KEYBOARD burn when the page shifted under a still
+mouse — each control now stops only the burn it started. `mobileAudit` zero at both widths; one GPU
+device per mount.
+
+**Not verified:** the stage in a page, real GPUs, holding a button with a thumb.
+
+## Review and merge order — the open Lab PRs (8 Nov 2026)
+
+Every PR below is a draft, small on its own, and stacked so each shows only its own change. None
+changes SQL; #31's draft stays unapplied and GitHub CI does not run it. Merge each into `main` in
+order (or retarget the next one to `main` after its base merges). Checked with `git merge-tree`
+against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
+chains merge cleanly into each other.
+
+| Order | PR  | Base   | What it is                                                    |
+| ----- | --- | ------ | ------------------------------------------------------------- |
+| 1     | #31 | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
+| 2     | #34 | #31    | One toolbar at every width; your own vote in words            |
+| 3a    | #45 | #34    | 🕘 Recent view                                                |
+| 3b    | #48 | #45    | 🎲 Surprise me                                                |
+| 3c    | #50 | #48    | Counts beside each kind; / to search                          |
+| 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
+| 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
+| 4c    | #47 | #44    | Beams                                                         |
+| 4d    | #49 | #47    | Bridge                                                        |
+| 4e    | #52 | #49    | Epicycles                                                     |
+| 4f    | #53 | #52    | Orbit                                                         |
+
+The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
+stacked only so the registry stays append-only without conflicts. A toy can merge before or after
+the SQL: with no catalog nothing about feedback changes, and once the SQL is applied a member sees
+"new here" under a toy until the owner's next visit registers it, then votes as usual.
+
+**One limitation applies to every toy PR:** on 8 Nov this container's headless Chromium lost every
+WebGPU canvas after a couple of frames, existing toys included, so no stage was seen in a page.
+Each toy was checked by rendering its engine offscreen and reading the pixels back, and through the
+real UI for everything that is not the picture. The real-device queue below is what that leaves.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2645,11 +2706,13 @@ reload → use; a dot is refused in words. `mobileAudit` zero at both; one GPU d
    work in your browser (Safari asks differently from Chrome)?
 3. **Real device — Bridge on a phone.** Build level 1 with a finger. Is a 1 m grid big enough to hit
    on the 14 m level (about 17 px a metre)? Does watching the members go red teach you anything?
-4. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+4. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+   the two-burn trick discoverable from the hints alone?
+5. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
    Is "tap again to turn" discoverable, or does it want its own button first?
-5. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+6. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-6. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+7. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-7. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+8. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?
