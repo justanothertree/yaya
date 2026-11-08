@@ -344,6 +344,27 @@ export function lateIn(
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
 
 /**
+ * Which goals were already finished on arrival — the snapshot `arrange` reads — together with the
+ * tab and the DAY it was taken for.
+ *
+ * ⚠️ THE DAY IS PART OF THE KEY, and the first version left it out. The snapshot was keyed by the
+ * tab alone, so a room left open across midnight — which is what a phone does with a tab — kept
+ * yesterday's set on Today. A repeating goal has the same id every day, so one finished yesterday
+ * was filed under Done today, unfinished, under a heading that told a screen reader it was done,
+ * while the Aims count two inches above still counted it as due. The fix is that a snapshot only
+ * answers for the window it was taken in; any other gets nothing, which files everything as open
+ * — the safe direction, because an open row that is really done is merely tidy-able, and a done
+ * row that is really due is work hidden.
+ */
+export type Settled = { view: string; on: string; ids: ReadonlySet<string> }
+
+const NONE: ReadonlySet<string> = new Set()
+
+/** The snapshot's ids if it was taken for this tab on this day, and nothing otherwise. */
+export const settledFor = (s: Settled | null, view: string, on: string): ReadonlySet<string> =>
+  s && s.view === view && s.on === on ? s.ids : NONE
+
+/**
  * A window's list, in the order somebody holding a phone wants it.
  *
  * ⚠️ WHAT IS LEFT FIRST. The list was ordered by priority alone, so a goal finished this morning
