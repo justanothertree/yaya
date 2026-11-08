@@ -417,3 +417,119 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ── palette ─────────────────────────────────────────────────────── */
+.lab-fold summary {
+  cursor: pointer;
+  min-height: 32px;
+  padding: 0.3rem 0;
+}
+.lab-fold[open] {
+  display: grid;
+  gap: 0.6rem;
+}
+.pal-swatches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* a swatch is never narrower than its hex code and two tool buttons */
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 0.5rem;
+}
+.pal-swatch {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.pal-chip {
+  display: grid;
+  align-content: end;
+  min-height: 64px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pal-swatch[data-selected] .pal-chip {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.pal-hex {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.pal-share {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+.pal-tools {
+  display: flex;
+  gap: 0.25rem;
+}
+.pal-tools .btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0.2rem;
+}
+.pal-pairs,
+.pal-kept {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.pal-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.pal-sample {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-family: var(--font, inherit);
+  font-weight: 600;
+}
+.pal-out textarea {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.pal-kept-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.pal-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  cursor: pointer;
+}
+.pal-strip span {
+  flex: 1;
+}
+/* a range input is 16px tall by default: under the 24px floor for something a thumb drags */
+.pal-split {
+  min-height: 32px;
+}

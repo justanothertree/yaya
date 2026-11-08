@@ -57,6 +57,7 @@ import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
 import { JigsawDemo } from '../gpu/JigsawDemo'
+import { PaletteDemo } from '../gpu/PaletteDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -415,6 +416,12 @@ const DEMOS: readonly {
     name: 'Jigsaw',
     line: 'Jigsaw — six painted pictures or a photo of your own, cut into 12 to 154 pieces: drag them together on the felt, and they snap when they fit.',
     Demo: JigsawDemo,
+  },
+  {
+    id: 'palette',
+    name: 'Palette',
+    line: 'Palette — pull a colour palette out of a picture or a photo of your own, lock what you like and re-roll the rest, see it redrawn in just those colours, and check which pairs read as text.',
+    Demo: PaletteDemo,
   },
 ]
 
