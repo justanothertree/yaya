@@ -2693,6 +2693,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4h    | #56 | #54    | Nonogram                                                      |
 | 4i    | #58 | #56    | Logic gates                                                   |
 | 4j    | #59 | #58    | Slide                                                         |
+| 4k    | #60 | #59    | Games and puzzles become two kinds                            |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2854,6 +2855,27 @@ arrow keys, undo, restart, a swipe, an endless board solved and counted, a new s
 `mobileAudit` zero in both modes; one GPU device per mount.
 
 **Not verified:** the stage in a page, real GPUs, a real swipe with a finger.
+
+### Follow-on: `claude/lab-kinds-1`, stacked on #59 (8 Nov 2026) — games and puzzles split
+
+"🎮 Games & puzzles" held twenty of sixty-one toys — a third of the Lab, so choosing it narrowed
+almost nothing. It is two kinds now: **🎮 Games — skill and timing** (Tunnel, Marble maze, Bike
+trials, Strut, Gust, Möbius golf, Pinball workshop, Night crossing, Orbit) and **🧩 Puzzles — find
+the answer** (Waterworks, Seedling, Shadow box, Fold, Topple, Jigsaw, Beams, Bridge, Nonogram,
+Logic gates, Slide). A toy with both goes where most of the time is spent — Bridge drives a cart but
+is a design problem; Orbit has a fewest-fuel answer but is flown. No ids change and nothing is
+stored by kind, so no saved creation, favourite or link moves. It is on the toy chain because the
+toys it sorts are.
+
+⚠️ **The catalog chain had a test that would have gone red once both chains merged** — #55's filter
+test asked for "games" and expected Fold and Topple. Git merges the two chains without a conflict,
+which says nothing about the tests. Fixed where the test lives (#55, carried into #57), so the test
+filters by Sound and Patterns, which no reshuffle of games touches; the merged tree of #57 and this
+branch was then built and run whole — typecheck, lint, 2,937 tests, build — before anything was
+pushed. **A clean `git merge-tree` is a claim about text; run the suite on the merge.**
+
+**Taste question for Evan:** are the two names and the split right — Fold and Topple as puzzles,
+Orbit and Strut as games?
 
 ## Questions and tests for Evan — a short queue, most useful first
 

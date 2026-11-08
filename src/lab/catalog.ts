@@ -13,10 +13,15 @@
  * the other.
  */
 
-export type Category = 'games' | 'make' | 'sound' | 'nature' | 'patterns'
+export type Category = 'games' | 'puzzles' | 'make' | 'sound' | 'nature' | 'patterns'
 
 export const CATEGORIES: { id: Category; label: string }[] = [
-  { id: 'games', label: '🎮 Games & puzzles' },
+  /* ⚠️ GAMES AND PUZZLES WERE ONE KIND until it held twenty of sixty-one — a third of the Lab, so
+     choosing it narrowed almost nothing. A game asks for skill and timing; a puzzle has an answer
+     to find, usually against a par. Toys with both (Bridge drives a cart; Orbit has a fewest-fuel
+     answer) go where most of the time is spent. */
+  { id: 'games', label: '🎮 Games — skill and timing' },
+  { id: 'puzzles', label: '🧩 Puzzles — find the answer' },
   { id: 'make', label: '🎨 Draw & make' },
   { id: 'sound', label: '🎵 Sound & music' },
   { id: 'nature', label: '🌊 Poke at nature' },
@@ -67,29 +72,29 @@ export const META: Record<string, { category: Category; added: string }> = {
   loom: { category: 'make', added: '2026-11-05' },
   ferro: { category: 'sound', added: '2026-11-05' },
   trials: { category: 'games', added: '2026-11-06' },
-  waterworks: { category: 'games', added: '2026-11-06' },
+  waterworks: { category: 'puzzles', added: '2026-11-06' },
   studio: { category: 'make', added: '2026-11-06' },
   critters: { category: 'make', added: '2026-11-06' },
   strut: { category: 'games', added: '2026-11-06' },
   gust: { category: 'games', added: '2026-11-06' },
-  seedling: { category: 'games', added: '2026-11-06' },
+  seedling: { category: 'puzzles', added: '2026-11-06' },
   mobius: { category: 'games', added: '2026-11-06' },
   pinball: { category: 'games', added: '2026-11-06' },
   crossing: { category: 'games', added: '2026-11-06' },
-  shadowbox: { category: 'games', added: '2026-11-06' },
-  fold: { category: 'games', added: '2026-11-06' },
-  topple: { category: 'games', added: '2026-11-06' },
+  shadowbox: { category: 'puzzles', added: '2026-11-06' },
+  fold: { category: 'puzzles', added: '2026-11-06' },
+  topple: { category: 'puzzles', added: '2026-11-06' },
   printshop: { category: 'make', added: '2026-11-07' },
-  jigsaw: { category: 'games', added: '2026-11-08' },
+  jigsaw: { category: 'puzzles', added: '2026-11-08' },
   palette: { category: 'make', added: '2026-11-08' },
-  beams: { category: 'games', added: '2026-11-08' },
-  bridge: { category: 'games', added: '2026-11-08' },
+  beams: { category: 'puzzles', added: '2026-11-08' },
+  bridge: { category: 'puzzles', added: '2026-11-08' },
   epicycles: { category: 'patterns', added: '2026-11-08' },
   orbit: { category: 'games', added: '2026-11-08' },
   wallpaper: { category: 'make', added: '2026-11-08' },
-  nonogram: { category: 'games', added: '2026-11-08' },
-  gates: { category: 'games', added: '2026-11-08' },
-  slide: { category: 'games', added: '2026-11-08' },
+  nonogram: { category: 'puzzles', added: '2026-11-08' },
+  gates: { category: 'puzzles', added: '2026-11-08' },
+  slide: { category: 'puzzles', added: '2026-11-08' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */
