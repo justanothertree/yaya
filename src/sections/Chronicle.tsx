@@ -98,12 +98,13 @@ type View = {
  * row keeps its scope, and putting the tab back is this entry.
  */
 /**
- * ⚠️ THREE NOW, AND THE THIRD IS SOMEBODY ELSE'S. Day and Aims are both about you; Friends is a
- * window onto other people's records, which is why it is a place of its own rather than a strip
- * inside the Day. Nothing of theirs appears without three separate opt-ins on their side — see
- * docs/2026-10-23-chronicle-friends-timeline.sql.
+ * ⚠️ FOUR NOW, AND THE LAST IS SOMEBODY ELSE'S. Day, Aims and Journal are all about you; Friends
+ * is a window onto other people's records, which is why it is a place of its own rather than a
+ * strip inside the Day. Nothing of theirs appears without three separate opt-ins on their side —
+ * see docs/2026-10-23-chronicle-friends-timeline.sql. The Journal is the newest, and the only one
+ * that is a way into the others: each row opens its sitting on the Day half.
  */
-type Half = 'day' | 'aims' | 'friends'
+type Half = 'day' | 'aims' | 'journal' | 'friends'
 
 /**
  * The questions the room answers, which used to be answered at once.
@@ -116,6 +117,12 @@ type Half = 'day' | 'aims' | 'friends'
 const HALVES: Array<[Half, string, string]> = [
   ['day', 'Day', 'what you are doing'],
   ['aims', 'Aims', 'what you are aiming at'],
+  /**
+   * ⚠️ FOURTH, AND BEFORE FRIENDS, because it is about you. Every note already existed; the only
+   * way to read one was to find its sitting in a day's log and open it, so "where are my notes"
+   * had no answer on screen. See src/chronicle/JournalList.tsx.
+   */
+  ['journal', 'Journal', 'what you wrote'],
   ['friends', 'Friends', 'what they have been up to'],
 ]
 
@@ -831,6 +838,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             }}
             show={half}
             onRunning={setRunningAct}
+            onShow={setHalf}
           />
         </div>
         {/**

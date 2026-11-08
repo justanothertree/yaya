@@ -29,6 +29,7 @@ import { HoldButton } from '../ui/HoldButton'
 import { seenPictures, type Kept } from '../pictures/cloud'
 import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
+import { JournalList } from './JournalList'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
@@ -149,6 +150,7 @@ export function Timer({
   onChange,
   show,
   onRunning,
+  onShow,
 }: {
   day: string
   /**
@@ -170,7 +172,7 @@ export function Timer({
    * What `show` gates is the DAY (its stepper, totals, log, plans, routines and activity list)
    * against the AIMS half, which lives in the room above.
    */
-  show: 'day' | 'aims' | 'friends'
+  show: 'day' | 'aims' | 'journal' | 'friends'
   /**
    * Bumped by the room when something OUTSIDE this half changed the record — today only a
    * put-back, which rewrites everything at once.
@@ -194,6 +196,16 @@ export function Timer({
    * two answers that can disagree for as long as one of them is stale.
    */
   onRunning?: (activity: string | null) => void
+  /**
+   * Ask the room to show the Day half — the one thing this component cannot do for itself.
+   *
+   * ⚠️ THE JOURNAL OPENS A SITTING ON THE DAY IT HAPPENED, and that day's log lives on the Day
+   * half: the editor finds its sitting in `log`, which only holds the day being looked at, and
+   * the effect above puts `seeing` back on today whenever the half is not Day. So "take me to
+   * that sitting" is three moves — the day, the editor, the half — and the last belongs to the
+   * room above.
+   */
+  onShow?: (half: 'day') => void
 }) {
   /**
    * The day being looked at, which is not always the day the room asked for.
@@ -1097,6 +1109,25 @@ export function Timer({
     }
   }
 
+  /**
+   * Open a sitting's editor on the day it happened — from the week grid, or from the journal.
+   *
+   * ⚠️ ONE FUNCTION FOR BOTH, lifted out of the week grid's handler rather than written again.
+   * The editor's fields are seeded from the sitting here, and a second copy of these six lines
+   * is where one of them would quietly stop seeding a field the other does — the amount, say,
+   * which the week grid's version already had to remember.
+   */
+  const openSitting = (day: string, e: Entry) => {
+    setSeeing(day)
+    setFixEnt(e.id)
+    entWas.current = { from: e.start, to: e.end }
+    setEntAct(e.activity)
+    setEntFrom(forInput(e.start))
+    setEntTo(e.end ? forInput(e.end) : '')
+    setEntAmount(e.amount == null ? '' : String(e.amount))
+    setEntMood(e.quality == null ? '' : String(e.quality))
+  }
+
   const forget = async (e: Entry) => {
     const name = byId.get(e.activity)?.name ?? 'that'
     const here = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
@@ -1684,6 +1715,18 @@ export function Timer({
 
       {/* ⚠️ the three categories, which is the reading the whole thing exists for — and zero is
           shown as nothing rather than as "0m", because a day with no upkeep in it is not news */}
+      {show === 'journal' && acts !== null && (
+        <JournalList
+          acts={acts}
+          beat={beat}
+          onOpen={(row, e) => {
+            /* ⚠️ THE DAY FIRST, THEN THE HALF, in one handler so they commit together: with the
+               half changed alone, the effect that resets `seeing` would run against 'journal' */
+            openSitting(row.sat, e)
+            onShow?.('day')
+          }}
+        />
+      )}
       {show === 'day' && Object.keys(cats).length > 0 && (
         <p className="chron-cats">
           {CATS.map(([c, label]) =>
@@ -2309,16 +2352,11 @@ export function Timer({
            * supposed to save.
            */
           onOpen={(day, id) => {
-            setSeeing(day)
-            setFixEnt(id)
             const e = weekLog.find((x) => x.id === id)
-            if (e) {
-              entWas.current = { from: e.start, to: e.end }
-              setEntAct(e.activity)
-              setEntFrom(forInput(e.start))
-              setEntTo(e.end ? forInput(e.end) : '')
-              setEntAmount(e.amount == null ? '' : String(e.amount))
-              setEntMood(e.quality == null ? '' : String(e.quality))
+            if (e) openSitting(day, e)
+            else {
+              setSeeing(day)
+              setFixEnt(id)
             }
           }}
           /**

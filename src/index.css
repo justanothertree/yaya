@@ -16446,9 +16446,12 @@ a.cz-msg-author:focus-visible {
  * pay the entire bill, so it gets `min-width: 0` and the ellipsis rather than a shrink to a
  * three-pixel column. Measured at 320: "what you are aiming at" ellipses, both labels whole.
  */
+/* ⚠️ FOUR SINCE THE JOURNAL, AND STILL ONE ROW. Measured at 375 before settling on it: each
+   button is ~77px, "Journal" and "Friends" fit their labels, and "Aims" keeps room for its count.
+   The hints already drop below 34rem (see below), which is what made a fourth affordable. */
 .chron-halves {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.4rem;
   margin: 0 0 0.7rem;
 }
@@ -16536,6 +16539,76 @@ a.cz-msg-author:focus-visible {
   .chron-halves .btn small {
     display: none;
   }
+}
+
+/* ── the journal, read across sittings — see src/chronicle/JournalList.tsx ──── */
+.chron-journal-list {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.chron-journal-top {
+  display: grid;
+  gap: 0.45rem;
+}
+.chron-journal-top h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.chron-journal-day h4 {
+  margin: 0.5rem 0 0.3rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chron-journal-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+/**
+ * One note, and the door to the sitting it was written about.
+ *
+ * ⚠️ THE WHOLE ROW IS THE BUTTON, and its text is left alone: a note is read, so it wraps at its
+ * own length rather than being clipped to a line, and nothing about it is styled as a control
+ * except the border that says it can be pressed. A long word breaks rather than pushing the row
+ * past its list — the same floor-and-wrap rule the goal titles were given.
+ */
+.chron-journal-row {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.chron-journal-row:hover:not(:disabled),
+.chron-journal-row:focus-visible {
+  border-color: var(--accent);
+}
+.chron-journal-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.chron-journal-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.chron-journal-body {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.chron-journal-more {
+  justify-self: start;
 }
 
 /* ── a friend's timeline ─────────────────────────────────────────────────── */
