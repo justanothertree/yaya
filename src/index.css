@@ -17405,6 +17405,11 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   padding: 0.05rem 0.4rem;
 }
+/* a repeating goal's window that has not begun — Tomorrow's floss — says so in words, because a
+   greyed-out box with only a tooltip to explain it does not exist on a phone */
+.chron-notyet {
+  font-size: 0.75rem;
+}
 /* ⚠️ IT OPTS OUT OF THE UPPERCASE, for the same reason `is-est` does: this chip carries a DATE,
    and "WAS FOR WED, 14 OCT" shouts a proper noun at somebody about a thing they already feel bad
    about. No colour either — the room keeps amber for a priority somebody chose themselves, and a

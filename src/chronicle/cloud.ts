@@ -13,6 +13,8 @@ import {
   pvExport,
   pvFixRunning,
   pvImport,
+  pvMarksFor,
+  pvSetMark,
   pvQuality,
   pvMoods,
   pvPlanDid,
@@ -43,6 +45,7 @@ import {
 import { inBatches } from './goal'
 import { SPANS_AT_ONCE } from './year'
 import type { Goal, Scope } from './goal'
+import { NO_MARKS, type Marked, type MarkAt } from './marks'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
 
@@ -240,6 +243,64 @@ export async function setProgress(id: string, progress: number, done: boolean): 
     p_done: done,
   })
   return !error
+}
+
+/**
+ * The marks for the windows on screen, and the ticks from before marks existed — see marks.ts.
+ *
+ * ⚠️ AN EMPTY ANSWER ON FAILURE, LIKE `myGoals`, and that is safe in exactly one direction: every
+ * repeating goal reads as untouched for the window, which is a goal you can tick again rather than
+ * one that claims to be done. The asks go in batches like the tally's, because the function caps
+ * a call and a quiet cap would drop windows without saying so.
+ */
+export async function marksFor(asks: ReadonlyArray<{ id: string; from: string }>): Promise<Marked> {
+  if (!asks.length) return NO_MARKS
+  if (previewMember) return pvMarksFor(asks)
+  const out: Marked = { marks: {}, legacy: {} }
+  for (const batch of inBatches(asks)) {
+    const { data, error } = await getSupabaseClient().rpc('chronicle_goal_marks_for', {
+      p_asks: batch.map((a) => ({ id: a.id, from: a.from })),
+    })
+    if (error || !data || typeof data !== 'object') return NO_MARKS
+    const d = data as {
+      marks?: Record<string, { progress?: unknown; done?: unknown }>
+      legacy?: Record<string, unknown>
+    }
+    for (const [k, m] of Object.entries(d.marks ?? {})) {
+      out.marks[k] = { progress: num(m.progress as number | string | null), done: m.done === true }
+    }
+    for (const [id, at] of Object.entries(d.legacy ?? {})) {
+      const ms = num(at as number | string | null, NaN)
+      if (Number.isFinite(ms)) out.legacy[id] = ms
+    }
+  }
+  return out
+}
+
+/**
+ * Tick, untick or move a repeating goal for ONE window. Null for either value leaves it alone.
+ *
+ * ⚠️ THE REFUSAL IS RETURNED, NOT SWALLOWED. The one a person can meet is "that window has not
+ * started" — ticking tomorrow's floss — and the room does not offer that tick, but a page left
+ * open past midnight can still send one, and a tick that silently did nothing is the failure this
+ * whole module exists to end.
+ */
+export async function setMark(
+  id: string,
+  at: MarkAt,
+  progress: number | null,
+  done: boolean | null,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvSetMark(id, at, progress, done)
+  const { error } = await getSupabaseClient().rpc('chronicle_goal_mark', {
+    p_goal: id,
+    p_from: at.from,
+    p_starts: at.starts,
+    p_ends: at.ends,
+    p_progress: progress,
+    p_done: done,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
 }
 
 /**
@@ -798,6 +859,8 @@ export type Putback = {
   goals: number
   routines: number
   plans: number
+  /** windows of repeating goals put back — see marks.ts */
+  marks: number
   skipped: number
 }
 
@@ -828,6 +891,7 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     goals: n('goals'),
     routines: n('routines'),
     plans: n('plans'),
+    marks: n('marks'),
     skipped: n('skipped'),
   }
 }

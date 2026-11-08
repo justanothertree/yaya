@@ -1,6 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { finished, reached, share, windowKey, type Goal } from './goal'
-import { asOf, markWindow, type Marks } from './marks'
+import { asOf, markAsks, markOpen, markWindow, type Marks } from './marks'
+
+/* ⚠️ PINNED, because the point of half of these is a LOCAL day that is not the UTC one — and CI
+   runs in UTC, where an evening in California and the next morning are the same date */
+beforeAll(() => {
+  vi.stubEnv('TZ', 'America/Los_Angeles')
+})
+afterAll(() => {
+  vi.unstubAllEnvs()
+})
 
 /**
  * Every field away from its default, so a rule reading the wrong one has somewhere to be wrong —
@@ -88,9 +97,86 @@ describe('goals that already had their one window', () => {
 
   it('sends the window start for a repeating goal, in local days', () => {
     expect([
-      markWindow(goal(), '2026-11-07'),
-      markWindow(goal({ scope: 'week' }), '2026-11-07'),
-      markWindow(goal({ scope: 'month' }), '2026-11-07'),
+      markWindow(goal(), '2026-11-07')?.from,
+      markWindow(goal({ scope: 'week' }), '2026-11-07')?.from,
+      markWindow(goal({ scope: 'month' }), '2026-11-07')?.from,
     ]).toEqual(['2026-11-07', '2026-11-01', '2026-11-01'])
+  })
+})
+
+describe('the instants a mark is sent with', () => {
+  it('are local midnights, which in California are 8am UTC in November', () => {
+    const at = markWindow(goal(), '2026-11-07')
+    expect([at?.starts, at?.ends]).toEqual(['2026-11-07T08:00:00.000Z', '2026-11-08T08:00:00.000Z'])
+  })
+
+  it('make the day the clocks go back twenty-five hours long', () => {
+    /* 1 Nov 2026 is the first Sunday of November, when US daylight time ends */
+    const at = markWindow(goal(), '2026-11-01')!
+    expect((Date.parse(at.ends) - Date.parse(at.starts)) / 3_600_000).toBe(25)
+  })
+})
+
+describe('a tick from before marks existed', () => {
+  const floss = goal({ id: 'floss', done: false })
+  /* 8pm on the 7th in California, which is already the 8th in UTC */
+  const evening = Date.parse('2026-11-08T04:00:00Z')
+
+  it('lights the LOCAL day it was made on, not the UTC one', () => {
+    expect([
+      asOf(floss, {}, '2026-11-07', { floss: evening }).done,
+      asOf(floss, {}, '2026-11-08', { floss: evening }).done,
+    ]).toEqual([true, false])
+  })
+
+  it('stops at the end of its window — a tick the next morning is not the night before', () => {
+    /* 9am on the 8th in California: the day AFTER the window of the 7th, at its very edge */
+    const morning = Date.parse('2026-11-08T17:00:00Z')
+    expect(asOf(floss, {}, '2026-11-07', { floss: morning }).done).toBe(false)
+  })
+
+  it('lights a weekly goal for the week it was made in', () => {
+    const w = goal({ id: 'w', scope: 'week', done: false })
+    expect([
+      asOf(w, {}, '2026-11-02', { w: evening }).done,
+      asOf(w, {}, '2026-11-08', { w: evening }).done,
+    ]).toEqual([true, false])
+  })
+
+  it('gives way to a mark, so unticking that day sticks', () => {
+    const m: Marks = { [windowKey('floss', '2026-11-07')]: { progress: 0, done: false } }
+    expect(asOf(floss, m, '2026-11-07', { floss: evening }).done).toBe(false)
+  })
+
+  it("never brings the row's count with it — nothing says which day that was", () => {
+    const stretch = goal({ id: 's', target: 20, unit: 'minutes', progress: 15, done: false })
+    expect(reached(asOf(stretch, {}, '2026-11-07', { s: evening }), {}, '2026-11-07')).toBe(0)
+  })
+})
+
+describe('what the room asks for, and what it lets you tick', () => {
+  it('asks once for a window two days share, and twice for two windows', () => {
+    const asks = markAsks(
+      [
+        goal({ id: 'd' }),
+        goal({ id: 'w', scope: 'week' }),
+        goal({ id: 'once', every: null, anchor: '2026-11-04' }),
+      ],
+      ['2026-11-04', '2026-11-05'],
+    )
+    expect(asks.map((a) => a.key).sort()).toEqual([
+      windowKey('d', '2026-11-04'),
+      windowKey('d', '2026-11-05'),
+      windowKey('w', '2026-11-01'),
+    ])
+  })
+
+  it("refuses tomorrow's floss and allows this week's goal on any day of the week", () => {
+    expect([
+      markOpen(goal(), '2026-11-05', '2026-11-04'),
+      markOpen(goal(), '2026-11-04', '2026-11-04'),
+      markOpen(goal({ scope: 'week' }), '2026-11-05', '2026-11-04'),
+      markOpen(goal({ every: null, anchor: '2026-11-05' }), '2026-11-05', '2026-11-04'),
+    ]).toEqual([false, true, true, true])
   })
 })

@@ -34,20 +34,32 @@ import {
   startFor,
   today as todayISO,
   tomorrow as tomorrowISO,
+  windowKey,
   windowOf,
   type Goal,
   type Scope,
 } from '../chronicle/goal'
 import {
   dropGoal,
+  marksFor,
   myActivities,
   myGoals,
   saveGoal,
+  setMark,
   setProgress,
   shareGoal,
   startTimer,
   tally,
 } from '../chronicle/cloud'
+import {
+  asOf,
+  markAsks,
+  markOpen,
+  markWindow,
+  NO_MARKS,
+  type Marked,
+  type MarkAt,
+} from '../chronicle/marks'
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
 import { Timer } from '../chronicle/Timer'
 import { Friends } from '../chronicle/Friends'
@@ -301,6 +313,11 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const [got, setGot] = useState<Record<string, number>>({})
   /**
+   * What you said about each window of each repeating goal you move by hand — see marks.ts. The
+   * goal row's own `done` and `progress` are one window's worth and stop being read for these.
+   */
+  const [marked, setMarked] = useState<Marked>(NO_MARKS)
+  /**
    * The run of windows behind each repeating goal.
    *
    * ⚠️ ITS OWN FETCH, SEPARATE FROM THE TALLY, because the two are asked about different things:
@@ -406,14 +423,19 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       const when = x.when()
       /* ⚠️ THE LATE ONES COUNT TOO, or the strip reads 0 over a tab that has rows in it. They
          are unfinished work in that window's list, which is the only thing this number means. */
-      out[x.id] = (goals ?? []).filter(
-        (g) =>
-          (inScope(g, x.scope, when) && !finished(g, got, when)) ||
-          lateIn(g, got, x.scope, when, todayISO()),
-      ).length
+      /* ⚠️ EACH VIEW JUDGES A REPEATING GOAL BY ITS OWN WINDOW — today's floss on Today,
+         tomorrow's on Tomorrow — which is what `asOf` gives it; the row's one flag would be the
+         same answer on every tab, which is the defect marks.ts exists to end */
+      out[x.id] = (goals ?? [])
+        .map((g) => asOf(g, marked.marks, when, marked.legacy))
+        .filter(
+          (g) =>
+            (inScope(g, x.scope, when) && !finished(g, got, when)) ||
+            lateIn(g, got, x.scope, when, todayISO()),
+        ).length
     }
     return out
-  }, [goals, got])
+  }, [goals, got, marked])
 
   /**
    * The horizons actually on the strip: the three core ones, plus any that holds something.
@@ -445,7 +467,15 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       return
     }
     const [mine, a] = await Promise.all([myGoals(), myActivities()])
+    /**
+     * ⚠️ THE MARKS ARE SET WITH THE GOALS, NOT AFTER THEM. A repeating tick-box reads its done
+     * state from its mark, so goals painted before their marks arrive would draw every one of them
+     * unticked for the length of a round trip and then flip — after every tick, since a tick
+     * reloads. The tally can arrive later; a meter filling in is not a box changing its mind.
+     */
+    const mk = await marksFor(markAsks(mine, [todayISO(), tomorrowISO()]))
     setGoals(mine)
+    setMarked(mk)
     setActs(a)
     /**
      * ⚠️ EVERY DERIVED GOAL, NOT JUST THE ONES ON SCREEN. Asking per view would mean the counts on
@@ -530,12 +560,23 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     [fixing, goals],
   )
 
+  /**
+   * Every goal as it stands in the window on screen — see `asOf`. A one-off comes through as it
+   * is; a repeating goal carries THIS window's tick and count rather than the row's.
+   *
+   * ⚠️ EVERY LIST AND FIGURE BELOW READS THIS, NOT `goals`, which is the point of naming it. The
+   * list, the late list, the Done snapshot and the "N left" line under the heading are four answers
+   * about one set of rows; one of them reading the raw goals would be a line saying "1 left" over a
+   * floss that is ticked, which is exactly the shape CLAUDE.md §2 warns about.
+   */
+  const goalsOn = useMemo(
+    () => (goals ?? []).map((g) => asOf(g, marked.marks, on, marked.legacy)),
+    [goals, marked, on],
+  )
+
   /* ⚠️ memoised on the list and the view, because `inScope` runs per goal per render and the
      filter is the only work this component does that grows with somebody's history */
-  const mine = useMemo(
-    () => (goals ?? []).filter((g) => inScope(g, v.scope, on)),
-    [goals, v.scope, on],
-  )
+  const mine = useMemo(() => goalsOn.filter((g) => inScope(g, v.scope, on)), [goalsOn, v.scope, on])
 
   /**
    * The goals whose own window has closed with them unfinished — see `late` in goal.ts.
@@ -547,10 +588,10 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    */
   const overdue = useMemo(
     () =>
-      (goals ?? []).filter(
+      goalsOn.filter(
         (g) => pastIn(g, v.scope, on, todayISO()) && (!finished(g, got, on) || kept.includes(g.id)),
       ),
-    [goals, got, v.scope, on, kept],
+    [goalsOn, got, v.scope, on, kept],
   )
 
   /**
@@ -650,10 +691,38 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     await load()
   }
 
+  /**
+   * Write one window of a repeating goal, and show it at once.
+   *
+   * ⚠️ THE ROOM IS TOLD BEFORE THE RELOAD, so the box changes under the thumb that pressed it
+   * rather than a round trip later. A refusal undoes nothing because nothing was assumed: the mark
+   * is only set locally once the server has said yes, and the refusal goes to the toast — the one
+   * a person can meet is a page left open across midnight, ticking a window that has not begun.
+   */
+  const mark = async (g: Goal, at: MarkAt, progress: number | null, done: boolean | null) => {
+    const bad = await setMark(g.id, at, progress, done)
+    if (bad) {
+      showToast(bad.why.charAt(0).toUpperCase() + bad.why.slice(1))
+      return
+    }
+    const key = windowKey(g.id, at.from)
+    setMarked((m) => ({
+      ...m,
+      marks: {
+        ...m.marks,
+        [key]: { progress: progress ?? g.progress, done: done ?? g.done },
+      },
+    }))
+  }
+
   const bump = async (g: Goal, by: number) => {
     if (busy) return
     setBusy(true)
-    await setProgress(g.id, Math.max(0, g.progress + by), g.done)
+    /* ⚠️ a repeating goal's count is this window's, from the mark — see `asOf`; a one-off's is
+       the row's, which is its only window */
+    const at = markWindow(g, on)
+    if (at) await mark(g, at, Math.max(0, g.progress + by), null)
+    else await setProgress(g.id, Math.max(0, g.progress + by), g.done)
     setBusy(false)
     await load()
   }
@@ -716,7 +785,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
        that render, so an id remembered afterwards arrives too late to keep anything on screen */
     if (pastIn(g, v.scope, on, todayISO())) setKept((k) => (k.includes(g.id) ? k : [...k, g.id]))
     setBusy(true)
-    await setProgress(g.id, g.progress, !g.done)
+    const at = markWindow(g, on)
+    if (at) await mark(g, at, null, !g.done)
+    else await setProgress(g.id, g.progress, !g.done)
     setBusy(false)
     await load()
   }
@@ -1025,7 +1096,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
              * sentence below, and "0 left" under a heading is a line that only ever states the obvious.
              */}
             {(() => {
-              const w = weight(goals ?? [], got, v.scope, on, todayISO())
+              const w = weight(goalsOn, got, v.scope, on, todayISO())
               if (!w.left) return null
               const parts = [`${w.left} left`]
               if (w.mins > 0) parts.push(`about ${spanText(w.mins * 60_000)}`)
@@ -1103,6 +1174,12 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                     /* what ▶ on this row would start, and whether it is already going — the rule
                  and its three refusals are in `startFor` */
                     const canStart = startFor(g, acts, runningAct)
+                    /* ⚠️ TOMORROW'S FLOSS CANNOT BE TICKED TODAY — the writer refuses a window that
+                       has not begun — so the controls say so rather than offering a press that
+                       would only come back as a refusal */
+                    /* only where there IS a box or a ± — a goal the record counts has nothing to
+                       press, and "opens tomorrow" on it was a line about a control it never had */
+                    const notYet = !auto && !markOpen(g, on, todayISO())
                     /* the ◍/◉/○ button's state and what pressing it does — see profileGlyph,
                  which holds the rule that `certain` is not a toggle */
                     const onProfile = profileGlyph(g.visibility)
@@ -1131,6 +1208,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 <input
                                   type="checkbox"
                                   checked={g.done}
+                                  disabled={notYet}
                                   onChange={() => void tick(g)}
                                 />
                                 <span>{g.title}</span>
@@ -1143,6 +1221,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                         repeats is a label that raises the question it should answer */}
                             {repeats(g) ? (
                               <span className="chron-chip">every {g.scope}</span>
+                            ) : null}
+                            {notYet ? (
+                              <span className="muted chron-notyet">opens tomorrow</span>
                             ) : null}
                             {/**
                              * ⚠️ A CADENCE THE ROOM HAS NO VIEW FOR SAYS SO. `homeFor` lists a quarter goal
@@ -1417,11 +1498,18 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 <>
                                   <button
                                     className="btn btn-ghost"
+                                    disabled={notYet}
+                                    aria-label={`One less for ${g.title}`}
                                     onClick={() => void bump(g, -1)}
                                   >
                                     −
                                   </button>
-                                  <button className="btn btn-ghost" onClick={() => void bump(g, 1)}>
+                                  <button
+                                    className="btn btn-ghost"
+                                    disabled={notYet}
+                                    aria-label={`One more for ${g.title}`}
+                                    onClick={() => void bump(g, 1)}
+                                  >
                                     +
                                   </button>
                                 </>

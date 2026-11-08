@@ -1,4 +1,5 @@
 import type { Goal, Scope } from '../chronicle/goal'
+import type { Marked, MarkAt } from '../chronicle/marks'
 import { SPANS_AT_ONCE } from '../chronicle/year'
 import { today as todayISO } from '../chronicle/goal'
 import {
@@ -152,12 +153,36 @@ const goal = (g: Partial<Goal> & { id: string; title: string; scope: Scope }): G
   }
 }
 
+/**
+ * One window of one repeating goal, the way `chronicle_goal_marks` keeps it — see marks.ts.
+ *
+ * ⚠️ KEYED ON THE SCOPE AS WELL AS THE DATE, like the table, so a goal changed from daily to weekly
+ * here stops reading a Sunday's tick as the week's, the same as it does there.
+ */
+type PvMark = {
+  goal: string
+  scope: Scope
+  from: string
+  starts: string
+  ends: string
+  progress: number
+  doneAt: number | null
+  setAt: number
+}
+
 type Store = {
   acts: Activity[]
   ents: Entry[]
   goals: Goal[]
   routines: Routine[]
   plans: Plan[]
+  marks: PvMark[]
+  /**
+   * The moment the ROW says each goal was done — the server's `done_at`, which the double's Goal
+   * keeps only as a boolean. A repeating goal's is what `chronicle_goal_marks_for` hands back as
+   * `legacy`, so it is kept here by the same rule `chronicle_goal_progress` writes it by.
+   */
+  doneAt: Record<string, number>
 }
 
 /**
@@ -309,6 +334,13 @@ function seed(): Store {
       },
     ],
     goals: [
+      /**
+       * ⚠️ A REPEATING TICK-BOX WHOSE ROW STILL SAYS DONE, which is the shape of every one the old
+       * room ever ticked: `done` on the goal itself, from last night. Today it must read UNticked —
+       * the reset the row could never perform — and that tick stays true of the night it was made.
+       * Before marks, this goal read ticked on every day for ever.
+       */
+      goal({ id: 'pv-floss', title: 'Floss', scope: 'day', every: 1, done: true }),
       /**
        * ⚠️ TWO OF THESE ARE SHARED AND THE REST ARE NOT, because a fixture where every goal is
        * private makes the profile block's goals list untestable and one where they all are makes
@@ -524,6 +556,9 @@ function seed(): Store {
         note: null,
       },
     ],
+    marks: [],
+    /* Floss's tick from last night, under the old room: on the row, and nowhere else */
+    doneAt: { 'pv-floss': at(1, 21, 30).getTime() },
     routines: [
       {
         id: 'pv-r1',
@@ -545,7 +580,15 @@ const localISO = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const BLANK = 'dev_chron_blank'
-const blank = (): Store => ({ acts: [], ents: [], goals: [], routines: [], plans: [] })
+const blank = (): Store => ({
+  acts: [],
+  ents: [],
+  goals: [],
+  routines: [],
+  plans: [],
+  marks: [],
+  doneAt: {},
+})
 
 /** sessionStorage, which can throw — see the rule about every read of it being wrapped */
 const asked = (): boolean => {
@@ -785,7 +828,78 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
 export const pvProgress = (id: string, progress: number, done: boolean): boolean => {
   const g = db().goals.find((x) => x.id === id)
   if (g) Object.assign(g, { progress, done })
+  /* `done_at = case when p_done then coalesce(done_at, now()) else null end`, as the server says */
+  if (g && done) db().doneAt[id] ??= Date.now()
+  if (g && !done) delete db().doneAt[id]
   return !!g
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * `chronicle_goal_mark`, in its own words and in its own order — see the draft SQL.
+ *
+ * ⚠️ EVERY REFUSAL IS COPIED, because the room's behaviour on a refusal is the thing being
+ * checked here. "That window has not started" is the one a person can meet, from a page left open
+ * across midnight; a double that accepted it would show a tick the real site throws away.
+ */
+export const pvSetMark = (
+  id: string,
+  at: MarkAt,
+  progress: number | null,
+  done: boolean | null,
+): { why: string } | null => {
+  const g = db().goals.find((x) => x.id === id && x.every != null)
+  if (!g) return { why: 'no such repeating goal' }
+  const s = Date.parse(at.starts)
+  const e = Date.parse(at.ends)
+  if (!at.from || !Number.isFinite(s) || !Number.isFinite(e)) {
+    return { why: 'that window does not make sense' }
+  }
+  if (s > Date.now() + 3_600_000) return { why: 'that window has not started' }
+  /* chronicle_goal_marks_window_shape, which the writer reports in the same words */
+  const drift = Math.abs(Date.parse(new Date(s).toISOString().slice(0, 10)) - Date.parse(at.from))
+  if (!(e > s) || e > s + 367 * DAY_MS || drift > DAY_MS) {
+    return { why: 'that window does not make sense' }
+  }
+  const clamp = (n: number) => Math.max(0, Math.min(n, 1e9))
+  const m = db().marks.find((x) => x.goal === id && x.scope === g.scope && x.from === at.from)
+  if (!m) {
+    db().marks.push({
+      goal: id,
+      scope: g.scope,
+      from: at.from,
+      starts: at.starts,
+      ends: at.ends,
+      progress: clamp(progress ?? 0),
+      doneAt: done ? Date.now() : null,
+      setAt: Date.now(),
+    })
+    return null
+  }
+  /* null means "I am not talking about this" */
+  if (progress != null) m.progress = clamp(progress)
+  if (done != null) m.doneAt = done ? (m.doneAt ?? Date.now()) : null
+  m.starts = at.starts
+  m.ends = at.ends
+  m.setAt = Date.now()
+  return null
+}
+
+/** `chronicle_goal_marks_for`: the marks asked about, at each goal's current scope, and legacy. */
+export const pvMarksFor = (asks: ReadonlyArray<{ id: string; from: string }>): Marked => {
+  const out: Marked = { marks: {}, legacy: {} }
+  /* the server raises past 1200, and the client turns any refusal into no marks at all */
+  if (asks.length > 1200) return out
+  for (const a of asks) {
+    const g = db().goals.find((x) => x.id === a.id)
+    if (!g) continue
+    const m = db().marks.find((x) => x.goal === g.id && x.scope === g.scope && x.from === a.from)
+    if (m) out.marks[`${g.id}@${a.from}`] = { progress: m.progress, done: m.doneAt != null }
+    const was = db().doneAt[g.id]
+    if (g.every != null && was != null) out.legacy[g.id] = was
+  }
+  return out
 }
 
 /** ⚠️ owner-scoped by construction here, the way the `owner = auth.uid()` clause does it there */
@@ -798,6 +912,9 @@ export const pvShareGoal = (id: string, on: boolean): boolean => {
 
 export const pvDropGoal = (id: string): boolean => {
   db().goals = db().goals.filter((g) => g.id !== id)
+  /* `on delete cascade`, and the row's own done_at goes with the row */
+  db().marks = db().marks.filter((m) => m.goal !== id)
+  delete db().doneAt[id]
   return true
 }
 
@@ -1258,7 +1375,7 @@ export const pvExport = (): Record<string, unknown> => ({
       unit: g.unit,
       progress: g.progress,
       /* `done` is a boolean here and a moment there, the same as `archived` above */
-      done_at: g.done ? EPOCH : null,
+      done_at: g.done ? new Date(db().doneAt[g.id] ?? 0).toISOString() : null,
       note: g.note,
       sort: g.sort,
       activity: g.activity,
@@ -1268,6 +1385,18 @@ export const pvExport = (): Record<string, unknown> => ({
       priority: g.priority,
       created_at: EPOCH,
       updated_at: EPOCH,
+      marks: db()
+        .marks.filter((m) => m.goal === g.id)
+        .sort((a, b) => a.scope.localeCompare(b.scope) || a.from.localeCompare(b.from))
+        .map((m) => ({
+          scope: m.scope,
+          from: m.from,
+          starts_at: m.starts,
+          ends_at: m.ends,
+          progress: m.progress,
+          done_at: m.doneAt == null ? null : new Date(m.doneAt).toISOString(),
+          set_at: new Date(m.setAt).toISOString(),
+        })),
     })),
   routines: [...db().routines]
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -1322,6 +1451,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
     goals: 0,
     routines: 0,
     plans: 0,
+    marks: 0,
     skipped: 0,
   }
   /**
@@ -1539,7 +1669,51 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       est: g.est_mins == null ? null : numOr(g.est_mins, 0) || null,
       priority: (numOr(g.priority, 0) || 0) as Goal['priority'],
     })
+    /* the row's own moment, kept — it is what `legacy` is read from */
+    const doneMs = Date.parse(String(g.done_at ?? ''))
+    if (Number.isFinite(doneMs)) db().doneAt[id] = doneMs
     out.goals++
+  }
+
+  /**
+   * The marks, after every goal, as `chronicle_import` does it: the goal must be yours and
+   * repeating, the window must have begun, and a window already there is kept — add, never
+   * replace. A goal the account already had still gets its missing windows back.
+   */
+  for (const g of list('goals')) {
+    if (!Array.isArray(g.marks)) continue
+    const goal = db().goals.find((x) => x.id === str(g.id) && x.every != null)
+    for (const m of g.marks as Array<Record<string, unknown>>) {
+      const scope = str(m.scope) as Scope | null
+      const from = str(m.from)
+      const starts = str(m.starts_at)
+      const ends = str(m.ends_at)
+      if (
+        !goal ||
+        !scope ||
+        !from ||
+        !starts ||
+        !ends ||
+        Date.parse(starts) > Date.now() + 3_600_000 ||
+        db().marks.some((x) => x.goal === goal.id && x.scope === scope && x.from === from)
+      ) {
+        out.skipped++
+        continue
+      }
+      const done = Date.parse(String(m.done_at ?? ''))
+      const set = Date.parse(String(m.set_at ?? ''))
+      db().marks.push({
+        goal: goal.id,
+        scope,
+        from,
+        starts,
+        ends,
+        progress: Math.max(0, Math.min(numOr(m.progress, 0), 1e9)),
+        doneAt: Number.isFinite(done) ? done : null,
+        setAt: Number.isFinite(set) ? set : Date.now(),
+      })
+      out.marks++
+    }
   }
 
   for (const p of list('plans')) {

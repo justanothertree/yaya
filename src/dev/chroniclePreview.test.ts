@@ -16,7 +16,10 @@ import {
   pvEntries,
   pvFixRunning,
   pvGoals,
+  pvMarksFor,
   pvMoods,
+  pvProgress,
+  pvSetMark,
   pvPlanDid,
   pvPlanSave,
   pvQuality,
@@ -947,6 +950,7 @@ describe('the file you can take away', () => {
       'priority',
       'created_at',
       'updated_at',
+      'marks',
     ],
     routines: ['id', 'name', 'steps', 'created_at', 'updated_at'],
     plans: ['id', 'activity', 'starts_at', 'ends_at', 'note', 'created_at'],
@@ -1172,6 +1176,7 @@ describe('putting a file back', () => {
       goals: 0,
       routines: 0,
       plans: 0,
+      marks: 0,
       skipped: rows(file),
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...file, at: '' }))
@@ -1289,6 +1294,18 @@ describe('putting a file back', () => {
           priority: 2,
           created_at: EPOCH,
           updated_at: EPOCH,
+          /* one window, every field away from its default — a count, a tick, a set_at of its own */
+          marks: [
+            {
+              scope: 'week',
+              from: '2026-01-04',
+              starts_at: '2026-01-04T05:00:00.000Z',
+              ends_at: '2026-01-11T05:00:00.000Z',
+              progress: 3,
+              done_at: '2026-01-05T12:00:00.000Z',
+              set_at: '2026-01-06T12:00:00.000Z',
+            },
+          ],
         },
       ],
       routines: [
@@ -1320,6 +1337,7 @@ describe('putting a file back', () => {
       goals: 1,
       routines: 1,
       plans: 1,
+      marks: 1,
       skipped: 0,
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify(file))
@@ -1657,5 +1675,75 @@ describe('correcting the session you are in the middle of', () => {
     const before = pvEntries(dayStart(), dayEnd())
     pvFixRunning(new Date(Date.now() - 10 * 60_000).toISOString(), gym)
     expect(pvEntries(dayStart(), dayEnd())).toEqual(before)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF `chronicle_goal_mark` AND `chronicle_goal_marks_for`. The server's are
+ * asked the same questions in supabase/tests/chronicle-repeat-marks.sql; these keep the copy from
+ * drifting into a room that accepts what the site would refuse — which would read as working here
+ * and fail there, the unfaithful-double trap in its worst direction.
+ */
+describe('a repeating goal, one window at a time', () => {
+  const at = (from: string, days = 1) => ({
+    from,
+    starts: localMidnight(from).toISOString(),
+    ends: new Date(localMidnight(from).getTime() + days * 86_400_000).toISOString(),
+  })
+  const repeating = () => goalOn({ title: 'Floss', anchor: null, every: 1 })
+
+  it('keeps a tick to its own day', () => {
+    const g = repeating()
+    expect(pvSetMark(g, at(DAY), null, true)).toBeNull()
+    const got = pvMarksFor([
+      { id: g, from: DAY },
+      { id: g, from: '2026-01-01' },
+    ])
+    expect(got.marks).toEqual({ [`${g}@${DAY}`]: { progress: 0, done: true } })
+  })
+
+  it('leaves the count alone when only the tick is sent, and the tick when only the count is', () => {
+    const g = repeating()
+    const read = () => pvMarksFor([{ id: g, from: DAY }]).marks[`${g}@${DAY}`]
+    pvSetMark(g, at(DAY), 12, null)
+    pvSetMark(g, at(DAY), null, true)
+    /* ⚠️ READ BETWEEN THE WRITES — with only a final read, a third write of the count hid a second
+       write that had erased it, and the test stayed green over exactly that bug */
+    const afterTick = read()
+    pvSetMark(g, at(DAY), 13, null)
+    expect([afterTick, read()]).toEqual([
+      { progress: 12, done: true },
+      { progress: 13, done: true },
+    ])
+  })
+
+  it('refuses what the server refuses, in its words', () => {
+    const once = goalOn({ title: 'Once' })
+    const g = repeating()
+    const ahead = new Date(Date.now() + 3 * 86_400_000)
+    const aheadDay = `${ahead.getFullYear()}-${String(ahead.getMonth() + 1).padStart(2, '0')}-${String(ahead.getDate()).padStart(2, '0')}`
+    expect([
+      pvSetMark(once, at(DAY), null, true)?.why,
+      pvSetMark(g, at(aheadDay), null, true)?.why,
+      pvSetMark(g, { ...at(DAY), ends: at(DAY).starts }, null, true)?.why,
+      pvSetMark(g, at(DAY, 400), null, true)?.why,
+    ]).toEqual([
+      'no such repeating goal',
+      'that window has not started',
+      'that window does not make sense',
+      'that window does not make sense',
+    ])
+  })
+
+  it("hands back the row's old tick as legacy for a repeating goal, and only for one", () => {
+    const g = repeating()
+    const once = goalOn({ title: 'Once' })
+    pvProgress(g, 0, true)
+    pvProgress(once, 0, true)
+    const got = pvMarksFor([
+      { id: g, from: DAY },
+      { id: once, from: DAY },
+    ])
+    expect(Object.keys(got.legacy)).toEqual([g])
   })
 })
