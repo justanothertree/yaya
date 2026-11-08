@@ -535,6 +535,12 @@ begin
       ('chronicle_export',
        E'''value'', s.value, ''created_at'', s.created_at',
        E'''value'', s.value, ''counted'', s.counted, ''created_at'', s.created_at'),
+      /* ⚠️ THE DECLARATION BEFORE ANYTHING THAT USES IT: each substitution is CREATEd as it goes,
+         and plpgsql refuses a function naming a variable it has not declared — the first run of
+         this file stopped exactly there */
+      ('chronicle_import',
+       E'n_set int := 0;',
+       E'n_set int := 0; n_link int := 0;'),
       ('chronicle_import',
        E'exercise_name, entry, on_day, value,\n           created_at, updated_at)',
        E'exercise_name, entry, on_day, value,\n           created_at, updated_at, counted)'),
@@ -563,9 +569,6 @@ begin
        || E'    end;\n'
        || E'  end loop;\n\n'
        || E'  for x in select * from jsonb_array_elements(coalesce(p_doc->''plans'', ''[]''::jsonb)) loop'),
-      ('chronicle_import',
-       E'n_set int := 0;',
-       E'n_set int := 0; n_link int := 0;'),
       ('chronicle_import',
        E'''sets'', n_set,',
        E'''sets'', n_set, ''links'', n_link,')
