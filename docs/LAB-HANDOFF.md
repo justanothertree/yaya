@@ -2561,6 +2561,51 @@ conflict; it uses nothing of Palette's or Jigsaw's. No SQL changes.
 **Not verified:** the stage in a page (this container's WebGPU canvas, as for Jigsaw), real GPUs and
 real touch. Whether the ten levels are fun, and whether their difficulty climbs well, is taste.
 
+### Follow-on: `claude/lab-bridge-1`, stacked on #47 (8 Nov 2026) — a new builder, Bridge
+
+**Base:** `claude/lab-beams-1` (#47), only to keep the registry append-only without a conflict; it
+uses nothing of the toys below it. No SQL changes.
+
+- **What you do.** Six gaps to span, each with anchors, a budget and a cart. Pick 🛣 road, 🪵 timber
+  or 🔩 steel and tap a dot, then another, to lay a member (it keeps drawing from the last dot; tap
+  it again to stop). 🧽 erases, ↶ undoes, 🧹 clears. 🚚 Drive sends the cart over: every member is
+  tinted by how hard it works — green easy, red at its limit — and one asked for more than its
+  strength snaps. The cart drives on road only. Across within budget keeps your cheapest crossing
+  per level; 💡 One that works shows a known truss (not kept as a best) to drive and then undercut.
+  Keys: arrows move a cursor described in the canvas's label, Enter lays, Esc stops drawing, D
+  drives, U undoes, 1–4 choose.
+- **Kept in this browser:** each level's design, the level open, and the cheapest crossings — every
+  design re-checked on the way in (anchors unmoved, no joint in rock, every member a legal length
+  and a kind the level has).
+- **Technique:** XPBD with small steps, so each member's Lagrange multiplier is its force in newtons
+  and "timber breaks at 9 kN" is a real figure. One fragment pass draws the scene in metres —
+  sky, water, cliffs, the build grid, members as capsules tinted by load, joints and the cart.
+- **Pattern to reuse:** "every level ships with a reference that crosses it, and a flat road that
+  must not". Tuning found the 16 m level impossible with these materials — the bridge's own weight
+  put about 16 kN through a road rated for 14 — so it became 14 m rather than the materials being
+  fudged for one level.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 11 tests in `bridge.test.ts`: a hanging V of steel carries the force statics says (W / 2 sin θ)
+  within 5% — made to fail by mis-scaling the force (three tests red); a member past its strength
+  breaks and one under it does not; on every level the reference crosses within budget with nothing
+  broken, and a flat road snaps; the same bridge drives identically twice; joints only on the grid
+  and never in rock; members refused too long, doubled, of a missing kind or to themselves; erasing
+  takes loose joints with it; designs and bests round-trip, and a tampered design is refused.
+- Offscreen renders of a reference built and mid-drive, and a flat road after it snapped.
+- Through the real UI at 1280 and an emulated iPhone 13 (mouse, not touch): a truss tapped out by
+  hand crosses level 1 for 2,642 of 3,600 and is kept as the best; 💡 crosses level 2 without a
+  best, driven by the D key; a flat road falls on level 3 with 4 members broken; the too-long and
+  rock refusals are said in words; erase and undo; reload restores designs and bests. A probe
+  mistake built a truss missing one top-chord member and it fell — checked in a unit test, it was
+  the right answer: the same design built in the right order crosses identically to the reference.
+  `mobileAudit` zero at both widths; one GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas), real GPUs and real touch.
+On a phone the 1 m grid is about 28 px a metre on the short levels and 17 px on the 14 m one —
+tight for a fingertip; that is a real-device question.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2570,11 +2615,13 @@ real touch. Whether the ten levels are fun, and whether their difficulty climbs 
 2. **Real device — Palette.** Pick a photo from your camera roll on the phone. Does the palette look
    like the photo? Does tapping the picture pick the colour under your finger? Does 📋 Copy CSS
    work in your browser (Safari asks differently from Chrome)?
-3. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+3. **Real device — Bridge on a phone.** Build level 1 with a finger. Is a 1 m grid big enough to hit
+   on the 14 m level (about 17 px a metre)? Does watching the members go red teach you anything?
+4. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
    Is "tap again to turn" discoverable, or does it want its own button first?
-4. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+5. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
-5. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+6. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-6. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+7. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?
