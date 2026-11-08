@@ -131,8 +131,9 @@ describe('finding one', () => {
     expect(search(list, '   ').length).toBe(3)
   })
   it('finds a kind by its name', () => {
-    // fold and mobius are games, harp is sound
-    expect(search(list, 'puzzles').map((e) => e.id)).toEqual(['mobius', 'fold'])
+    // fold is a puzzle, mobius a game, harp is sound
+    expect(search(list, 'puzzles').map((e) => e.id)).toEqual(['fold'])
+    expect(search(list, 'skill').map((e) => e.id)).toEqual(['mobius'])
     expect(search(list, 'music').map((e) => e.id)).toEqual(['harp'])
   })
   it('lists a hidden one to the admin only', () => {
