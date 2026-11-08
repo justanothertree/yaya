@@ -121,6 +121,22 @@ rpc chronicle_goal_marks_for "$TB" "$ASK"
 check "$(printf '%s' "$BODY" | jq -c '.marks')" '{}' "B asking for A's marks gets nothing"
 rpc chronicle_goal_marks_for "$ANON_KEY" "$ASK"; refused "anon reading marks"
 
+# ── the weekday schedules (the weekday draft is applied earlier in this run) ──
+THREE_AGO=$(date -u -d '-3 days' +%F)
+rpc chronicle_goal_days_set "$TA" "{\"p_goal\":\"$G\",\"p_days\":4,\"p_from\":\"$TODAY\"}"
+ok2xx "A sets its tick-box for Tuesdays, from today"
+rpc chronicle_goal_days_set "$TA" "{\"p_goal\":\"$G\",\"p_days\":4,\"p_from\":\"$THREE_AGO\"}"
+refused "A backdating a schedule three days"
+rpc chronicle_goal_days_set "$TB" "{\"p_goal\":\"$G\",\"p_days\":127,\"p_from\":\"$TODAY\"}"
+refused "B scheduling A's goal"
+rpc chronicle_goal_days_set "$ANON_KEY" "{\"p_goal\":\"$G\",\"p_days\":127,\"p_from\":\"$TODAY\"}"
+refused "anon scheduling A's goal"
+rpc chronicle_goals_mine "$TA" '{}'
+check "$(printf '%s' "$BODY" | jq -c --arg g "$G" '.[] | select(.id == $g) | .days')" "[{\"from\":\"$TODAY\",\"days\":4}]" "A reads its schedule back, after B's and anon's refused writes"
+check "$(printf '%s' "$BODY" | jq -r --arg g "$G" '.[] | select(.id == $g) | (.made | type)')" "number" "A's goal says when it was made"
+rpc chronicle_goals_mine "$TB" '{}'
+check "$(printf '%s' "$BODY" | jq -r --arg g "$G" '[.[] | select(.id == $g)] | length')" "0" "B's goals do not include A's"
+
 # ── the tables themselves, straight through the REST surface ──
 # ⚠️ A REFUSAL OR AN EMPTY LIST, and which one is printed. A table can hold everything out by
 # having no grants (refused) or by RLS with no policies (200 and []); the difference is worth
@@ -134,7 +150,7 @@ table() {
     *) fail "$1 reading $2 directly — HTTP $CODE $BODY" ;;
   esac
 }
-for t in chronicle_goal_marks chronicle_entries; do
+for t in chronicle_goal_marks chronicle_entries chronicle_goal_days; do
   table A "$t" "$TA"
   table anon "$t" "$ANON_KEY"
 done

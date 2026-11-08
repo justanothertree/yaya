@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W6: the weekdays draft FIRST, then marks, then day notes, and every suite.
+-- RUN W7: weekdays first, then marks, then day notes; the API probe now asks the schedule writer too (41 checks).
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the weekdays draft (FIRST)
@@ -30,8 +30,8 @@ do $$
 declare n int; m int;
 begin
   select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
-  if n > 0 or m < 32 then
-    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 32', n, m;
+  if n > 0 or m < 41 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 41', n, m;
   end if;
 end $$;
 select 'the daily flow and the marks hold through Auth and PostgREST' as result;
