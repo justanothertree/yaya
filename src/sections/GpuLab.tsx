@@ -58,6 +58,7 @@ import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
 import { JigsawDemo } from '../gpu/JigsawDemo'
 import { PaletteDemo } from '../gpu/PaletteDemo'
+import { BeamsDemo } from '../gpu/BeamsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -422,6 +423,12 @@ const DEMOS: readonly {
     name: 'Palette',
     line: 'Palette — pull a colour palette out of a picture or a photo of your own, lock what you like and re-roll the rest, see it redrawn in just those colours, and check which pairs read as text.',
     Demo: PaletteDemo,
+  },
+  {
+    id: 'beams',
+    name: 'Beams',
+    line: 'Beams — place mirrors, splitters and colour filters to bring red, green and blue lasers to every target. Colours add: red and green make yellow.',
+    Demo: BeamsDemo,
   },
 ]
 
