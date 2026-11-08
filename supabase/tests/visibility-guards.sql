@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN G3: sets, links, grid; every suite; the API probe asks the link and cell writers too (68 checks).
+-- RUN C1: sets, links, grid, then the CONVERSION draft; every suite plus the conversion test.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)
@@ -8,6 +8,8 @@
 \ir ../../docs/2026-11-09-chronicle-sets-links.DRAFT.sql
 \echo === applying the grid draft (step 2b)
 \ir ../../docs/2026-11-09-circuit-grid-sessions.DRAFT.sql
+\echo === applying the conversion draft (step 3, a proposal)
+\ir ../../docs/2026-11-09-circuit-logs-conversion.DRAFT.sql
 \echo === applying the weekdays draft
 \ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
 \echo === applying step 1
@@ -34,6 +36,8 @@
 \ir chronicle-sets-links.sql
 \echo === the grid
 \ir circuit-grid-sessions.sql
+\echo === the conversion
+\ir circuit-logs-conversion.sql
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
 \! bash supabase/tests/api-probe.sh
