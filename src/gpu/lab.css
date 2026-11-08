@@ -724,3 +724,26 @@
   padding-left: 0.75rem;
   white-space: normal;
 }
+
+/* Paint mixer: five paints as big buttons in their own colour, a row on a wide screen and two
+   rows under a thumb */
+.mix-paints {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 0.5rem;
+}
+.mix-paint {
+  min-height: 52px;
+  font-weight: 700;
+  border: 2px solid var(--border);
+}
+.mix-paint:disabled {
+  opacity: 0.55;
+}
+.mix-count {
+  font-weight: 400;
+}
+.mix-reading {
+  margin: 0;
+  font-weight: 600;
+}

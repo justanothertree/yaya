@@ -2694,6 +2694,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4i    | #58 | #56    | Logic gates                                                   |
 | 4j    | #59 | #58    | Slide                                                         |
 | 4k    | #60 | #59    | Games and puzzles become two kinds                            |
+| 4l    | #61 | #60    | Paint mixer                                                   |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2877,6 +2878,42 @@ pushed. **A clean `git merge-tree` is a claim about text; run the suite on the m
 **Taste question for Evan:** are the two names and the split right — Fold and Topple as puzzles,
 Orbit and Strut as games?
 
+### Follow-on: `claude/lab-mix-1`, stacked on #60 (8 Nov 2026) — a perception game, Paint mixer
+
+**Base:** `claude/lab-kinds-1` (#60), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Five paints — white, black, yellow, blue, red — as big buttons in their own
+  colours. Drop them into a cup to match a colour chip: twelve targets, from Orange to Lavender. The
+  reading says how yours differs in words ("Yours is darker, duller and more green than Tomato"),
+  a hint names the paint to add and how many drops could still get there, and stars count drops
+  against the fewest that match. Paint cannot be taken out — only undone — so too much white in a
+  plum is a cup to empty, and the hint says so. **🎨 Mix freely** shows any mixture's hex and copies
+  it. Keys 1–5, Z undo, E empty, H hint. Bests kept in this browser.
+- **Technique.** Each paint is a reflectance at sixteen wavelengths; a mix is single-constant
+  Kubelka–Munk (absorption over scattering, in proportion), seen in D65 daylight through the CIE 1931
+  observer and written as sRGB. That is why yellow and blue make green rather than the grey that
+  averaging screen colours gives. Match means within 0.03 in OKLab. A target's par is the fewest
+  drops of any recipe that matches (a search over every recipe up to twelve drops); a hint is the
+  fewest drops to ADD — a plan, because the nearest single drop was tried first and walked into
+  corners (white first into Plum, from which nothing reaches Plum). The GPU draws the chip and the
+  cup, where each drop arrives as a streak of its own paint and is stirred in along a spiral.
+
+**Measured here:** 9 tests — one paint alone is itself and only proportions matter; yellow+blue
+lands in green, blue+red in purple, yellow+red in orange; white lightens and black darkens a drop
+at a time for every paint; each target's par is no more than its recipe, matches, and nothing with
+fewer drops does (checked by an enumerator sharing nothing with the search); the targets differ
+from each other by more than two matches; following the hints alone from an empty cup matches every
+target in exactly par; six whites put Plum out of reach and the hint says so. Mixing reflectances
+like light turns the colour test red; a plan that is not the fewest turns the hint test red. On the
+GPU, offscreen, all twelve at a wide and a tall stage: the chip exactly the target, the settled cup
+the mixture, the ring when matched, and a stirred cup not yet one colour. Through the UI at 1280 and
+an emulated iPhone 13 (mouse, not touch): Orange in three, Plum by hints alone in three, the
+stuck-cup hint, keys, free mixing and its copy, a full cup refused, reload; `mobileAudit` zero in
+both modes; one GPU device per mount.
+
+**Not verified:** the stage in a page, real GPUs, and colours on a real screen — the paints were
+tuned by their numbers and an sRGB render, so whether they look like paint is a question for eyes.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2898,13 +2935,15 @@ Orbit and Strut as games?
    turn upright on a narrow screen?
 7. **Real device — Slide on a phone.** Do a few Endless boards by swiping. Does a swipe ever go the
    wrong way, or scroll the page instead? Is Medium the right step up from Easy?
-8. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+8. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
+   Is the reading ("darker, duller and more green") more help than the number?
+9. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
    the two-burn trick discoverable from the hints alone?
-9. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
-   Is "tap again to turn" discoverable, or does it want its own button first?
-10. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+10. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+    Is "tap again to turn" discoverable, or does it want its own button first?
+11. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
     🔎 Browse at every width. Better, or do you miss seeing every name at once?
-11. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+12. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
     of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-12. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+13. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
     "You voted …" line read clearly?
