@@ -124,7 +124,7 @@ begin
      set progress  = case when p_progress is null then m.progress
                           else greatest(0, least(p_progress, 1e9)) end,
          done_at   = case when p_done is null then m.done_at
-                          when p_done then now()
+                          when p_done then coalesce(m.done_at, now())
                           else null end,
          starts_at = excluded.starts_at,
          ends_at   = excluded.ends_at,
@@ -164,7 +164,7 @@ begin
   return jsonb_build_object(
     'marks', coalesce((
       select jsonb_object_agg(
-               m.goal::text || '@' || m.window_from::text,
+               m.goal::text || '@' || to_char(m.window_from, 'YYYY-MM-DD'),
                jsonb_build_object('progress', m.progress, 'done', m.done_at is not null))
         from (select distinct (a->>'id')::uuid as id, (a->>'from')::date as f
                 from jsonb_array_elements(p_asks) a) q
@@ -236,7 +236,7 @@ begin
        || E'    for mk in select * from jsonb_array_elements(x->''marks'') loop\n'
        || E'      begin\n'
        || E'        if not exists (select 1 from public.chronicle_goals g\n'
-       || E'                        where g.id = (x->>''id'')::uuid\n'
+       || E'                        where g.id = (x->>''id'')::uuid and g.owner = me\n'
        || E'                          and g.repeat_every is not null)\n'
        || E'           or (mk->>''starts_at'')::timestamptz > now() + interval ''1 hour'' then\n'
        || E'          refused := refused + 1;\n'
