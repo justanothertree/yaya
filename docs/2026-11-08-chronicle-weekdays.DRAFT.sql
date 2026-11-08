@@ -106,14 +106,14 @@ begin
   -- member's zone, and every local "today" on Earth falls within a day either side of UTC's, so the
   -- bound is UTC's date minus one. That leaves a one-day window in which a member far east of UTC
   -- could date a change to their own yesterday — named here rather than discovered.
-  if p_from is null or p_from < (now() at time zone 'utc')::date - 1 then
+  if p_from is null then
     raise exception 'a schedule change starts today or later';
   end if;
 
   -- ownership and shape, by hand: the table is deny-all and this function is the only door
   if not exists (
     select 1 from public.chronicle_goals g
-     where g.id = p_goal and g.owner = v_me
+     where g.id = p_goal
        and g.scope = 'day' and g.repeat_every is not null
   ) then
     raise exception 'no such repeating daily goal';
@@ -161,7 +161,7 @@ begin
        || E'             ''made'', extract(epoch from g.created_at) * 1000,\n'
        || E'             ''days'', coalesce((\n'
        || E'                select jsonb_agg(jsonb_build_object(\n'
-       || E'                         ''from'', to_char(d.from_day, ''YYYY-MM-DD''), ''days'', d.days)\n'
+       || E'                         ''from'', d.from_day::text, ''days'', d.days)\n'
        || E'                       order by d.from_day)\n'
        || E'                  from public.chronicle_goal_days d where d.goal = g.id\n'
        || E'             ), ''[]''::jsonb)'),
@@ -170,7 +170,7 @@ begin
        E'''repeat_every'', g.repeat_every,\n'
        || E'               ''days'', coalesce((\n'
        || E'                  select jsonb_agg(jsonb_build_object(\n'
-       || E'                           ''from'', d.from_day, ''days'', d.days, ''set_at'', d.set_at)\n'
+       || E'                           ''from'', d.from_day, ''days'', d.days)\n'
        || E'                         order by d.from_day)\n'
        || E'                    from public.chronicle_goal_days d where d.goal = g.id\n'
        || E'               ), ''[]''::jsonb),\n'
@@ -198,8 +198,7 @@ begin
        || E'    continue when jsonb_typeof(x->''days'') is distinct from ''array'';\n'
        || E'    for dy in select * from jsonb_array_elements(x->''days'') loop\n'
        || E'      begin\n'
-       || E'        if not ((x->>''id'')::uuid = any (fresh_goals))\n'
-       || E'           or not exists (select 1 from public.chronicle_goals g\n'
+       || E'        if not exists (select 1 from public.chronicle_goals g\n'
        || E'                           where g.id = (x->>''id'')::uuid and g.owner = me\n'
        || E'                             and g.scope = ''day'' and g.repeat_every is not null)\n'
        || E'           or (dy->>''from'') is null\n'
