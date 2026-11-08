@@ -1089,8 +1089,39 @@ the room deployed:
 1. Make a daily goal, tick it, then edit it to leave today out. It should stay ticked and say "not
    due today".
 2. Look at the Tomorrow tab when tomorrow is an off day. The goal should not be there.
-3. Write a Journal note about yesterday. Yesterday's Day log should show it with "written <today>"
-   and no time.
+3. On yesterday's Day log, press ✎ Note and write something. Yesterday's log should then show it
+   with "written <today>" and no time.
 4. On a phone: the seven day toggles and the note row's ✎. The sitting editor's move sentence
    needs a set to exist, and nothing on screen can write one until step 2, so it has no device
    check yet.
+
+### 19g. Sets, step 2: three questions before anything reads them
+
+Step 2 is where the numbers people see start reading sets:
+
+- a sitting's count, and the goals that count it;
+- the Circuit grid;
+- the day's workout line.
+
+Writing it down properly turned up three things the recorded-once proposal assumes without
+saying. Each changes what a number on screen means, so **step 2 is parked on these and nothing
+else**. Step 1 (#85) does not depend on them.
+
+1. **Units.** A set carries its exercise's unit (reps, min, sec, mi, km, hr), and a sitting's
+   count carries its activity's one metric. "12 Quad Curl + 30 sec Plank" is not a number of
+   anything, so which sets add up to a sitting's count, and to a goal counting it?
+   **Recommendation:** an exercise can only be linked to an activity whose metric is its own
+   unit. Plank does not link to Gym, and it still counts in the Circuit, where points use `mult`.
+2. **A grid cell is a day's total; sets are separate entries.** For a person with an account,
+   when they type 20 into Quad Curl's cell and 12 came from a Chronicle sitting, what is written?
+   **Recommendation:** one set with no sitting, holding the difference (8). A cell can never be
+   set below what sittings counted on that day; lowering that part is done by editing the
+   sitting. Nothing typed in the grid deletes a sitting's sets.
+3. **The logs an already-linked person has.** Until those `circuit_logs` rows become sets, the
+   grid would show a day's legacy total and its sets side by side for the same exercise.
+   **Recommendation:** for a person `owner_user_id` already names, run step 3 of the proposal
+   before the grid reads sets: one set per `{eid, val}`, and `circuit_logs.entries` frozen rather
+   than dropped. It is a migration of existing records, so it would be its own reviewable draft
+   with a dry-run count, and applying it would be its own approval. It is NOT the claim migration
+   in §19e. Nobody becomes linked by it, and an unclaimed person's logs stay exactly where they
+   are.
