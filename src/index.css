@@ -17323,6 +17323,27 @@ a.cz-msg-author:focus-visible {
 .chron-goal-do .chron-go {
   color: var(--accent);
 }
+/**
+ * ✎ Note on the running header — the door to the sitting's journal.
+ *
+ * ⚠️ GHOST, NOT FILLED. Stop is the one filled button in that row and must stay the only one;
+ * this sits beside it as an offer. The count rides inside rather than beside, so the control
+ * stays one tap target instead of becoming a button with a chip glued to its edge.
+ */
+.chron-jot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.chron-jot-n {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 0.12rem 0.3rem;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
 .chron-chip.is-going {
   color: var(--accent);
   border-color: var(--accent);

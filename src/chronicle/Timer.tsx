@@ -1198,7 +1198,23 @@ export function Timer({
               const metric = running ? (byId.get(running.activity)?.metric ?? null) : null
               if (!metric) return null
               const at = reps ?? 0
-              const bump = (by: number) => setReps(Math.max(0, Math.round(at + by)))
+              /**
+               * ⚠️ THE UPDATER FORM, FOR THE REASON THE NUDGE BUTTONS IN THE EDITOR ALREADY
+               * CARRY IN A COMMENT. `at` is read from the render that drew the button, so two
+               * taps that both land before React has committed the first compute from the same
+               * number and the second overwrites rather than adds — a tap counted and thrown
+               * away, on the one control in this room whose entire job is counting taps.
+               *
+               * Measured in the pane: three `+5` presses inside one task gave **5 reps**, and
+               * with the updater they give **15**. A thumb cannot press three times inside one
+               * task, which is why this had never shown up from use — a real double-tap is a
+               * macrotask apart and was correct both before and after (two `+1` at gaps of 0,
+               * 16, 40, 80 and 150ms all gave 2). What makes it worth fixing anyway is that the
+               * window is not a constant: it is "before React commits", which on a slow render
+               * is as long as the render takes, and the failure is silent.
+               */
+              const bump = (by: number) =>
+                setReps((cur) => Math.max(0, Math.round((cur ?? 0) + by)))
               return (
                 <div className="chron-tally">
                   <span className="chron-tally-at">
@@ -1230,6 +1246,39 @@ export function Timer({
                 had ended it, in one line — and it was the only moment the room ever offered to
                 write anything down. Stopping opens a dialog instead, where the rating is a tap
                 and the journal takes as many entries as you like. */}
+            {/**
+             * ⚠️ AND THAT LEFT THE JOURNAL WITH NO DOOR ANYBODY WOULD FIND. The decision above is
+             * right — a one-line box beside Stop asks the wrong question at the wrong moment —
+             * but the consequence it did not name is that writing something down became "press ✎
+             * on the row in the day log that happens to be the one with no end on it", which is
+             * two taps into a list on the other half of the room, and nothing says it is there.
+             * The dialog it opens is the same dialog; this is only the door, and the journal is
+             * drawn first inside it while a sitting is open so the door leads somewhere.
+             *
+             * ⚠️ NOT A SECOND WRITE PATH. It sets `fixEnt`, which is what the log row's ✎ sets.
+             * A box here with its own `addNote` would be the third place a note has been written
+             * from in this file, and the first two both lost one — see the autosave that moved a
+             * sentence onto the wrong sitting, and `chronicle_running_note`, which no longer
+             * exists.
+             */}
+            <button
+              className="btn btn-ghost chron-jot"
+              disabled={busy}
+              onClick={() => setFixEnt(running.id)}
+              title="Write something about this session, without stopping it"
+            >
+              ✎ Note
+              {running.notes.length ? (
+                <span className="chron-jot-n" aria-hidden>
+                  {running.notes.length}
+                </span>
+              ) : null}
+              <span className="sr-only">
+                {running.notes.length
+                  ? ` — ${running.notes.length} already written`
+                  : ' — nothing written yet'}
+              </span>
+            </button>
             <button className="btn" disabled={busy} onClick={() => void halt()}>
               ■ Stop
             </button>
@@ -1877,6 +1926,74 @@ export function Timer({
             </div>
           </div>
         )
+        /**
+         * ⚠️ A JOURNAL, NOT A FIELD. This was one `note` column, so a sitting you wanted to
+         * say three things about got one, and saying the third meant rewriting the first two.
+         * Each entry keeps the moment it was written, which is the half that makes it a
+         * journal rather than a longer box — "instead of just a single note id want to be
+         * able to journal multiple things into an activity".
+         *
+         * ⚠️ AND CLEARING ONE DELETES IT, which is `chronicle_note_edit`'s own rule and the
+         * one place in this room where empty means remove: a journal entry you have cleared
+         * is one you did not mean to write, and a blank row is a thing to tidy up later.
+         */
+        /**
+         * ⚠️ LIFTED OUT SO IT CAN BE DRAWN IN TWO PLACES, AND IT LEADS WHILE THE SITTING IS OPEN.
+         * The dialog is ordered for a session you have finished — what it was, when it ran, how
+         * long, how much, how it went — and the journal is last because it is the longest thing
+         * on it. Opened on the sitting you are IN, that order is wrong: there is no end, no
+         * length and nothing yet to rate, and the one reason to open it mid-session is to say
+         * what you are doing. So ✎ Note on the running header lands on the box instead of above
+         * four fields it has to be scrolled past, and nothing has to steal focus from the Modal
+         * to manage it — see the note above about what getting that right cost once already.
+         */
+        const journal = (
+          <div className="chron-field">
+            <label>Journal</label>
+            {e.notes.length > 0 && (
+              <ul className="chron-journal">
+                {e.notes.map((n) => (
+                  <li key={n.id}>
+                    <time dateTime={n.at}>
+                      {new Date(n.at).toLocaleTimeString(undefined, {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                    <textarea
+                      rows={1}
+                      defaultValue={n.body}
+                      aria-label={`Written at ${new Date(n.at).toLocaleTimeString()}`}
+                      onBlur={(ev) => {
+                        if (ev.target.value.trim() === n.body) return
+                        void (async () => {
+                          const bad = await editNote(n.id, ev.target.value)
+                          if (bad) moan(bad.why)
+                          await after()
+                        })()
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="chron-journal-add">
+              <textarea
+                rows={1}
+                value={entNote}
+                placeholder={e.notes.length ? 'and another thing…' : 'write something down'}
+                onChange={(ev) => setEntNote(ev.target.value)}
+              />
+              <button
+                className="btn btn-ghost"
+                disabled={busy || !entNote.trim()}
+                onClick={() => void addJournal(e.id)}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )
         return (
           <Modal
             title={
@@ -1918,6 +2035,8 @@ export function Timer({
               </div>
             }
           >
+            {e.end == null ? journal : null}
+
             <div className="chron-field">
               <label htmlFor="ent-act">What it was</label>
               <select
@@ -2057,62 +2176,7 @@ export function Timer({
               </div>
             )}
 
-            {/**
-             * ⚠️ A JOURNAL, NOT A FIELD. This was one `note` column, so a sitting you wanted to
-             * say three things about got one, and saying the third meant rewriting the first two.
-             * Each entry keeps the moment it was written, which is the half that makes it a
-             * journal rather than a longer box — "instead of just a single note id want to be
-             * able to journal multiple things into an activity".
-             *
-             * ⚠️ AND CLEARING ONE DELETES IT, which is `chronicle_note_edit`'s own rule and the
-             * one place in this room where empty means remove: a journal entry you have cleared
-             * is one you did not mean to write, and a blank row is a thing to tidy up later.
-             */}
-            <div className="chron-field">
-              <label>Journal</label>
-              {e.notes.length > 0 && (
-                <ul className="chron-journal">
-                  {e.notes.map((n) => (
-                    <li key={n.id}>
-                      <time dateTime={n.at}>
-                        {new Date(n.at).toLocaleTimeString(undefined, {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </time>
-                      <textarea
-                        rows={1}
-                        defaultValue={n.body}
-                        aria-label={`Written at ${new Date(n.at).toLocaleTimeString()}`}
-                        onBlur={(ev) => {
-                          if (ev.target.value.trim() === n.body) return
-                          void (async () => {
-                            const bad = await editNote(n.id, ev.target.value)
-                            if (bad) moan(bad.why)
-                            await after()
-                          })()
-                        }}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="chron-journal-add">
-                <textarea
-                  rows={1}
-                  value={entNote}
-                  placeholder={e.notes.length ? 'and another thing…' : 'write something down'}
-                  onChange={(ev) => setEntNote(ev.target.value)}
-                />
-                <button
-                  className="btn btn-ghost"
-                  disabled={busy || !entNote.trim()}
-                  onClick={() => void addJournal(e.id)}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
+            {e.end == null ? null : journal}
           </Modal>
         )
       })()}

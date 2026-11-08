@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-07 (eighth pass — §14 is new, from the Chronicle daily-flow pass; §11a is DONE, §11b and §11c are re-measured on top of it, §13 is new; §12 untouched).
+Last reviewed: 2026-11-07 (ninth pass — Evan answered all three of §14, so they are directions now and §14 says what is left under each; §15 is the new, smaller set of open choices the proposals turned up. §11a is DONE, §11b and §11c are re-measured on top of it, §13 is new; §12 untouched).
 
 ---
 
@@ -502,11 +502,24 @@ rather than done.
 
 ## 14. Three Chronicle calls, from the daily-flow pass (2026-11-07)
 
-Added closing the pass written up in `docs/2026-11-07-chronicle-the-daily-flow.md`. That pass
-shipped the two connectors the daily flow was missing and stopped at these three, each of which
-is a decision rather than a build. **Nothing here has been applied to the database.**
+Added closing the pass written up in `docs/2026-11-07-chronicle-the-daily-flow.md`.
 
-### 14a. "Swim on Tuesdays" needs a column, and a rule about the days it is not for
+✅ **ANSWERED BY EVAN, 7 Nov 2026 — all three.** They are directions now rather than questions,
+and each entry below keeps its reasoning with the answer written in, because the reasoning is
+what the build has to satisfy. What is left under each is a BUILD, not a decision; the choices
+the proposals then turned up are §15.
+
+|                            | answered                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 14a weekdays               | a schedule change affects **future occurrences, not past completion history**                                                                                 |
+| 14b a note with no sitting | **private by default, in the export, never automatically on anybody's timeline**                                                                              |
+| 14c the workout model      | **Circuit supplies the exercise definitions; Chronicle owns the sessions and the progress** — plus "record once, see it in both places", counted exactly once |
+
+**Nothing here has been applied to the database.** The models, permissions, isolated tests and
+release plans are in `docs/2026-11-07-chronicle-the-daily-flow.md` §5a and
+`docs/2026-11-07-chronicle-recorded-once.md` §2–3.
+
+### 14a. ✅ Weekdays — answered: future occurrences only. What is left is the build
 
 `chronicle_goals.repeat_every` is `1..52` and only **1** is honoured, deliberately — "every other
 week" needs a PHASE and a repeating goal has no anchor to take one from. Selected weekdays is the
@@ -517,8 +530,17 @@ cannot express today.
 column is the small half and can be applied inert — nullable, read as "every day", which is
 today's behaviour. What needs deciding is not the column.
 
-⚠️ **The decision is what a Monday means to a Tuesday goal**, and getting it wrong is destructive
-in the one way the brief rules out. `late()` and `pastIn()` read "the window closed unfinished";
+✅ **ANSWERED: a schedule change affects future occurrences, not past completion history.** So
+`days` is read FORWARD only — the windows already behind you keep the verdict they were given
+under the schedule in force at the time, and a goal that becomes Tuesdays-only today does not
+retroactively un-miss last Wednesday or re-miss last Tuesday. That is the stronger of the two
+readings and it rules out the cheap implementation, which is to filter every window by today's
+mask: a streak is thirty-one windows of history and filtering it is exactly the rewrite this
+answer forbids. The honest shape is that the mask carries the date it took effect, so a window is
+judged by the mask that was in force when it closed.
+
+⚠️ **What a Monday means to a Tuesday goal** is the other half, and getting it wrong is
+destructive in the one way the brief rules out. `late()` and `pastIn()` read "the window closed unfinished";
 with a mask they must read "the window closed unfinished **and it was one of yours**". The wrong
 reading turns one goal into six overdue rows a week — and rewrites the streak history of
 something somebody has actually been keeping, silently, the moment the column arrives. So the
@@ -527,7 +549,7 @@ client half is not a follow-on patch; it is the part that has to be right first.
 **Cost of waiting:** weekday goals get written as daily ones and read as missed four days in five,
 which is what the seed's own "Swim on Tuesdays · EVERY DAY" row has been demonstrating.
 
-### 14b. A dated note with no sitting — what kind of thing is it?
+### 14b. ✅ A dated note with no sitting — answered: private, exported, never shared
 
 Asked for as "writing a note must not require starting a timer". Today every journal entry hangs
 off a `chronicle_entries` row, and `chronicle_note_add` checking that row's owner **is** the
@@ -547,11 +569,21 @@ be told:
   promises that. A standalone note is more personal than a sitting's note, not less, so the
   default has to be that it never crosses, and that needs saying rather than inheriting.
 
-**Cost of waiting:** writing something down needs a sitting. In practice this is less painful
-than it sounds — ✎ on the sitting you are in the middle of opens the journal without stopping it
-— but "I had an idea" at a bus stop has nowhere to go.
+✅ **ANSWERED: private by default, in the export, never automatically on anybody's timeline.**
+That settles all three readers — and `chronicle_notes` turns out to already carry
+`owner uuid not null`, so ownership is a column rather than something derived from the entry and
+the change is two `alter table`s. See §3 of `docs/2026-11-07-chronicle-recorded-once.md`, which
+also says why "`chronicle_friends_log` happens to carry no note" needs a TEST rather than a
+sentence. **Not applied.**
 
-### 14c. Which module owns "what I did today"?
+**What is left:** the build, plus §15a — a note with no sitting has no length, and the day log
+draws spans.
+
+**And the pain is smaller than it was** as of this pass: ✎ Note on the running header opens the
+journal on the sitting you are in without stopping it, and the journal is drawn first inside that
+dialog. "I had an idea" at a bus stop with no timer running still has nowhere to go.
+
+### 14c. ✅ Which module owns "what I did today" — answered: Chronicle owns the session
 
 The brief said to reuse the Circuit's exercise and session definitions for a workout flow. Having
 read both: **the Circuit has the exercise definitions and no session, and Chronicle has the whole
@@ -567,13 +599,75 @@ session and no exercise library.**
 So "reuse the Circuit's exercises" means deciding which of the two owns the day, which is
 **decision 3 from the design doc's §2, still open**: _"should the Circuit sit on chronicle now?"_
 
-- **Chronicle keeps its own activities** (what happens today): a workout is an activity named Gym
-  with `reps` as its metric, started from its goal's ▶, counted with +1/+5/+10, finished with
-  Stop. Costs nothing, and the Circuit's per-exercise breakdown stays a separate record of the
-  same hour.
-- **Chronicle reads Circuit exercises**: one gesture logs both, and the points grid gets a timer.
-  It also makes a private room depend on a shared, scored one, and gives two tables an opinion
-  about the same minutes — the "one home for a thing" rule in CLAUDE.md §5, pointed at data.
+- ~~**Chronicle keeps its own activities** and the Circuit's per-exercise breakdown stays a
+  separate record of the same hour.~~ Not chosen.
+- ✅ **CHOSEN: Chronicle reads Circuit exercises.** One gesture logs both, and the points grid
+  gets a timer.
 
-**Cost of waiting:** nothing breaks. Both work. The hour is written down twice by hand if you
-want it in both places.
+⚠️ **AND THE OBJECTION TO IT IS WHAT THE MODEL HAS TO ANSWER**, so it is kept here rather than
+struck out: this gives two tables an opinion about the same minutes, which is the "one home for a
+thing" rule in CLAUDE.md §5 pointed at data. The answer is §2a of
+`docs/2026-11-07-chronicle-recorded-once.md` — a single `chronicle_sets` row is canonical for a
+quantity of one exercise on one day, whichever interface typed it, with `entry` nullable so a set
+from the grid and a set from the timer are the same row and not two that have to agree. A sitting
+with sets has no separately writable amount, and the tally reads set rows with no sitting through
+one `entry is null` predicate in one place. **The proposal is not applied.**
+
+**What is left:** the build, in the three inert steps of §2f — and the two things it surfaced,
+§15b and §15c.
+
+---
+
+## 15. What the Chronicle proposals turned up (2026-11-07)
+
+Four smaller choices, each surfaced by writing the models in §14's answers down properly. None
+blocks the other work; each is the kind that is cheap now and expensive once there are rows.
+
+### 15a. A note with no sitting, in a list whose every row has a length
+
+The day log draws spans. A standalone note has no start, no end and no duration, which is
+precisely why `chronicle_moments` exists as a second list rather than as rows in the first one —
+so nothing fabricated could reach the totals.
+
+A note is the same shape of problem with a different answer available: it genuinely belongs to
+the day, and a reader skimming the day wants it in the middle of what they were doing, not in a
+separate panel. The two honest options are **a row in the log with a time and no length** (which
+means the log's own renderer learns a third row type, after the sitting and the moment) or **a
+fold of its own above the log**. Not deciding it means the schema can land and nothing can draw
+it.
+
+### 15b. An exercise is a blob, so a set pointing at one has no foreign key
+
+`circuit_people.exercises` is a jsonb array, so `chronicle_sets.exercise_id` cannot be a
+reference and nothing stops an exercise being deleted out from under its sets. Today that would
+render as "something" in the feed — `chronicle_moments` already has that fallback — and the sets
+would count toward their mapped goal for ever with no name on screen.
+
+Three answers, in increasing cost: leave it and let a deleted exercise read as "something";
+**capture the name on the set at write time**, which makes the feed honest and the Circuit grid
+unable to show it; or lift exercises out of the blob into a table, which is a Circuit migration
+and a much larger thing than the workout work itself.
+
+### 15c. Moving a sitting to another activity does not move its sets
+
+`chronicle_entry_move` exists because pressing Start on the wrong thing is the likeliest mistake
+a stopwatch allows. With sets, moving a Gym sitting to Drawing takes its minutes to Drawing and
+leaves 12 Quad Curl where they were — which is **correct**, because the exercise is still the
+exercise and the Circuit grid must not lose them.
+
+It is also the kind of correct that looks like a bug: a goal's number moves and the Circuit's
+does not. The question is whether the move dialog says so, offers to take the sets too, or
+refuses to move a sitting that has them. The first is cheapest and the third is the only one that
+cannot surprise anybody.
+
+### 15d. Is `circuit_logs` ever retired?
+
+The release plan in `docs/2026-11-07-chronicle-recorded-once.md` §2f deliberately stops short of
+dropping it: the table holds rows for `circuit_people` that belong to no login, and those keep
+working through the old path. So the end state has sets as canonical for everybody with an
+account and `circuit_logs` still canonical for everybody without one.
+
+That is a stable place to stop and it is two answers to one question, which this project usually
+treats as a defect. Worth deciding now whether the unclaimed people are expected to be claimed
+eventually — in which case the split is temporary and fine — or never, in which case the split is
+the design and should be written down as such rather than left looking unfinished.

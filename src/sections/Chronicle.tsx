@@ -228,7 +228,24 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * ⚠️ AND THE DAY HALF IS THE DEFAULT, because the stopwatch is what people open this room to
    * use. A room that opens on its goals makes you take a step before you can start working.
    */
-  const [half, setHalf] = useState<Half>('day')
+  /**
+   * Which half the room opens on.
+   *
+   * ⚠️ AIMS, NOT DAY, AND THAT IS THE ANSWER TO "I DON'T KNOW WHAT EXISTS". The flow asked for is
+   * _open Chronicle → see what's due → check it off or start its timer_, and Day is about what you
+   * are DOING — it never mentioned what you meant to do, so the first step of the flow was a tap
+   * nothing on screen suggested taking.
+   *
+   * ⚠️ AND IT COSTS NOTHING, which is the only reason it is a one-line change rather than a
+   * layout. The stopwatch is in NEITHER half — see the note on `show` in Timer — so opening here
+   * still shows the clock, what is running, the switch tiles and ＋ Activity, with the horizon
+   * strip and today's goals under them instead of the day log. Every step of that flow is on one
+   * screen for the first time.
+   *
+   * What moves a tab away is the sitting-down half: the day log, the totals, the week strip, the
+   * rail, plans, routines and the activity list. `Day` is the first button in the strip.
+   */
+  const [half, setHalf] = useState<Half>('aims')
   const [adding, setAdding] = useState(false)
   /**
    * The goal the form is editing, or null when it is adding a new one.
@@ -764,12 +781,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       <div className="chron-halves">
         {HALVES.map(([id, label, hint]) => {
           /**
-           * ⚠️ WHAT IS DUE, ON THE BUTTON THAT LEADS TO IT. The room opens on the Day half, which
-           * is about what you are doing and says nothing at all about what you meant to do — so
-           * "is there anything today" was a tap away and nothing on screen suggested taking it.
-           * This is the Today tab's own count, moved up one level: the same `counts` the horizon
-           * strip draws, never a second sum, because two numbers for one question is how they
-           * come to disagree.
+           * ⚠️ WHAT IS DUE, ON THE BUTTON THAT LEADS TO IT. This is the Today tab's own count,
+           * moved up one level: the same `counts` the horizon strip draws, never a second sum,
+           * because two numbers for one question is how they come to disagree.
+           *
+           * ⚠️ IT WAS WRITTEN FOR A ROOM THAT OPENED ON DAY, and it keeps its job now that the
+           * room opens here — see the note on `half`. It was the only thing telling the Day half
+           * that anything was due; it is now what keeps saying so once you leave this one, which
+           * is the same sentence pointed the other way.
            *
            * ⚠️ AND IT IS ABSENT AT ZERO RATHER THAN READING 0, which CLAUDE.md §2 is otherwise
            * suspicious of — a figure that vanishes hides work instead of reporting it. It is
