@@ -37,7 +37,7 @@ declare
     E'exists (select 1 from public.chronicle_goal_marks mk\n'
     || E'                      where mk.goal = %1$s.id and mk.scope = %1$s.scope\n'
     || E'                        and mk.done_at is not null\n'
-    || E'                        and mk.starts_at <= now() and mk.ends_at > now())';
+    || E'                        and mk.starts_at <= now() and mk.starts_at > now() - interval ''1 day'')';
 begin
   for r in
     select * from (values

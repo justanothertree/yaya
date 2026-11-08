@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN W1: the marks test with weekly and monthly windows that are current but did not start today (E2).
+-- RUN W2 (perturbed): the profile reads "current" as "began within a day" — E2 must fail and E must not.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying step 1
