@@ -2692,6 +2692,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4g    | #54 | #53    | Wallpaper                                                     |
 | 4h    | #56 | #54    | Nonogram                                                      |
 | 4i    | #58 | #56    | Logic gates                                                   |
+| 4j    | —   | #58    | Slide (branch `claude/lab-slide-1`)                           |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2821,6 +2822,39 @@ about 15 px, so a press now takes a pin within 16 CSS px rather than 0.6 units (
 
 **Not verified:** the stage in a page, real GPUs, a finger on the pins.
 
+### Follow-on: `claude/lab-slide-1`, stacked on #58 (8 Nov 2026) — a movement puzzle, Slide
+
+**Base:** `claude/lab-gates-1` (#58), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** A puck on ice slides in the direction pushed until something stops it — a wall,
+  or a patch of snow, which it stops ON. Take every coin, then come to rest on the ring; sliding
+  over the ring does not count. Six levels, each teaching one thing (snow, coins, the long way
+  round), then **♾ Endless**: boards from a random seed at Easy (4–6 pushes), Medium (7–10) or Hard
+  (11–16), each solved before it is shown. Swipe on the board, four big push buttons, or arrows /
+  WASD; undo, restart, 💡 hint (the first push of a best answer from where you are), stars against
+  the fewest possible, best per level and boards finished per difficulty kept in this browser.
+- **Technique.** A breadth-first search over (where the puck is, which coins it has) gives every
+  level's par, every hint and the proof each board can be done; the endless generator is the same
+  search run over random boards until one lands in the band. One fullscreen shader draws the ice,
+  walls, snow, coins, the goal (its ring turns green once every coin is taken), the push's trail and
+  the puck, which eases into each stop.
+
+**Measured here:** 13 tests — a push stops before a wall and ON snow, collects coins and passes over
+the goal; the board's edge is a wall; every level's answer wins when played and no shorter one
+exists, checked by a separate depth-first search that shares nothing with the solver; the same
+agreement on generated boards; a hint's push always leaves one fewer to go; impossible boards say
+so; every level after the first needs its snow; 40 seeds per difficulty all land in their band,
+deterministically, and differ from each other. Removing the snow stop or forgetting the coins in
+the solver's state turns tests red. Designing the levels by hand left three with no answer at all
+and one whose snow was decoration; the solver redesigned them. On the GPU, offscreen, every cell of
+all six levels the colour of its tile, coins gone once taken, the ring grey until every coin is
+taken and green after. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): level 1
+by the buttons (★★★, kept), a push into a wall said so, a hint marking its button, level 2 by the
+arrow keys, undo, restart, a swipe, an endless board solved and counted, a new seed, reload;
+`mobileAudit` zero in both modes; one GPU device per mount.
+
+**Not verified:** the stage in a page, real GPUs, a real swipe with a finger.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -2840,13 +2874,15 @@ about 15 px, so a press now takes a pin within 16 CSS px rather than 0.6 units (
 6. **Real device — Logic gates on a phone.** Build And with a finger on the stage, then Or using
    only the parts list. Are the pins hittable, or is the list the way on a phone? Should the board
    turn upright on a narrow screen?
-7. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+7. **Real device — Slide on a phone.** Do a few Endless boards by swiping. Does a swipe ever go the
+   wrong way, or scroll the page instead? Is Medium the right step up from Easy?
+8. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
    the two-burn trick discoverable from the hints alone?
-8. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+9. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
    Is "tap again to turn" discoverable, or does it want its own button first?
-9. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
-   🔎 Browse at every width. Better, or do you miss seeing every name at once?
-10. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+10. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+    🔎 Browse at every width. Better, or do you miss seeing every name at once?
+11. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
     of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-11. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+12. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
     "You voted …" line read clearly?
