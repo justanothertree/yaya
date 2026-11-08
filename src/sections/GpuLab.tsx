@@ -69,6 +69,7 @@ import { SlideDemo } from '../gpu/SlideDemo'
 import { MixDemo } from '../gpu/MixDemo'
 import { IntervalsDemo } from '../gpu/IntervalsDemo'
 import { GraphDemo } from '../gpu/GraphDemo'
+import { SunDemo } from '../gpu/SunDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -499,6 +500,12 @@ const DEMOS: readonly {
     name: 'Graph match',
     line: 'Graph match — type an equation and lay its curve on the dashed one: lines, parabolas, V shapes, waves. Or graph anything, with sliders a, b and c to see what each number does.',
     Demo: GraphDemo,
+  },
+  {
+    id: 'sun',
+    name: 'Sun path',
+    line: 'Sun path — where the sun is for any place, day and hour: its path across the sky, sunrise, sunset, day length and a shadow. Then guess where the sun stands over Tromsø in March.',
+    Demo: SunDemo,
   },
 ]
 

@@ -2697,7 +2697,8 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4k    | #60 | #59    | Games and puzzles become two kinds                            |
 | 4l    | #61 | #60    | Paint mixer                                                   |
 | 4m    | #62 | #61    | Intervals                                                     |
-| 4n    | —   | #62    | Graph match (branch `claude/lab-graph-1`)                     |
+| 4n    | #64 | #62    | Graph match                                                   |
+| 4o    | —   | #64    | Sun path (branch `claude/lab-sun-1`)                          |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
@@ -2982,6 +2983,40 @@ per mount.
 
 **Not verified:** the stage in a page, real GPUs, and typing on a real phone keyboard.
 
+### Follow-on: `claude/lab-sun-1`, stacked on #64 (8 Nov 2026) — a sky tool, Sun path
+
+**Base:** `claude/lab-graph-1` (#64), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Pick a place (fifteen, Longyearbyen to Ushuaia, or any latitude), a date and a
+  time: the sky turns to match — a panorama with north at both edges and south in the middle, blue
+  by day, orange and violet near a low sun, stars at night — with the sun and the whole day's path.
+  Under it, in words: how high and which way the sun is, a 1 m stick's shadow, sunrise, sunset and
+  the day's length, or that the sun does not set or rise at all. Quick buttons for midsummer, the
+  equinox and midwinter; ▶ plays the day. **🎯 Where's the sun?**: five rounds of "Tromsø, 3 Mar,
+  09:30 — tap where the sun is", scored by the angle off; best kept.
+- **Sun time, said plainly.** Times are sun time — noon is when the sun is highest — so a time zone,
+  summer time and where a city sits inside its zone (an hour or two between them) never move the
+  answer. The page says so rather than pretending to a clock it does not know.
+- **Technique.** Spencer's declination series, then spherical astronomy; sunrise and sunset at
+  −0.833°, as almanacs count them. One fullscreen shader shades the sky for the sun's height and
+  bearing and draws the path as a dotted polyline.
+
+**Measured here:** 13 tests — declination at the solstices and equinoxes; at noon the sun stands
+90° − |latitude − declination| high at every latitude and day (geometry, not the formula); due south
+or north at noon by which side of the sun you are; mornings mirror afternoons; London's longest and
+shortest days are 16h38m and 7h50m, the almanac's figures; the equator has twelve hours all year;
+Tromsø's polar day and night; at sunrise and sunset the sun is exactly at −0.833°; shadows; the angle
+between two points of sky. Ignoring the refraction or getting the azimuth's quadrant wrong each turns
+tests red. On the GPU, offscreen: noon blue with the sun at its place, the dotted path through 08:00's
+place, night dark with stars, sunset orange on the sun's side and not the other, the guess ring. A
+below-horizon sun was drawn as a glow rising through the ground; it is an outline now. Through the UI
+at 1280 and an emulated iPhone 13 (mouse, not touch): polar day and night, London's day, the slider,
+the day playing, five rounds answered by tapping the computed sun (500 of 500), arrow-key guessing,
+reload; `mobileAudit` zero in both modes; one GPU device per mount.
+
+**Not verified:** the stage in a page, real GPUs, and whether the sky's colours look like a sky on a
+real screen.
+
 ## Questions and tests for Evan — a short queue, most useful first
 
 1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
@@ -3005,15 +3040,17 @@ per mount.
    wrong way, or scroll the page instead? Is Medium the right step up from Easy?
 8. **Real device — Intervals, with sound.** Play a round on a phone and on a laptop. Do the notes
    sound clean and at the right moment? Are the six stages a fair climb?
-9. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
-   Is the reading ("darker, duller and more green") more help than the number?
-10. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+9. **Taste — Sun path.** Pick your own city's latitude and today: does the sky look like a sky, and
+   is "sun time" clear enough, or would you rather type a clock time and a time zone?
+10. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
+    Is the reading ("darker, duller and more green") more help than the number?
+11. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
     the two-burn trick discoverable from the hints alone?
-11. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+12. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
     Is "tap again to turn" discoverable, or does it want its own button first?
-12. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+13. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
     🔎 Browse at every width. Better, or do you miss seeing every name at once?
-13. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+14. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
     of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
-14. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
+15. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
     "You voted …" line read clearly?
