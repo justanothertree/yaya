@@ -168,6 +168,31 @@ rpc chronicle_entry_edit_day "$TA" "$MOVE"; ok2xx "A moves its sitting a day bac
 rpc chronicle_sets_between "$TA" "$SETS"
 check "$(printf '%s' "$BODY" | jq -r --arg e "$E1" '[.[] | select(.entry == $e) | .on] | join(",")')" "$YDAY" "the sitting's set moved to the day before, once"
 
+# ── links and the grid (the links and grid drafts are applied earlier in this run) ──
+rpc chronicle_exercise_link "$TA" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_activity\":\"$ACT\"}"
+ok2xx "A links its Quad Curl to its activity, both in reps"
+rpc chronicle_exercise_link "$TB" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_activity\":null}"
+refused "B unlinking A's exercise"
+rpc chronicle_exercise_link "$ANON_KEY" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_activity\":null}"
+refused "anon unlinking A's exercise"
+rpc chronicle_my_exercises "$TA" '{}'
+check "$(printf '%s' "$BODY" | jq -c --arg a "$ACT" '[.[] | select(.exercise == "ex-quad") | [.canon, .activity == $a, .ok]]')" '[["reps",true,true]]' "A's exercises say Quad Curl is reps and linked"
+rpc chronicle_set_add "$TA" "{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_value\":7,\"p_day\":\"$YDAY\",\"p_entry\":\"$E1\"}"
+ok2xx "A counts a linked set during its sitting"
+rpc chronicle_entries_between "$TA" "{\"p_from\":\"${YDAY}T00:00:00Z\",\"p_to\":\"$TO\"}"
+check "$(printf '%s' "$BODY" | jq -r --arg e "$E1" '.[] | select(.id == $e) | .amount')" "16" "the linked set is in the sitting's count, once (9 counted + 7)"
+CELL="{\"p_person\":\"api-probe-a\",\"p_exercise\":\"ex-quad\",\"p_day\":\"$YDAY\",\"p_total\":25,\"p_seen_sessions\":19,\"p_seen_manual\":0}"
+rpc circuit_cell_set "$TB" "$CELL"; refused "B typing into A's cell"
+rpc circuit_cell_set "$ANON_KEY" "$CELL"; refused "anon typing into A's cell"
+rpc circuit_cell_set "$TA" "$CELL"
+check "$(printf '%s' "$BODY" | jq -c '[.total, .sessions, .manual]')" '[25,19,6]' "A types 25 over 19 from sessions, and 6 is what is stored"
+rpc circuit_cell_set "$TA" "$CELL"; refused "A saving again from the stale screen"
+SUMS="{\"p_from\":\"$THREE_AGO\",\"p_to\":\"$NEXT\"}"
+rpc circuit_session_sums "$TA" "$SUMS"
+check "$(printf '%s' "$BODY" | jq -c '[.[] | select(.person == "api-probe-a") | .value]')" '[19]' "A sees its own sessions in its cell"
+rpc circuit_session_sums "$TB" "$SUMS"
+check "$(printf '%s' "$BODY" | jq -c '[.[] | select(.person == "api-probe-a")]')" '[]' "B, in no circuit with A, sees none of A's sessions"
+
 # ── the tables themselves, straight through the REST surface ──
 # ⚠️ A REFUSAL OR AN EMPTY LIST, and which one is printed. A table can hold everything out by
 # having no grants (refused) or by RLS with no policies (200 and []); the difference is worth
@@ -181,7 +206,7 @@ table() {
     *) fail "$1 reading $2 directly — HTTP $CODE $BODY" ;;
   esac
 }
-for t in chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets; do
+for t in chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets chronicle_exercise_links; do
   table A "$t" "$TA"
   table anon "$t" "$ANON_KEY"
 done
