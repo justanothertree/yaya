@@ -2409,6 +2409,14 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
   says how many each kind holds ("🎮 Games & puzzles (13)"), and **/** anywhere in the Lab opens the
   catalog with the cursor in search — except shift+/ (the site's own help), while typing, and while
   a toy has the keyboard (Pinball's right flipper is "/").
+- **Back where you left it** (branch `claude/lab-return-1`, stacked on Finding things faster): the
+  catalog's search, list and Kind used to live inside the catalog, which is unmounted while a toy
+  plays — so every ▶ Back to browsing started again at All with the search empty, at the top of
+  the grid. The Lab holds them now (for this visit, not in storage). Returning from a toy launched
+  from a card scrolls that card back into view and focuses its ▶, so Tab and Enter carry on from
+  there; arriving any other way (‹ ›, the dropdown) still puts the cursor in search. Since a
+  narrowed list now persists, **✕ Show everything** appears whenever it is narrowed, and moves
+  focus to search (mouse) or Kind (touch) rather than dropping it on the page.
 - **Your vote, in words:** "You voted 👍 Like", with a Remove my vote button; the catalog card shows
   "You: 👍".
 
@@ -2417,6 +2425,7 @@ SQL, so #31's release boundary is untouched: its draft stays unapplied.
 1. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
    🔎 Browse at every width. Better, or do you miss seeing every name at once?
 2. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
-   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
+   of the list: does it land with the toy on screen? Is the dropdown easy with a thumb? Then
+   ▶ Back to browsing: is "puzzle" still in the box, with that card in view?
 3. **Real device — once #31's SQL is applied.** Vote on a toy, change it, remove it; does the
    "You voted …" line read clearly?

@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   CATEGORIES,
-  byNewest,
-  byRating,
-  search,
+  EVERYTHING,
+  arrange,
+  showingAll,
   surprise,
   withoutName,
+  type Browse,
   type Category,
   type Entry,
+  type View,
 } from './catalog'
-
-type View = 'all' | 'recent' | 'favourites' | 'new' | 'top'
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -29,6 +29,11 @@ type Props = {
   /** may this viewer see vote totals: a signed-in member, with the server reachable */
   rated: boolean
   admin: boolean
+  /** the search, list and kind — held by the Lab, so they outlast a visit to a toy */
+  browse: Browse
+  onBrowse: (b: Browse) => void
+  /** come back from a toy launched here: the card it was launched from is put back in view */
+  returning: boolean
   onFavourite: (id: string) => void
   onLaunch: (id: string) => void
 }
@@ -45,34 +50,39 @@ export function LabCatalog({
   recent,
   rated,
   admin,
+  browse,
+  onBrowse,
+  returning,
   onFavourite,
   onLaunch,
 }: Props) {
+  const { query, view, category } = browse
+  const set = (patch: Partial<Browse>) => onBrowse({ ...browse, ...patch })
   const searchBox = useRef<HTMLInputElement | null>(null)
-  // opening the catalog is usually to look for something: the cursor waits in the search box —
-  // with a mouse only, since on a phone focusing it would throw the keyboard over the list
+  const cards = useRef<HTMLUListElement | null>(null)
+  const kind = useRef<HTMLSelectElement | null>(null)
+  /* Back from a toy, the card it was launched from is where the eye left it — scrolled to and
+     focused, so Tab and Enter carry on from there, as a browser's Back would. Otherwise opening
+     the catalog is usually to look for something, and the cursor waits in the search box — with
+     a mouse only, since on a phone focusing it would throw the keyboard over the list. */
   useEffect(() => {
-    if (window.matchMedia?.('(pointer: fine)').matches) searchBox.current?.focus()
+    const go = returning
+      ? cards.current?.querySelector<HTMLButtonElement>(
+          `[data-id="${CSS.escape(current)}"] .lab-card-go`,
+        )
+      : null
+    if (go) {
+      go.scrollIntoView({ block: 'center' })
+      go.focus({ preventScroll: true })
+    } else if (window.matchMedia?.('(pointer: fine)').matches) searchBox.current?.focus()
+    // once, as the catalog opens: a card moving under a later filter is not a reason to jump
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const [query, setQuery] = useState('')
-  const [view, setView] = useState<View>('all')
-  const [category, setCategory] = useState<Category | null>(null)
 
-  const shown = useMemo(() => {
-    let out = search(list, query)
-    if (category) out = out.filter((e) => e.category === category)
-    if (view === 'favourites') out = out.filter((e) => favourites.includes(e.id))
-    if (view === 'recent')
-      return out
-        .filter((e) => recent.includes(e.id))
-        .sort((a, b) => recent.indexOf(a.id) - recent.indexOf(b.id))
-    if (view === 'new') return byNewest(out)
-    if (view === 'top') return byRating(out)
-    // featured first, then the Lab's own order — the page says so above the list
-    return [...out].sort(
-      (a, b) => Number(b.flags.featured) - Number(a.flags.featured) || a.order - b.order,
-    )
-  }, [list, query, category, view, favourites, recent])
+  const shown = useMemo(
+    () => arrange(list, browse, favourites, recent),
+    [list, browse, favourites, recent],
+  )
 
   const rule =
     view === 'top'
@@ -106,7 +116,7 @@ export function LabCatalog({
             type="search"
             value={query}
             placeholder="Search — try “music” or “puzzle”"
-            onChange={(e) => setQuery(e.target.value.slice(0, 60))}
+            onChange={(e) => set({ query: e.target.value.slice(0, 60) })}
           />
         </label>
         <button
@@ -125,7 +135,7 @@ export function LabCatalog({
               key={v.id}
               className="btn btn-ghost"
               aria-pressed={view === v.id}
-              onClick={() => setView(v.id)}
+              onClick={() => set({ view: v.id })}
             >
               {v.label}
             </button>
@@ -138,8 +148,9 @@ export function LabCatalog({
         <label className="studio-pick">
           <span className="muted">Kind</span>
           <select
+            ref={kind}
             value={category ?? ''}
-            onChange={(e) => setCategory((e.target.value || null) as Category | null)}
+            onChange={(e) => set({ category: (e.target.value || null) as Category | null })}
           >
             <option value="">Every kind ({list.length})</option>
             {CATEGORIES.map((c) => (
@@ -149,12 +160,28 @@ export function LabCatalog({
             ))}
           </select>
         </label>
+        {/* kept between visits to toys, so a list left narrowed comes back narrowed — and the
+            way back to everything has to be as plain as the narrowing was */}
+        {!showingAll(browse) && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              onBrowse(EVERYTHING)
+              // the button goes with the filters, and focus must not go with it to the page
+              // itself: the search with a mouse, the kind under a finger (no keyboard thrown up)
+              if (window.matchMedia?.('(pointer: fine)').matches) searchBox.current?.focus()
+              else kind.current?.focus()
+            }}
+          >
+            ✕ Show everything
+          </button>
+        )}
       </div>
       <p className="muted lab-hint" aria-live="polite">
         {shown.length} of {list.length}. {rule}
       </p>
       {shown.length ? (
-        <ul className="lab-cards">
+        <ul className="lab-cards" ref={cards}>
           {shown.map((e) => (
             <Card
               key={e.id}
@@ -195,7 +222,7 @@ function Card({
   const up = e.flags.up ?? 0
   const down = e.flags.down ?? 0
   return (
-    <li className="lab-card" data-current={current || undefined}>
+    <li className="lab-card" data-id={e.id} data-current={current || undefined}>
       <div className="lab-card-head">
         <button className="btn lab-card-go" onClick={() => onLaunch(e.id)}>
           ▶ {e.name}
