@@ -2694,7 +2694,7 @@ first time #55 added a sentence to a queue item, the two chains conflicted in th
 | 4i    | #58 | #56    | Logic gates                                                   |
 | 4j    | #59 | #58    | Slide                                                         |
 | 4k    | #60 | #59    | Games and puzzles become two kinds                            |
-| 4l    | —   | #60    | Paint mixer (branch `claude/lab-mix-1`)                       |
+| 4l    | #61 | #60    | Paint mixer                                                   |
 
 The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
 stacked only so the registry stays append-only without conflicts. A toy can merge before or after
