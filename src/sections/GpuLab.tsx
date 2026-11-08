@@ -512,11 +512,6 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
      owner hid, and add what a signed-in member may be shown. */
   const api = useMemo(() => labApi(), [])
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
-  /* ⚠️ THE FRONTEND CAN REACH PRODUCTION BEFORE ITS SQL DOES. Measured with every lab_* call
-     answering as PostgREST does for a function that does not exist: a member was offered 👍 👎 and
-     a note form, and a vote came back "Couldn't reach the server". So a catalog that is MISSING —
-     not one that failed to arrive — closes feedback the way a build with no backend already does. */
-  const [noFeedback, setNoFeedback] = useState(false)
   const [favourites, setFavourites] = useState<string[]>(storedFavourites)
   const [recent, setRecent] = useState<string[]>(storedRecent)
   const [seen, setSeen] = useState<readonly string[] | null>(storedSeen)
@@ -569,6 +564,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     launched.current = false
     bar.current?.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' })
   }, [browsing, demo])
+  /* ⚠️ THE FRONTEND CAN REACH PRODUCTION BEFORE ITS SQL DOES. Measured with every lab_* call
+     answering as PostgREST does for a function that does not exist: a member was offered 👍 👎 and
+     a note form, and a vote came back "Couldn't reach the server". So a catalog that is MISSING —
+     not one that failed to arrive — closes feedback the way a build with no backend already does. */
+  const [noFeedback, setNoFeedback] = useState(false)
   useEffect(() => {
     if (!api) return
     let live = true
