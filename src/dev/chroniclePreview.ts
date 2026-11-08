@@ -1991,6 +1991,8 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
   }
   /** the goals THIS import created — the only ones a schedule may arrive with */
   const fresh = new Set<string>()
+  /** the sittings THIS import created — the only ones whose count holds what the file's sets say */
+  const freshEntries = new Set<string>()
   /**
    * What an account may hold, as the server counts it.
    *
@@ -2137,6 +2139,7 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       amount: e.amount == null ? null : numOr(e.amount, 0),
       quality: e.quality == null ? null : numOr(e.quality, 0),
     })
+    freshEntries.add(id)
     out.entries++
   }
 
@@ -2162,6 +2165,9 @@ export const pvImport = (doc: unknown): Putback | { why: string } => {
       !(value > 0) ||
       value > 1e9 ||
       (entry != null && !db().ents.some((e) => e.id === entry)) ||
+      /* ⚠️ A COUNTED SET ONLY COMES BACK WITH ITS SITTING: ✕ takes its value out of the count,
+         so a sitting that is still here no longer holds it, and the next ✕ would take it twice */
+      (entry != null && x.counted === true && !freshEntries.has(entry)) ||
       db().sets.some((y) => y.id === id)
     ) {
       out.skipped++
