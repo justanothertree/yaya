@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN P3 (perturbed): the reconciliation asks "has a source" again; the scan for stray sets is kept.
+-- RUN P4 (perturbed): the scan for stray sets is gone; the reconciliation keeps the readers' predicate.
 -- after the job), then every suite that could notice them: the standing visibility guards, the
 -- daily flow, the export/import round trip — and the marks test itself last.
 \echo === applying the sets draft (FIRST)

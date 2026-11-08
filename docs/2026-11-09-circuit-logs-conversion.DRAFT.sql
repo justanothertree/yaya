@@ -165,15 +165,6 @@ begin
 
   -- ⚠️ A SET THE GRID HAS NEVER COUNTED, which the switch would start counting: no sitting, no
   -- source, held by the person's owner. That is exactly what the readers after the marker read.
-  for r in
-    select s.id, s.exercise_id, s.on_day, s.value from public.chronicle_sets s
-     where s.person_id = p_person and s.entry is null and s.source_log is null and s.owner = v_owner
-     order by s.on_day, s.exercise_id, s.id
-  loop
-    v_problems := v_problems || jsonb_build_array(jsonb_build_object(
-      'set', r.id, 'eid', r.exercise_id, 'on', to_char(r.on_day, 'YYYY-MM-DD'), 'val', r.value,
-      'why', 'a set with no sitting, which the grid has never counted — the switch would start counting it'));
-  end loop;
 
   v_report := jsonb_build_object(
     'person', p_person, 'cells', v_cells, 'total', v_total, 'kept_totals', v_kept,
@@ -200,7 +191,8 @@ begin
     select coalesce(a.eid, b.eid) as eid, coalesce(a.on_day, b.on_day) as on_day
       from (select eid, on_day, sum(value) as v from conv_candidates group by eid, on_day) a
       full join (select exercise_id as eid, on_day, sum(value) as v from public.chronicle_sets
-                  where person_id = p_person and source_log is not null group by exercise_id, on_day) b
+                  where person_id = p_person and entry is null and owner = v_owner
+                  group by exercise_id, on_day) b
         on a.eid = b.eid and a.on_day = b.on_day
      where a.v is distinct from b.v) z;
   if v_mismatch > 0 then
