@@ -171,9 +171,7 @@ begin
   if public.chronicle_unit(v_unit) is null or public.chronicle_unit(v_metric) is null then
     raise exception 'those units cannot be compared (% and %)', coalesce(nullif(v_unit, ''), 'none'), v_metric;
   end if;
-  if public.chronicle_unit(v_unit) <> public.chronicle_unit(v_metric) then
-    raise exception 'they count different things (% and %)', v_unit, v_metric;
-  end if;
+
 
   insert into public.chronicle_exercise_links (owner, person_id, exercise_id, activity)
   values (v_me, p_person, p_exercise, p_activity)
@@ -253,10 +251,7 @@ begin
     if p_day is null or abs(p_day - (v_start at time zone 'utc')::date) > 1 then
       raise exception 'that is not the day that session starts on';
     end if;
-    v_counted := exists (select 1 from public.chronicle_exercise_links lk
-                          where lk.person_id = p_person and lk.exercise_id = p_exercise
-                            and lk.owner = v_me and lk.activity = v_activity)
-                 and public.chronicle_link_ok(p_person, p_exercise, v_activity);
+    v_counted := true;
   elsif p_day is null or p_day > (now() at time zone 'utc')::date + 1 then
     raise exception 'that day has not come yet';
   end if;
@@ -371,7 +366,7 @@ begin
   select public.chronicle_unit(a.metric) into v_now
     from public.chronicle_entries e join public.chronicle_activities a on a.id = e.activity
    where e.id = p_entry and e.owner = auth.uid();
-  if v_now is not distinct from p_was_unit then return; end if;
+  return;
   update public.chronicle_entries e
      set amount = nullif(greatest(0, coalesce(e.amount, 0) - coalesce((
                     select sum(s.value) from public.chronicle_sets s
@@ -455,7 +450,7 @@ as $$
     join public.circuit_logs l on l.person_id = lk.person_id and l.date >= p_from and l.date < p_to
     cross join lateral jsonb_array_elements(
            case when jsonb_typeof(l.entries) = 'array' then l.entries else '[]'::jsonb end) en
-   where lk.owner = auth.uid() and lk.activity = p_activity
+   where lk.owner = auth.uid()
      and en->>'eid' = lk.exercise_id
      and (en->>'val') ~ '^[0-9]+(\.[0-9]+)?$'
      and (en->>'val')::numeric > 0
