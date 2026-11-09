@@ -239,6 +239,9 @@ export function StackDemo() {
       const k = KEYS[e.code]
       if (!k) return
       e.preventDefault()
+      // and no further: App's `?` for help does not ask whether a key was handled, and the right
+      // player's Slash with Shift held is a `?`
+      e.stopPropagation()
       if (down && e.repeat) return
       actRef.current(k[0], k[1], down)
     }
