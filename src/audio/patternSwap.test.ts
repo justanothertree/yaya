@@ -70,3 +70,21 @@ describe('swapping a row of the backing', () => {
     expect(loopState().layers.find((x) => x.id === id)!.muted).toBe(false)
   })
 })
+
+describe('shortening the loop under a progression', () => {
+  /**
+   * ⚠️ NOT RE-LAID — Evan's call, 9 Nov 2026. A progression is laid for the loop's length when it
+   * is picked; shortening the loop leaves the layer as it was and the scheduler stops reaching
+   * its last bars, which the backing panel says ("cut short — pick it again to fit"). Growing it
+   * back gives every bar back, which is the reason not to rewrite the notes on the way down.
+   */
+  it('leaves the notes and the length alone, so growing it back gives every bar back', async () => {
+    const { setBars } = await import('./looper')
+    const four = [0, 2, 4, 6].flatMap((t) => hit(t, 60 + t))
+    loadSong(120, 4, [row('1700000000000-chords:four', { plan: undefined, events: four, len: 8 })])
+    setBars(2)
+    expect(loopState().layers[0]).toMatchObject({ events: four, len: 8 })
+    setBars(4)
+    expect(loopState().layers[0]).toMatchObject({ events: four, len: 8 })
+  })
+})

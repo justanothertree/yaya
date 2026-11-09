@@ -2649,6 +2649,21 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               )
             })()}
             <MutedRow layer={loop.layers.find((l) => chordPatternOf(l) !== null)} />
+            {/**
+             * ⚠️ A PROGRESSION IS NOT RE-LAID WHEN THE LOOP SHRINKS — Evan's call, 9 Nov 2026 — so
+             * say when the loop is cutting it. It was laid for the loop's length when it was
+             * picked; shorten the loop and the bars past the end, lead-back included, simply stop
+             * being heard while every button here still reads pressed. Picking it again lays it
+             * at the length the loop is now, which is the re-lay, on purpose. Growing the loop
+             * repeats the progression and needs no word.
+             */}
+            {(() => {
+              const loaded = loop.layers.find((l) => chordPatternOf(l) !== null)
+              /* a hair of slack: len and the loop are both seconds derived from the same tempo */
+              return loaded && loaded.len > loopLength() + 0.001 ? (
+                <span className="muted inst-beats-why">cut short — pick it again to fit</span>
+              ) : null
+            })()}
           </div>
           {/**
            * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the beat rows below have
