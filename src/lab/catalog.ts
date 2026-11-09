@@ -101,6 +101,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   stack: { category: 'games', added: '2026-11-09' },
   rps: { category: 'games', added: '2026-11-09' },
   dice: { category: 'games', added: '2026-11-09' },
+  poker: { category: 'games', added: '2026-11-09' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */

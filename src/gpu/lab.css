@@ -1218,3 +1218,129 @@ html:has(.lab) {
   padding-left: 1.1rem;
   font-size: 0.9rem;
 }
+
+/* Hold'em: a felt table, three seats across the top, the board, and your seat */
+.pk-table {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  padding: 1rem;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at center, #1d6b45, #0e3d27 75%);
+  color: #eaf7ef;
+  border: 1px solid var(--border);
+  min-height: 260px;
+}
+.pk-table .muted {
+  color: #b9dcc7;
+}
+.pk-welcome {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  max-width: 32rem;
+}
+.pk-seats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+}
+.pk-seat {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: center;
+  padding: 0.4rem;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  min-width: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pk-seat.is-up {
+  border-color: #ffd34d;
+}
+.pk-seat.is-out {
+  opacity: 0.45;
+}
+.pk-name {
+  font-weight: 700;
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+.pk-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 50%;
+  background: #fff;
+  color: #222;
+  font-size: 0.75em;
+  font-weight: 800;
+}
+.pk-hole,
+.pk-board {
+  display: flex;
+  gap: 0.3rem;
+  justify-content: center;
+}
+.pk-chips {
+  font-size: 0.9rem;
+}
+.pk-bet {
+  color: #ffd34d;
+}
+.pk-style {
+  font-size: 0.75rem;
+}
+.pk-pot {
+  margin: 0;
+}
+.pk-card {
+  width: 46px;
+  height: 64px;
+  border-radius: 6px;
+  background: #fdfdf8;
+  color: #1b1b2a;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  font-weight: 800;
+  line-height: 1.05;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  font-size: 1.05rem;
+}
+.pk-card.is-red {
+  color: #c62828;
+}
+.pk-card.is-back {
+  background: repeating-linear-gradient(45deg, #3b4fa8 0 6px, #2e3f8a 6px 12px);
+  border: 2px solid #fdfdf8;
+}
+.pk-card.is-small {
+  width: 32px;
+  height: 45px;
+  font-size: 0.8rem;
+}
+.pk-me {
+  width: min(100%, 22rem);
+}
+.pk-me .pk-card {
+  width: 54px;
+  height: 76px;
+  font-size: 1.25rem;
+}
+.pk-raise {
+  flex: 1 1 10rem;
+  min-width: 140px;
+}
+.pk-raise input {
+  width: 100%;
+  min-height: 32px;
+  /* a range input carries 2px of margin each side by default, so 100% wide was 4px too wide */
+  margin: 0;
+}

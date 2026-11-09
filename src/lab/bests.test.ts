@@ -9,6 +9,7 @@ import { PEGDROP_KEY } from '../gpu/pegdrop'
 import { STACK_KEY } from '../gpu/stack'
 import { RPS_KEY } from '../gpu/rps'
 import { DICE_KEY } from '../gpu/dice'
+import { POKER_KEY } from '../gpu/poker'
 import registry from '../sections/GpuLab.tsx?raw'
 
 const store = (o: Record<string, string>) => (k: string) => o[k] ?? null
@@ -76,6 +77,13 @@ describe('sharing a best in a comment', () => {
       bestLine('dice', 'Ten thousand', at({ won: 2, lost: 3, bestTurn: 3450, fewestTurns: 14 })),
     ).toBe(
       '🏆 My best at Ten thousand: won 2 of 5 against the computer, fastest in 14 turns, best turn 3,450',
+    )
+  })
+  it('hold’em names tables won and the biggest pot', () => {
+    const at = (o: object) => store({ [POKER_KEY]: JSON.stringify(o) })
+    expect(bestLine('poker', 'Hold’em', at({ tables: 3 }))).toBeNull()
+    expect(bestLine('poker', 'Hold’em', at({ tables: 5, won: 2, biggestPot: 4200 }))).toBe(
+      '🏆 My best at Hold’em: won 2 of 5 tables, biggest pot 4,200',
     )
   })
   it('a hand-edited or broken store is no best, never a crash', () => {

@@ -78,6 +78,7 @@ import { PegDropDemo } from '../gpu/PegDropDemo'
 import { StackDemo } from '../gpu/StackDemo'
 import { RpsDemo } from '../gpu/RpsDemo'
 import { DiceDemo } from '../gpu/DiceDemo'
+import { PokerDemo } from '../gpu/PokerDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -556,6 +557,12 @@ const DEMOS: readonly {
     name: 'Ten thousand',
     line: 'Ten thousand — the push-your-luck dice game: keep what scores, then bank it or roll the rest and risk the lot. First to 10,000, against the computer or a friend, with the odds of every roll shown.',
     Demo: DiceDemo,
+  },
+  {
+    id: 'poker',
+    name: 'Hold’em',
+    line: 'Hold’em — Texas hold’em for play chips against three computer players who each play their own way. They work out their odds by dealing the unseen cards hundreds of times. Last one with chips wins.',
+    Demo: PokerDemo,
   },
 ]
 

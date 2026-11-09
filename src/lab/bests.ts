@@ -24,6 +24,7 @@ import { readSaved as readMix, TARGETS, MIX_KEY } from '../gpu/mix'
 import { readSaved as readNonogram, LEVELS as NONO_LEVELS, NONOGRAM_KEY } from '../gpu/nonogram'
 import { readBests as readOrbit, LEVELS as ORBIT_LEVELS, ORBIT_KEY } from '../gpu/orbit'
 import { readSaved as readPegdrop, PEGDROP_KEY, START as PEGDROP_START, pts } from '../gpu/pegdrop'
+import { readSaved as readPoker, POKER_KEY } from '../gpu/poker'
 import { readSaved as readRps, RPS_KEY } from '../gpu/rps'
 import { readSaved as readSkip, CHALLENGES, SKIP_KEY } from '../gpu/skip'
 import { readSaved as readStack, STACK_KEY, BOTS } from '../gpu/stack'
@@ -107,6 +108,14 @@ const READERS: Record<string, (read: Read) => string | null> = {
     const s = readDice(read(DICE_KEY))
     if (!s.won) return null
     return `won ${s.won} of ${s.won + s.lost} against the computer, fastest in ${s.fewestTurns} turns, best turn ${s.bestTurn.toLocaleString('en')}`
+  },
+  poker: (read) => {
+    const s = readPoker(read(POKER_KEY))
+    const parts = [
+      s.won ? `won ${s.won} of ${s.tables} tables` : null,
+      s.biggestPot ? `biggest pot ${s.biggestPot.toLocaleString('en')}` : null,
+    ].filter(Boolean)
+    return parts.length ? parts.join(', ') : null
   },
   rps: (read) => {
     const s = readRps(read(RPS_KEY))
