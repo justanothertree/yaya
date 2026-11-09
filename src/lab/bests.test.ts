@@ -5,6 +5,7 @@ import { SKIP_KEY } from '../gpu/skip'
 import { SUN_KEY } from '../gpu/sun'
 import { JIGSAW_BESTS_KEY } from '../gpu/jigsaw'
 import { BEST_KEY as TRIALS_KEY } from '../gpu/trials'
+import { PEGDROP_KEY } from '../gpu/pegdrop'
 import registry from '../sections/GpuLab.tsx?raw'
 
 const store = (o: Record<string, string>) => (k: string) => o[k] ?? null
@@ -39,6 +40,13 @@ describe('sharing a best in a comment', () => {
     expect(bestLine('trials', 'Bike trials', read)).toBe(
       '🏆 My best at Bike trials: best time 62.05 s',
     )
+  })
+  it('peg drop shares a best only above the bank everybody starts with', () => {
+    const at = (o: object) => store({ [PEGDROP_KEY]: JSON.stringify(o) })
+    expect(bestLine('pegdrop', 'Peg drop', at({ points: 40, best: 100, drops: 9 }))).toBeNull()
+    expect(
+      bestLine('pegdrop', 'Peg drop', at({ points: 40, best: 412.5, drops: 9, bigHit: 33 })),
+    ).toBe('🏆 My best at Peg drop: most points ever 412.5, biggest landing 33× (9 drops)')
   })
   it('a hand-edited or broken store is no best, never a crash', () => {
     const junk = store({ [SKIP_KEY]: '{', [GLIDE_KEY]: '"x"', [TRIALS_KEY]: 'fast' })

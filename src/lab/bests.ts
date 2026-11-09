@@ -22,6 +22,7 @@ import { readBests as readJigsaw, JIGSAW_BESTS_KEY, PICTURES } from '../gpu/jigs
 import { readSaved as readMix, TARGETS, MIX_KEY } from '../gpu/mix'
 import { readSaved as readNonogram, LEVELS as NONO_LEVELS, NONOGRAM_KEY } from '../gpu/nonogram'
 import { readBests as readOrbit, LEVELS as ORBIT_LEVELS, ORBIT_KEY } from '../gpu/orbit'
+import { readSaved as readPegdrop, PEGDROP_KEY, START as PEGDROP_START, pts } from '../gpu/pegdrop'
 import { readSaved as readSkip, CHALLENGES, SKIP_KEY } from '../gpu/skip'
 import { readSaved as readSlide, LEVELS as SLIDE_LEVELS, SLIDE_KEY } from '../gpu/slide'
 import { readSaved as readSun, SUN_KEY } from '../gpu/sun'
@@ -92,6 +93,13 @@ const READERS: Record<string, (read: Read) => string | null> = {
     return s.passed ? `${s.passed} of ${STAGES.length} stages passed` : null
   },
   waterworks: (read) => solved(readWaterworks(read(SOLVED_KEY)).length, WATER_LEVELS.length),
+  pegdrop: (read) => {
+    const s = readPegdrop(read(PEGDROP_KEY))
+    // the bank everybody starts with is no achievement; a best above it is
+    if (s.best <= PEGDROP_START) return null
+    const hit = s.bigHit ? `, biggest landing ${s.bigHit}×` : ''
+    return `most points ever ${pts(s.best)}${hit} (${s.drops} drops)`
+  },
   jigsaw: (read) => {
     const b = readJigsaw(read(JIGSAW_BESTS_KEY))
     const runs = Object.entries(b).sort((x, y) => x[1] - y[1])

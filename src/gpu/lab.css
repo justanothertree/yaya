@@ -962,3 +962,9 @@ html:has(.lab) {
   color: #c0392b;
   font-weight: 600;
 }
+
+/* Peg drop: the board is a little wider than tall, so a portrait phone's tall stage would hang it
+   in empty space; the stage follows the width instead, with the shared floor. */
+.pegdrop-room .lab-stage {
+  height: min(62vh, 560px, 92vw);
+}

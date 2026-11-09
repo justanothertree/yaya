@@ -74,6 +74,7 @@ import { SunDemo } from '../gpu/SunDemo'
 import { SkipDemo } from '../gpu/SkipDemo'
 import { VisionDemo } from '../gpu/VisionDemo'
 import { GlideDemo } from '../gpu/GlideDemo'
+import { PegDropDemo } from '../gpu/PegDropDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -528,6 +529,12 @@ const DEMOS: readonly {
     name: 'Soaring',
     line: 'Soaring — race a glider across country on thermals: set your airspeed, circle under clouds to climb, and get home faster than par. The real gliding rule, in five tasks.',
     Demo: GlideDemo,
+  },
+  {
+    id: 'pegdrop',
+    name: 'Peg drop',
+    line: 'Peg drop — drop balls through twelve rows of pegs into slots that pay up to 170 times the drop. Pick your risk; every peg is a fair coin, and the odds are printed.',
+    Demo: PegDropDemo,
   },
 ]
 

@@ -97,6 +97,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   skip: { category: 'games', added: '2026-11-08' },
   vision: { category: 'make', added: '2026-11-08' },
   glide: { category: 'games', added: '2026-11-08' },
+  pegdrop: { category: 'games', added: '2026-11-09' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */
