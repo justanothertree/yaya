@@ -25,12 +25,12 @@ struct Rink {
 @group(0) @binding(7) var<storage, read_write> puck: array<vec4f>;
 
 const PUCK_R = 4.0;
-const DRAG = 3.2;
+const DRAG = 6.5;
 const BOUNCE = 0.82;
 const GOAL = 14.0;
 const FAN_R = 6.0;
 const JET = 20.0;
-const FAN_PUSH = 700.0;
+const FAN_PUSH = 850.0;
 const SLOPE = 8.0;
 const TIP = 40.0;
 const BUMPERS = array(vec3f(56, 28, 5), vec3f(56, 62, 5), vec3f(104, 28, 5), vec3f(104, 62, 5));

@@ -315,8 +315,8 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
       {live && (
         <p className="lab-hint muted">
           {mode === 'computer'
-            ? 'Hold a finger or the mouse on the ice: your blue fan follows it and blows at the puck — get behind the puck to send it at the orange goal. Keys: WASD to move, F to blow.'
-            : 'Each player holds their own half of the ice: the fan follows your finger and blows while you hold. Keys: Blue WASD + F, Orange arrows + / or Enter.'}{' '}
+            ? 'Hold a finger or the mouse on the ice: your blue fan follows it and blows at the puck — get behind the puck to send it at the orange goal. You can reach a little past halfway; the posts are solid. Keys: WASD to move, F to blow.'
+            : 'Each player starts a finger on their own side of the ice: the fan follows it and blows while you hold. Either fan can reach a little past halfway, so the middle is contested. Keys: Blue WASD + F, Orange arrows + / or Enter.'}{' '}
           Breath runs out, so blow in bursts. P pauses, N starts again.
         </p>
       )}

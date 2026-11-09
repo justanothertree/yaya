@@ -9,11 +9,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseClientOrNull } from '../finance/client'
 
 export type NoteKind = 'idea' | 'more' | 'bug'
-export const NOTE_KINDS: { id: NoteKind; label: string }[] = [
-  { id: 'idea', label: '💡 Idea' },
-  { id: 'more', label: '➕ More of this' },
-  { id: 'bug', label: '🐞 Something’s wrong' },
-]
+/** the kind every comment is filed under. The table still holds one of three kinds and the
+ *  function still requires one; the page stopped asking (Evan, 9 Nov), so it sends this. Older
+ *  comments keep whatever kind they were given, and nothing on screen shows it. */
+export const COMMENT_KIND: NoteKind = 'idea'
 export const REPORT_REASONS = [
   { id: 'spam', label: 'Spam' },
   { id: 'unkind', label: 'Unkind' },
@@ -81,15 +80,18 @@ export function explain(e: unknown): string {
     [/cannot post/, 'This account can’t post right now.'],
     [
       /five notes in ten minutes/,
-      'That’s five notes in ten minutes — try again in a little while.',
+      'That’s five comments in ten minutes — try again in a little while.',
     ],
-    [/twenty notes a day/, 'That’s twenty notes today — the rest will have to wait for tomorrow.'],
-    [/already left that note/, 'You’ve already left that note today.'],
+    [
+      /twenty notes a day/,
+      'That’s twenty comments today — the rest will have to wait for tomorrow.',
+    ],
+    [/already left that note/, 'You’ve already left that comment today.'],
     [/ten reports an hour/, 'That’s ten reports this hour — try again later.'],
     [/retired/, 'This experiment has been retired.'],
     [/no such (experiment|note)/, 'That isn’t there any more.'],
     [/not allowed/, 'Only the site’s owner can do that.'],
-    [/is yours/, 'That note is yours — edit or delete it instead.'],
+    [/is yours/, 'That comment is yours — edit or delete it instead.'],
     // a value the page itself chose that the server does not know: a stale page, not the person
     [
       /^(a vote is|a note is an|a report says|remove, restore|between none)/,
@@ -97,7 +99,7 @@ export function explain(e: unknown): string {
     ],
     [
       /lab_comments_(length|trimmed|plain|lines)/,
-      'A note is 2–500 characters of plain text, up to nine lines.',
+      'A comment is 2–500 characters of plain text, up to nine lines.',
     ],
   ]
   for (const [re, said] of known) if (re.test(msg)) return said
@@ -207,7 +209,7 @@ export function checkNote(body: string): string | null {
  *  (the draft keeps that from members on purpose: it would be a picture of activity the ladder
  *  hides). A full first page means there may be more, and says so rather than guessing. */
 export function notesSummary(count: number | null, more: boolean): string {
-  if (count === null) return 'ideas, requests and bugs'
+  if (count === null) return 'loading'
   if (!count) return 'none yet'
   return `${count}${more ? '+' : ''} to read`
 }

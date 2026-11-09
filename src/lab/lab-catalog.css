@@ -1,10 +1,6 @@
 /* The Lab's catalog and feedback. Sizes in px where they are a target or a floor, because the
    root font-size is fluid here (CLAUDE.md §6) and a rem is not a length. */
 
-.lab-browse-bar .btn {
-  min-height: 40px;
-}
-
 .lab-badge {
   display: inline-block;
   margin-right: 0.4rem;
@@ -17,23 +13,7 @@
 .lab-badge-off {
   border-style: dashed;
 }
-/* added since this browser first came: the one badge meant to be noticed */
-.lab-badge-new {
-  border-color: var(--accent, currentColor);
-  font-weight: 600;
-}
-.lab-fresh {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-.lab-fresh span {
-  flex: 1 1 220px;
-  min-width: 0;
-}
-
+/* a labelled text box, used by Nonogram for naming a puzzle */
 .lab-search {
   flex: 1 1 14rem;
   min-width: 160px;
@@ -43,58 +23,6 @@
   /* an input's min-width is its `size` until told otherwise — see CLAUDE.md §6 */
   min-width: 0;
   min-height: 40px;
-}
-
-.lab-cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
-  gap: 0.6rem;
-}
-.lab-card {
-  display: grid;
-  gap: 0.35rem;
-  align-content: start;
-  padding: 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  min-width: 0;
-}
-.lab-card[data-current] {
-  border-color: var(--accent);
-}
-.lab-card-head {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-}
-.lab-card-go {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 40px;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lab-card-fav {
-  flex: none;
-  min-width: 40px;
-  min-height: 40px;
-  font-size: 1.1rem;
-}
-.lab-card-line,
-.lab-card-meta {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.lab-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.6rem;
-  font-size: 0.85rem;
 }
 
 .lab-feedback {

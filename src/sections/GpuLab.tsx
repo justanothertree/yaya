@@ -1,24 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import {
-  EVERYTHING,
-  FAVOURITES_KEY,
-  RECENT_KEY,
-  SEEN_KEY,
-  readSeen,
-  seeNow,
-  unseen,
-  openedNow,
-  readRecent,
+  CATEGORIES,
+  FILTER_KEY,
+  META,
   entries,
   listed,
-  readFavourites,
+  readFilter,
   readFlags,
-  toggleFavourite,
-  type Browse,
+  type Category,
   type Flags,
 } from '../lab/catalog'
 import { labApi, noLabYet } from '../lab/feedback'
-import { LabCatalog } from '../lab/LabCatalog'
 import { LabFeedback, type Viewer } from '../lab/LabFeedback'
 import '../lab/lab-catalog.css'
 import { AquariumDemo } from '../gpu/AquariumDemo'
@@ -82,6 +74,11 @@ import { SunDemo } from '../gpu/SunDemo'
 import { SkipDemo } from '../gpu/SkipDemo'
 import { VisionDemo } from '../gpu/VisionDemo'
 import { GlideDemo } from '../gpu/GlideDemo'
+import { PegDropDemo } from '../gpu/PegDropDemo'
+import { StackDemo } from '../gpu/StackDemo'
+import { RpsDemo } from '../gpu/RpsDemo'
+import { DiceDemo } from '../gpu/DiceDemo'
+import { PokerDemo } from '../gpu/PokerDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -537,6 +534,36 @@ const DEMOS: readonly {
     line: 'Soaring — race a glider across country on thermals: set your airspeed, circle under clouds to climb, and get home faster than par. The real gliding rule, in five tasks.',
     Demo: GlideDemo,
   },
+  {
+    id: 'pegdrop',
+    name: 'Peg drop',
+    line: 'Peg drop — drop balls through twelve rows of pegs into slots that pay up to 170 times the drop. Pick your risk; every peg is a fair coin, and the odds are printed.',
+    Demo: PegDropDemo,
+  },
+  {
+    id: 'stack',
+    name: 'Stackfall',
+    line: 'Stackfall — falling blocks that get faster the longer you last. Survive alone, or race the computer or a friend on the same keyboard: clear rows to send junk up their well.',
+    Demo: StackDemo,
+  },
+  {
+    id: 'rps',
+    name: 'Rock, paper, scissors',
+    line: 'Rock, paper, scissors — against a mind-reader that hunts for your habits and tells you what it spotted, or a friend on the same keyboard. And a coin to call: how long a run can you get?',
+    Demo: RpsDemo,
+  },
+  {
+    id: 'dice',
+    name: 'Ten thousand',
+    line: 'Ten thousand — the push-your-luck dice game: keep what scores, then bank it or roll the rest and risk the lot. First to 10,000, against the computer or a friend, with the odds of every roll shown.',
+    Demo: DiceDemo,
+  },
+  {
+    id: 'poker',
+    name: 'Hold’em',
+    line: 'Hold’em — Texas hold’em for play chips against three computer players who each play their own way. They work out their odds by dealing the unseen cards hundreds of times. Last one with chips wins.',
+    Demo: PokerDemo,
+  },
 ]
 
 type DemoId = string
@@ -593,27 +620,11 @@ function reportOf(adapter: GPUAdapter, format: string): Report {
 const GUEST: Viewer = { authed: false, suspended: false, isAdmin: false }
 const KNOWN = new Set(DEMOS.map((d) => d.id))
 
-function storedRecent() {
+function storedFilter(): Category | 'all' {
   try {
-    return readRecent(localStorage.getItem(RECENT_KEY), KNOWN)
+    return readFilter(localStorage.getItem(FILTER_KEY))
   } catch {
-    return []
-  }
-}
-
-function storedSeen() {
-  try {
-    return readSeen(localStorage.getItem(SEEN_KEY), KNOWN)
-  } catch {
-    return null
-  }
-}
-
-function storedFavourites() {
-  try {
-    return readFavourites(localStorage.getItem(FAVOURITES_KEY), KNOWN)
-  } catch {
-    return []
+    return 'all'
   }
 }
 
@@ -634,58 +645,20 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
   /** the ids the database's catalog lists — null until it has answered, and if it never does */
   const [inCatalog, setInCatalog] = useState<Set<string> | null>(null)
-  const [favourites, setFavourites] = useState<string[]>(storedFavourites)
-  const [recent, setRecent] = useState<string[]>(storedRecent)
-  const [seen, setSeen] = useState<readonly string[] | null>(storedSeen)
-  const see = (ids: readonly string[]) =>
-    setSeen((was) => {
-      const next = seeNow(was ?? [], ids)
-      if (next === was) return was
-      try {
-        localStorage.setItem(SEEN_KEY, JSON.stringify(next))
-      } catch {
-        /* private mode: nothing is new to you on the next visit either */
-      }
-      return next
-    })
-  // a first visit meets everything there is, so only what is added later says "new"
-  useEffect(() => {
-    if (seen === null) see(DEMOS.map((d) => d.id))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  const [browsing, setBrowsing] = useState(false)
-  /* the catalog's search, list and kind, and the card a toy was last launched from: kept here
-     because the catalog itself is unmounted while a toy plays */
-  const [browse, setBrowse] = useState<Browse>(EVERYTHING)
-  const [fromCard, setFromCard] = useState<string | null>(null)
-  const bar = useRef<HTMLDivElement | null>(null)
-  /* "/" opens the catalog with the cursor in its search box, as on most sites with a search — but
-     not shift+/, which is the site's own "?" for help; not while typing; and not while a toy has
-     the keyboard, since Pinball's right flipper is "/" */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== '/' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return
-      const t = e.target as HTMLElement | null
-      if (t?.closest('input, textarea, select, [contenteditable="true"], .lab-keys')) return
-      e.preventDefault()
-      setBrowsing(true)
-      window.setTimeout(
-        () => document.querySelector<HTMLInputElement>('.lab-search input')?.focus(),
-        0,
-      )
+  /* ⚠️ EVERY TOY SHOWN, AND THE FILTER ONLY FADES (Evan, 9 Nov). A dropdown and a separate catalog
+     with search, Recent, New and Highly rated replaced the row of names on 8 Nov; played with,
+     the row was missed — seeing everything at once is the point of a lab. So all of them are
+     buttons again, and choosing a kind fades the rest rather than hiding them: still one press
+     away, just quieter. All is the default, and the choice is kept in this browser. */
+  const [filter, setFilter] = useState<Category | 'all'>(storedFilter)
+  const chooseFilter = (f: Category | 'all') => {
+    setFilter(f)
+    try {
+      localStorage.setItem(FILTER_KEY, f)
+    } catch {
+      /* private mode: kept for this visit */
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-  /** a card can be a long way down the grid: launching one brings its toy back into view —
-   *  ⚠️ AFTER the render that swaps the catalog for the toy. Scrolling in the click itself raced
-   *  the page shrinking under it and stopped 216px past the toy on a desktop, measured. */
-  const launched = useRef(false)
-  useEffect(() => {
-    if (browsing || !launched.current) return
-    launched.current = false
-    bar.current?.scrollIntoView({ block: 'start', behavior: motionReduced() ? 'auto' : 'smooth' })
-  }, [browsing, demo])
+  }
   /* ⚠️ THE FRONTEND CAN REACH PRODUCTION BEFORE ITS SQL DOES. Measured with every lab_* call
      answering as PostgREST does for a function that does not exist: a member was offered 👍 👎 and
      a note form, and a vote came back "Couldn't reach the server". So a catalog that is MISSING —
@@ -737,23 +710,12 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
 
   const pick = (id: DemoId) => {
     setDemo(id)
-    setBrowsing(false)
     try {
       localStorage.setItem(KEY, id)
     } catch {
       /* private mode: it applies for this visit */
     }
   }
-  const favourite = (id: string) =>
-    setFavourites((was) => {
-      const next = toggleFavourite(was, id)
-      try {
-        localStorage.setItem(FAVOURITES_KEY, JSON.stringify(next))
-      } catch {
-        /* private mode: kept for this visit */
-      }
-      return next
-    })
   const patchFlags = (id: string, patch: Partial<Flags>) =>
     setFlags((was) => {
       const next = new Map(was)
@@ -772,133 +734,76 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     shownDemos.findIndex((d) => d.id === demo),
   )
   const current = shownDemos[at] ?? DEMOS[0]
-  /** the next or previous demo, round the end — browsing toys should not hit a wall */
-  const step = (by: number) =>
-    pick(shownDemos[(at + by + shownDemos.length) % shownDemos.length].id)
-  /* the experiment on screen is the one just opened — the first visit's included */
-  useEffect(() => {
-    see([current.id])
-    setRecent((was) => {
-      if (was[0] === current.id) return was
-      const next = openedNow(was, current.id)
-      try {
-        localStorage.setItem(RECENT_KEY, JSON.stringify(next))
-      } catch {
-        /* private mode: kept for this visit */
-      }
-      return next
-    })
-  }, [current.id])
   const currentFlags = flags.get(current.id)
-  const fresh = unseen(visible, seen)
 
+  const counts = useMemo(() => {
+    const n = new Map<Category, number>()
+    for (const d of shownDemos) {
+      const c = META[d.id]?.category
+      if (c) n.set(c, (n.get(c) ?? 0) + 1)
+    }
+    return n
+  }, [shownDemos])
   return (
     <div className="lab">
-      {/* ⚠️ ONE PICKER NOW, AT EVERY WIDTH. It used to be a row of buttons on a wide screen and this
-          dropdown on a phone, because "a row of buttons is right while it fits on one line" — and at
-          51 experiments it was five rows above the toy, with search below them. The dropdown with
-          a step either side is what phones always had; the catalog (🔎) is how to look through
-          everything, and it sits on the same line, directly above the toy, as the way back. */}
-      <div className="lab-bar" ref={bar}>
-        <div className="lab-step">
+      <div className="lab-filter" role="group" aria-label="Show which kind">
+        <button
+          className="btn btn-ghost"
+          aria-pressed={filter === 'all'}
+          onClick={() => chooseFilter('all')}
+        >
+          All {shownDemos.length}
+        </button>
+        {CATEGORIES.map((c) => (
           <button
+            key={c.id}
             className="btn btn-ghost"
-            onClick={() => step(-1)}
-            aria-label={`Previous experiment: ${shownDemos[(at - 1 + shownDemos.length) % shownDemos.length].name}`}
+            aria-pressed={filter === c.id}
+            onClick={() => chooseFilter(filter === c.id ? 'all' : c.id)}
           >
-            ‹
+            {c.label.split(' — ')[0]} {counts.get(c.id) ?? 0}
           </button>
-          <label className="lab-select">
-            <span className="sr-only">Which experiment</span>
-            <select value={current.id} onChange={(e) => pick(e.target.value)}>
-              {shownDemos.map((d, i) => (
-                <option key={d.id} value={d.id}>
-                  {i + 1}. {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="btn btn-ghost"
-            onClick={() => step(1)}
-            aria-label={`Next experiment: ${shownDemos[(at + 1) % shownDemos.length].name}`}
-          >
-            ›
-          </button>
-        </div>
-        <div className="lab-controls lab-browse-bar">
-          <button
-            className="btn"
-            aria-pressed={browsing}
-            aria-keyshortcuts="/"
-            onClick={() => setBrowsing((b) => !b)}
-          >
-            {browsing
-              ? `▶ Back to ${current.name}`
-              : `🔎 Browse all ${shownDemos.length}${fresh.length ? ` · ${fresh.length} new` : ''}`}
-          </button>
-          {!browsing && (
+        ))}
+      </div>
+      <div className="lab-picker" role="group" aria-label="Which experiment">
+        {shownDemos.map((d) => {
+          const other = filter !== 'all' && META[d.id]?.category !== filter
+          return (
             <button
-              className="btn btn-ghost"
-              aria-pressed={favourites.includes(current.id)}
-              onClick={() => favourite(current.id)}
+              key={d.id}
+              className={`btn btn-ghost${other ? ' lab-other' : ''}`}
+              aria-pressed={current.id === d.id}
+              onClick={() => pick(d.id)}
             >
-              {favourites.includes(current.id) ? '★ A favourite' : '☆ Favourite'}
+              {d.name}
             </button>
-          )}
-        </div>
+          )
+        })}
       </div>
 
-      {browsing ? (
-        /* ⚠️ THE CURRENT EXPERIMENT IS UNMOUNTED WHILE BROWSING, so its GPU device, audio and
-           listeners are released by its own cleanup — and nothing else is mounted to draw a card.
-           Choosing one mounts it fresh, the same as the picker always has. */
-        <LabCatalog
-          list={visible}
-          current={current.id}
-          favourites={favourites}
-          recent={recent}
-          rated={visible.some((e) => e.flags.up !== undefined)}
-          admin={viewer.isAdmin}
-          browse={browse}
-          onBrowse={setBrowse}
-          returning={fromCard === current.id}
-          fresh={fresh}
-          onSeeAll={() => see(fresh)}
-          onFavourite={favourite}
-          onLaunch={(id) => {
-            launched.current = true
-            setFromCard(id)
-            pick(id)
-          }}
-        />
-      ) : (
-        <>
-          <p className="lab-line">
-            {currentFlags?.featured && <span className="lab-badge">⭐ Featured</span>}
-            {currentFlags?.experiment && <span className="lab-badge">🧪 Rough edges</span>}
-            {viewer.isAdmin && currentFlags?.hidden && (
-              <span className="lab-badge lab-badge-off">🙈 Hidden</span>
-            )}
-            {current.line}
-          </p>
+      <p className="lab-line">
+        {currentFlags?.featured && <span className="lab-badge">⭐ Featured</span>}
+        {currentFlags?.experiment && <span className="lab-badge">🧪 Rough edges</span>}
+        {viewer.isAdmin && currentFlags?.hidden && (
+          <span className="lab-badge lab-badge-off">🙈 Hidden</span>
+        )}
+        {current.line}
+      </p>
 
-          {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
-          <current.Demo key={current.id} {...props} />
+      {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
+      <current.Demo key={current.id} {...props} />
 
-          <LabFeedback
-            api={noFeedback ? null : api}
-            demo={current.id}
-            name={current.name}
-            flags={currentFlags}
-            viewer={viewer}
-            onFlags={patchFlags}
-            listed={inCatalog ? inCatalog.has(current.id) : undefined}
-          />
+      <LabFeedback
+        api={noFeedback ? null : api}
+        demo={current.id}
+        name={current.name}
+        flags={currentFlags}
+        viewer={viewer}
+        onFlags={patchFlags}
+        listed={inCatalog ? inCatalog.has(current.id) : undefined}
+      />
 
-          {report && <GpuReport report={report} />}
-        </>
-      )}
+      {report && <GpuReport report={report} />}
     </div>
   )
 }

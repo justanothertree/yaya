@@ -99,8 +99,9 @@ describe('reading notes defensively', () => {
 
 describe('what a person is told', () => {
   it('turns the database’s fixed refusals into sentences', () => {
+    // the server still says "notes"; the page calls them comments now
     expect(explain({ message: 'slow down: five notes in ten minutes is the most' })).toMatch(
-      /five notes/,
+      /five comments/,
     )
     expect(explain({ message: 'sign in first' })).toBe('Sign in to do that.')
     expect(explain({ message: 'not allowed' })).toMatch(/owner/)
@@ -168,7 +169,7 @@ describe('the note box agrees with the table', () => {
 
 describe('what the closed notes fold says', () => {
   it('nothing until the first page comes; then none, a count, or a full page with more behind it', () => {
-    expect(notesSummary(null, false)).toBe('ideas, requests and bugs')
+    expect(notesSummary(null, false)).toBe('loading')
     expect(notesSummary(0, false)).toBe('none yet')
     expect(notesSummary(3, false)).toBe('3 to read')
     expect(notesSummary(20, true)).toBe('20+ to read')

@@ -189,51 +189,29 @@ html:has(.lab) {
   outline-offset: 3px;
 }
 
-/* the phone's picker: a dropdown between two steppers — see the note in GpuLab */
-.lab-bar {
-  /* a little air above the bar when a launch scrolls it to the top. The site's fixed header itself
-     is cleared by the page's scroll-padding-top (above); this was 72px — the header's 54 and this
-     18 — until that existed, and keeping both would count the header twice */
-  scroll-margin-top: 18px;
+/* the picker: every experiment a button, and a row of kinds above that fades the others. Faded is
+   still pressable — the filter brings a kind forward, it never hides anything. */
+.lab-filter,
+.lab-picker {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
+  gap: 0.35rem;
 }
-.lab-step {
-  display: flex;
-  flex: 1 1 320px;
-  max-width: 520px;
-  gap: 0.4rem;
-  align-items: stretch;
-}
-.lab-step .btn {
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 1.2rem;
-  padding: 0 0.6rem;
-}
-.lab-select {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-}
-.lab-select select {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  font: inherit;
+.lab-filter .btn {
+  min-height: 36px;
   font-weight: 600;
-  padding: 0 0.75rem;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--control-bg);
-  color: var(--text);
 }
-@media (max-width: 640px) {
-  .lab-step {
-    max-width: none;
-  }
+.lab-picker .btn {
+  min-height: 36px;
+  padding: 0.3rem 0.7rem;
+  transition: opacity 0.15s;
+}
+.lab-picker .btn.lab-other {
+  opacity: 0.35;
+}
+.lab-picker .btn.lab-other:hover,
+.lab-picker .btn.lab-other:focus-visible {
+  opacity: 0.8;
 }
 
 /* ── bike trials ─────────────────────────────────────────────────── */
@@ -983,4 +961,386 @@ html:has(.lab) {
 .glide-down {
   color: #c0392b;
   font-weight: 600;
+}
+
+/* Peg drop: the board is a little wider than tall, so a portrait phone's tall stage would hang it
+   in empty space; the stage follows the width instead, with the shared floor. */
+.pegdrop-room .lab-stage {
+  height: min(62vh, 560px, 92vw);
+}
+
+/* Stackfall: the touch pad sits right under the wells, big enough for a thumb, and only while a
+   game is on. A keyboard player never needs it; it is there for phones and tablets. */
+.stack-pads {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.35rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.stack-pads .stack-pad {
+  min-height: 52px;
+  padding: 0.3rem;
+  font-size: 1.15rem;
+}
+/* two wells side by side are about three-quarters as tall as they are wide, so a portrait phone's
+   tall stage would hang them in empty space and push the touch pad under the bottom bar */
+.stack-room .lab-stage.stack-pair {
+  height: min(62vh, 560px, 76vw);
+}
+
+/* Rock, paper, scissors and the coin: a table of two hands and a verdict between them */
+.rps-table {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 1.2fr) 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--accent), transparent 94%);
+  text-align: center;
+  min-height: 180px;
+}
+.rps-coin-table {
+  grid-template-columns: auto 1fr;
+}
+.rps-side,
+.rps-mid {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+  min-width: 0;
+}
+.rps-who {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.rps-big {
+  font-size: clamp(2.5rem, 12vw, 4.5rem);
+  line-height: 1.1;
+}
+.rps-score {
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.rps-good {
+  color: #1f9d55;
+}
+.rps-bad {
+  color: #d64545;
+}
+.rps-hands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.rps-hand {
+  flex: 1 1 7rem;
+  min-height: 56px;
+  font-size: 1.15rem;
+}
+.rps-mini {
+  display: flex;
+  gap: 0.3rem;
+}
+.rps-mini .btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.2rem;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+.rps-key {
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+.rps-strip {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  font-size: 1.25rem;
+}
+.rps-strip .rps-good,
+.rps-strip .rps-bad {
+  border-bottom: 3px solid currentColor;
+}
+.rps-coin {
+  width: clamp(80px, 22vw, 120px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: clamp(2rem, 8vw, 3.2rem);
+  font-weight: 800;
+  background: radial-gradient(circle at 35% 30%, #ffe28a, #d4a017 70%, #9c7310);
+  color: #5a3f00;
+  box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.12);
+}
+.rps-coin.is-spinning {
+  animation: rps-spin 0.3s linear infinite;
+}
+@keyframes rps-spin {
+  from {
+    transform: rotateY(0);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rps-coin.is-spinning {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+/* two players' hidden buttons need two columns of room each, which a phone's three columns do not
+   have: there the verdict takes its own row above the two players */
+@media (max-width: 560px) {
+  .rps-table.rps-two {
+    grid-template-columns: 1fr 1fr;
+  }
+  .rps-two .rps-mid {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+}
+
+/* Ten thousand: dice drawn with pips, tapped to keep */
+.dice-scores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.dice-score {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.dice-score.is-up {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 90%);
+}
+.dice-score strong {
+  font-size: 1.4rem;
+}
+.dice-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in oklab, currentColor, transparent 88%);
+  overflow: hidden;
+}
+.dice-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.dice-table {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  align-content: center;
+  min-height: 190px;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #0f5132;
+  color: #eaf7ef;
+  text-align: center;
+}
+.dice-table .muted {
+  color: #b9dcc7;
+}
+.dice-table .rps-bad {
+  color: #ffb3b3;
+}
+.dice-big {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0;
+}
+.dice-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.dice-line {
+  margin: 0;
+}
+.die {
+  width: 52px;
+  height: 52px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: #fbfbf7;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  display: inline-block;
+}
+.die.is-picked {
+  border-color: #ffd34d;
+  transform: translateY(-4px);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
+}
+.die.is-kept {
+  cursor: default;
+}
+.dice-kept .die {
+  width: 34px;
+  height: 34px;
+  padding: 4px;
+  opacity: 0.8;
+}
+.die-face {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+}
+.die-face .pip {
+  border-radius: 50%;
+  background: #1b1b2a;
+  margin: 18%;
+}
+.dice-log {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+}
+
+/* Hold'em: a felt table, three seats across the top, the board, and your seat */
+.pk-table {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  padding: 1rem;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at center, #1d6b45, #0e3d27 75%);
+  color: #eaf7ef;
+  border: 1px solid var(--border);
+  min-height: 260px;
+}
+.pk-table .muted {
+  color: #b9dcc7;
+}
+.pk-welcome {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  max-width: 32rem;
+}
+.pk-seats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+}
+.pk-seat {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: center;
+  padding: 0.4rem;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  min-width: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pk-seat.is-up {
+  border-color: #ffd34d;
+}
+.pk-seat.is-out {
+  opacity: 0.45;
+}
+.pk-name {
+  font-weight: 700;
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+.pk-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 50%;
+  background: #fff;
+  color: #222;
+  font-size: 0.75em;
+  font-weight: 800;
+}
+.pk-hole,
+.pk-board {
+  display: flex;
+  gap: 0.3rem;
+  justify-content: center;
+}
+.pk-chips {
+  font-size: 0.9rem;
+}
+.pk-bet {
+  color: #ffd34d;
+}
+.pk-style {
+  font-size: 0.75rem;
+}
+.pk-pot {
+  margin: 0;
+}
+.pk-card {
+  width: 46px;
+  height: 64px;
+  border-radius: 6px;
+  background: #fdfdf8;
+  color: #1b1b2a;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  font-weight: 800;
+  line-height: 1.05;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  font-size: 1.05rem;
+}
+.pk-card.is-red {
+  color: #c62828;
+}
+.pk-card.is-back {
+  background: repeating-linear-gradient(45deg, #3b4fa8 0 6px, #2e3f8a 6px 12px);
+  border: 2px solid #fdfdf8;
+}
+.pk-card.is-small {
+  width: 32px;
+  height: 45px;
+  font-size: 0.8rem;
+}
+.pk-me {
+  width: min(100%, 22rem);
+}
+.pk-me .pk-card {
+  width: 54px;
+  height: 76px;
+  font-size: 1.25rem;
+}
+.pk-raise {
+  flex: 1 1 10rem;
+  min-width: 140px;
+}
+.pk-raise input {
+  width: 100%;
+  min-height: 32px;
+  /* a range input carries 2px of margin each side by default, so 100% wide was 4px too wide */
+  margin: 0;
 }

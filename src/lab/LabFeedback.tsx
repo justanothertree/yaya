@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Flags } from './catalog'
+import { SHARES, bestLine, fromStorage } from './bests'
 import {
-  NOTE_KINDS,
+  COMMENT_KIND,
   NOTE_MAX,
-  REPORT_REASONS,
   checkNote,
   explain,
   type LabApi,
   type Note,
-  type NoteKind,
-  type ReportReason,
   notesSummary,
 } from './feedback'
 
@@ -42,7 +40,7 @@ export function LabFeedback({ api, demo, name, flags, viewer, onFlags, listed }:
     return (
       <section className="lab-feedback" aria-label={`Feedback on ${name}`}>
         <p className="muted lab-hint">
-          {name} is new here: votes and notes open once it has been added to the catalog.
+          {name} is new here: votes and comments open once it has been added to the catalog.
         </p>
       </section>
     )
@@ -196,24 +194,25 @@ function Notes({
   return (
     <details className="lab-notes">
       <summary>
-        Notes on {name} —{' '}
-        {viewer.authed ? notesSummary(items?.length ?? null, more) : 'ideas, requests and bugs'}
+        Comments on {name}
+        {viewer.authed ? ` — ${notesSummary(items?.length ?? null, more)}` : ''}
       </summary>
       {!viewer.authed ? (
-        <p className="muted">Sign in to read notes and leave one.</p>
+        <p className="muted">Sign in to read comments and leave one.</p>
       ) : (
         <>
           {!viewer.suspended && (
             <Compose
               api={api}
               demo={demo}
+              name={name}
               onPosted={(n) => setItems((was) => [n, ...(was ?? [])])}
             />
           )}
           {said && <p className="lab-warn">{said}</p>}
           {items === null ? (
             <p className="muted" aria-busy={busy}>
-              {busy ? 'Loading notes…' : ''}
+              {busy ? 'Loading comments…' : ''}
             </p>
           ) : items.length ? (
             <ul className="lab-note-list">
@@ -230,7 +229,7 @@ function Notes({
             </ul>
           ) : (
             <p className="muted">
-              No notes yet{viewer.suspended ? '.' : ' — yours could be the first.'}
+              No comments yet{viewer.suspended ? '.' : ' — yours could be the first.'}
             </p>
           )}
           {more && items && (
@@ -239,7 +238,7 @@ function Notes({
               disabled={busy}
               onClick={() => load(items[items.length - 1])}
             >
-              Older notes
+              Older comments
             </button>
           )}
         </>
@@ -248,16 +247,22 @@ function Notes({
   )
 }
 
+/* ⚠️ A COMMENT, AND NOTHING TO CHOOSE (Evan, 9 Nov). A note was an idea, a request for more or a
+   bug, picked from a list first; that was one decision too many before saying something. The
+   server still files each under a kind, so every comment goes as COMMENT_KIND and nothing on
+   screen asks or shows it. What is left is the box, and — on a toy that keeps a best — a button
+   that starts the comment with that best, which the person can edit or delete before posting. */
 function Compose({
   api,
   demo,
+  name,
   onPosted,
 }: {
   api: LabApi
   demo: string
+  name: string
   onPosted: (n: Note) => void
 }) {
-  const [kind, setKind] = useState<NoteKind>('idea')
   const [body, setBody] = useState('')
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -267,7 +272,7 @@ function Compose({
     if (why) return setSaid(why)
     setBusy(true)
     try {
-      const n = await api.add(demo, kind, body)
+      const n = await api.add(demo, COMMENT_KIND, body)
       if (n) onPosted(n)
       setBody('')
       setSaid('Posted.')
@@ -277,6 +282,12 @@ function Compose({
       setBusy(false)
     }
   }
+  const share = () => {
+    const line = bestLine(demo, name, fromStorage)
+    if (!line) return setSaid('No best kept in this browser yet — finish a run first.')
+    setBody((b) => (b.trim() ? `${line}\n${b}` : line))
+    setSaid(null)
+  }
   return (
     <form
       className="lab-compose"
@@ -285,30 +296,13 @@ function Compose({
         void send()
       }}
     >
-      <p className="muted lab-hint">
-        Who reads a note follows the same rules as your profile: if your page reaches only friends,
-        so does this note. The site’s owner reads it only where those same rules reach, or once
-        somebody reports it. Plain text, up to {NOTE_MAX} characters.
-      </p>
-      <div className="lab-controls">
-        <label className="studio-pick">
-          <span className="muted">Kind</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value as NoteKind)}>
-            {NOTE_KINDS.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
       <label className="lab-note-box">
-        <span className="sr-only">Your note</span>
+        <span className="sr-only">Your comment</span>
         <textarea
           value={body}
           rows={3}
           maxLength={NOTE_MAX + 50}
-          placeholder="What would make it better, what should there be more of, or what went wrong?"
+          placeholder={`Say something about ${name}…`}
           onChange={(e) => {
             setBody(e.target.value)
             setSaid(null)
@@ -317,8 +311,13 @@ function Compose({
       </label>
       <div className="lab-controls">
         <button className="btn" type="submit" disabled={busy || !body.trim() || !!wrong}>
-          Post note
+          Post
         </button>
+        {SHARES.has(demo) && (
+          <button className="btn btn-ghost" type="button" onClick={share}>
+            🏆 Share my best
+          </button>
+        )}
         <span className="muted lab-hint" aria-live="polite">
           {said ?? wrong ?? `${body.trim().length}/${NOTE_MAX}`}
         </span>
@@ -342,7 +341,6 @@ function NoteRow({
 }) {
   const [mode, setMode] = useState<'read' | 'edit' | 'delete' | 'report'>('read')
   const [draft, setDraft] = useState(n.body)
-  const [reason, setReason] = useState<ReportReason>('spam')
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const act = async (fn: () => Promise<void>) => {
@@ -356,20 +354,19 @@ function NoteRow({
       setBusy(false)
     }
   }
-  const kind = NOTE_KINDS.find((k) => k.id === n.kind)?.label
   const when = new Date(n.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
   const can = !viewer.suspended
   return (
     <li className="lab-note" data-removed={n.removed || undefined}>
       <p className="lab-note-meta muted">
-        <span className="lab-badge">{kind}</span> {n.mine ? 'You' : n.author} · {when}
+        {n.mine ? 'You' : n.author} · {when}
         {n.edited && ' · edited'}
         {n.removed && ' · removed by the moderator'}
       </p>
       {mode === 'edit' ? (
         <>
           <label className="lab-note-box">
-            <span className="sr-only">Edit your note</span>
+            <span className="sr-only">Edit your comment</span>
             <textarea
               value={draft}
               rows={3}
@@ -437,7 +434,7 @@ function NoteRow({
       )}
       {mode === 'delete' && (
         <div className="lab-controls">
-          <span>Delete this note for good?</span>
+          <span>Delete this comment for good?</span>
           <button
             className="btn"
             disabled={busy}
@@ -457,22 +454,13 @@ function NoteRow({
       )}
       {mode === 'report' && (
         <div className="lab-controls">
-          <label className="studio-pick">
-            <span className="muted">Why</span>
-            <select value={reason} onChange={(e) => setReason(e.target.value as ReportReason)}>
-              {REPORT_REASONS.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <span>Report this comment to Evan?</span>
           <button
             className="btn"
             disabled={busy}
             onClick={() =>
               act(async () => {
-                const r = await api.report(n.id, reason)
+                const r = await api.report(n.id, 'other')
                 setMode('read')
                 setSaid(
                   r === 'already'
@@ -542,9 +530,9 @@ function Owner({
         ))}
       </div>
       <p className="muted lab-hint">
-        Hiding keeps its id, everybody’s saved work and every vote and note; restore it any time.
+        Hiding keeps its id, everybody’s saved work and every vote and comment; restore it any time.
         {flags?.notes
-          ? ` Notes you can read here: ${flags.notes.idea} ideas, ${flags.notes.more} asking for more, ${flags.notes.bug} bugs. A note shared only with friends you are not among reaches you only if somebody reports it.`
+          ? ` Comments you can read here: ${flags.notes.idea + flags.notes.more + flags.notes.bug}. A comment shared only with friends you are not among reaches you only if somebody reports it.`
           : ''}
       </p>
       <div className="lab-controls">
