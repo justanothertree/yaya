@@ -7,6 +7,7 @@ import { JIGSAW_BESTS_KEY } from '../gpu/jigsaw'
 import { BEST_KEY as TRIALS_KEY } from '../gpu/trials'
 import { PEGDROP_KEY } from '../gpu/pegdrop'
 import { STACK_KEY } from '../gpu/stack'
+import { RPS_KEY } from '../gpu/rps'
 import registry from '../sections/GpuLab.tsx?raw'
 
 const store = (o: Record<string, string>) => (k: string) => o[k] ?? null
@@ -59,6 +60,13 @@ describe('sharing a best in a comment', () => {
         at({ longest: 192.4, lines: 45, wins: { easy: 3, medium: 1 } }),
       ),
     ).toBe('🏆 My best at Stackfall: survived 3:12 with 45 lines, beat the medium computer')
+  })
+  it('rock, paper, scissors names matches won and the longest coin run worth mentioning', () => {
+    const at = (o: object) => store({ [RPS_KEY]: JSON.stringify(o) })
+    expect(bestLine('rps', 'RPS', at({ matchesLost: 4, streak: 2 }))).toBeNull()
+    expect(bestLine('rps', 'RPS', at({ matchesWon: 2, matchesLost: 3, streak: 6 }))).toBe(
+      '🏆 My best at RPS: beat the mind-reader in 2 of 5 matches, called the coin right 6 times running',
+    )
   })
   it('a hand-edited or broken store is no best, never a crash', () => {
     const junk = store({ [SKIP_KEY]: '{', [GLIDE_KEY]: '"x"', [TRIALS_KEY]: 'fast' })

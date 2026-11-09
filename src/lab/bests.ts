@@ -23,6 +23,7 @@ import { readSaved as readMix, TARGETS, MIX_KEY } from '../gpu/mix'
 import { readSaved as readNonogram, LEVELS as NONO_LEVELS, NONOGRAM_KEY } from '../gpu/nonogram'
 import { readBests as readOrbit, LEVELS as ORBIT_LEVELS, ORBIT_KEY } from '../gpu/orbit'
 import { readSaved as readPegdrop, PEGDROP_KEY, START as PEGDROP_START, pts } from '../gpu/pegdrop'
+import { readSaved as readRps, RPS_KEY } from '../gpu/rps'
 import { readSaved as readSkip, CHALLENGES, SKIP_KEY } from '../gpu/skip'
 import { readSaved as readStack, STACK_KEY, BOTS } from '../gpu/stack'
 import { readSaved as readSlide, LEVELS as SLIDE_LEVELS, SLIDE_KEY } from '../gpu/slide'
@@ -100,6 +101,16 @@ const READERS: Record<string, (read: Read) => string | null> = {
     if (s.best <= PEGDROP_START) return null
     const hit = s.bigHit ? `, biggest landing ${s.bigHit}×` : ''
     return `most points ever ${pts(s.best)}${hit} (${s.drops} drops)`
+  },
+  rps: (read) => {
+    const s = readRps(read(RPS_KEY))
+    const parts = [
+      s.matchesWon
+        ? `beat the mind-reader in ${s.matchesWon} of ${s.matchesWon + s.matchesLost} matches`
+        : null,
+      s.streak >= 3 ? `called the coin right ${s.streak} times running` : null,
+    ].filter(Boolean)
+    return parts.length ? parts.join(', ') : null
   },
   stack: (read) => {
     const s = readStack(read(STACK_KEY))
