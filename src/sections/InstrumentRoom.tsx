@@ -416,6 +416,9 @@ const styleOfChord = (l: Layer): ChordStyle =>
 const styleOfBass = (l: Layer): BassStyle =>
   BASS_STYLES.find((x) => x.id === bassStyleTagOf(l))?.id ?? 'rootfifth'
 
+/** Where the instrument menu behaves like a phone's: closes after a pick, starts closed. */
+const PHONE_MENU = '(max-width: 40rem)'
+
 function Why({ children }: { children: React.ReactNode }) {
   return <span className="btn-why">{children}</span>
 }
@@ -865,8 +868,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * plain `number[]` for the keyboard and for TakesPanel, which is what it has always been.
    */
   const [lead, setLead] = useState<number[]>([])
-  /* only read on narrow screens, where the instrument grid becomes a menu */
-  const [picksOpen, setPicksOpen] = useState(false)
+  /**
+   * ⚠️ OPEN ON A DESKTOP, CLOSED ON A PHONE — Evan's call, 9 Nov 2026. On a phone the open grid
+   * covers the page, which is why it closes after a pick there; on a desktop it fits, and seeing
+   * the sounds is how somebody new finds out there are two dozen of them. Same query as the
+   * close-after-pick below, so the two cannot disagree about which screen this is.
+   */
+  const [picksOpen, setPicksOpen] = useState(() => !window.matchMedia(PHONE_MENU).matches)
   const loop = useSyncExternalStore(subscribeLoop, loopState, loopState)
   const [vol, setVol] = useState(() => volume('instrument'))
   useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
@@ -2044,6 +2052,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * you have, so the choice is never hidden, and on a desktop the menu stays open while you
        * try sounds, which keeps browsing the point. One list either way: two renderings would
        * drift, and the second would be the one nobody tested.
+       *
+       * ⚠️ AND ON A DESKTOP IT NOW STARTS OPEN — Evan's call, 9 Nov 2026, made knowing the cost
+       * above. Measured on the dev server: at 1440×900 ▶ Play sits at 998–1036px with the grid
+       * open and 711–750 closed; at 1920×1080 it ends at 1109. One press of the menu button
+       * gives the fold back. A phone still starts closed (375, touch: `display: none`).
        */}
       <div className="inst-bar">
         <button
@@ -2069,7 +2082,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 setInst(id)
                 /* closes on a phone, where it covers the page; stays open on a desktop, where
                    trying three sounds in a row is the point of opening it */
-                if (window.matchMedia('(max-width: 40rem)').matches) setPicksOpen(false)
+                if (window.matchMedia(PHONE_MENU).matches) setPicksOpen(false)
               }}
             >
               <span aria-hidden>{icon}</span>
