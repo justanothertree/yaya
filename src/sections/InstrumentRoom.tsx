@@ -3049,12 +3049,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 {/* Keeping ONE layer. This is the drum-loop case: a part worth reusing is almost
                   never a whole song, and a library of one-layer loops is what makes the next
                   song faster to start than the last one. */}
+                {/* ⚠️ A WORD AS WELL AS THE ARROW — Evan's call, 9 Nov 2026. ⬇ alone was
+                    explained only by its title, which a phone never shows, and every other
+                    ⬇ in the room already says what it does: ⬇ Keep song. */}
                 <button
                   className="btn"
                   onClick={() => keep('loop', l.id)}
                   title="Keep this layer as a loop you can reuse"
                 >
-                  ⬇
+                  ⬇ Keep
                 </button>
 
                 {/* ⚠️ On the row, not behind a dialog. Balancing parts is done BY EAR, which means
