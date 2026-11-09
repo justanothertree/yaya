@@ -1,16 +1,11 @@
 /**
- * The Lab's catalog: what kind of thing each experiment is, when it arrived, how a list of them is
- * searched and ordered, and the browser's own favourites. Pure, so catalog.test.ts can ask it
- * questions without a GPU or a page.
+ * The Lab's catalog: what kind of thing each experiment is, when it arrived, the owner's flags the
+ * server sends, and the picker's filter. Pure, so catalog.test.ts can ask it questions without a
+ * GPU or a page.
  *
- * ⚠️ THE ORDERS ARE THE ONES THE PAGE SAYS THEY ARE, AND NOTHING ELSE. "Highly rated" is votes up
- * minus votes down, then more votes, then the order the Lab lists them; "New" is the date an
- * experiment was added, newest first. No weighting, no decay, no hidden boost — the page states
- * the rule beside the list, so the list must be exactly that rule.
- *
- * ⚠️ AND A FAVOURITE IS NOT A VOTE. A favourite is a bookmark kept in this browser and never sent
- * anywhere; a vote is an account's public-in-aggregate opinion kept on the server. Neither moves
- * the other.
+ * ⚠️ IT USED TO SEARCH, SORT AND REMEMBER TOO — a catalog view with search, Recent, New, Highly
+ * rated and favourites (8 Nov). Evan preferred every toy on one page with a filter that fades the
+ * rest (9 Nov), so that view and everything only it used went, rather than staying as dead code.
  */
 
 export type Category = 'games' | 'puzzles' | 'make' | 'sound' | 'nature' | 'patterns'
@@ -185,171 +180,13 @@ export function entries(
   }))
 }
 
-/** the card already says the name: drop a line's leading "Name — ", and only when it IS the name */
-export function withoutName(e: Pick<Entry, 'name' | 'line'>) {
-  const m = e.line.match(/^([^—]*?)\s*—\s*/)
-  return m && m[1].startsWith(e.name) ? e.line.slice(m[0].length) : e.line
-}
-
 /** may this viewer see this experiment in the picker and the catalog at all */
 export const listed = (e: Entry, admin: boolean) => admin || !e.flags.hidden
 
-/** lower case, accents gone, so "mobius" finds "Möbius" */
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+/* ── the picker's filter ───────────────────────────────────────────────────────────────────── */
 
-/** every word of the query in the name, the line or the category's name */
-export function search(list: readonly Entry[], query: string): Entry[] {
-  const words = fold(query).split(/\s+/).filter(Boolean)
-  if (!words.length) return [...list]
-  return list.filter((e) => {
-    const hay = fold(
-      `${e.name} ${e.line} ${CATEGORIES.find((c) => c.id === e.category)?.label ?? ''}`,
-    )
-    return words.every((w) => hay.includes(w))
-  })
+/** the kind the picker brings forward, kept in this browser. 'all' fades nothing. */
+export const FILTER_KEY = 'lab_filter_v1'
+export function readFilter(text: string | null): Category | 'all' {
+  return CATEGORIES.some((c) => c.id === text) ? (text as Category) : 'all'
 }
-
-export const net = (e: Entry) => (e.flags.up ?? 0) - (e.flags.down ?? 0)
-const votes = (e: Entry) => (e.flags.up ?? 0) + (e.flags.down ?? 0)
-
-/** highest net votes first, then more votes, then the Lab's own order. Unvoted ones last. */
-export function byRating(list: readonly Entry[]): Entry[] {
-  return [...list].sort(
-    (a, b) =>
-      Number(votes(b) > 0) - Number(votes(a) > 0) ||
-      net(b) - net(a) ||
-      votes(b) - votes(a) ||
-      a.order - b.order,
-  )
-}
-
-/** newest first: the day added, then the order added */
-export function byNewest(list: readonly Entry[]): Entry[] {
-  return [...list].sort((a, b) => b.added.localeCompare(a.added) || b.order - a.order)
-}
-
-/* ---------------------------------------------------------------- what the catalog is showing */
-
-export type View = 'all' | 'recent' | 'favourites' | 'new' | 'top'
-
-/** the catalog's search, list and kind. ⚠️ The Lab holds this, not the catalog: the catalog is
- *  unmounted while a toy plays, and when this lived inside it every return from a toy started
- *  again at All with the search empty, a long way above the card just left. */
-export type Browse = { query: string; view: View; category: Category | null }
-export const EVERYTHING: Browse = { query: '', view: 'all', category: null }
-export const showingAll = (b: Browse) => !b.query.trim() && b.view === 'all' && b.category === null
-
-/** the cards to show, in the order the page states for the list chosen */
-export function arrange(
-  list: readonly Entry[],
-  b: Browse,
-  favourites: readonly string[],
-  recent: readonly string[],
-): Entry[] {
-  let out = search(list, b.query)
-  if (b.category) out = out.filter((e) => e.category === b.category)
-  if (b.view === 'favourites') out = out.filter((e) => favourites.includes(e.id))
-  if (b.view === 'recent')
-    return out
-      .filter((e) => recent.includes(e.id))
-      .sort((x, y) => recent.indexOf(x.id) - recent.indexOf(y.id))
-  if (b.view === 'new') return byNewest(out)
-  if (b.view === 'top') return byRating(out)
-  // featured first, then the Lab's own order — the page says so above the list
-  return [...out].sort(
-    (x, y) => Number(y.flags.featured) - Number(x.flags.featured) || x.order - y.order,
-  )
-}
-
-/* ---------------------------------------------------------------- favourites, in this browser */
-
-export const FAVOURITES_KEY = 'lab_favourites_v1'
-const MAX_FAVOURITES = 200
-
-/** the favourites kept here, read defensively: ids the page knows, at most 200, no repeats */
-export function readFavourites(text: string | null, known: ReadonlySet<string>): string[] {
-  try {
-    const v: unknown = JSON.parse(text ?? '[]')
-    if (!Array.isArray(v)) return []
-    return [...new Set(v.filter((x): x is string => typeof x === 'string' && known.has(x)))].slice(
-      0,
-      MAX_FAVOURITES,
-    )
-  } catch {
-    return []
-  }
-}
-
-export function toggleFavourite(list: readonly string[], id: string): string[] {
-  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id].slice(-MAX_FAVOURITES)
-}
-
-/* The experiments opened lately, most recent first — a history in this browser, not a library.
-   ⚠️ UNLIKE FAVOURITES IT FORGETS: the twelfth-newest falls off when another is opened. That is
-   safe here only because nothing else mirrors this list; it is not anybody's work, and it never
-   leaves the browser. */
-export const RECENT_KEY = 'lab_recent_v1'
-export const MAX_RECENT = 12
-
-export function readRecent(text: string | null, known: ReadonlySet<string>): string[] {
-  try {
-    const v: unknown = JSON.parse(text ?? '[]')
-    if (!Array.isArray(v)) return []
-    return [...new Set(v.filter((x): x is string => typeof x === 'string' && known.has(x)))].slice(
-      0,
-      MAX_RECENT,
-    )
-  } catch {
-    return []
-  }
-}
-
-/**
- * One to try: picked at random from the list given (what the catalog is showing), preferring ones
- * not opened lately — a surprise that hands back what you just closed is not one. When everything
- * shown has been opened lately, anything but the one open now; null for an empty list.
- */
-export function surprise(
-  list: readonly Entry[],
-  recent: readonly string[],
-  rand: () => number = Math.random,
-): string | null {
-  const fresh = list.filter((e) => !recent.includes(e.id))
-  const pool = fresh.length ? fresh : list.filter((e) => e.id !== recent[0])
-  const from = pool.length ? pool : list
-  if (!from.length) return null
-  return from[Math.min(from.length - 1, Math.floor(rand() * from.length))].id
-}
-
-/** opening one brings it to the front, once */
-export const openedNow = (list: readonly string[], id: string): string[] =>
-  [id, ...list.filter((x) => x !== id)].slice(0, MAX_RECENT)
-
-/* What this browser has already met, so an experiment added since can say so. ⚠️ A FIRST VISIT
-   MEETS EVERYTHING: with no record, every experiment there is is written down as seen, so the
-   badge means "added since you started coming here" — not fifty-nine badges on a first look,
-   which would say nothing. An experiment stops being new to you once you open it, or when you
-   say you have seen them all. Kept in this browser only, like favourites; never sent. */
-export const SEEN_KEY = 'lab_seen_v1'
-
-/** the ids seen, known ones only; null when nothing was ever written — a first visit */
-export function readSeen(text: string | null, known: ReadonlySet<string>): string[] | null {
-  if (text === null) return null
-  try {
-    const v: unknown = JSON.parse(text)
-    if (!Array.isArray(v)) return null
-    return [...new Set(v.filter((x): x is string => typeof x === 'string' && known.has(x)))]
-  } catch {
-    return null
-  }
-}
-
-/** seen now as well as before — the same array when nothing is new, so a state update can bail */
-export function seeNow(seen: readonly string[], ids: readonly string[]): readonly string[] {
-  const fresh = ids.filter((id) => !seen.includes(id))
-  return fresh.length ? [...seen, ...fresh] : seen
-}
-
-/** the ones in a list this browser has not met */
-export const unseen = (list: readonly Entry[], seen: readonly string[] | null): string[] =>
-  seen ? list.filter((e) => !seen.includes(e.id)).map((e) => e.id) : []

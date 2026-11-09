@@ -189,51 +189,29 @@ html:has(.lab) {
   outline-offset: 3px;
 }
 
-/* the phone's picker: a dropdown between two steppers — see the note in GpuLab */
-.lab-bar {
-  /* a little air above the bar when a launch scrolls it to the top. The site's fixed header itself
-     is cleared by the page's scroll-padding-top (above); this was 72px — the header's 54 and this
-     18 — until that existed, and keeping both would count the header twice */
-  scroll-margin-top: 18px;
+/* the picker: every experiment a button, and a row of kinds above that fades the others. Faded is
+   still pressable — the filter brings a kind forward, it never hides anything. */
+.lab-filter,
+.lab-picker {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
+  gap: 0.35rem;
 }
-.lab-step {
-  display: flex;
-  flex: 1 1 320px;
-  max-width: 520px;
-  gap: 0.4rem;
-  align-items: stretch;
-}
-.lab-step .btn {
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 1.2rem;
-  padding: 0 0.6rem;
-}
-.lab-select {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-}
-.lab-select select {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  font: inherit;
+.lab-filter .btn {
+  min-height: 36px;
   font-weight: 600;
-  padding: 0 0.75rem;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--control-bg);
-  color: var(--text);
 }
-@media (max-width: 640px) {
-  .lab-step {
-    max-width: none;
-  }
+.lab-picker .btn {
+  min-height: 36px;
+  padding: 0.3rem 0.7rem;
+  transition: opacity 0.15s;
+}
+.lab-picker .btn.lab-other {
+  opacity: 0.35;
+}
+.lab-picker .btn.lab-other:hover,
+.lab-picker .btn.lab-other:focus-visible {
+  opacity: 0.8;
 }
 
 /* ── bike trials ─────────────────────────────────────────────────── */
