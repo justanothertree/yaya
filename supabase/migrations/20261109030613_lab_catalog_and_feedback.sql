@@ -1,12 +1,13 @@
--- ⛔ DRAFT — NOT APPLIED TO PRODUCTION. The Lab's catalog flags, votes and notes.
---
--- WHERE IT GOES: production applies this with `apply_migration` (name
--- `lab_catalog_and_feedback`), which assigns the timestamp. Then — in the same commit — the file
--- moves to `supabase/migrations/<that timestamp>_lab_catalog_and_feedback.sql` with its header
--- reworded to ✅ APPLIED, and its md5 line goes into `supabase/migrations/applied.md5`. It lives
--- in `supabase/drafts/` until then because `scripts/migration-md5.mjs` fails the build on any
--- file in `migrations/` production has no record of, which is the right rule. The release order
--- and the rollback are in docs/2026-11-07-lab-catalog-and-feedback.md.
+-- ✅ APPLIED to production 9 Nov 2026 as migration `lab_catalog_and_feedback`, version
+-- 20261109030613. Production recorded md5(statements[1]) = b3fad3b428010462340b30cfa527f9e1 over
+-- 27,330 bytes — this file's body, byte for byte (supabase/migrations/applied.md5). The Lab's
+-- catalog flags, votes and notes. It was reviewed as a draft at 73506ac (#31) and is unchanged
+-- since; before applying, production was checked to have no lab_* objects, every repo migration
+-- applied and none missing, and can_see / is_suspended / the profile columns identical by md5 to
+-- the local stack it was tested on (is_admin differs only in CRLF line endings). The seed below is
+-- the 51 experiments of 7 Nov; the 17 added since were registered the same day with the statement
+-- admin_lab_register runs. The release order and the rollback are in
+-- docs/2026-11-07-lab-catalog-and-feedback.md.
 --
 -- WHAT IT ADDS, in the house pattern (CLAUDE.md §3): four tables with RLS ON, ZERO policies and
 -- no grants to anon or authenticated — deny-all — reached only through SECURITY DEFINER functions

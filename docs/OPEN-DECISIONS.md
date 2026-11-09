@@ -502,7 +502,7 @@ rather than done.
 
 ## 14. The Lab's votes and notes — Evan's decisions (7 Nov, and 8 Nov for the totals)
 
-**Built, as a draft:** `supabase/drafts/lab-catalog-and-feedback.sql`, NOT applied to production.
+**Built as a draft, applied 9 Nov 2026:** `supabase/migrations/20261109030613_lab_catalog_and_feedback.sql`.
 `docs/2026-11-07-lab-catalog-and-feedback.md` has the apply order and the rollback. Evan decided the
 three policy questions on 7 Nov and settled the one conflict they left on 8 Nov (§14b); nothing in
 this section is waiting on a decision any more.

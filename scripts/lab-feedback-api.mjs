@@ -9,7 +9,7 @@
  * ⚠️ LOCAL ONLY, AND IT SAYS SO BEFORE IT DOES ANYTHING. It signs accounts up and writes fixture
  * rows (a profile, an age band, a friendship, the admin row, a suspension) with psql — so it
  * refuses any URL that is not this machine. Run it against `supabase start` with
- * supabase/drafts/lab-catalog-and-feedback.sql applied; docs/2026-11-07-lab-catalog-and-feedback.md
+ * supabase/migrations/20261109030613_lab_catalog_and_feedback.sql applied; docs/2026-11-07-lab-catalog-and-feedback.md
  * has the steps. It cleans up the accounts it made, pass or fail.
  *
  * The fixture facts are set in SQL because no API sets them: an age band and the admin row are

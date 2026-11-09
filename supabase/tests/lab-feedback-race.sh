@@ -4,7 +4,7 @@
 #
 #   PGHOST=… PGPORT=… PGDATABASE=yaya_test supabase/tests/lab-feedback-race.sh
 #
-# Needs a THROWAWAY database with supabase/drafts/lab-catalog-and-feedback.sql applied (build.sh
+# Needs a THROWAWAY database with supabase/migrations/20261109030613_lab_catalog_and_feedback.sql applied (build.sh
 # makes one). It commits its fixtures — that is the point, a race needs committed rows — and
 # deletes them again at the end, pass or fail.
 #

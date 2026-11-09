@@ -1,9 +1,14 @@
 # The Lab's catalog, votes and notes — 7 Nov 2026
 
-⛔ **The database half is a DRAFT and is NOT applied.** `supabase/drafts/lab-catalog-and-feedback.sql`
-has run on throwaway local databases only — Supabase's own local stack and a plain Postgres.
-Nothing here touched production, and the frontend works exactly as before until it is applied
-(verified: with every call failing, all 51 experiments list and play).
+✅ **APPLIED TO PRODUCTION, 9 Nov 2026** — migration `lab_catalog_and_feedback`, version
+`20261109030613`, now `supabase/migrations/20261109030613_lab_catalog_and_feedback.sql`. Production recorded the body's md5 as
+`b3fad3b428010462340b30cfa527f9e1` (27,330 bytes), the reviewed draft byte for byte. Checked
+before applying: no `lab_*` objects in production, the repo's migrations and production's applied
+list identical both ways, and the draft's dependencies identical by md5 to the local stack it was
+tested on. Checked after: only `lab_catalog` is anon-callable, the four tables are deny-all, and
+`visibility-guards.sql` holds against production. The 17 experiments added after the seed were
+registered with the statement `admin_lab_register` runs — 68 rows, no votes or notes created.
+Everything below is the record of how it was built and tested.
 
 **No policy question is open.** Evan decided the last one on 8 Nov (`docs/OPEN-DECISIONS.md` §14b):
 no floor under the vote totals — members see the actual totals at once, zeros included, and it is
@@ -156,12 +161,12 @@ npm exec --prefix <scratch> supabase@2.122.0 -- --version   # the version CI pin
 # a scratch COPY of supabase/ with storage, realtime, studio, analytics and edge_runtime disabled —
 # their images come from hosts this proxy refuses; the repo's config is untouched
 supabase start --workdir <scratch copy>
-psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/drafts/lab-catalog-and-feedback.sql
+psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/migrations/20261109030613_lab_catalog_and_feedback.sql
 psql … -f supabase/tests/visibility-guards.sql
 psql … -f supabase/tests/lab-feedback.sql
 SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY=<from supabase status> \
   LAB_TEST_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres node scripts/lab-feedback-api.mjs
-PGHOST=… PGPORT=… supabase/tests/plain-postgres/build.sh --draft supabase/drafts/lab-catalog-and-feedback.sql
+PGHOST=… PGPORT=… supabase/tests/plain-postgres/build.sh --draft supabase/migrations/20261109030613_lab_catalog_and_feedback.sql
 PGHOST=… PGPORT=… supabase/tests/lab-feedback-race.sh
 ```
 

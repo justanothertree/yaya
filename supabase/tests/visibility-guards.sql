@@ -234,7 +234,7 @@ where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
     'get_public_profile', 'submit_contact_message', 'submit_score',
     -- the Lab's catalog flags (featured / experiment / hidden), so a guest's picker hides what the
     -- owner retired. It answers a guest with those flags and nothing counted: no vote total, no
-    -- note, nobody's activity. Exists once supabase/drafts/lab-catalog-and-feedback.sql is applied.
+    -- note, nobody's activity. Applied 9 Nov 2026 as 20261109030613_lab_catalog_and_feedback.
     'lab_catalog'
   );
 

@@ -3,9 +3,9 @@
 -- age band, a suspended member, and a member trying to be the admin. Each case is a real call
 -- under a real role with real claims, against the functions as the draft defines them.
 --
--- HOW TO RUN: against a database that has supabase/drafts/lab-catalog-and-feedback.sql applied —
+-- HOW TO RUN: against a database that has supabase/migrations/20261109030613_lab_catalog_and_feedback.sql applied —
 --   PGHOST=… PGPORT=… supabase/tests/plain-postgres/build.sh \
---     --draft supabase/drafts/lab-catalog-and-feedback.sql --test supabase/tests/lab-feedback.sql
+--     --draft supabase/migrations/20261109030613_lab_catalog_and_feedback.sql --test supabase/tests/lab-feedback.sql
 -- Everything is in one transaction that rolls back; it leaves nothing behind. It raises, listing
 -- every failed case, if anything is wrong, and says how many cases it asked otherwise.
 --

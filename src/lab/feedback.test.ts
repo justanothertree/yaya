@@ -2,7 +2,7 @@
 // reads replies; they say nothing about whether the database enforces anything. That is
 // supabase/tests/lab-feedback.sql, run against a real Postgres.
 import { describe, expect, it } from 'vitest'
-import draft from '../../supabase/drafts/lab-catalog-and-feedback.sql?raw'
+import draft from '../../supabase/migrations/20261109030613_lab_catalog_and_feedback.sql?raw'
 import {
   NOTE_MAX,
   checkNote,

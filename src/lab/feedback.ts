@@ -1,7 +1,7 @@
 /**
  * The Lab's votes, notes and owner controls, as calls to the server's functions. Every rule — who
  * may vote, who reads which note, the length and rate limits, who is the admin — is decided in
- * the database (supabase/drafts/lab-catalog-and-feedback.sql). The checks the panel makes before
+ * the database (supabase/migrations/20261109030613_lab_catalog_and_feedback.sql). The checks the panel makes before
  * sending are a courtesy so a person is told sooner; they are not the rule, and nothing here
  * trusts its own copy of one.
  */

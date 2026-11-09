@@ -3,6 +3,19 @@
 _Written 8 Nov 2026 against `main` at `ea67e52`. A snapshot: re-check `git log origin/main` and the PR
 list before acting on it. Nothing here has been merged, deployed or applied — that is Evan's to do._
 
+## Final release, 9 Nov 2026 — authorised by Evan, and what was done
+
+**68 toys** on `claude/lab-release-1` (#87): A (#31), B (#71 with #69), C (#72), D (#68, #77), and
+Colour sight (#88, 67th) and Soaring (#89, 68th), merged in by normal merges. Every id unique; the
+first 51 are `main`'s, unchanged and in order.
+
+**The Lab SQL is applied** — `supabase/migrations/20261109030613_lab_catalog_and_feedback.sql`,
+production's md5 `b3fad3b428010462340b30cfa527f9e1`, the reviewed draft byte for byte. Only the Lab
+SQL: no other thread's draft or migration. All 68 ids registered; no votes or notes were created.
+Details and checks: `docs/2026-11-07-lab-catalog-and-feedback.md`.
+
+The sections below are the record from 8 Nov, when this was still a plan.
+
 ## What is on production now
 
 **evancook.dev serves `main`**, and only `main` (`deploy.yml` runs on push to `main`; there are no
@@ -45,7 +58,7 @@ without B; this branch is the unit.
 
 ## The SQL — separate, unapplied, and not touched by merging
 
-- **File:** `supabase/drafts/lab-catalog-and-feedback.sql`, md5 `5177fa6758ea2043365219b49c53afa8`,
+- **File:** `supabase/drafts/lab-catalog-and-feedback.sql` (now `supabase/migrations/20261109030613_lab_catalog_and_feedback.sql`), md5 `5177fa6758ea2043365219b49c53afa8`,
   last changed at `73506ac` (#31's head). Nothing after #31 changes a line under `supabase/`.
 - **Merging does not apply it.** It is a draft, not a migration, and no workflow pushes migrations or
   reads `supabase/drafts/` (checked: `grep` across `.github/workflows`).
