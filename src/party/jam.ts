@@ -20,14 +20,7 @@ import {
   subscribeLoop,
   type Layer,
 } from '../audio/looper'
-import {
-  JAM_CEILINGS,
-  packSong,
-  readSong,
-  songToLayers,
-  toSong,
-  type Song,
-} from '../audio/songFile'
+import { packSong, readSong, songToLayers, toSong, type Song } from '../audio/songFile'
 import { showToast } from '../circuit/toast'
 import { clock, toLocalTime } from './clock'
 import { transport } from './transport'
@@ -561,10 +554,9 @@ export const jam = {
         if (typeof b?.lid !== 'string' || b.lid.length > 120) return
         const where = localIdFor(b.lid)
         if (!where) return
-        /* ⚠️ at the jam's own ceilings, not the Library's — a partner's layer above 1.5 plays at
-           1.5 here, as it always has. Raising that is a decision about the room's sound and is
-           waiting for one; see JAM_CEILINGS. */
-        const song = readSong(b.song, JAM_CEILINGS)
+        /* the room's full range — a partner's 1.8 plays at 1.8 here, since 9 Nov 2026; see
+           the note above readSong's limits in songFile.ts */
+        const song = readSong(b.song)
         const one = song && songToLayers(song)[0]
         if (!one) return
         const layer: Layer = {
@@ -584,9 +576,9 @@ export const jam = {
          * its listeners synchronously, so the diff ran INSIDE putSharedLayer — before this record
          * existed — and every layer that arrived was sent straight back to the room. Its author
          * then received a message about its own layer and applied it: a wasted message per edit,
-         * a `releaseLayer` that cut the author's own sounding notes, and, because a partner reads
-         * at the jam's ceilings, a fader above 1.5 pulled down at home. Measured with two rooms in
-         * jam.test.ts. The guard was right; its position was not.
+         * a `releaseLayer` that cut the author's own sounding notes, and, because a partner then
+         * read at the jam's own ceilings (until 9 Nov 2026), a fader above 1.5 pulled down at
+         * home. Measured with two rooms in jam.test.ts. The guard was right; its position was not.
          */
         const was = sentLayers.get(b.lid)
         sentLayers.set(b.lid, layerFingerprint(layer))
@@ -618,7 +610,7 @@ export const jam = {
          * ⚠️ ONLY OUR OWN LAYERS ARE SENT AGAIN, NOT EVERY LAYER WE HOLD. This cleared every
          * record, so every machine re-sent every layer — partners' included, each as THAT machine
          * had read it. The author then received its own layer back from somebody else and applied
-         * it: with a third person joining, a fader at 1.8 dropped to the 1.5 a partner reads at,
+         * it: with a third person joining, a fader at 1.8 dropped to the 1.5 a partner then read at,
          * measured in jam.test.ts. Each layer's author is always here to answer (an author leaving
          * takes their layers with them — see dropBorrowedLayers), and the author's copy already
          * holds any edit somebody made to it, so the newcomer gets everything, once, from the
@@ -640,8 +632,8 @@ export const jam = {
         return
       }
       if (m.kind === 'jam:song' && state.on) {
-        // the jam's ceilings, as above — an offered song longer than eight bars loads as eight
-        const song = readSong(m.body, JAM_CEILINGS)
+        // the full range, as above — an offered sixteen-bar song loads as sixteen
+        const song = readSong(m.body)
         if (song) set({ offer: { from: m.from, name: m.name || 'Someone', song } })
         return
       }

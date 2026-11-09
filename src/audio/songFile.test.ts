@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { JAM_CEILINGS, packSong, readSong, songNotes, songToLayers, type Song } from './songFile'
+import { packSong, readSong, songNotes, songToLayers, type Song } from './songFile'
 
 /**
  * The song format, and the one path a stranger's file takes into the instrument.
@@ -663,58 +663,12 @@ describe('a ceiling the room offers is a ceiling the file keeps', () => {
     const back = readSong(packSong(at({ bars: 16 }, { play })))!
     expect(back.layers[0].play).toEqual(play)
   })
-})
 
-describe('a jam partner is still read at the ceilings it always was', () => {
-  /* the same fixture as above, in both forms the wire can carry */
-  const verbose = (bars: number, gain: number, layer: Record<string, unknown> = {}) => ({
-    v: 1,
-    name: 'Theirs',
-    bpm: 96,
-    bars,
-    layers: [
-      {
-        instrument: 'rhodes',
-        len: 2,
-        gain,
-        fx: {},
-        muted: false,
-        events: [
-          { t: 0, midi: 60, on: true },
-          { t: 0.5, midi: 60, on: false },
-        ],
-        ...layer,
-      },
-    ],
-  })
-  const packed = (bars: number, gain: number) => packSong(readSong(verbose(bars, gain))!)
-
-  it('a layer above 1.5 reads as 1.5 from a partner, in either form', () => {
-    expect(readSong(verbose(2, 1.8), JAM_CEILINGS)!.layers[0].gain).toBe(1.5)
-    expect(readSong(packed(2, 1.8), JAM_CEILINGS)!.layers[0].gain).toBe(1.5)
-    /* and the same bytes, kept, keep what was set — the two readers differ in exactly this */
-    expect(readSong(packed(2, 1.8))!.layers[0].gain).toBe(1.8)
-  })
-
-  it('a song longer than eight bars reads as eight from a partner, in either form', () => {
-    expect(readSong(verbose(16, 1), JAM_CEILINGS)!.bars).toBe(8)
-    expect(readSong(packed(16, 1), JAM_CEILINGS)!.bars).toBe(8)
-    expect(readSong(packed(16, 1))!.bars).toBe(16)
-  })
-
-  it('and a packed mask with no length of its own spans eight bars from a partner', () => {
-    /* ⚠️ the fallback for a file written before `pb` existed is the song's own bar count, and it
-       was clamped by the same 8 — so a legacy mask from a partner spans eight, as it did */
-    const old = { ...packed(16, 1) }
+  it('and a packed mask with no length of its own spans the song, all sixteen bars of it', () => {
+    /* ⚠️ the fallback for a file written before `pb` existed is the song's own bar count, which
+       was clamped at eight for every reader once and for a jam partner until 9 Nov 2026 */
+    const old = { ...packSong(at({ bars: 16 })) }
     old.l = old.l.map((l) => ({ ...l, p: 0b1, pb: undefined }))
-    expect(readSong(old, JAM_CEILINGS)!.layers[0].play).toHaveLength(8)
     expect(readSong(old)!.layers[0].play).toHaveLength(16)
-  })
-
-  it('but the arrays were always 32 long for everybody, and still are', () => {
-    /* only `bars` and `gain` moved, so only they differ — a plan of 20 bars is 20 either way */
-    const plan = Array.from({ length: 20 }, (_, i) => i % 2)
-    expect(readSong(verbose(8, 1, { plan }), JAM_CEILINGS)!.layers[0].plan).toHaveLength(20)
-    expect(readSong(verbose(8, 1, { plan }))!.layers[0].plan).toHaveLength(20)
   })
 })

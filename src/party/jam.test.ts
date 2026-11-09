@@ -19,12 +19,12 @@ import { toSong } from '../audio/songFile'
  * Every path here is synchronous (a looper change fires the jam's diff inline, and a handler's
  * replies are sent before it returns), so setting `net.machine` around each act is exact.
  *
- * ⚠️ TWO KINDS OF TEST LIVE HERE, AND ONLY ONE IS A DECISION. The ceiling tests — 1.5 here, an
- * edit going home at 1.5, an offered song at eight bars — pin today's behaviour, which comes from
- * JAM_CEILINGS in songFile.ts and waits for a decision about the room's sound; if the jam is ever
- * raised to the full range they are the tests that should change, on purpose, in that change.
- * The echo tests pin a FIX: receiving a layer, or somebody joining, sends nobody's layer back to
- * its author. Those should never change.
+ * ⚠️ TWO KINDS OF TEST LIVE HERE. The range tests pin a DECISION: until 9 Nov 2026 a partner
+ * was read at eight bars and 1.5 (JAM_CEILINGS, since deleted), so a layer at 1.8 played at 1.5
+ * on their machine, their edit sent it home at 1.5, and an offered sixteen-bar song arrived as
+ * eight. Evan's call was the full range, and each of those three now asserts the opposite of
+ * what it did. The echo tests pin a FIX: receiving a layer, or somebody joining, sends nobody's
+ * layer back to its author. Those should never change.
  */
 
 type Envelope = { from: string; name: string; kind: string; body: unknown }
@@ -114,19 +114,19 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-describe('a jam reads a partner at the ceilings it always has', () => {
-  it('a layer they set to 1.8 plays at 1.5 here', async () => {
+describe('a jam reads a partner at the full range the room offers', () => {
+  it('a layer they set to 1.8 plays at 1.8 here', async () => {
     const a = await machine('a')
     a.lp.loadSong(96, 2, [loud('mine-1')])
     join(a)
     const b = await machine('b')
     join(b)
 
-    expect(gainOf(b, (l) => l.from === 'a')).toBe(1.5)
+    expect(gainOf(b, (l) => l.from === 'a')).toBe(1.8)
   })
 
-  /* the ceiling still reaches home through a real edit — that part is policy, not the echo */
-  it('and when they edit it, it goes back to its author at 1.5', async () => {
+  /* ⚠️ the one that turned an author's own layer down at the source while the jam had ceilings */
+  it('and when they edit it, it goes back to its author at the level its author set', async () => {
     const a = await machine('a')
     a.lp.loadSong(96, 2, [loud('mine-1')])
     join(a)
@@ -137,7 +137,7 @@ describe('a jam reads a partner at the ceilings it always has', () => {
     deliver()
     const mine = a.lp.loopState().layers.find((l) => l.id === 'mine-1')!
     expect(mine.muted).toBe(true)
-    expect(mine.gain).toBe(1.5)
+    expect(mine.gain).toBe(1.8)
   })
 
   /**
@@ -197,7 +197,7 @@ describe('a jam reads a partner at the ceilings it always has', () => {
     expect(c.lp.loopState().layers).toHaveLength(2)
   })
 
-  it('and a song offered to the room longer than eight bars arrives as eight', async () => {
+  it('and a song offered to the room longer than eight bars arrives whole', async () => {
     const a = await machine('a')
     join(a)
     const b = await machine('b')
@@ -205,7 +205,7 @@ describe('a jam reads a partner at the ceilings it always has', () => {
 
     as('a', () => a.jam.offerSong(toSong('Long', 96, 16, [loud('x-0')])))
     deliver()
-    expect(b.jam.getState().offer?.song.bars).toBe(8)
-    expect(b.jam.getState().offer?.song.layers[0].gain).toBe(1.5)
+    expect(b.jam.getState().offer?.song.bars).toBe(16)
+    expect(b.jam.getState().offer?.song.layers[0].gain).toBe(1.8)
   })
 })
