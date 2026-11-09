@@ -8,6 +8,7 @@ import { BEST_KEY as TRIALS_KEY } from '../gpu/trials'
 import { PEGDROP_KEY } from '../gpu/pegdrop'
 import { STACK_KEY } from '../gpu/stack'
 import { RPS_KEY } from '../gpu/rps'
+import { DICE_KEY } from '../gpu/dice'
 import registry from '../sections/GpuLab.tsx?raw'
 
 const store = (o: Record<string, string>) => (k: string) => o[k] ?? null
@@ -66,6 +67,15 @@ describe('sharing a best in a comment', () => {
     expect(bestLine('rps', 'RPS', at({ matchesLost: 4, streak: 2 }))).toBeNull()
     expect(bestLine('rps', 'RPS', at({ matchesWon: 2, matchesLost: 3, streak: 6 }))).toBe(
       '🏆 My best at RPS: beat the mind-reader in 2 of 5 matches, called the coin right 6 times running',
+    )
+  })
+  it('ten thousand shares only a win', () => {
+    const at = (o: object) => store({ [DICE_KEY]: JSON.stringify(o) })
+    expect(bestLine('dice', 'Ten thousand', at({ lost: 3, bestTurn: 900 }))).toBeNull()
+    expect(
+      bestLine('dice', 'Ten thousand', at({ won: 2, lost: 3, bestTurn: 3450, fewestTurns: 14 })),
+    ).toBe(
+      '🏆 My best at Ten thousand: won 2 of 5 against the computer, fastest in 14 turns, best turn 3,450',
     )
   })
   it('a hand-edited or broken store is no best, never a crash', () => {

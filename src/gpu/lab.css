@@ -1109,3 +1109,112 @@ html:has(.lab) {
     order: -1;
   }
 }
+
+/* Ten thousand: dice drawn with pips, tapped to keep */
+.dice-scores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.dice-score {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.dice-score.is-up {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 90%);
+}
+.dice-score strong {
+  font-size: 1.4rem;
+}
+.dice-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in oklab, currentColor, transparent 88%);
+  overflow: hidden;
+}
+.dice-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.dice-table {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  align-content: center;
+  min-height: 190px;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #0f5132;
+  color: #eaf7ef;
+  text-align: center;
+}
+.dice-table .muted {
+  color: #b9dcc7;
+}
+.dice-table .rps-bad {
+  color: #ffb3b3;
+}
+.dice-big {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0;
+}
+.dice-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.dice-line {
+  margin: 0;
+}
+.die {
+  width: 52px;
+  height: 52px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: #fbfbf7;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  display: inline-block;
+}
+.die.is-picked {
+  border-color: #ffd34d;
+  transform: translateY(-4px);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
+}
+.die.is-kept {
+  cursor: default;
+}
+.dice-kept .die {
+  width: 34px;
+  height: 34px;
+  padding: 4px;
+  opacity: 0.8;
+}
+.die-face {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+}
+.die-face .pip {
+  border-radius: 50%;
+  background: #1b1b2a;
+  margin: 18%;
+}
+.dice-log {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+}

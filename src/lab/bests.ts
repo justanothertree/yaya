@@ -14,6 +14,7 @@
  */
 import { readSaved as readBeams, LEVELS as BEAM_LEVELS, BEAMS_KEY } from '../gpu/beams'
 import { readSaved as readBridge, LEVELS as BRIDGE_LEVELS, BRIDGE_KEY } from '../gpu/bridge'
+import { readSaved as readDice, DICE_KEY } from '../gpu/dice'
 import { readSaved as readGates, LEVELS as GATE_LEVELS, GATES_KEY } from '../gpu/gates'
 import { readSaved as readGlide, TASKS, GLIDE_KEY } from '../gpu/glide'
 import { readSaved as readGraph, LEVELS as GRAPH_LEVELS, GRAPH_KEY } from '../gpu/graph'
@@ -101,6 +102,11 @@ const READERS: Record<string, (read: Read) => string | null> = {
     if (s.best <= PEGDROP_START) return null
     const hit = s.bigHit ? `, biggest landing ${s.bigHit}×` : ''
     return `most points ever ${pts(s.best)}${hit} (${s.drops} drops)`
+  },
+  dice: (read) => {
+    const s = readDice(read(DICE_KEY))
+    if (!s.won) return null
+    return `won ${s.won} of ${s.won + s.lost} against the computer, fastest in ${s.fewestTurns} turns, best turn ${s.bestTurn.toLocaleString('en')}`
   },
   rps: (read) => {
     const s = readRps(read(RPS_KEY))

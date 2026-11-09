@@ -77,6 +77,7 @@ import { GlideDemo } from '../gpu/GlideDemo'
 import { PegDropDemo } from '../gpu/PegDropDemo'
 import { StackDemo } from '../gpu/StackDemo'
 import { RpsDemo } from '../gpu/RpsDemo'
+import { DiceDemo } from '../gpu/DiceDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -549,6 +550,12 @@ const DEMOS: readonly {
     name: 'Rock, paper, scissors',
     line: 'Rock, paper, scissors — against a mind-reader that hunts for your habits and tells you what it spotted, or a friend on the same keyboard. And a coin to call: how long a run can you get?',
     Demo: RpsDemo,
+  },
+  {
+    id: 'dice',
+    name: 'Ten thousand',
+    line: 'Ten thousand — the push-your-luck dice game: keep what scores, then bank it or roll the rest and risk the lot. First to 10,000, against the computer or a friend, with the odds of every roll shown.',
+    Demo: DiceDemo,
   },
 ]
 
