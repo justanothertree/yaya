@@ -3159,8 +3159,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               anyway — the list stays a list. */}
           {/* ⚠️ The note editor used to be an <li> here, between the layers and everything
               below them. See where it went. */}
+          {/* ⚠️ LAYERS ONLY, and a recording placed in the loop stays where it is — Evan's call,
+              9 Nov 2026, on the question #35 left open. A take has its own controls in the takes
+              panel; this button lives in the layer list and clears the layer list. */}
           <li className="inst-layers-all">
-            <button className="btn" onClick={clearLayers}>
+            <button
+              className="btn"
+              onClick={clearLayers}
+              title="Delete every layer — recordings in the loop stay"
+            >
               Clear all
             </button>
           </li>
