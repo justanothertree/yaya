@@ -421,6 +421,16 @@ function Why({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * ⚠️ A PRESSED BUTTON THAT MAKES NO SOUND, said beside it. Since 9 Nov 2026 a swap keeps the
+ * row's mute (see addPatternLayer), so picking a new beat under a silenced kit lights the button
+ * and plays nothing — which, unexplained, reads as the picker being broken. The 🔇 that undoes it
+ * is on the layer's own row below; this only says where the silence comes from.
+ */
+function MutedRow({ layer }: { layer: Layer | undefined }) {
+  return layer?.muted ? <span className="muted inst-beats-why">muted in the layers</span> : null
+}
+
+/**
  * One effect, as a slider.
  *
  * Reads the synth rather than holding the value, so the knob and the audio can never disagree —
@@ -2625,6 +2635,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 </button>
               )
             })()}
+            <MutedRow layer={loop.layers.find((l) => chordPatternOf(l) !== null)} />
           </div>
           {/**
            * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the beat rows below have
@@ -2699,6 +2710,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                       {!p ? 'follows the chords — pick some first' : 'no layer free'}
                     </span>
                   )}
+                  <MutedRow layer={bass ?? undefined} />
                 </>
               )
             })()}
@@ -2759,6 +2771,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 </button>
               )
             })()}
+            <MutedRow layer={loop.layers.find((l) => fillPatternOf(l) !== null)} />
           </div>
           <p className="muted inst-beats-lede">
             {/* ⚠️ THE LEDE HAD TO CHANGE WITH THE PANEL, and then the panel changed twice
@@ -2798,6 +2811,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   {p.name}
                 </button>
               ))}
+              <MutedRow
+                layer={loop.layers.find((l) =>
+                  DRUM_PATTERNS.some((p) => p.genre === genre && p.id === beatPatternOf(l)),
+                )}
+              />
             </div>
           ))}
         </div>

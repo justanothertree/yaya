@@ -1787,6 +1787,12 @@ export const fillPatternOf = (l: Layer): string | null => markedWith(l, FILL_MAR
  * ⚠️ IT KEEPS ITS PLACE IN THE STACK, so the list does not jump while you audition four of
  * them in a row — and it keeps the volume you set, because having to rebalance after every
  * audition is how you stop auditioning.
+ *
+ * ⚠️ AND ITS MUTE, since 9 Nov 2026 — Evan's call. A swap used to set `muted: false`, so changing
+ * how the chords are played brought a muted bass back with them (`layChords` re-lays the bass),
+ * and picking a new beat un-muted a kit somebody had silenced on purpose. A mute is a choice
+ * about the ROW, like its fader, and the row is what a swap keeps. The panel says so beside a
+ * pressed button, so a pick that makes no sound is not a mystery.
  */
 export function addPatternLayer(
   events: LoopEvent[],
@@ -1803,7 +1809,7 @@ export function addPatternLayer(
     const old = state.layers[at]
     releaseLayer(old.id)
     set({
-      layers: state.layers.map((l, i) => (i === at ? { ...l, id, events, len, muted: false } : l)),
+      layers: state.layers.map((l, i) => (i === at ? { ...l, id, events, len } : l)),
     })
     return id
   }
