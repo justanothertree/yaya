@@ -1097,6 +1097,9 @@ the room deployed:
    should be refused, saying so.
 6. With sets counted on a sitting, change its activity in its editor: the move sentence should say
    the sets stay with their exercises. (Until the counter could write sets this had no device check.)
+7. On a sitting with counted sets, Account → ⬇ Save a copy, then ✕ one set in the sitting's editor,
+   then ⬆ Put one back with that file. The set should stay out, the sitting's count should not move,
+   and the toast should not claim the file added anything it did not.
 
 ### 19g. Sets, step 2: three questions before anything reads them
 
