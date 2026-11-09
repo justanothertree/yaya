@@ -40,7 +40,7 @@ export function LabFeedback({ api, demo, name, flags, viewer, onFlags, listed }:
     return (
       <section className="lab-feedback" aria-label={`Feedback on ${name}`}>
         <p className="muted lab-hint">
-          {name} is new here: votes and notes open once it has been added to the catalog.
+          {name} is new here: votes and comments open once it has been added to the catalog.
         </p>
       </section>
     )
@@ -530,7 +530,7 @@ function Owner({
         ))}
       </div>
       <p className="muted lab-hint">
-        Hiding keeps its id, everybody’s saved work and every vote and note; restore it any time.
+        Hiding keeps its id, everybody’s saved work and every vote and comment; restore it any time.
         {flags?.notes
           ? ` Comments you can read here: ${flags.notes.idea + flags.notes.more + flags.notes.bug}. A comment shared only with friends you are not among reaches you only if somebody reports it.`
           : ''}

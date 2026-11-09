@@ -80,15 +80,18 @@ export function explain(e: unknown): string {
     [/cannot post/, 'This account can’t post right now.'],
     [
       /five notes in ten minutes/,
-      'That’s five notes in ten minutes — try again in a little while.',
+      'That’s five comments in ten minutes — try again in a little while.',
     ],
-    [/twenty notes a day/, 'That’s twenty notes today — the rest will have to wait for tomorrow.'],
-    [/already left that note/, 'You’ve already left that note today.'],
+    [
+      /twenty notes a day/,
+      'That’s twenty comments today — the rest will have to wait for tomorrow.',
+    ],
+    [/already left that note/, 'You’ve already left that comment today.'],
     [/ten reports an hour/, 'That’s ten reports this hour — try again later.'],
     [/retired/, 'This experiment has been retired.'],
     [/no such (experiment|note)/, 'That isn’t there any more.'],
     [/not allowed/, 'Only the site’s owner can do that.'],
-    [/is yours/, 'That note is yours — edit or delete it instead.'],
+    [/is yours/, 'That comment is yours — edit or delete it instead.'],
     // a value the page itself chose that the server does not know: a stale page, not the person
     [
       /^(a vote is|a note is an|a report says|remove, restore|between none)/,
@@ -96,7 +99,7 @@ export function explain(e: unknown): string {
     ],
     [
       /lab_comments_(length|trimmed|plain|lines)/,
-      'A note is 2–500 characters of plain text, up to nine lines.',
+      'A comment is 2–500 characters of plain text, up to nine lines.',
     ],
   ]
   for (const [re, said] of known) if (re.test(msg)) return said

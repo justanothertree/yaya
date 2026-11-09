@@ -99,8 +99,9 @@ describe('reading notes defensively', () => {
 
 describe('what a person is told', () => {
   it('turns the database’s fixed refusals into sentences', () => {
+    // the server still says "notes"; the page calls them comments now
     expect(explain({ message: 'slow down: five notes in ten minutes is the most' })).toMatch(
-      /five notes/,
+      /five comments/,
     )
     expect(explain({ message: 'sign in first' })).toBe('Sign in to do that.')
     expect(explain({ message: 'not allowed' })).toMatch(/owner/)
