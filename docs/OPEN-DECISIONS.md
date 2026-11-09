@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-07 (seventh pass — §11a is DONE, §11b and §11c are re-measured on top of it, and §13 is new; §12 untouched).
+Last reviewed: 2026-11-08 (ninth pass — §14 is the Lab's votes and notes, renumbered from a §13 written in parallel with the ducking one, and updated to Evan's decision of 8 Nov to drop the vote floor; §11a DONE and §11b–c re-measured, §13 new, from the ducking pass; §12 untouched).
 
 ---
 
@@ -497,3 +497,90 @@ buy. It also explains the one thing in `poly.ts` that looks like a loose end: `s
 a fader to 2 and the bus clamps it to 1.5, so the top quarter of the slider's travel does nothing.
 Closing that gap is a one-line change in either direction and both are audible, so it is here
 rather than done.
+
+---
+
+## 14. The Lab's votes and notes — Evan's decisions (7 Nov, and 8 Nov for the totals)
+
+**Built as a draft, applied 9 Nov 2026:** `supabase/migrations/20261109030613_lab_catalog_and_feedback.sql`.
+`docs/2026-11-07-lab-catalog-and-feedback.md` has the apply order and the rollback. Evan decided the
+three policy questions on 7 Nov and settled the one conflict they left on 8 Nov (§14b); nothing in
+this section is waiting on a decision any more.
+
+### 14a. ✅ DECIDED — notes keep their audience; no standing admin access
+
+A note is read through `can_see(author, 'members')`, the profile ladder: an adult's note reaches
+members, a minor's or an unknown age's reaches their friends, and its author always. **The admin has
+no branch of their own** — they read a note only where the same ladder lets any member read it.
+A note the ladder keeps from them reaches them in exactly one way: somebody who can see it
+**reports** it, and it then appears in the admin's report queue (`admin_lab_reports`) and nowhere
+else. Moderation (`admin_lab_moderate`) acts on a reported note or one the admin can already read;
+anything else answers "no such note", the same as a note that does not exist. The admin's per-kind
+note counts count only the notes they can read. A removed note stays in the queue so it can be
+restored. Tested both in SQL and through the real API (§14e).
+
+### 14b. ✅ DECIDED — every member's vote counts, and members see the actual totals at once
+
+Every member who may vote today counts — adults, minors and unknown ages alike; a suspended
+member's earlier votes stop counting while they are suspended. A signed-in member sees the actual
+👍 and 👎 totals for every experiment straight away, **zeros included** — a single vote shows as one.
+Individual votes are shown to nobody but the voter, and no function returns a list of voters.
+
+**How it got here.** The 7 Nov decision paired "count everybody" with "a total must not reveal
+activity the site otherwise hides", and those meet at small numbers: a total of one is somebody's
+vote, and a minor's Lab activity is otherwise kept to their friends. The first draft answered with a
+floor — no total until three OTHER members had voted — and recorded that even a floor cannot stop
+somebody watching a total move while knowing who was online.
+
+**Evan's decision, 8 Nov: no floor.** Show the actual totals immediately, including zero. Evan
+accepts that people may infer who voted from a small or moving total; preventing that is not a
+requirement for Lab ratings. What stays private is the per-person record — nobody but the voter sees
+which way they voted, and there is no list of voters. `lab_vote_floor()` is gone and `lab_totals`
+returns `{up, down}` for every member; `src/lab/feedback.test.ts` fails if a floor comes back.
+
+### 14c. ✅ DECIDED — guests browse and play; ratings and notes are members-only
+
+A guest gets the catalog's flags (featured, rough edges, hidden) so retired toys stay hidden for
+them too, and nothing counted — no totals and no notes. Every write needs
+a session, refused by the grant and again by each function's first line. Playing never needed an
+account and still does not.
+
+### 14d. There is no member-to-member block on this site
+
+Friendships here are `pending` / `accepted` only; nothing lets one member stop seeing another. The
+Lab honours the rules that DO exist — the visibility ladder, minors' ceilings, suspension and
+moderation — and does not claim to honour a block, because there is none to honour. If one is ever
+built, `lab_can_read_comment` is the one place that would consult it.
+
+### 14e. How the decisions above were checked, and what that does NOT cover
+
+- **SQL, real Postgres 17** (Supabase's own image, started by the pinned CLI, schema from the repo's
+  `sql_paths`): `supabase/tests/lab-feedback.sql`, 130 cases, each rule broken once to watch it fail
+  — including a floor put back and a zero total hidden, both of which it names.
+- **The real API**: `scripts/lab-feedback-api.mjs` signs accounts up through Supabase Auth and makes
+  every call under test through PostgREST with the session Auth issued — guest, separate members, a
+  minor, an unknown age, the admin, a suspended member. 59 cases — among them a 0-and-0 total, a
+  single vote seen at once by somebody who did not cast it, and the minor's vote in the total; it
+  also fails by name when the admin's old reading branch is put back.
+- **Not covered:** production's own Auth settings and gateway, which differ from a local stack only
+  in configuration; real devices; Firefox and Safari.
+
+### 14f. Smaller calls, recorded so they are not mistaken for accidents
+
+- **An author's delete takes the reports on it too** — a withdrawn note is not kept as evidence.
+  The admin's own Remove keeps the note (hidden from everyone but its author) and closes its reports.
+- **Limits:** a note is 2–500 characters and nine lines; five notes per ten minutes and twenty a
+  day per author; ten reports an hour. Chosen for a site of a few dozen people, not measured
+  against any abuse.
+- **Favourites live in this browser only** — never sent anywhere, so a second device does not have
+  them. The page says so where they are shown. Syncing them is a later decision, not this pass.
+  **🕘 Recent** (the last twelve opened, #45) and **🆕 New to you** (which toys arrived since this
+  browser first came, #57) follow the same rule and say so on the page. If favourites ever sync,
+  these two are the questions to ask alongside it; neither is anybody's work, so neither has to.
+- **A suspended author's notes stop reaching other members** — suspension until now only stopped
+  writing; this is the first reader to also hide.
+- **Hidden means retired:** no new votes or notes, even from the admin, and members cannot read its
+  notes; everything already there is kept and returns with a restore.
+- **A new toy needs no migration:** the admin's own visit to the Lab registers any id the database
+  has not met (`admin_lab_register`). Until then a new toy plays and lists normally but cannot be
+  voted on.
