@@ -168,7 +168,7 @@ describe('the note box agrees with the table', () => {
 
 describe('what the closed notes fold says', () => {
   it('nothing until the first page comes; then none, a count, or a full page with more behind it', () => {
-    expect(notesSummary(null, false)).toBe('ideas, requests and bugs')
+    expect(notesSummary(null, false)).toBe('loading')
     expect(notesSummary(0, false)).toBe('none yet')
     expect(notesSummary(3, false)).toBe('3 to read')
     expect(notesSummary(20, true)).toBe('20+ to read')

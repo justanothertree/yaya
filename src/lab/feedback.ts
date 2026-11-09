@@ -9,11 +9,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseClientOrNull } from '../finance/client'
 
 export type NoteKind = 'idea' | 'more' | 'bug'
-export const NOTE_KINDS: { id: NoteKind; label: string }[] = [
-  { id: 'idea', label: '💡 Idea' },
-  { id: 'more', label: '➕ More of this' },
-  { id: 'bug', label: '🐞 Something’s wrong' },
-]
+/** the kind every comment is filed under. The table still holds one of three kinds and the
+ *  function still requires one; the page stopped asking (Evan, 9 Nov), so it sends this. Older
+ *  comments keep whatever kind they were given, and nothing on screen shows it. */
+export const COMMENT_KIND: NoteKind = 'idea'
 export const REPORT_REASONS = [
   { id: 'spam', label: 'Spam' },
   { id: 'unkind', label: 'Unkind' },
@@ -207,7 +206,7 @@ export function checkNote(body: string): string | null {
  *  (the draft keeps that from members on purpose: it would be a picture of activity the ladder
  *  hides). A full first page means there may be more, and says so rather than guessing. */
 export function notesSummary(count: number | null, more: boolean): string {
-  if (count === null) return 'ideas, requests and bugs'
+  if (count === null) return 'loading'
   if (!count) return 'none yet'
   return `${count}${more ? '+' : ''} to read`
 }
