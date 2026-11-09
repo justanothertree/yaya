@@ -28,6 +28,12 @@ processed copy). Both wait for Evan to listen.
   checks these fields: jam messages are broadcasts on the call's Supabase Realtime channel
   (`sendParty` in voiceSession.ts), gated on room membership and nothing else. The ws relay only
   hands out TURN credentials.
+  ⚠️ **And the shared transport had an 8 of its own.** `setTransport` — how a partner's tempo
+  and bar count are adopted — still clamped bars at 8, the last copy of the old ceiling and one
+  #35 never reached because it is not in the song file. A partner's 16-bar loop played as 8, and
+  the next tempo change made on that machine sent `bars: 8` home and halved the author's. It now
+  clamps at MAX_BARS; setTransport.test.ts asks setBars what the room allows and expects the
+  transport to agree, from 0 to 400.
 - **3 · Menu open.** This brings back the cost #78 removed: at 1440×900 ▶ Play sits at
   998–1036px with the grid open and 711–750 closed; at 1920×1080 it ends at 1109. One press of
   the menu button gives the fold back. Recorded beside the menu so it is not rediscovered.

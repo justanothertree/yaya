@@ -1363,7 +1363,11 @@ export function loopOrigin(): number {
  */
 export function setTransport(t: { bpm: number; bars: number; playing: boolean; origin: number }) {
   const bpm = Math.max(40, Math.min(200, Math.round(t.bpm)))
-  const bars = Math.max(1, Math.min(8, Math.round(t.bars)))
+  /* ⚠️ MAX_BARS, NOT 8 — the same ceiling setBars has. This was the last 8 left from before
+     MAX_BARS went to 32, and it was a jam-only one: a partner's 16-bar loop played as 8 here, and
+     the next tempo change made on THIS machine sent `bars: 8` home and halved theirs. Found
+     checking the jam's full range (Evan's call, 9 Nov 2026); setTransport.test.ts pins it. */
+  const bars = Math.max(1, Math.min(MAX_BARS, Math.round(t.bars)))
   if (!t.playing) {
     if (state.playing) stopLoop()
     if (bpm !== state.bpm || bars !== state.bars) set({ bpm, bars })
