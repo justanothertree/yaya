@@ -968,3 +968,24 @@ html:has(.lab) {
 .pegdrop-room .lab-stage {
   height: min(62vh, 560px, 92vw);
 }
+
+/* Stackfall: the touch pad sits right under the wells, big enough for a thumb, and only while a
+   game is on. A keyboard player never needs it; it is there for phones and tablets. */
+.stack-pads {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.35rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.stack-pads .stack-pad {
+  min-height: 52px;
+  padding: 0.3rem;
+  font-size: 1.15rem;
+}
+/* two wells side by side are about three-quarters as tall as they are wide, so a portrait phone's
+   tall stage would hang them in empty space and push the touch pad under the bottom bar */
+.stack-room .lab-stage.stack-pair {
+  height: min(62vh, 560px, 76vw);
+}

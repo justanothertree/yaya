@@ -75,6 +75,7 @@ import { SkipDemo } from '../gpu/SkipDemo'
 import { VisionDemo } from '../gpu/VisionDemo'
 import { GlideDemo } from '../gpu/GlideDemo'
 import { PegDropDemo } from '../gpu/PegDropDemo'
+import { StackDemo } from '../gpu/StackDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -535,6 +536,12 @@ const DEMOS: readonly {
     name: 'Peg drop',
     line: 'Peg drop — drop balls through twelve rows of pegs into slots that pay up to 170 times the drop. Pick your risk; every peg is a fair coin, and the odds are printed.',
     Demo: PegDropDemo,
+  },
+  {
+    id: 'stack',
+    name: 'Stackfall',
+    line: 'Stackfall — falling blocks that get faster the longer you last. Survive alone, or race the computer or a friend on the same keyboard: clear rows to send junk up their well.',
+    Demo: StackDemo,
   },
 ]
 

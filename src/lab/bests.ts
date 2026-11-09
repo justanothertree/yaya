@@ -24,6 +24,7 @@ import { readSaved as readNonogram, LEVELS as NONO_LEVELS, NONOGRAM_KEY } from '
 import { readBests as readOrbit, LEVELS as ORBIT_LEVELS, ORBIT_KEY } from '../gpu/orbit'
 import { readSaved as readPegdrop, PEGDROP_KEY, START as PEGDROP_START, pts } from '../gpu/pegdrop'
 import { readSaved as readSkip, CHALLENGES, SKIP_KEY } from '../gpu/skip'
+import { readSaved as readStack, STACK_KEY, BOTS } from '../gpu/stack'
 import { readSaved as readSlide, LEVELS as SLIDE_LEVELS, SLIDE_KEY } from '../gpu/slide'
 import { readSaved as readSun, SUN_KEY } from '../gpu/sun'
 import { readBest as readTrials, BEST_KEY as TRIALS_KEY } from '../gpu/trials'
@@ -99,6 +100,15 @@ const READERS: Record<string, (read: Read) => string | null> = {
     if (s.best <= PEGDROP_START) return null
     const hit = s.bigHit ? `, biggest landing ${s.bigHit}×` : ''
     return `most points ever ${pts(s.best)}${hit} (${s.drops} drops)`
+  },
+  stack: (read) => {
+    const s = readStack(read(STACK_KEY))
+    const beaten = (Object.keys(BOTS) as (keyof typeof BOTS)[]).filter((b) => s.wins[b] > 0)
+    const parts = [
+      s.longest ? `survived ${clock(s.longest)} with ${s.lines} lines` : null,
+      beaten.length ? `beat the ${beaten[beaten.length - 1]} computer` : null,
+    ].filter(Boolean)
+    return parts.length ? parts.join(', ') : null
   },
   jigsaw: (read) => {
     const b = readJigsaw(read(JIGSAW_BESTS_KEY))
