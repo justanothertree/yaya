@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { INSTRUMENTS, SHAPES } from './synth'
+import { BASS_VOICES, INSTRUMENTS, SHAPES, type InstrumentId } from './synth'
+import { packSong, readSong } from './songFile'
 
 /**
  * The loudness doctrine, asked on every test run instead of remembered.
@@ -223,5 +224,118 @@ describe('the three voices added alongside this file', () => {
     for (const p of handpanUpper) expect(Number.isInteger(p.ratio), `handpan ${p.ratio}`).toBe(true)
     const panUpper = SHAPES.steelpan.partials.filter((p) => p.ratio > 1 && p.ratio < 5)
     expect(panUpper.some((p) => !Number.isInteger(p.ratio))).toBe(true)
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: "several distinct bass voices (e.g. sub, finger, slap, synth, 808) plus a few
+ * genuinely different new instruments, usable from the keyboard, backing and jam".
+ *
+ * ⚠️ "DISTINCT" IS ASKED OF WHAT SHAPES A SOUND, NOT OF THE NUMBERS BEING DIFFERENT. Two presets
+ * whose every field differs by 1% are two copies of one sound. So each pair of basses must part
+ * on something a listener hears: the waveform, how much of the note is held, how fast it dies,
+ * how dark the filter closes, or a pitch that falls into place. Whether they sound like their
+ * NAMES is a listening question and is Evan's; the room measurement is in the PR.
+ */
+describe('the basses', () => {
+  const shape = (id: InstrumentId) => (SHAPES as Record<string, Shape>)[id]
+  const ratio = (a: number, b: number) => Math.max(a, b) / Math.max(1e-6, Math.min(a, b))
+  const parts = (a: Shape, b: Shape) => {
+    const why: string[] = []
+    if (a.wave !== b.wave) why.push('wave')
+    if (Math.abs(a.s - b.s) >= 0.15) why.push('held')
+    if (ratio(a.d, b.d) >= 1.5) why.push('decay')
+    if (ratio(a.filter?.to ?? 20000, b.filter?.to ?? 20000) >= 1.5) why.push('filter')
+    if (!!a.pitch !== !!b.pitch) why.push('pitch')
+    if (a.partials.length !== b.partials.length) why.push('partials')
+    return why
+  }
+
+  it('offers at least six, every one on the picker with a preset', () => {
+    expect(BASS_VOICES.length).toBeGreaterThanOrEqual(6)
+    const offered = new Set(INSTRUMENTS.map(([id]) => id))
+    for (const id of BASS_VOICES) {
+      expect(offered.has(id), id).toBe(true)
+      expect(shape(id), id).toBeDefined()
+    }
+    for (const want of ['finger', 'slap', 'synthbass', '808', 'sub'] as const)
+      expect(BASS_VOICES).toContain(want)
+  })
+
+  it('no two of them are built the same way', () => {
+    const alike: string[] = []
+    for (let i = 0; i < BASS_VOICES.length; i++)
+      for (let j = i + 1; j < BASS_VOICES.length; j++) {
+        const a = BASS_VOICES[i]
+        const b = BASS_VOICES[j]
+        /* two or more audible differences, so one tweak cannot make a copy pass */
+        if (parts(shape(a), shape(b)).length < 2) alike.push(`${a} ~ ${b}`)
+      }
+    expect(alike).toEqual([])
+  })
+
+  it('and every one is a bass: its fundamental leads, and nothing sits far above it', () => {
+    for (const id of BASS_VOICES) {
+      const sh = shape(id)
+      const loudest = Math.max(...sh.partials.map((p) => p.gain))
+      const fundamental = sh.partials.filter((p) => p.ratio <= 1).map((p) => p.gain)
+      expect(Math.max(...fundamental), `${id} is led by an overtone`).toBe(loudest)
+      expect(Math.max(...sh.partials.map((p) => p.ratio)), id).toBeLessThanOrEqual(5)
+    }
+  })
+
+  /**
+   * ⚠️ A PHONE SPEAKER CANNOT PLAY 41HZ. A bass made of the fundamental alone is silence on the
+   * device most people will hear it on — which is why the 808 carries a whisper of second and
+   * third. Every bass must have SOME energy at the octave or above.
+   */
+  it('and every one can be heard on a phone, with something above the fundamental', () => {
+    for (const id of BASS_VOICES) {
+      const sh = shape(id)
+      const rich = sh.wave !== 'sine' || sh.partials.some((p) => p.ratio >= 2)
+      expect(rich, `${id} is a bare sine — inaudible on a phone speaker`).toBe(true)
+    }
+  })
+})
+
+describe('the new voices travel', () => {
+  const added: InstrumentId[] = [
+    'finger',
+    'slap',
+    'upright',
+    'synthbass',
+    '808',
+    'supersaw',
+    'chip',
+    'harpsichord',
+    'sitar',
+  ]
+
+  /* a song, and the jam (which sends a layer as a packed song), read an instrument they do not
+     know as Keys — so a voice that is not on that list arrives as the wrong instrument */
+  it('through a song file and the jam, as themselves', () => {
+    for (const instrument of added) {
+      const back = readSong(
+        packSong({
+          v: 1,
+          name: 'x',
+          bpm: 96,
+          bars: 2,
+          layers: [
+            {
+              instrument,
+              muted: false,
+              len: 5,
+              events: [
+                { t: 0, midi: 40, on: true },
+                { t: 1, midi: 40, on: false },
+              ],
+              fx: { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 },
+            },
+          ],
+        }),
+      )
+      expect(back?.layers[0].instrument, instrument).toBe(instrument)
+    }
   })
 })

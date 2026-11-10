@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import {
+  BASS_VOICES,
   INSTRUMENTS,
   allNotesOff,
   stopLive,
@@ -27,7 +28,7 @@ import {
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
-import { nameChord } from '../audio/chordName'
+import { keySpeller, nameChord, noteLabel } from '../audio/chordName'
 import { pedalBook, type PedalBook } from '../audio/pedal'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
@@ -174,12 +175,14 @@ import {
   stopLoop,
   subscribeLoop,
   toggleMute,
-  undoLast,
   seekTo,
   hushScheduled,
   type Layer,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
+import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
+import { FAMILIES, familyOf, familyVoices } from '../audio/families'
+import { STARTERS, starterNow, type Starter } from '../audio/starters'
 
 /**
  * Somewhere to play.
@@ -256,7 +259,6 @@ const KNOBS: Array<[Knob, string, string]> = [
   ['tone', 'Tone', 'Darker to the left, brighter to the right — the middle is the sound as it is'],
 ]
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
-const noteName = (midi: number) => NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1)
 
 /**
  * The saved rigs, built with the room's OWN scale list.
@@ -276,6 +278,10 @@ const STRUM_KEY = 'instrument_strum_v1'
 const ARP_KEY = 'instrument_arp_v1'
 const SWING_KEY = 'instrument_swing_v1'
 const LEAD_KEY = 'instrument_leadback_v1'
+/* whether the More sound fold is open — a per-device convenience, like the others here */
+const MORE_KEY = 'instrument_more_sound_v1'
+/* every voice the picker offers, for asking families.ts which of a family's members exist here */
+const INSTRUMENT_IDS = INSTRUMENTS.map(([id]) => id)
 
 /**
  * Tempos as words, because "how fast?" is not a question about numbers.
@@ -774,6 +780,21 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       return 'keys'
     }
   })
+  /**
+   * Which family the instrument menu shows: the one the current sound belongs to, unless you
+   * have just pressed another family's tab — and that choice lasts until the sound changes, so
+   * picking a voice from the family you were browsing lands you on its family by itself.
+   */
+  const [famPick, setFamPick] = useState<{ forInst: string; fam: string } | null>(null)
+  const famShown = famPick && famPick.forInst === inst ? famPick.fam : familyOf(inst)
+  const setFamShown = (fam: string) => setFamPick({ forInst: inst, fam })
+  const [moreSound, setMoreSound] = useState(() => {
+    try {
+      return localStorage.getItem(MORE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [octave, setOctave] = useState(() => {
     const v = Number(localStorage.getItem(OCT_KEY))
     return Number.isFinite(v) && v >= 1 && v <= 6 ? v : 4
@@ -850,6 +871,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   /* a style chosen before there is a backing to play it — see chordStyleNow */
   const [chordStylePick, setChordStylePick] = useState<ChordStyle>('pad')
   const [bassStylePick, setBassStylePick] = useState<BassStyle>('rootfifth')
+  /* the voice the next bassline is laid on — see the Bass row's Sound picker */
+  const [bassSoundPick, setBassSoundPick] = useState<InstrumentId>('bass')
   /** whether the pedal currently down was put there by Shift rather than by the button */
   const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
@@ -968,10 +991,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(ARP_KEY, arp)
       localStorage.setItem(SWING_KEY, swing ? '1' : '0')
       localStorage.setItem(LEAD_KEY, leadBack ? '1' : '0')
+      localStorage.setItem(MORE_KEY, moreSound ? '1' : '0')
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root, chord, strum, arp, swing, leadBack])
+  }, [inst, octave, scale, root, chord, strum, arp, swing, leadBack, moreSound])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -1068,6 +1092,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       }),
     [],
   )
+  /* ⚠️ AFTER the workbench above, so the bench it puts back is where undo starts rather than a
+     step — it also marks that restore as from elsewhere, so the order is belt and braces */
+  useEffect(() => startHistory(), [])
+  const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
   const [libOpen, setLibOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
 
@@ -1319,9 +1347,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * or ask about. Both come off the same `backingNow`, so they cannot name one chord while the
    * keyboard lights up another.
    */
+  /**
+   * ⚠️ SPELLED IN THE ROOM'S KEY — B♭ in D minor, not A♯ (Evan, 9 Nov 2026). Both readouts use it,
+   * the backing's and the one for what you are holding, and so do the keys' own labels since
+   * 10 Nov, so one note never has two names an inch apart. Chromatic has no key and keeps its sharps. See `keySpeller`.
+   */
+  const spell = useMemo(
+    () => (scale === 'chromatic' ? undefined : keySpeller(degrees, root)),
+    [scale, degrees, root],
+  )
   const backingChord = useMemo(
-    () => (backingNow.length ? nameChord(backingNow) : null),
-    [backingNow],
+    () => (backingNow.length ? nameChord(backingNow, spell) : null),
+    [backingNow, spell],
   )
 
   /**
@@ -1358,7 +1395,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     )
     /* the original style keeps the original tag, so a song saved before styles reads the same */
     const tag = style === 'rootfifth' ? p.id : `${p.id}-${style}`
-    return addPatternLayer(events, len, tag, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
+    /* a swap keeps the row's own sound; a new row is laid on the voice picked in the Bass row */
+    return addPatternLayer(events, len, tag, {
+      mark: '-bass:',
+      instrument: bassSoundPick,
+      gain: 0.5,
+    })
   }
 
   /**
@@ -1402,6 +1444,40 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       setLayerInstrument(id, CHORD_SOUND[style])
     if (id && loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p, lead)
     return id
+  }
+
+  /**
+   * A whole backing from one press — see starters.ts.
+   *
+   * ⚠️ THE SAME CALLS THE PANEL'S OWN BUTTONS MAKE, in the order a person would press them: the
+   * beat, then the chords in their style, then the bass under them. Each swaps its own row, so a
+   * second starter replaces the first rather than stacking a second backing on it, and every row
+   * afterwards shows exactly what was picked.
+   *
+   * ⚠️ IT SETS THE TEMPO ONLY ON A SONG WITH NOTHING OF YOURS IN IT. A change of tempo rescales
+   * every layer, and a part you played is not a starter's to speed up — so with one of those in
+   * the song the beat, chords and bass arrive at the tempo you already have.
+   */
+  const ownParts = (layers: readonly Layer[]) =>
+    layers.some(
+      (l) =>
+        beatPatternOf(l) === null &&
+        chordPatternOf(l) === null &&
+        bassPatternOf(l) === null &&
+        fillPatternOf(l) === null,
+    )
+  const applyStarter = (s: Starter) => {
+    const p = CHORD_PATTERNS.find((x) => x.id === s.chords)
+    const d = DRUM_PATTERNS.find((x) => x.id === s.beat)
+    if (!p || !d) return
+    if (!ownParts(loopState().layers)) setBpm(s.bpm)
+    const beat = patternEvents(d, loopState().bpm)
+    if (!addPatternLayer(beat.events, beat.len, d.id)) return
+    setChordStylePick(s.chordStyle)
+    setBassStylePick(s.bass)
+    if (!layChords(p, leadBack, s.chordStyle)) return
+    layBass(p, leadBack, s.bass)
+    if (!loopState().playing) startLoop()
   }
 
   /**
@@ -1716,6 +1792,22 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       !!t && (t.tagName === 'BUTTON' || t.tagName === 'SUMMARY' || t.tagName === 'A')
 
     const down = (e: KeyboardEvent) => {
+      /**
+       * ⚠️ CTRL+Z AND ITS REDOS, BEFORE THE MODIFIER RETURN BELOW and allowed to repeat, as undo
+       * does everywhere. Not while typing — a field has its own undo — and not while the note
+       * editor is open, whose own listener takes these keys for its notes (see PianoRoll).
+       */
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing(e)) {
+        const k = e.key.toLowerCase()
+        const back = k === 'z' && !e.shiftKey
+        const fwd = (k === 'z' && e.shiftKey) || k === 'y'
+        if ((back || fwd) && !document.querySelector('.inst-roll-host')) {
+          e.preventDefault()
+          if (back) undo()
+          else redo()
+          return
+        }
+      }
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e)) return
       if (e.key === ' ') {
         if (spaceIsTheirs(e.target as HTMLElement | null)) return
@@ -1953,7 +2045,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 ? ({ ['--party-hue' as string]: theirNotes.get(midi) } as React.CSSProperties)
                 : undefined
             }
-            aria-label={inst === 'drums' ? drumName(midi) : noteName(midi)}
+            aria-label={inst === 'drums' ? drumName(midi) : noteLabel(midi, spell)}
             onPointerDown={(e) => {
               /**
                * ⚠️ SOUND FIRST, then let go of the pointer — and the release is wrapped because
@@ -1985,11 +2077,52 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 C4/C#4/D4 is twelve unlabelled buttons — the note name is true and useless,
                 because nobody is playing a kick in the key of C. */}
             <span className="inst-key-name">
-              {inst === 'drums' ? drumName(midi) : noteName(midi)}
+              {inst === 'drums' ? drumName(midi) : noteLabel(midi, spell)}
             </span>
           </button>
         ))}
       </div>
+
+      {/**
+       * ⚠️ UNDER THE KEYS, where your eyes already are — Evan, 10 Nov 2026. It sat below the whole
+       * song, so the name of the chord you were holding appeared a screen away from the hands
+       * holding it.
+       */}
+      {/**
+       * What you are holding, named.
+       *
+       * ⚠️ IT READS `held`, WHICH IS THE BOOK, so it names what is actually SOUNDING rather
+       * than what the pickers would produce — a chord clipped at the top of the keyboard, two
+       * fingers making something the chord picker never offered, and the note an arpeggio is
+       * on are all the same question answered the same way.
+       *
+       * ⚠️ AND IT GOES QUIET RATHER THAN GUESSING. `nameChord` answers null for a handful of
+       * keys that is not a shape worth naming, and a readout inventing something for every
+       * cluster would be noise — wrong in a way nobody could check. Blank half the time is
+       * honest; confident half the time is not.
+       *
+       * ⚠️ NOT ON THE DRUM KIT, where a pad is a sound and not a pitch. Naming a kick and a
+       * snare "C and its fifth" is true of the MIDI and false about the room.
+       */}
+      {/**
+       * ⚠️ THE LIVE REGION IS THE INNER SPAN NOW, AND THAT IS THE WHOLE REASON FOR THE SPLIT.
+       * What you are holding changes when you press a key, so announcing it is answering
+       * something you just did. The backing's chord changes once a bar for as long as the loop
+       * runs — put that in an `aria-live` region and a screen reader narrates a metronome
+       * forever. It is the same call the keyboard's dots made one commit ago, and reusing this
+       * element would have silently undone it.
+       *
+       * The outer <p> keeps its reserved height either way, so the keyboard never jumps.
+       */}
+      {inst !== 'drums' && (
+        <p className="muted inst-note inst-chord-name">
+          <span aria-live="polite">{(held.length > 0 && nameChord(held, spell)) || ' '}</span>
+          {/* only when your own hands are quiet — what you are playing always wins the line */}
+          {held.length === 0 && backingChord && (
+            <span className="inst-backing-chord">{backingChord} underneath</span>
+          )}
+        </p>
+      )}
 
       {/**
        * ⚠️ WHAT YOUR HANDS NEED WHILE THEY ARE ON THE KEYS, DIRECTLY UNDER THEM. Octave, Volume,
@@ -1999,6 +2132,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * Evan's note asked for exactly this group. The row moved; nothing in it changed.
        */}
       <div className="inst-row inst-playbar">
+        <button
+          className="btn inst-pick-open"
+          aria-expanded={picksOpen}
+          onClick={() => setPicksOpen((v) => !v)}
+          title="Choose an instrument"
+        >
+          <span aria-hidden>{INSTRUMENTS.find(([id]) => id === inst)?.[1]}</span>
+          {INSTRUMENTS.find(([id]) => id === inst)?.[2] ?? 'Keys'}
+          <span aria-hidden>{picksOpen ? '▴' : '▾'}</span>
+        </button>
+
         <span className="muted inst-oct">
           Octave
           <button
@@ -2095,6 +2239,85 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           <Why>{arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}</Why>
         </button>
 
+        {/* ⚠️ SCALE, KEY AND CHORD BESIDE THE OTHER THINGS YOUR HANDS USE, not below the song —
+            Evan, 10 Nov 2026. These three decide what every key you press plays. */}
+        {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
+          degrees, so there is no wrong note left to press. */}
+        <label className="inst-pick">
+          <span className="muted">Scale</span>
+          <select
+            value={scale}
+            onChange={(e) => {
+              hush()
+              setScale(e.target.value)
+              e.target.blur()
+            }}
+          >
+            {SCALES.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* only when it does something — a key picker on Chromatic would be a control that
+            visibly changes nothing */}
+        {scale !== 'chromatic' && (
+          <label className="inst-pick">
+            <span className="muted">Key</span>
+            <select
+              value={root}
+              onChange={(e) => {
+                hush()
+                setRoot(Number(e.target.value))
+                /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
+                   staying here would change the key again the moment you played a note */
+                e.target.blur()
+              }}
+            >
+              {NAMES.map((nm, i) => (
+                <option key={nm} value={i}>
+                  {nm}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/**
+         * One key, a chord.
+         *
+         * ⚠️ NO `hush()` HERE, unlike its two neighbours, and the difference is the point. They
+         * cut your notes off because the keys were about to mean something else; changing this
+         * does not need to, because the book remembers what each press actually sounded and
+         * releases that — so you can widen a chord you are already holding and the note you let
+         * go of is the note you played.
+         *
+         * ⚠️ AND NOT HIDDEN ON THE DRUM KIT. It would be a control appearing and disappearing as
+         * you browsed the instruments, and your choice would be silently forgotten; the kit
+         * ignores it instead and the hint below says so.
+         */}
+        <label className="inst-pick">
+          <span className="muted">Chord</span>
+          <select
+            value={chord}
+            onChange={(e) => {
+              setChord(e.target.value as ChordId)
+              /* ⚠️ hand the keyboard back, for the reason the Key picker gives: a focused
+                 select eats letters as type-ahead, so staying here would change the chord again
+                 the moment you played a note */
+              e.target.blur()
+            }}
+          >
+            {CHORDS.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <button
           className="btn"
           onClick={() => {
@@ -2105,7 +2328,71 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         >
           ⏹ Panic
         </button>
+
+        {/**
+         * ⚠️ THE REST OF THE SOUND, ONE PRESS AWAY — Evan, 10 Nov 2026: "keep common ones up front
+         * and advanced ones tucked away". The arpeggio, how a chord arrives, the six effect sliders
+         * and saved rigs were always on screen, 1,600px down on a desktop and 1,550 on a phone,
+         * under the whole song. Tucked here they sit beside the sound they shape, and the choice
+         * to open them is remembered.
+         */}
+        <button
+          className={'btn' + (moreSound ? ' is-on' : ' btn-ghost')}
+          aria-expanded={moreSound}
+          aria-label="More sound"
+          onClick={() => setMoreSound((v) => !v)}
+          title="Arpeggio, effects and saved rigs"
+        >
+          {/* "More" alone on a phone, where the full word costs the bar a fifth line; the name
+              a screen reader hears stays whole */}
+          ⚙ More<span className="inst-more-word"> sound</span>{' '}
+          <span aria-hidden>{moreSound ? '▴' : '▾'}</span>
+        </button>
       </div>
+
+      {/**
+       * What the two pickers above actually chose, in a sentence.
+       *
+       * ⚠️ IT IS NOT IN THE OPTION LABELS, and that is a layout decision. A `<select>` is as
+       * wide as its longest option and three of them share one row at 375px, so "Harmonic
+       * minor — dramatic and a little eastern" in the list is horizontal scroll on a phone.
+       * Here it wraps.
+       *
+       * ⚠️ AND IT IS ONE PARAGRAPH, NOT TWO. Two muted lines stacked under a row of pickers is
+       * the "don't make the UI noisy by default" rule broken by exactly the feature that was
+       * supposed to make things clearer. Silent on Chromatic + One note, which is where an
+       * untouched room starts and needs no explaining.
+       */}
+      {(scale !== 'chromatic' || chord !== 'off') && (
+        <p className="muted inst-note inst-scale-say">
+          {[
+            scale !== 'chromatic' ? SCALES.find(([id]) => id === scale)?.[3] : null,
+            chord === 'off'
+              ? null
+              : inst === 'drums'
+                ? 'The drum kit plays one sound per pad, so chords come back when you pick an instrument'
+                : CHORDS.find(([id]) => id === chord)?.[2],
+            /* ⚠️ `usesScale`, not `chord !== 'off'`. Fifth is a power chord — no third — so
+               telling somebody it comes out major on Chromatic is the opposite of what they can
+               hear. Octave is the same. Only the shapes that step through the scale care. */
+            scale === 'chromatic' && usesScale(chord)
+              ? 'On Chromatic every chord is major, so pick a scale to hear it follow the key'
+              : null,
+            /* only when it is doing something — "Every note at once" under a chord that arrives
+               all at once is a sentence describing the absence of a feature */
+            arp !== 'off' && inst !== 'drums' ? ARPS.find(([id]) => id === arp)?.[2] : null,
+            arp !== 'off' && swing && inst !== 'drums' ? 'Swung, so the off-beats land late' : null,
+            chord !== 'off' && arp === 'off' && strum !== 'off' && inst !== 'drums'
+              ? STRUMS.find(([id]) => id === strum)?.[2]
+              : null,
+          ]
+            .filter(Boolean)
+            /* ⚠️ TWO SENTENCES, so both start with a capital. Joining them as one clause reads
+               "spare and still. three notes from the scale you chose" — which is what the first
+               version did, and it looks like a rendering bug rather than a style choice. */
+            .join('. ') + '.'}
+        </p>
+      )}
 
       {/**
        * ⚠️ A MENU ON A PHONE, exactly like the paint room's brushes and for the same measurement:
@@ -2127,96 +2414,218 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * gives the fold back. A phone still starts closed (375, touch: `display: none`).
        */}
       <div className="inst-bar">
-        <button
-          className="btn inst-pick-open"
-          aria-expanded={picksOpen}
-          onClick={() => setPicksOpen((v) => !v)}
-          title="Choose an instrument"
-        >
-          <span aria-hidden>{INSTRUMENTS.find(([id]) => id === inst)?.[1]}</span>
-          {INSTRUMENTS.find(([id]) => id === inst)?.[2] ?? 'Keys'}
-          <span aria-hidden>{picksOpen ? '▴' : '▾'}</span>
-        </button>
+        {/**
+         * ⚠️ ONE FAMILY AT A TIME — Evan, 10 Nov 2026: "group related controls". The flat grid was
+         * every voice at once, four or five rows, and with the menu open on a desktop (his call)
+         * that put ▶ Play below the fold. A family is one row; the family the current sound
+         * belongs to is the one shown, so opening the menu still lands on what you are playing.
+         * See families.ts.
+         */}
+        {picksOpen && (
+          <div className="inst-families" role="group" aria-label="Kinds of instrument">
+            {FAMILIES.filter((f) => familyVoices(f.id, INSTRUMENT_IDS).length).map((f) => (
+              <button
+                key={f.id}
+                className={'btn' + (famShown === f.id ? ' is-on' : ' btn-ghost')}
+                aria-pressed={famShown === f.id}
+                onClick={() => setFamShown(f.id)}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+        )}
         <div className={'fx-style-row inst-picks' + (picksOpen ? ' is-open' : '')}>
-          {INSTRUMENTS.map(([id, icon, name]) => (
-            <button
-              key={id}
-              className={'fx-style-btn' + (inst === id ? ' is-on' : '')}
-              aria-pressed={inst === id}
-              onClick={() => {
-                // ⚠️ stopLive, not allNotesOff: your held keys must let go of the old sound, but
-                // a loop playing underneath is not yours to interrupt
-                hush()
-                setInst(id)
-                /* closes on a phone, where it covers the page; stays open on a desktop, where
-                   trying three sounds in a row is the point of opening it */
-                if (window.matchMedia(PHONE_MENU).matches) setPicksOpen(false)
-              }}
-            >
-              <span aria-hidden>{icon}</span>
-              <span className="fx-style-label">{name}</span>
-            </button>
-          ))}
-        </div>
-        {/* ⚠️ NINE SETTINGS, of which the four that were already remembered are the four
-            that matter least. The effects decide what an instrument SOUNDS like far more than the
-            octave does, and they were the ones thrown away on every visit. A rig keeps all nine,
-            so "keys, dry" and "keys, drenched in echo" become two things you can switch between
-            rather than one thing you rebuild. */}
-        <KitBar
-          store={instKits}
-          placeholder="Name this rig"
-          capture={(name) => ({
-            name,
-            inst,
-            octave,
-            scale,
-            root,
-            fx: captureFx(),
-            /* ⚠️ HOW IT IS PLAYED, NOT ONLY WHAT IT SOUNDS LIKE. A rig that remembered the
-               reverb and forgot the arpeggio did not reproduce the thing you kept. */
-            chord,
-            strum,
-            arp,
-            swing,
+          {familyVoices(famShown, INSTRUMENT_IDS).map((id) => {
+            const [, icon, name] = INSTRUMENTS.find(([x]) => x === id)!
+            return (
+              <button
+                key={id}
+                className={'fx-style-btn' + (inst === id ? ' is-on' : '')}
+                aria-pressed={inst === id}
+                onClick={() => {
+                  // ⚠️ stopLive, not allNotesOff: your held keys must let go of the old sound, but
+                  // a loop playing underneath is not yours to interrupt
+                  hush()
+                  setInst(id)
+                  /* closes on a phone, where it covers the page; stays open on a desktop, where
+                     trying three sounds in a row is the point of opening it */
+                  if (window.matchMedia(PHONE_MENU).matches) setPicksOpen(false)
+                }}
+              >
+                <span aria-hidden>{icon}</span>
+                <span className="fx-style-label">{name}</span>
+              </button>
+            )
           })}
-          apply={(k: InstKit) => {
-            hush()
-            setInst(k.inst)
-            setOctave(k.octave)
-            setScale(k.scale)
-            setRoot(k.root)
-            applyFx(k.fx)
-            setChord(k.chord)
-            setStrum(k.strum)
-            setArp(k.arp)
-            setSwing(k.swing)
-          }}
-          /**
-           * ⚠️ THREE SEGMENTS, AND I BRIEFLY MADE IT FIVE. Adding the chord and the arpeggio
-           * here looked free — the rig had just learned to save them — and it overflowed the
-           * chip: `.kitbar-desc` is 158px wide and the text became 266px, so the audit found a
-           * clipped element and what a phone actually showed was "Rhodes · Harmonic minor ·
-           * Seve…". The two things I had added were the exact part that never appeared.
-           *
-           * The clamp is not the problem and must not be lifted: its own comment says a long
-           * name would otherwise make one chip twice the height of its neighbours and break
-           * the row. At 0.68rem in 158px there is room for about twenty-six characters, which
-           * three segments already spend.
-           *
-           * So the rig still SAVES the chord and the arpeggio — that was the fix — and the
-           * place to tell two rigs apart is the name on the line above, which the person wrote
-           * themselves and which is as long as they want it.
-           */
-          describe={(k) =>
-            [
-              INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
-              SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
-              fxWord(k.fx),
-            ].join(' · ')
-          }
-        />
+        </div>
       </div>
+
+      {moreSound && (
+        <div className="inst-more card">
+          <div className="inst-row">
+            {/**
+             * One key, a part.
+             *
+             * ⚠️ THIS ONE DOES `hush()`, UNLIKE Chord and Arrives, and the asymmetry is the point.
+             * Those two change what the NEXT press will do and leave what is sounding alone, which
+             * the book makes safe. This changes who is playing: switching it on mid-hold would
+             * leave the sustained chord ringing underneath the arpeggio it just started, and
+             * switching it off would strand the runner's last note. Dropping what you are holding
+             * is the honest answer, and it is the same one the Scale picker gives.
+             */}
+            {/**
+             * ⚠️ ALWAYS SHOWN, AND IT USED TO BE GATED ON `chord !== 'off'`. That hid the control
+             * without stopping the thing it controls, which is the worst of both: the setting is
+             * remembered across visits, so anybody who tried an arpeggio once and then put Chord
+             * back to One note came back to a keyboard where HOLDING A KEY REPEATS IT FOR EVER and
+             * nothing on screen said why or offered a way out. Measured before the fix — one key
+             * held for 1.5s gave six notes, all C4, 313ms apart, with the picker not rendered.
+             *
+             * Showing it is the right fix rather than suppressing the arp without a chord, because
+             * arpeggiating notes you are holding YOURSELF is the normal use of one: hold C and E
+             * and it alternates them. A single held key repeating is what every arpeggiator does;
+             * it is only alarming when you cannot see that one is switched on.
+             *
+             * `Arrives` stays hidden without a chord, and that is not the same call — a roll across
+             * one note genuinely does nothing, so it is a control with no effect rather than an
+             * effect with no control.
+             */}
+            <label className="inst-pick">
+              <span className="muted">Arpeggio</span>
+              <select
+                value={arp}
+                onChange={(e) => {
+                  hush()
+                  setArp(e.target.value as ArpId)
+                  e.target.blur()
+                }}
+              >
+                {ARPS.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/**
+             * How the chord arrives: together, or one note at a time like a hand does it.
+             *
+             * ⚠️ ONLY ONCE A CHORD IS CHOSEN, the same rule the Key picker follows on Chromatic. A
+             * single note cannot be rolled, so on an untouched room this would be a control that
+             * visibly does nothing — and the row already carries three.
+             *
+             * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
+             * because the book releases what was actually sounded rather than recomputing it.
+             */}
+            {/**
+             * ⚠️ HIDDEN WHEN THERE IS NO ARPEGGIO, AND THAT IS NOT THE TRAP THE ARPEGGIO PICKER
+             * WAS. Swing displaces arpeggio STEPS and nothing else — with no figure running there
+             * is nothing for it to move, so this is a control with no effect rather than an effect
+             * with no control. The arp picker was the other way round, which is why it is always
+             * shown now.
+             */}
+            {arp !== 'off' && (
+              <label className="inst-pick">
+                <span className="muted">Feel</span>
+                <select
+                  value={swing ? 'swing' : 'straight'}
+                  onChange={(e) => {
+                    setSwing(e.target.value === 'swing')
+                    e.target.blur()
+                  }}
+                >
+                  <option value="straight">Straight</option>
+                  <option value="swing">Swing</option>
+                </select>
+              </label>
+            )}
+
+            {chord !== 'off' && arp === 'off' && (
+              <label className="inst-pick">
+                <span className="muted">Arrives</span>
+                <select
+                  value={strum}
+                  onChange={(e) => {
+                    setStrum(e.target.value as StrumId)
+                    e.target.blur()
+                  }}
+                >
+                  {STRUMS.map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+          <div className="inst-row inst-knobs">
+            {KNOBS.map(([k, label, hint]) => (
+              <KnobRow key={k} k={k} label={label} hint={hint} />
+            ))}
+          </div>
+          {/* ⚠️ NINE SETTINGS, of which the four that were already remembered are the four
+                that matter least. The effects decide what an instrument SOUNDS like far more than the
+                octave does, and they were the ones thrown away on every visit. A rig keeps all nine,
+                so "keys, dry" and "keys, drenched in echo" become two things you can switch between
+                rather than one thing you rebuild. */}
+          <KitBar
+            store={instKits}
+            placeholder="Name this rig"
+            capture={(name) => ({
+              name,
+              inst,
+              octave,
+              scale,
+              root,
+              fx: captureFx(),
+              /* ⚠️ HOW IT IS PLAYED, NOT ONLY WHAT IT SOUNDS LIKE. A rig that remembered the
+                   reverb and forgot the arpeggio did not reproduce the thing you kept. */
+              chord,
+              strum,
+              arp,
+              swing,
+            })}
+            apply={(k: InstKit) => {
+              hush()
+              setInst(k.inst)
+              setOctave(k.octave)
+              setScale(k.scale)
+              setRoot(k.root)
+              applyFx(k.fx)
+              setChord(k.chord)
+              setStrum(k.strum)
+              setArp(k.arp)
+              setSwing(k.swing)
+            }}
+            /**
+             * ⚠️ THREE SEGMENTS, AND I BRIEFLY MADE IT FIVE. Adding the chord and the arpeggio
+             * here looked free — the rig had just learned to save them — and it overflowed the
+             * chip: `.kitbar-desc` is 158px wide and the text became 266px, so the audit found a
+             * clipped element and what a phone actually showed was "Rhodes · Harmonic minor ·
+             * Seve…". The two things I had added were the exact part that never appeared.
+             *
+             * The clamp is not the problem and must not be lifted: its own comment says a long
+             * name would otherwise make one chip twice the height of its neighbours and break
+             * the row. At 0.68rem in 158px there is room for about twenty-six characters, which
+             * three segments already spend.
+             *
+             * So the rig still SAVES the chord and the arpeggio — that was the fix — and the
+             * place to tell two rigs apart is the name on the line above, which the person wrote
+             * themselves and which is as long as they want it.
+             */
+            describe={(k) =>
+              [
+                INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
+                SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
+                fxWord(k.fx),
+              ].join(' · ')
+            }
+          />
+        </div>
+      )}
 
       {call.inCall && (
         <div className="inst-row inst-jam">
@@ -2268,13 +2677,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         </button>
 
         {/**
-         * Capture — Josh's idea, and the best one in the transport.
-         *
-         * ⚠️ It does not start anything. Everything you play is already in a rolling buffer, so
-         * this asks "keep what just happened" rather than "start keeping things". The whole
-         * value is that you decide AFTER hearing it, which is when you actually know.
-         */}
-        {/**
          * ⚠️ THE FIRST TWO DECISIONS, IN FRONT OF YOU, ONCE.
          *
          * Every song on this site is at the default tempo. Part of that was a real bug — typing a
@@ -2316,7 +2718,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 onClick={() => setBeatsOpen((v) => !v)}
                 title="Drums, chords, a bassline and a fill — drop any of them in, then change them"
               >
-                🥁 Pick a beat or some chords
+                🥁 Pick a style, a beat or some chords
               </button>
               <span className="muted inst-start-or">or just play</span>
             </span>
@@ -2339,54 +2741,35 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             </span>
           </div>
         )}
-        {/* Start a part by drawing it rather than by playing it. The editor was only reachable
-            through a recording, which meant placing four notes by hand required performing them
-            first. */}
         <button
-          className="btn"
-          onClick={() => setEditing(addEmptyLayer(live.current.inst) || null)}
-          disabled={loop.layers.length >= MAX_LAYERS}
-          title={
-            loop.layers.length >= MAX_LAYERS
-              ? `That is all ${MAX_LAYERS} layers — delete one to add another`
-              : 'Add an empty layer and draw notes into it'
+          className={
+            'btn inst-rec' + (loop.recording ? ' is-rec' : loop.waiting ? ' is-armed' : '')
           }
+          onClick={() => (loop.waiting || loop.recording ? cancelRecord() : armRecord())}
+          title="Record a pass — it starts at the top of the loop"
         >
-          ✎ New part
+          {loop.recording
+            ? loop.replacing
+              ? '⏺ Replacing'
+              : '⏺ Recording'
+            : loop.waiting
+              ? // ⚠️ Only the last bar gets a number, because only the last bar gets clicks.
+                // Arming early in a long loop can be eight beats away, and counting "8…7…6" at
+                // somebody is not a count-in — it is a wait. The clicks and the digits describe
+                // the same four beats.
+                loop.countIn && loop.countIn <= 4
+                ? `⏳ ${loop.countIn}…`
+                : '⏳ Armed…'
+              : '⏺ Record'}
         </button>
-        {/* ⚠️ HERE TOO, not only in the start row. The start row disappears the moment you have
-            a layer — and so, with it, did the only way to reach the beats, so adding a drum part
-            to something you had already begun was impossible. A doorway that closes behind you is
-            worse than no doorway: the feature looks like it was imagined rather than built. */}
-        <button
-          className={'btn' + (beatsOpen ? ' is-on' : '')}
-          aria-pressed={beatsOpen}
-          onClick={() => setBeatsOpen((v) => !v)}
-          disabled={loop.layers.length >= MAX_LAYERS}
-          title={
-            loop.layers.length >= MAX_LAYERS
-              ? `That is all ${MAX_LAYERS} layers — delete one to add another`
-              : 'Drums, chords, a bassline and a fill — drop any of them in, then change them'
-          }
-        >
-          🥁 Beats & chords
-        </button>
-        <button
-          className={'btn' + (libOpen ? ' is-on' : '')}
-          aria-pressed={libOpen}
-          onClick={() => setLibOpen((v) => !v)}
-          title="Songs and loops you have kept"
-        >
-          📁 Library{saved.length ? ` · ${saved.length}` : ''}
-        </button>
-        <button
-          className="btn"
-          disabled={!loop.layers.length}
-          onClick={() => keep('song')}
-          title="Keep this whole arrangement"
-        >
-          ⬇ Keep song
-        </button>
+
+        {/**
+         * Capture — Josh's idea, and the best one in the transport.
+         *
+         * ⚠️ It does not start anything. Everything you play is already in a rolling buffer, so
+         * this asks "keep what just happened" rather than "start keeping things". The whole
+         * value is that you decide AFTER hearing it, which is when you actually know.
+         */}
         <button
           className="btn"
           onClick={() => {
@@ -2410,27 +2793,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           title="Keep the last loop's worth of what you just played — no need to have been recording"
         >
           ⧉ Capture
-        </button>
-        <button
-          className={
-            'btn inst-rec' + (loop.recording ? ' is-rec' : loop.waiting ? ' is-armed' : '')
-          }
-          onClick={() => (loop.waiting || loop.recording ? cancelRecord() : armRecord())}
-          title="Record a pass — it starts at the top of the loop"
-        >
-          {loop.recording
-            ? loop.replacing
-              ? '⏺ Replacing'
-              : '⏺ Recording'
-            : loop.waiting
-              ? // ⚠️ Only the last bar gets a number, because only the last bar gets clicks.
-                // Arming early in a long loop can be eight beats away, and counting "8…7…6" at
-                // somebody is not a count-in — it is a wait. The clicks and the digits describe
-                // the same four beats.
-                loop.countIn && loop.countIn <= 4
-                ? `⏳ ${loop.countIn}…`
-                : '⏳ Armed…'
-              : '⏺ Record'}
         </button>
 
         <button
@@ -2465,11 +2827,106 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             turned into the Length buttons. See SnapPicker. */}
         <SnapPicker value={loop.quantize} onPick={setQuantize} />
 
-        {loop.layers.length > 0 && (
-          <button className="btn" onClick={undoLast} title="Take back the last thing you recorded">
-            ↶ Undo take
-          </button>
+        {/**
+         * ⚠️ UNDO AND REDO FOR THE WHOLE ROOM — Evan, 9 Nov 2026 — where "↶ Undo take" was. That
+         * took back the last LAYER and nothing else could be taken back at all; these take back
+         * the last change, whatever it was: a deletion, Clear all, a swap, a drag, a tempo, a song
+         * opened over your work. See history.ts, including why a jam partner's changes are not
+         * yours to undo.
+         *
+         * ⚠️ SHOWN WHILE THERE IS ANYTHING TO UNDO, not only while there are layers: after Clear
+         * all the room is empty and Undo is the one button that matters.
+         *
+         * ⚠️ AND STOOD DOWN WHILE THE NOTE EDITOR IS OPEN, which has its own undo for its own
+         * notes and takes Ctrl+Z for it. Two undos answering one key would each take a step.
+         */}
+        {(loop.layers.length > 0 || hist.undo > 0 || hist.redo > 0) && (
+          /* one unit, so a phone wraps the pair onto the next line together rather than
+             splitting them — measured at 375, Redo alone went down a line */
+          <span className="inst-undo" role="group" aria-label="Undo and redo">
+            <button
+              className="btn"
+              onClick={() => undo()}
+              disabled={!hist.undo || !!editing}
+              title={
+                editing
+                  ? 'The note editor has its own undo while it is open'
+                  : 'Undo your last change to the layers (Ctrl+Z)'
+              }
+            >
+              ↶ Undo
+            </button>
+            <button
+              className="btn"
+              onClick={() => redo()}
+              disabled={!hist.redo || !!editing}
+              title={
+                editing
+                  ? 'The note editor has its own redo while it is open'
+                  : 'Redo what you undid (Ctrl+Shift+Z)'
+              }
+            >
+              ↷ Redo
+            </button>
+          </span>
         )}
+      </div>
+      {/**
+       * ⚠️ TWO LINES, TWO JOBS — Evan, 10 Nov 2026: "group related controls". The first is the
+       * LOOP: play it, record into it, keep what you just played, keep time, undo. The second is
+       * the PARTS: drop in a beat or chords, open a song, keep this one, start an empty part. They
+       * used to be one row in the order they were added, so Record sat on the second line under
+       * Library and ▶ Play's nearest neighbour was ✎ New part. Nothing was hidden or renamed.
+       */}
+      <div className="inst-row inst-transport">
+        {/* ⚠️ HERE TOO, not only in the start row. The start row disappears the moment you have
+            a layer — and so, with it, did the only way to reach the beats, so adding a drum part
+            to something you had already begun was impossible. A doorway that closes behind you is
+            worse than no doorway: the feature looks like it was imagined rather than built. */}
+        <button
+          className={'btn' + (beatsOpen ? ' is-on' : '')}
+          aria-pressed={beatsOpen}
+          onClick={() => setBeatsOpen((v) => !v)}
+          disabled={loop.layers.length >= MAX_LAYERS}
+          title={
+            loop.layers.length >= MAX_LAYERS
+              ? `That is all ${MAX_LAYERS} layers — delete one to add another`
+              : 'Drums, chords, a bassline and a fill — drop any of them in, then change them'
+          }
+        >
+          🥁 Beats & chords
+        </button>
+        <button
+          className={'btn' + (libOpen ? ' is-on' : '')}
+          aria-pressed={libOpen}
+          onClick={() => setLibOpen((v) => !v)}
+          title="Songs and loops you have kept"
+        >
+          📁 Library{saved.length ? ` · ${saved.length}` : ''}
+        </button>
+        <button
+          className="btn"
+          disabled={!loop.layers.length}
+          onClick={() => keep('song')}
+          title="Keep this whole arrangement"
+        >
+          ⬇ Keep song
+        </button>
+        {/* Start a part by drawing it rather than by playing it. The editor was only reachable
+            through a recording, which meant placing four notes by hand required performing them
+            first. */}
+        <button
+          className="btn"
+          onClick={() => setEditing(addEmptyLayer(live.current.inst) || null)}
+          disabled={loop.layers.length >= MAX_LAYERS}
+          title={
+            loop.layers.length >= MAX_LAYERS
+              ? `That is all ${MAX_LAYERS} layers — delete one to add another`
+              : 'Add an empty layer and draw notes into it'
+          }
+        >
+          ✎ New part
+        </button>
       </div>
 
       {/* ⚠️ BELOW THE BUTTON THAT OPENS IT, WHICH IT WAS NOT. This rendered a hundred and
@@ -2594,6 +3051,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 className={'inst-ruler-cell' + (now && loop.playing ? ' is-now' : '')}
                 onClick={() => seekTo(at)}
                 title={`Jump to bar ${b + 1}`}
+                /* ⚠️ A NAME, NOT ONLY A TOOLTIP: the cell reads "·" and a phone has no hover */
+                aria-label={`Jump to bar ${b + 1}`}
               >
                 {(b + 1) % 4 === 1 ? b + 1 : '·'}
               </button>
@@ -2635,6 +3094,45 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        */}
       {beatsOpen && (
         <div className="inst-beats card">
+          {/**
+           * ⚠️ FIRST, BECAUSE IT IS THE WHOLE PANEL IN ONE PRESS — Evan, 10 Nov 2026: "one-press
+           * genre starters". The rows below are the same choices one at a time; a style makes them
+           * all and the rows then show what it made, so a starter is somewhere to begin rather
+           * than a mode you are stuck in. Pressed only while every part still matches it.
+           */}
+          {(() => {
+            const beatNow = loop.layers.map((l) => beatPatternOf(l)).find((x) => x) ?? null
+            const chordLayer = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+            const bassLayer = loop.layers.find((l) => bassPatternOf(l) !== null) ?? null
+            const now = starterNow({
+              beat: beatNow,
+              chords: chordLayer ? chordPatternOf(chordLayer) : null,
+              chordStyle: chordLayer ? styleOfChord(chordLayer) : null,
+              bass: bassLayer ? styleOfBass(bassLayer) : null,
+            })
+            /* a starter can need three new rows; say so rather than lay two of them */
+            const needs = [!beatNow, !chordLayer, !bassLayer].filter(Boolean).length
+            const full = loop.layers.length + needs > MAX_LAYERS
+            const keepsTempo = ownParts(loop.layers)
+            return (
+              <div className="inst-beats-row">
+                <span className="muted inst-beats-genre">Styles</span>
+                {STARTERS.map((s) => (
+                  <button
+                    key={s.id}
+                    className={'btn' + (now?.id === s.id ? '' : ' btn-ghost')}
+                    aria-pressed={now?.id === s.id}
+                    disabled={full}
+                    onClick={() => applyStarter(s)}
+                    title={`${s.name} — ${s.hint}${keepsTempo ? ', at your tempo' : `, at ${s.bpm} bpm`}`}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+                {full && <span className="muted inst-beats-why">no room for three layers</span>}
+              </div>
+            )
+          })()}
           <div className="inst-beats-row">
             <span className="muted inst-beats-genre">Chords</span>
             {CHORD_PATTERNS.map((p) => {
@@ -2808,6 +3306,41 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                       {!p ? 'follows the chords — pick some first' : 'no layer free'}
                     </span>
                   )}
+                  {/**
+                   * ⚠️ THE BASS'S VOICE, IN THE BASS ROW — Evan, 10 Nov 2026: "several distinct
+                   * bass voices … usable from the backing". The layer's own sound menu could
+                   * always change it, among forty instruments; this offers the seven that are
+                   * basses, where a bassline is chosen. It changes the loaded bass at once, and
+                   * with none loaded it is remembered for the next one — the same rule the
+                   * Played as row has. A sound the layer was given that is not a bass is shown
+                   * rather than silently relabelled.
+                   */}
+                  {(() => {
+                    const shownSound = bass ? bass.instrument : bassSoundPick
+                    const voices = BASS_VOICES.includes(shownSound)
+                      ? BASS_VOICES
+                      : [shownSound, ...BASS_VOICES]
+                    return (
+                      <label className="inst-pick">
+                        <span className="muted">Sound</span>
+                        <select
+                          value={shownSound}
+                          onChange={(e) => {
+                            const v = e.target.value as InstrumentId
+                            setBassSoundPick(v)
+                            if (bass) setLayerInstrument(bass.id, v)
+                            e.target.blur()
+                          }}
+                        >
+                          {voices.map((id) => (
+                            <option key={id} value={id}>
+                              {INSTRUMENTS.find(([x]) => x === id)?.[2] ?? id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )
+                  })()}
                   <MutedRow layer={bass ?? undefined} />
                   <OffScaleRow
                     layer={bass ?? undefined}
@@ -3099,6 +3632,21 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                             setLifted({ id: l.id, bar: b })
                           }
                         }}
+                        /**
+                         * ⚠️ A NAME AS WELL AS THE TOOLTIP — Evan, 9 Nov 2026. A cell is a coloured
+                         * block with nothing in it until the bars are reordered, and its title is
+                         * all that said what it was; a phone has no hover and a screen reader read
+                         * a nameless button. The name says what the bar IS, and the title (now its
+                         * description) keeps saying what a tap does. Visible words were measured
+                         * and rejected: the row is a strip of 30px blocks.
+                         */
+                        aria-label={
+                          src == null
+                            ? `Bar ${b + 1}, silent`
+                            : gone
+                              ? `Bar ${b + 1}, part ${src + 1}, which this take does not have`
+                              : `Bar ${b + 1}, part ${src + 1} of ${parts}`
+                        }
                         title={
                           src == null
                             ? `Bar ${b + 1}: silent — tap to fill it`
@@ -3178,10 +3726,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
 
                 {/* The third way to fix a take, after undo and re-voice: play it again over the
                   top. The layer keeps its place in the stack rather than jumping to the end. */}
+                {/* ⚠️ THE THREE ICONS GET NAMES, NOT WORDS — Evan, 9 Nov 2026. Words were measured
+                    at 375: "⏺ Again", "🔊 Mute" and "✕ Delete" took every layer row from 114px to
+                    144px, which is 360px down the page at twelve layers. A name reaches a screen
+                    reader and the audit; the tooltip stays for a mouse. */}
                 <button
                   className="btn"
                   onClick={() => armRecord(l.id)}
                   title="Record this layer again, keeping its place"
+                  aria-label="Record this layer again"
                 >
                   ⏺
                 </button>
@@ -3216,7 +3769,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                       Split
                     </button>
                   )}
-                <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
+                <button
+                  className="btn"
+                  onClick={() => toggleMute(l.id)}
+                  /* a toggle: one name, and the state says whether it is on */
+                  aria-label="Mute this layer"
+                  aria-pressed={l.muted}
+                  title={l.muted ? 'Muted — click to hear it again' : 'Mute this layer'}
+                >
                   {l.muted ? '🔇' : '🔊'}
                 </button>
                 {/* ⚠️ DELETING SOMEBODY ELSE'S TAKE ASKS FIRST, and names them. It has always
@@ -3233,6 +3793,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     removeLayer(l.id)
                   }}
                   title={
+                    l.from
+                      ? `Delete ${jamNames[l.from] ? `${jamNames[l.from]}'s` : 'their'} part — for everyone`
+                      : 'Delete this layer'
+                  }
+                  aria-label={
                     l.from
                       ? `Delete ${jamNames[l.from] ? `${jamNames[l.from]}'s` : 'their'} part — for everyone`
                       : 'Delete this layer'
@@ -3268,12 +3833,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           everything it is placed into (the transport, the layers) was 500px above it. */}
       <TakesPanel />
 
-      <div className="inst-row inst-knobs">
-        {KNOBS.map(([k, label, hint]) => (
-          <KnobRow key={k} k={k} label={label} hint={hint} />
-        ))}
-      </div>
-
       {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
           "a little fractured and almost more difficult to smoothly work on making a song", and
           the measurement was the complaint: with a song loaded the keyboard sat at y=263 and
@@ -3284,8 +3843,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
 
           So the order is now what you do, in the order you do it: PLAY (the keys and the
           instrument they play), then THE SONG (transport, library, ruler, layers), then
-          everything below here — the playing detail, the sound shaping, the explanations and
-          the visuals. Nothing was deleted and no control changed; they are grouped.
+          everything below here — the explanations and the visuals. Nothing was deleted and no
+          control changed; they are grouped.
+
+          ⚠️ REGROUPED AGAIN 10 NOV 2026 (Evan: "group related controls, keep common ones up
+          front and advanced ones tucked away"), and the rule above was kept rather than broken.
+          The playing detail and sound shaping that lived down here are now part of PLAY: Scale,
+          Key and Chord joined the sound bar under the keys, and the arpeggio, the effect
+          sliders and rigs went behind ⚙ More sound beside it. What paid for that is the
+          instrument menu showing one family at a time — one row instead of five — so at
+          1440×900 with the menu open ▶ Play moved UP, 998px → 872px, while Scale came up from
+          1,712px to 662px. On a phone Scale came up from 1,844px to 674px and ▶ Play went down
+          737px → 816px, which is the cost, named.
 
           ⚠️ MOVED IN THE MARKUP RATHER THAN WITH `order`, deliberately. The phone breakpoint
           already reorders with two `order` properties, and the note there is right that one
@@ -3298,262 +3867,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           siblings has never decided where it draws — see .inst-wrap.has-visuals. Below the
           breakpoint the wrap is a plain flex column, and there it was 593px of visuals
           standing between the picker and ▶ Play. */}
-
-      {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
-          degrees, so there is no wrong note left to press. */}
-      <div className="inst-row">
-        <label className="inst-pick">
-          <span className="muted">Scale</span>
-          <select
-            value={scale}
-            onChange={(e) => {
-              hush()
-              setScale(e.target.value)
-              e.target.blur()
-            }}
-          >
-            {SCALES.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* only when it does something — a key picker on Chromatic would be a control that
-            visibly changes nothing */}
-        {scale !== 'chromatic' && (
-          <label className="inst-pick">
-            <span className="muted">Key</span>
-            <select
-              value={root}
-              onChange={(e) => {
-                hush()
-                setRoot(Number(e.target.value))
-                /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
-                   staying here would change the key again the moment you played a note */
-                e.target.blur()
-              }}
-            >
-              {NAMES.map((nm, i) => (
-                <option key={nm} value={i}>
-                  {nm}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {/**
-         * One key, a chord.
-         *
-         * ⚠️ NO `hush()` HERE, unlike its two neighbours, and the difference is the point. They
-         * cut your notes off because the keys were about to mean something else; changing this
-         * does not need to, because the book remembers what each press actually sounded and
-         * releases that — so you can widen a chord you are already holding and the note you let
-         * go of is the note you played.
-         *
-         * ⚠️ AND NOT HIDDEN ON THE DRUM KIT. It would be a control appearing and disappearing as
-         * you browsed the instruments, and your choice would be silently forgotten; the kit
-         * ignores it instead and the hint below says so.
-         */}
-        <label className="inst-pick">
-          <span className="muted">Chord</span>
-          <select
-            value={chord}
-            onChange={(e) => {
-              setChord(e.target.value as ChordId)
-              /* ⚠️ hand the keyboard back, for the reason the Key picker gives: a focused
-                 select eats letters as type-ahead, so staying here would change the chord again
-                 the moment you played a note */
-              e.target.blur()
-            }}
-          >
-            {CHORDS.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/**
-         * One key, a part.
-         *
-         * ⚠️ THIS ONE DOES `hush()`, UNLIKE Chord and Arrives, and the asymmetry is the point.
-         * Those two change what the NEXT press will do and leave what is sounding alone, which
-         * the book makes safe. This changes who is playing: switching it on mid-hold would
-         * leave the sustained chord ringing underneath the arpeggio it just started, and
-         * switching it off would strand the runner's last note. Dropping what you are holding
-         * is the honest answer, and it is the same one the Scale picker gives.
-         */}
-        {/**
-         * ⚠️ ALWAYS SHOWN, AND IT USED TO BE GATED ON `chord !== 'off'`. That hid the control
-         * without stopping the thing it controls, which is the worst of both: the setting is
-         * remembered across visits, so anybody who tried an arpeggio once and then put Chord
-         * back to One note came back to a keyboard where HOLDING A KEY REPEATS IT FOR EVER and
-         * nothing on screen said why or offered a way out. Measured before the fix — one key
-         * held for 1.5s gave six notes, all C4, 313ms apart, with the picker not rendered.
-         *
-         * Showing it is the right fix rather than suppressing the arp without a chord, because
-         * arpeggiating notes you are holding YOURSELF is the normal use of one: hold C and E
-         * and it alternates them. A single held key repeating is what every arpeggiator does;
-         * it is only alarming when you cannot see that one is switched on.
-         *
-         * `Arrives` stays hidden without a chord, and that is not the same call — a roll across
-         * one note genuinely does nothing, so it is a control with no effect rather than an
-         * effect with no control.
-         */}
-        <label className="inst-pick">
-          <span className="muted">Arpeggio</span>
-          <select
-            value={arp}
-            onChange={(e) => {
-              hush()
-              setArp(e.target.value as ArpId)
-              e.target.blur()
-            }}
-          >
-            {ARPS.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/**
-         * How the chord arrives: together, or one note at a time like a hand does it.
-         *
-         * ⚠️ ONLY ONCE A CHORD IS CHOSEN, the same rule the Key picker follows on Chromatic. A
-         * single note cannot be rolled, so on an untouched room this would be a control that
-         * visibly does nothing — and the row already carries three.
-         *
-         * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
-         * because the book releases what was actually sounded rather than recomputing it.
-         */}
-        {/**
-         * ⚠️ HIDDEN WHEN THERE IS NO ARPEGGIO, AND THAT IS NOT THE TRAP THE ARPEGGIO PICKER
-         * WAS. Swing displaces arpeggio STEPS and nothing else — with no figure running there
-         * is nothing for it to move, so this is a control with no effect rather than an effect
-         * with no control. The arp picker was the other way round, which is why it is always
-         * shown now.
-         */}
-        {arp !== 'off' && (
-          <label className="inst-pick">
-            <span className="muted">Feel</span>
-            <select
-              value={swing ? 'swing' : 'straight'}
-              onChange={(e) => {
-                setSwing(e.target.value === 'swing')
-                e.target.blur()
-              }}
-            >
-              <option value="straight">Straight</option>
-              <option value="swing">Swing</option>
-            </select>
-          </label>
-        )}
-
-        {chord !== 'off' && arp === 'off' && (
-          <label className="inst-pick">
-            <span className="muted">Arrives</span>
-            <select
-              value={strum}
-              onChange={(e) => {
-                setStrum(e.target.value as StrumId)
-                e.target.blur()
-              }}
-            >
-              {STRUMS.map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-
-      {/**
-       * What you are holding, named.
-       *
-       * ⚠️ IT READS `held`, WHICH IS THE BOOK, so it names what is actually SOUNDING rather
-       * than what the pickers would produce — a chord clipped at the top of the keyboard, two
-       * fingers making something the chord picker never offered, and the note an arpeggio is
-       * on are all the same question answered the same way.
-       *
-       * ⚠️ AND IT GOES QUIET RATHER THAN GUESSING. `nameChord` answers null for a handful of
-       * keys that is not a shape worth naming, and a readout inventing something for every
-       * cluster would be noise — wrong in a way nobody could check. Blank half the time is
-       * honest; confident half the time is not.
-       *
-       * ⚠️ NOT ON THE DRUM KIT, where a pad is a sound and not a pitch. Naming a kick and a
-       * snare "C and its fifth" is true of the MIDI and false about the room.
-       */}
-      {/**
-       * ⚠️ THE LIVE REGION IS THE INNER SPAN NOW, AND THAT IS THE WHOLE REASON FOR THE SPLIT.
-       * What you are holding changes when you press a key, so announcing it is answering
-       * something you just did. The backing's chord changes once a bar for as long as the loop
-       * runs — put that in an `aria-live` region and a screen reader narrates a metronome
-       * forever. It is the same call the keyboard's dots made one commit ago, and reusing this
-       * element would have silently undone it.
-       *
-       * The outer <p> keeps its reserved height either way, so the keyboard never jumps.
-       */}
-      {inst !== 'drums' && (
-        <p className="muted inst-note inst-chord-name">
-          <span aria-live="polite">{(held.length > 0 && nameChord(held)) || ' '}</span>
-          {/* only when your own hands are quiet — what you are playing always wins the line */}
-          {held.length === 0 && backingChord && (
-            <span className="inst-backing-chord">{backingChord} underneath</span>
-          )}
-        </p>
-      )}
-
-      {/**
-       * What the two pickers above actually chose, in a sentence.
-       *
-       * ⚠️ IT IS NOT IN THE OPTION LABELS, and that is a layout decision. A `<select>` is as
-       * wide as its longest option and three of them share one row at 375px, so "Harmonic
-       * minor — dramatic and a little eastern" in the list is horizontal scroll on a phone.
-       * Here it wraps.
-       *
-       * ⚠️ AND IT IS ONE PARAGRAPH, NOT TWO. Two muted lines stacked under a row of pickers is
-       * the "don't make the UI noisy by default" rule broken by exactly the feature that was
-       * supposed to make things clearer. Silent on Chromatic + One note, which is where an
-       * untouched room starts and needs no explaining.
-       */}
-      {(scale !== 'chromatic' || chord !== 'off') && (
-        <p className="muted inst-note">
-          {[
-            scale !== 'chromatic' ? SCALES.find(([id]) => id === scale)?.[3] : null,
-            chord === 'off'
-              ? null
-              : inst === 'drums'
-                ? 'The drum kit plays one sound per pad, so chords come back when you pick an instrument'
-                : CHORDS.find(([id]) => id === chord)?.[2],
-            /* ⚠️ `usesScale`, not `chord !== 'off'`. Fifth is a power chord — no third — so
-               telling somebody it comes out major on Chromatic is the opposite of what they can
-               hear. Octave is the same. Only the shapes that step through the scale care. */
-            scale === 'chromatic' && usesScale(chord)
-              ? 'On Chromatic every chord is major, so pick a scale to hear it follow the key'
-              : null,
-            /* only when it is doing something — "Every note at once" under a chord that arrives
-               all at once is a sentence describing the absence of a feature */
-            arp !== 'off' && inst !== 'drums' ? ARPS.find(([id]) => id === arp)?.[2] : null,
-            arp !== 'off' && swing && inst !== 'drums' ? 'Swung, so the off-beats land late' : null,
-            chord !== 'off' && arp === 'off' && strum !== 'off' && inst !== 'drums'
-              ? STRUMS.find(([id]) => id === strum)?.[2]
-              : null,
-          ]
-            .filter(Boolean)
-            /* ⚠️ TWO SENTENCES, so both start with a capital. Joining them as one clause reads
-               "spare and still. three notes from the scale you chose" — which is what the first
-               version did, and it looks like a rendering bug rather than a style choice. */
-            .join('. ') + '.'}
-        </p>
-      )}
 
       {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
           library is where it belongs — but the library row collapses, and a recording you can

@@ -81,6 +81,86 @@ const SHAPES: Array<[number[], string]> = [
 /** The note name of a MIDI number, without the octave. */
 export const pitchName = (midi: number) => NAMES[((((midi % 12) + 12) % 12) + 12) % 12]
 
+const FLATS = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B']
+const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11]
+/** the major keys written with flats: F, B♭, E♭, A♭, D♭ */
+const FLAT_MAJORS = new Set([5, 10, 3, 8, 1])
+const pcOf = (n: number) => ((n % 12) + 12) % 12
+
+/**
+ * How notes are spelled in a key — B♭ in D minor, where `pitchName` says A♯.
+ *
+ * ⚠️ ASKED FOR BY EVAN, 9 NOV 2026, after the backing's hint read "A♯ major underneath" in D minor.
+ * The sound was right and the word was wrong: in D minor that chord is B♭, every songbook says so,
+ * and a name exists here so that somebody can carry it to the next song and look it up.
+ *
+ * ⚠️ TWO RULES, THE ONES A MUSICIAN USES.
+ * - The KEY SIGNATURE decides sharps or flats: a scale with a minor third and no major third is
+ *   read from its relative major, and F, B♭, E♭, A♭ and D♭ major are the flat keys.
+ * - On a seven-note scale EACH DEGREE GETS ITS OWN LETTER, which is what makes D harmonic minor
+ *   read B♭ and C♯ in one key, and F♯ major's seventh read E♯ rather than a second F. A key whose
+ *   spelling would need a double sharp or flat is spelled from the other name of its tonic.
+ *
+ * Anything outside the scale — a note somebody added by hand, or a scale of another size — takes
+ * the key's plain spelling. Chromatic has no key, so it keeps the sharps it has always used.
+ */
+export function keySpeller(degrees: readonly number[], root: number): (pc: number) => string {
+  if (degrees.length >= 12) return (pc) => NAMES[pcOf(pc)]
+  const minorish = degrees.includes(3) && !degrees.includes(4)
+  let plain = FLAT_MAJORS.has(pcOf(root + (minorish ? 3 : 0))) ? FLATS : NAMES
+  let byPc = new Map<number, string>()
+  if (degrees.length === 7) {
+    let got = onLetters(degrees, root, plain)
+    /* ⚠️ D♯ AND G♯ HARMONIC MINOR need a double sharp on their seventh; from E♭ and A♭ they need
+       none. The only two of the 84 seven-note keys here that cannot be spelled as chosen. */
+    if (!got.clean) {
+      const other = plain === FLATS ? NAMES : FLATS
+      const alt = onLetters(degrees, root, other)
+      if (alt.clean) [got, plain] = [alt, other]
+    }
+    byPc = got.names
+  }
+  return (pc) => byPc.get(pcOf(pc)) ?? plain[pcOf(pc)]
+}
+
+/**
+ * A key's label on the keyboard: its name in the room's key, and its octave.
+ *
+ * ⚠️ EVAN, 10 NOV 2026: "keyboard key labels following the key like #108". The chord readouts
+ * learned to say B♭ in D minor; the keys under them still said A♯, so the one note was named two
+ * ways an inch apart.
+ *
+ * ⚠️ THE OCTAVE NUMBER BELONGS TO THE LETTER, which is the one thing that is not a lookup. The
+ * octave turns over at C, so a C♭ is written an octave ABOVE the B it sounds as (C♭5 is B4's pitch)
+ * and a B♯ one BELOW the C (B♯3 is C4's). E♭ harmonic minor spells its sixth C♭, and C♯ harmonic
+ * minor its seventh B♯, so both happen on keys somebody will actually play.
+ */
+export function noteLabel(midi: number, spell: (pc: number) => string = pitchName): string {
+  const pc = pcOf(midi)
+  const name = spell(pc)
+  const octave = Math.floor(midi / 12) - 1
+  const turn = name[0] === 'C' && pc === 11 ? 1 : name[0] === 'B' && pc === 0 ? -1 : 0
+  return name + (octave + turn)
+}
+
+/** a seven-note scale on seven letters from the tonic `names` gives it — clean if no degree needs a double accidental */
+function onLetters(degrees: readonly number[], root: number, names: readonly string[]) {
+  const first = LETTERS.indexOf(names[pcOf(root)][0])
+  const out = new Map<number, string>()
+  let clean = true
+  degrees.forEach((d, i) => {
+    const letter = (first + i) % 7
+    const pc = pcOf(root + d)
+    const off = ((pc - LETTER_PC[letter] + 18) % 12) - 6
+    if (off === 0) out.set(pc, LETTERS[letter])
+    else if (off === 1) out.set(pc, LETTERS[letter] + '♯')
+    else if (off === -1) out.set(pc, LETTERS[letter] + '♭')
+    else clean = false
+  })
+  return { names: out, clean }
+}
+
 const key = (xs: number[]) => xs.join(',')
 const BY_SHAPE = new Map(SHAPES.map(([ivs, name]) => [key(ivs), name]))
 
@@ -94,14 +174,18 @@ const BY_SHAPE = new Map(SHAPES.map(([ivs, name]) => [key(ivs), name]))
  * worse, it would be wrong in a way nobody could check. Silence beats a guess here — the same
  * call `needsAName` makes in the mobile audit about crying wolf.
  */
-export function nameChord(midis: number[]): string | null {
+export function nameChord(
+  midis: number[],
+  /* how to spell a pitch class — the room passes `keySpeller` for its key; sharps otherwise */
+  spell: (pc: number) => string = pitchName,
+): string | null {
   if (midis.length === 0) return null
   const bass = Math.min(...midis)
   /* pitch classes, deduped: a chord does not change its name when you double the root an octave
      up, which is exactly what the Octave strum shape does */
   const pcs = [...new Set(midis.map((m) => ((m % 12) + 12) % 12))].sort((a, b) => a - b)
 
-  if (pcs.length === 1) return pitchName(bass)
+  if (pcs.length === 1) return spell(pcOf(bass))
 
   /**
    * ⚠️ EVERY NOTE IS TRIED AS THE ROOT, LOWEST FIRST. The lowest is tried first so that a shape
@@ -116,13 +200,13 @@ export function nameChord(midis: number[]): string | null {
     const ivs = pcs.map((p) => (p - root + 12) % 12).sort((a, b) => a - b)
     const name = BY_SHAPE.get(key(ivs))
     if (!name) continue
-    const rootName = pitchName(root)
+    const rootName = spell(root)
     /* a two-note shape reads as a phrase rather than a chord: "C and its fifth" */
     if (pcs.length === 2) return `${rootName} ${name}`
     /* an inversion says what is underneath, because your hand is on that note and being told
        "A minor" while looking at a C is the kind of correct that feels like a bug */
     const bassPc = ((bass % 12) + 12) % 12
-    return bassPc === root ? `${rootName} ${name}` : `${rootName} ${name} / ${pitchName(bass)}`
+    return bassPc === root ? `${rootName} ${name}` : `${rootName} ${name} / ${spell(bassPc)}`
   }
   return null
 }

@@ -1,5 +1,6 @@
 import { CHOP_RATES, CHOP_SHAPES, type Chop, type ChopShape } from './chop'
 import {
+  fromElsewhere,
   loadSong,
   loopState,
   muteTake,
@@ -416,7 +417,8 @@ function restore() {
     tell?.({ kind: 'left' })
     return
   }
-  loadSong(work.bpm, work.bars, work.layers)
+  /* putting last night's bench back is not an edit anybody can undo — see fromElsewhere */
+  fromElsewhere(() => loadSong(work.bpm, work.bars, work.layers))
   carried = [...work.takes]
   void putTakesBack(work.takes)
 }

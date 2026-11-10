@@ -3587,6 +3587,11 @@ section[id] {
   margin: 0 0 0.5rem;
   font-size: 0.78rem;
 }
+/* undo and redo wrap as a pair — see the transport row */
+.inst-undo {
+  display: inline-flex;
+  gap: 0.3rem;
+}
 .inst-beats-row {
   display: flex;
   align-items: baseline;
@@ -8055,10 +8060,16 @@ a.cz-msg-author:focus-visible {
   .inst-keyslide {
     order: -3;
   }
-  .inst-playbar {
+  /* ⚠️ THE CHORD READOUT AND THE SCALE'S SENTENCE SHARE THE PLAY BAR'S ORDER, and More sound
+     shares the menu's — equal orders keep the written order, so the readout lands above the bar
+     and the sentence under it without a single new number (Evan's regroup, 10 Nov 2026). */
+  .inst-chord-name,
+  .inst-playbar,
+  .inst-scale-say {
     order: -2;
   }
-  .inst-bar {
+  .inst-bar,
+  .inst-more {
     order: -1;
   }
   /* the typing light explains a hardware keyboard, which a phone has not got — and on this row
@@ -8758,6 +8769,36 @@ a.cz-msg-author:focus-visible {
 }
 .inst-picks:not(.is-open) {
   display: none;
+}
+/* the instrument menu's families — one row of tiles at a time, see families.ts */
+.inst-families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.4rem 0;
+}
+.inst-families .btn {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+/* the rest of the sound — arpeggio, effects, rigs — tucked behind ⚙ More sound */
+@media (max-width: 40rem) {
+  .inst-more-word {
+    display: none;
+  }
+  /* ⚠️ MEASURED AT 375: Chord, Panic and More came to 357px on a 351px line at the row's
+     usual gap, which pushed More onto a fifth line of its own. A narrower gap between the
+     controls fits them; at 360 it may still wrap, which is a taller bar rather than a broken one. */
+  .inst-playbar {
+    column-gap: 0.45rem;
+  }
+}
+.inst-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.7rem;
+  min-width: 0;
 }
 
 /**

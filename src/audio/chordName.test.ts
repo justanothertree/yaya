@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { nameChord, pitchName } from './chordName'
+import { keySpeller, nameChord, noteLabel, pitchName } from './chordName'
 import { CHORDS, chordNotes } from './chords'
-import { SCALES } from './scales'
+import { SCALES, degreesOf } from './scales'
 
 /**
  * Naming what somebody is holding.
@@ -225,5 +225,141 @@ describe('harmonic minor, which had the only real gaps', () => {
         const notes = chordNotes(id, 60 + degrees[i], degrees, 0)
         expect(nameChord(notes), `${id} on degree ${i}: ${notes.join()}`).not.toBeNull()
       }
+  })
+})
+
+/**
+ * Evan, 9 Nov 2026: the backing's hint read "A♯ major underneath" in D minor. It is B♭.
+ *
+ * ⚠️ THE EXPECTATIONS ARE WHAT A SONGBOOK PRINTS for each key, never derived from the spelling
+ * arithmetic — the chords of a key are written down in every theory book and that is the claim.
+ */
+describe('chords spelled in the room’s key', () => {
+  const major = degreesOf('major')
+  const minor = degreesOf('minor')
+  /** a triad from its root's pitch class and quality, around middle C */
+  const triad = (pc: number, kind: 'major' | 'minor' | 'dim') =>
+    [0, kind === 'major' ? 4 : 3, kind === 'dim' ? 6 : 7].map((i) => 60 + pc + i)
+
+  it('D minor’s sixth chord is B♭ major, not A♯', () => {
+    expect(nameChord(triad(10, 'major'))).toBe('A♯ major')
+    expect(nameChord(triad(10, 'major'), keySpeller(minor, 2))).toBe('B♭ major')
+  })
+
+  it('the flat keys read flat: F, B♭, E♭, A♭, D♭ major and their relative minors', () => {
+    expect(nameChord(triad(10, 'major'), keySpeller(major, 5))).toBe('B♭ major')
+    expect(nameChord(triad(3, 'major'), keySpeller(minor, 7))).toBe('E♭ major')
+    expect(nameChord(triad(8, 'major'), keySpeller(major, 3))).toBe('A♭ major')
+    expect(nameChord(triad(3, 'minor'), keySpeller(major, 1))).toBe('E♭ minor')
+    expect(nameChord(triad(10, 'minor'), keySpeller(minor, 10))).toBe('B♭ minor')
+  })
+
+  it('and the sharp keys still read sharp', () => {
+    /* E major: G♯ minor and C♯ minor, D♯ diminished */
+    expect(nameChord(triad(8, 'minor'), keySpeller(major, 4))).toBe('G♯ minor')
+    expect(nameChord(triad(1, 'minor'), keySpeller(major, 4))).toBe('C♯ minor')
+    expect(nameChord(triad(3, 'dim'), keySpeller(major, 4))).toBe('D♯ diminished')
+    /* C♯ minor is written with sharps, though its root is a black key */
+    expect(nameChord(triad(1, 'minor'), keySpeller(minor, 1))).toBe('C♯ minor')
+  })
+
+  it('gives every degree its own letter — D harmonic minor has B♭ and C♯ together', () => {
+    const harmonic = degreesOf('harmonic')
+    expect(nameChord(triad(10, 'major'), keySpeller(harmonic, 2))).toBe('B♭ major')
+    expect(nameChord(triad(1, 'dim'), keySpeller(harmonic, 2))).toBe('C♯ diminished')
+    /* F♯ major's seventh is E♯, not a second F */
+    expect(nameChord(triad(5, 'dim'), keySpeller(major, 6))).toBe('E♯ diminished')
+  })
+
+  it('every seven-note scale in every key spells its degrees on seven different letters', () => {
+    const bad: string[] = []
+    let keys = 0
+    for (const [id, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++) {
+        keys++
+        const spell = keySpeller(degrees, root)
+        const names = degrees.map((d) => spell(root + d))
+        if (new Set(names.map((n) => n[0])).size !== 7)
+          bad.push(`${id} ${root}: ${names.join(' ')}`)
+      }
+    }
+    expect(keys).toBe(84)
+    expect(bad).toEqual([])
+  })
+
+  it('and the two that need a double sharp are spelled from their flat names', () => {
+    /* D♯ harmonic minor would need C𝄪; E♭ harmonic minor is E♭ F G♭ A♭ B♭ C♭ D */
+    const harmonic = degreesOf('harmonic')
+    expect(harmonic.map((d) => keySpeller(harmonic, 3)(3 + d))).toEqual([
+      'E♭',
+      'F',
+      'G♭',
+      'A♭',
+      'B♭',
+      'C♭',
+      'D',
+    ])
+  })
+
+  it('a note outside the scale takes the key’s accidentals, and an inversion’s bass is spelled too', () => {
+    /* D♭ added by hand in F major */
+    expect(keySpeller(major, 5)(1)).toBe('D♭')
+    /* B♭ major over D, in F */
+    expect(nameChord([62, 65, 70], keySpeller(major, 5))).toBe('B♭ major / D')
+    expect(nameChord([65, 70, 74], keySpeller(major, 5))).toBe('B♭ major / F')
+  })
+
+  /* five notes cannot be spelled by letters, so the key signature alone decides — and a minor
+     scale's signature is its relative major's: G minor's is B♭ major's, two flats */
+  it('a five-note scale takes the signature of its key — G minor pentatonic reads B♭', () => {
+    expect(nameChord(triad(10, 'major'), keySpeller(degreesOf('minorPenta'), 7))).toBe('B♭ major')
+    /* and B minor pentatonic, whose relative major is D, keeps F♯ */
+    expect(keySpeller(degreesOf('minorPenta'), 11)(6)).toBe('F♯')
+  })
+
+  it('Chromatic has no key, and keeps its sharps', () => {
+    expect(nameChord(triad(10, 'major'), keySpeller(degreesOf('chromatic'), 0))).toBe('A♯ major')
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: the keys' own labels follow the key, like the chord readouts above them.
+ * Written as a piano teacher would read the key out: its name in this key, and its octave.
+ */
+describe('a key is labelled in the room’s key', () => {
+  const major = degreesOf('major')
+  const minor = degreesOf('minor')
+  const harmonic = degreesOf('harmonic')
+
+  it('in D minor the key above A4 is B♭4, not A♯4', () => {
+    expect(noteLabel(70)).toBe('A♯4')
+    expect(noteLabel(70, keySpeller(minor, 2))).toBe('B♭4')
+  })
+
+  it('in E major it is G♯ and C♯, and in C major nothing changes', () => {
+    expect(noteLabel(68, keySpeller(major, 4))).toBe('G♯4')
+    expect(noteLabel(61, keySpeller(major, 4))).toBe('C♯4')
+    expect([60, 62, 64, 65, 67, 69, 71].map((m) => noteLabel(m, keySpeller(major, 0)))).toEqual([
+      'C4',
+      'D4',
+      'E4',
+      'F4',
+      'G4',
+      'A4',
+      'B4',
+    ])
+  })
+
+  /* the octave turns over at C, so the letter decides which octave a note is written in */
+  it('a C♭ is written in the octave above the B it sounds as, and a B♯ in the one below', () => {
+    /* E♭ harmonic minor spells its sixth C♭; B4 is that pitch */
+    expect(noteLabel(71, keySpeller(harmonic, 3))).toBe('C♭5')
+    /* C♯ harmonic minor spells its seventh B♯; C5 is that pitch */
+    expect(noteLabel(72, keySpeller(harmonic, 1))).toBe('B♯4')
+  })
+
+  it('and without a key, every key keeps the sharps it always had', () => {
+    expect([60, 61, 69, 48, 79].map((m) => noteLabel(m))).toEqual(['C4', 'C♯4', 'A4', 'C3', 'G5'])
   })
 })
