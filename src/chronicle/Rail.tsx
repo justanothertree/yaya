@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { entriesBetween, plansBetween, totalsBetween } from './cloud'
-import { coveredPct, dayBounds, spanText, type Activity, type Entry } from './record'
+import { coveredPct, dayBounds, endOfNextDay, spanText, type Activity, type Entry } from './record'
 import { scoreOf } from './score'
 import type { Plan } from './plan'
 
@@ -52,7 +52,7 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
     const [t, p, l] = await Promise.all([
       totalsBetween(new Date(fromMs).toISOString(), new Date(toMs).toISOString()),
       /* what is still ahead: from now to the end of tomorrow, which is as far as a plan is useful */
-      plansBetween(new Date().toISOString(), new Date(toMs + 86_400_000).toISOString()),
+      plansBetween(new Date().toISOString(), new Date(endOfNextDay(toMs)).toISOString()),
       entriesBetween(new Date(fromMs).toISOString(), new Date(toMs).toISOString()),
     ])
     setRows(t.map((x) => ({ cat: x.cat, mins: x.mins })))
