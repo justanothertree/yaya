@@ -4637,3 +4637,56 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- lander */
+.ld-room .lab-stage.ld-stage {
+  /* the world is four wide by three tall */
+  aspect-ratio: 4 / 3;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  background: #05060d;
+}
+/* the wrap carries the size: a percentage inside a shrink-to-fit box has nothing to be a percentage
+   of, and a canvas then falls back to its own 300px */
+.ld-wrap {
+  border-radius: 12px;
+  width: min(100%, 720px, calc(66vh * 4 / 3));
+}
+.ld-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.ld-gauges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+}
+.ld-gauges .is-safe {
+  color: var(--gain);
+}
+.ld-gauges .is-risk {
+  color: var(--loss);
+}
+.ld-pad {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 0.5rem;
+  width: min(100%, 520px);
+}
+.ld-hold {
+  min-height: 3.2rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.ld-hold.is-thrust {
+  font-weight: 700;
+}
+/* two lines held for the status, so the craft does not jump when the words change at launch */
+.ld-room .mc-line {
+  min-height: 2.9em;
+}

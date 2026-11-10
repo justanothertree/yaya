@@ -114,6 +114,7 @@ import { GinDemo } from '../gpu/GinDemo'
 import { FencesDemo } from '../gpu/FencesDemo'
 import { PuttDemo } from '../gpu/PuttDemo'
 import { CribbageDemo } from '../gpu/CribbageDemo'
+import { LanderDemo } from '../gpu/LanderDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -809,6 +810,12 @@ const DEMOS: readonly {
     name: 'Cribbage',
     line: 'Cribbage — throw two to the crib, peg to 31 for fifteens, pairs and runs, then count your hand with the starter, read out the way it is said at the table. First to 121 against a computer that weighs its crib and your replies.',
     Demo: CribbageDemo,
+  },
+  {
+    id: 'lander',
+    name: 'Lander',
+    line: 'Lander — lean and burn to set a craft down on a pad, slow and upright, with fuel to spare; the narrow pad pays five times. An autopilot flies the same terrain as a ghost, and its score is the one to beat.',
+    Demo: LanderDemo,
   },
 ]
 
