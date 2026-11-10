@@ -13,8 +13,12 @@ import {
   type Saved,
   type Turn,
 } from './dice'
+import { BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { beatsDice, dealRand, newSeed, type Beat } from '../lab/beat'
 
-type Mode = 'bot' | 'two'
+/** against the computer, two at one screen, or alone against the turn count on a numbered deal */
+type Mode = 'bot' | 'two' | 'race'
 
 const load = (): Saved => {
   try {
@@ -74,7 +78,14 @@ const pct = (p: number) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`
 
 export function DiceDemo() {
   const [saved, setSaved] = useState<Saved>(load)
-  const [mode, setMode] = useState<Mode>('bot')
+  /** a friend's race to beat, from the address: it opens on their deal */
+  const [challenge, leaveChallenge] = useChallenge('dice')
+  const [mode, setMode] = useState<Mode>(() => (challenge ? 'race' : 'bot'))
+  /** the deal a race is played on, and which roll of the turn is next — see dealRand */
+  const deal = useRef(challenge?.seed ?? newSeed())
+  const rollNo = useRef(0)
+  /** the last race finished, which can be sent as a challenge */
+  const [lastRace, setLastRace] = useState<Extract<Beat, { game: 'dice' }> | null>(null)
   const [totals, setTotals] = useState([0, 0])
   const [who, setWho] = useState(0)
   const [turn, setTurn] = useState<Turn | null>(null)
@@ -94,13 +105,20 @@ export function DiceDemo() {
     }
   }, [saved])
 
-  const names = mode === 'bot' ? ['You', 'Computer'] : ['Player 1', 'Player 2']
+  const names =
+    mode === 'bot' ? ['You', 'Computer'] : mode === 'race' ? ['You'] : ['Player 1', 'Player 2']
+  /** the dice for the next roll: a race's come from its deal, everything else's from anywhere */
+  const dice = () =>
+    mode === 'race' ? dealRand(deal.current, turns.current[0], rollNo.current++) : Math.random
   const computerTurn = mode === 'bot' && who === 1 && winner === null
   const say = (line: string) => setLog((l) => [line, ...l].slice(0, 6))
 
-  const reset = (m: Mode = mode) => {
+  const reset = (m: Mode = mode, seed?: number) => {
     window.clearTimeout(timer.current)
     setMode(m)
+    deal.current = seed ?? (m === 'race' && challenge ? challenge.seed : newSeed())
+    rollNo.current = 0
+    setLastRace(null)
     setTotals([0, 0])
     setWho(0)
     setTurn(null)
@@ -122,6 +140,26 @@ export function DiceDemo() {
     setPicked([])
     if (p === 0 && mode === 'bot' && points > 0)
       setSaved((s) => ({ ...s, bestTurn: Math.max(s.bestTurn, points) }))
+    if (mode === 'race') {
+      const n = turns.current[0]
+      if (next[0] < TARGET) {
+        rollNo.current = 0
+        return
+      }
+      setWinner(0)
+      const race = { game: 'dice' as const, seed: deal.current, turns: n }
+      setLastRace(race)
+      const vs = challenge && challenge.seed === deal.current ? challenge : null
+      say(
+        `You reached ${next[0].toLocaleString()} in ${n} turns.` +
+          (vs
+            ? beatsDice(vs, n)
+              ? ` That beats the link’s ${vs.turns}!`
+              : ` The link says ${vs.turns} — not this time.`
+            : ''),
+      )
+      return
+    }
     if (next[p] >= TARGET) {
       setWinner(p)
       say(`${names[p]} reached ${next[p].toLocaleString()} and won.`)
@@ -189,6 +227,15 @@ export function DiceDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computerTurn])
 
+  // a challenge link opened while this game is already up switches to its deal
+  const lastSeed = useRef(challenge?.seed)
+  useEffect(() => {
+    if (challenge && challenge.seed !== lastSeed.current) reset('race', challenge.seed)
+    lastSeed.current = challenge?.seed
+    // reset is rebuilt every render; only a new challenge should run this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
+
   const human = winner === null && !computerTurn
   const pickedFaces = turn ? picked.map((i) => turn.roll[i]) : []
   const pickedScore = picked.length ? scoreOf(pickedFaces) : null
@@ -196,7 +243,7 @@ export function DiceDemo() {
   const next = leaves === 0 ? 6 : leaves
 
   const start = () => {
-    const t = newTurn(Math.random)
+    const t = newTurn(dice())
     setTurn(t)
     setKept([])
     setPicked([])
@@ -211,7 +258,7 @@ export function DiceDemo() {
       pass(who, after.points)
       return
     }
-    const rolled = rollOn(after, Math.random)
+    const rolled = rollOn(after, dice())
     setKept(after.free === 6 ? [] : [...kept, ...faces])
     setTurn(rolled)
     setPicked([])
@@ -221,6 +268,21 @@ export function DiceDemo() {
 
   return (
     <div className="lab-keys dice-room">
+      {mode === 'race' && challenge && (
+        <p className="beat-banner">
+          🏁 <strong>A race to beat:</strong> this link says 10,000 in {challenge.turns} turns. The
+          same choices get the same dice — do it in fewer.{' '}
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              leaveChallenge()
+              reset('race', newSeed())
+            }}
+          >
+            Leave the challenge
+          </button>
+        </p>
+      )}
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="Opponent">
           <button
@@ -236,6 +298,13 @@ export function DiceDemo() {
             onClick={() => reset('two')}
           >
             Two players
+          </button>
+          <button
+            className="btn btn-ghost"
+            aria-pressed={mode === 'race'}
+            onClick={() => reset('race')}
+          >
+            Race the deal
           </button>
         </div>
         <button className="btn btn-ghost" onClick={() => reset()}>
@@ -350,11 +419,21 @@ export function DiceDemo() {
           ))}
         </ul>
       )}
+      {mode === 'race' && lastRace && winner !== null && <BeatShare beat={lastRace} />}
       <p className="sun-reading">
         <span className="muted">
-          Against the computer: won {saved.won}, lost {saved.lost}
-          {saved.bestTurn > 0 && <> · best turn {saved.bestTurn.toLocaleString()}</>}
-          {saved.fewestTurns > 0 && <> · fastest win {saved.fewestTurns} turns</>}
+          {mode === 'race' ? (
+            <>
+              Turns so far {turns.current[0]} — the fewer it takes to reach{' '}
+              {TARGET.toLocaleString()}, the better
+            </>
+          ) : (
+            <>
+              Against the computer: won {saved.won}, lost {saved.lost}
+              {saved.bestTurn > 0 && <> · best turn {saved.bestTurn.toLocaleString()}</>}
+              {saved.fewestTurns > 0 && <> · fastest win {saved.fewestTurns} turns</>}
+            </>
+          )}
         </span>
       </p>
       <p className="muted lab-hint">
