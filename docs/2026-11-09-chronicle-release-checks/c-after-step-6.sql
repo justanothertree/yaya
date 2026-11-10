@@ -3,8 +3,9 @@
 -- query, so a reader compares one column rather than thirty hashes.
 --
 -- Where the values come from: production's text was read on 9 Nov 2026 (read-only), and run C7
--- (GitHub Actions 42733400210, scratch branch chronicle/ci-probe-flow at 60bf16f0) built a database
--- from main's 82 migrations, found the same six fingerprints, applied the six drafts in the plan's
+-- (GitHub Actions 42733400210, scratch branch chronicle/ci-probe-flow at 60bf16f0) built its database
+-- from the schema baseline, a dump of production (the job never runs the migration files; corrected
+-- 10 Nov), found the same six fingerprints, applied the six drafts in the plan's
 -- order and printed every function's fingerprint after step 6 and after step 7.
 
 -- ── C. AFTER STEP 6 — every function the release creates or patches, as C7 left it ─────────────
