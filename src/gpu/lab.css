@@ -2147,3 +2147,64 @@ html:has(.lab) {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
+
+/* Archery: the range, a heads-up line above it, a steady button and a score card below */
+.ar-room .lab-stage.ar-stage {
+  height: min(62vh, 520px, 100vw);
+  min-height: 260px;
+  touch-action: none;
+}
+.ar-room .lab-canvas {
+  cursor: crosshair;
+}
+.ar-wrap {
+  border-radius: 12px;
+}
+.ar-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.ar-hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.ar-steady {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.ar-steady .btn {
+  min-height: 44px;
+}
+.ar-stamina {
+  flex: 1 1 6rem;
+  min-width: 80px;
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, currentColor, transparent 85%);
+  overflow: hidden;
+}
+.ar-stamina > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #5fbf6a;
+}
+.ar-card {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  max-width: 420px;
+  width: 100%;
+}
+.ar-card th,
+.ar-card td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.ar-card tr.is-now td {
+  background: color-mix(in oklab, var(--accent), transparent 88%);
+}

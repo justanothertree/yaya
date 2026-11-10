@@ -92,6 +92,7 @@ import { TrailsDemo } from '../gpu/TrailsDemo'
 import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
 import { HexDemo } from '../gpu/HexDemo'
 import { FourRowDemo } from '../gpu/FourRowDemo'
+import { ArcheryDemo } from '../gpu/ArcheryDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -655,6 +656,12 @@ const DEMOS: readonly {
     name: 'Four in a row',
     line: 'Four in a row — drop discs into an upright grid and line up four before the computer does. It looks one, three or six moves ahead; play on a small, classic or wide grid, go for five on the bigger ones, and pick the discs and the frame.',
     Demo: FourRowDemo,
+  },
+  {
+    id: 'archery',
+    name: 'Archery',
+    line: 'Archery — twelve arrows at targets further and further off. Your sight sways and your arm tires; steady it while your breath lasts, allow for the drop and the wind, and loose. Today’s round has the same wind for everyone; practise with a recurve, compound or longbow.',
+    Demo: ArcheryDemo,
   },
 ]
 

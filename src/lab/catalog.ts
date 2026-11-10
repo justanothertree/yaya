@@ -115,6 +115,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   codebreaker: { category: 'puzzles', added: '2026-11-10' },
   hex: { category: 'games', added: '2026-11-10' },
   fourrow: { category: 'games', added: '2026-11-10' },
+  archery: { category: 'games', added: '2026-11-10' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */
