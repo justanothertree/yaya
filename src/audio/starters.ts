@@ -101,7 +101,7 @@ export const STARTERS: Starter[] = [
     beat: 'house-classic',
     chords: 'vamp',
     chordStyle: 'stabs',
-    bass: 'pulse',
+    bass: 'offbeat',
     bassVoice: 'synthbass',
   },
   {

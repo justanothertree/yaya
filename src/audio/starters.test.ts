@@ -103,11 +103,12 @@ describe('a style can pick its bass voice', () => {
 })
 
 /* Evan, 10 Nov 2026: bass lines that fit each style */
-describe('three styles play their own bass line', () => {
+describe('four styles play their own bass line', () => {
   const by = (id: string) => STARTERS.find((s) => s.id === id)!
-  it('Funk plays Funk, Reggae plays Dub, Bossa plays Bossa', () => {
+  it('Funk plays Funk, Reggae Dub, Bossa Bossa and House Offbeat', () => {
     expect(by('funk').bass).toBe('funk')
     expect(by('reggae').bass).toBe('dub')
     expect(by('bossa').bass).toBe('bossa')
+    expect(by('house').bass).toBe('offbeat')
   })
 })

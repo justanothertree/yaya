@@ -28,6 +28,8 @@ describe('bass presets', () => {
     expect(presetOf('walk', 'upright')?.name).toBe('Walking')
     expect(presetOf('dub', 'sub')?.name).toBe('Dub')
     expect(presetOf('bossa', 'upright')?.name).toBe('Bossa')
+    expect(presetOf('octaves', 'finger')?.name).toBe('Disco')
+    expect(presetOf('offbeat', 'synthbass')?.name).toBe('House')
   })
 
   it('the menu reads what is loaded: a pairing of your own is no preset', () => {
