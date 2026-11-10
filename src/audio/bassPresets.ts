@@ -35,7 +35,7 @@ export const BASS_PRESETS: readonly BassPreset[] = [
   { id: 'walking', name: 'Walking', style: 'walk', voice: 'upright', hint: 'Upright, every beat' },
   { id: 'bossa', name: 'Bossa', style: 'bossa', voice: 'upright', hint: 'Upright, bossa rhythm' },
   { id: 'dub', name: 'Dub', style: 'dub', voice: 'sub', hint: 'Deep sub, reggae line' },
-  { id: 'ballad', name: 'Ballad', style: 'roots', voice: 'fretless', hint: 'Fretless, long notes' },
+  { id: 'smooth', name: 'Smooth', style: 'roots', voice: 'fretless', hint: 'Fretless, long notes' },
   { id: 'trap', name: 'Trap', style: 'roots', voice: '808', hint: '808, one long note a chord' },
   { id: 'house', name: 'House', style: 'pulse', voice: 'synthbass', hint: 'Synth bass, eighths' },
   { id: 'acid', name: 'Acid house', style: 'funk', voice: 'acid', hint: 'Acid bass, sixteenths' },

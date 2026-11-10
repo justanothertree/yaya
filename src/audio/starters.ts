@@ -39,9 +39,13 @@ export type Starter = {
   /**
    * The bass VOICE, only where one clearly belongs to the style — Evan, 10 Nov 2026: "an 808 for
    * Hip hop makes sense, so let styles pick a bass voice where it clearly fits". Absent means the
-   * plain Bass. Five styles have one, because those five are what each voice is FOR: the 808 is
-   * hip hop's bass, slap is funk's, a walking line is an upright's, house is synth bass, and rock's
-   * driving eighths are played with a pick.
+   * plain Bass. Seven styles have one, because those seven are what each voice is FOR: the 808 is
+   * hip hop's bass, slap is funk's, a walking line and bossa nova are an upright's, house is synth
+   * bass, rock's driving eighths are played with a pick, and dub reggae is a deep sub.
+   *
+   * ⚠️ AND A STYLE PLAYS THE PRESET THAT SHARES ITS NAME — see bassPresets.ts. The Bass row's
+   * Preset menu reads what is loaded, so Bossa laying its line on a plain Bass beside a preset
+   * called Bossa on an upright made the menu say "Your own" about a bass nobody had touched.
    */
   bassVoice?: InstrumentId
 }
@@ -120,6 +124,7 @@ export const STARTERS: Starter[] = [
     chords: 'simple',
     chordStyle: 'offbeat',
     bass: 'dub',
+    bassVoice: 'sub',
   },
   {
     id: 'jazz',
@@ -141,6 +146,7 @@ export const STARTERS: Starter[] = [
     chords: 'turnaround',
     chordStyle: 'pulse',
     bass: 'bossa',
+    bassVoice: 'upright',
   },
   {
     id: 'country',

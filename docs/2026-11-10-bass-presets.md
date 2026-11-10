@@ -15,7 +15,7 @@ would actually play:
 | Walking    | Walk         | Upright    |
 | Bossa      | Bossa        | Upright    |
 | Dub        | Dub          | Sub        |
-| Ballad     | Roots        | Fretless   |
+| Smooth     | Roots        | Fretless   |
 | Trap       | Roots        | 808        |
 | House      | Pulse        | Synth bass |
 | Acid house | Funk         | Acid       |
@@ -31,6 +31,21 @@ would actually play:
   the room's history already keeps as a single step.
 - Every bass voice except the plain Bass appears in at least one preset, so a voice can be found
   by its preset.
+
+## A style plays the preset that shares its name
+
+Found by building the release candidate. The Preset menu reads what is loaded, so after pressing
+the **Bossa** style it said "Your own": Bossa laid its line on plain Bass, while the Bossa preset is
+on Upright. **Reggae** did the same beside Dub. So:
+
+- **Bossa** now plays Upright, and **Reggae** plays Sub. Bossa nova's bass is an acoustic upright,
+  and dub's is a deep sub; those are the "clearly fits" cases. That makes seven styles that pick a
+  voice.
+- **The Ballad preset is now called Smooth.** The Ballad style plays plain Bass, and a preset with
+  its name on Fretless would have read "Your own" the same way.
+- A test holds the rule: every style that shares a name with a preset plays that preset (Rock,
+  Funk, House, Bossa). Reggae plays Dub, Jazz plays Walking, and Hip hop plays Trap. Removing
+  Bossa's voice turns it red.
 
 **Stacked on #147 (the lines) and #153 (the voices)**, since half the presets use them.
 
