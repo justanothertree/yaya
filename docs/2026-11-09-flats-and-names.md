@@ -53,3 +53,26 @@ every layer row from 114 to 144 px: about 360 px down the page at twelve layers.
   - The layer row stayed 114 px tall.
 
 **Not verified:** a real screen reader (VoiceOver, TalkBack).
+
+## And the keys themselves — 10 Nov 2026 (stacked draft)
+
+Evan's overnight ask: _keyboard key labels following the key like #108_. The keys under the
+readouts still said A♯ in D minor. `noteLabel(midi, spell)` in chordName.ts labels each key with the
+same speller the readouts use, plus its octave.
+
+The one part that is not a lookup is that **the octave number belongs to the letter**. The octave
+turns over at C, so:
+
+- E♭ harmonic minor's sixth is C♭5, though it sounds as B4.
+- C♯ harmonic minor's seventh is B♯4, though it sounds as C5.
+
+Chromatic keeps its sharps, and so does the Key picker's own list, which this does not touch.
+
+Verified:
+
+- 4 tests, written as a teacher would read the keys out. Removing the octave turn turned 1 red;
+  ignoring the speller turned 2 red.
+- In the room, D minor reads D E F G A **B♭** C, E major reads E F♯ G♯ A B C♯ D♯, and A♭ major
+  reads A♭ B♭ C D♭ E♭ F G. The screen-reader labels match.
+- At 375 every label fits its 37 px key. The check was made to catch a planted over-long label
+  first, because `mobileAudit` deliberately leaves the keyboard out.

@@ -27,7 +27,7 @@ import {
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
-import { keySpeller, nameChord } from '../audio/chordName'
+import { keySpeller, nameChord, noteLabel } from '../audio/chordName'
 import { pedalBook, type PedalBook } from '../audio/pedal'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
@@ -256,7 +256,6 @@ const KNOBS: Array<[Knob, string, string]> = [
   ['tone', 'Tone', 'Darker to the left, brighter to the right — the middle is the sound as it is'],
 ]
 const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
-const noteName = (midi: number) => NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1)
 
 /**
  * The saved rigs, built with the room's OWN scale list.
@@ -1321,8 +1320,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   /**
    * ⚠️ SPELLED IN THE ROOM'S KEY — B♭ in D minor, not A♯ (Evan, 9 Nov 2026). Both readouts use it,
-   * the backing's and the one for what you are holding, so one chord never has two names an inch
-   * apart. Chromatic has no key and keeps its sharps. See `keySpeller`.
+   * the backing's and the one for what you are holding, and so do the keys' own labels since
+   * 10 Nov, so one note never has two names an inch apart. Chromatic has no key and keeps its sharps. See `keySpeller`.
    */
   const spell = useMemo(
     () => (scale === 'chromatic' ? undefined : keySpeller(degrees, root)),
@@ -1962,7 +1961,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 ? ({ ['--party-hue' as string]: theirNotes.get(midi) } as React.CSSProperties)
                 : undefined
             }
-            aria-label={inst === 'drums' ? drumName(midi) : noteName(midi)}
+            aria-label={inst === 'drums' ? drumName(midi) : noteLabel(midi, spell)}
             onPointerDown={(e) => {
               /**
                * ⚠️ SOUND FIRST, then let go of the pointer — and the release is wrapped because
@@ -1994,7 +1993,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 C4/C#4/D4 is twelve unlabelled buttons — the note name is true and useless,
                 because nobody is playing a kick in the key of C. */}
             <span className="inst-key-name">
-              {inst === 'drums' ? drumName(midi) : noteName(midi)}
+              {inst === 'drums' ? drumName(midi) : noteLabel(midi, spell)}
             </span>
           </button>
         ))}

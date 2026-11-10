@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { keySpeller, nameChord, pitchName } from './chordName'
+import { keySpeller, nameChord, noteLabel, pitchName } from './chordName'
 import { CHORDS, chordNotes } from './chords'
 import { SCALES, degreesOf } from './scales'
 
@@ -320,5 +320,46 @@ describe('chords spelled in the room’s key', () => {
 
   it('Chromatic has no key, and keeps its sharps', () => {
     expect(nameChord(triad(10, 'major'), keySpeller(degreesOf('chromatic'), 0))).toBe('A♯ major')
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: the keys' own labels follow the key, like the chord readouts above them.
+ * Written as a piano teacher would read the key out: its name in this key, and its octave.
+ */
+describe('a key is labelled in the room’s key', () => {
+  const major = degreesOf('major')
+  const minor = degreesOf('minor')
+  const harmonic = degreesOf('harmonic')
+
+  it('in D minor the key above A4 is B♭4, not A♯4', () => {
+    expect(noteLabel(70)).toBe('A♯4')
+    expect(noteLabel(70, keySpeller(minor, 2))).toBe('B♭4')
+  })
+
+  it('in E major it is G♯ and C♯, and in C major nothing changes', () => {
+    expect(noteLabel(68, keySpeller(major, 4))).toBe('G♯4')
+    expect(noteLabel(61, keySpeller(major, 4))).toBe('C♯4')
+    expect([60, 62, 64, 65, 67, 69, 71].map((m) => noteLabel(m, keySpeller(major, 0)))).toEqual([
+      'C4',
+      'D4',
+      'E4',
+      'F4',
+      'G4',
+      'A4',
+      'B4',
+    ])
+  })
+
+  /* the octave turns over at C, so the letter decides which octave a note is written in */
+  it('a C♭ is written in the octave above the B it sounds as, and a B♯ in the one below', () => {
+    /* E♭ harmonic minor spells its sixth C♭; B4 is that pitch */
+    expect(noteLabel(71, keySpeller(harmonic, 3))).toBe('C♭5')
+    /* C♯ harmonic minor spells its seventh B♯; C5 is that pitch */
+    expect(noteLabel(72, keySpeller(harmonic, 1))).toBe('B♯4')
+  })
+
+  it('and without a key, every key keeps the sharps it always had', () => {
+    expect([60, 61, 69, 48, 79].map((m) => noteLabel(m))).toEqual(['C4', 'C♯4', 'A4', 'C3', 'G5'])
   })
 })

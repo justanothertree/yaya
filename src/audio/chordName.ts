@@ -124,6 +124,26 @@ export function keySpeller(degrees: readonly number[], root: number): (pc: numbe
   return (pc) => byPc.get(pcOf(pc)) ?? plain[pcOf(pc)]
 }
 
+/**
+ * A key's label on the keyboard: its name in the room's key, and its octave.
+ *
+ * ⚠️ EVAN, 10 NOV 2026: "keyboard key labels following the key like #108". The chord readouts
+ * learned to say B♭ in D minor; the keys under them still said A♯, so the one note was named two
+ * ways an inch apart.
+ *
+ * ⚠️ THE OCTAVE NUMBER BELONGS TO THE LETTER, which is the one thing that is not a lookup. The
+ * octave turns over at C, so a C♭ is written an octave ABOVE the B it sounds as (C♭5 is B4's pitch)
+ * and a B♯ one BELOW the C (B♯3 is C4's). E♭ harmonic minor spells its sixth C♭, and C♯ harmonic
+ * minor its seventh B♯, so both happen on keys somebody will actually play.
+ */
+export function noteLabel(midi: number, spell: (pc: number) => string = pitchName): string {
+  const pc = pcOf(midi)
+  const name = spell(pc)
+  const octave = Math.floor(midi / 12) - 1
+  const turn = name[0] === 'C' && pc === 11 ? 1 : name[0] === 'B' && pc === 0 ? -1 : 0
+  return name + (octave + turn)
+}
+
 /** a seven-note scale on seven letters from the tonic `names` gives it — clean if no degree needs a double accidental */
 function onLetters(degrees: readonly number[], root: number, names: readonly string[]) {
   const first = LETTERS.indexOf(names[pcOf(root)][0])
