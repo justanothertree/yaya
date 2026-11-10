@@ -267,7 +267,10 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
             title="Add kudos"
             style={{ ...chip, border: '1px solid var(--b2, rgba(127,127,127,0.3))' }}
           >
-            ＋
+            {/* ⚠️ A WORD, NOT ONLY ＋: the meaning lived in the title, and a tooltip does not exist on
+                a phone — on a card with no kudos yet this was a plus sign with nothing to say
+                what it added (CLAUDE.md §6; found by scripts/mobile-audit.js, `wordless`) */}
+            ＋ Kudos
           </button>
           {picker && (
             <span
@@ -296,6 +299,13 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
                     border: 'none',
                     cursor: 'pointer',
                     fontSize: '1rem',
+                    /* a thumb's worth each: with no size of their own they were 23px tall, under
+                       the 24px floor (WCAG 2.5.8; scripts/mobile-audit.js, `tooSmall`) */
+                    minWidth: 32,
+                    minHeight: 32,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
                   {e}
@@ -307,6 +317,8 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
         <button
           className="cz-tap"
           onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={comments.length ? `Comments, ${comments.length}` : 'Comments'}
           style={{ ...chip, marginLeft: 'auto', color: 'var(--muted)' }}
         >
           💬 {comments.length || ''}
@@ -317,14 +329,32 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
           {comments.map((c) => (
             <div key={c.id} style={{ fontSize: '0.78rem' }}>
               <strong>{c.author_name || 'Member'}</strong> <span className="muted">{c.body}</span>
+              {/* ⚠️ A BUTTON, NOT A SPAN WITH A CLICK. It was a bare `×` in a <span>, measured 8.5x16
+                  at 375, out of the tab order, and named only by a title a phone never shows. */}
               {c.user_id === social.uid && (
-                <span
+                <button
+                  type="button"
                   onClick={() => void social.deleteComment(c.id)}
+                  aria-label="Delete your comment"
                   title="Delete"
-                  style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }}
+                  style={{
+                    minWidth: 24,
+                    minHeight: 24,
+                    padding: 0,
+                    marginLeft: 2,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    verticalAlign: 'middle',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    opacity: 0.5,
+                  }}
                 >
                   ×
-                </span>
+                </button>
               )}
             </div>
           ))}
@@ -906,6 +936,11 @@ function WeekView({
                 fontWeight: 700,
                 textAlign: 'left',
                 padding: 0,
+                /* ⚠️ a tap target, not just a line of text: with no padding it was 14px tall on a
+                   phone, under the 24px floor (WCAG 2.5.8; scripts/mobile-audit.js, `tooSmall`) */
+                minHeight: 28,
+                display: 'inline-flex',
+                alignItems: 'center',
                 color: isToday ? 'var(--accent, #7c6af7)' : undefined,
               }}
             >
@@ -1063,6 +1098,10 @@ function TableView({
                       color: 'inherit',
                       padding: 0,
                       fontSize: '0.82rem',
+                      /* the same floor as the week view's day headers: it was 15px tall */
+                      minHeight: 28,
+                      display: 'inline-flex',
+                      alignItems: 'center',
                     }}
                     title="Open this day"
                   >

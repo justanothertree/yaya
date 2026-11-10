@@ -571,10 +571,6 @@
   .cz-handle {
     opacity: 0.4;
   }
-  .cz-slot-btn {
-    min-width: 34px;
-    min-height: 34px;
-  }
   /* touch can't drag-reorder (it's a mouse gesture), so the handle is dead weight
      on a phone — hide it and give the name the room */
   .cz-handle {
@@ -626,28 +622,6 @@
      hidden) — keep it reachable but quiet and tight */
   .cz-sheet-head {
     margin: 0 0 0.35rem !important;
-  }
-
-  /* grid-management buttons (＋ Column, ＋ add) read as quiet, not primary */
-  .cz-add-slot {
-    min-height: 40px;
-  }
-
-  /* ── thumb targets ────────────────────────────────────────────────────────
-     A sweep found controls down to 14x17 (the board's log-today ＋/✓), 20-22px
-     (watchlist vote chips, ✓ Done, ✕) and 23-25px (feed kudos/comment pills) —
-     all far under a fingertip. They're marked .cz-tap and grown here. !important
-     because every one of them carries inline styles that a stylesheet can't beat. */
-  .cz-tap {
-    min-height: 38px !important;
-    min-width: 38px !important;
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-  }
-  /* filter chips (feed people, review categories) were 28px tall */
-  .cz-chip {
-    min-height: 34px;
   }
 
   /* Undo/redo are desktop power tools (there is no Ctrl+Z on a phone, and the Log carries
@@ -707,6 +681,41 @@
   }
   .cz-tab-chat .cz-chat {
     height: calc(100dvh - 96px - 84px);
+  }
+}
+
+/* ⚠️ A THUMB IS NOT A WIDTH. These four sizes lived in the phone LAYOUT block above, gated on
+   `max-width: 640px` alone, so a touch tablet, wider than 640px, got none of them: measured 10 Nov
+   at 820 with the coarse-pointer rules applied, the Board's log-today ＋ was 18x18, an exercise's
+   ✎ 22x16, a column's 🗑 17x15 and the feed's kudos chip 24 tall. The same correction 76eb155 made
+   for every field on the site, and for the same reason it moves rather than widens: the layout
+   rules beside these (the hidden drag handle, the calmer titles) are about a narrow screen and
+   stay where they were. */
+@media (max-width: 640px), (pointer: coarse) {
+  /* grid-management buttons (＋ Column, ＋ add) read as quiet, not primary */
+  .cz-add-slot {
+    min-height: 40px;
+  }
+  .cz-slot-btn {
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  /* ── thumb targets ────────────────────────────────────────────────────────
+     A sweep found controls down to 14x17 (the board's log-today ＋/✓), 20-22px
+     (watchlist vote chips, ✓ Done, ✕) and 23-25px (feed kudos/comment pills) —
+     all far under a fingertip. They're marked .cz-tap and grown here. !important
+     because every one of them carries inline styles that a stylesheet can't beat. */
+  .cz-tap {
+    min-height: 38px !important;
+    min-width: 38px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  /* filter chips (feed people, review categories) were 28px tall */
+  .cz-chip {
+    min-height: 34px;
   }
 }
 
@@ -17031,7 +17040,12 @@ a.cz-msg-author:focus-visible {
   text-transform: uppercase;
   color: var(--muted);
 }
-.chron-field input,
+/* ⚠️ NOT A HIDDEN INPUT. This rule is a class and an element, so it outranks `.sr-only` (a class
+   alone) and set the sitting editor's two photo pickers, which are visually hidden file inputs,
+   to the full width of the dialog's backdrop. Invisible, and still 375px wide from where their
+   buttons sit: on a 375 phone the backdrop scrolled sideways by 315px. Measured with
+   scripts/mobile-audit.js (`insideOut`), and gone with this. */
+.chron-field input:not(.sr-only),
 .chron-field select,
 .chron-field textarea {
   width: 100%;
@@ -19119,6 +19133,18 @@ a.cz-msg-author:focus-visible {
      enough for "Chronicle (on the site)" would push the row's buttons onto their own line */
   max-width: 13rem;
 }
+/* ⚠️ AND THE THREE SELECTS NOBODY GAVE A FLOOR: an add row's category and a planned span's
+   activity (`.chron-add`), and the sitting editor's activity (`.chron-field`). On a desktop they were
+   the browser's 21px beside 36px inputs, under the 24px target floor (WCAG 2.5.8). Measured 10 Nov
+   with scripts/mobile-audit.js at 1440. DESKTOP ONLY, because on a phone or a touch screen the
+   site's `select { min-height: 40px }` already holds them, and this rule, being more specific,
+   would lower that to 36. */
+@media (min-width: 641px) and (pointer: fine) {
+  .chron-add select,
+  .chron-field select {
+    min-height: 36px;
+  }
+}
 
 /* the three steps the room shows while it is empty — the paragraph that used to sit above them
    is gone, because the halves strip says the same thing on three buttons */
@@ -19402,12 +19428,15 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   font-size: 0.88rem;
 }
-/* ⚠️ not measured on screen — the routine draft editor was not reachable in the workbench this
-   pass — but it is the same markup problem as the three above and `.chron-draft li` is a flex
-   row with a min-height, so it grows the same way. Floored like the others. */
+/* The same markup problem as the three above, floored like them.
+   ⚠️ MEASURED 10 NOV, AND 110px WAS TOO RIGID A FLOOR. This said the routine draft editor had not
+   been reachable in the workbench; it is now, and at 375 a step row needed 298px in a 281px list
+   (110 for the name, then "10m" and ▲ ▼ ✕ at about 47px each), so the ✕ stood 40px past the card.
+   The basis stays 110px, so the name still grows wherever there is room; the floor is what a
+   name needs to stay readable, about eight characters, and `overflow-wrap` takes the rest. */
 .chron-draft-name {
   flex: 1 1 110px;
-  min-width: 110px;
+  min-width: 64px;
   overflow-wrap: anywhere;
 }
 

@@ -825,6 +825,31 @@ const db = (): Store => (S ??= asked() ? blank() : seed())
 let next = 1
 const mint = (p: string): string => `${p}-new-${next++}`
 
+/**
+ * ⚠️ CHARACTERS, NOT UTF-16 UNITS. Postgres's `length()` and `left()` count characters, and
+ * `String.length` counts code units — so a note of 3,000 emoji is 3,000 to the server and 6,000
+ * here, and the double refused what the site accepts. Counted the server's way wherever a limit
+ * is written in characters.
+ */
+const chars = (t: string): number => [...t].length
+const leftChars = (t: string, n: number): string => [...t].slice(0, n).join('')
+/* chronicle_activity_save's session length: 1 to 1440 minutes, or none */
+const sessionMins = (m: number | null | undefined): number | null =>
+  m == null || m <= 0 ? null : Math.min(m, 1440)
+
+/**
+ * The range readers' two refusals — a range that ends before it starts, and one over 400 days —
+ * as the EMPTY ANSWER cloud.ts turns them into. ⚠️ No caller asks for more today (the Journal stops
+ * at 360 on purpose), which is the reason to keep it here: the next one that does would otherwise
+ * work in the preview and come back empty on the site.
+ */
+const RANGE_MS = 400 * 86_400_000
+const offRange = (fromISO: string, toISO: string): boolean => {
+  const from = Date.parse(fromISO)
+  const to = Date.parse(toISO)
+  return !(to > from) || to - from > RANGE_MS
+}
+
 /* ── reads ──────────────────────────────────────────────────────────────────── */
 
 /**
@@ -857,6 +882,7 @@ export const pvRoutines = (): Routine[] =>
   db().routines.map((r) => ({ ...r, steps: r.steps.map((s) => ({ ...s })) }))
 
 export const pvEntries = (fromISO: string, toISO: string): Entry[] => {
+  if (offRange(fromISO, toISO)) return []
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   const now = Date.now()
@@ -961,6 +987,7 @@ export const pvTally = (
  * from the one the server answers, which is how a double starts producing false bugs.
  */
 export const pvTotals = (fromISO: string, toISO: string): Total[] => {
+  if (offRange(fromISO, toISO)) return []
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   const now = Date.now()
@@ -990,7 +1017,9 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
     if (row.metric && e.amount != null && began >= from && began < to)
       row.amount = (row.amount ?? 0) + e.amount
   }
-  return [...out.values()].sort((x, y) => y.mins - x.mins)
+  /* chronicle_totals' own order: the most time first, and a tie — every activity at nothing, to
+     begin with — by name */
+  return [...out.values()].sort((x, y) => y.mins - x.mins || x.name.localeCompare(y.name))
 }
 
 /* ── writes ─────────────────────────────────────────────────────────────────── */
@@ -1004,16 +1033,25 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
   if (!already && db().goals.length >= ACCOUNT_GOALS) {
     return { why: 'that is 500 goals — finish or delete one' }
   }
+  /* ⚠️ chronicle_goal_save's clean-up, all of it: an activity that is not yours becomes none, the
+     text fields are trimmed and an empty one is none, the estimate is 1 to 10080 minutes or none,
+     and the priority is clamped to 0-2 */
+  const activity =
+    g.activity != null && db().acts.some((a) => a.id === g.activity) ? g.activity : null
   const made = goal({
     ...g,
     id,
-    note: g.note ?? null,
+    title: g.title.trim(),
+    unit: g.unit?.trim() || null,
+    note: g.note?.trim() || null,
     /* ⚠️ null leaves the sort alone — chronicle_goal_save's rule, `coalesce(p_sort, sort)`. This
        said `?? 0` to match the old server, which reset a goal's place on every edit. The seed's
        goals carry sorts 1-3 deliberately, so the workbench is where that was visible at all. */
     sort: g.sort ?? was?.sort ?? 0,
-    activity: g.activity ?? null,
+    activity,
     cat: g.cat ?? null,
+    est: g.est == null || g.est <= 0 ? null : Math.min(g.est, 10080),
+    priority: Math.min(Math.max(g.priority ?? 0, 0), 2) as Goal['priority'],
     /**
      * ⚠️ AN AMOUNT NEEDS AN ACTIVITY THAT COUNTS ONE, which chronicle_goal_save corrects rather
      * than refuses — a goal with a nonsense pairing is still a goal somebody is writing down, so
@@ -1024,7 +1062,7 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
     counts:
       g.counts === 'amount' &&
       db()
-        .acts.find((a) => a.id === g.activity)
+        .acts.find((a) => a.id === activity)
         ?.metric?.trim()
         ? 'amount'
         : 'minutes',
@@ -1052,6 +1090,10 @@ export const pvSaveGoal = (g: NewGoal): { id: string } | { why: string } => {
          kind of infidelity because it looks exactly like a bug worth chasing. Sharing is turned
          on and off by chronicle_goal_share alone. */
       shared: db().goals[i].shared,
+      /* ⚠️ AND THE TIER BESIDE IT. Keeping `shared` alone left the rebuilt row's `visibility` at
+         private, the pair the table refuses: an edited shared goal read as unshared to anything
+         that asks for the tier. */
+      visibility: db().goals[i].visibility,
     }
   return { id }
 }
@@ -1079,7 +1121,8 @@ export const pvSetDays = (id: string, days: number, from: string): { why: string
 
 export const pvProgress = (id: string, progress: number, done: boolean): boolean => {
   const g = db().goals.find((x) => x.id === id)
-  if (g) Object.assign(g, { progress, done })
+  /* ⚠️ greatest(0, least(p, 1e9)), as chronicle_goal_progress stores it: a step below zero is 0 */
+  if (g) Object.assign(g, { progress: Math.max(0, Math.min(progress, 1e9)), done })
   /* `done_at = case when p_done then coalesce(done_at, now()) else null end`, as the server says */
   if (g && done) db().doneAt[id] ??= Date.now()
   if (g && !done) delete db().doneAt[id]
@@ -1158,11 +1201,20 @@ export const pvMarksFor = (asks: ReadonlyArray<{ id: string; from: string }>): M
 export const pvShareGoal = (id: string, on: boolean): boolean => {
   const g = db().goals.find((x) => x.id === id)
   if (!g) return false
+  /**
+   * ⚠️ THE TIER, AND `shared` FROM IT — what chronicle_goal_set_visibility writes (cloud.ts sends
+   * friends or private) and chronicle_goals_tier_agrees pins. This set the boolean alone and left
+   * `visibility` at private: a pair the table refuses, and a goal the profile's readers, which ask
+   * for the tier, treated as unshared while the room showed it shared.
+   */
+  g.visibility = on ? 'friends' : 'private'
   g.shared = on
   return true
 }
 
 export const pvDropGoal = (id: string): boolean => {
+  /* 'no such goal' is a refusal there, and false here */
+  if (!db().goals.some((g) => g.id === id)) return false
   db().goals = db().goals.filter((g) => g.id !== id)
   /* `on delete cascade`, and the row's own done_at goes with the row */
   db().marks = db().marks.filter((m) => m.goal !== id)
@@ -1232,7 +1284,7 @@ export const pvSaveActivity = (
   }
   if (found)
     Object.assign(found, {
-      name,
+      name: name.trim(),
       cat,
       /* ⚠️ null leaves the colour alone, '' clears it — chronicle_activity_save's rule. The room
          passes null here on every rename because it has no colour picker, so reading null as
@@ -1249,20 +1301,20 @@ export const pvSaveActivity = (
       /* ⚠️ THE SESSION IS DELIBERATELY NOT THAT RULE. null is its only way to say "clear", because
          the box is a number and `asMins('')` answers null — see the doc for why changing it needs
          the client to move first. The server agrees: `when p_session is null then null`. */
-      session: session || null,
+      session: sessionMins(session),
     })
   else
     db().acts.push({
       id: made,
-      name,
+      name: name.trim(),
       cat,
-      colour,
+      colour: colour?.trim() || null,
       archived: false,
       shared: false,
       visibility: 'private',
       auto: false,
-      metric: metric || null,
-      session: session || null,
+      metric: metric?.trim() || null,
+      session: sessionMins(session),
     })
   return { id: made }
 }
@@ -1283,7 +1335,7 @@ export const pvStop = (note: string | null): { why: string } | null => {
     open.end = new Date(now).toISOString()
     /* ⚠️ the server's own words: chronicle_stop writes the note it is handed into
        chronicle_notes now, and only onto the sitting that actually closed */
-    const said = (note ?? '').trim()
+    const said = leftChars((note ?? '').trim(), 4000)
     if (said) open.notes = [...open.notes, { id: mint('pv-n'), at: open.end, body: said }]
   }
   return null
@@ -1373,7 +1425,11 @@ export const pvAddEntry = (
     activity,
     /* ⚠️ chronicle_entry_add puts the note a caller hands it into chronicle_notes now, so an
        older bundle still records one — it just lands where notes live */
-    notes: note?.trim() ? [{ id: mint('pv-n'), at: toISO, body: note.trim() }] : [],
+    /* ⚠️ STAMPED NOW, the column's default: chronicle_entry_add names no `at` for the note, so a
+       note added with a past sitting says when it was written, not when the sitting ended */
+    notes: note?.trim()
+      ? [{ id: mint('pv-n'), at: new Date().toISOString(), body: leftChars(note.trim(), 4000) }]
+      : [],
     start: fromISO,
     end: toISO,
     picture: null,
@@ -1384,6 +1440,8 @@ export const pvAddEntry = (
 }
 
 export const pvDropEntry = (id: string): boolean => {
+  /* 'no such entry' is a refusal there, and false here */
+  if (!db().ents.some((e) => e.id === id)) return false
   db().ents = db().ents.filter((e) => e.id !== id)
   /* `on delete cascade`: the sitting takes what it counted with it */
   db().sets = db().sets.filter((x) => x.entry !== id)
@@ -1639,20 +1697,25 @@ export const pvGiveCircuitLog = (
 
 /** `chronicle_sets_between`: yours, half-open, with today's name looked up BY ID */
 export const pvSetsBetween = (from: string, to: string): ChronSet[] =>
-  db()
-    .sets.filter((x) => x.on >= from && x.on < to)
-    .sort((a, b) => a.on.localeCompare(b.on) || a.created - b.created || a.id.localeCompare(b.id))
-    .map((x) => ({
-      id: x.id,
-      entry: x.entry,
-      person: x.person,
-      exercise: x.exercise,
-      name: x.name,
-      now: (x.person && db().circuit[x.person]?.find((e) => e.id === x.exercise)?.name) || null,
-      on: x.on,
-      value: x.value,
-      counted: x.counted,
-    }))
+  /* chronicle_sets_between's own two refusals, on DATES: to before from, or over 400 days */
+  !(to >= from) || Date.parse(to) - Date.parse(from) > RANGE_MS
+    ? []
+    : db()
+        .sets.filter((x) => x.on >= from && x.on < to)
+        .sort(
+          (a, b) => a.on.localeCompare(b.on) || a.created - b.created || a.id.localeCompare(b.id),
+        )
+        .map((x) => ({
+          id: x.id,
+          entry: x.entry,
+          person: x.person,
+          exercise: x.exercise,
+          name: x.name,
+          now: (x.person && db().circuit[x.person]?.find((e) => e.id === x.exercise)?.name) || null,
+          on: x.on,
+          value: x.value,
+          counted: x.counted,
+        }))
 
 /**
  * `chronicle_entry_edit_day`: the day is judged FIRST, then the sitting is edited by its own
@@ -1703,7 +1766,9 @@ export const pvAmount = (id: string, amount: number | null): boolean => {
   /* ⚠️ NOT BELOW ITS COUNTED SETS — chronicle_entry_amount's refusal, which a boolean cannot word */
   if ((amount ?? 0) < countedOf(id)) return false
   const e = db().ents.find((x) => x.id === id)
-  if (e) e.amount = amount
+  /* stored under the server's ceiling. A negative never gets here: it is below the counted sets'
+     floor of 0, so the check above refuses it, as chronicle_entry_amount's does */
+  if (e) e.amount = amount == null ? null : Math.min(amount, 1e9)
   return !!e
 }
 
@@ -1720,6 +1785,7 @@ export const pvQuality = (id: string, quality: number | null): boolean => {
 /** ⚠️ the OVERLAP, as chronicle_moods does — a rating is a property of the minutes, not of the
     session, so an hour either side of midnight is rated time on both days */
 export const pvMoods = (fromISO: string, toISO: string): Moods => {
+  if (offRange(fromISO, toISO)) return {}
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   const now = Date.now()
@@ -2437,17 +2503,27 @@ export const pvSaveRoutine = (
    */
   if (steps.length > 40) return { why: 'that is more than forty steps' }
   /* ⚠️ a step naming an activity that is not yours is dropped, as chronicle_routine_save does */
-  const mine = steps.filter((s) => db().acts.some((x) => x.id === s.activity))
-  if (!db().routines.some((x) => x.id === made) && db().routines.length >= 40) {
+  const mine = steps
+    .filter((s) => db().acts.some((x) => x.id === s.activity))
+    /* and each step is a whole number of minutes up to 600, or none */
+    .map((s) => ({
+      activity: s.activity,
+      mins:
+        s.mins != null && Number.isInteger(s.mins) && s.mins >= 0 ? Math.min(s.mins, 600) : null,
+    }))
+  const r = db().routines.find((x) => x.id === made)
+  /* ⚠️ an edit to a routine that is not there is refused, never made under the id it named */
+  if (id && !r) return { why: 'no such routine' }
+  if (!r && db().routines.length >= 40) {
     return { why: 'that is forty routines — delete one' }
   }
-  const r = db().routines.find((x) => x.id === made)
-  if (r) Object.assign(r, { name, steps: mine })
-  else db().routines.push({ id: made, name, steps: mine })
+  if (r) Object.assign(r, { name: name.trim(), steps: mine })
+  else db().routines.push({ id: made, name: name.trim(), steps: mine })
   return { id: made }
 }
 
 export const pvPlans = (fromISO: string, toISO: string): Plan[] => {
+  if (offRange(fromISO, toISO)) return []
   const from = Date.parse(fromISO)
   const to = Date.parse(toISO)
   return db()
@@ -2469,8 +2545,13 @@ export const pvPlanSave = (
   if (!db().acts.some((a) => a.id === activity)) return { why: 'no such activity' }
   const made = id ?? mint('pv-p')
   const had = db().plans.find((p) => p.id === made)
-  if (had) Object.assign(had, { activity, start: fromISO, end: toISO, note })
-  else db().plans.push({ id: made, activity, start: fromISO, end: toISO, note })
+  /* chronicle_plan_save's own: a trimmed note of up to 500 characters or none, an edit to a plan
+     that is not there refused rather than made, and 5000 plans at most */
+  const said = note?.trim() ? leftChars(note.trim(), 500) : null
+  if (id && !had) return { why: 'no such plan' }
+  if (!had && db().plans.length >= 5000) return { why: 'that is 5000 plans' }
+  if (had) Object.assign(had, { activity, start: fromISO, end: toISO, note: said })
+  else db().plans.push({ id: made, activity, start: fromISO, end: toISO, note: said })
   return { id: made }
 }
 
@@ -2487,6 +2568,8 @@ export const pvPlanDid = (id: string): { why: string } | null => {
 }
 
 export const pvDropRoutine = (id: string): boolean => {
+  /* 'no such routine' is a refusal there, and false here */
+  if (!db().routines.some((r) => r.id === id)) return false
   db().routines = db().routines.filter((r) => r.id !== id)
   return true
 }
@@ -2579,11 +2662,14 @@ export const pvMemberChronicle = (
     time[a.cat] = (time[a.cat] ?? 0) + m
   }
   for (const k of Object.keys(time) as Array<'locked' | 'free' | 'life'>) {
-    const v = Math.round(time[k] ?? 0)
-    if (v >= 1) time[k] = v
+    /* ⚠️ the floor on the RAW minutes, then the rounding — `where t.mins >= 1` before round() */
+    const raw = time[k] ?? 0
+    if (raw >= 1) time[k] = Math.round(raw)
     else delete time[k]
   }
   const top = [...mins]
+    /* the floor on the raw minutes, as `having … >= 1` is; the order on the rounded ones */
+    .filter(([, m]) => m >= 1)
     .map(([id, m]) => {
       const a = catOf.get(id)
       return {
@@ -2593,7 +2679,6 @@ export const pvMemberChronicle = (
         mins: Math.round(m),
       }
     })
-    .filter((t) => t.mins >= 1)
     .sort((x, y) => y.mins - x.mins || x.name.localeCompare(y.name))
     .slice(0, 5)
   /* ⚠️ the running sitting, and only when asked for — the double must refuse it the same way the
@@ -2618,8 +2703,12 @@ export const pvMemberChronicle = (
     goals: wantsGoals
       ? db()
           .goals.filter(reachesAFriend)
+          /* the six it shows are the first six in ITS order: priority, then place, then title */
+          .sort(
+            (a, b) => b.priority - a.priority || a.sort - b.sort || a.title.localeCompare(b.title),
+          )
           .slice(0, 6)
-          .map((g) => ({ title: g.title, target: g.target, unit: g.unit, done: g.done }))
+          .map((g) => ({ title: g.title, target: g.target, unit: g.unit, done: doneNow(g, to) }))
       : [],
     /* ⚠️ THE COUNTS TAKE THE SAME FILTER AS THE LIST, because the server does and because it did
        not until 3 Nov 2026. `get_member_chronicle` counted every goal the owner had, so somebody
@@ -2627,10 +2716,34 @@ export const pvMemberChronicle = (
        still counting them all would hide that in the one place this card can be looked at without
        an account. Deliberately NOT gated on `wantsGoals` — that switch governs titles, and the
        counts have never answered to it. */
-    reached: db().goals.filter((g) => reachesAFriend(g) && g.done).length,
-    open: db().goals.filter((g) => reachesAFriend(g) && !g.done).length,
+    reached: db().goals.filter(
+      (g) =>
+        reachesAFriend(g) &&
+        (g.every == null ? g.done && (db().doneAt[g.id] ?? 0) >= from : doneNow(g, to)),
+    ).length,
+    open: db().goals.filter((g) => reachesAFriend(g) && !doneNow(g, to)).length,
   }
 }
+
+/**
+ * Whether a goal reads as done on a friend's view right now — get_member_chronicle's rule since
+ * the profile reader was applied (17d step 3, 9 Nov).
+ *
+ * ⚠️ A REPEATING GOAL IS DONE ONLY BY A MARK ON ITS CURRENT WINDOW, at its current scope. The
+ * double read the old row tick for every goal, which is the very thing step 3 replaced: a daily
+ * goal ticked on Monday read done to friends for ever. A one-off is still its own row.
+ */
+const doneNow = (g: Goal, at: number): boolean =>
+  g.every == null
+    ? g.done
+    : db().marks.some(
+        (m) =>
+          m.goal === g.id &&
+          m.scope === g.scope &&
+          m.doneAt != null &&
+          Date.parse(m.starts) <= at &&
+          Date.parse(m.ends) > at,
+      )
 
 /**
  * Whether a goal reaches the person looking, for a double that has no idea who that is.
@@ -2697,8 +2810,9 @@ export const pvSpans = (
       mins[cat] = (mins[cat] ?? 0) + over
     }
     for (const k of Object.keys(mins) as Array<'locked' | 'free' | 'life'>) {
-      const v = Math.round(mins[k] ?? 0)
-      if (v >= 1) mins[k] = v
+      /* ⚠️ the floor on the RAW minutes, then the rounding — chronicle_spans' `having … >= 1` */
+      const raw = mins[k] ?? 0
+      if (raw >= 1) mins[k] = Math.round(raw)
       else delete mins[k]
     }
     out[a.key] = mins
@@ -2845,49 +2959,76 @@ const MOMENTS: ReadonlyArray<{
   { hoursAgo: 28, title: 'Paper Lanterns', score: 61, about: 'film' },
 ]
 
-/* a few invented workouts, to go with the invented ratings — the live ones need a circuit */
-const WORKOUTS: ReadonlyArray<{ daysAgo: number; title: string; held: string }> = [
-  { daysAgo: 0, title: 'Quad Curl 12 reps · Bench 8 reps', held: '4' },
-  { daysAgo: 2, title: 'Miles walked 3 mi', held: '1' },
-]
+/**
+ * `to_char(v, 'FM999999990.##')`, the way chronicle_moments prints a workout's number.
+ *
+ * ⚠️ MEASURED IN CI, NOT REMEMBERED: `.##` is not a digit pattern, so Postgres prints NO decimals
+ * and rounds half away from zero — 12 is "12", 12.5 is "13", 0.25 is "0". A 3.5-mile walk reads
+ * "4 mi" on the live site. The double prints it the same way so the preview shows what the site
+ * shows; the fix is a server change, queued in OPEN-DECISIONS §21.
+ */
+const momentNumber = (v: number): string => String(Math.round(v))
 
+/**
+ * `chronicle_moments`: the day's workouts from YOUR people's typed days, and the ratings.
+ *
+ * ⚠️ THE WORKOUTS COME FROM THE STORE NOW. They were two invented rows, "because the live ones need
+ * a circuit" — and since the Circuit stand-in writes `circuitLogs` (dev/circuitPreview.ts), a cell
+ * typed in the preview's grid never reached this line while on the site it does. Built the
+ * server's way: the first four entries over zero as "name number unit" (the unit lowercased, and
+ * left off when it is blank or "other"), the count of all of them beside it, a window widened by a
+ * day each side, and the server's order — the undated workouts first, by title, then the ratings
+ * newest first. The ratings stay invented: there is no ratings store here.
+ */
 export const pvMoments = (fromISO: string, toISO: string) => {
-  const from = Date.parse(fromISO)
-  const to = Date.parse(toISO)
-  const dayOf = (daysAgo: number) => {
-    const d = new Date()
-    d.setDate(d.getDate() - daysAgo)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-  }
+  const to = Date.parse(toISO) || Date.now()
+  const from = Math.max(Date.parse(fromISO) || to - 86_400_000, to - 366 * 86_400_000)
+  if (from >= to) return []
+  const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+  const lo = utcDay(from - 86_400_000)
+  const hi = utcDay(to + 86_400_000)
+  const worked = db()
+    .circuitLogs.filter((g) => db().circuit[g.person] && g.date >= lo && g.date <= hi)
+    .map((g) => {
+      const list = db().circuit[g.person] ?? []
+      const held = g.entries.filter((x) => Number(x.val) > 0)
+      const said = held.slice(0, 4).map((x) => {
+        const ex = list.find((d) => d.id === x.eid)
+        const unit = (ex?.unit ?? '').trim().toLowerCase()
+        return (
+          (ex?.name.trim() || 'something') +
+          ' ' +
+          momentNumber(Number(x.val)) +
+          (unit && unit !== 'other' ? ' ' + unit : '')
+        )
+      })
+      return {
+        kind: 'workout' as const,
+        at: null as string | null,
+        on: g.date,
+        title: said.join(' · '),
+        score: null as number | null,
+        about: null as string | null,
+        detail: String(held.length) as string | null,
+      }
+    })
+    .filter((x) => x.title.trim() !== '')
+    .sort((x, y) => x.title.localeCompare(y.title))
   const rated = MOMENTS.map((m) => ({
     kind: 'rating' as const,
-    at: new Date(Date.now() - m.hoursAgo * 3_600_000).toISOString(),
-    on: null,
+    at: new Date(Date.now() - m.hoursAgo * 3_600_000).toISOString() as string | null,
+    on: null as string | null,
     title: m.title,
     score: m.score as number | null,
     about: m.about as string | null,
     detail: null as string | null,
-  })).filter((m) => {
-    const t = Date.parse(m.at!)
-    return t >= from && t < to
-  })
-  /* ⚠️ no `at`, exactly as the server gives them — a workout has a day and no hour */
-  const worked = WORKOUTS.map((x) => ({
-    kind: 'workout' as const,
-    at: null as string | null,
-    on: dayOf(x.daysAgo),
-    title: x.title,
-    score: null as number | null,
-    about: 'You' as string | null,
-    detail: x.held as string | null,
-  })).filter((x) => {
-    const noon = Date.parse(x.on + 'T12:00:00')
-    return noon >= from && noon < to
-  })
-  return [...worked, ...rated].sort(
-    (a, b) => (b.at ? Date.parse(b.at) : Infinity) - (a.at ? Date.parse(a.at) : Infinity),
-  )
+  }))
+    .filter((m) => {
+      const t = Date.parse(m.at!)
+      return t >= from && t < to
+    })
+    .sort((x, y) => Date.parse(y.at!) - Date.parse(x.at!) || x.title.localeCompare(y.title))
+  return [...worked, ...rated].slice(0, 400)
 }
 
 /** the journal, in the double — the same three rules the server keeps */
@@ -2895,7 +3036,7 @@ export const pvMoments = (fromISO: string, toISO: string) => {
 export const pvDayNoteAdd = (day: string, body: string): { why: string } | null => {
   const text = body.trim()
   if (!text) return { why: 'nothing to write down' }
-  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  if (chars(text) > 4000) return { why: 'that is longer than a note — 4000 characters' }
   /* UTC's date plus one, as the server bounds it, since it does not know the zone */
   const limit = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
   if (!day || day > limit) return { why: 'that day has not come yet' }
@@ -2921,7 +3062,7 @@ export const pvDayNotes = (from: string, to: string): DayNote[] => {
 export const pvNoteAdd = (entry: string, body: string): { why: string } | null => {
   const text = body.trim()
   if (!text) return { why: 'nothing to write down' }
-  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  if (chars(text) > 4000) return { why: 'that is longer than a note — 4000 characters' }
   const e = db().ents.find((x) => x.id === entry)
   /* ⚠️ the server checks the session is YOURS; the double has one owner, so the only version of
      that check it can keep is that the session exists — and it must keep it, or the workbench
@@ -2935,7 +3076,7 @@ export const pvNoteAdd = (entry: string, body: string): { why: string } | null =
 export const pvNoteEdit = (id: string, body: string): { why: string } | null => {
   const text = body.trim()
   /* the server refuses this on edit as well as on add; the double accepted it */
-  if (text.length > 4000) return { why: 'that is longer than a note — 4000 characters' }
+  if (chars(text) > 4000) return { why: 'that is longer than a note — 4000 characters' }
   /* a day note is the same row in the same table, so the same edit reaches it */
   const d = db().dayNotes.findIndex((n) => n.id === id)
   if (d >= 0) {
@@ -2953,7 +3094,8 @@ export const pvNoteEdit = (id: string, body: string): { why: string } | null => 
       : e.notes.filter((n) => n.id !== id)
     return null
   }
-  return { why: 'no such note' }
+  /* an emptied note is a delete there, and deleting what is not there is not an error */
+  return text ? { why: 'no such note' } : null
 }
 
 /**
