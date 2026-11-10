@@ -906,6 +906,11 @@ function WeekView({
                 fontWeight: 700,
                 textAlign: 'left',
                 padding: 0,
+                /* ⚠️ a tap target, not just a line of text: with no padding it was 14px tall on a
+                   phone, under the 24px floor (WCAG 2.5.8; scripts/mobile-audit.js, `tooSmall`) */
+                minHeight: 28,
+                display: 'inline-flex',
+                alignItems: 'center',
                 color: isToday ? 'var(--accent, #7c6af7)' : undefined,
               }}
             >
@@ -1063,6 +1068,10 @@ function TableView({
                       color: 'inherit',
                       padding: 0,
                       fontSize: '0.82rem',
+                      /* the same floor as the week view's day headers: it was 15px tall */
+                      minHeight: 28,
+                      display: 'inline-flex',
+                      alignItems: 'center',
                     }}
                     title="Open this day"
                   >
