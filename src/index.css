@@ -571,10 +571,6 @@
   .cz-handle {
     opacity: 0.4;
   }
-  .cz-slot-btn {
-    min-width: 34px;
-    min-height: 34px;
-  }
   /* touch can't drag-reorder (it's a mouse gesture), so the handle is dead weight
      on a phone — hide it and give the name the room */
   .cz-handle {
@@ -626,28 +622,6 @@
      hidden) — keep it reachable but quiet and tight */
   .cz-sheet-head {
     margin: 0 0 0.35rem !important;
-  }
-
-  /* grid-management buttons (＋ Column, ＋ add) read as quiet, not primary */
-  .cz-add-slot {
-    min-height: 40px;
-  }
-
-  /* ── thumb targets ────────────────────────────────────────────────────────
-     A sweep found controls down to 14x17 (the board's log-today ＋/✓), 20-22px
-     (watchlist vote chips, ✓ Done, ✕) and 23-25px (feed kudos/comment pills) —
-     all far under a fingertip. They're marked .cz-tap and grown here. !important
-     because every one of them carries inline styles that a stylesheet can't beat. */
-  .cz-tap {
-    min-height: 38px !important;
-    min-width: 38px !important;
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-  }
-  /* filter chips (feed people, review categories) were 28px tall */
-  .cz-chip {
-    min-height: 34px;
   }
 
   /* Undo/redo are desktop power tools (there is no Ctrl+Z on a phone, and the Log carries
@@ -707,6 +681,41 @@
   }
   .cz-tab-chat .cz-chat {
     height: calc(100dvh - 96px - 84px);
+  }
+}
+
+/* ⚠️ A THUMB IS NOT A WIDTH. These four sizes lived in the phone LAYOUT block above, gated on
+   `max-width: 640px` alone, so a touch tablet, wider than 640px, got none of them: measured 10 Nov
+   at 820 with the coarse-pointer rules applied, the Board's log-today ＋ was 18x18, an exercise's
+   ✎ 22x16, a column's 🗑 17x15 and the feed's kudos chip 24 tall. The same correction 76eb155 made
+   for every field on the site, and for the same reason it moves rather than widens: the layout
+   rules beside these (the hidden drag handle, the calmer titles) are about a narrow screen and
+   stay where they were. */
+@media (max-width: 640px), (pointer: coarse) {
+  /* grid-management buttons (＋ Column, ＋ add) read as quiet, not primary */
+  .cz-add-slot {
+    min-height: 40px;
+  }
+  .cz-slot-btn {
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  /* ── thumb targets ────────────────────────────────────────────────────────
+     A sweep found controls down to 14x17 (the board's log-today ＋/✓), 20-22px
+     (watchlist vote chips, ✓ Done, ✕) and 23-25px (feed kudos/comment pills) —
+     all far under a fingertip. They're marked .cz-tap and grown here. !important
+     because every one of them carries inline styles that a stylesheet can't beat. */
+  .cz-tap {
+    min-height: 38px !important;
+    min-width: 38px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  /* filter chips (feed people, review categories) were 28px tall */
+  .cz-chip {
+    min-height: 34px;
   }
 }
 
