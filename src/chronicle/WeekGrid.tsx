@@ -154,7 +154,6 @@ export function WeekGrid({
                 ))}
                 {c.blocks.map((b, i) => {
                   const a = byId.get(b.activity)
-                  const mins = (b.width / 100) * 24 * 60
                   return (
                     <span
                       key={`${b.activity}-${i}`}
@@ -171,7 +170,7 @@ export function WeekGrid({
                       }}
                       /* ⚠️ a title is a tooltip and a phone has none — the day below it is the
                          readable version, and this only names what a block already shows */
-                      title={`${a?.name ?? 'something'} · ${spanText(mins * 60_000)}`}
+                      title={`${a?.name ?? 'something'} · ${spanText(b.ms)}`}
                     />
                   )
                 })}
