@@ -167,6 +167,48 @@ type Shape = {
 }
 
 /**
+ * How far above a note its WAVEFORM reaches, in harmonics, before it stops mattering to a filter.
+ *
+ * ⚠️ A PARTIAL IS NOT A SINE UNLESS THE WAVE IS ONE. `partials` lists the oscillators stacked to
+ * make a note, but each of them is a whole waveform with its own harmonics: a saw at 82Hz has
+ * energy at 164, 246, 328Hz and on up, falling only as 1/n, so its tenth harmonic is still within
+ * 20dB of the note. A sine has none, and a triangle's fall as 1/n² — its third is already 19dB
+ * down — which is why both are treated as the bare partial, the case the crackle fix was measured on.
+ */
+const WAVE_REACH: Record<OscillatorType, number> = {
+  sine: 1,
+  triangle: 1,
+  sawtooth: 10,
+  square: 10,
+  custom: 1,
+}
+
+/**
+ * Whether a note's filter should sweep, or sit still at its destination.
+ *
+ * ⚠️ 8 Sep 2026's crackle fix skipped the sweep "where the filter's destination sits well above the
+ * highest partial this note actually has" — and measured the highest partial as the highest RATIO,
+ * which is only true of a sine. On a saw or a square that switched the sweep off across most of the
+ * keyboard: Slap lost its snap below A2, Synth bass never swept anywhere a bass line plays, and
+ * Brass lost the swell its own comment calls "the brass" from A♭3 up — eighteen voices in all, and
+ * the timbre changed abruptly at the pitch where the rule flipped. Measured in the room, the share of
+ * a Slap E2's energy above 1.5kHz in its first 43ms was 0.07% before this and 7.8% after — and a
+ * Slap B2, where the old rule did sweep, reads 11–12% either way.
+ *
+ * Near-sines keep the rule exactly as it was measured, because they are where the crackle is
+ * audible; a saw or a square is the "rich patch" that commit found it hides in.
+ */
+export function filterSweeps(
+  sh: Pick<Shape, 'wave' | 'partials' | 'filter'>,
+  freq: number,
+): boolean {
+  if (!sh.filter) return false
+  const top =
+    freq * sh.partials.reduce((m, x) => Math.max(m, x.ratio), 1) * (WAVE_REACH[sh.wave] ?? 1)
+  return Math.max(80, sh.filter.to) <= top * 1.6
+}
+
+/**
  * ⚠️ EXPORTED SO SOMETHING CAN CHECK IT. `scripts/synth-levels.py` has carried the loudness
  * doctrine since September — peak is `level x sum(gains)`, held is that times sustain, and the
  * two disagreed once in a way that hid a 12x imbalance — but a script somebody has to remember
@@ -1963,18 +2005,16 @@ export function noteOn(
      *     flute     0%       0.76%                    1.18%
      *     whistle   0%       0.53%                    0.67%
      *
-     * ⚠️ STATIC WHERE THE SWEEP CANNOT BE HEARD. If the filter's destination sits well above the
-     * highest partial this note actually has, the sweep shapes nothing — it only costs the
-     * artefact. Whistle is the clearest case: its filter runs 4000->3200Hz while a C5 tops out at
-     * 1046Hz, three octaves below, so the whole sweep was inaudible and pure cost.
+     * ⚠️ STATIC WHERE THE SWEEP CANNOT BE HEARD — see `filterSweeps`, which decides it. Whistle
+     * is the clearest case: its filter runs 4000->3200Hz while a C5 tops out at 1046Hz, three
+     * octaves below, so the whole sweep was inaudible and pure cost.
      *
      * Everywhere else the sweep genuinely shapes the tone and has to stay, so it uses
      * setTargetAtTime, which measured two and a half times cleaner than the ramp on organ and is
      * a truer shape for a filter decaying anyway.
      */
-    const topPartial = freq * sh.partials.reduce((m, x) => Math.max(m, x.ratio), 1)
     const dest = Math.max(80, sh.filter.to)
-    if (dest > topPartial * 1.6) {
+    if (!filterSweeps(sh, freq)) {
       f.frequency.value = dest
     } else {
       f.frequency.setValueAtTime(sh.filter.from, at)
