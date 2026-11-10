@@ -52,6 +52,16 @@ let redos: Step[] = []
 let seen: { layers: readonly Layer[]; bpm: number; bars: number } | null = null
 /** set while this module is the one changing the store, so the change is not recorded again */
 let applying = false
+/**
+ * Set from the first step one press writes until the press is over — see `record`.
+ *
+ * ⚠️ ONE PRESS, ONE STEP. A genre starter lays a beat, chords and a bass and sets the tempo, which
+ * is four changes to the store from one click; recorded one by one, Undo took four presses to take
+ * back one. Everything a single event handler changes happens in one task, before the browser runs
+ * its microtasks, so a flag cleared in a microtask marks exactly "the same press". A fader drag is
+ * many events and so many tasks, which is what FOLD_MS is for.
+ */
+let samePress = false
 let started = false
 let stop: (() => void) | null = null
 const listeners = new Set<() => void>()
@@ -182,6 +192,14 @@ function record() {
   const step = diff(was, now, Date.now())
   if (!step) return
   const top = undos[undos.length - 1]
+  if (top && samePress) {
+    joinInto(top, step)
+    return
+  }
+  samePress = true
+  queueMicrotask(() => {
+    samePress = false
+  })
   /* a fader dragged, a field typed: the same thing changing again within a second is one step */
   if (top && !redos.length && top.kind === step.kind && step.last - top.last < FOLD_MS) {
     for (const c of step.changes) {
@@ -196,6 +214,22 @@ function record() {
   if (undos.length > MAX_STEPS) undos = undos.slice(-MAX_STEPS)
   redos = []
   tell()
+}
+
+/** fold a later change from the same press into the step it began — every layer it touched */
+function joinInto(top: Step, step: Step) {
+  for (const c of step.changes) {
+    const into = top.changes.find((x) => x.id === c.id)
+    if (into) into.after = c.after
+    else top.changes.push(c)
+  }
+  if (step.transport)
+    top.transport = top.transport
+      ? { before: top.transport.before, after: step.transport.after }
+      : step.transport
+  /* a joined step is its own kind, so a fader moved next cannot fold into it */
+  top.kind = `${top.kind}+${step.kind}`
+  top.last = step.last
 }
 
 /**
@@ -249,6 +283,7 @@ export const historyNow = () => view
 
 /** for tests: forget everything and stop listening */
 export function resetHistoryForTests() {
+  samePress = false
   stop?.()
   stop = null
   undos = []
