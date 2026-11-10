@@ -296,6 +296,13 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
                     border: 'none',
                     cursor: 'pointer',
                     fontSize: '1rem',
+                    /* a thumb's worth each: with no size of their own they were 23px tall, under
+                       the 24px floor (WCAG 2.5.8; scripts/mobile-audit.js, `tooSmall`) */
+                    minWidth: 32,
+                    minHeight: 32,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
                   {e}
