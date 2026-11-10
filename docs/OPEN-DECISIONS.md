@@ -1361,6 +1361,10 @@ plan (exact SQL, checks, rollback) on a draft and stop for my approval; apply no
 `docs/2026-11-10-chronicle-21ab-fix-plan.md`, proven in CI on the dump plus the release. **Nothing is
 applied** until Evan approves it. 21c is not answered.
 
+**Combined, 10 Nov 2026:** Evan asked for the production plans to be held and approved once, so
+21a and 21b go with the three refusal plans into `docs/2026-11-10-chronicle-server-batch-plan.md`,
+one apply order with one check before and one after. Still nothing applied.
+
 ## 22. What the overnight layout sweep left for a decision (10 Nov 2026)
 
 The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
