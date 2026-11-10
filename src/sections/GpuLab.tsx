@@ -115,6 +115,7 @@ import { FencesDemo } from '../gpu/FencesDemo'
 import { PuttDemo } from '../gpu/PuttDemo'
 import { CribbageDemo } from '../gpu/CribbageDemo'
 import { LanderDemo } from '../gpu/LanderDemo'
+import { DartsDemo } from '../gpu/DartsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -816,6 +817,12 @@ const DEMOS: readonly {
     name: 'Lander',
     line: 'Lander — lean and burn to set a craft down on a pad, slow and upright, with fuel to spare; the narrow pad pays five times. An autopilot flies the same terrain as a ghost, and its score is the one to beat.',
     Demo: LanderDemo,
+  },
+  {
+    id: 'darts',
+    name: 'Darts',
+    line: 'Darts — 501, double out, first to two legs against the computer. Aim, hold your breath while the ring tightens, and let go; the computer aims where its own hand scores best and knows every way out.',
+    Demo: DartsDemo,
   },
 ]
 

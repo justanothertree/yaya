@@ -4691,3 +4691,25 @@ html:has(.lab) {
 .ld-room .mc-line {
   min-height: 2.9em;
 }
+
+/* ---------------------------------------------------------------- darts */
+.dt-room .lab-stage.dt-stage {
+  aspect-ratio: 1;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  background: #2b1d14;
+}
+/* the wrap carries the size, so the canvas is never left at its own default width */
+.dt-wrap {
+  border-radius: 12px;
+  width: min(100%, 560px, 70vh);
+}
+.dt-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.dt-wrap.is-aiming .lab-canvas {
+  cursor: none;
+}
