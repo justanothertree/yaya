@@ -99,6 +99,7 @@ import { MorrisDemo } from '../gpu/MorrisDemo'
 import { DraughtsDemo } from '../gpu/DraughtsDemo'
 import { BricksDemo } from '../gpu/BricksDemo'
 import { GolfDemo } from '../gpu/GolfDemo'
+import { MinesDemo } from '../gpu/MinesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -704,6 +705,12 @@ const DEMOS: readonly {
     name: 'Golf patience',
     line: 'Golf patience — clear seven columns by taking cards one above or one below the last, for as long a run as you can, and turn the stock when nothing fits. Lowest score wins, and every deal comes with par: the best it allows, found by trying every way through. Today’s deal is the same for everyone.',
     Demo: GolfDemo,
+  },
+  {
+    id: 'mines',
+    name: 'Mines',
+    line: 'Mines — open squares, read the numbers, mark the mines, and clear the board against the clock. Every board can be cleared by reasoning alone: each is played through by a solver before you see it, so no run ends on a coin toss. Today’s board is the same for everyone.',
+    Demo: MinesDemo,
   },
 ]
 

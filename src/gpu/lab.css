@@ -2886,3 +2886,119 @@ html:has(.lab) {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------- mines */
+.mn-room {
+  --mn-cell: 30px;
+  --mn-hidden: #6fbf55;
+  --mn-hidden-hi: #8bd36f;
+  --mn-open: #e9dcc0;
+  --mn-line: #b9a77f;
+  --mn-ink: #3b2f1e;
+}
+.mn-room.is-night {
+  --mn-hidden: #2c3e6b;
+  --mn-hidden-hi: #3b5290;
+  --mn-open: #121a2e;
+  --mn-line: #24304f;
+  --mn-ink: #e6ecff;
+}
+.mn-room.is-sand {
+  --mn-hidden: #d9a35b;
+  --mn-hidden-hi: #e8b977;
+  --mn-open: #fbf3e1;
+  --mn-line: #e3cfa6;
+  --mn-ink: #4a3218;
+}
+/* a phone narrower than the board scrolls it sideways in its own frame, the way the piano does,
+   rather than shrinking every square under a fingertip */
+.mn-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.mn-hud {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mn-board {
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--mn-line);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (max-width: 640px) {
+  .mn-room {
+    --mn-cell: 26px;
+  }
+}
+.mn-cell {
+  width: var(--mn-cell);
+  height: var(--mn-cell);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: linear-gradient(var(--mn-hidden-hi), var(--mn-hidden));
+  color: var(--mn-ink);
+  font-weight: 800;
+  font-size: calc(var(--mn-cell) * 0.55);
+  line-height: 1;
+  cursor: pointer;
+}
+.mn-cell.is-open {
+  background: var(--mn-open);
+  cursor: default;
+}
+.mn-cell.n1 {
+  color: #1d6fd8;
+}
+.mn-cell.n2 {
+  color: #2e8b3d;
+}
+.mn-cell.n3 {
+  color: #d23b3b;
+}
+.mn-cell.n4 {
+  color: #6a3fc1;
+}
+.mn-cell.n5 {
+  color: #a3521b;
+}
+.mn-cell.n6,
+.mn-cell.n7,
+.mn-cell.n8 {
+  color: #14817d;
+}
+.is-night .mn-cell.n1 {
+  color: #6fb0ff;
+}
+.is-night .mn-cell.n2 {
+  color: #7be08b;
+}
+.is-night .mn-cell.n3 {
+  color: #ff7d7d;
+}
+.is-night .mn-cell.n4 {
+  color: #c2a2ff;
+}
+.mn-cell.is-mine {
+  background: var(--mn-open);
+}
+.mn-cell.is-boom {
+  background: #e23d3d;
+  color: #fff;
+}
+.mn-cell.is-wrong {
+  color: #e23d3d;
+}
+.mn-cell:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
