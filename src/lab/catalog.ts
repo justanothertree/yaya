@@ -134,6 +134,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   sudoku: { category: 'puzzles', added: '2026-11-10' },
   dominoes: { category: 'games', added: '2026-11-10' },
   gin: { category: 'games', added: '2026-11-10' },
+  fences: { category: 'games', added: '2026-11-10' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */

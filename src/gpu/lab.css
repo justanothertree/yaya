@@ -4104,3 +4104,206 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- fences */
+.fe-room {
+  --fe-tile: #9fd17a;
+  --fe-tile-edge: #6ea64c;
+  --fe-groove: #4f7a37;
+  --fe-fence: #8a5a2b;
+  --fe-fence-edge: #4a2c10;
+  --fe-p0: #f2f2f2;
+  --fe-p0-edge: #1d1d1d;
+  --fe-p1: #d7263d;
+  --fe-p1-edge: #6d0f1c;
+  --fe-lit: #ffd34d;
+}
+.fe-room.is-slate {
+  --fe-tile: #c9d1d9;
+  --fe-tile-edge: #a2adb9;
+  --fe-groove: #4a5561;
+  --fe-fence: #f4f1e8;
+  --fe-fence-edge: #8b8778;
+  --fe-p0: #ffb000;
+  --fe-p0-edge: #6d4a00;
+  --fe-p1: #2b5aa8;
+  --fe-p1-edge: #0f2550;
+  --fe-lit: #ff8a3d;
+}
+.fe-room.is-sand {
+  --fe-tile: #efd9a7;
+  --fe-tile-edge: #cfb27a;
+  --fe-groove: #a7834a;
+  --fe-fence: #3b6e8f;
+  --fe-fence-edge: #163a52;
+  --fe-p0: #2e2a26;
+  --fe-p0-edge: #000;
+  --fe-p1: #e2582c;
+  --fe-p1-edge: #7b2610;
+  --fe-lit: #2b9a5a;
+}
+.fe-score-0 strong::before,
+.fe-score-1 strong::before {
+  content: '';
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.3em;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+}
+.fe-score-0 strong::before {
+  background: var(--fe-p0);
+  box-shadow: 0 0 0 2px var(--fe-p0-edge);
+}
+.fe-score-1 strong::before {
+  background: var(--fe-p1);
+  box-shadow: 0 0 0 2px var(--fe-p1-edge);
+}
+.fe-fit {
+  width: min(100%, 480px);
+}
+.fe-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--fe-n), 1fr);
+  grid-template-rows: repeat(var(--fe-n), 1fr);
+  aspect-ratio: 1;
+  width: 100%;
+  background: var(--fe-groove);
+  border-radius: 10px;
+  /* the grooves are drawn by the gaps the tiles leave inside their own squares */
+  box-shadow: 0 0 0 6px var(--fe-groove);
+  touch-action: manipulation;
+}
+.fe-board.is-fencing {
+  cursor: crosshair;
+}
+.fe-sq {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  margin: 8%;
+  border-radius: 14%;
+  background: var(--fe-tile);
+  box-shadow: inset 0 -3px 0 var(--fe-tile-edge);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.fe-board.is-fencing .fe-sq {
+  cursor: crosshair;
+}
+.fe-sq.goal-0 {
+  background: color-mix(in oklab, var(--fe-tile), var(--fe-p0) 35%);
+}
+.fe-sq.goal-1 {
+  background: color-mix(in oklab, var(--fe-tile), var(--fe-p1) 30%);
+}
+.fe-sq.is-last {
+  box-shadow:
+    inset 0 -3px 0 var(--fe-tile-edge),
+    inset 0 0 0 3px color-mix(in oklab, var(--fe-lit), transparent 30%);
+}
+.fe-sq.way-0::before,
+.fe-sq.way-1::before {
+  content: '';
+  position: absolute;
+  width: 18%;
+  height: 18%;
+  border-radius: 50%;
+  opacity: 0.75;
+}
+.fe-sq.way-0::before {
+  background: var(--fe-p0);
+  box-shadow: 0 0 0 1px var(--fe-p0-edge);
+  transform: translate(-30%, 30%);
+}
+.fe-sq.way-1::before {
+  background: var(--fe-p1);
+  box-shadow: 0 0 0 1px var(--fe-p1-edge);
+  transform: translate(30%, -30%);
+}
+.fe-sq.way-0.way-1::after {
+  content: '';
+  position: absolute;
+  width: 18%;
+  height: 18%;
+  border-radius: 50%;
+  opacity: 0.75;
+  background: var(--fe-p0);
+  box-shadow: 0 0 0 1px var(--fe-p0-edge);
+  transform: translate(-30%, 30%);
+}
+.fe-sq.is-lit {
+  outline: 3px solid var(--fe-lit);
+  outline-offset: -3px;
+}
+.fe-sq:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+  z-index: 3;
+}
+.fe-pawn {
+  position: relative;
+  z-index: 1;
+  width: 66%;
+  height: 66%;
+  border-radius: 50% 50% 46% 46%;
+  transition: transform 0.15s;
+}
+.fe-pawn.is-0 {
+  background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--fe-p0);
+  box-shadow:
+    0 0 0 2px var(--fe-p0-edge),
+    0 3px 3px rgb(0 0 0 / 0.35);
+}
+.fe-pawn.is-1 {
+  background: radial-gradient(circle at 35% 30%, #fff6, transparent 55%), var(--fe-p1);
+  box-shadow:
+    0 0 0 2px var(--fe-p1-edge),
+    0 3px 3px rgb(0 0 0 / 0.35);
+}
+.fe-fences {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.fe-fence {
+  position: absolute;
+  z-index: 2;
+  border-radius: 3px;
+  background: var(--fe-fence);
+  box-shadow:
+    0 0 0 1.5px var(--fe-fence-edge),
+    0 2px 2px rgb(0 0 0 / 0.35);
+}
+.fe-fence.is-h {
+  height: calc(100% / var(--fe-n) * 0.14);
+  transform: translateY(-50%);
+}
+.fe-fence.is-v {
+  width: calc(100% / var(--fe-n) * 0.14);
+  transform: translateX(-50%);
+}
+.fe-fence.is-last {
+  box-shadow:
+    0 0 0 1.5px var(--fe-fence-edge),
+    0 0 0 4px color-mix(in oklab, var(--fe-lit), transparent 20%);
+}
+.fe-fence.is-ghost {
+  opacity: 0.75;
+  background: repeating-linear-gradient(45deg, var(--fe-fence) 0 6px, transparent 6px 10px);
+  box-shadow: 0 0 0 2px var(--fe-lit);
+}
+.fe-fence.is-ghost.is-bad {
+  box-shadow: 0 0 0 2px #e5484d;
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fe-pawn {
+    transition: none;
+  }
+}
