@@ -25,7 +25,7 @@ would actually play:
 - **It sets the two controls beside it**, the line buttons and Sound, rather than being a third
   thing. Whatever a preset picks can still be changed right there.
 - **It reads what is loaded.** A bass whose line and voice match a preset shows that preset.
-  Change either one and it shows "Your own". With no bass loaded, it shows the pair that will be
+  Change either one and it shows "No preset". With no bass loaded, it shows the pair that will be
   laid next, the way Sound does.
 - **One press, one undo.** Laying the line and setting the voice happen in the same press, which
   the room's history already keeps as a single step.
@@ -46,6 +46,11 @@ on Upright. **Reggae** did the same beside Dub. So:
 - A test holds the rule: every style that shares a name with a preset plays that preset (Rock,
   Funk, House, Bossa). Reggae plays Dub, Jazz plays Walking, and Hip hop plays Trap. Removing
   Bossa's voice turns it red.
+
+**"No preset", not "Your own".** The first wording was "Your own", and the release candidate
+showed why it was wrong: Pop, Ballad and Country lay plain Bass, which matches no preset, so
+pressing one of those styles had the menu credit you with a bass you never touched. "No preset"
+is true whether you changed something or the style simply has none.
 
 **Stacked on #147 (the lines) and #153 (the voices)**, since half the presets use them.
 
