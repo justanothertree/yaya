@@ -1,3 +1,7 @@
+-- ✅ APPLIED to production 9 Nov 2026 as supabase/migrations/20261110025407_chronicle_weekdays.sql, step 4 of
+-- docs/2026-11-09-chronicle-release-plan.md. That file is the record of what ran. The lines below
+-- are this draft's history, true when they were written.
+--
 -- ⛔ DRAFT — NOT APPLIED TO PRODUCTION. Built on 8 Nov 2026 for implementation and LOCAL testing
 -- only, under OPEN-DECISIONS §16b, §16c, §16f and §16g, which Evan answered that day. Applying it
 -- is a separate approval. It has been run only in the `db guards` CI job's throwaway database,

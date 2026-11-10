@@ -1,8 +1,24 @@
-# Chronicle release plan — 17d, 18a, 19c, 19d and 20c, for one approval
+# Chronicle release plan — 17d, 18a, 19c, 19d and 20c ✅ DONE 9 Nov 2026
 
-⛔ **NOT APPROVED. NOTHING IN THIS FILE HAS BEEN APPLIED OR MERGED.** Evan answered every §20 question
-on 9 Nov, and said in the same message: "These answers are NOT approval to apply anything to
-production." This is the plan he asked to approve as one step.
+✅ **APPROVED AND DONE, 9 Nov 2026** ("Approve, ship inert": the plan as one step, with #93's reader
+shipping inert). The plan as approved is below, unchanged; what happened is here.
+
+| step | result                                                                                                                                                                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | check A: six `same`, nothing created. The six texts saved, each md5-equal to production's: `docs/2026-11-09-chronicle-release-rollback/`                                                                                                                                 |
+| 1–6  | applied as `20261110025141` … `20261110025520`. Check B matched after every one                                                                                                                                                                                          |
+| C, D | after step 6: 26 of 26 functions `same`; nothing open                                                                                                                                                                                                                    |
+| 7    | `main` had moved to `c5e4c47b` (#99, Lab frontend only) after #101's checks ran, so it was merged into `chronicle/release-1` first (`3fffe4a6`): lint, typecheck, 3,301 tests, build locally, then all five checks on #101. Merged as `487f3c88`; `deploy.yml` succeeded |
+| live | evancook.dev's entry file loads `dayLink-DCLbGhZN.js`, the chunk holding `chronicle?day=`, with the same hash as a local build of `3fffe4a6`. (The string is in its own shared chunk, not the Circuit chunk this plan named)                                             |
+| 8    | applied as `20261110030419`. Check B matched; check E `same`; check D still nothing open                                                                                                                                                                                 |
+| 9    | seven migration files and their `applied.md5` lines; `scripts/migration-md5.mjs`: 78 match, 0 fail                                                                                                                                                                       |
+
+Supabase's security advisor afterwards showed only the house pattern for the release's objects:
+deny-all tables reported as "RLS enabled, no policy" (INFO), and member-callable SECURITY DEFINER
+functions. None of the eight functions `anon` can execute is the release's.
+
+**Not covered:** a browser signed in to production and a real phone. Those are §19f checks 1–11 in
+`docs/OPEN-DECISIONS.md`, now Evan's to make on the live site.
 
 ## In one paragraph
 

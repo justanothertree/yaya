@@ -1,3 +1,7 @@
+-- ✅ APPLIED to production 9 Nov 2026 as supabase/migrations/20261110030419_chronicle_repeat_marks_profile.sql, step 8 of
+-- docs/2026-11-09-chronicle-release-plan.md. That file is the record of what ran. The lines below
+-- are this draft's history, true when they were written.
+--
 -- ⛔ DRAFT — NOT APPLIED TO PRODUCTION. Approved on 8 Nov 2026 for implementation and LOCAL
 -- testing only; applying it is a separate approval. Run only in the `db guards` CI job's
 -- throwaway database, through a scratch branch.
