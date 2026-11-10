@@ -3674,3 +3674,88 @@ html:has(.lab) {
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.3);
 }
+
+/* ---------------------------------------------------------------- go */
+.go-room {
+  --go-wood: #dcb35c;
+  --go-line: #3b2a14;
+}
+.go-room.is-slate {
+  --go-wood: #8d9aa6;
+  --go-line: #1d2329;
+}
+.go-room.is-bamboo {
+  --go-wood: #c9c27a;
+  --go-line: #3f4a1c;
+}
+.go-board {
+  position: relative;
+  width: min(100%, 480px);
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: var(--go-wood);
+  box-shadow: inset 0 0 0 3px rgb(0 0 0 / 0.15);
+}
+.go-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  stroke: var(--go-line);
+  stroke-width: 0.03;
+  fill: var(--go-line);
+}
+.go-pt {
+  position: absolute;
+  width: calc(100% / 9);
+  height: calc(100% / 9);
+  min-width: 0;
+  min-height: 0;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.go-pt > span {
+  width: 88%;
+  height: 88%;
+  border-radius: 50%;
+}
+.go-pt.is-s1 > span {
+  background: radial-gradient(circle at 35% 30%, #666, #111 60%);
+  box-shadow: 0 2px 3px rgb(0 0 0 / 0.45);
+}
+.go-pt.is-s2 > span {
+  background: radial-gradient(circle at 35% 30%, #fff, #ddd 70%);
+  box-shadow: 0 2px 3px rgb(0 0 0 / 0.35);
+}
+.go-pt.is-last > span::after {
+  content: '';
+  display: block;
+  width: 34%;
+  height: 34%;
+  margin: 33%;
+  border-radius: 50%;
+  border: 2px solid #e23d3d;
+  box-sizing: border-box;
+}
+.go-pt.own-1 > span,
+.go-pt.own-2 > span {
+  width: 30%;
+  height: 30%;
+  border-radius: 3px;
+}
+.go-pt.own-1 > span {
+  background: rgb(0 0 0 / 0.55);
+}
+.go-pt.own-2 > span {
+  background: rgb(255 255 255 / 0.8);
+}
+.go-pt:focus-visible {
+  outline: 3px solid #e23d3d;
+  outline-offset: -4px;
+}

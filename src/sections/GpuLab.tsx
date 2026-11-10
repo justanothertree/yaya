@@ -107,6 +107,7 @@ import { ChessDemo } from '../gpu/ChessDemo'
 import { HeartsDemo } from '../gpu/HeartsDemo'
 import { TilesDemo } from '../gpu/TilesDemo'
 import { TowersDemo } from '../gpu/TowersDemo'
+import { GoDemo } from '../gpu/GoDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -760,6 +761,12 @@ const DEMOS: readonly {
     name: 'Towers',
     line: 'Towers — creatures walk a winding path and you build beside it: darts, cannon and frost, each with upgrades. Every wave is bigger and tougher until the field is overrun; the score is how many you held. Three fields, and a new one each day that everyone plays.',
     Demo: TowersDemo,
+  },
+  {
+    id: 'go',
+    name: 'Go 9×9',
+    line: 'Go on a nine-by-nine board — surround territory, capture stones with no breath left, and mind the ko. Against a computer that plays out hundreds or thousands of random games before every move; you swap colours each game.',
+    Demo: GoDemo,
   },
 ]
 
