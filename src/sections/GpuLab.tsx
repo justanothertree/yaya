@@ -98,6 +98,7 @@ import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
 import { MorrisDemo } from '../gpu/MorrisDemo'
 import { DraughtsDemo } from '../gpu/DraughtsDemo'
 import { BricksDemo } from '../gpu/BricksDemo'
+import { GolfDemo } from '../gpu/GolfDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -697,6 +698,12 @@ const DEMOS: readonly {
     name: 'Bricks',
     line: 'Bricks — keep the ball in play and knock out the wall. Where it lands on the paddle sets where it goes, a run of bricks multiplies the points, and what falls out widens the paddle, splits the ball or slows it. Today’s walls are everyone’s to beat; or draw a wall of your own and send it to a friend.',
     Demo: BricksDemo,
+  },
+  {
+    id: 'golf',
+    name: 'Golf patience',
+    line: 'Golf patience — clear seven columns by taking cards one above or one below the last, for as long a run as you can, and turn the stock when nothing fits. Lowest score wins, and every deal comes with par: the best it allows, found by trying every way through. Today’s deal is the same for everyone.',
+    Demo: GolfDemo,
   },
 ]
 

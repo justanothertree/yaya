@@ -2722,3 +2722,167 @@ html:has(.lab) {
   position: relative;
   z-index: 1;
 }
+
+/* ---------------------------------------------------------------- golf patience */
+.gf-room {
+  --gf-felt: #0f5132;
+  /* seven columns across whatever room there is, never bigger than a card at the Hold'em table */
+  --gf-w: min(52px, calc((100cqi - 6 * 6px) / 7));
+}
+.gf-room.is-blue {
+  --gf-felt: #123d6b;
+}
+.gf-room.is-red {
+  --gf-felt: #6b1520;
+}
+.gf-hud {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.gf-table {
+  display: grid;
+  gap: 1rem;
+  padding: 0.9rem 0.6rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    color-mix(in oklab, var(--gf-felt), #fff 10%),
+    var(--gf-felt)
+  );
+  width: min(100%, 460px);
+  container-type: inline-size;
+}
+.gf-cols {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  min-height: calc(var(--gf-w) * 1.4 + 4 * var(--gf-w) * 0.5);
+}
+.gf-col {
+  display: grid;
+  grid-auto-rows: calc(var(--gf-w) * 0.5);
+  justify-items: center;
+}
+.gf-card.pk-card {
+  width: var(--gf-w);
+  height: calc(var(--gf-w) * 1.4);
+  align-content: start;
+  gap: 0;
+}
+.gf-corner {
+  height: calc(var(--gf-w) * 0.5);
+  display: flex;
+  align-items: center;
+  font-size: calc(var(--gf-w) * 0.32);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.gf-pip {
+  font-size: calc(var(--gf-w) * 0.5);
+  line-height: 1.2;
+}
+.gf-under,
+.gf-take {
+  display: block;
+  height: calc(var(--gf-w) * 1.4);
+}
+.gf-take {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.gf-take:disabled {
+  cursor: default;
+}
+.gf-take.is-ok {
+  transform: translateY(-4px);
+}
+.gf-take.is-ok .pk-card {
+  box-shadow:
+    0 0 0 2px #ffd34d,
+    0 4px 0 rgba(0, 0, 0, 0.35);
+}
+.gf-take:focus-visible,
+.gf-stock:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+}
+.gf-empty {
+  display: block;
+  width: var(--gf-w);
+  height: calc(var(--gf-w) * 1.4);
+  border-radius: 6px;
+  border: 2px dashed rgb(255 255 255 / 0.3);
+}
+.gf-pile {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+}
+.gf-pile .gf-card.pk-card {
+  --gf-w: 58px;
+}
+.gf-stock {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+}
+.gf-stock:disabled {
+  cursor: default;
+}
+.gf-stock.is-ok .pk-card {
+  box-shadow:
+    0 0 0 3px #ffd34d,
+    0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.gf-stock .gf-empty {
+  --gf-w: 58px;
+}
+.gf-count {
+  align-self: center;
+  margin-top: 26px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.9rem;
+}
+.gf-waste {
+  position: relative;
+  width: calc(58px + 18px);
+  height: calc(58px * 1.4);
+}
+.gf-prev,
+.gf-top {
+  position: absolute;
+  top: 0;
+}
+.gf-prev {
+  left: 0;
+  opacity: 0.6;
+}
+.gf-top {
+  left: 18px;
+  animation: gf-land 0.18s ease-out;
+}
+@keyframes gf-land {
+  from {
+    transform: translateY(-14px) scale(1.06);
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gf-take {
+    transition: none;
+  }
+  .gf-top {
+    animation: none;
+  }
+}
