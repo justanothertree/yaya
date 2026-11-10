@@ -37,7 +37,14 @@ export const BASS_PRESETS: readonly BassPreset[] = [
   { id: 'dub', name: 'Dub', style: 'dub', voice: 'sub', hint: 'Deep sub, reggae line' },
   { id: 'smooth', name: 'Smooth', style: 'roots', voice: 'fretless', hint: 'Fretless, long notes' },
   { id: 'trap', name: 'Trap', style: 'roots', voice: '808', hint: '808, one long note a chord' },
-  { id: 'house', name: 'House', style: 'pulse', voice: 'synthbass', hint: 'Synth bass, eighths' },
+  {
+    id: 'house',
+    name: 'House',
+    style: 'offbeat',
+    voice: 'synthbass',
+    hint: 'Synth bass, between the kicks',
+  },
+  { id: 'disco', name: 'Disco', style: 'octaves', voice: 'finger', hint: 'Finger bass, octaves' },
   { id: 'acid', name: 'Acid house', style: 'funk', voice: 'acid', hint: 'Acid bass, sixteenths' },
 ]
 

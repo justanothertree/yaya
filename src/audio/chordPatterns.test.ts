@@ -724,8 +724,32 @@ describe('the bass lines a style plays', () => {
     expect(lengths('bossa')).toEqual([6, 2, 6, 2])
   })
 
+  it('Octaves: eighths jumping from the low root to its octave and back, all bar', () => {
+    const bar = barOne('octaves')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([0, 2, 4, 6, 8, 10, 12, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'C', 'C', 'C', 'C', 'C', 'C', 'C'])
+    /* the jump IS the line: low on the beat, an octave up on the "and" */
+    const gaps = bar.slice(1).map((e, i) => e.midi - bar[i].midi)
+    expect(gaps).toEqual([12, -12, 12, -12, 12, -12, 12])
+  })
+
+  it('Offbeat: the root on every "and", nothing on the beat where the kick is', () => {
+    const bar = barOne('offbeat')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([2, 6, 10, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'C', 'C', 'C'])
+    expect(bar.filter((e) => Math.round(e.t / SIX) % 4 === 0)).toHaveLength(0)
+  })
+
+  /* a five-string bass's low B is the floor anybody plays a bassline on */
+  it('the low octave stays playable: never under B0, in any key', () => {
+    for (let root = 0; root < 12; root++) {
+      const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, root, true, 'octaves', BEAT)
+      expect(Math.min(...ons(events).map((e) => e.midi)), `${root}`).toBeGreaterThanOrEqual(23)
+    }
+  })
+
   it('and each line follows the chords: bar two of Four chords is G', () => {
-    for (const style of ['funk', 'dub', 'bossa'] as const) {
+    for (const style of ['funk', 'dub', 'bossa', 'octaves', 'offbeat'] as const) {
       const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, style, BEAT)
       const first = ons(events).find((e) => e.t >= 4 * BEAT - 1e-9)!
       expect(name(first.midi), style).toBe('G')
@@ -746,7 +770,7 @@ describe('the bass lines a style plays', () => {
 
   /* four chords in one second: some meet no step of the line, some only its fifth */
   it('a chord too short for the line still sounds its root, and every chord is entered on it', () => {
-    for (const style of ['funk', 'dub', 'bossa'] as const) {
+    for (const style of ['funk', 'dub', 'bossa', 'octaves', 'offbeat'] as const) {
       const { events } = basslineEvents(four, 1, MAJOR_DEGREES, 0, false, style, BEAT)
       const heard = new Set(ons(events).map((e) => name(e.midi)))
       for (const root of ['C', 'G', 'A', 'F'])
