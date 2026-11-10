@@ -61,6 +61,9 @@ export type InstrumentId =
   | 'upright'
   | 'synthbass'
   | '808'
+  | 'pick'
+  | 'fretless'
+  | 'acid'
   | 'supersaw'
   | 'chip'
   | 'harpsichord'
@@ -81,9 +84,12 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['pad', '🌊', 'Pad'],
   ['bass', '🎸', 'Bass'],
   ['finger', '🖐', 'Finger bass'],
+  ['pick', '🔺', 'Pick bass'],
   ['slap', '👋', 'Slap bass'],
+  ['fretless', '〰️', 'Fretless'],
   ['upright', '🌳', 'Upright bass'],
   ['synthbass', '🎚', 'Synth bass'],
+  ['acid', '🧪', 'Acid bass'],
   ['808', '💥', '808'],
   ['sub', '🔊', 'Sub'],
   ['organ', '🎼', 'Organ'],
@@ -122,9 +128,12 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
 export const BASS_VOICES: InstrumentId[] = [
   'bass',
   'finger',
+  'pick',
   'slap',
+  'fretless',
   'upright',
   'synthbass',
+  'acid',
   '808',
   'sub',
 ]
@@ -891,6 +900,62 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     pitch: { mult: 1.9, time: 0.06 },
     level: 0.62,
+  },
+  /**
+   * Pick bass: an electric played with a plectrum — the rock bass. Brighter and harder at the
+   * front than Finger, from a saw rather than a triangle, and it holds half its level, so a run
+   * of eighths stays even where Slap would bounce.
+   */
+  pick: {
+    a: 0.002,
+    d: 1,
+    s: 0.5,
+    r: 0.12,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.25 },
+    ],
+    filter: { from: 3200, to: 900, q: 1.5 },
+    level: 0.6,
+  },
+  /**
+   * Fretless: smooth and singing, the bass that slides. No fret means every note arrives from a
+   * little under its pitch, so the pitch RISES into place (0.97) where Slap and the 808 fall; a
+   * triangle with a soft octave and a long, held note does the rest.
+   */
+  fretless: {
+    a: 0.02,
+    d: 1.6,
+    s: 0.6,
+    r: 0.3,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+    ],
+    filter: { from: 900, to: 900, q: 2 },
+    pitch: { mult: 0.97, time: 0.08 },
+    level: 0.7,
+  },
+  /**
+   * Acid: one saw through a very resonant filter that snaps shut on every note — the squelch of
+   * acid house. The resonance is the instrument; with the per-note sweep it is a "yow" on each
+   * step, and with the part's Glide turned up the notes slide into each other the way the sound is
+   * known for.
+   *
+   * ⚠️ IT NEEDS THE SWEEP, which a saw only gets in the bass register since `filterSweeps` counts
+   * the wave's own harmonics. Under the old rule this was a static resonant hum.
+   */
+  acid: {
+    a: 0.002,
+    d: 0.25,
+    s: 0.2,
+    r: 0.08,
+    wave: 'sawtooth',
+    partials: [{ ratio: 1, detune: 0, gain: 1 }],
+    filter: { from: 3600, to: 260, q: 10 },
+    level: 0.4,
   },
   /**
    * Supersaw: five saws spread around the note — the wall of sound under trance and big pop

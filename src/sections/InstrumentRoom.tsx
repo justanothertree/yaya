@@ -3326,8 +3326,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   {/**
                    * ⚠️ THE BASS'S VOICE, IN THE BASS ROW — Evan, 10 Nov 2026: "several distinct
                    * bass voices … usable from the backing". The layer's own sound menu could
-                   * always change it, among forty instruments; this offers the seven that are
-                   * basses, where a bassline is chosen. It changes the loaded bass at once, and
+                   * always change it, among every instrument; this offers only the basses
+                   * (BASS_VOICES — ten since Pick, Fretless and Acid), where a bassline is chosen. It changes the loaded bass at once, and
                    * with none loaded it is remembered for the next one — the same rule the
                    * Played as row has. A sound the layer was given that is not a bass is shown
                    * rather than silently relabelled.

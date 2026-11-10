@@ -305,6 +305,9 @@ describe('the new voices travel', () => {
     'upright',
     'synthbass',
     '808',
+    'pick',
+    'fretless',
+    'acid',
     'supersaw',
     'chip',
     'harpsichord',
@@ -372,5 +375,33 @@ describe('a filter moves where the wave can hear it', () => {
   it('near-sines keep the crackle fix as it was measured: whistle at C5, Keys at middle C', () => {
     expect(filterSweeps(SHAPES.whistle, hz(72))).toBe(false)
     expect(filterSweeps(SHAPES.keys, hz(60))).toBe(false)
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026, from the loop: "more bass voices". Spot checks on what makes each of the three
+ * added that day itself, so a later tidy-up cannot flatten one into a neighbour — the pairwise
+ * "no two built the same way" test above is what keeps them apart from each other.
+ */
+describe('Pick, Fretless and Acid', () => {
+  const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
+
+  it('Pick is struck harder and brighter than Finger: a saw, not a triangle, opening wider', () => {
+    expect(SHAPES.pick.wave).toBe('sawtooth')
+    expect(SHAPES.finger.wave).toBe('triangle')
+    expect(SHAPES.pick.filter!.from).toBeGreaterThan(SHAPES.finger.filter!.from)
+  })
+
+  it('Fretless slides UP into its note, where Slap and the 808 fall into theirs', () => {
+    expect(SHAPES.fretless.pitch!.mult).toBeLessThan(1)
+    expect(SHAPES.slap.pitch!.mult).toBeGreaterThan(1)
+    expect(SHAPES['808'].pitch!.mult).toBeGreaterThan(1)
+  })
+
+  it('Acid is one saw through a resonant filter that snaps shut on every note it plays', () => {
+    expect(SHAPES.acid.partials).toHaveLength(1)
+    expect(SHAPES.acid.filter!.q).toBeGreaterThanOrEqual(10)
+    expect(SHAPES.acid.filter!.from / SHAPES.acid.filter!.to).toBeGreaterThan(8)
+    for (let m = 36; m <= 59; m++) expect(filterSweeps(SHAPES.acid, hz(m)), `${m}`).toBe(true)
   })
 })
