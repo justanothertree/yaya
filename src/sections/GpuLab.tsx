@@ -87,6 +87,7 @@ import { MancalaDemo } from '../gpu/MancalaDemo'
 import { HockeyDemo } from '../gpu/HockeyDemo'
 import { DotsDemo } from '../gpu/DotsDemo'
 import { ReversiDemo } from '../gpu/ReversiDemo'
+import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -620,6 +621,12 @@ const DEMOS: readonly {
     name: 'Reversi',
     line: 'Reversi — trap a line of your opponent’s discs between two of yours and they turn over to your colour. Against a computer that grabs, one that looks two moves ahead, or one that looks further and plays the ending perfectly; boards of 6, 8 or 10, four sets of discs, three boards, and hints you can turn off.',
     Demo: ReversiDemo,
+  },
+  {
+    id: 'seabattle',
+    name: 'Sea battle',
+    line: 'Sea battle — hide your fleet, then take turns calling squares of each other’s sea until one fleet is sunk. Against a computer that fires at random, one that hunts on a chequerboard, or one that works out where your ships most likely are (and never peeks). Three fleets, two seas, rules to choose, and a record of your fewest shots to win.',
+    Demo: SeaBattleDemo,
   },
 ]
 

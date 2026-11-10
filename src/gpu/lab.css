@@ -1838,3 +1838,129 @@ html:has(.lab) {
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
+
+/* Sea battle: two seas of square buttons, side by side on a desk and stacked on a phone */
+.sb-room {
+  --sb-sea: #13315c;
+  --sb-sea2: #1b4079;
+  --sb-ship: #9aa5b1;
+  --sb-ink: #e8f1ff;
+  --sb-hit: #ff4d4d;
+  --sb-miss: #b8cfe8;
+}
+.sb-room.is-tropic {
+  --sb-sea: #0e7c86;
+  --sb-sea2: #15959f;
+  --sb-ship: #f2d091;
+  --sb-ink: #f0fffd;
+  --sb-hit: #ff5a36;
+  --sb-miss: #d9fbff;
+}
+.sb-room.is-arctic {
+  --sb-sea: #d7e8f5;
+  --sb-sea2: #c4dcee;
+  --sb-ship: #4b5d6e;
+  --sb-ink: #1d2b38;
+  --sb-hit: #d62839;
+  --sb-miss: #5d7c96;
+}
+.sb-seas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.sb-seas section {
+  display: grid;
+  gap: 0.4rem;
+}
+.sb-sea {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--sb-sea);
+  color: var(--sb-ink);
+  max-width: 460px;
+}
+.sb-mine .sb-sea {
+  max-width: 380px;
+}
+.sb-row {
+  display: grid;
+  grid-template-columns: 1.1rem repeat(var(--n), minmax(0, 1fr));
+  gap: 2px;
+}
+.sb-head span,
+.sb-rowname {
+  font-size: 0.7rem;
+  text-align: center;
+  align-self: center;
+  opacity: 0.8;
+}
+.sb-gridcell {
+  display: grid;
+}
+.sb-cell {
+  aspect-ratio: 1;
+  min-width: 24px;
+  min-height: 24px;
+  border: 0;
+  border-radius: 3px;
+  padding: 0;
+  background: var(--sb-sea2);
+  color: var(--sb-ink);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.sb-cell[aria-disabled='true'] {
+  cursor: default;
+}
+.sb-cell.is-ship {
+  background: var(--sb-ship);
+}
+.sb-cell.is-miss {
+  color: var(--sb-miss);
+}
+.sb-cell.is-hit,
+.sb-cell.is-sunk {
+  color: #fff;
+  background: var(--sb-hit);
+}
+.sb-cell.is-sunk {
+  background: color-mix(in oklab, var(--sb-hit), #000 35%);
+}
+.sb-cell.is-lit {
+  box-shadow: inset 0 0 0 3px #ffd34d;
+}
+.sb-cell.is-last {
+  outline: 2px solid #ffd34d;
+  outline-offset: -2px;
+}
+.sb-cell.is-splash {
+  animation: sb-splash 0.45s ease-out;
+}
+@keyframes sb-splash {
+  from {
+    transform: scale(1.35);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.sb-cell:focus-visible {
+  outline: 3px solid #ffd34d;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+.sb-cell:not([aria-disabled='true']):hover {
+  filter: brightness(1.25);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-cell.is-splash {
+    animation: none;
+  }
+}
