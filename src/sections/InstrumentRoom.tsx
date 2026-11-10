@@ -65,7 +65,13 @@ import {
 } from '../audio/audioHealth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
-import { DRUM_FILL, DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
+import {
+  DRUM_FILL,
+  DRUM_PATTERNS,
+  drumGenres,
+  genreShown,
+  patternEvents,
+} from '../audio/drumPatterns'
 import {
   CHORD_PATTERNS,
   basslineEvents,
@@ -874,6 +880,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const [bassStylePick, setBassStylePick] = useState<BassStyle>('rootfifth')
   /* the voice the next bassline is laid on — see the Bass row's Sound picker */
   const [bassSoundPick, setBassSoundPick] = useState<InstrumentId>('bass')
+  /* the genre the Beat row is browsing, and which beat was loaded when it was picked — genreShown */
+  const [beatGenrePick, setBeatGenrePick] = useState<{
+    forBeat: string | null
+    genre: string
+  } | null>(null)
   /** whether the pedal currently down was put there by Shift rather than by the button */
   const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
@@ -3251,7 +3262,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             })()}
           </div>
           {/**
-           * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the beat rows below have
+           * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the Beat row below has
            * always offered and the backing never did. Picking one re-lays what is loaded in that
            * style; with nothing loaded it is remembered for the next progression you pick.
            */}
@@ -3368,6 +3379,62 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             })()}
           </div>
           {/**
+           * ⚠️ ONE BEAT ROW, NOT ONE PER GENRE — Evan, 10 Nov 2026: "an easier, cleaner UI for all
+           * the controls". There were ten rows here, Rock to Metal, and every one of them drove
+           * the SAME slot: a beat from any row swaps the beat from every other. So ten labels and
+           * nineteen buttons, the longest stretch of the panel, said less than one row does — a
+           * genre to browse and that genre's beats. It shows the genre of the beat you are hearing,
+           * so opening the panel still lands on it. See genreShown.
+           */}
+          {(() => {
+            const loadedBeat = loop.layers.map((l) => beatPatternOf(l)).find((x) => x) ?? null
+            const genre = genreShown(loadedBeat, beatGenrePick)
+            return (
+              <div className="inst-beats-row">
+                <span className="muted inst-beats-genre">Beat</span>
+                <label className="inst-pick">
+                  <span className="muted">Genre</span>
+                  <select
+                    value={genre}
+                    onChange={(e) => {
+                      setBeatGenrePick({ forBeat: loadedBeat, genre: e.target.value })
+                      e.target.blur()
+                    }}
+                  >
+                    {drumGenres().map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {DRUM_PATTERNS.filter((p) => p.genre === genre).map((p) => (
+                  <button
+                    key={p.id}
+                    className={
+                      'btn' +
+                      (loop.layers.some((l) => beatPatternOf(l) === p.id) ? '' : ' btn-ghost')
+                    }
+                    aria-pressed={loop.layers.some((l) => beatPatternOf(l) === p.id)}
+                    onClick={() => {
+                      const { events, len } = patternEvents(p, loop.bpm)
+                      if (!addPatternLayer(events, len, p.id)) return
+                      if (!loop.playing) startLoop()
+                    }}
+                    disabled={
+                      loop.layers.length >= MAX_LAYERS &&
+                      !loop.layers.some((l) => beatPatternOf(l) !== null)
+                    }
+                    title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+                <MutedRow layer={loop.layers.find((l) => beatPatternOf(l) !== null)} />
+              </div>
+            )
+          })()}
+          {/**
            * ⚠️ A LAYER ARRANGED ONTO THE LAST BAR, NOT A CHANGE TO THE BEAT. Making the beat's
            * own last bar different was the other design and it is worse: `patternEvents`
            * returns a ONE-BAR take on purpose, so "the same pattern works in a two-bar sketch
@@ -3439,37 +3506,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             Picking one swaps that row rather than adding a second — every row plays at once. Change
             any of it afterwards.
           </p>
-          {drumGenres().map((genre) => (
-            <div key={genre} className="inst-beats-row">
-              <span className="muted inst-beats-genre">{genre}</span>
-              {DRUM_PATTERNS.filter((p) => p.genre === genre).map((p) => (
-                <button
-                  key={p.id}
-                  className={
-                    'btn' + (loop.layers.some((l) => beatPatternOf(l) === p.id) ? '' : ' btn-ghost')
-                  }
-                  aria-pressed={loop.layers.some((l) => beatPatternOf(l) === p.id)}
-                  onClick={() => {
-                    const { events, len } = patternEvents(p, loop.bpm)
-                    if (!addPatternLayer(events, len, p.id)) return
-                    if (!loop.playing) startLoop()
-                  }}
-                  disabled={
-                    loop.layers.length >= MAX_LAYERS &&
-                    !loop.layers.some((l) => beatPatternOf(l) !== null)
-                  }
-                  title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
-                >
-                  {p.name}
-                </button>
-              ))}
-              <MutedRow
-                layer={loop.layers.find((l) =>
-                  DRUM_PATTERNS.some((p) => p.genre === genre && p.id === beatPatternOf(l)),
-                )}
-              />
-            </div>
-          ))}
         </div>
       )}
       {loop.layers.length > 0 && (
