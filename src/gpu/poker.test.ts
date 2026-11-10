@@ -184,6 +184,23 @@ describe('the computer players', () => {
     u.seats[u.toAct].hole = hand('As Ah')
     expect(decide(u, STYLES.steady, rand).kind).toBe('raise')
   })
+  it('the steady player never bluffs: seven-two is checked or folded, never raised', () => {
+    // the self-play tuning took Wren's bluffing to zero. The old style (bluff 0.03) raises seven-two
+    // a few times in three hundred deals, so this goes red if the tuning is undone
+    const raises = (style: typeof STYLES.steady) => {
+      const rand = seeded(31)
+      let n = 0
+      for (let i = 0; i < 300; i++) {
+        const t = table([1000, 1000, 1000])
+        deal(t, rand)
+        t.seats[t.toAct].hole = hand('7c 2d')
+        if (decide(t, style, rand, 60).kind === 'raise') n++
+      }
+      return n
+    }
+    expect(raises(STYLES.steady)).toBe(0)
+    expect(raises({ caution: 0.04, pushes: 1.6, bluff: 0.03 })).toBeGreaterThan(0)
+  })
   it('beat a player who calls everything, over many hands', () => {
     const rand = seeded(21)
     let ahead = 0

@@ -400,7 +400,19 @@ export function sent(w: Well): number {
  * under it, and how ragged its top is. The weights are the well-known hand-tuned ones for this kind
  * of game (holes and height bad, clears good); `care` below 1 makes it misjudge on purpose.
  */
-export function plan(grid: Cell[][], kind: Kind): { rot: number; x: number; worth: number } | null {
+/** how the computer weighs a landing: points per row cleared, and costs per cell of height, hole and ragged top */
+export type Weights = { cleared: number; height: number; holes: number; bump: number }
+/* ⚠️ `bump` TUNED BY SELF-PLAY, 10 Nov 2026: 0.18 → 0.132. Racing the old weights head to head,
+   junk and all, it won 59.6% ± 2.8 of 1,200 races on seeds the search never saw. Caring a little
+   less about a ragged top leaves it freer to keep a deep well open and clear several rows at once,
+   which is what sends junk. A 40-round search kept nothing further. */
+export const WEIGHTS: Weights = { cleared: 0.76, height: 0.51, holes: 0.36, bump: 0.132 }
+
+export function plan(
+  grid: Cell[][],
+  kind: Kind,
+  w: Weights = WEIGHTS,
+): { rot: number; x: number; worth: number } | null {
   let best: { rot: number; x: number; worth: number } | null = null
   const turns = kind === 'O' ? 1 : kind === 'I' || kind === 'S' || kind === 'Z' ? 2 : 4
   for (let rot = 0; rot < turns; rot++) {
@@ -408,14 +420,14 @@ export function plan(grid: Cell[][], kind: Kind): { rot: number; x: number; wort
       let p: Piece = { kind, rot, x, y: 0 }
       if (!fits(grid, p)) continue
       while (fits(grid, { ...p, y: p.y + 1 })) p = { ...p, y: p.y + 1 }
-      const worth = judge(grid, p)
+      const worth = judge(grid, p, w)
       if (!best || worth > best.worth) best = { rot, x, worth }
     }
   }
   return best
 }
 
-export function judge(grid: Cell[][], p: Piece): number {
+export function judge(grid: Cell[][], p: Piece, w: Weights = WEIGHTS): number {
   const g = grid.map((r) => [...r])
   for (const [cx, cy] of cellsOf(p.kind, p.rot)) if (p.y + cy >= 0) g[p.y + cy][p.x + cx] = 1
   const rows = g.filter((r) => !r.every((c) => c))
@@ -435,7 +447,7 @@ export function judge(grid: Cell[][], p: Piece): number {
   const sum = heights.reduce((a, b) => a + b, 0)
   let bump = 0
   for (let x = 1; x < COLS; x++) bump += Math.abs(heights[x] - heights[x - 1])
-  return -0.51 * sum + 0.76 * cleared - 0.36 * holes - 0.18 * bump
+  return -w.height * sum + w.cleared * cleared - w.holes * holes - w.bump * bump
 }
 
 /** how hard the computer plays: moves it makes a second, and how often it picks a worse spot */
@@ -451,7 +463,7 @@ export type Bot = keyof typeof BOTS
  * moves to get there at its own pace, and drops it. It plays by the same rules as a person — a
  * piece it has not finished steering still falls.
  */
-export function botHands(bot: Bot, rand: () => number) {
+export function botHands(bot: Bot, rand: () => number, weights: Weights = WEIGHTS) {
   let target: { rot: number; x: number } | null = null
   let forPiece = -1
   let wait = 0
@@ -459,7 +471,7 @@ export function botHands(bot: Bot, rand: () => number) {
     if (!w.piece || w.over) return
     if (forPiece !== w.drawn) {
       forPiece = w.drawn
-      const best = plan(w.grid, w.piece.kind)
+      const best = plan(w.grid, w.piece.kind, weights)
       target = best
       // now and then it misjudges: a random column, one rotation off
       if (best && rand() < BOTS[bot].slip) {
