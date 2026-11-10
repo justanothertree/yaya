@@ -43,6 +43,7 @@ import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
 import { countedIn, dayOfStart, moveNote, setName, type ChronSet } from './sets'
 import { fit, fitText, unitOf } from './units'
+import { LIMIT } from './limits'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
@@ -1973,6 +1974,7 @@ export function Timer({
             <input
               autoFocus
               value={newName}
+              maxLength={LIMIT.name}
               placeholder="Drawing"
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void makeActivity()}
@@ -1994,6 +1996,7 @@ export function Timer({
             <span className="sr-only">Also counts (optional)</span>
             <input
               value={newMetric}
+              maxLength={LIMIT.unit}
               placeholder="pages?"
               onChange={(e) => setNewMetric(e.target.value)}
             />
@@ -2913,7 +2916,11 @@ export function Timer({
                 <li key={a.id} className="chron-fix">
                   <label>
                     <span className="sr-only">Name</span>
-                    <input value={actName} onChange={(e) => setActName(e.target.value)} />
+                    <input
+                      value={actName}
+                      maxLength={LIMIT.name}
+                      onChange={(e) => setActName(e.target.value)}
+                    />
                   </label>
                   <label>
                     <span className="sr-only">Which kind</span>
@@ -2961,6 +2968,7 @@ export function Timer({
                     <input
                       ref={metricBox}
                       value={actMetric}
+                      maxLength={LIMIT.unit}
                       placeholder="pages?"
                       onChange={(e) => setActMetric(e.target.value)}
                     />
