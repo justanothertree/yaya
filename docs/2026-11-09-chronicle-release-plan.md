@@ -34,9 +34,17 @@ and after, by read-only queries whose expected values are written into them
   applied since the first of those is missing from `main`. The release adds no migration file of
   its own (its drafts live in `docs/`), so after it merges `main` still holds exactly those 82.
 - **The six functions the drafts patch** have exactly one definition each, and their text is byte
-  for byte what CI builds from `main`'s migrations. Check A, run against production on 9 Nov:
-  six rows, every one `same`. Run C7 found the same six md5s in its own database. So every anchored
-  text swap in the drafts meets the same text in production that it met in CI.
+  for byte what CI's throwaway database holds. Check A, run against production on 9 Nov: six rows,
+  every one `same`. Run C7 found the same six md5s in its own database. So every anchored text swap
+  in the drafts meets the same text in production that it met in CI.
+
+  ⚠️ **CORRECTED 10 Nov: CI does not build from the migration files.** This said "what CI builds
+  from `main`'s migrations", and it does not: `[db.migrations]` is off in `supabase/config.toml` on
+  purpose, and the `db guards` job builds from the schema baseline, a dump of production taken on
+  4 Nov, plus the seed. The two agree for these six because no migration since that dump touched
+  them, and that agreement was measured against production itself, so the conclusion stands. What
+  the wrong sentence would have hidden is the general case: a migration applied after the dump is
+  not in CI's database until the dump is regenerated.
 
   | function                 | md5         | bytes  |
   | ------------------------ | ----------- | ------ |
@@ -163,7 +171,8 @@ frontend does reaches any of it.
   - anon executes none of the patched functions;
   - the notes table.
 - **CI's throwaway database, run C7 (42733400210):**
-  - all of main's migrations, the six fingerprints equal to production's;
+  - the schema baseline (production as of the 4 Nov dump; the job does not run the migration
+    files), whose six fingerprints equal production's;
   - steps 1–6 and 8 in this order, with no conversion draft;
   - every suite: the standing guards (main's), the daily flow, the round trip, the marks, the day
     notes, the weekdays, the sets, the links and the grid;

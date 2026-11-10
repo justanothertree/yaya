@@ -5,6 +5,7 @@
 // there's no Save button and every change gets undo/redo + sync for free.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { circuitStore, useCircuit } from '../store'
+import { showToast } from '../toast'
 import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
 import { CAT_COLORS, catColor } from '../catColors'
@@ -288,6 +289,11 @@ export function Log({
     const colLabels = person.colLabels.filter((_, i) => i !== ci)
     void circuitStore.savePerson({ ...person, exercises, colLabels })
     setColEdit(null)
+    /* ⚠️ SAID AFTERWARDS, because the only place it was said before was the button's title, and a
+       tooltip does not exist on a phone: the column's exercises do not go, they join the next one */
+    const into = person.colLabels[ci > 0 ? ci - 1 : 1] || 'Column'
+    const had = person.exercises.some((e) => e.col === ci)
+    showToast(had ? `Column removed — its exercises are in ${into} now` : 'Column removed')
   }
   const patchEx = (id: string, p: Partial<Exercise>) =>
     saveExs(person.exercises.map((e) => (e.id === id ? { ...e, ...p } : e)))
@@ -624,6 +630,7 @@ export function Log({
                     className="cz-slot-btn cz-del"
                     onMouseDown={(e) => e.preventDefault()} // don't blur the input before the click
                     onClick={() => deleteCol(col.ci)}
+                    aria-label="Delete this column"
                     title="Delete this column — its exercises merge into the neighbouring one"
                     style={{ fontSize: '0.78rem' }}
                   >
