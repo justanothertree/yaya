@@ -4307,3 +4307,105 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- putt */
+.pt-room .lab-stage.pt-stage {
+  /* the hole is ten tiles by fifteen: as tall as it can be without running off a phone */
+  aspect-ratio: 2 / 3;
+  height: auto;
+  width: min(100%, 440px, calc(72vh * 2 / 3));
+  min-height: 0;
+  touch-action: none;
+  background: #1f2a1c;
+}
+.pt-wrap {
+  border-radius: 12px;
+  width: fit-content;
+  max-width: 100%;
+}
+.pt-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.pt-wrap.is-aiming .lab-canvas,
+.pt-wrap.is-building .lab-canvas {
+  cursor: crosshair;
+}
+.pt-card-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.pt-card {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+}
+.pt-card th,
+.pt-card td {
+  min-width: 2rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.pt-card th[scope='row'] {
+  text-align: left;
+  white-space: nowrap;
+}
+.pt-card .is-now {
+  background: color-mix(in oklab, var(--accent), transparent 82%);
+}
+.pt-tool .pt-swatch {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.35em;
+  border-radius: 3px;
+  vertical-align: -0.1em;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.pt-tool.is-g .pt-swatch {
+  background: #5fb04a;
+}
+.pt-tool.is-x .pt-swatch {
+  background: #7a4a24;
+}
+.pt-tool.is-s .pt-swatch {
+  background: #e8d29a;
+}
+.pt-tool.is-w .pt-swatch {
+  background: #3d8fd1;
+}
+.pt-tool.is-t .pt-swatch {
+  background: #fff;
+}
+.pt-tool.is-o .pt-swatch {
+  background: #0b0b0b;
+  border-radius: 50%;
+}
+.pt-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.pt-from select {
+  min-height: 2.4rem;
+}
+.pt-mine {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.pt-mine li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pt-mine li > span {
+  min-width: 4.5rem;
+}
+.pt-mine li.is-editing > span {
+  font-weight: 700;
+}

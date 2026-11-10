@@ -112,6 +112,7 @@ import { SudokuDemo } from '../gpu/SudokuDemo'
 import { DominoesDemo } from '../gpu/DominoesDemo'
 import { GinDemo } from '../gpu/GinDemo'
 import { FencesDemo } from '../gpu/FencesDemo'
+import { PuttDemo } from '../gpu/PuttDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -795,6 +796,12 @@ const DEMOS: readonly {
     name: 'Fences',
     line: 'Fences — a race to the far edge, where each turn you either step or put down a fence to lengthen the computer’s way, but never shut it in. On a 9×9 or a quick 7×7 board, against a computer that saves its fences for when they hurt.',
     Demo: FencesDemo,
+  },
+  {
+    id: 'putt',
+    name: 'Putt',
+    line: 'Putt — mini golf against the computer over six holes of grass, sand, water and walls, and a builder to paint your own holes, try them, keep them and send them by link.',
+    Demo: PuttDemo,
   },
 ]
 
