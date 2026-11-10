@@ -81,6 +81,7 @@ import { DiceDemo } from '../gpu/DiceDemo'
 import { PokerDemo } from '../gpu/PokerDemo'
 import { FireworksDemo } from '../gpu/FireworksDemo'
 import { LevelsDemo } from '../gpu/LevelsDemo'
+import { TypeDemo } from '../gpu/TypeDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -578,6 +579,12 @@ const DEMOS: readonly {
     name: 'Level maker',
     line: 'Level maker — build a room from walls, crates and holes, ice, spikes, keys and doors, plates and gates, then play it. A solver proves every room can be done and finds the fewest moves, and the room goes to a friend as a link.',
     Demo: LevelsDemo,
+  },
+  {
+    id: 'type',
+    name: 'Type foundry',
+    line: 'Type foundry — make a font: redraw any letter from strokes between dots, then style them all at once with weight, slant, width, corners, outline, an inline stripe, a shadow and colours. Type a message in it, save it as a picture, or send it as a link.',
+    Demo: TypeDemo,
   },
 ]
 

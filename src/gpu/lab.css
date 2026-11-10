@@ -1520,3 +1520,47 @@ html:has(.lab) {
   border-radius: 4px;
   flex: none;
 }
+
+/* Type foundry: a wide specimen, the message box, the letter grid and its editor */
+.ty-room .lab-stage.ty-stage {
+  height: min(42vh, 380px, 60vw);
+  min-height: 180px;
+}
+.ty-message textarea {
+  width: 100%;
+  margin: 0;
+  font-size: 1rem;
+  resize: vertical;
+}
+.ty-letters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 0.25rem;
+}
+.ty-letter {
+  min-height: 36px;
+  padding: 0;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.ty-letter.is-edited {
+  border-color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.ty-editor {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+.ty-grid {
+  width: min(100%, 220px);
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  touch-action: none;
+  cursor: crosshair;
+}
+.ty-grid:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
