@@ -89,6 +89,7 @@ import { DotsDemo } from '../gpu/DotsDemo'
 import { ReversiDemo } from '../gpu/ReversiDemo'
 import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
 import { TrailsDemo } from '../gpu/TrailsDemo'
+import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -634,6 +635,12 @@ const DEMOS: readonly {
     name: 'Light trails',
     line: 'Light trails — ride a line of light round the arena and make the others crash into a wall before you do. One to three rivals that dodge, seek open space, or cut across your path; three arenas, three layouts, three speeds. Steer with keys, swipes or taps; first to three rounds wins.',
     Demo: TrailsDemo,
+  },
+  {
+    id: 'codebreaker',
+    name: 'Codebreaker',
+    line: 'Codebreaker — crack a hidden code of coloured pegs from black and white clues. Today’s code is the same for everyone, once a day, with a result to copy and compare; practise on codes of your own size, or hide one and watch the computer crack it (usually in five).',
+    Demo: CodebreakerDemo,
   },
 ]
 
