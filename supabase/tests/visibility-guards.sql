@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C7 (the release, exactly): the six drafts the release applies, in the release plan's order,
+-- RUN C8 = C7 + the release plan's own check files, run at their checkpoints. RUN C7 (the release, exactly): the six drafts the release applies, in the release plan's order,
 -- with NO conversion draft, on a database built from main's migrations — which production has
 -- applied, every one (checked read-only on 9 Nov). Then the profile reader, step 7. Fingerprints of
 -- every function the release touches are printed before and after, to compare with production's.
@@ -20,6 +20,8 @@ select p.proname as fn, md5(pg_get_functiondef(p.oid)) as md5, length(pg_get_fun
                      'chronicle_import','chronicle_tally','get_member_chronicle')
  order by 1;
 
+\echo === CHECK FILE A, before step 1: six rows all same=t, then 0 0 0
+\ir ../../docs/2026-11-09-chronicle-release-checks/a-before-step-1.sql
 \echo === 1. the sets draft (19d)
 \ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
 \echo === 2. the links draft (20c, after the sets)
@@ -46,6 +48,10 @@ select p.proname as fn, md5(pg_get_functiondef(p.oid)) as md5, length(pg_get_fun
      'chronicle_goal_marks_for','chronicle_day_note_add','chronicle_day_notes_between')
  order by 1;
 
+\echo === CHECK FILE C, after step 6: 26 rows all same=t
+\ir ../../docs/2026-11-09-chronicle-release-checks/c-after-step-6.sql
+\echo === CHECK FILE D, after step 6: no rows
+\ir ../../docs/2026-11-09-chronicle-release-checks/d-nothing-open.sql
 \echo === 7. the marks profile reader, step 3 of 17d (after the room is deployed)
 \ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
 \echo === FINGERPRINT AFTER STEP 7
@@ -53,7 +59,11 @@ select p.proname as fn, md5(pg_get_functiondef(p.oid)) as md5, length(pg_get_fun
   from pg_proc p
  where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and p.proname = 'get_member_chronicle';
 
-\echo === the standing guards (main's), against the released schema
+\echo === CHECK FILE E, after step 7: one row same=t
+\ir ../../docs/2026-11-09-chronicle-release-checks/e-after-step-7.sql
+\echo === CHECK FILE D, after step 7: no rows
+\ir ../../docs/2026-11-09-chronicle-release-checks/d-nothing-open.sql
+\echo === the standing guards from main, against the released schema
 \ir visibility-guards.orig.sql
 \echo === the daily flow
 \ir chronicle-daily-flow.sql
