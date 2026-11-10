@@ -91,6 +91,7 @@ import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
 import { TrailsDemo } from '../gpu/TrailsDemo'
 import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
 import { HexDemo } from '../gpu/HexDemo'
+import { FourRowDemo } from '../gpu/FourRowDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -648,6 +649,12 @@ const DEMOS: readonly {
     name: 'Hex',
     line: 'Hex — join your two sides of a board of hexagons before the other player joins theirs; there are no draws. Against a computer that fills the board at random hundreds of times to judge a move, or one that grows a tree of thousands of games and reads a fight several moves deep. Three board sizes, three looks, and the swap rule.',
     Demo: HexDemo,
+  },
+  {
+    id: 'fourrow',
+    name: 'Four in a row',
+    line: 'Four in a row — drop discs into an upright grid and line up four before the computer does. It looks one, three or six moves ahead; play on a small, classic or wide grid, go for five on the bigger ones, and pick the discs and the frame.',
+    Demo: FourRowDemo,
   },
 ]
 

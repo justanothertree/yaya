@@ -2133,3 +2133,17 @@ html:has(.lab) {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
+
+/* Four in a row: an upright grid with room above it for the disc in hand */
+.f4-room .lab-stage.f4-stage {
+  height: min(68vh, 560px, 88vw);
+  min-height: 250px;
+  touch-action: manipulation;
+}
+.f4-wrap {
+  border-radius: 12px;
+}
+.f4-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
