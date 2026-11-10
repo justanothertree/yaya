@@ -117,6 +117,7 @@ import { CribbageDemo } from '../gpu/CribbageDemo'
 import { LanderDemo } from '../gpu/LanderDemo'
 import { DartsDemo } from '../gpu/DartsDemo'
 import { LiarsDemo } from '../gpu/LiarsDemo'
+import { BowlingDemo } from '../gpu/BowlingDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -830,6 +831,12 @@ const DEMOS: readonly {
     name: "Liar's dice",
     line: "Liar's dice — five dice under a cup, bids on what's under everyone's, and a call of \"Liar!\" that costs someone a die. Against two or three computers that read the odds, read your bids, and on Hard play each round out in their heads.",
     Demo: LiarsDemo,
+  },
+  {
+    id: 'bowling',
+    name: 'Bowling',
+    line: 'Bowling — ten frames against a computer bowler on a lane of real size. Choose your stance, line, hook and speed, then time the release; the pocket gives strikes, the nose gives splits.',
+    Demo: BowlingDemo,
   },
 ]
 

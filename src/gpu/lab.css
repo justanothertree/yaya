@@ -4843,3 +4843,82 @@ html:has(.lab) {
   background: #c2410c;
   border-color: #c2410c;
 }
+
+/* ---------------------------------------------------------------- bowling */
+.bw-room .lab-stage.bw-stage {
+  aspect-ratio: 3 / 4;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  background: #14161a;
+}
+/* the wrap carries the size, so the canvas is never left at its own default width */
+.bw-wrap {
+  border-radius: 12px;
+  width: min(100%, 480px, calc(66vh * 3 / 4));
+}
+.bw-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.bw-card-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.bw-card {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+.bw-card th,
+.bw-card td {
+  min-width: 2.1rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border);
+  text-align: center;
+  vertical-align: top;
+}
+.bw-card th[scope='row'] {
+  text-align: left;
+  white-space: nowrap;
+}
+.bw-card tr.is-up th[scope='row'] {
+  color: var(--accent);
+}
+.bw-marks,
+.bw-total {
+  display: block;
+  line-height: 1.25;
+}
+.bw-marks {
+  font-size: 0.8rem;
+  min-height: 1.1em;
+}
+.bw-total {
+  font-weight: 700;
+  min-height: 1.2em;
+}
+.bw-sum {
+  font-weight: 700;
+}
+.bw-panel {
+  display: grid;
+  gap: 0.2rem;
+}
+.bw-read {
+  min-width: 13ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.bw-room .mc-line {
+  /* two lines held, so the lane does not jump when a short message follows a long one */
+  min-height: 2.9em;
+}
+.bw-room .btn.bw-bowl {
+  min-height: 48px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
