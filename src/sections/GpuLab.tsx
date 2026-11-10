@@ -82,6 +82,7 @@ import { PokerDemo } from '../gpu/PokerDemo'
 import { FireworksDemo } from '../gpu/FireworksDemo'
 import { LevelsDemo } from '../gpu/LevelsDemo'
 import { TypeDemo } from '../gpu/TypeDemo'
+import { BonsaiDemo } from '../gpu/BonsaiDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -585,6 +586,12 @@ const DEMOS: readonly {
     name: 'Type foundry',
     line: 'Type foundry — make a font: redraw any letter from strokes between dots, then style them all at once with weight, slant, width, corners, outline, an inline stripe, a shadow and colours. Type a message in it, save it as a picture, or send it as a link.',
     Demo: TypeDemo,
+  },
+  {
+    id: 'bonsai',
+    name: 'Bonsai',
+    line: 'Bonsai — grow a little tree a season at a time, then shape it: cut branches back and it buds again, wire them to the angle you want. Choose maple, pine or blossom, the season, the pot and its glaze, moss and stones. The same seed grows the same way, so a link sends your very tree.',
+    Demo: BonsaiDemo,
   },
 ]
 

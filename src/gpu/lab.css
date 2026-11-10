@@ -1564,3 +1564,24 @@ html:has(.lab) {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Bonsai: a square-ish stage the tree fills, focusable for walking its branches */
+.bz-room .lab-stage.bz-stage {
+  height: min(64vh, 560px, 92vw);
+  min-height: 260px;
+  touch-action: none;
+}
+.bz-canvas-wrap {
+  border-radius: 12px;
+}
+.bz-canvas-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.bz-status {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.bz-branch {
+  min-height: 44px;
+}
