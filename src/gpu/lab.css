@@ -1373,3 +1373,215 @@ html:has(.lab) {
   font-family: var(--mono);
   font-size: 0.85rem;
 }
+
+/* Fireworks: a tall night sky, a timeline under it, and the shell and show designers */
+.fw-room .lab-stage.fw-stage {
+  height: min(62vh, 560px, 120vw);
+  cursor: crosshair;
+}
+.fw-time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.fw-scrub {
+  position: relative;
+  flex: 1 1 12rem;
+  min-width: 160px;
+  display: grid;
+  align-items: center;
+}
+.fw-scrub input {
+  width: 100%;
+  margin: 0;
+  min-height: 32px;
+}
+.fw-marks {
+  position: absolute;
+  inset: 0 8px;
+  pointer-events: none;
+}
+.fw-marks > span {
+  position: absolute;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  margin-left: -2px;
+  border-radius: 2px;
+}
+.fw-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+}
+.fw-panel section {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+.fw-h {
+  margin: 0;
+  font-size: 1rem;
+}
+.fw-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 3.5rem;
+}
+.fw-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+.fw-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+}
+.fw-swatch[aria-pressed='true'] {
+  border-color: var(--text, #111);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.fw-height {
+  display: grid;
+  gap: 0.1rem;
+  flex: 1 1 8rem;
+  min-width: 120px;
+  font-size: 0.85rem;
+}
+.fw-height input {
+  width: 100%;
+  margin: 0;
+  min-height: 28px;
+}
+.fw-name input {
+  min-width: 0;
+  width: 12rem;
+  max-width: 100%;
+}
+.fw-kept {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+/* the chosen swatch already wears an outline, so keyboard focus needs a ring of its own */
+.fw-swatch:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 0 0 3px var(--bg, #fff),
+    0 0 0 6px var(--text, #111);
+}
+
+/* Level maker: the room is wider than tall, so the stage follows the width on a phone */
+.lv-room .lab-stage.lv-stage {
+  height: min(62vh, 560px, 76vw);
+  touch-action: none;
+}
+.lv-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-auto-rows: 48px;
+  gap: 0.3rem;
+  justify-content: center;
+}
+.lv-pad .btn {
+  min-height: 48px;
+  padding: 0;
+  font-size: 1.1rem;
+}
+.lv-build {
+  display: grid;
+  gap: 0.6rem;
+}
+.lv-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.3rem;
+}
+.lv-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-start;
+  padding: 0.25rem 0.4rem;
+  min-height: 40px;
+  font-size: 0.85rem;
+  text-align: left;
+}
+.lv-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  flex: none;
+}
+
+/* Type foundry: a wide specimen, the message box, the letter grid and its editor */
+.ty-room .lab-stage.ty-stage {
+  height: min(42vh, 380px, 60vw);
+  min-height: 180px;
+}
+.ty-message textarea {
+  width: 100%;
+  margin: 0;
+  font-size: 1rem;
+  resize: vertical;
+}
+.ty-letters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 0.25rem;
+}
+.ty-letter {
+  min-height: 36px;
+  padding: 0;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.ty-letter.is-edited {
+  border-color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.ty-editor {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+.ty-grid {
+  width: min(100%, 220px);
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  touch-action: none;
+  cursor: crosshair;
+}
+.ty-grid:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Bonsai: a square-ish stage the tree fills, focusable for walking its branches */
+.bz-room .lab-stage.bz-stage {
+  height: min(64vh, 560px, 92vw);
+  min-height: 260px;
+  touch-action: none;
+}
+.bz-canvas-wrap {
+  border-radius: 12px;
+}
+.bz-canvas-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.bz-status {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.bz-branch {
+  min-height: 44px;
+}

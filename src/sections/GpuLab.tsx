@@ -79,6 +79,10 @@ import { StackDemo } from '../gpu/StackDemo'
 import { RpsDemo } from '../gpu/RpsDemo'
 import { DiceDemo } from '../gpu/DiceDemo'
 import { PokerDemo } from '../gpu/PokerDemo'
+import { FireworksDemo } from '../gpu/FireworksDemo'
+import { LevelsDemo } from '../gpu/LevelsDemo'
+import { TypeDemo } from '../gpu/TypeDemo'
+import { BonsaiDemo } from '../gpu/BonsaiDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -88,7 +92,7 @@ import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
 import { WaterworksDemo } from '../gpu/WaterworksDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
-import { fromHash } from '../lab/beat'
+import { hashParam } from '../lab/links'
 
 /**
  * The Lab: experiments with WebGPU, one at a time.
@@ -565,15 +569,39 @@ const DEMOS: readonly {
     line: 'Hold’em — Texas hold’em for play chips against three computer players who each play their own way. They work out their odds by dealing the unseen cards hundreds of times. Last one with chips wins.',
     Demo: PokerDemo,
   },
+  {
+    id: 'fireworks',
+    name: 'Fireworks',
+    line: 'Fireworks — design shells (eight bursts, two colours, size, height, trails, crackle), tap the sky to set them off, and build a show over a city, hills or a lake. Send it as a link and they see it spark for spark.',
+    Demo: FireworksDemo,
+  },
+  {
+    id: 'levels',
+    name: 'Level maker',
+    line: 'Level maker — build a room from walls, crates and holes, ice, spikes, keys and doors, plates and gates, then play it. A solver proves every room can be done and finds the fewest moves, and the room goes to a friend as a link.',
+    Demo: LevelsDemo,
+  },
+  {
+    id: 'type',
+    name: 'Type foundry',
+    line: 'Type foundry — make a font: redraw any letter from strokes between dots, then style them all at once with weight, slant, width, corners, outline, an inline stripe, a shadow and colours. Type a message in it, save it as a picture, or send it as a link.',
+    Demo: TypeDemo,
+  },
+  {
+    id: 'bonsai',
+    name: 'Bonsai',
+    line: 'Bonsai — grow a little tree a season at a time, then shape it: cut branches back and it buds again, wire them to the angle you want. Choose maple, pine or blossom, the season, the pot and its glaze, moss and stones. The same seed grows the same way, so a link sends your very tree.',
+    Demo: BonsaiDemo,
+  },
 ]
 
 type DemoId = string
 
 const KEY = 'lab_demo_v1'
 function storedDemo(): DemoId {
-  // a "beat my run" link opens on its game, whatever was open last
-  const beat = fromHash()
-  if (beat && DEMOS.some((d) => d.id === beat.game)) return beat.game
+  // a link to a toy (a "beat my run", a shared show) opens on that toy, whatever was open last
+  const linked = hashParam('demo')
+  if (linked && DEMOS.some((d) => d.id === linked)) return linked
   try {
     const v = localStorage.getItem(KEY)
     return DEMOS.some((d) => d.id === v) ? (v as DemoId) : 'swarm'
@@ -637,8 +665,8 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   // and a link clicked while the Lab is already open changes only the hash
   useEffect(() => {
     const on = () => {
-      const beat = fromHash()
-      if (beat) setDemo(beat.game)
+      const linked = hashParam('demo')
+      if (linked && DEMOS.some((d) => d.id === linked)) setDemo(linked)
     }
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
