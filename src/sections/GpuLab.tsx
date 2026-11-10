@@ -88,6 +88,7 @@ import { VoiceprintDemo } from '../gpu/VoiceprintDemo'
 import { WaterworksDemo } from '../gpu/WaterworksDemo'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
+import { fromHash } from '../lab/beat'
 
 /**
  * The Lab: experiments with WebGPU, one at a time.
@@ -570,6 +571,9 @@ type DemoId = string
 
 const KEY = 'lab_demo_v1'
 function storedDemo(): DemoId {
+  // a "beat my run" link opens on its game, whatever was open last
+  const beat = fromHash()
+  if (beat && DEMOS.some((d) => d.id === beat.game)) return beat.game
   try {
     const v = localStorage.getItem(KEY)
     return DEMOS.some((d) => d.id === v) ? (v as DemoId) : 'swarm'
@@ -630,6 +634,15 @@ function storedFilter(): Category | 'all' {
 
 export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [demo, setDemo] = useState<DemoId>(storedDemo)
+  // and a link clicked while the Lab is already open changes only the hash
+  useEffect(() => {
+    const on = () => {
+      const beat = fromHash()
+      if (beat) setDemo(beat.game)
+    }
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
   const [report, setReport] = useState<Report | null>(null)
   /* ⚠️ STILL UNTIL ASKED, under reduced motion. Every demo here is motion, so none can simply
      paint once and stop the way the backdrop does — the picture would be all there is. Each draws

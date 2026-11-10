@@ -1344,3 +1344,32 @@ html:has(.lab) {
   /* a range input carries 2px of margin each side by default, so 100% wide was 4px too wide */
   margin: 0;
 }
+
+/* "Beat my run": the challenge being played, and the button that makes one */
+.beat-banner {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 90%);
+}
+.beat-banner .btn {
+  margin-left: 0.25rem;
+}
+.beat-share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.beat-manual {
+  display: grid;
+  gap: 0.25rem;
+  flex: 1 1 100%;
+}
+.beat-manual textarea {
+  width: 100%;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}

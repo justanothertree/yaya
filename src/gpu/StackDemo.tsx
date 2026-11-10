@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { BeatShare } from '../lab/BeatShare'
+import { useChallenge } from '../lab/useChallenge'
+import { beatsStack, newSeed, type Beat } from '../lab/beat'
 import { CanvasStage } from './CanvasStage'
 import {
   BOTS,
@@ -106,10 +109,12 @@ type Game = {
   count: number
   paused: boolean
   done: boolean
+  /** the draw this game was dealt, for a "beat my run" link */
+  seed: number
 }
 
-function newGame(mode: Mode, bot: Bot): Game {
-  const seed = (Math.random() * 2 ** 31) | 0
+/** a new game; a solo run is on a seed it can be challenged with, everything else on any seed */
+function newGame(mode: Mode, bot: Bot, seed = newSeed()): Game {
   const junk = seeded(seed ^ 0x5f3759df)
   const n = mode === 'solo' ? 1 : 2
   return {
@@ -123,6 +128,7 @@ function newGame(mode: Mode, bot: Bot): Game {
     count: 3,
     paused: false,
     done: false,
+    seed,
   }
 }
 
@@ -131,6 +137,13 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
 export function StackDemo() {
   const [saved, setSaved] = useState<Saved>(load)
   const [mode, setMode] = useState<Mode>('solo')
+  /** a friend's run to beat, from the address; it is played alone, on its seed */
+  const [challenge, leaveChallenge] = useChallenge('stack')
+  /** the last solo run, which can be sent as a challenge */
+  const [lastRun, setLastRun] = useState<Extract<Beat, { game: 'stack' }> | null>(null)
+  useEffect(() => {
+    if (challenge) setMode('solo')
+  }, [challenge])
   const [bot, setBot] = useState<Bot>('easy')
   const [said, setSaid] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -152,9 +165,18 @@ export function StackDemo() {
     setPlaying(false)
     const [a, b] = g.wells
     if (g.mode === 'solo') {
+      const time = Math.round(a.time * 10) / 10
+      const vs = challengeRef.current
+      const against =
+        vs && vs.seed === g.seed
+          ? beatsStack(vs, time, a.lines)
+            ? ` You beat the link’s ${clock(vs.time)}!`
+            : ` The link says ${clock(vs.time)} with ${vs.lines} lines — not this time.`
+          : ''
       setSaid(
-        `Topped out at ${clock(a.time)} — ${a.lines} lines, ${a.score.toLocaleString()} points.`,
+        `Topped out at ${clock(a.time)} — ${a.lines} lines, ${a.score.toLocaleString()} points.${against}`,
       )
+      setLastRun({ game: 'stack', seed: g.seed, time, lines: a.lines })
       setSaved((s) => ({
         ...s,
         longest: Math.max(s.longest, Math.round(a.time * 10) / 10),
@@ -177,12 +199,15 @@ export function StackDemo() {
       setSaid(`${a.over ? 'Right' : 'Left'} player wins at ${clock(a.time)}.`)
     }
   }
+  const challengeRef = useRef(challenge)
+  challengeRef.current = challenge
   const finishRef = useRef(finish)
   finishRef.current = finish
 
   const start = () => {
-    game.current = newGame(mode, bot)
+    game.current = newGame(mode, bot, mode === 'solo' && challenge ? challenge.seed : undefined)
     setSaid(null)
+    setLastRun(null)
     setPaused(false)
     setPlaying(true)
     roomRef.current?.focus({ preventScroll: true })
@@ -296,6 +321,15 @@ export function StackDemo() {
 
   return (
     <div className="lab-keys stack-room" tabIndex={-1} ref={roomRef}>
+      {mode === 'solo' && challenge && (
+        <p className="beat-banner">
+          🏁 <strong>A run to beat:</strong> this link says {clock(challenge.time)} with{' '}
+          {challenge.lines} lines. You get the same pieces in the same order — last longer.{' '}
+          <button className="btn btn-ghost" onClick={leaveChallenge} disabled={playing}>
+            Leave the challenge
+          </button>
+        </p>
+      )}
       <CanvasStage
         className={mode === 'solo' ? undefined : 'stack-pair'}
         label="Falling-block wells"
@@ -393,6 +427,7 @@ export function StackDemo() {
           </button>
         )}
       </div>
+      {!playing && mode === 'solo' && lastRun && <BeatShare beat={lastRun} />}
       <p className="sun-reading" aria-live="polite">
         {said && <strong>{said} </strong>}
         <span className="muted">{record}</span>
