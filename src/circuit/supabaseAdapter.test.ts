@@ -166,3 +166,41 @@ describe('saving a day for a person nobody has claimed', () => {
     expect(calls.map((c) => `${c.kind} ${c.name}`)).toEqual(['upsert circuit_logs'])
   })
 })
+
+/**
+ * ⚠️ THE STATE PRODUCTION IS IN AFTER THE RELEASE, and for as long as no cutover runs: the grid's
+ * readers exist and the conversion's does not (OPEN-DECISIONS §20d). The board must load exactly as
+ * the rows say — the refused call read as "nobody is converted", never as a broken board.
+ */
+describe('a server missing a reader', () => {
+  const missing = (fn: string) => ({
+    error: { code: 'PGRST202', message: `Could not find the function public.${fn}` },
+  })
+  it('loads the board when the conversion reader is not there, with the sessions still added in', async () => {
+    rpcAnswer = (name) =>
+      name === 'circuit_session_sums'
+        ? { data: [{ person: 'mine', exercise: 'quad', on: '2026-11-07', value: 12 }] }
+        : name === 'circuit_manual_sums'
+          ? missing(name)
+          : {}
+    const s = await createSupabaseAdapter().load()
+    const day = s.logs.find((l) => l.id === 'l-mine-2026-11-07')!
+    expect(day.entries).toEqual([{ eid: 'quad', val: 20 }])
+    expect(day.sessions).toEqual([{ eid: 'quad', val: 12 }])
+  })
+
+  it('loads the board exactly as the rows say when neither reader is there', async () => {
+    rpcAnswer = (name) => missing(name)
+    const s = await createSupabaseAdapter().load()
+    expect(s.logs).toEqual([
+      {
+        id: 'l-mine-2026-11-07',
+        personId: 'mine',
+        date: '2026-11-07',
+        entries: [{ eid: 'quad', val: 8 }],
+        img: null,
+        picture: null,
+      },
+    ])
+  })
+})
