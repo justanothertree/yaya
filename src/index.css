@@ -19078,6 +19078,18 @@ a.cz-msg-author:focus-visible {
      enough for "Chronicle (on the site)" would push the row's buttons onto their own line */
   max-width: 13rem;
 }
+/* ⚠️ AND THE THREE SELECTS NOBODY GAVE A FLOOR: an add row's category and a planned span's
+   activity (`.chron-add`), and the sitting editor's activity (`.chron-field`). On a desktop they were
+   the browser's 21px beside 36px inputs, under the 24px target floor (WCAG 2.5.8). Measured 10 Nov
+   with scripts/mobile-audit.js at 1440. DESKTOP ONLY, because on a phone or a touch screen the
+   site's `select { min-height: 40px }` already holds them, and this rule, being more specific,
+   would lower that to 36. */
+@media (min-width: 641px) and (pointer: fine) {
+  .chron-add select,
+  .chron-field select {
+    min-height: 36px;
+  }
+}
 
 /* the three steps the room shows while it is empty — the paragraph that used to sit above them
    is gone, because the halves strip says the same thing on three buttons */
