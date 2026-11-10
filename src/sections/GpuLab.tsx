@@ -113,6 +113,7 @@ import { DominoesDemo } from '../gpu/DominoesDemo'
 import { GinDemo } from '../gpu/GinDemo'
 import { FencesDemo } from '../gpu/FencesDemo'
 import { PuttDemo } from '../gpu/PuttDemo'
+import { CribbageDemo } from '../gpu/CribbageDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -802,6 +803,12 @@ const DEMOS: readonly {
     name: 'Putt',
     line: 'Putt — mini golf against the computer over six holes of grass, sand, water and walls, and a builder to paint your own holes, try them, keep them and send them by link.',
     Demo: PuttDemo,
+  },
+  {
+    id: 'cribbage',
+    name: 'Cribbage',
+    line: 'Cribbage — throw two to the crib, peg to 31 for fifteens, pairs and runs, then count your hand with the starter, read out the way it is said at the table. First to 121 against a computer that weighs its crib and your replies.',
+    Demo: CribbageDemo,
   },
 ]
 

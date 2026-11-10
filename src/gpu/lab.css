@@ -4409,3 +4409,231 @@ html:has(.lab) {
 .pt-mine li.is-editing > span {
   font-weight: 700;
 }
+
+/* ---------------------------------------------------------------- cribbage */
+.cb-room {
+  --cb-wood: #b07a43;
+  --cb-wood-dark: #6b4220;
+  --cb-p0: #2f7ff0;
+  --cb-p1: #e5484d;
+  --cb-felt: #145a3a;
+}
+.cb-room.is-walnut {
+  --cb-wood: #6e4a2e;
+  --cb-wood-dark: #3a2414;
+  --cb-p0: #ffd34d;
+  --cb-p1: #f2f2f2;
+}
+.cb-room.is-mint {
+  --cb-wood: #9fdcc6;
+  --cb-wood-dark: #3d8f74;
+  --cb-p0: #7b4fd6;
+  --cb-p1: #ff6b4a;
+  --cb-felt: #2a6e8a;
+}
+.cb-board {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    var(--cb-wood),
+    color-mix(in oklab, var(--cb-wood), #000 18%)
+  );
+  box-shadow: inset 0 0 0 2px var(--cb-wood-dark);
+  width: min(100%, 620px);
+}
+.cb-lane {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) 1fr 2.6rem;
+  align-items: center;
+  gap: 0.6rem;
+  color: #fff;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.5);
+}
+.cb-who {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.cb-score {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cb-track {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  /* a hole every five points, as on the board */
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(100% / 24.2 - 2px),
+      rgb(0 0 0 / 0.35) calc(100% / 24.2 - 2px) calc(100% / 24.2)
+    ),
+    var(--cb-wood-dark);
+}
+.cb-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 7px;
+  opacity: 0.45;
+}
+.cb-lane.is-0 .cb-fill {
+  background: var(--cb-p0);
+}
+.cb-lane.is-1 .cb-fill {
+  background: var(--cb-p1);
+}
+.cb-peg {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 0 2px #000a,
+    0 2px 2px rgb(0 0 0 / 0.4);
+  transition: left 0.4s;
+}
+.cb-peg.is-back {
+  opacity: 0.55;
+  width: 9px;
+  height: 9px;
+}
+.cb-lane.is-0 .cb-peg {
+  background: var(--cb-p0);
+}
+.cb-lane.is-1 .cb-peg {
+  background: var(--cb-p1);
+}
+.cb-table {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--cb-felt), #fff 10%),
+    var(--cb-felt)
+  );
+  width: min(100%, 620px);
+}
+.cb-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 2.6rem;
+  align-items: center;
+}
+.cb-back.pk-card {
+  width: 30px;
+  height: 44px;
+}
+.cb-back.is-small.pk-card {
+  width: 20px;
+  height: 30px;
+}
+.cb-middle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  justify-content: center;
+}
+.cb-spot {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  color: #fff;
+}
+.cb-label {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+.cb-crib {
+  display: flex;
+  gap: 2px;
+  min-height: 30px;
+  align-items: center;
+}
+.cb-crib .muted {
+  color: rgb(255 255 255 / 0.8);
+}
+.cb-count strong {
+  font-size: 1.8rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.cb-pile {
+  justify-content: center;
+}
+.cb-played {
+  border-radius: 6px;
+}
+.cb-played.by-0 {
+  box-shadow: 0 0 0 3px var(--cb-p0);
+}
+.cb-played.by-1 {
+  box-shadow: 0 0 0 3px var(--cb-p1);
+}
+.cb-card.is-small {
+  transform: scale(0.82);
+  transform-origin: center;
+}
+.cb-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 0.9rem;
+}
+.cb-mine {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.cb-mine.is-picked {
+  transform: translateY(-12px);
+}
+.cb-mine.is-picked .pk-card {
+  box-shadow:
+    0 0 0 3px #ffd34d,
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.cb-mine:disabled {
+  cursor: default;
+}
+.cb-mine.is-dim .pk-card {
+  opacity: 0.45;
+}
+.cb-mine:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+}
+.cb-show {
+  display: grid;
+  /* one count to a line, in the order they are counted — not the panel's usual columns */
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+.cb-shown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.cb-shown-cards {
+  display: flex;
+  gap: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cb-mine,
+  .cb-peg {
+    transition: none;
+  }
+}
