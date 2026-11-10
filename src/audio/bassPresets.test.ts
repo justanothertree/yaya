@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BASS_PRESETS, presetOf } from './bassPresets'
 import { BASS_STYLES } from './chordPatterns'
+import { STARTERS } from './starters'
 import { BASS_VOICES } from './synth'
 
 /** Evan, 10 Nov 2026: "bass presets" — a line and a voice that belong together, in one press. */
@@ -40,5 +41,32 @@ describe('bass presets', () => {
     const used = new Set(BASS_PRESETS.map((p) => p.voice))
     /* the plain Bass is the row's default and needs no preset to reach it */
     for (const v of BASS_VOICES) if (v !== 'bass') expect(used.has(v), v).toBe(true)
+  })
+})
+
+/**
+ * ⚠️ A STYLE AND A PRESET OF THE SAME NAME MUST BE THE SAME BASS. The Preset menu reads what is
+ * loaded, so a Bossa style laying its line on plain Bass beside a Bossa preset on an upright made
+ * the menu answer "Your own" about a bass nobody had touched — measured in the room, along with
+ * Reggae beside Dub. Named presets are a promise about the style they share a name with.
+ */
+describe('a style plays the preset that shares its name', () => {
+  it('Rock, Funk, House and Bossa read as their own presets the moment they are pressed', () => {
+    const shared: string[] = []
+    for (const s of STARTERS) {
+      const named = BASS_PRESETS.find((p) => p.name === s.name)
+      if (!named) continue
+      shared.push(s.name)
+      expect(presetOf(s.bass, s.bassVoice ?? 'bass'), s.name).toBe(named)
+    }
+    expect(shared.sort()).toEqual(['Bossa', 'Funk', 'House', 'Rock'])
+  })
+
+  it('and Reggae plays the Dub preset, Jazz Walking and Hip hop Trap', () => {
+    const by = (id: string) => STARTERS.find((s) => s.id === id)!
+    const as = (id: string) => presetOf(by(id).bass, by(id).bassVoice ?? 'bass')?.name
+    expect(as('reggae')).toBe('Dub')
+    expect(as('jazz')).toBe('Walking')
+    expect(as('hiphop')).toBe('Trap')
   })
 })
