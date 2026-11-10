@@ -100,6 +100,7 @@ import { DraughtsDemo } from '../gpu/DraughtsDemo'
 import { BricksDemo } from '../gpu/BricksDemo'
 import { GolfDemo } from '../gpu/GolfDemo'
 import { MinesDemo } from '../gpu/MinesDemo'
+import { TimeTrialDemo } from '../gpu/TimeTrialDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -711,6 +712,12 @@ const DEMOS: readonly {
     name: 'Mines',
     line: 'Mines — open squares, read the numbers, mark the mines, and clear the board against the clock. Every board can be cleared by reasoning alone: each is played through by a solver before you see it, so no run ends on a coin toss. Today’s board is the same for everyone.',
     Demo: MinesDemo,
+  },
+  {
+    id: 'timetrial',
+    name: 'Time trial',
+    line: 'Time trial — one car, one track, the clock. Brake for the bends, keep it off the grass, and race the ghost of your best lap; the medal times come from a computer driver’s own lap. Three tracks, and a new one every day that everyone drives.',
+    Demo: TimeTrialDemo,
   },
 ]
 
