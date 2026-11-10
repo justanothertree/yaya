@@ -1,3 +1,16 @@
+-- ⛔ SCRATCH BRANCH chronicle/ci-probe-refusals-2 ONLY — never to be merged. Asks every Chronicle
+-- writer for its refusals to a missing value or an id that does not exist.
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\set ON_ERROR_STOP 0
+\ir chronicle-refusals-probe2.sql
+\set ON_ERROR_STOP 1
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
