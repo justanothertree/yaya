@@ -2307,3 +2307,93 @@ html:has(.lab) {
 .ut-small.is-p2 .ut-claim {
   color: var(--ut-p2);
 }
+
+/* Twenty-one: a felt table, the dealer's cards above yours */
+.tw-room {
+  --tw-felt: #0f5132;
+  --tw-ink: #eaf7ef;
+}
+.tw-room.is-blue {
+  --tw-felt: #123d6b;
+  --tw-ink: #e7f1ff;
+}
+.tw-room.is-red {
+  --tw-felt: #6b1520;
+  --tw-ink: #ffecee;
+}
+.tw-bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+.tw-bank strong {
+  font-size: 1.3rem;
+}
+.tw-table {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    color-mix(in oklab, var(--tw-felt), #fff 10%),
+    var(--tw-felt)
+  );
+  color: var(--tw-ink);
+  min-height: 240px;
+}
+.tw-who {
+  margin: 0 0 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.tw-who .muted {
+  color: color-mix(in oklab, var(--tw-ink), transparent 30%);
+}
+.tw-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 64px;
+}
+.tw-mine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.tw-hand {
+  padding: 0.35rem 0.5rem;
+  border-radius: 10px;
+  border: 2px solid transparent;
+}
+.tw-hand.is-active {
+  border-color: #ffd34d;
+}
+.tw-win {
+  color: #8dffb0;
+  font-weight: 800;
+}
+.tw-lose {
+  color: #ffb3b3;
+  font-weight: 800;
+}
+.tw-hint {
+  font-weight: 700;
+}
+.tw-acts .btn {
+  min-height: 44px;
+}
+.tw-acts kbd {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  margin-left: 0.25rem;
+}
+.tw-back.is-stripes {
+  background: repeating-linear-gradient(0deg, #8a1c2b 0 5px, #a52a3a 5px 10px);
+}
+.tw-back.is-stars {
+  background:
+    radial-gradient(circle, #ffe680 1.5px, transparent 2px) 0 0 / 9px 9px,
+    #1c2a5c;
+}

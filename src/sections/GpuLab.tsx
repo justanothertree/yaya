@@ -94,6 +94,7 @@ import { HexDemo } from '../gpu/HexDemo'
 import { FourRowDemo } from '../gpu/FourRowDemo'
 import { ArcheryDemo } from '../gpu/ArcheryDemo'
 import { UltimateDemo } from '../gpu/UltimateDemo'
+import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -669,6 +670,12 @@ const DEMOS: readonly {
     name: 'Ultimate noughts',
     line: 'Ultimate noughts and crosses — nine boards in one. Win small boards to win the big one, but every square you play sends your opponent to the matching board. Against a computer that grabs boards, or ones that play out thousands of games before each move; crosses, shapes, animals or rockets.',
     Demo: UltimateDemo,
+  },
+  {
+    id: 'twentyone',
+    name: 'Twenty-one',
+    line: 'Twenty-one — get closer to 21 than the dealer without going over: hit, stand, double or split, for play chips. Turn on the book play to see the move that loses least, and how often you agree with it; one, two or six decks, and the dealer standing or hitting soft 17.',
+    Demo: TwentyOneDemo,
   },
 ]
 
