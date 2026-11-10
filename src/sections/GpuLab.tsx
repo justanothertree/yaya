@@ -96,6 +96,7 @@ import { ArcheryDemo } from '../gpu/ArcheryDemo'
 import { UltimateDemo } from '../gpu/UltimateDemo'
 import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
 import { MorrisDemo } from '../gpu/MorrisDemo'
+import { DraughtsDemo } from '../gpu/DraughtsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -683,6 +684,12 @@ const DEMOS: readonly {
     name: "Nine men's morris",
     line: "Nine men's morris — the old board game of mills: place your nine men, then move them along the lines, and every three in a row takes one of theirs. Down to three, you fly. Against a computer that looks one, two or four moves ahead, or a friend; wood, slate or garden boards with stones, coins or gems.",
     Demo: MorrisDemo,
+  },
+  {
+    id: 'draughts',
+    name: 'Draughts',
+    line: 'Draughts — jump to take, and when a take is there you must take it, as many in a row as the piece can reach. Crown a king on the far row. Against a computer that looks two, four or six moves ahead and follows every take to its end, or a friend; three boards and three sets of pieces.',
+    Demo: DraughtsDemo,
   },
 ]
 

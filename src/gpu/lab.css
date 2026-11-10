@@ -2529,3 +2529,126 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- draughts */
+.dr-room {
+  --dr-light: #f1dfc0;
+  --dr-dark: #6f8f4e;
+  --dr-p1: #d7263d;
+  --dr-p1-edge: #7d0f1e;
+  --dr-p2: #26221f;
+  --dr-p2-edge: #000;
+  --dr-crown: #ffd34d;
+  --dr-lit: #ffd34d;
+}
+.dr-room.is-wood {
+  --dr-light: #e6c48f;
+  --dr-dark: #8a5a2b;
+}
+.dr-room.is-ice {
+  --dr-light: #eaf4fb;
+  --dr-dark: #7fa7c6;
+  --dr-lit: #ff8a3d;
+}
+.dr-room.pieces-wood {
+  --dr-p1: #f3e3c3;
+  --dr-p1-edge: #9a7d4f;
+  --dr-p2: #5b3a1e;
+  --dr-p2-edge: #2a1708;
+  --dr-crown: #b8860b;
+}
+.dr-room.pieces-mint {
+  --dr-p1: #6fe3b4;
+  --dr-p1-edge: #1f8a62;
+  --dr-p2: #7b3f8f;
+  --dr-p2-edge: #3e1650;
+}
+.dr-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  width: min(100%, 480px);
+  aspect-ratio: 1;
+  border: 6px solid color-mix(in oklab, var(--dr-dark), #000 35%);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dr-light {
+  background: var(--dr-light);
+}
+.dr-sq {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--dr-dark);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.dr-sq > span {
+  width: 76%;
+  height: 76%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: clamp(0.8rem, 3.6vw, 1.4rem);
+  line-height: 1;
+  color: var(--dr-crown);
+  transition: transform 0.15s;
+}
+.dr-sq:not(.is-p1):not(.is-p2) > span {
+  width: 0;
+  height: 0;
+}
+.dr-sq.is-p1 > span {
+  background: radial-gradient(circle at 35% 30%, #fff6, transparent 55%), var(--dr-p1);
+  box-shadow:
+    0 0 0 2px var(--dr-p1-edge),
+    inset 0 0 0 4px color-mix(in oklab, var(--dr-p1-edge), transparent 60%),
+    0 2px 3px rgb(0 0 0 / 0.4);
+}
+.dr-sq.is-p2 > span {
+  background: radial-gradient(circle at 35% 30%, #fff4, transparent 55%), var(--dr-p2);
+  box-shadow:
+    0 0 0 2px var(--dr-p2-edge),
+    inset 0 0 0 4px color-mix(in oklab, var(--dr-p2-edge), transparent 60%),
+    0 2px 3px rgb(0 0 0 / 0.4);
+}
+.dr-sq.is-last {
+  background: color-mix(in oklab, var(--dr-dark), #ffb000 30%);
+}
+.dr-sq.can-move > span {
+  outline: 2px solid var(--dr-lit);
+  outline-offset: 2px;
+}
+.dr-sq.is-picked > span {
+  outline: 3px solid var(--dr-lit);
+  outline-offset: 3px;
+  transform: scale(1.06);
+}
+.dr-sq.is-lit::after,
+.dr-sq.is-path::after {
+  content: '';
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  background: var(--dr-lit);
+}
+.dr-sq.is-path::after {
+  opacity: 0.5;
+}
+.dr-sq.is-jumped > span {
+  opacity: 0.35;
+}
+.dr-sq:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: -3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dr-sq > span {
+    transition: none;
+  }
+}
