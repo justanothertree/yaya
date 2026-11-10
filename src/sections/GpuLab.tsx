@@ -97,6 +97,7 @@ import { UltimateDemo } from '../gpu/UltimateDemo'
 import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
 import { MorrisDemo } from '../gpu/MorrisDemo'
 import { DraughtsDemo } from '../gpu/DraughtsDemo'
+import { BricksDemo } from '../gpu/BricksDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -690,6 +691,12 @@ const DEMOS: readonly {
     name: 'Draughts',
     line: 'Draughts — jump to take, and when a take is there you must take it, as many in a row as the piece can reach. Crown a king on the far row. Against a computer that looks two, four or six moves ahead and follows every take to its end, or a friend; three boards and three sets of pieces.',
     Demo: DraughtsDemo,
+  },
+  {
+    id: 'bricks',
+    name: 'Bricks',
+    line: 'Bricks — keep the ball in play and knock out the wall. Where it lands on the paddle sets where it goes, a run of bricks multiplies the points, and what falls out widens the paddle, splits the ball or slows it. Today’s walls are everyone’s to beat; or draw a wall of your own and send it to a friend.',
+    Demo: BricksDemo,
   },
 ]
 

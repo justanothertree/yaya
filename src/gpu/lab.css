@@ -2652,3 +2652,73 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- bricks */
+.br-room .lab-stage.br-stage {
+  /* the field is 1 wide and 1.4 tall, and the wrap is never much wider than the field */
+  height: min(76vh, 640px, calc(92vw * 1.4));
+  min-height: 300px;
+  touch-action: none;
+  background: #000;
+}
+.br-wrap {
+  border-radius: 12px;
+  max-width: 480px;
+}
+.br-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.br-wrap.is-playing .lab-canvas {
+  cursor: none;
+}
+.br-hud {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.br-hud strong {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.br-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 3px;
+  width: min(100%, 440px);
+  padding: 6px;
+  border-radius: 10px;
+  background: #1b1035;
+}
+.br-cell {
+  /* a fixed height, not an aspect ratio: with a minimum height an aspect ratio sets the WIDTH,
+     and the cells grew past their columns into one another */
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.br-cell.is-1 {
+  background: #ffb3c8;
+  color: #5a1830;
+}
+.br-cell.is-2 {
+  background: #ff5d8f;
+}
+.br-cell.is-3 {
+  background: #c2185b;
+}
+.br-cell.is-g {
+  background: #ffd34d;
+  color: #6b4b00;
+}
+.br-cell:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
