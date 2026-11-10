@@ -6,6 +6,8 @@ import { setTakeLog, type TakeRow } from './takes'
 import { refreshTakeAudio } from './looper'
 import { editedBuffer } from './takeAudio'
 import { toWav } from './wav'
+import { heardTime } from './heard'
+import { makeAudition, type Audition, type VoiceFx } from './takeFx'
 import {
   canRedo,
   canUndo,
@@ -14,18 +16,20 @@ import {
   isWholeEdit,
   keepOnly,
   logDo,
-  loudSpan,
   logNow,
   logRedo,
   logUndo,
   MIN_SPAN,
   peaks,
   pickRange,
+  playedFrom,
   readLog,
   timeToFrac,
   toSource,
+  trimTo,
   viewAround,
   wholeEdit,
+  xToTime,
   zoomView,
   clampView,
   panView,
@@ -60,15 +64,52 @@ const TALL = 86
 
 const secs = (n: number) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`
 const exact = (n: number) => `${n.toFixed(2)}s`
+/** where an edge or the cursor sits — to the millisecond, because that is the unit a trim is in */
+const ms = (n: number) => `${n.toFixed(3)}s`
 
-export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => void }) {
+/**
+ * How far a finger may move and still be a tap rather than a drag, in CSS pixels.
+ *
+ * ⚠️ A TAP PLACES THE CURSOR AND A DRAG CHOOSES A PART, so the line between them is the whole
+ * gesture. Zero would turn every tap into a sliver of selection — a thumb is never perfectly
+ * still — and anything near the width of a selection worth keeping would swallow short drags.
+ */
+const TAP_PX = 4
+
+/**
+ * @param sound what the take is heard through — its own sound, or null for as recorded. The
+ *   panel owns it; the editor only plays through it, so the list's ▶ and this one agree.
+ */
+export function TakeEditor({
+  row,
+  sound,
+  onChanged,
+}: {
+  row: TakeRow
+  sound: VoiceFx | null
+  onChanged: () => void
+}) {
   const box = useRef<HTMLCanvasElement | null>(null)
   const [source, setSource] = useState<AudioBuffer | null>(null)
   const [bad, setBad] = useState(false)
   const drag = useRef<{ x0: number; x1: number } | null>(null)
   const [sel, setSel] = useState<Span | null>(null)
   const [playAt, setPlayAt] = useState<number | null>(null)
-  const out = useRef<{ src: AudioBufferSourceNode; began: number; from: number } | null>(null)
+  /**
+   * Where the cursor sits, in the RECORDING's time — placed by a tap, moved by ‹ › and the arrow
+   * keys. It is where ▶ starts and where ⇤ and ⇥ trim to.
+   *
+   * ⚠️ SOURCE TIME LIKE THE PICTURE, NOT PLAYED TIME LIKE THE PLAYHEAD, because it is a place on
+   * the picture: a cursor in a cut region is somewhere you can see and point at, and moving it
+   * must not jump across the gap the way a played-time position would.
+   */
+  const [cursor, setCursor] = useState<number | null>(null)
+  const out = useRef<{
+    src: AudioBufferSourceNode
+    aud: Audition
+    began: number
+    from: number
+  } | null>(null)
   const [say, setSay] = useState('')
   const [width, setWidth] = useState(0)
 
@@ -132,35 +173,6 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
   const heard = useMemo(() => (source ? editedBuffer(source, edit) : null), [source, edit])
 
   /**
-   * Where the sound in this recording is, for the one-press trim.
-   *
-   * ⚠️ THE TOP AND TAIL IS THE EDIT EVERYBODY MAKES, every time, and until now it was a drag.
-   * You press record, get your hand away from the phone, sing, then reach back for the button
-   * — so a take has dead air at both ends by construction, and the first thing anybody wants
-   * is it gone. Doing it with a drag means finding a boundary by eye in a picture where, on a
-   * six-minute take at full view, one pixel is nearly half a second.
-   *
-   * ⚠️ AND IT IS AN ORDINARY `keepOnly`, which is why it needed no new stored field, no second
-   * code path through the renderer and no undo of its own. It composes: trim the ends of a
-   * take you have already cut the middle out of, and both decisions survive.
-   *
-   * ⚠️ MEASURED ONCE PER DECODE. It is one pass over every sample — about 18 million for the
-   * six-minute take this was checked against — and the button's own disabled state needs the
-   * answer, so it cannot wait for the press.
-   */
-  const loud = useMemo(() => {
-    if (!source) return null
-    const chans: Float32Array[] = []
-    for (let c = 0; c < source.numberOfChannels; c++) chans.push(source.getChannelData(c))
-    return loudSpan(chans, source.duration, source.sampleRate)
-  }, [source])
-  /* ⚠️ enabled only when pressing it would take something away — not "is there silence
-     somewhere", which is still true after you have already trimmed, leaving a live button
-     whose only outcome is nothing happening */
-  const trimmed = useMemo(() => (loud ? keepOnly(edit, loud, len) : null), [loud, edit, len])
-  const canTrim = !!trimmed && editLen(trimmed) < played - MIN_SPAN
-
-  /**
    * How wide to draw, measured three ways and not depending on a frame.
    *
    * ⚠️ NOT ResizeObserver ALONE. Measured 6 Nov with the pane hidden: zero callbacks, not even
@@ -196,6 +208,7 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     } catch {
       /* already finished on its own */
     }
+    on.aud.dispose()
   }, [])
 
   /* ⚠️ a preview left running sings over whatever room you went to next */
@@ -208,24 +221,43 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
       stop()
       resumeAudio()
       const ctx = sharedCtx()
+      /* ⚠️ THROUGH THE TAKE'S SOUND, the same chain the loop uses — see makeAudition */
+      const aud = makeAudition(ctx, takeBus())
+      aud.hear(sound)
       const src = ctx.createBufferSource()
       src.buffer = heard
-      src.connect(takeBus())
+      src.connect(aud.in)
       src.onended = () => {
-        if (out.current?.src === src) stop()
+        if (out.current?.src !== src) return
+        out.current = null
+        setPlayAt(null)
+        /* the echo and the room ring on past the last sample, so they are let finish */
+        window.setTimeout(() => aud.dispose(), 4000)
       }
       const from = Math.max(0, Math.min(heard.duration, at))
-      out.current = { src, began: ctx.currentTime, from }
+      out.current = { src, aud, began: ctx.currentTime, from }
       src.start(0, from)
       setPlayAt(from)
     },
-    [heard, stop],
+    [heard, stop, sound],
   )
+
+  /* a slider moved, or the comparison pressed, while this plays — heard at once */
+  const soundKey = JSON.stringify(sound)
+  useEffect(() => {
+    out.current?.aud.hear(sound)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the key is the sound's identity
+  }, [soundKey])
 
   /**
    * ⚠️ A TIMER, NOT requestAnimationFrame. CLAUDE.md has rAF firing in the pane on 28 Oct and
    * not firing on 5 Nov, both measured — a playhead built on it works or does not depending on
    * which week somebody checks. 20Hz is plenty for a line crossing a picture.
+   *
+   * ⚠️ AND THE HEARD CLOCK, NOT THE RENDER CLOCK. `currentTime` is what is being rendered,
+   * which on a Bluetooth headset is a fifth of a second ahead of what is being heard — so a line
+   * drawn from it reaches a consonant before you do, and a trim placed by ear against it lands
+   * late. See heard.ts. Held at `from` until the first sound arrives rather than drawn behind it.
    */
   const running = playAt != null
   useEffect(() => {
@@ -233,15 +265,41 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     const t = window.setInterval(() => {
       const on = out.current
       if (!on) return
-      setPlayAt(on.from + (sharedCtx().currentTime - on.began))
+      const ctx = sharedCtx()
+      const end = on.src.buffer?.duration ?? Infinity
+      const at = on.from + (heardTime(ctx, performance.now()) - on.began)
+      setPlayAt(Math.min(end, Math.max(on.from, at)))
     }, 50)
     return () => window.clearInterval(t)
   }, [running])
 
+  /**
+   * The picture's outline, worked out once per zoom rather than once per frame.
+   *
+   * ⚠️ IT WAS IN THE DRAW, AND THE DRAW RUNS ON EVERY PLAYHEAD TICK. `peaks` walks every sample in
+   * view, and the playhead redraws twenty times a second — so playing a six-minute take walked
+   * all ~17 million samples twenty times a second. Measured in the pane on a desktop: the main
+   * thread busy **316ms of every second** while it played, with stalls up to 58ms, against 13ms
+   * idle. On a phone that is the keyboard and the audio scheduler both waiting behind a picture.
+   * The outline only changes with the recording, the width and the zoom; nothing about a moving
+   * line or a selection needs it again.
+   */
+  const cols = Math.max(1, Math.floor(width))
+  const env = useMemo(() => {
+    if (!source || !(width > 0)) return null
+    const rate = source.sampleRate
+    return peaks(
+      source.getChannelData(0),
+      cols,
+      Math.floor(view.from * rate),
+      Math.ceil(view.to * rate),
+    )
+  }, [source, cols, width, view.from, view.to])
+
   /* draw */
   useEffect(() => {
     const el = box.current
-    if (!el || !source || !(width > 0)) return
+    if (!el || !source || !env || !(width > 0)) return
     const dpr = Math.min(3, window.devicePixelRatio || 1)
     el.width = Math.max(1, Math.round(width * dpr))
     el.height = Math.round(TALL * dpr)
@@ -254,14 +312,6 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     const ink = css.getPropertyValue('--accent').trim() || '#22c55e'
     const dim = css.getPropertyValue('--muted').trim() || '#9090b0'
     const mid = TALL / 2
-    const cols = Math.max(1, Math.floor(width))
-    const rate = source.sampleRate
-    const env = peaks(
-      source.getChannelData(0),
-      cols,
-      Math.floor(view.from * rate),
-      Math.ceil(view.to * rate),
-    )
     const colAt = (t: number) => Math.round(timeToFrac(t, view) * width)
 
     /* everything, faint — so a cut reads as a window onto the recording rather than as the
@@ -301,6 +351,19 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
       g.globalAlpha = 1
     }
 
+    /* the cursor, dashed so it never reads as the playhead — it is where things will happen,
+       not where they are happening */
+    if (cursor != null && playAt == null) {
+      const x = colAt(cursor)
+      g.strokeStyle = ink
+      g.setLineDash([3, 3])
+      g.beginPath()
+      g.moveTo(x + 0.5, 0)
+      g.lineTo(x + 0.5, TALL)
+      g.stroke()
+      g.setLineDash([])
+    }
+
     /* ⚠️ the playhead arrives in PLAYED time and the picture is in SOURCE time */
     if (playAt != null) {
       const at = toSource(edit, playAt)
@@ -313,11 +376,14 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
         g.stroke()
       }
     }
-  }, [source, width, sel, edit, view, playAt])
+  }, [source, env, cols, width, sel, edit, view, playAt, cursor])
 
   /** Put a new edit in the history, store it, and tell the loop its audio changed. */
   const apply = useCallback(
     async (next: EditLog, note: string) => {
+      /* ⚠️ what is playing is the OLD edit's buffer, so its position means nothing against the
+         new one — the playhead would be drawn through a picture the sound no longer matches */
+      stop()
       setLog(next)
       setSel(null)
       await setTakeLog(row.id, next)
@@ -325,7 +391,7 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
       onChanged()
       setSay(note)
     },
-    [row.id, onChanged],
+    [row.id, onChanged, stop],
   )
 
   const xOf = (e: React.PointerEvent) => e.clientX - e.currentTarget.getBoundingClientRect().left
@@ -349,8 +415,26 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
     setSel(pickRange(drag.current.x0, drag.current.x1, width, view))
   }
   const onUp = () => {
+    const d = drag.current
     drag.current = null
-    /* a tap, not a drag — clear it rather than leaving a hairline selection nobody can see */
+    if (!d || !source) return
+    /**
+     * ⚠️ A TAP PUTS THE CURSOR THERE — AND IF SOMETHING IS PLAYING, PLAYS FROM THERE. That is the
+     * seek, and it is a tap rather than a separate scrubber because the picture is already the
+     * map of the recording: the place you can see the breath is the place you touch.
+     */
+    if (Math.abs(d.x1 - d.x0) < TAP_PX) {
+      setSel(null)
+      const t = Math.max(0, Math.min(len, xToTime(d.x0, width, view)))
+      setCursor(t)
+      if (out.current) playFrom(playedFrom(edit, t) ?? 0)
+      return
+    }
+    /* a drag too short to keep — clear it rather than leaving a hairline nobody can see */
+    setSel((s) => (s && s.to - s.from < MIN_SPAN ? null : s))
+  }
+  const onCancel = () => {
+    drag.current = null
     setSel((s) => (s && s.to - s.from < MIN_SPAN ? null : s))
   }
 
@@ -394,6 +478,15 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
   const span = view.to - view.from
   const canKeep = !!sel && sel.to - sel.from >= MIN_SPAN
   const parts = edit.keep.length
+  /** one pixel of the picture as it is zoomed now — the finest a nudge can mean anything */
+  const step = Math.max(0.001, span / Math.max(1, width))
+  const nudge = (by: number) => setCursor((c) => Math.max(0, Math.min(len, (c ?? view.from) + by)))
+  /** where a trim lands: under the moving playhead while it plays, at the cursor otherwise */
+  const here = running ? (playAt != null ? toSource(edit, playAt) : null) : cursor
+  const toStart = here != null ? trimTo(edit, 'start', here, len) : null
+  const toEnd = here != null ? trimTo(edit, 'end', here, len) : null
+  /** play from the cursor if there is one, and from the top if it sits past the end */
+  const fromCursor = () => playFrom(cursor != null ? (playedFrom(edit, cursor) ?? 0) : 0)
 
   return (
     <div className="take-edit">
@@ -404,9 +497,27 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
-        onPointerCancel={onUp}
-        role="img"
-        aria-label={`Waveform, ${secs(len)}${whole ? '' : `, ${secs(played)} kept`}. Drag to choose part of it.`}
+        onPointerCancel={onCancel}
+        /* ⚠️ A SLIDER TO A KEYBOARD, because the cursor is the one thing here a keyboard can
+           move: arrows step it a pixel of the current zoom, Shift ten, Home and End go to the
+           ends. Arrows are free to take — the room's own key handler leaves them alone so the
+           page can scroll, and this only takes them while the picture has focus. */
+        tabIndex={0}
+        role="slider"
+        aria-valuemin={0}
+        aria-valuemax={Number(len.toFixed(3))}
+        aria-valuenow={Number((cursor ?? 0).toFixed(3))}
+        aria-valuetext={cursor == null ? 'no cursor' : ms(cursor)}
+        aria-label={`Waveform, ${secs(len)}${whole ? '' : `, ${secs(played)} kept`}. Tap to place the cursor, drag to choose part of it.`}
+        onKeyDown={(e) => {
+          const by = e.shiftKey ? step * 10 : step
+          if (e.key === 'ArrowLeft') nudge(-by)
+          else if (e.key === 'ArrowRight') nudge(by)
+          else if (e.key === 'Home') setCursor(0)
+          else if (e.key === 'End') setCursor(len)
+          else return
+          e.preventDefault()
+        }}
       />
       {/**
        * ⚠️ BUTTONS AND A SLIDER, NOT A PINCH. A drag on the picture already means "choose a
@@ -485,9 +596,9 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
       <div className="take-edit-bar">
         <button
           className="btn btn-ghost"
-          onClick={() => (out.current ? stop() : playFrom(0))}
+          onClick={() => (out.current ? stop() : fromCursor())}
           disabled={!heard}
-          title="Hear the edited take"
+          title="Hear the edited take — from the cursor, if you have placed one"
         >
           {out.current ? '■' : '▶'} Play
         </button>
@@ -524,25 +635,63 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
           Cut
         </button>
         {/**
-         * ⚠️ NO SELECTION, WHICH IS THE POINT. Keep and Cut both need a drag first; this is the
-         * one edit that already knows where it wants to go, and it is also the edit every take
-         * needs. See `loud` above for why that is, and takeEdit's `loudSpan` for why the
-         * threshold is measured against the take's own loudest moment rather than a fixed
-         * level — a recording made at arm's length would otherwise read as silence throughout.
+         * ⚠️ THE ENDS ARE SET AT A POINT, NOT DRAGGED — which is what makes them precise. A drag
+         * is as fine as a pixel; a cursor can be nudged a pixel at a time at any zoom, and while
+         * the take plays these follow the playhead, so an edge can be placed by ear as well as by
+         * eye. Moving an edge outward restores what an earlier edit cut: the recording is whole
+         * underneath, so it is as cheap as moving it in, and one press is one step for Undo.
+         *
+         * ⚠️ THEY REPLACE "Trim ends", which guessed where the sound was and is gone on request.
+         * A take trimmed by it keeps that trim — it was an ordinary step in the stored history,
+         * and nothing about the history depended on the button that made it.
          */}
-        <button
-          className="btn"
-          onClick={() =>
-            void apply(
-              logDo(log, trimmed!),
-              'trimmed — the recording is untouched and Undo puts it back',
-            )
-          }
-          disabled={!canTrim}
-          title="Remove the silence before and after the sound"
-        >
-          Trim ends
-        </button>
+        <span className="take-edit-pair">
+          <button
+            className="btn"
+            onClick={() => {
+              const at = here!
+              void apply(logDo(log, toStart!), `starts at ${ms(at)}`).then(() => setCursor(at))
+            }}
+            disabled={!toStart}
+            title="Start the take at the cursor"
+          >
+            ⇤ Start here
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              const next = toEnd!
+              /* the cursor steps back from the new end, so ▶ hears the cut-off straight away */
+              const back = toSource(next, Math.max(0, editLen(next) - 2))
+              void apply(logDo(log, next), `ends at ${ms(here!)} — ▶ plays the last 2s`).then(() =>
+                setCursor(back),
+              )
+            }}
+            disabled={!toEnd}
+            title="End the take at the cursor"
+          >
+            End here ⇥
+          </button>
+        </span>
+        {cursor != null && !running && (
+          <span className="take-edit-pair take-edit-cursor">
+            <button
+              className="btn btn-ghost"
+              onClick={() => nudge(-step)}
+              title="Move the cursor earlier"
+            >
+              ‹<span className="sr-only">Earlier</span>
+            </button>
+            <span className="muted">{ms(cursor)}</span>
+            <button
+              className="btn btn-ghost"
+              onClick={() => nudge(step)}
+              title="Move the cursor later"
+            >
+              ›<span className="sr-only">Later</span>
+            </button>
+          </span>
+        )}
         {/**
          * ⚠️ WORDS, AND KEPT TOGETHER. They were ↶ and ↷ with the names hidden for screen
          * readers, which `mobile-audit` passes — its wordless rule reads the accessibility
@@ -585,15 +734,29 @@ export function TakeEditor({ row, onChanged }: { row: TakeRow; onChanged: () => 
         >
           Whole take
         </button>
-        <button className="btn btn-ghost" onClick={save} disabled={!heard} title="Download a WAV">
-          ⬇ Save a copy
+        {/* ⚠️ AS RECORDED, AND IT SAYS SO. The copy has always been the edited take without its
+            sound — and with previews now playing through that sound, an unlabelled "Save a
+            copy" would hand back something other than what was just heard. Whether it should
+            carry the sound is a decision about what an export means, so it is named, not made:
+            see docs/2026-11-08-a-take-has-its-own-sound.md. ⬇ Stems is the processed export. */}
+        <button
+          className="btn btn-ghost"
+          onClick={save}
+          disabled={!heard}
+          title="A WAV of the edited take, without its sound settings"
+        >
+          ⬇ Save as recorded
         </button>
         <span className="muted take-edit-says">
           {whole
             ? `All ${exact(len)}`
             : `${exact(played)} of ${exact(len)}${parts > 1 ? ` in ${parts} pieces` : ''}`}
           {sel ? ` · chosen ${exact(sel.to - sel.from)}` : ''}
-          {say ? ` · ${say}` : ''}
+          {say
+            ? ` · ${say}`
+            : cursor == null && !sel && !running
+              ? ' · tap the picture to place the cursor'
+              : ''}
         </span>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import type { VoiceFx } from './takeFx'
 /**
  * Where a recorded take's audio actually lives.
  *
@@ -91,6 +92,18 @@ export type TakeRow = {
    * answers with the whole recording, so every reader is already safe and the row survives.
    */
   log?: { steps: { keep: { from: number; to: number }[] }[]; at: number }
+  /**
+   * How this recording sounds — Tone, Even, Double, Echo, Echo gap, Space — kept with the
+   * recording rather than with its place in the loop.
+   *
+   * ⚠️ IT USED TO LIVE ONLY ON THE PLACEMENT, which meant two losses nobody chose: a take could
+   * not be given a sound until it was in the loop, and taking it out of the loop threw the
+   * sound away, so putting it back started flat. Here, it outlives both.
+   *
+   * ⚠️ NOT VALIDATED BY `sane`, for the reason the log is not: an unreadable sound is a reason
+   * to play it plain, never a reason to drop the take. Every reader goes through `readVoiceFx`.
+   */
+  voice?: Partial<VoiceFx>
 }
 
 let open: Promise<IDBDatabase | null> | null = null
@@ -175,6 +188,21 @@ export async function getTake(id: string): Promise<TakeRow | null> {
   return row && sane(row) ? row : null
 }
 
+/**
+ * Is this recording in the store — yes, no, or the store could not say.
+ *
+ * ⚠️ THREE ANSWERS, BECAUSE getTake HAS TWO AND ONE OF THEM MEANS TWO THINGS. `null` from
+ * getTake is "there is no such row" and also "the store would not open" — private mode, blocked
+ * by settings, a transaction that failed. Something deciding whether a recording is GONE must
+ * not read the second as the first: that turns a browser that is having a bad moment into a
+ * loop that forgets where somebody's voice went. `count` answers a number when it can look and
+ * `run` answers null when it cannot, so the two finally come apart.
+ */
+export async function hasTake(id: string): Promise<boolean | null> {
+  const n = await run<number>('readonly', (s) => s.count(id))
+  return n === null ? null : n > 0
+}
+
 /** How many bytes of audio are held in total. */
 export async function takenBytes(): Promise<number> {
   return (await allTakes()).reduce((n, r) => n + r.bytes, 0)
@@ -231,6 +259,32 @@ export async function setTakeLog(id: string, log: TakeRow['log'] | null): Promis
       steps: log.steps.map((s) => ({ keep: s.keep.map((k) => ({ from: k.from, to: k.to })) })),
     }
   else delete row.log
+  const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
+  return done !== null
+}
+
+/**
+ * Keep how this recording sounds, beside it — null to forget it.
+ *
+ * ⚠️ THE SAME READ-MODIFY-WRITE AS `setTakeLog` AND FOR THE SAME REASON: the stored row is spread
+ * and one field changed, so a field this function has never heard of survives it. The caller
+ * coalesces — this rewrites the whole row, blob included, and a slider dragged across its range
+ * is dozens of changes.
+ */
+export async function setTakeVoice(id: string, voice: VoiceFx | null): Promise<boolean> {
+  const had = await getTake(id)
+  if (!had) return false
+  const row: TakeRow = { ...had }
+  if (voice)
+    row.voice = {
+      tone: voice.tone,
+      squeeze: voice.squeeze,
+      double: voice.double,
+      echo: voice.echo,
+      echoTime: voice.echoTime,
+      space: voice.space,
+    }
+  else delete row.voice
   const done = await run('readwrite', (s) => s.put(row) as IDBRequest<IDBValidKey>)
   return done !== null
 }

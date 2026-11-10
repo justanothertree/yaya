@@ -2850,6 +2850,20 @@ section[id] {
     transform 0.12s ease,
     filter 0.12s ease;
 }
+/* the line under a toggle that says what it does, or why it is off — see `Why` in
+   InstrumentRoom. Smaller and quieter than the label so the label is still what you read first. */
+/* a row's one reason, when every button in it is off for the same one (the bass, before chords) */
+.inst-beats-why {
+  font-size: 0.76rem;
+}
+.btn-why {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.15;
+  opacity: 0.82;
+}
 /**
  * ⚠️ TWO CLASSES, so this actually wins. `.btn-ghost` is declared several hundred lines earlier,
  * and a single class carries the same specificity as `.btn` — so the later rule took it, and every
@@ -3136,6 +3150,19 @@ section[id] {
 .inst-takes-knob input {
   flex: 1 1 4rem;
   min-width: 0;
+}
+/* ⚠️ 28px, THE TAKE EDITOR'S SCROLLBAR RULE AND FOR ITS REASON: a range is 16px tall by default,
+   under the 24px floor, and this panel is offered for every take now rather than only a placed
+   one. Measured at 375: all six sliders 16px; the audit named the one without the spacing to
+   excuse it. Not the selects — they are already sized by the touch rule for fields. */
+.inst-takes-knob input[type='range'] {
+  height: 28px;
+}
+/* the line that says why Chop is not here — its own row, so it never squeezes a slider */
+.inst-takes-note {
+  flex: 1 1 100%;
+  min-width: 160px;
+  font-size: 0.76rem;
 }
 .inst-oct {
   display: inline-flex;
@@ -5151,6 +5178,19 @@ select {
   flex: 1 1 8rem;
   min-width: 6rem;
   accent-color: var(--accent);
+}
+/* the play row's volume shares a line with the octave rather than taking one of its own; a
+   pixel floor because rem is fluid here (see CLAUDE.md §6) */
+.inst-playbar .appearance-slider {
+  flex: 1 1 10rem;
+  min-width: 150px;
+}
+/* ⚠️ and the slider gives way inside it, with a floor in pixels: the shared rule's 6rem minimum
+   pushed the "70%" 29px past the edge of a 375 screen — measured, the first time this row was
+   given a narrower label. Zero would let the slider vanish, so 60px. */
+.inst-playbar .appearance-slider input[type='range'] {
+  flex: 1 1 4rem;
+  min-width: 60px;
 }
 .appearance-slider-val {
   min-width: 2.6rem;
@@ -8005,11 +8045,26 @@ a.cz-msg-author:focus-visible {
      desktop, picker-then-keys reads as a workflow; on a phone it just means the
      instrument is off screen. */
   .inst-keys {
+    order: -4;
+  }
+  /* ⚠️ THEN WHAT YOUR HANDS USE ON IT, THEN THE PICKER — everything else keeps its written
+     order. The slide is written BEFORE the keys (on a desktop it sits under them by layout), so
+     at order 0 it used to land after the picker and a health note, 150px from the keys it moves.
+     The play row (octave, volume, Hold, Panic) moved up from below the song; see the note on it
+     in InstrumentRoom. */
+  .inst-keyslide {
+    order: -3;
+  }
+  .inst-playbar {
     order: -2;
   }
-  /* the picker follows it; everything else keeps its written order */
   .inst-bar {
     order: -1;
+  }
+  /* the typing light explains a hardware keyboard, which a phone has not got — and on this row
+     it cost a line of its own */
+  .inst-playbar .inst-keylight {
+    display: none;
   }
 
   /* Thumbs, not cursors: 25 keys at 25px are slivers. Below this the row scrolls
@@ -8693,23 +8748,16 @@ a.cz-msg-author:focus-visible {
   }
 }
 
-/* ── instruments: a grid on a desktop, a menu on a phone ──────────────────────
-   Same shape as the paint room's brushes — see the note in InstrumentRoom. */
+/* ── instruments: a menu, on every screen ─────────────────────────────────────
+   Same shape as the paint room's brushes — see the note in InstrumentRoom for why the desktop
+   grid joined the phone's menu. The grid keeps its own layout once open. */
 .inst-pick-open {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
-@media (max-width: 40rem) {
-  .inst-pick-open {
-    display: inline-flex;
-  }
-  .inst-picks {
-    display: none;
-  }
-  .inst-picks.is-open {
-    display: grid;
-  }
+.inst-picks:not(.is-open) {
+  display: none;
 }
 
 /**
@@ -20115,4 +20163,14 @@ a.cz-msg-author:focus-visible {
 .take-edit-zoom {
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
+}
+/* the cursor's position between its two nudges — tabular, so the buttons do not shuffle
+   sideways under a thumb as the digits change */
+.take-edit-cursor {
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.take-edit-wave:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

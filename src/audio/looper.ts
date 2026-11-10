@@ -1,13 +1,13 @@
 import { sharedCtx, resumeAudio } from './context'
 import { takeBus } from './takeBus'
-import { makeVoiceChain, PLAIN_VOICE, type VoiceChain, type VoiceFx } from './takeFx'
+import { makeVoiceChain, PLAIN_VOICE, readVoiceFx, type VoiceChain, type VoiceFx } from './takeFx'
 import { chopEnvelope, stutterAt, NO_CHOP, type Chop } from './chop'
 import { fxSnapshot, noteOff, noteOn, type Fx, type InstrumentId } from './synth'
 import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
-import { partAt, partsIn } from './arrange'
+import { followLastBar, partAt, partsIn } from './arrange'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -1289,9 +1289,20 @@ export function setBars(bars: number) {
    * That asymmetry is deliberate and documented; whether it is what somebody WANTS when they
    * grow a song is a product question and is written up rather than guessed at here. The one
    * thing it is not is a bug in this function, which is why the fix was to the sentence.
+   *
+   * ⚠️ ONE EXCEPTION TO THE EXCEPTION: A FILL. Its button is named for where it plays — "On the
+   * last bar" — so a fill still sitting on the last bar follows the last bar. A fill dragged
+   * elsewhere, and every other arranged layer, is left exactly as it was. See `followLastBar`.
    */
   restart()
-  set({ bars: next })
+  set({
+    bars: next,
+    layers: state.layers.map((l) => {
+      if (fillPatternOf(l) === null) return l
+      const plan = followLastBar(l.plan, next)
+      return plan ? { ...l, plan } : l
+    }),
+  })
 }
 
 /**
@@ -1352,7 +1363,11 @@ export function loopOrigin(): number {
  */
 export function setTransport(t: { bpm: number; bars: number; playing: boolean; origin: number }) {
   const bpm = Math.max(40, Math.min(200, Math.round(t.bpm)))
-  const bars = Math.max(1, Math.min(8, Math.round(t.bars)))
+  /* ⚠️ MAX_BARS, NOT 8 — the same ceiling setBars has. This was the last 8 left from before
+     MAX_BARS went to 32, and it was a jam-only one: a partner's 16-bar loop played as 8 here, and
+     the next tempo change made on THIS machine sent `bars: 8` home and halved theirs. Found
+     checking the jam's full range (Evan's call, 9 Nov 2026); setTransport.test.ts pins it. */
+  const bars = Math.max(1, Math.min(MAX_BARS, Math.round(t.bars)))
   if (!t.playing) {
     if (state.playing) stopLoop()
     if (bpm !== state.bpm || bars !== state.bars) set({ bpm, bars })
@@ -1749,8 +1764,20 @@ const markedWith = (l: Layer, mark: string): string | null => {
   return at === -1 ? null : l.id.slice(at + mark.length)
 }
 export const beatPatternOf = (l: Layer): string | null => markedWith(l, BEAT_MARK)
-export const chordPatternOf = (l: Layer): string | null => markedWith(l, CHORD_MARK)
-export const bassPatternOf = (l: Layer): string | null => markedWith(l, BASS_MARK)
+/**
+ * ⚠️ A CHORD OR BASS TAG MAY CARRY A STYLE AFTER A DASH — `four-stabs`, `four-walk` — so the
+ * progression is what comes before it. Chord and bass pattern ids never contain a dash (beat ids
+ * do, which is why only these two split). A layer laid before styles existed has no dash and reads
+ * as the style it always was; a build that predates this reads `four-stabs` as an unknown
+ * progression, which leaves its picker unpressed and the notes playing — the safe way to be old.
+ */
+const before = (tag: string | null) => (tag === null ? null : tag.split('-')[0])
+const after = (tag: string | null) => (tag === null ? null : (tag.split('-')[1] ?? null))
+export const chordPatternOf = (l: Layer): string | null => before(markedWith(l, CHORD_MARK))
+export const bassPatternOf = (l: Layer): string | null => before(markedWith(l, BASS_MARK))
+/** the style a chord or bass layer was laid in, as tagged — null for the original one */
+export const chordStyleTagOf = (l: Layer): string | null => after(markedWith(l, CHORD_MARK))
+export const bassStyleTagOf = (l: Layer): string | null => after(markedWith(l, BASS_MARK))
 export const fillPatternOf = (l: Layer): string | null => markedWith(l, FILL_MARK)
 
 /**
@@ -1764,6 +1791,12 @@ export const fillPatternOf = (l: Layer): string | null => markedWith(l, FILL_MAR
  * ⚠️ IT KEEPS ITS PLACE IN THE STACK, so the list does not jump while you audition four of
  * them in a row — and it keeps the volume you set, because having to rebalance after every
  * audition is how you stop auditioning.
+ *
+ * ⚠️ AND ITS MUTE, since 9 Nov 2026 — Evan's call. A swap used to set `muted: false`, so changing
+ * how the chords are played brought a muted bass back with them (`layChords` re-lays the bass),
+ * and picking a new beat un-muted a kit somebody had silenced on purpose. A mute is a choice
+ * about the ROW, like its fader, and the row is what a swap keeps. The panel says so beside a
+ * pressed button, so a pick that makes no sound is not a mystery.
  */
 export function addPatternLayer(
   events: LoopEvent[],
@@ -1780,7 +1813,7 @@ export function addPatternLayer(
     const old = state.layers[at]
     releaseLayer(old.id)
     set({
-      layers: state.layers.map((l, i) => (i === at ? { ...l, id, events, len, muted: false } : l)),
+      layers: state.layers.map((l, i) => (i === at ? { ...l, id, events, len } : l)),
     })
     return id
   }
@@ -1864,8 +1897,8 @@ export function soleDrumPiece(l: Layer): number | null {
  * to another machine, which is the cost takes.ts documents.
  */
 export async function placeTake(id: string, at = 0): Promise<boolean> {
+  const row = await getTake(id)
   if (!heard.has(id)) {
-    const row = await getTake(id)
     if (!row) return false
     const buf = await decodeTake(row.blob)
     if (!buf) return false
@@ -1885,16 +1918,23 @@ export async function placeTake(id: string, at = 0): Promise<boolean> {
      */
     heard.set(id, cutTo(buf, row))
   }
+  /**
+   * ⚠️ IT ARRIVES SOUNDING THE WAY THE RECORDING DOES — its own `voice`, kept on the row — where
+   * every placement used to start flat. That is what lets a sound be set before a take is in
+   * the loop, and what stops lifting it out and putting it back from throwing the sound away.
+   * A take already placed keeps the sound it has; this only names a NEW placement's.
+   */
+  const fx: VoiceFx = { ...PLAIN_VOICE, ...readVoiceFx(row?.voice) }
   if (!chains.has(id)) {
     const chain = makeVoiceChain(sharedCtx(), takeBus())
-    chain.set(PLAIN_VOICE)
+    chain.set(fx)
     chains.set(id, chain)
   }
   const had = state.takes.some((t) => t.id === id)
   set({
     takes: had
       ? state.takes.map((t) => (t.id === id ? { ...t, at } : t))
-      : [...state.takes, { id, at, fx: { ...PLAIN_VOICE } }],
+      : [...state.takes, { id, at, fx }],
   })
   return true
 }
