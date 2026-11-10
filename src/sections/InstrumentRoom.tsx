@@ -868,7 +868,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * ⚠️ OFF BY DEFAULT, and that is a decision rather than caution. A turnaround is a strong
    * flavour: it is what makes four chords sound like a song rather than a loop, and it is also
    * the thing somebody writing a calm two-chord bed does not want pulling at them every lap. The
-   * five progressions are what they say on the tin until you ask for more.
+   * progressions are what they say on the tin until you ask for more.
    *
    * Remembered like every other playing setting here, so asking once is asking for good.
    */
@@ -2662,7 +2662,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             {/**
              * ⚠️ IN THE CHORDS ROW, NOT A ROW OF ITS OWN. It is a property OF the progression —
              * what its last bar does — and a room that already carries thirty-odd controls does
-             * not need a fourth line to say one word. The five patterns and this sit together
+             * not need a fourth line to say one word. The patterns and this sit together
              * because you choose them in one breath.
              *
              * ⚠️ AND IT REBUILDS WHAT IS ALREADY DOWN. A toggle that only affected the NEXT
