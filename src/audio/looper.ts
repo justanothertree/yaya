@@ -7,7 +7,7 @@ import { detectTempo, lastPlayedAt, playedBetween } from './capture'
 import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
-import { followLastBar, partAt, partsIn } from './arrange'
+import { followLastBar, growPlan, partAt, partsIn } from './arrange'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -1286,20 +1286,29 @@ export function setBars(bars: number) {
    * Measured in the room, a two-bar progression arranged and then grown reads "Bar 3: silent"
    * onwards while an untouched layer tiles across the lot.
    *
-   * That asymmetry is deliberate and documented; whether it is what somebody WANTS when they
-   * grow a song is a product question and is written up rather than guessed at here. The one
-   * thing it is not is a bug in this function, which is why the fix was to the sentence.
+   * ⚠️ SO GROWING CARRIES THE ARRANGEMENT INTO THE NEW BARS — Evan's call, 9 Nov 2026, after this
+   * sat documented as a question. The new bars repeat what the song played, the way tiling does;
+   * nothing already in a plan is rewritten, so shrinking and growing back still gives the same
+   * song. See `growPlan`. A legacy `play` mask needs nothing: its absent entries already play.
    *
-   * ⚠️ ONE EXCEPTION TO THE EXCEPTION: A FILL. Its button is named for where it plays — "On the
-   * last bar" — so a fill still sitting on the last bar follows the last bar. A fill dragged
-   * elsewhere, and every other arranged layer, is left exactly as it was. See `followLastBar`.
+   * ⚠️ AND A FILL STILL ON THE LAST BAR MOVES RATHER THAN REPEATS. Its button is named for where
+   * it plays — "On the last bar" — so it follows the last bar, shrinking included (`followLastBar`,
+   * asked first). A fill dragged elsewhere is an arrangement like any other and repeats with it.
+   *
+   * ⚠️ IN A JAM THIS REACHES A PARTNER'S LAYERS TOO, the way the fill's move always has: every
+   * layer here is grown, a borrowed one included, and an edit to a borrowed layer goes home to its
+   * author. `setTransport` deliberately grows nothing — the bars come from somebody whose own
+   * `setBars` has already carried the plans, and growing them a second time on arrival would be
+   * two machines editing one layer.
    */
+  const from = state.bars
   restart()
   set({
     bars: next,
     layers: state.layers.map((l) => {
-      if (fillPatternOf(l) === null) return l
-      const plan = followLastBar(l.plan, next)
+      const plan =
+        (fillPatternOf(l) !== null ? followLastBar(l.plan, next) : null) ??
+        growPlan(l.plan, from, next)
       return plan ? { ...l, plan } : l
     }),
   })

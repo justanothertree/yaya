@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { followLastBar, partAt, partLost, partsIn, takeTimeAt } from './arrange'
+import { followLastBar, growPlan, partAt, partLost, partsIn, takeTimeAt } from './arrange'
 
 /**
  * The arrangement's bound, which the scheduler had and the picture did not.
@@ -206,5 +206,67 @@ describe('a fill on the last bar stays on the last bar', () => {
   it('does not move on a one-bar loop, so going back to two finds it again', () => {
     expect(followLastBar([null, 0], 1)).toBe(null)
     expect(sounds(followLastBar([null, 0], 3)!, 3)).toEqual([false, false, true])
+  })
+})
+
+/**
+ * Evan's call, 9 Nov 2026: growing a song extends the arrangement into the new bars.
+ *
+ * ⚠️ STATED AS WHAT EACH BAR OF THE SONG PLAYS, the way somebody listening would say it — "bars
+ * five to eight play the first four again" — and read back through `partAt`, the function the
+ * scheduler asks. A test that compared plans would be comparing the arithmetic with itself.
+ */
+describe('a song that grows carries its arrangement with it', () => {
+  /* a four-part take, so a repeat and a reorder can be told apart */
+  const heard = (plan: readonly (number | null)[], bars: number, parts = 4) =>
+    Array.from({ length: bars }, (_, b) => partAt(plan, b, parts))
+
+  it('plays its bars again in the bars it grew by, in the order they were put in', () => {
+    /* two bars swapped round: part 2, then part 1 */
+    expect(heard(growPlan([1, 0], 2, 4)!, 4)).toEqual([1, 0, 1, 0])
+    /* four bars doubled: the whole of it twice */
+    expect(heard(growPlan([3, null, 0, 2], 4, 8)!, 8)).toEqual([3, null, 0, 2, 3, null, 0, 2])
+  })
+
+  it('and a bar somebody silenced is silent again where it comes round', () => {
+    expect(heard(growPlan([0, null], 2, 6)!, 6)).toEqual([0, null, 0, null, 0, null])
+  })
+
+  it('an uneven growth starts the phrase again from the top', () => {
+    expect(heard(growPlan([2, 1, 0, 3], 4, 6)!, 6)).toEqual([2, 1, 0, 3, 2, 1])
+  })
+
+  /* without it — the reason this exists: everything past the old end is silence */
+  it('without it, every bar the song grew by is silent', () => {
+    expect(heard([1, 0], 4)).toEqual([1, 0, null, null])
+  })
+
+  it('shrinking and growing back gives the same song, not its first half twice', () => {
+    /* an eight-bar arrangement, shortened to four (which never touches a plan) and grown again */
+    const eight = [0, 1, 2, 3, 3, 2, 1, null]
+    expect(growPlan(eight, 4, 8)).toBe(null)
+    expect(heard(eight, 8)).toEqual([0, 1, 2, 3, 3, 2, 1, null])
+    /* and grown past where it had been, the stored eight come back before anything repeats */
+    expect(heard(growPlan(eight, 4, 10)!, 10)).toEqual([0, 1, 2, 3, 3, 2, 1, null, 0, 1])
+  })
+
+  /**
+   * ⚠️ A FILE CAN HOLD A PLAN SHORTER THAN ITS SONG — a two-bar arrangement grown to four before
+   * this existed, saved like that — and it has been HEARD with bars three and four silent. Growing
+   * it again repeats what was heard, silence included, rather than filling those two with sound.
+   */
+  it('a plan shorter than its song repeats the silence it was heard with', () => {
+    expect(heard([0, 1], 4)).toEqual([0, 1, null, null])
+    expect(heard(growPlan([0, 1], 4, 8)!, 8)).toEqual([0, 1, null, null, 0, 1, null, null])
+  })
+
+  it('has nothing to do when there is no arrangement, no growth, or the plan already reaches', () => {
+    expect(growPlan(undefined, 2, 4)).toBe(null)
+    expect(growPlan([], 2, 4)).toBe(null)
+    expect(growPlan([0, 1], 2, 2)).toBe(null)
+    expect(growPlan([0, 1, 2, 3], 4, 2)).toBe(null)
+    expect(growPlan([0, 1, 2, 3], 2, 4)).toBe(null)
+    expect(growPlan([0, 1], 0, 4)).toBe(null)
+    expect(growPlan([0, 1], 2, 4.5)).toBe(null)
   })
 })

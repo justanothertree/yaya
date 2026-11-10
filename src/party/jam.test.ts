@@ -209,3 +209,26 @@ describe('a jam reads a partner at the full range the room offers', () => {
     expect(b.jam.getState().offer?.song.layers[0].gain).toBe(1.8)
   })
 })
+
+/**
+ * ⚠️ GROWING A SONG IN A JAM GROWS A PARTNER'S ARRANGEMENT ON THEIR OWN MACHINE — Evan's call of
+ * 9 Nov 2026 (`growPlan`) put through the room. `setTransport` grows nothing on arrival, on
+ * purpose, so the only way a partner's arranged layer keeps sounding in the new bars is the edit
+ * the grower's `setBars` made to their copy going home. Asked of the AUTHOR's own copy, which is
+ * the one their scheduler plays.
+ */
+describe("a jam that grows carries everybody's arrangement", () => {
+  it("a partner's arranged layer is grown on the partner's machine", async () => {
+    const a = await machine('a')
+    join(a)
+    const b = await machine('b')
+    /* two bars at 96bpm is five seconds; its bars swapped round */
+    as('b', () => b.lp.loadSong(96, 2, [{ ...loud('theirs-1'), len: 5, plan: [1, 0] }]))
+    join(b)
+    expect(a.lp.loopState().layers.find((l) => l.from === 'b')?.plan).toEqual([1, 0])
+
+    as('a', () => a.lp.setBars(4))
+    deliver()
+    expect(b.lp.loopState().layers.find((l) => l.id === 'theirs-1')?.plan).toEqual([1, 0, 1, 0])
+  })
+})
