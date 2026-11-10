@@ -123,13 +123,58 @@ export const CHORD_STYLES: { id: ChordStyle; name: string; hint: string }[] = [
  * at 48–59, in the pad's own register, and "a bass crossing above the chords it is supposed to
  * sit under" is the bug this module's own test exists to catch.
  */
-export type BassStyle = 'rootfifth' | 'roots' | 'pulse' | 'walk'
+export type BassStyle = 'rootfifth' | 'roots' | 'pulse' | 'walk' | 'funk' | 'dub' | 'bossa'
 export const BASS_STYLES: { id: BassStyle; name: string; hint: string }[] = [
   { id: 'rootfifth', name: 'Root & fifth', hint: 'The root, then the fifth below it' },
   { id: 'roots', name: 'Roots', hint: 'One long note per chord' },
   { id: 'pulse', name: 'Pulse', hint: 'Eighth notes on the root' },
   { id: 'walk', name: 'Walk', hint: 'A note on every beat, stepping into the next chord' },
+  /* ⚠️ 10 Nov 2026 — Evan: "bass lines that fit each style". The four above fit any song; these
+     three are what a particular one's bass player does, written as steps on the bar — see LINES */
+  { id: 'funk', name: 'Funk', hint: 'Syncopated sixteenths that bounce around the beat' },
+  { id: 'dub', name: 'Dub', hint: 'Reggae: a long note on the one, then a hook' },
+  { id: 'bossa', name: 'Bossa', hint: 'Root and fifth in the dotted bossa nova rhythm' },
 ]
+
+/**
+ * The bass lines a particular style plays, as sixteenth-note steps across one bar.
+ *
+ * ⚠️ EACH IS [step, tone, length]: the sixteenth it starts on, R for the chord's root or F for its
+ * fifth, and how many sixteenths it holds. Laid on the LOOP'S bar grid, not the chord's, so a
+ * chord that starts mid-bar picks the line up where the bar is — the rule `hitsIn` keeps for the
+ * chords, and the reason the bass and the drums agree about where the one is.
+ *
+ * - Funk: the one, the "a" of one, the "and" of two on the fifth, then three and four broken up
+ *   the same way — off the beat as often as on it, which is what makes it bounce.
+ * - Dub: a long root on the one, a pickup into three, the fifth on three, and a push into the next
+ *   bar — the reggae bass that leaves room around the one-drop's snare.
+ * - Bossa: root (dotted quarter), fifth (eighth), fifth (dotted quarter), root (eighth) — the
+ *   bossa nova bass, every bar.
+ */
+type Step = [at: number, tone: 'R' | 'F', len: number]
+const LINES: Partial<Record<BassStyle, Step[]>> = {
+  funk: [
+    [0, 'R', 2],
+    [3, 'R', 1],
+    [6, 'F', 1],
+    [8, 'R', 2],
+    [10, 'R', 1],
+    [11, 'F', 1],
+    [14, 'R', 1],
+  ],
+  dub: [
+    [0, 'R', 5],
+    [6, 'R', 1],
+    [8, 'F', 4],
+    [14, 'R', 2],
+  ],
+  bossa: [
+    [0, 'R', 6],
+    [6, 'F', 2],
+    [8, 'F', 6],
+    [14, 'R', 2],
+  ],
+}
 
 /**
  * Where the progression sits.
@@ -425,6 +470,29 @@ function otherBass(
     const rootNote = underPad(scaleNote(step, scaleDegrees, root, BASS_LOW), root)
     const end = s.at + s.dur
     if (style === 'roots' || !(beat > 0)) return add(s.at, s.dur * HOLD, rootNote)
+    const line = LINES[style]
+    if (line) {
+      /* the fifth as root & fifth plays it: the chord's top note an octave down, under the root */
+      const triad = triadOf(s.degree, scaleDegrees, root, BASS_LOW)
+      const fifth = underPad(triad[triad.length - 1] - 12, root)
+      const tone = (t: 'R' | 'F') => (t === 'R' ? rootNote : fifth)
+      const six = beat / 4
+      const bar = beat * 4
+      let any = false
+      for (let b = Math.floor(s.at / bar - 1e-9); b * bar < end - 1e-9; b++)
+        for (const [at, t, len] of line) {
+          const on = b * bar + at * six
+          if (on < s.at - 1e-9 || on >= end - 1e-9) continue
+          /* ⚠️ A CHORD IS ENTERED ON ITS ROOT, whatever step of the line it meets first — the way a
+             bass player plays a change. Without it a short chord whose only step was a fifth never
+             sounded its root at all: F in a fast Four chords played a C. */
+          add(on, Math.min(len * six * HOLD, (end - on) * HOLD), any ? tone(t) : rootNote)
+          any = true
+        }
+      /* a chord too short to meet any step of the line still sounds its root — see hitsIn */
+      if (!any) add(s.at, s.dur * HOLD, rootNote)
+      return
+    }
     if (style === 'pulse') {
       const hits = hitsIn(s, 'pulse', beat)
       for (const [t, until] of hits) add(t, until - t, rootNote)
