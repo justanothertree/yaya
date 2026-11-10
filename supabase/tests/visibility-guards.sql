@@ -12,6 +12,9 @@
 \ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
 \pset format unaligned
 \pset tuples_only on
+select '#### TOCHAR ' || to_char(12::numeric, 'FM999999990.##') || '|' || to_char(12.5::numeric, 'FM999999990.##')
+       || '|' || to_char(0.25::numeric, 'FM999999990.##') || '|' || trim(to_char(20::numeric, 'FM999999990.##')) || '#### END';
+\pset tuples_only on
 select '#### FN ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) || E'\n'
        || pg_get_functiondef(p.oid) || E'\n#### END'
   from pg_proc p
