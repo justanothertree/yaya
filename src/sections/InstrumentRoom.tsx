@@ -184,6 +184,7 @@ import { SingPanel } from '../audio/SingPanel'
 import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
 import { FAMILIES, familyOf, familyVoices } from '../audio/families'
 import { STARTERS, starterNow, styleBassVoice, type Starter } from '../audio/starters'
+import { BASS_PRESETS, presetOf } from '../audio/bassPresets'
 
 /**
  * Somewhere to play.
@@ -3295,8 +3296,46 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               const chords = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
               const full = loop.layers.length >= MAX_LAYERS && !bass
               const shown = bass ? styleOfBass(bass) : null
+              /**
+               * ⚠️ A PRESET IS THE LINE AND THE VOICE TOGETHER — Evan, 10 Nov 2026: "bass presets".
+               * It sets the two controls beside it rather than being a third thing, so what it
+               * picks stays editable right here, and it READS them: a bass whose line and voice
+               * match a preset shows that preset, and changing either one shows "Your own". With no
+               * bass loaded it shows the pair that will be laid next, the way Sound does.
+               */
+              const presetNow = bass
+                ? presetOf(styleOfBass(bass), bass.instrument)
+                : presetOf(bassStylePick, bassSoundPick)
               return (
                 <>
+                  <label className="inst-pick">
+                    <span className="muted">Preset</span>
+                    <select
+                      value={presetNow?.id ?? ''}
+                      disabled={full}
+                      onChange={(e) => {
+                        const pr = BASS_PRESETS.find((x) => x.id === e.target.value)
+                        e.target.blur()
+                        if (!pr) return
+                        setBassStylePick(pr.style)
+                        setBassSoundPick(pr.voice)
+                        if (!p) return
+                        const lead = chords ? leadsBack(chords.events, p, chords.len) : leadBack
+                        const id = layBass(p, lead, pr.style)
+                        if (!id) return
+                        /* a new row is laid on the voice picked BEFORE this press — set it now */
+                        setLayerInstrument(id, pr.voice)
+                        if (!loop.playing) startLoop()
+                      }}
+                    >
+                      <option value="">{bass ? 'Your own' : 'Choose one'}</option>
+                      {BASS_PRESETS.map((pr) => (
+                        <option key={pr.id} value={pr.id} title={pr.hint}>
+                          {`${pr.name} · ${INSTRUMENTS.find(([x]) => x === pr.voice)?.[2] ?? pr.voice}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   {BASS_STYLES.map((st) => (
                     <button
                       key={st.id}
