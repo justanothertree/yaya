@@ -36,6 +36,29 @@ select p.proname, md5(pg_get_functiondef(p.oid))
 select current_setting('server_version_num')::int >= 130000 as has_trim_scale;  -- expect true
 ```
 
+**1b. The `1.2.3` pre-check, read-only.** It counts stored workout values that pass
+`chronicle_moments`' pattern `^[0-9.]+$` and then fail its `::numeric` cast. These are values with
+two points, or with no digit at all. `12.` and `.5` pass the pattern and cast, so they are not
+counted.
+
+```sql
+select count(*) as would_error, count(distinct p.owner_user_id) as members,
+       min(l.date) as first_day, max(l.date) as last_day
+  from public.circuit_logs l
+  join public.circuit_people p on p.id = l.person_id
+  cross join lateral jsonb_array_elements(
+         case when jsonb_typeof(l.entries) = 'array' then l.entries else '[]'::jsonb end) en
+ where (en->>'val') ~ '^[0-9.]+$'
+   and ((en->>'val') ~ '\..*\.' or (en->>'val') !~ '[0-9]');
+-- expect 0
+```
+
+It does not block 21a, which keeps the same pattern and cast. Any other number is reported to
+Evan before step 2. It means that for each member counted, every `chronicle_moments` window
+holding that day errors today. The client reads an error as no moments
+(`src/chronicle/cloud.ts`), so that window's workouts and ratings are silently missing. The fix
+would be its own change: the stricter pattern `circuit_cell_set` already uses.
+
 **2. 21a.** `apply_migration`, name `chronicle_moments_decimals`. The body is the moments draft
 after its leading comment block.
 
@@ -106,5 +129,5 @@ migrations, Postgres 17. In it, both functions have check A's md5s, which are pr
 
 `chronicle_moments` reads a value when it matches `^[0-9.]+$` and then casts it to a number, so a
 value such as `1.2.3` or `.` would pass the pattern, fail the cast, and error the whole call.
-`circuit_cell_set` uses the stricter `^[0-9]+(\.[0-9]+)?$`. Whether any stored log holds such a
-value is a production read, so it is left out of this plan.
+`circuit_cell_set` uses the stricter `^[0-9]+(\.[0-9]+)?$`. Step 1b counts whether any stored log
+holds such a value; this plan changes neither the pattern nor the cast.
