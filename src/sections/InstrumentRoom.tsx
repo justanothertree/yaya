@@ -182,6 +182,7 @@ import {
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
 import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
 import { FAMILIES, familyOf, familyVoices } from '../audio/families'
+import { STARTERS, starterNow, type Starter } from '../audio/starters'
 
 /**
  * Somewhere to play.
@@ -1446,6 +1447,40 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   }
 
   /**
+   * A whole backing from one press — see starters.ts.
+   *
+   * ⚠️ THE SAME CALLS THE PANEL'S OWN BUTTONS MAKE, in the order a person would press them: the
+   * beat, then the chords in their style, then the bass under them. Each swaps its own row, so a
+   * second starter replaces the first rather than stacking a second backing on it, and every row
+   * afterwards shows exactly what was picked.
+   *
+   * ⚠️ IT SETS THE TEMPO ONLY ON A SONG WITH NOTHING OF YOURS IN IT. A change of tempo rescales
+   * every layer, and a part you played is not a starter's to speed up — so with one of those in
+   * the song the beat, chords and bass arrive at the tempo you already have.
+   */
+  const ownParts = (layers: readonly Layer[]) =>
+    layers.some(
+      (l) =>
+        beatPatternOf(l) === null &&
+        chordPatternOf(l) === null &&
+        bassPatternOf(l) === null &&
+        fillPatternOf(l) === null,
+    )
+  const applyStarter = (s: Starter) => {
+    const p = CHORD_PATTERNS.find((x) => x.id === s.chords)
+    const d = DRUM_PATTERNS.find((x) => x.id === s.beat)
+    if (!p || !d) return
+    if (!ownParts(loopState().layers)) setBpm(s.bpm)
+    const beat = patternEvents(d, loopState().bpm)
+    if (!addPatternLayer(beat.events, beat.len, d.id)) return
+    setChordStylePick(s.chordStyle)
+    setBassStylePick(s.bass)
+    if (!layChords(p, leadBack, s.chordStyle)) return
+    layBass(p, leadBack, s.bass)
+    if (!loopState().playing) startLoop()
+  }
+
+  /**
    * ⚠️ THE BACKING FOLLOWS THE KEY — Evan's call, 9 Nov 2026. A change of Scale or Key re-lays
    * the chords and the bass in the new key, at their own length and in their own style, keeping
    * their sound, level, mute and arrangement; an edited one moves by the same interval, and on a
@@ -2683,7 +2718,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 onClick={() => setBeatsOpen((v) => !v)}
                 title="Drums, chords, a bassline and a fill — drop any of them in, then change them"
               >
-                🥁 Pick a beat or some chords
+                🥁 Pick a style, a beat or some chords
               </button>
               <span className="muted inst-start-or">or just play</span>
             </span>
@@ -3059,6 +3094,45 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        */}
       {beatsOpen && (
         <div className="inst-beats card">
+          {/**
+           * ⚠️ FIRST, BECAUSE IT IS THE WHOLE PANEL IN ONE PRESS — Evan, 10 Nov 2026: "one-press
+           * genre starters". The rows below are the same choices one at a time; a style makes them
+           * all and the rows then show what it made, so a starter is somewhere to begin rather
+           * than a mode you are stuck in. Pressed only while every part still matches it.
+           */}
+          {(() => {
+            const beatNow = loop.layers.map((l) => beatPatternOf(l)).find((x) => x) ?? null
+            const chordLayer = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+            const bassLayer = loop.layers.find((l) => bassPatternOf(l) !== null) ?? null
+            const now = starterNow({
+              beat: beatNow,
+              chords: chordLayer ? chordPatternOf(chordLayer) : null,
+              chordStyle: chordLayer ? styleOfChord(chordLayer) : null,
+              bass: bassLayer ? styleOfBass(bassLayer) : null,
+            })
+            /* a starter can need three new rows; say so rather than lay two of them */
+            const needs = [!beatNow, !chordLayer, !bassLayer].filter(Boolean).length
+            const full = loop.layers.length + needs > MAX_LAYERS
+            const keepsTempo = ownParts(loop.layers)
+            return (
+              <div className="inst-beats-row">
+                <span className="muted inst-beats-genre">Styles</span>
+                {STARTERS.map((s) => (
+                  <button
+                    key={s.id}
+                    className={'btn' + (now?.id === s.id ? '' : ' btn-ghost')}
+                    aria-pressed={now?.id === s.id}
+                    disabled={full}
+                    onClick={() => applyStarter(s)}
+                    title={`${s.name} — ${s.hint}${keepsTempo ? ', at your tempo' : `, at ${s.bpm} bpm`}`}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+                {full && <span className="muted inst-beats-why">no room for three layers</span>}
+              </div>
+            )
+          })()}
           <div className="inst-beats-row">
             <span className="muted inst-beats-genre">Chords</span>
             {CHORD_PATTERNS.map((p) => {
