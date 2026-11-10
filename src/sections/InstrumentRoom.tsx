@@ -27,7 +27,7 @@ import {
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
-import { nameChord } from '../audio/chordName'
+import { keySpeller, nameChord } from '../audio/chordName'
 import { pedalBook, type PedalBook } from '../audio/pedal'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
@@ -1319,9 +1319,18 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * or ask about. Both come off the same `backingNow`, so they cannot name one chord while the
    * keyboard lights up another.
    */
+  /**
+   * ⚠️ SPELLED IN THE ROOM'S KEY — B♭ in D minor, not A♯ (Evan, 9 Nov 2026). Both readouts use it,
+   * the backing's and the one for what you are holding, so one chord never has two names an inch
+   * apart. Chromatic has no key and keeps its sharps. See `keySpeller`.
+   */
+  const spell = useMemo(
+    () => (scale === 'chromatic' ? undefined : keySpeller(degrees, root)),
+    [scale, degrees, root],
+  )
   const backingChord = useMemo(
-    () => (backingNow.length ? nameChord(backingNow) : null),
-    [backingNow],
+    () => (backingNow.length ? nameChord(backingNow, spell) : null),
+    [backingNow, spell],
   )
 
   /**
@@ -2594,6 +2603,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 className={'inst-ruler-cell' + (now && loop.playing ? ' is-now' : '')}
                 onClick={() => seekTo(at)}
                 title={`Jump to bar ${b + 1}`}
+                /* ⚠️ A NAME, NOT ONLY A TOOLTIP: the cell reads "·" and a phone has no hover */
+                aria-label={`Jump to bar ${b + 1}`}
               >
                 {(b + 1) % 4 === 1 ? b + 1 : '·'}
               </button>
@@ -3099,6 +3110,21 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                             setLifted({ id: l.id, bar: b })
                           }
                         }}
+                        /**
+                         * ⚠️ A NAME AS WELL AS THE TOOLTIP — Evan, 9 Nov 2026. A cell is a coloured
+                         * block with nothing in it until the bars are reordered, and its title is
+                         * all that said what it was; a phone has no hover and a screen reader read
+                         * a nameless button. The name says what the bar IS, and the title (now its
+                         * description) keeps saying what a tap does. Visible words were measured
+                         * and rejected: the row is a strip of 30px blocks.
+                         */
+                        aria-label={
+                          src == null
+                            ? `Bar ${b + 1}, silent`
+                            : gone
+                              ? `Bar ${b + 1}, part ${src + 1}, which this take does not have`
+                              : `Bar ${b + 1}, part ${src + 1} of ${parts}`
+                        }
                         title={
                           src == null
                             ? `Bar ${b + 1}: silent — tap to fill it`
@@ -3178,10 +3204,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
 
                 {/* The third way to fix a take, after undo and re-voice: play it again over the
                   top. The layer keeps its place in the stack rather than jumping to the end. */}
+                {/* ⚠️ THE THREE ICONS GET NAMES, NOT WORDS — Evan, 9 Nov 2026. Words were measured
+                    at 375: "⏺ Again", "🔊 Mute" and "✕ Delete" took every layer row from 114px to
+                    144px, which is 360px down the page at twelve layers. A name reaches a screen
+                    reader and the audit; the tooltip stays for a mouse. */}
                 <button
                   className="btn"
                   onClick={() => armRecord(l.id)}
                   title="Record this layer again, keeping its place"
+                  aria-label="Record this layer again"
                 >
                   ⏺
                 </button>
@@ -3216,7 +3247,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                       Split
                     </button>
                   )}
-                <button className="btn" onClick={() => toggleMute(l.id)} title="Mute this layer">
+                <button
+                  className="btn"
+                  onClick={() => toggleMute(l.id)}
+                  /* a toggle: one name, and the state says whether it is on */
+                  aria-label="Mute this layer"
+                  aria-pressed={l.muted}
+                  title={l.muted ? 'Muted — click to hear it again' : 'Mute this layer'}
+                >
                   {l.muted ? '🔇' : '🔊'}
                 </button>
                 {/* ⚠️ DELETING SOMEBODY ELSE'S TAKE ASKS FIRST, and names them. It has always
@@ -3233,6 +3271,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     removeLayer(l.id)
                   }}
                   title={
+                    l.from
+                      ? `Delete ${jamNames[l.from] ? `${jamNames[l.from]}'s` : 'their'} part — for everyone`
+                      : 'Delete this layer'
+                  }
+                  aria-label={
                     l.from
                       ? `Delete ${jamNames[l.from] ? `${jamNames[l.from]}'s` : 'their'} part — for everyone`
                       : 'Delete this layer'
@@ -3503,7 +3546,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        */}
       {inst !== 'drums' && (
         <p className="muted inst-note inst-chord-name">
-          <span aria-live="polite">{(held.length > 0 && nameChord(held)) || ' '}</span>
+          <span aria-live="polite">{(held.length > 0 && nameChord(held, spell)) || ' '}</span>
           {/* only when your own hands are quiet — what you are playing always wins the line */}
           {held.length === 0 && backingChord && (
             <span className="inst-backing-chord">{backingChord} underneath</span>
