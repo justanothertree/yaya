@@ -1108,6 +1108,10 @@ the room deployed:
 10. On a Circuit day with a photo, type one number, then clear every number. The day and its photo
     should still be there. (Before this, the board forgot the photo after one typed save, and
     clearing then deleted the day, with its comments.)
+11. Open the Circuit, follow a cell's "change them there", take a set back in Chronicle, and come
+    back to the Circuit. The cell should show the new total without a reload, and typing into it
+    should save the first time (§20b). Try it once with the canvas on, where the Circuit stays
+    mounted, and once with it off.
 
 The preview now has a stand-in for the signed-in Circuit board (`src/dev/circuitPreview.ts`), and
 8–10 were driven there first. It shares Chronicle's preview store and runs the real adapter, so it
@@ -1210,27 +1214,24 @@ apply anything to production.
 
 ## 20. Chronicle — every open question, in one place (9 Nov 2026)
 
-The answers above unblock sets step 2 and the conversion draft, and nothing else. Every other open
-item is here, as the question and its recommendation. Its own section holds the reasoning.
+✅ **ALL ANSWERED 9 Nov, as recommended.** Evan's words: "These answers are NOT approval to apply
+anything to production." Applying 17d, 18a, 19c, 19d and 20c is one release, approved as one
+step against `docs/2026-11-09-chronicle-release-plan.md`. Each row's own section holds the
+reasoning.
 
-| §   | Question                                                                                  | Recommendation                                                                                                      | Blocks                                                     |
-| --- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| 17d | Apply the per-window marks draft (step 1) to production?                                  | Yes. Then deploy the room, then step 3 (the profile reader), after one read-only look at production's function text | releasing #73 and #83; nothing in development              |
-| 18a | Apply the day-notes draft?                                                                | Yes, in either order with the others                                                                                | releasing #76 and #84                                      |
-| 19a | Does an extra session on a day the schedule never asked about count toward the streak?    | Yes, as built                                                                                                       | nothing (it is the built behaviour; a no changes one rule) |
-| 19b | On a friend's view, a Tuesdays goal reads open on a Wednesday. Leave it, or store a zone? | Leave it for now                                                                                                    | nothing                                                    |
-| 19c | Apply the weekday draft?                                                                  | Yes, in any order with the others                                                                                   | releasing #83                                              |
-| 19d | Apply the sets draft (step 1)?                                                            | Yes; nothing reads it until step 2                                                                                  | releasing #85 and step 2                                   |
-| 19e | What should make claiming a Circuit person verified?                                      | An admin approves it, or the person confirms from their own account                                                 | moving history at claim time; nothing else                 |
-
-**Raised by the §19g build, 9 Nov:**
-
-| §   | Question                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Recommendation                                                                                                                                                                                                                                      | Blocks                                         |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 20a | A set counted in Chronicle shows in that person's Circuit column, which their circuits can see — while the rest of Chronicle is private unless shared. Is that what you want?                                                                                                                                                                                                                                                                                                    | Yes: it is "see it in both places", the sitting's time and activity stay private, and the counter says it in one line where it happens                                                                                                              | releasing the grid branch                      |
-| 20b | A Circuit board does not refresh when Chronicle writes a set: the new total appears on its next load or the next Circuit change. Measured in the preview: follow a cell's link, take a set back in Chronicle, come back in the same tab, and the cell still shows the old total. Typing then is refused ("that day changed while you were typing"), which is right but reads like a fault. Add the sets table to realtime, or reload the board when the Circuit is opened again? | Not realtime yet: it is a publication change and a payload to design. Yes to a reload whenever the Circuit is opened again, one board load per visit, which closes the loop the cell's own link opens                                               | nothing; the reload is a small frontend change |
-| 20c | Apply the links draft, then the grid draft?                                                                                                                                                                                                                                                                                                                                                                                                                                      | Yes, after the sets draft (19d), in that order. Nothing changes for a member until they link an exercise or sessions write sets                                                                                                                     | releasing `sets-links` and `sets-grid`         |
-| 20d | The conversion: when, and with which freeze of legacy writes?                                                                                                                                                                                                                                                                                                                                                                                                                    | Not until you choose a cutover. It is written, tested on fixtures and dry-runnable; applying it needs the freeze it says it needs. A dry run names everything that would stop a person, including a set with no sitting that the grid never counted | converting anybody; nothing in development     |
+| §   | Question                                                                       | Answer                                                                              |
+| --- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| 17d | Apply the per-window marks draft (step 1)?                                     | Yes, as part of the release plan                                                    |
+| 18a | Apply the day-notes draft?                                                     | Yes, as part of the release plan                                                    |
+| 19a | Does an extra session on a day the schedule never asked about count?           | Yes, as built                                                                       |
+| 19b | A friend's view of a Tuesdays goal on a Wednesday: leave it, or store a zone?  | Leave it. No stored time zone                                                       |
+| 19c | Apply the weekday draft?                                                       | Yes, as part of the release plan                                                    |
+| 19d | Apply the sets draft (step 1)?                                                 | Yes, as part of the release plan                                                    |
+| 19e | What makes claiming a Circuit person verified?                                 | An admin approves it, or the person confirms from their own account. Not yet built  |
+| 20a | A set counted in Chronicle shows in that person's Circuit column. OK?          | Yes: the number only; the session's details stay private                            |
+| 20b | The board does not see Chronicle's sets until it reloads. Realtime, or reload? | Reload the board when the Circuit opens again; no realtime. Built as a draft (#100) |
+| 20c | Apply the links draft, then the grid draft?                                    | Yes, after 19d, links then grid, as part of the release plan                        |
+| 20d | The conversion: when, and with which freeze?                                   | No conversion until Evan picks a cutover date                                       |
 
 ✅ **20e, answered 9 Nov: keep it as built.** A restore leaves out a converted person's sets with no
 sitting. The question was what to do after a converted cell is retyped: restoring an older file put

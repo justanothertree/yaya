@@ -1,5 +1,9 @@
 # Chronicle — the integration queue, as of 8 Nov 2026 (evening)
 
+> **9 Nov: the release is planned in `docs/2026-11-09-chronicle-release-plan.md`**, for Evan to
+> approve as one step: six drafts in C7's order, one merge that deploys this tree, then the profile
+> reader. Nothing in it is applied or merged yet.
+
 **A snapshot, not a ledger.** Every head and CI result below was read on 8 Nov 2026 and is a
 claim with a date on it (CLAUDE.md §2). `gh pr list --json headRefOid,statusCheckRollup` answers
 the same question today in one call. Nothing here is merged or deployed, and no production SQL
