@@ -1964,3 +1964,36 @@ html:has(.lab) {
     animation: none;
   }
 }
+
+/* Light trails: a wide dark arena, a score per rider, and turn buttons for thumbs */
+.tr-room .lab-stage.tr-stage {
+  height: min(66vh, 560px, 72vw);
+  min-height: 240px;
+  touch-action: none;
+}
+.tr-wrap {
+  border-radius: 12px;
+}
+.tr-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.tr-scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.5rem;
+}
+.tr-pad {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.tr-pad .btn {
+  min-height: 52px;
+  font-size: 1.05rem;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tr-pad {
+    display: none;
+  }
+}

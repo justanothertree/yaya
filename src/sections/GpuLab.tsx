@@ -88,6 +88,7 @@ import { HockeyDemo } from '../gpu/HockeyDemo'
 import { DotsDemo } from '../gpu/DotsDemo'
 import { ReversiDemo } from '../gpu/ReversiDemo'
 import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
+import { TrailsDemo } from '../gpu/TrailsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -627,6 +628,12 @@ const DEMOS: readonly {
     name: 'Sea battle',
     line: 'Sea battle — hide your fleet, then take turns calling squares of each other’s sea until one fleet is sunk. Against a computer that fires at random, one that hunts on a chequerboard, or one that works out where your ships most likely are (and never peeks). Three fleets, two seas, rules to choose, and a record of your fewest shots to win.',
     Demo: SeaBattleDemo,
+  },
+  {
+    id: 'trails',
+    name: 'Light trails',
+    line: 'Light trails — ride a line of light round the arena and make the others crash into a wall before you do. One to three rivals that dodge, seek open space, or cut across your path; three arenas, three layouts, three speeds. Steer with keys, swipes or taps; first to three rounds wins.',
+    Demo: TrailsDemo,
   },
 ]
 
