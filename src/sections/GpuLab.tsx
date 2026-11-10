@@ -103,6 +103,7 @@ import { MinesDemo } from '../gpu/MinesDemo'
 import { TimeTrialDemo } from '../gpu/TimeTrialDemo'
 import { BackgammonDemo } from '../gpu/BackgammonDemo'
 import { PoolDemo } from '../gpu/PoolDemo'
+import { ChessDemo } from '../gpu/ChessDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -732,6 +733,12 @@ const DEMOS: readonly {
     name: 'Pool',
     line: 'Pool — eight-ball against the computer. Drag back like a slingshot and let go; the line shows where the cue ball meets its first ball. Solids or stripes, fouls and ball in hand, and the black to finish. The computer plans every shot by playing it through first.',
     Demo: PoolDemo,
+  },
+  {
+    id: 'chess',
+    name: 'Chess',
+    line: 'Chess against the computer, with every rule — castling, en passant, promotion, and all the draws. Easy, Fair and Hard look one, two and three moves ahead and follow every capture to the end. Take back a move whenever you like; you swap colours each game.',
+    Demo: ChessDemo,
   },
 ]
 
