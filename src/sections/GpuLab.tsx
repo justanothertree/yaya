@@ -110,6 +110,7 @@ import { TowersDemo } from '../gpu/TowersDemo'
 import { GoDemo } from '../gpu/GoDemo'
 import { SudokuDemo } from '../gpu/SudokuDemo'
 import { DominoesDemo } from '../gpu/DominoesDemo'
+import { GinDemo } from '../gpu/GinDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -781,6 +782,12 @@ const DEMOS: readonly {
     name: 'Dominoes',
     line: 'Dominoes, the draw game — match the ends, draw from the boneyard when nothing fits, and go out first to score what is left in the other hand. Against a computer that sheds heavy tiles, remembers what you could not follow and counts what it has not seen.',
     Demo: DominoesDemo,
+  },
+  {
+    id: 'gin',
+    name: 'Gin rummy',
+    line: 'Gin rummy — draw, discard, and make melds of three or four of a kind or runs of a suit; knock at ten deadwood or go gin with none. Your hand shows its best melds as you play; first to a hundred against the computer.',
+    Demo: GinDemo,
   },
 ]
 

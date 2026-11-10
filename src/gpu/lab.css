@@ -3979,3 +3979,128 @@ html:has(.lab) {
   outline: 3px solid #ffb000;
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------- gin rummy */
+.gn-room {
+  --gn-felt: #0f5132;
+}
+.gn-room.is-blue {
+  --gn-felt: #123d6b;
+}
+.gn-room.is-red {
+  --gn-felt: #6b1520;
+}
+.gn-table {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--gn-felt), #fff 10%),
+    var(--gn-felt)
+  );
+  width: min(100%, 620px);
+}
+.gn-theirs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 3rem;
+}
+.gn-back.pk-card {
+  width: 26px;
+  height: 40px;
+}
+.gn-middle {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+.gn-pile {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.gn-pile:disabled {
+  cursor: default;
+}
+.gn-pile:not(:disabled) .pk-card {
+  box-shadow:
+    0 0 0 3px #ffd34d,
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.gn-pile:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+}
+.gn-count {
+  align-self: center;
+  justify-self: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+}
+.gn-empty {
+  display: block;
+  width: 46px;
+  height: 64px;
+  border: 2px dashed rgb(255 255 255 / 0.35);
+  border-radius: 6px;
+}
+/* eleven cards across a phone: they overlap, each keeping a slice wider than a fingertip's minimum */
+.gn-hand {
+  display: flex;
+  padding: 0.9rem 0 0.25rem;
+  width: 100%;
+  max-width: 620px;
+  contain: inline-size;
+}
+.gn-mine {
+  position: relative;
+  flex: 0 1 50px;
+  min-width: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.gn-mine:last-child {
+  flex: 0 0 auto;
+}
+.gn-mine.is-picked {
+  transform: translateY(-14px);
+}
+.gn-mine.is-new .pk-card {
+  box-shadow:
+    0 0 0 2px #ffd34d,
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.gn-mine:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+  border-radius: 6px;
+  z-index: 1;
+}
+.gn-card.meld-0 {
+  box-shadow: inset 0 -5px 0 #2fbf71;
+}
+.gn-card.meld-1 {
+  box-shadow: inset 0 -5px 0 #2f9bff;
+}
+.gn-card.meld-2 {
+  box-shadow: inset 0 -5px 0 #b07bff;
+}
+.gn-card.meld-3 {
+  box-shadow: inset 0 -5px 0 #ff8a3d;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gn-mine {
+    transition: none;
+  }
+}
