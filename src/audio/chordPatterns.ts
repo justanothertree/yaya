@@ -35,9 +35,20 @@ export type ChordPattern = {
 }
 
 /**
- * ⚠️ FIVE, AND EACH ONE HAS TO SOUND DIFFERENT. drumPatterns' rule applies unchanged: "ten
+ * ⚠️ TEN, AND EACH ONE HAS TO SOUND DIFFERENT. drumPatterns' rule applies unchanged: "ten
  * variations on a backbeat with different labels is a longer list that helps nobody choose".
  * These differ in where they start and where they resolve, which is what you actually hear.
+ *
+ * ⚠️ FIVE MORE ON 9 NOV 2026, at Evan's ask ("around ten common ones — I'll judge by ear"), against
+ * thirty drum patterns. Chosen for being everywhere AND unlike the five already here, which are
+ * mostly the same four chords turned round: a long walk (Canon), a climb that lands somewhere
+ * else (Rising, the "royal road" of Japanese pop), a descent (Spanish, the Andalusian cadence),
+ * the circle of fifths (Circle), and a two-chord vamp to play over. All are written in major
+ * degrees like the rest, so in a minor room they become the minor versions of themselves.
+ *
+ * ⚠️ AND NOT THE TWELVE-BAR BLUES, which is the obvious sixth. Its twelve chords are a bar each by
+ * definition, and this module divides the LOOP between the chords — so in the room's default two
+ * bars it would change chord six times a bar. It wants a loop that knows its own length first.
  */
 export const CHORD_PATTERNS: ChordPattern[] = [
   { id: 'four', name: 'Four chords', degrees: [1, 5, 6, 4], hint: 'The one most songs use' },
@@ -50,6 +61,36 @@ export const CHORD_PATTERNS: ChordPattern[] = [
   },
   { id: 'simple', name: 'Simple', degrees: [1, 4, 5, 4], hint: 'Three chords, nothing clever' },
   { id: 'turnaround', name: 'Turnaround', degrees: [2, 5, 1, 1], hint: 'Leans home, then rests' },
+  {
+    id: 'canon',
+    name: 'Canon',
+    degrees: [1, 5, 6, 3, 4, 1, 4, 5],
+    hint: 'Pachelbel’s eight chords — the wedding one',
+  },
+  {
+    id: 'rising',
+    name: 'Rising',
+    degrees: [4, 5, 3, 6],
+    hint: 'Climbs, then lands somewhere bittersweet — J-pop and anime',
+  },
+  {
+    id: 'spanish',
+    name: 'Spanish',
+    degrees: [6, 5, 4, 3],
+    hint: 'Four chords stepping down — flamenco, surf rock',
+  },
+  {
+    id: 'circle',
+    name: 'Circle',
+    degrees: [6, 2, 5, 1],
+    hint: 'Round the circle of fifths and home — jazz and Motown',
+  },
+  {
+    id: 'vamp',
+    name: 'Two chords',
+    degrees: [1, 4, 1, 4],
+    hint: 'Back and forth between two — a bed to play over',
+  },
 ]
 
 /**
@@ -225,13 +266,18 @@ function triadOf(
  * ⚠️ A FIFTH ABOVE WHAT IT RETURNS TO, not simply the key's dominant, and the difference is the
  * whole reason this rule was chosen. A turnaround's job is to pull toward the chord that comes
  * next, and the chord that comes next is the progression's FIRST one, which is not always the
- * tonic. Worked out for all five:
+ * tonic. Worked out for all ten:
  *
- *     Four chords  I V vi IV   returns to I   → V      IV then V
- *     Fifties      I vi IV V   returns to I   → V      already ends on V — nothing to add
- *     Wistful      vi IV I V   returns to vi  → iii    V then iii
- *     Simple       I IV V IV   returns to I   → V      IV then V
- *     Turnaround   ii V I I    returns to ii  → vi     I then vi
+ *     Four chords  I V vi IV              returns to I   → V     IV then V
+ *     Fifties      I vi IV V              returns to I   → V     already ends on V — nothing to add
+ *     Wistful      vi IV I V              returns to vi  → iii   V then iii
+ *     Simple       I IV V IV              returns to I   → V     IV then V
+ *     Turnaround   ii V I I               returns to ii  → vi    I then vi
+ *     Canon        I V vi iii IV I IV V   returns to I   → V     already ends on V — nothing to add
+ *     Rising       IV V iii vi            returns to IV  → I     vi then I
+ *     Spanish      vi V IV iii            returns to vi  → iii   already ends on iii — nothing to add
+ *     Circle       vi ii V I              returns to vi  → iii   I then iii
+ *     Two chords   I IV I IV              returns to I   → V     IV then V
  *
  * The simpler rule — always play V — was the first idea and is worse: it leaves BOTH Fifties and
  * Wistful unchanged, because each already ends on V, and for Wistful that is the wrong answer

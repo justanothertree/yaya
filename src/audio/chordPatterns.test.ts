@@ -67,6 +67,40 @@ describe('the four-chord song', () => {
   })
 })
 
+/**
+ * The five added on 9 Nov 2026, each by the chords a songbook would print — in C major, and in A
+ * minor, which is what a minor room makes of the same degrees.
+ */
+describe('the five added for Evan to judge by ear', () => {
+  const by = (id: string) => CHORD_PATTERNS.find((x) => x.id === id)!
+  it.each([
+    [
+      'canon',
+      ['C major', 'G major', 'A minor', 'E minor', 'F major', 'C major', 'F major', 'G major'],
+    ],
+    ['rising', ['F major', 'G major', 'E minor', 'A minor']],
+    ['spanish', ['A minor', 'G major', 'F major', 'E minor']],
+    ['circle', ['A minor', 'D minor', 'G major', 'C major']],
+    ['vamp', ['C major', 'F major', 'C major', 'F major']],
+  ] as const)('%s in C major', (id, names) => {
+    expect(chordsAt(progressionEvents(by(id), 8, major, 0).events)).toEqual(names)
+  })
+
+  it('and Spanish in A minor is the flamenco descent it is named for', () => {
+    /* [6, 5, 4, 3] in A minor: F, E minor, D minor, C — the same steps down, from VI */
+    expect(chordsAt(progressionEvents(by('spanish'), 8, minor, 9).events)).toEqual([
+      'F major',
+      'E minor',
+      'D minor',
+      'C major',
+    ])
+  })
+
+  it('there are ten', () => {
+    expect(CHORD_PATTERNS).toHaveLength(10)
+  })
+})
+
 describe('every progression', () => {
   it.each(CHORD_PATTERNS.map((p) => [p.name, p] as const))('%s is well formed', (_n, p) => {
     expect(p.id).toMatch(/^[a-z]+$/)
@@ -295,6 +329,9 @@ describe('the chord that leans back to the top', () => {
     expect(leadBackStep(by('simple'), SEVEN), 'I IV V IV returns to I, so V').toBe(5)
     expect(leadBackStep(by('sad'), SEVEN), 'vi IV I V returns to vi, so iii').toBe(3)
     expect(leadBackStep(by('turnaround'), SEVEN), 'ii V I I returns to ii, so vi').toBe(6)
+    expect(leadBackStep(by('rising'), SEVEN), 'IV V iii vi returns to IV, so I').toBe(1)
+    expect(leadBackStep(by('circle'), SEVEN), 'vi ii V I returns to vi, so iii').toBe(3)
+    expect(leadBackStep(by('vamp'), SEVEN), 'I IV I IV returns to I, so V').toBe(5)
   })
 
   /**
@@ -303,6 +340,9 @@ describe('the chord that leans back to the top', () => {
    */
   it('is nothing when the progression already ends there', () => {
     expect(leadBackStep(by('fifties'), SEVEN), 'I vi IV V already ends on V').toBeNull()
+    expect(leadBackStep(by('canon'), SEVEN), 'Canon already ends on V').toBeNull()
+    /* the Andalusian cadence ends on the chord that leads back to its own top — that is the sound */
+    expect(leadBackStep(by('spanish'), SEVEN), 'vi V IV iii already ends on iii').toBeNull()
   })
 
   it('stays inside the scale, whatever size it is', () => {
