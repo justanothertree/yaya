@@ -385,6 +385,13 @@ export function Board({
                         ? 1
                         : 0.65,
                       padding: '0 2px',
+                      /* 24px with a mouse (OPEN-DECISIONS 22a; it measured 19x20). A touch screen's
+                         .cz-tap is !important and grows it to 38 over this. */
+                      minWidth: 24,
+                      minHeight: 24,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
                     {state.logs.some((l) => l.personId === r.p.id && l.date === todayStr)
