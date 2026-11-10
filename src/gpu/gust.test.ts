@@ -23,6 +23,8 @@ import {
   breathe,
   goal,
   inHalf,
+  REACH,
+  FAN_BODY,
   kickoff,
   newMatch,
   packRink,
@@ -156,17 +158,34 @@ describe('the fans', () => {
     }
     expect(rest).toBeCloseTo(REFILL, 1)
   })
-  it('stay in their own half, and move no faster than FAN_SPEED', () => {
+  it('reach 15% of the rink past halfway, so both can stand in the middle, and no faster than FAN_SPEED', () => {
     const f = fan(20, 45)
     steer(f, 0, [W - 5, -30], 0.1)
     expect(Math.hypot(f.x - 20, f.y - 45)).toBeCloseTo(FAN_SPEED * 0.1, 6)
     for (let k = 0; k < 200; k++) steer(f, 0, [W - 5, -30], 0.1)
     expect([f.x, f.y]).toEqual(inHalf(0, [W, 0]))
-    expect(f.x).toBeLessThan(W / 2)
+    // 15% of the rink is 24 cells: Blue reaches x = 104 of 160, and no further
+    expect(REACH).toBe(24)
+    expect(f.x).toBeCloseTo(W / 2 + 0.15 * W, 6)
     const g = fan(W - 20, 45)
     for (let k = 0; k < 200; k++) steer(g, 1, [0, H + 10], 0.1)
-    expect(g.x).toBeGreaterThan(W / 2)
+    expect(g.x).toBeCloseTo(W / 2 - 0.15 * W, 6)
     expect(g.y).toBeLessThan(H)
+    // the middle belongs to both
+    expect(inHalf(0, [W / 2, H / 2])[0]).toBe(W / 2)
+    expect(inHalf(1, [W / 2, H / 2])[0]).toBe(W / 2)
+  })
+  it('cannot pass through a post: driven straight at one, a fan stops against it', () => {
+    for (const [bx, by, br] of BUMPERS) {
+      const side = bx < W / 2 ? 0 : 1
+      const f = fan(bx - 20, by)
+      for (let k = 0; k < 120; k++) {
+        steer(f, side, [bx + 20, by], 1 / 60)
+        expect(Math.hypot(f.x - bx, f.y - by), `post at ${bx},${by}`).toBeGreaterThanOrEqual(
+          br + FAN_BODY - 1e-6,
+        )
+      }
+    }
   })
 })
 
@@ -184,8 +203,20 @@ describe('the computer', () => {
     expect(brain(p, there).blow).toBe(true)
     expect(brain(p, fan(plan.at[0], plan.at[1], 0.1)).blow).toBe(false)
   })
-  it('falls back to guard its goal when the puck is beyond its jet, deep in the other half', () => {
+  it('presses forward when the puck is out of reach on the other side, rather than waiting at home', () => {
+    // Evan, 9 Nov: "the computer enemy doesn't try to score, he only plays defense"
     const plan = brain({ x: 30, y: 60, vx: 0, vy: 0 }, fan(120, 45))
+    expect(plan.at[0]).toBe(W / 2 - REACH)
+    expect(plan.at[1]).toBe(60)
+    expect(plan.blow).toBe(false) // still beyond its jet
+    // and blows once the puck comes within reach of where it presses
+    const close = { x: W / 2 - REACH - JET + 4, y: 50, vx: 0, vy: 0 }
+    expect(brain(close, fan(W / 2 - REACH, 50)).blow).toBe(true)
+  })
+  it('guards its goal when the puck is coming at it fast from out of reach', () => {
+    // within reach it would meet the puck from behind and blow it back, which is better than
+    // waiting; from out of reach, getting home first is all it can do
+    const plan = brain({ x: 30, y: 40, vx: 60, vy: 0 }, fan(100, 45))
     expect(plan.at[0]).toBeGreaterThan(W - 20)
     expect(plan.blow).toBe(false)
   })

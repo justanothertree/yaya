@@ -2360,3 +2360,948 @@ layout and touch routing only. Automated play shows the rules hold, never that a
       down. Can you do Duet without 💡?
 - [ ] Print shop — carve something, print Lemon, carve more, print Ultramarine over it. Is the
       mirror a surprise? Does a finger carve where you meant, and does the picture save?
+
+## Catalog and feedback — not a toy batch (7 Nov 2026)
+
+Branch `claude/lab-catalog-1` from `main` at `3d073b6` (51 experiments, batch 12 merged as #30).
+No new toys. `docs/2026-11-07-lab-catalog-and-feedback.md` is the full record — permission
+review, release order, rollback and what each test is; `docs/OPEN-DECISIONS.md` §14 the policy
+calls.
+
+- **For everyone, no backend needed:** 🔎 Browse, search & favourites — search, a kind filter,
+  ★ favourites (this browser only), 🆕 New and 👍 Highly rated with their rule printed beside
+  them. Browsing unmounts the running experiment, so no card ever mounts a GPU device; choosing one
+  mounts it fresh, the same as the picker.
+- **For signed-in members, once the draft is applied:** 👍 / 👎 under each experiment — every
+  member's vote counts, and members see the actual totals at once, zeros included — and a Notes fold for
+  ideas, requests and bugs, read by the same rules as a profile. Guests can still play everything.
+- **For the admin:** Owner controls under each experiment — ⭐ Featured, 🧪 Rough edges,
+  🙈 Hidden — and the queue of reported and removed notes. The admin reads notes like any member; a
+  note shared only with friends reaches them only when somebody reports it. A hidden experiment
+  leaves the picker for everybody else and keeps its id, saved work, votes and notes.
+- **Stable ids:** nothing in `DEMOS` changed. A new toy needs a line in `src/lab/catalog.ts`'s
+  `META` (a kind and a date; `catalog.test.ts` fails without it) and is registered in the database
+  by the admin's next visit.
+
+### Follow-on: `claude/lab-next-1`, stacked on #31 (8 Nov 2026)
+
+**Base:** `claude/lab-catalog-1` at `73506ac` (PR #31). It needs that PR's frontend and changes no
+SQL, so #31's release boundary is untouched: its draft stays unapplied.
+
+- **One toolbar at every width.** The 51-button wall above the toy is gone. Every width now gets
+  what phones already had: ‹ previous, a dropdown of all toys, next › — plus 🔎 Browse all 51 and
+  ★ Favourite on the same line, directly above the toy. The step buttons name their neighbour
+  ("Next experiment: Neon"). The toy starts about 210px higher on a desktop.
+- **Catalog:** the search box takes focus when the catalog opens (with a mouse only — on a phone it
+  would throw the keyboard over the list). Launching a card from far down the grid scrolls the
+  toolbar back to the top of the screen once the toy has rendered. The current toy's card says
+  "Last open", not "Playing": the catalog unmounts it.
+- **🕘 Recent** (branch `claude/lab-recent-1`, stacked on this one): a catalog view of the last
+  twelve experiments opened in this browser, most recent first — the first visit's included, and
+  whether it was opened from a card, the dropdown or ‹ ›. Labelled "remembered in this browser
+  only"; nothing is sent. Unlike favourites it forgets the oldest, which is safe only because no
+  other store mirrors it. It does not try to say which toys hold your work: several write a
+  default on first open, so "has saved data" would really mean "opened once".
+- **🎲 Surprise me** (branch `claude/lab-surprise-1`, stacked on the Recent branch): launches one
+  at random from whatever the catalog is showing — so choosing a Kind first means "surprise me with
+  a puzzle" — and never one in your Recent list while there are others to pick.
+- **Finding things faster** (branch `claude/lab-find-1`, stacked on Surprise me): the Kind dropdown
+  says how many each kind holds ("🎮 Games & puzzles (13)"), and **/** anywhere in the Lab opens the
+  catalog with the cursor in search — except shift+/ (the site's own help), while typing, and while
+  a toy has the keyboard (Pinball's right flipper is "/").
+- **Back where you left it** (branch `claude/lab-return-1`, stacked on Finding things faster): the
+  catalog's search, list and Kind used to live inside the catalog, which is unmounted while a toy
+  plays — so every ▶ Back to browsing started again at All with the search empty, at the top of
+  the grid. The Lab holds them now (for this visit, not in storage). Returning from a toy launched
+  from a card scrolls that card back into view and focuses its ▶, so Tab and Enter carry on from
+  there; arriving any other way (‹ ›, the dropdown) still puts the cursor in search. Since a
+  narrowed list now persists, **✕ Show everything** appears whenever it is narrowed, and moves
+  focus to search (mouse) or Kind (touch) rather than dropping it on the page. To try on a phone,
+  with the queue's phone test below: after launching from a search, ▶ Back to browsing — is the
+  search still in the box, with that card in view? (Kept out of the queue's own lines so this
+  branch and the toy branches never edit the same lines.)
+- **🆕 New to you** (branch `claude/lab-unseen-1`, stacked on Back where you left it): toys keep
+  arriving, and a returning visitor had no way to see which. The Browse button now says
+  "🔎 Browse all 59 · 2 new", the catalog says how many were added since you first came, and those
+  cards carry a 🆕 badge until opened — or until ✓ Mark as seen. ⚠️ A first visit meets everything
+  (with no record, every toy there is is written down as seen), so the badge means "added since you
+  started coming here" rather than fifty-nine badges on a first look. In this browser only
+  (`lab_seen_v1`, known ids only, so bounded by the registry); never sent. A damaged record is
+  read as a first visit.
+- **Re-checked on this chain's tip (#57) against the real local stack** — Supabase Auth issuing the
+  sessions, every call through PostgREST, #31's draft applied to the local database only: a
+  member's cards show actual totals including "👍 0 · 👎 0"; Fold's three include a minor's and an
+  unknown-age member's vote; 👍 Highly rated orders as its rule says; voting from the toy shows "You
+  voted 👍 Like" and writes one row; ▶ Back to browsing returns to Highly rated with focus on Fold's
+  card, now "👍 4 · 👎 0 · You: 👍"; a guest sees no totals and is told to sign in. (8 Nov, after
+  #55 and #57 landed on #34.)
+- **Notes say how many there are to read** (branch `claude/lab-notecount-1`, stacked on #57): the
+  closed fold said "ideas, requests and bugs" whether a toy had twenty notes or none, and nobody
+  opens a fold to find it empty. It now says "3 to read", "20+ to read" or "none yet". ⚠️ The
+  count is the first page of notes THIS viewer was sent — the same `lab_comments_page` call the
+  fold made on opening, now made when the toy opens — so it counts what the visibility ladder
+  lets them read, never everybody's. The draft keeps an all-notes count from members on purpose,
+  and no SQL changes here. Measured against the real local stack: a stranger, a friend of a minor
+  and the minor saw 1, 2 and 2 — each exactly what PostgREST returned to them directly; one page
+  call per toy for a member and none for a guest; posting from the page took 2 to 3.
+- **CI note, not a code fault:** from about 08:50 on 8 Nov the `db guards` job often failed before
+  running anything — `supabase/setup-cli` downloading the CLI got HTTP 504 three times. Every Lab
+  head has a passing run of the same workflow on the same commit, some after one re-run of the
+  failed job. Caching or retrying that download would be a workflow change, so it is left to Evan.
+- **Voting is two buttons (Evan's call, 8 Nov):** 👍 and 👎, each with its count; yours is
+  highlighted. Press it again to take the vote back, press the other to move it. The "You voted…"
+  line, the Remove my vote button and the explanatory sentence are gone. A screen reader hears
+  "Like, 3 votes" with pressed/not pressed, and "Your vote: like" / "Vote removed" after a press; a
+  failed vote still says why. A guest sees "Sign in to vote"; a suspended account sees "Voting is
+  paused for this account". The catalog card still shows "You: 👍". (The queue's voting question was
+  rewritten for two buttons when the chains were combined in `claude/lab-release-toys`.)
+
+### Follow-on: `claude/lab-jigsaw-1`, stacked on #34 (8 Nov 2026) — a new toy, Jigsaw
+
+**Base:** `claude/lab-next-1` at `2c3d39c` (PR #34, itself on #31). No SQL changes; #31's draft
+stays unapplied and untouched.
+
+- **What you do.** Drag pieces off the felt onto the board's tray. A piece laid within about a
+  quarter of a cell of a neighbour joins it, and the pair move as one from then on; a piece or group
+  laid that close to its own place fixes there and cannot be picked up again. Six built-in pictures
+  painted on the GPU (_Hills at dusk_, _Patchwork quilt_, _Flower garden_, _City at night_,
+  _Marbled paper_, _Coral reef_) or a photo of your own, in 12, 24, 48, 96 or 154 pieces. 🧱 Edges
+  first lays the loose edge pieces nearest the board; 👁 shows the picture faintly in the tray;
+  🪄 Place one puts a piece in for you (which also makes the puzzle finishable without a pointer).
+  A clock, a placed count, a sheen and a little chord when it is done, and a best time per picture
+  and size — not kept for a puzzle finished with 🪄. Keys: E, G, H, N.
+- **Kept in this browser:** the puzzle in progress (`lab_jigsaw_v1`, every field checked on the way
+  back in, positions rounded) and best times (`lab_jigsaw_bests_v1`). **A photo of your own is
+  never uploaded and never kept** — the page says so when one is chosen, and the last built-in
+  puzzle stays saved underneath it. Changing the picture or size mid-puzzle does not throw it away:
+  it says to press 🔀 New puzzle, which asks twice while a puzzle is in progress.
+- **GPU technique:** every piece is one instanced quad, its cell grown by the knob's reach, and the
+  fragment shader keeps a pixel only if the piece owns that point of the board **as cut** — the same
+  circle rule `jigsaw.ts` uses to pick a piece up, so the outline drawn, the outline grabbed and the
+  hole in the neighbour are one test asked three ways. The bevel is that test asked again a pixel
+  or three away; against a piece of its own group it is a hairline, the way a finished puzzle shows
+  its cuts. Pictures are painted by a fragment pass into a texture once per puzzle.
+- **Pattern to reuse:** "one rule, asked by both sides" — the shape lives in a pure function the
+  shader copies line for line, and a probe compares the two pixel by pixel.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 24 tests in `jigsaw.test.ts`: knobs have a neck and a head and never touch (an early cut did,
+  0.40 apart against 0.42 of radii, and cut a piece in three); every piece is one connected
+  region; dealt pieces never overlap, asked of the shapes themselves; joins chain; placed is fixed;
+  a hint always makes progress; a kept puzzle round-trips with every field off its default and is
+  refused with any field missing or out of bounds. Made to fail by putting the old knob sizes back
+  (4 red) and by dealing onto the board (7 red).
+- **The outline drawn is the outline picked up:** rendered offscreen at 960×600, half a 48-piece
+  puzzle on the board, 47,386 sample points of the felt checked against `hit()` — 0 disagree
+  (points within 2.5px of an edge skipped). With the shader's knob radius made 1.58× bigger it
+  reports 715; at 1.18× (about 1px) it reports nothing, so that is its resolution.
+- Driven through the real UI on the dev server, desktop 1280 and an emulated iPhone 13 (mouse
+  events, not touch): a piece dragged home fixes, a neighbour joins it, a placed piece will not
+  move, a reload brings back the same deal, a hand-solved 12 records a best and a 🪄-finished one
+  does not, a text file is refused in words, a photo is cut and its puzzle is not saved. One GPU
+  device per mount, each destroyed on switching away. `mobileAudit` at both widths: all zero.
+- A 154-piece frame costs about 150 ms on SwiftShader — a CPU pretending, so it says nothing about
+  a phone; the toy draws only when something moved, so a still table costs nothing.
+
+**Not verified, and why:**
+
+- **What the stage looks like in a page.** On 8 Nov this container's headless Chromium lost every
+  WebGPU canvas after its second submit ("A valid external Instance reference no longer exists") —
+  Topple and the production build too, so not this toy. The pictures above were checked through
+  the engine rendering offscreen and read back, which is the same shaders and the same buffers but
+  not the canvas.
+- **A photo's upload path.** It goes through a 2D canvas and `writeTexture`, not
+  `copyExternalImageToTexture`: the direct copy threw on this toy's device for every bitmap tried,
+  while the same bitmap copied fine on a second device in the same page. Unexplained, so the toy
+  uses the path that was seen to work. Real-GPU behaviour of either is untested.
+- **Voting on it:** Jigsaw is not in #31's seed list on purpose — that draft stays the reviewed
+  text. Once it is applied, the admin's next visit registers it (as the draft already describes).
+  Until then the server refuses votes and notes on it with "no such experiment", which the page
+  used to translate as "That isn't there any more" — so a toy the catalog does not list yet now
+  says "Jigsaw is new here: votes and notes open once it has been added to the catalog", with
+  nothing to press. Checked on the real local stack: a member sees that line on Jigsaw and normal
+  votes on Topple; the owner's visit registers it (51 → 52 rows) and the member then gets votes.
+  With no catalog at all, as in production today, nothing changes. `catalog.test.ts` now holds
+  the seed to be the first 51 ids of the registry, in order, rather than all of them.
+- The site's floating "You're playing" pill appears while a toy plays a note and, on a phone, sits
+  over the Picture select. That pill belongs to the shared audio UI, not the Lab, so it is noted
+  here rather than changed.
+
+### Follow-on: `claude/lab-palette-1`, stacked on #40 (8 Nov 2026) — a new tool, Palette
+
+**Base:** `claude/lab-jigsaw-1` (#40) — it paints Jigsaw's six pictures with Jigsaw's own shader, so
+it needs that branch. No SQL changes.
+
+- **What you do.** A picture — one of Jigsaw's six, or a photo of your own — and a palette found in
+  it, 2 to 10 colours, darkest first, each with how much of the picture it stands for. Tap a swatch
+  to see where it falls (everything else greys back); with one selected, tap the picture to replace
+  it with the colour there; with none selected, a tap adds that colour. 🔒 holds a colour while
+  🎲 re-rolls the rest round it, and a picked colour is locked automatically. Three views — the
+  picture, redrawn **flat** in only the palette's colours, or **dithered** with them — with a
+  before | after slider. _Readable as text_ lists every pair at WCAG contrast 3 or more, best
+  first, with AA / AAA / large-text-only. _Take it with you_ copies the hex codes or a `:root`
+  block of CSS custom properties (and shows the CSS to select by hand). ⭐ keeps palettes in this
+  browser, up to 24 — a 25th is refused, never by dropping an old one. Keys: R, 1 2 3, + −.
+- **A photo of your own is never uploaded and never kept**; only the palettes you keep are saved,
+  and the page says so. Locked colours carry over to a new picture (that is what a lock is for);
+  when every colour is locked the page says the new picture could change nothing.
+- **Technique:** the clustering is k-means++ in **OKLab**, on the CPU over every 16th pixel (about
+  50,000) — RGB means would pull every palette towards mud. The GPU does the per-pixel work: the
+  nearest palette colour for every pixel in OKLab with the same matrices, an 8 × 8 Bayer threshold
+  between the two nearest for the dithered view, the highlight and the split.
+- **Pattern to reuse:** "decide on the CPU where it can be tested, draw on the GPU where it is per
+  pixel" — and then check the two agree on every pixel.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 13 tests in `palette.test.ts`, written from the world's shape: Ottosson's published OKLab values
+  for white and the three primaries; WCAG's 21:1 and the textbook #777-on-white 4.48; a shuffled
+  picture of three known colours in 50 / 30 / 20 found exactly, with exactly those shares, on five
+  seeds; a locked colour held exactly; more colours always standing for a picture better; kept
+  palettes round-tripping with every field set. Made to fail by letting locked colours move and by
+  evicting the oldest kept palette.
+- **The GPU agrees with the CPU on every pixel:** rendered offscreen at 1024 × 768 for two
+  pictures, flat mode has 0 pixels that are not one of the six colours, and its per-colour counts
+  equal the CPU's own nearest-colour counts to 0.01% on all 786,432 pixels. Dithered: 0 strays in
+  97,536 sampled; left of the split, 8,030 of 8,030 sampled pixels are the untouched picture.
+- Driven through the real UI on the dev server, desktop 1280 and an emulated iPhone 13 (mouse, not
+  touch): pick, lock, re-roll (both locked colours survive), 2 and 10 as the bounds, keep → reload
+  → use, Copy CSS read back from the clipboard, a text file refused in words, a photo's own palette
+  (a dark green grid board at 86%, its lines, the teal square and the cream paper). `mobileAudit`
+  zero at both widths with every fold open, after the before | after slider was given a 32px height
+  (it was 16px). One GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas, as for Jigsaw), real GPUs, a
+real phone, and the clipboard outside Chromium — Safari and Firefox ask differently, and the CSS
+box is there for when copying is refused.
+
+### Follow-on: `claude/lab-beams-1`, stacked on #44 (8 Nov 2026) — a new puzzle, Beams
+
+**Base:** `claude/lab-palette-1` (#44), only so the registry stays append-only without a merge
+conflict; it uses nothing of Palette's or Jigsaw's. No SQL changes.
+
+- **What you do.** Ten levels of lasers on a grid. Choose a piece — mirror, splitter, or a colour
+  filter — and tap a lit square to place it; tap a piece to select it and again to turn it; ↻ Turn
+  and ✕ Take back do the same. A target lights when exactly its colour arrives, and colours add:
+  red and green make yellow, all three white, and too much is as wrong as too little. Each level
+  has a stock of pieces and a par; 💡 Show a way puts in a fewest-pieces solution (not kept as a
+  best); 🧹 Clear empties the board. **Fully playable from the keyboard**: arrows move a cursor
+  that the canvas's label describes in words ("a target wanting yellow, getting red"), Enter places
+  or turns, T turns, Delete takes back, 1–n choose a piece.
+- **Kept in this browser:** the best (fewest pieces) per level, the level open, and its pieces —
+  every piece checked on the way back in against the level's free cells and its stock.
+- **Technique:** one fragment pass draws the board, each piece as a distance field in its cell,
+  and every beam as light — a hot core and a wide halo, added, so crossing beams mix the way the
+  rules say colours do.
+- **Pattern to reuse:** "let a solver hold the levels to account." Five of the first ten levels as
+  drawn could not be solved, one had a shortcut that made it trivial, and one "needed" a filter it
+  did not; each was found by `solve()`, not by playing. Each level's par is what the solver proves
+  minimal, and a test holds it there in both directions.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 12 tests in `beams.test.ts`: reflection checked against the geometry of a mirror at 45°; walls,
+  edges, splitters, filters and additive colour; a genuine ring of mirrors terminates (made to fail
+  by removing the loop guard — the first fixture was not really a ring, and stayed green without
+  it); every level dark until something is placed, solvable within its stock, with exactly its par
+  and not one piece fewer; saving with every field set, and refusing pieces on walls, emitters,
+  targets, off the board or beyond the stock.
+- Offscreen render of every level, open and solved: the midpoint of every beam carries its colour
+  (81 of 81).
+- Through the real UI at 1280 and an emulated iPhone 13 (mouse, not touch): place → solved → best
+  kept; over-stock refused in words; select, turn, turn back, take back; level 2 solved by keyboard
+  alone (this found the cursor carrying over from the previous level's board — fixed); a fixed piece
+  says so; Show a way solves without a best; reload restores level and pieces. `mobileAudit` zero
+  at both widths. One GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas, as for Jigsaw), real GPUs and
+real touch. Whether the ten levels are fun, and whether their difficulty climbs well, is taste.
+
+### Follow-on: `claude/lab-bridge-1`, stacked on #47 (8 Nov 2026) — a new builder, Bridge
+
+**Base:** `claude/lab-beams-1` (#47), only to keep the registry append-only without a conflict; it
+uses nothing of the toys below it. No SQL changes.
+
+- **What you do.** Six gaps to span, each with anchors, a budget and a cart. Pick 🛣 road, 🪵 timber
+  or 🔩 steel and tap a dot, then another, to lay a member (it keeps drawing from the last dot; tap
+  it again to stop). 🧽 erases, ↶ undoes, 🧹 clears. 🚚 Drive sends the cart over: every member is
+  tinted by how hard it works — green easy, red at its limit — and one asked for more than its
+  strength snaps. The cart drives on road only. Across within budget keeps your cheapest crossing
+  per level; 💡 One that works shows a known truss (not kept as a best) to drive and then undercut.
+  Keys: arrows move a cursor described in the canvas's label, Enter lays, Esc stops drawing, D
+  drives, U undoes, 1–4 choose.
+- **Kept in this browser:** each level's design, the level open, and the cheapest crossings — every
+  design re-checked on the way in (anchors unmoved, no joint in rock, every member a legal length
+  and a kind the level has).
+- **Technique:** XPBD with small steps, so each member's Lagrange multiplier is its force in newtons
+  and "timber breaks at 9 kN" is a real figure. One fragment pass draws the scene in metres —
+  sky, water, cliffs, the build grid, members as capsules tinted by load, joints and the cart.
+- **Pattern to reuse:** "every level ships with a reference that crosses it, and a flat road that
+  must not". Tuning found the 16 m level impossible with these materials — the bridge's own weight
+  put about 16 kN through a road rated for 14 — so it became 14 m rather than the materials being
+  fudged for one level.
+
+**Measured here** (unit tests, and headless Chromium on SwiftShader):
+
+- 11 tests in `bridge.test.ts`: a hanging V of steel carries the force statics says (W / 2 sin θ)
+  within 5% — made to fail by mis-scaling the force (three tests red); a member past its strength
+  breaks and one under it does not; on every level the reference crosses within budget with nothing
+  broken, and a flat road snaps; the same bridge drives identically twice; joints only on the grid
+  and never in rock; members refused too long, doubled, of a missing kind or to themselves; erasing
+  takes loose joints with it; designs and bests round-trip, and a tampered design is refused.
+- Offscreen renders of a reference built and mid-drive, and a flat road after it snapped.
+- Through the real UI at 1280 and an emulated iPhone 13 (mouse, not touch): a truss tapped out by
+  hand crosses level 1 for 2,642 of 3,600 and is kept as the best; 💡 crosses level 2 without a
+  best, driven by the D key; a flat road falls on level 3 with 4 members broken; the too-long and
+  rock refusals are said in words; erase and undo; reload restores designs and bests. A probe
+  mistake built a truss missing one top-chord member and it fell — checked in a unit test, it was
+  the right answer: the same design built in the right order crosses identically to the reference.
+  `mobileAudit` zero at both widths; one GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas), real GPUs and real touch.
+On a phone the 1 m grid is about 28 px a metre on the short levels and 17 px on the 14 m one —
+tight for a fingertip; that is a real-device question.
+
+### Follow-on: `claude/lab-epicycles-1`, stacked on #49 (8 Nov 2026) — a new maker, Epicycles
+
+**Base:** `claude/lab-bridge-1` (#49), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Draw any shape on the stage in one stroke (it is closed for you), or pick a
+  heart, star, square, key or knot. A chain of turning arms — the drawing's Fourier series, each
+  arm spinning a whole number of times a loop — redraws it, the pen leaving a glowing trail. Slide
+  from one arm to all of them and watch it sharpen; the line says how far it strays at most.
+  🎯 Fewest that look right finds the fewest arms that keep within 1% of its size everywhere (a
+  hand-drawn circle: 1; the square: 10). ⭐ keeps your drawings in this browser, up to 16. Keys:
+  ← → arms, F fewest.
+- **Technique:** the series is a plain DFT of the drawing resampled evenly along its length,
+  sorted longest arm first. Every line and circle is an instanced quad drawn as a soft capsule or
+  ring and added, so a pixel only pays for what covers it.
+- **"Looks right" is the worst stray, not the mean:** a square redrawn by three arms is within 1%
+  on average and nowhere near square — the mean hides the corners. The first test of `fewest`
+  caught it.
+
+**Measured here:** 7 tests — a circle traced once is its centre and exactly one arm turning once
+(clockwise, minus one); every arm redraws the drawing to 1e-12; more arms never stray further;
+the chain's pen lands where geometry says; saving round-trips and refuses junk. Made to fail by
+sorting the arms shortest first (4 red). Offscreen renders of a heart, a square at 4 and 60 arms
+and a key, the pen's own pixel lit in each. Through the UI at 1280 and an emulated iPhone 13
+(mouse, not touch): a circle drawn with the pointer is 1 arm; the square needs 10 by F; keep →
+reload → use; a dot is refused in words. `mobileAudit` zero at both; one GPU device per mount.
+
+**Not verified:** the stage in a page (this container's WebGPU canvas), real GPUs, a finger.
+
+### Follow-on: `claude/lab-orbit-1`, stacked on #52 (8 Nov 2026) — a new skill game, Orbit
+
+**Base:** `claude/lab-epicycles-1` (#52), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Fly a probe round a planet with two held buttons — ◀ Slow down and Speed up ▶
+  — while a dotted line shows where that leaves you. Five levels: raise the orbit onto a ring, lower
+  it, stretch it to an ellipse, go far out, escape. Fuel is Δv, and each finish is scored against the
+  least the formula allows (a Hohmann transfer, or escape speed): ★★★ within 10%. Time warp ×1/3/8
+  for coasting, dropping to ×1 during a burn; burns run at half pace so the one a level needs is a
+  held second. Keys: hold ← / →, W warp, R restart; Enter or Space held on a button burns too.
+- **Kept in this browser:** the least Δv each level was done in — refused if lower than physics
+  allows.
+- **Technique:** leapfrog (velocity Verlet) under GM = 1, so a circle stays a circle; orbital
+  elements from vis-viva; a fullscreen pass for space, the planet and the goal bands, and instanced
+  capsules for the trail, the prediction, the probe and its flame.
+
+**Measured here:** 9 tests — a circular orbit after fifty laps has the same radius to 1e-6 and the
+same energy to 1e-9 (an Euler integrator in its place fails it, and the levels test with it); √2 ×
+circular speed is exactly escape; an ellipse's apoapsis matches vis-viva by hand; the predicted
+path is the path flown; Hohmann's Δv matches the hand formula; an autopilot flies every level
+within its fuel and within 10% of the least. Offscreen renders mid-burn and in orbit, the probe's
+own pixel lit. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): pointer and
+keyboard burns, restart, running out of fuel, and Away finished with a best kept. That pass found
+the burn buttons' pointer-leave stopping a KEYBOARD burn when the page shifted under a still
+mouse — each control now stops only the burn it started. `mobileAudit` zero at both widths; one GPU
+device per mount.
+
+**Not verified:** the stage in a page, real GPUs, holding a button with a thumb.
+
+## Review and merge order — the open Lab PRs (8 Nov 2026)
+
+Every PR below is a draft, small on its own, and stacked so each shows only its own change. None
+changes SQL; #31's draft stays unapplied and GitHub CI does not run it. Merge each into `main` in
+order (or retarget the next one to `main` after its base merges). Checked with `git merge-tree`
+against `main` at `ea67e52`: #31, the catalog tip and the toy tip each merge cleanly, and the two
+chains merge cleanly into each other — re-checked with #57 and #58 as the tips, and #55 alone
+against #58. ⚠️ That holds because the catalog chain never edits the question queue below (the
+toy chain renumbers it with every toy); a check for the catalog chain goes in its own section. The
+first time #55 added a sentence to a queue item, the two chains conflicted in this file.
+
+| Order | PR  | Base   | What it is                                                    |
+| ----- | --- | ------ | ------------------------------------------------------------- |
+| 1     | #31 | `main` | Catalog and feedback foundation, with the unapplied SQL draft |
+| 2     | #34 | #31    | One toolbar at every width; your own vote in words            |
+| 3a    | #45 | #34    | 🕘 Recent view                                                |
+| 3b    | #48 | #45    | 🎲 Surprise me                                                |
+| 3c    | #50 | #48    | Counts beside each kind; / to search                          |
+| 3d    | #55 | #50    | Back from a toy, the catalog is where you left it             |
+| 3e    | #57 | #55    | 🆕 New to you                                                 |
+| 3f    | #63 | #57    | The notes fold says how many there are to read                |
+| 4a    | #40 | #34    | Jigsaw (and a new toy says it is new rather than gone)        |
+| 4b    | #44 | #40    | Palette — uses Jigsaw's painted pictures                      |
+| 4c    | #47 | #44    | Beams                                                         |
+| 4d    | #49 | #47    | Bridge                                                        |
+| 4e    | #52 | #49    | Epicycles                                                     |
+| 4f    | #53 | #52    | Orbit                                                         |
+| 4g    | #54 | #53    | Wallpaper                                                     |
+| 4h    | #56 | #54    | Nonogram                                                      |
+| 4i    | #58 | #56    | Logic gates                                                   |
+| 4j    | #59 | #58    | Slide                                                         |
+| 4k    | #60 | #59    | Games and puzzles become two kinds                            |
+| 4l    | #61 | #60    | Paint mixer                                                   |
+| 4m    | #62 | #61    | Intervals                                                     |
+| 4n    | #64 | #62    | Graph match                                                   |
+| 4o    | #65 | #64    | Sun path                                                      |
+| 4p    | #68 | #65    | Sun path on the clock                                         |
+| 4q    | #77 | #68    | Skipping stones                                               |
+| 4r    | #88 | #77    | Colour sight                                                  |
+| 4s    | —   | #88    | Soaring (branch `claude/lab-glide-1`)                         |
+
+The catalog chain (3) and the toy chain (4) are independent of each other; the toys after #44 are
+stacked only so the registry stays append-only without conflicts. A toy can merge before or after
+the SQL: with no catalog nothing about feedback changes, and once the SQL is applied a member sees
+"new here" under a toy until the owner's next visit registers it, then votes as usual.
+
+**One limitation applies to every toy PR:** on 8 Nov this container's headless Chromium lost every
+WebGPU canvas after a couple of frames, existing toys included, so no stage was seen in a page.
+Each toy was checked by rendering its engine offscreen and reading the pixels back, and through the
+real UI for everything that is not the picture. The real-device queue below is what that leaves.
+
+### Follow-on: `claude/lab-wallpaper-1`, stacked on #53 (8 Nov 2026) — a new maker, Wallpaper
+
+**Base:** `claude/lab-orbit-1` (#53), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Draw anywhere and every stroke repeats across the wall by one of the seventeen
+  wallpaper groups — every way a flat pattern can repeat, from p1 (only repeats) to p6m (sixth
+  turns and every mirror). Change the group and the same drawing becomes a different wallpaper.
+  Six inks, three widths, three papers, ▦ to show the cells, 🎲 Add a motif (a way to make one
+  without a pointer), undo, clear, ⭐ keep (12, in this browser) and ⬇ Save as PNG at 1024 px.
+  **❓ Which group?** shows a pattern and asks which of the seventeen it is; a wrong guess is told the
+  feature that tells them apart ("count the turns", "look for a mirror line").
+- **Technique:** each group is its list of operations from the International Tables. Every pixel
+  of the wall asks the drawing of one cell under each of them and blends the hits in an order
+  that does not matter, so the picture is exactly as symmetric as the group. While drawing, only
+  the box of the cell a new piece of stroke touched is repainted and sent to the GPU.
+
+**Measured here:** 8 tests — all seventeen present, each with the tables' number of operations;
+each is closed (any two operations compose to a third, up to a whole-cell shift); every operation
+is a rigid motion of the plane; the wall is unchanged by every operation of its group, and gains
+no symmetry it should not (p4 has no mirror, p3 no half turn). One wrong entry in p6m turns three
+red. On the GPU: all seventeen rendered offscreen and every operation checked on the picture's own
+pixels — 46,000 symmetric pairs, none differing. The dirty-box upload missed 0 pixels over 24
+wandering strokes, square and hex, and thousands with its padding removed. Save: the snapshot,
+read back and encoded, decodes as a 1024 × 1024 PNG with the same pixels. Through the UI at 1280 and
+an emulated iPhone 13 (mouse, not touch): draw, change group, motif, undo, keep → reload → open,
+the quiz's answer and Next. That pass found the Symmetry dropdown 478 px wide — a select is as wide
+as its longest option — taking a phone's page 112 px sideways; fixed. `mobileAudit` zero in both
+modes at both widths; one GPU device per mount.
+
+**Not verified:** the stage in a page, and the download itself in a page — here the page's GPU was
+gone by the time Save was pressed, and the button now says so rather than doing nothing; the same
+path works offscreen. Real GPUs, drawing with a finger.
+
+### Follow-on: `claude/lab-nonogram-1`, stacked on #54 (8 Nov 2026) — a logic puzzle, Nonogram
+
+**Base:** `claude/lab-wallpaper-1` (#54), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Fill squares so every row and column matches its numbers — each number a run of
+  filled squares, in order — and the picture appears, sweeping into colour. Ten pictures from 5×5
+  to 15×15. ■ Fill / ✕ Cross out, a drag marks a run at once and holds to its row or column (a
+  thumb drifts), 💡 Hint, undo, start again; the numbers of a line that already fits go grey. Your
+  marks, time and hints are kept per puzzle in this browser, so a reload carries on.
+- **✏️ Make your own.** Draw on a 5–20 square grid and the numbers follow as you draw. The maker says
+  whether the drawing is a FAIR puzzle: one answer, reachable a line at a time — and if not, stripes
+  the squares that could go either way, or the ones where solving gets stuck. ▶ Solve it, ★ keep
+  (12, in this browser, refused rather than dropping an older one), 📋 copy its code — about a
+  dozen characters, e.g. `10x10.…` — and open a code somebody gave you. No hosting: a code is the
+  picture.
+- **Technique.** A line solver works out exactly what every arrangement of a line's runs agrees on
+  (two sweeps of a small table, forward and back), and line logic is repeated until nothing more
+  follows; a guess-and-propagate search counts answers when it stalls. The same solver drives the
+  hints: a hint names the line that settles the most squares from what is already marked, and
+  outlines wrong marks first. The board is one fullscreen shader; the numbers come from an atlas
+  drawn by the browser's own font at the cell's size.
+
+**Measured here:** 21 tests. The line solver against brute force on 3,000 random lines (half of them
+contradictory); answer counts against all 65,536 4×4 pictures; every built-in picture fair; hints
+taken one after another solve every picture and never say anything false; codes round-trip at every
+size and refuse padding, size and character errors; a full stored record (every field set) reads
+back, and a damaged one loses only what is damaged. Dropping the gap after a run, corrupting the
+solver's answer, removing the drag's line lock and counting only one answer each turn tests red.
+The solver first wrote said every built-in picture needed a guess — its gap after each run was never
+allowed to be empty — and two of the ten pictures (Cat, Snail) really were unfair until redrawn.
+On the GPU, offscreen, all ten: every square's centre paper when blank, every clue slot inked
+exactly when it holds a number (the grey 0 of an empty line is the only miss, and it is grey on
+purpose), filled and crossed squares where marked, and every square its picture's colour once
+revealed. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): solve Heart by drag
+and click, the next puzzle, a hint, a wrong mark caught, keyboard marking, reload, the maker's
+unfair → fair verdict, keep (and refusing it twice), copy and reopen by code, a bad code refused,
+remove with a confirm; `mobileAudit` zero in play and maker, and made to name the fault below when
+it was put back. One GPU device per mount.
+
+That pass found two faults: the maker's verdict used `.lab-score`, which never wraps, so the maker
+was 95 px wider than a phone and the page zoomed out; and the maker's grid moved as you drew,
+because the margin for the numbers grew with the drawing — it now reserves the most a line can need.
+The clock was first counted in frames, so it stopped when the GPU did; it is wall time between marks
+now (a gap over two minutes counts as two).
+
+**Not verified:** the stage in a page (the GPU limitation above), real GPUs, and a finger — 15×15
+puzzles are about 17 px a square on a phone.
+
+### Follow-on: `claude/lab-gates-1`, stacked on #56 (8 Nov 2026) — a builder, Logic gates
+
+**Base:** `claude/lab-nonogram-1` (#56), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Eleven levels, each a truth table to make true: switches on the left, lamps on
+  the right, gates between. NOT from a NAND, then AND, OR, XOR, a half adder, three-way parity, a
+  full adder, a chooser, majority, two-bit equality and a two-bit adder that really adds. Each
+  level offers NAND plus the gates earlier levels had you build. Wires glow when they carry a 1;
+  the truth table under the stage says, row by row, what each lamp should show and what yours does,
+  and choosing a row sets the switches. Stars for the gates actually reaching a lamp against the
+  fewest found (a spare gate lying about does not count).
+- **Three ways to wire, one rule.** Drag from an output to an input; tap one then the other; or the
+  **parts list**, where every gate input and every lamp has a dropdown of what can feed it — the
+  route for a keyboard, a screen reader, or a thumb that finds the pins small. Picking a wire up by
+  its end moves it, letting go in empty space removes it. A wire that would feed a gate its own
+  output is refused (and never offered in the dropdowns). Undo, clear, keys (1–4 switches, arrows
+  nudge, Delete, Z). Circuits and bests are kept per level in this browser.
+- **Technique.** Wires keyed by where they END (one wire per input falls out of the data shape);
+  evaluation memoised per gate; one instanced pass of soft shapes over a dotted board, labels from
+  a font atlas as in Nonogram.
+
+**Measured here:** 14 tests — a reference circuit for every level solves it at its par using only
+its palette; the adder tables really add; a wrong circuit fails exactly the rows it gets wrong;
+loops of any length refused; removing a gate removes its wires and nothing else; an unwired input
+reads 0 and is reported; placement never overlaps; every pin found where it is drawn; each level's
+circuit, moved off its default place, reads back exactly, and a damaged record loses only the bad
+parts. Breaking loop detection, XOR or wire removal each turns a test red. On the GPU, offscreen:
+the full adder at rows 000 and 101 — every wire's middle grey or green by its value except three
+greys sampled inside a lit neighbour's glow, lamps yellow exactly when lit; that pass found each
+wire segment's glow cut off square at its box, fixed. Through the UI at 1280 and an emulated iPhone
+13 (mouse, not touch): Not by dragging and the parts list (★★★, kept), And by tap-then-tap, a loop
+not offered, a table row setting the switches, a wire picked up and dropped then undone, a gate
+dragged, keys, reload; `mobileAudit` zero; one GPU device per mount. On the phone a board unit is
+about 15 px, so a press now takes a pin within 16 CSS px rather than 0.6 units (9 px).
+
+**Not verified:** the stage in a page, real GPUs, a finger on the pins.
+
+### Follow-on: `claude/lab-slide-1`, stacked on #58 (8 Nov 2026) — a movement puzzle, Slide
+
+**Base:** `claude/lab-gates-1` (#58), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** A puck on ice slides in the direction pushed until something stops it — a wall,
+  or a patch of snow, which it stops ON. Take every coin, then come to rest on the ring; sliding
+  over the ring does not count. Six levels, each teaching one thing (snow, coins, the long way
+  round), then **♾ Endless**: boards from a random seed at Easy (4–6 pushes), Medium (7–10) or Hard
+  (11–16), each solved before it is shown. Swipe on the board, four big push buttons, or arrows /
+  WASD; undo, restart, 💡 hint (the first push of a best answer from where you are), stars against
+  the fewest possible, best per level and boards finished per difficulty kept in this browser.
+- **Technique.** A breadth-first search over (where the puck is, which coins it has) gives every
+  level's par, every hint and the proof each board can be done; the endless generator is the same
+  search run over random boards until one lands in the band. One fullscreen shader draws the ice,
+  walls, snow, coins, the goal (its ring turns green once every coin is taken), the push's trail and
+  the puck, which eases into each stop.
+
+**Measured here:** 13 tests — a push stops before a wall and ON snow, collects coins and passes over
+the goal; the board's edge is a wall; every level's answer wins when played and no shorter one
+exists, checked by a separate depth-first search that shares nothing with the solver; the same
+agreement on generated boards; a hint's push always leaves one fewer to go; impossible boards say
+so; every level after the first needs its snow; 40 seeds per difficulty all land in their band,
+deterministically, and differ from each other. Removing the snow stop or forgetting the coins in
+the solver's state turns tests red. Designing the levels by hand left three with no answer at all
+and one whose snow was decoration; the solver redesigned them. On the GPU, offscreen, every cell of
+all six levels the colour of its tile, coins gone once taken, the ring grey until every coin is
+taken and green after. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): level 1
+by the buttons (★★★, kept), a push into a wall said so, a hint marking its button, level 2 by the
+arrow keys, undo, restart, a swipe, an endless board solved and counted, a new seed, reload;
+`mobileAudit` zero in both modes; one GPU device per mount.
+
+**Not verified:** the stage in a page, real GPUs, a real swipe with a finger.
+
+### Follow-on: `claude/lab-kinds-1`, stacked on #59 (8 Nov 2026) — games and puzzles split
+
+"🎮 Games & puzzles" held twenty of sixty-one toys — a third of the Lab, so choosing it narrowed
+almost nothing. It is two kinds now: **🎮 Games — skill and timing** (Tunnel, Marble maze, Bike
+trials, Strut, Gust, Möbius golf, Pinball workshop, Night crossing, Orbit) and **🧩 Puzzles — find
+the answer** (Waterworks, Seedling, Shadow box, Fold, Topple, Jigsaw, Beams, Bridge, Nonogram,
+Logic gates, Slide). A toy with both goes where most of the time is spent — Bridge drives a cart but
+is a design problem; Orbit has a fewest-fuel answer but is flown. No ids change and nothing is
+stored by kind, so no saved creation, favourite or link moves. It is on the toy chain because the
+toys it sorts are.
+
+⚠️ **The catalog chain had a test that would have gone red once both chains merged** — #55's filter
+test asked for "games" and expected Fold and Topple. Git merges the two chains without a conflict,
+which says nothing about the tests. Fixed where the test lives (#55, carried into #57), so the test
+filters by Sound and Patterns, which no reshuffle of games touches; the merged tree of #57 and this
+branch was then built and run whole — typecheck, lint, 2,937 tests, build — before anything was
+pushed. **A clean `git merge-tree` is a claim about text; run the suite on the merge.**
+
+**Taste question for Evan:** are the two names and the split right — Fold and Topple as puzzles,
+Orbit and Strut as games?
+
+### Follow-on: `claude/lab-mix-1`, stacked on #60 (8 Nov 2026) — a perception game, Paint mixer
+
+**Base:** `claude/lab-kinds-1` (#60), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Five paints — white, black, yellow, blue, red — as big buttons in their own
+  colours. Drop them into a cup to match a colour chip: twelve targets, from Orange to Lavender. The
+  reading says how yours differs in words ("Yours is darker, duller and more green than Tomato"),
+  a hint names the paint to add and how many drops could still get there, and stars count drops
+  against the fewest that match. Paint cannot be taken out — only undone — so too much white in a
+  plum is a cup to empty, and the hint says so. **🎨 Mix freely** shows any mixture's hex and copies
+  it. Keys 1–5, Z undo, E empty, H hint. Bests kept in this browser.
+- **Technique.** Each paint is a reflectance at sixteen wavelengths; a mix is single-constant
+  Kubelka–Munk (absorption over scattering, in proportion), seen in D65 daylight through the CIE 1931
+  observer and written as sRGB. That is why yellow and blue make green rather than the grey that
+  averaging screen colours gives. Match means within 0.03 in OKLab. A target's par is the fewest
+  drops of any recipe that matches (a search over every recipe up to twelve drops); a hint is the
+  fewest drops to ADD — a plan, because the nearest single drop was tried first and walked into
+  corners (white first into Plum, from which nothing reaches Plum). The GPU draws the chip and the
+  cup, where each drop arrives as a streak of its own paint and is stirred in along a spiral.
+
+**Measured here:** 9 tests — one paint alone is itself and only proportions matter; yellow+blue
+lands in green, blue+red in purple, yellow+red in orange; white lightens and black darkens a drop
+at a time for every paint; each target's par is no more than its recipe, matches, and nothing with
+fewer drops does (checked by an enumerator sharing nothing with the search); the targets differ
+from each other by more than two matches; following the hints alone from an empty cup matches every
+target in exactly par; six whites put Plum out of reach and the hint says so. Mixing reflectances
+like light turns the colour test red; a plan that is not the fewest turns the hint test red. On the
+GPU, offscreen, all twelve at a wide and a tall stage: the chip exactly the target, the settled cup
+the mixture, the ring when matched, and a stirred cup not yet one colour. Through the UI at 1280 and
+an emulated iPhone 13 (mouse, not touch): Orange in three, Plum by hints alone in three, the
+stuck-cup hint, keys, free mixing and its copy, a full cup refused, reload; `mobileAudit` zero in
+both modes; one GPU device per mount.
+
+**Not verified:** the stage in a page, real GPUs, and colours on a real screen — the paints were
+tuned by their numbers and an sRGB render, so whether they look like paint is a question for eyes.
+
+### Follow-on: `claude/lab-intervals-1`, stacked on #61 (8 Nov 2026) — an ear trainer, Intervals
+
+**Base:** `claude/lab-mix-1` (#61), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Two notes play (rising, falling, together, or mixed); name the distance between
+  them. Rounds of ten; six stages, from octave / fifth / major third (easy to tell apart) to all
+  twelve, each opened by eight of ten right. Every answer button says what the interval sounds like
+  ("sad, the minor chord's heart"); a wrong answer names the truth and offers **▶ Hear yours** — the
+  interval you chose, from the same first note — to hear the difference. Questions lean towards the
+  intervals you miss (up to four times as often), never the same one twice running. Stats, opened
+  stages and bests kept in this browser. Keys 1–9, Q, W, E answer, Space replays, Enter next.
+- **The picture is the pitch spiral**: every semitone from C3 to G5 on a spiral that turns once an
+  octave, so an octave is the same angle one ring out. Before an answer the notes are only ripples
+  from the centre — the picture must not give the answer away; after it, both appear and the arc
+  between them lights green or amber.
+
+**Measured here:** 8 tests — twelve intervals, one per distance; each stage keeps the last one's and
+the first three are at least three semitones apart; questions stay in C3–G5, go the way asked, never
+repeat the last, and are answered by their own notes; a missed interval comes up four times as often
+— drawn 40,000 times, not computed; records round-trip and damage is dropped. Weakening the lean,
+letting a note out of range or allowing a repeat each turns a test red. On the GPU, offscreen: before
+an answer the notes' places look like every other semitone; after it both dots appear and the arc is
+green when right, amber when wrong, an octave a full turn. Through the UI at 1280 and an emulated
+iPhone 13 (mouse, not touch) the probe **answered by ear** — it recorded every frequency the page gave
+an oscillator and turned each burst's lowest back into a note — and so played a perfect round,
+opening stage 2; then a wrong answer, "hear yours" playing the chosen interval from the same note,
+keys, reload. `mobileAudit` zero with all twelve answers showing; one GPU device per mount. That pass
+fixed "a Octave" and moved the verdict and Next above the answers, where the site's floating audio
+pill had covered them on a phone.
+
+**Not verified:** sound itself — this container has no speakers; that notes were scheduled at the
+right pitches is measured, how they sound is not. Real GPUs; Safari and Firefox audio.
+
+### Follow-on: `claude/lab-graph-1`, stacked on #62 (8 Nov 2026) — maths to see, Graph match
+
+**Base:** `claude/lab-intervals-1` (#62), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Type y = something and its curve lands on a plane over a dashed target: twelve
+  curves from y = x to 1/x, through slopes, parabolas moved and turned over, a V, waves taller and
+  faster, and half a sideways parabola. Three hints each — the family, what to change, then an
+  answer — and stars for fewer. **✏️ Graph anything** plots any equation, and a, b and c in it become
+  sliders: "a*sin(b*x) + c" is the way to see what each number does. Keys for what a thumb cannot
+  type (x, ², ^, brackets, sin(, abs(, sqrt(, a, b, c) insert at the cursor. A mistake is named and
+  marked where it is ("It stops too soon: 2x +▮"). Solved curves and the free plane kept here.
+- **Technique.** ⚠️ **What is typed is parsed, never run**: a tokeniser and a precedence-climbing
+  parser build a tree of + − × ÷ ^, nine functions, pi and e, and x, a, b, c — nothing else —
+  taking the forms people write by hand (2x, 3sin(x), sinx, (x−1)(x+1), x², ×, ÷, −). Each curve is
+  sampled at 1024 points; the shader draws both as polylines by the distance to their nearest
+  segments, breaks a segment that would jump more than the plane (so 1/x is not joined across its
+  asymptote), and gets undefined points as 1e30, not NaN, which a shader may assume never arrive.
+
+**Measured here:** 10 tests — 22 equations agree with the same functions written in plain
+JavaScript at six points each; precedence and associativity (−2² = −4, 2^3^2 = 512, 8/4/2 = 1);
+errors point at the right character; 3,000 random strings give an answer or a ParseError and
+nothing else; the source holds no eval or Function; x·x matches x² and a curve with holes does not;
+every level matches itself and no other. Making ^ left-associative, counting holes as matching or
+binding implied multiplication too tightly each turns tests red. On the GPU, offscreen: yours on
+its own points and not half a square off them, orange then green when matched, both arms of 1/x
+and nothing joining them. Through the UI at 1280 and an emulated iPhone 13 (mouse, not touch): a
+match by typing, "2x" a square off, "2x +" marked, three hints to an answer and one star, the keys,
+free mode's sliders saved and back after a reload; `mobileAudit` zero in both modes; one GPU device
+per mount.
+
+**Not verified:** the stage in a page, real GPUs, and typing on a real phone keyboard.
+
+### Follow-on: `claude/lab-sun-1`, stacked on #64 (8 Nov 2026) — a sky tool, Sun path
+
+**Base:** `claude/lab-graph-1` (#64), only to keep the registry append-only. No SQL changes.
+
+- **What you do.** Pick a place (fifteen, Longyearbyen to Ushuaia, or any latitude), a date and a
+  time: the sky turns to match — a panorama with north at both edges and south in the middle, blue
+  by day, orange and violet near a low sun, stars at night — with the sun and the whole day's path.
+  Under it, in words: how high and which way the sun is, a 1 m stick's shadow, sunrise, sunset and
+  the day's length, or that the sun does not set or rise at all. Quick buttons for midsummer, the
+  equinox and midwinter; ▶ plays the day. **🎯 Where's the sun?**: five rounds of "Tromsø, 3 Mar,
+  09:30 — tap where the sun is", scored by the angle off; best kept.
+- **Sun time, said plainly.** Times are sun time — noon is when the sun is highest — so a time zone,
+  summer time and where a city sits inside its zone (an hour or two between them) never move the
+  answer. The page says so rather than pretending to a clock it does not know.
+- **Technique.** Spencer's declination series, then spherical astronomy; sunrise and sunset at
+  −0.833°, as almanacs count them. One fullscreen shader shades the sky for the sun's height and
+  bearing and draws the path as a dotted polyline.
+
+**Measured here:** 13 tests — declination at the solstices and equinoxes; at noon the sun stands
+90° − |latitude − declination| high at every latitude and day (geometry, not the formula); due south
+or north at noon by which side of the sun you are; mornings mirror afternoons; London's longest and
+shortest days are 16h38m and 7h50m, the almanac's figures; the equator has twelve hours all year;
+Tromsø's polar day and night; at sunrise and sunset the sun is exactly at −0.833°; shadows; the angle
+between two points of sky. Ignoring the refraction or getting the azimuth's quadrant wrong each turns
+tests red. On the GPU, offscreen: noon blue with the sun at its place, the dotted path through 08:00's
+place, night dark with stars, sunset orange on the sun's side and not the other, the guess ring. A
+below-horizon sun was drawn as a glow rising through the ground; it is an outline now. Through the UI
+at 1280 and an emulated iPhone 13 (mouse, not touch): polar day and night, London's day, the slider,
+the day playing, five rounds answered by tapping the computed sun (500 of 500), arrow-key guessing,
+reload; `mobileAudit` zero in both modes; one GPU device per mount.
+
+**Not verified:** the stage in a page, real GPUs, and whether the sky's colours look like a sky on a
+real screen.
+
+### Follow-on: `claude/lab-sun-2`, stacked on #65 (8 Nov 2026) — Sun path on the clock
+
+**Base:** `claude/lab-sun-1` (#65). No SQL, no new dependency, no registry change (same toy, same id).
+
+- **Clock time by default (Evan's direction, 8 Nov).** Every named place now has a longitude and an
+  IANA time zone, and its times read as the clock there reads them: "Sunrise 04:43 · sunset 21:22 ·
+  16h 38m of daylight — London time, UTC+01:00, summer time." The offset comes from the browser's
+  own `Intl.DateTimeFormat` (`timeZoneName: 'longOffset'`), taken at the instant of each event, so
+  daylight saving is right on the days the clocks change and a zone whose rules change is right as
+  soon as the browser is. No time-zone library was needed.
+- **☀️ Sun time stays, as the teaching mode,** and never borrows the clock's words: "In sun time it
+  rises at 03:41 and sets at 20:19 … A clock there reads differently." Switching keeps the same
+  moment. **Somewhere else…** (a latitude alone) has no zone, so it is sun time only and says why. A
+  browser that cannot read zones falls back to sun time and says that instead.
+- **The game asks on the local clock** ("Quito, 25 Jun, 09:00 Quito time (UTC−05:00)") unless sun
+  time is chosen. Saves gain `scale`; an older save opens on the clock.
+- ⚠️ **The astronomy was less accurate than #65 said, and it is fixed here.** Spencer's 1971 series
+  is a fit to a mean year; for 2026 it runs up to 0.25° late — invisible in London, eleven minutes
+  of sunset in Longyearbyen — so #65's "within about 0.05° of an almanac" was a claim about a
+  different year. Now: the Astronomical Almanac's low-precision sun (0.01°, 0.1 min, 1950–2050)
+  for the actual year, read at the instant of each event, because near an equinox the declination
+  moves 0.4° a day.
+
+**Measured here, against references that share no code with the module:**
+
+- `src/gpu/sun.reference.json`: 145 place-days (every place on eight dates through 2026, plus each
+  zone's clock-change days and the day after — Europe, US, Sydney, Cairo), from astral 3.2 with
+  Python's zoneinfo, generated by `scripts/sun-reference.py` in a scratch venv (astral is not a
+  dependency). All 274 sunrises and sunsets agree, every UTC offset matches, and polar days and
+  nights agree. Worst disagreement under 60° of latitude: **0.47 min**.
+- ⚠️ **The tolerance is a budget in degrees, not minutes, and why.** The reference's horizon sits
+  0.04° higher than the −0.833° convention used here (measured: its sun is at −0.79° at its own
+  sunrise), and each side's declination is good to about 0.01°. Each event's bound is that 0.06°
+  divided by the sun's climb at that moment, plus 0.25 min — about a minute under 60°, about five
+  where the sun grazes the horizon at the end of Tromsø's polar night (measured 4.9 there). A flat
+  bound would be either too loose for Mumbai or false for Tromsø.
+- Published figures: the 2026 equinoxes and solstices (20 Mar 14:46, 21 Jun 08:24, 23 Sep 00:06,
+  21 Dec 20:50 UTC) to 0.015° of declination; London midsummer against the Met Office's 04:43 /
+  21:21 BST. Sunset here is 21:21:32 and displays as **21:22**: it sits at Trafalgar Square's
+  longitude, where the same evening's published sunset is 21:22:07.
+- Each fault turned the tests red when put back: no daylight saving, declination read once a day,
+  no equation of time, the sun half a day late (Spencer's error), and no refraction.
+- Through the UI on Chromium at 1280 and an emulated iPhone 13 (mouse, not touch): London clock ⇄
+  sun time ⇄ clock, Reykjavík's sunset at 00:03 "(after midnight)", Sydney's December in AEDT, no
+  clock toggle for a typed latitude, five clock-time rounds answered by tapping the module's own
+  answer (500 of 500), reload keeps place and scale, `mobileAudit` zero in both modes, devices
+  released on leaving.
+
+**Not verified:** the stage in a page (this container's GPU is lost in-page, as before), real
+GPUs, Firefox or Safari's `longOffset` support (the code falls back to sun time when it is missing),
+and whether "Clock time" / "Sun time" reads clearly to someone who has never thought about it.
+
+### Follow-on: `claude/lab-skip-1`, stacked on #68 (8 Nov 2026) — a game, Skipping stones
+
+**Base:** `claude/lab-sun-2` (#68), only to keep the registry append-only. No SQL. Id `skip`, 66th.
+
+- **What you do.** Drag back on the lake like a catapult (further is harder, the direction aims)
+  and let go; or set Power and Aim and hold 🤚 or Space. The stone in your hand wobbles flat and
+  steep every 1.6 s, shown on a little gauge with the best tilt in green: let go when it is about 20°
+  and it skips best. Each touch leaves a ring on the water and a note a step higher. Free throw, or
+  six challenges — three skips, past the buoy, ten, under a low bridge, the far bank, twenty — ticked
+  off and kept with your best skips and furthest throw.
+- **The mastery is the timing.** At full power the tilt must be within 16–24° for twenty skips, and
+  the wobble passes through that window for about 72 ms twice a swing. Of 3,000 random throws, about
+  30% make three skips and under 2% make twenty.
+- ⚠️ **A toy model, labelled as one.** Built in: Clanet, Hersen & Bocquet (Nature, 2004) — best at
+  a 20° tilt, nothing skips coming in steeper than about 45° or slower than a few m/s. Tuned, not
+  measured: the speed a bounce costs and how the tilt drifts as spin dies. The stone is drawn twice
+  life size. ⚠️ The first version got the one fact it is built on wrong — a 5° tilt out-skipped 20°,
+  because the tilt only ever crept upward, so starting flat bought room. Now an off tilt drifts
+  further off the way it leans, which puts the optimum at 20° as a consequence, not a constant.
+- **The wobble keeps real time,** not frame time: a stuttering GPU would otherwise freeze the stone
+  in the hand while the player's own timing ran on.
+- **The stage is landscape for this toy only** (`.skip-room`): the shared stage is taller than wide
+  on a phone, which put 18 m of sky over a 14 m lake. The water line also rises on a squarer stage
+  so about 5 m of sky shows — the highest throw's apex.
+
+**Measured here:** 14 tests — the best tilt within 2° of 20° at four speeds; a stone steeper than
+45° goes in; nothing skips under the slowest speed; the first touch lands where √(2h/g) says;
+speed only falls and hops after the first only shorten; a careless throw makes ≤ 4 and a good one ≥
+20; bridge and shore end a flight; every challenge passable and the last not by flailing; the save
+round-trips every field. Put back, each fault turns them red: the first model's tilt drift, no
+steepness limit, a lift that lengthens hops, a bounce that gains speed, the best tilt moved to 35°.
+On the GPU, offscreen at 1088×400 and at a phone's 1024×818: the aim dots on the computed arc and
+dark between them, the hand-held stone covering its face at 40° and not the flat, sky, water,
+deck, the water under the deck, buoy, the stone in flight, a ripple bright at exactly its 0.8 m
+radius and dark inside, the shore. Through the UI at 1280 and an emulated iPhone 13 (mouse, not
+touch): a 0.313 s hold (20°) throws 14–20 skips and 0.8 s (60°) none; the button says "In the air…"
+and ignores a press mid-flight; a cancelled press does not throw; drag and keys throw; Three skips
+ticks, saves and survives a reload; `mobileAudit` zero; devices released on leaving.
+
+**Not verified:** the stage in a page (this container's GPU is lost in-page), real touch — a drag
+with a finger, and whether the hold button is comfortable to time on a phone — real GPUs, and how
+the sound feels.
+
+### Follow-on: `claude/lab-seeing-1`, stacked on #77 (8 Nov 2026) — a tool, Colour sight
+
+**Base:** `claude/lab-skip-1` (#77), only to keep the registry append-only. No SQL. Id `vision`,
+67th. Not in the release PR (#87); it is the next thing after it.
+
+- **What it does.** Shows a picture — a test card of the things colour-blind readers struggle with
+  (chart lines and a legend, a red/green status board, a traffic light, a spectrum, green text on
+  red), Jigsaw's paintings, or your own picture, which never leaves the device — typical on one side
+  of a divider and as a protan, deutan, tritan or achromat sees it on the other, with a severity
+  slider. Pick two colours (tap the picture, or the colour inputs) and a table shows the pair as
+  every kind sees it: in words, as a CIE 1976 ΔE, and as a WCAG contrast ratio.
+- ⚠️ **Derived, not copied.** The simulation matrices are worked out from two standard ones (sRGB →
+  XYZ under D65, and Hunt–Pointer–Estévez XYZ → cones) by Viénot, Brettel & Mollon's 1999 method,
+  because a check on remembered published matrices failed: the protan matrix I recalled did not
+  send the long-cone direction to zero against the cone matrix I recalled. Derived, the method's
+  own definition is testable.
+- **Labelled as a simulation.** Blue-yellow uses a rougher one-plane version; partial deficiency is
+  a straight mix with typical vision; the page says another model paints shades differently and to
+  trust which pairs collapse more than the exact tints.
+
+**Measured here:** 15 tests — each full deficiency is a projection of rank two; a change only the
+missing cone could see is invisible (confusion lines meet) while the other two cones' are kept;
+white and the anchors are left alone; against an **independent model, Machado, Oliveira &
+Fernandes (2009)** — copied matrices checked by every row summing to one — the ranking of 2,000
+pairs' differences agrees at Spearman 0.978 / 0.995 / 0.978 (protan / deutan / tritan), against
+0.83 / 0.72 / 0.51 for either model with typical vision; the shade itself differs by a median ΔE of
+8–12, which is why the test asks about ranking and not shade; red and green collapse for
+protan/deutan, red darkens only for protan, blue and green collapse for tritan; achromat keeps only
+lightness; severity runs typical → full; WCAG's quoted ratios exactly (21, 4.54 for #767676, 4.48
+for #777777, 7.00 for #595959). Six planted faults each turn tests red — above all the matrix
+applied to gamma-encoded sRGB, the commonest mistake in these tools. On the GPU, offscreen: the
+shader's output equals the module's `seen()` to the byte (0 difference) for eight colours under
+all four kinds, the left of the divider untouched, half severity exact. Through the UI at 1280 and
+an emulated iPhone 13 (mouse): kinds, severity only where it applies, typed colours, an uploaded
+picture picked from by tapping, saves through a reload, `mobileAudit` zero, every control above the
+phone nav when focused, devices released.
+
+**Not verified:** in-page rendering (lost GPU, as ever) — and with it painting one of Jigsaw's
+pictures in the page, whose GPU read-back failed in-page here; offscreen it returns exactly
+Palette's pixels. A failed paint now leaves the page on the picture it shows and says so (before,
+the dropdown moved and a tap picked the old picture's colours). Real screens, which shift every
+colour; and whether colour-blind people recognise what it shows.
+
+### Follow-on: `claude/lab-glide-1`, stacked on #88 (8 Nov 2026) — a game, Soaring
+
+**Base:** `claude/lab-seeing-1` (#88), only to keep the registry append-only. No SQL. Id `glide`,
+68th.
+
+- **What you do.** Race a glider across country, side-on: set the airspeed (slider or ↑ ↓) and
+  decide when to circle (button or Space) under a cumulus to climb. Instruments: height, the
+  variometer, distance to go, the glide you NEED to reach the finish and the glide you are GETTING
+  now — when getting beats need, go home. Five tasks: a final glide, a first thermal, a cloud
+  street, a weak day, a blue day with no clouds to mark the lift. Stars against par; bests kept.
+  The flight waits for ▶ Fly (or any first control), so the task can be read first.
+- **The skill is real gliding's** (MacCready 1954): fly faster through sinking air and slower in
+  lift, and only stop for a thermal stronger than you expect the next to be. Par is that strategy,
+  searched over settings 0–4 m/s; too low a setting dawdles, too greedy lands out.
+- ⚠️ **A toy model, labelled.** The polar is a parabola through a trainer's shape (0.7 m/s at
+  75 km/h, 1 in 31 at 90); circling is a button, not a turn; time runs ×12; heights are drawn far
+  taller than distances. ⚠️ **The first speed-to-fly formula had a sign slip** — it got slower as the
+  expected climb rose, the opposite of the theory — and was invisible at m = 0, where it still gave
+  best glide. The test that caught it compares the closed form with a plain search over speeds.
+
+**Measured here:** 14 tests — the polar through its points and shaped like a trainer; best glide and
+MacCready's speed for climbs 0.5–3 m/s in still, sinking and rising air, each against a numeric
+search sharing no algebra with the formula; speed rising with the day and with sink; a final glide
+going height × glide ratio, to within one step (and only long, never short — the step crosses the
+ground before it notices); circling climbing at lift less 1.3× min sink, and only in a core, and
+working towards it; every task with a par, and the thermal tasks impossible without circling; the
+final glide lost too slow or too fast; greed landing out; and MacCready's own result appearing
+unbidden — the best setting on a single thermal is within 0.25 m/s of the climb it gives. Five
+planted faults turn them red, the original sign slip among them. GPU, offscreen: cloud over the
+thermal at cloudbase and none on a blue day, glider, trail, ground and the chequered finish where
+the engine's own mapping puts them. UI at 1280 and an emulated iPhone 13 (mouse): waiting for ▶ Fly,
+a real final glide home at 90 km/h in 13:00 against par 11:46 (★★) and saved through a reload,
+landing out flying too fast, keys, circling (the variometer reads the simulation's own sum, ▼ 0.9
+m/s — an earlier version read the straight-flight sink while circling), `mobileAudit` zero, every
+control clear of the phone nav, devices released.
+
+**Not verified:** the stage in a page (lost GPU), real touch, real GPUs, and whether the tasks are
+fun at this pace — the thermal tasks were flown by the pilot function, not by hand.
+
+## Questions and tests for Evan — a short queue, most useful first
+
+1. **Real device — Jigsaw on a phone and on a desktop GPU.** This one matters most, because the
+   test browser here could not show its stage at all on 8 Nov. Does the picture appear and the
+   pieces draw cleanly? Do 24 pieces feel big enough for a finger, and do they snap when you
+   expect? Try your own photo once.
+2. **Real device — Palette.** Pick a photo from your camera roll on the phone. Does the palette look
+   like the photo? Does tapping the picture pick the colour under your finger? Does 📋 Copy CSS
+   work in your browser (Safari asks differently from Chrome)?
+3. **Real device — Bridge on a phone.** Build level 1 with a finger. Is a 1 m grid big enough to hit
+   on the 14 m level (about 17 px a metre)? Does watching the members go red teach you anything?
+4. **Real device — Wallpaper's ⬇ Save as PNG.** It could not be pressed with a live GPU here. Does
+   it download a 1024-pixel picture in your browser, and does a finger draw where you expect?
+5. **Real device — Nonogram on a phone.** Solve the 10×10 Cat with a finger. Are the squares big
+   enough, and does a drag that drifts stay on its row as it should? The 15×15 ones are about 17 px
+   a square — too small, or fine with the drag?
+6. **Real device — Logic gates on a phone.** Build And with a finger on the stage, then Or using
+   only the parts list. Are the pins hittable, or is the list the way on a phone? Should the board
+   turn upright on a narrow screen?
+7. **Real device — Slide on a phone.** Do a few Endless boards by swiping. Does a swipe ever go the
+   wrong way, or scroll the page instead? Is Medium the right step up from Easy?
+8. **Real device — Intervals, with sound.** Play a round on a phone and on a laptop. Do the notes
+   sound clean and at the right moment? Are the six stages a fair climb?
+9. **Taste — Sun path.** Pick the place nearest you and today: are sunrise and sunset within a
+   minute or two of your phone's weather app, does the sky look like a sky, and is the ☀️ Sun time
+   switch clear enough to be worth keeping? Expect a minute or two at mid-latitudes, not to the
+   second — a weather app may count a different point in town, and near polar sunrise or sunset
+   (Tromsø in January, say) several minutes is within the documented error budget, before the
+   weather's own refraction. (Safari: check the times read as clock time, not sun time — that
+   would mean its time-zone support is missing.)
+10. **Taste — Paint mixer.** Do the five paints and their mixtures look like paint on your screen?
+    Is the reading ("darker, duller and more green") more help than the number?
+11. **Taste — Orbit.** Is a held second the right feel for a burn, and does the dotted line make
+    the two-burn trick discoverable from the hints alone?
+12. **Taste — Beams.** Play the ten levels. Is the climb right — too easy early, a wall somewhere?
+    Is "tap again to turn" discoverable, or does it want its own button first?
+13. **Taste — the desktop picker.** The row of 51 name buttons is replaced by the dropdown and
+    🔎 Browse at every width. Better, or do you miss seeing every name at once?
+14. **Real device — a phone.** Open the Lab, 🔎 Browse, search "puzzle", launch one from the bottom
+    of the list: does it land with the toy on screen? Is the dropdown easy with a thumb?
+15. **Real device — once #31's SQL is applied.** Vote on a toy, switch it, press the
+    highlighted one to take it back; is the highlight clear enough on its own?
+16. **Real device — Skipping stones on a phone.** Throw with a finger: does dragging back feel like
+    aiming, and can you learn to let go at the green? Then try the 🤚 button. Is the 1.6 s wobble
+    learnable, or too fast? Does Twenty skips feel earned or impossible?
+17. **Taste — Colour sight.** Does the test card make the point at a glance? If you know somebody
+    colour-blind, would they recognise the "Deutan" side — and is the pair table the useful part,
+    or the picture?
+18. **Taste — Soaring.** Fly the cloud street by hand. Is "need / getting" enough to know when to
+    go home? Is ×12 time too fast to think, or too slow to bother?

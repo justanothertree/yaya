@@ -201,6 +201,8 @@ rpc circuit_session_sums "$TB" "$SUMS"
 check "$(printf '%s' "$BODY" | jq -c '[.[] | select(.person == "api-probe-a")]')" '[]' "B, in no circuit with A, sees none of A's sessions"
 
 # ── the conversion (a proposal, applied earlier in this run) ──
+# ⚠️ SKIPPED WITH PROBE_CONVERSION=no, the release run (C7), where the draft is not applied (§20d).
+if [ "${PROBE_CONVERSION:-yes}" = yes ]; then
 # No member may run it, so it is run here as the database owner, the way a cutover would be. What
 # the API is asked is everything around it: that nobody can call it, what it says about a set the
 # grid never counted (A's own 20, added above with no sitting), the way out of that, and the
@@ -237,6 +239,7 @@ rpc circuit_cell_set "$TA" "$CELL2"; refused "A saving the converted cell again 
 rpc circuit_manual_sums "$TA" "$SUMS"
 check "$(printf '%s' "$BODY" | jq -c '[.manual[] | select(.person == "api-probe-a") | [.on, .value]]')" "[[\"$YDAY\",11]]" "the converted cell reads 11, once"
 check "$(conv true | jq -c '[.already, .applied]')" '[true,false]' "a second conversion is answered already, and adds nothing"
+fi
 
 # ── the tables themselves, straight through the REST surface ──
 # ⚠️ A REFUSAL OR AN EMPTY LIST, and which one is printed. A table can hold everything out by
@@ -251,7 +254,9 @@ table() {
     *) fail "$1 reading $2 directly — HTTP $CODE $BODY" ;;
   esac
 }
-for t in chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets chronicle_exercise_links circuit_people_converted; do
+TABLES="chronicle_goal_marks chronicle_entries chronicle_goal_days chronicle_sets chronicle_exercise_links"
+[ "${PROBE_CONVERSION:-yes}" = yes ] && TABLES="$TABLES circuit_people_converted"
+for t in $TABLES; do
   table A "$t" "$TA"
   table anon "$t" "$ANON_KEY"
 done

@@ -1,4 +1,18 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import {
+  CATEGORIES,
+  FILTER_KEY,
+  META,
+  entries,
+  listed,
+  readFilter,
+  readFlags,
+  type Category,
+  type Flags,
+} from '../lab/catalog'
+import { labApi, noLabYet } from '../lab/feedback'
+import { LabFeedback, type Viewer } from '../lab/LabFeedback'
+import '../lab/lab-catalog.css'
 import { AquariumDemo } from '../gpu/AquariumDemo'
 import { BlackHoleDemo } from '../gpu/BlackHoleDemo'
 import { BubblesDemo } from '../gpu/BubblesDemo'
@@ -43,6 +57,28 @@ import { CrossingDemo } from '../gpu/CrossingDemo'
 import { ShadowboxDemo } from '../gpu/ShadowboxDemo'
 import { FoldDemo } from '../gpu/FoldDemo'
 import { ToppleDemo } from '../gpu/ToppleDemo'
+import { JigsawDemo } from '../gpu/JigsawDemo'
+import { PaletteDemo } from '../gpu/PaletteDemo'
+import { BeamsDemo } from '../gpu/BeamsDemo'
+import { BridgeDemo } from '../gpu/BridgeDemo'
+import { EpicyclesDemo } from '../gpu/EpicyclesDemo'
+import { OrbitDemo } from '../gpu/OrbitDemo'
+import { WallpaperDemo } from '../gpu/WallpaperDemo'
+import { NonogramDemo } from '../gpu/NonogramDemo'
+import { GatesDemo } from '../gpu/GatesDemo'
+import { SlideDemo } from '../gpu/SlideDemo'
+import { MixDemo } from '../gpu/MixDemo'
+import { IntervalsDemo } from '../gpu/IntervalsDemo'
+import { GraphDemo } from '../gpu/GraphDemo'
+import { SunDemo } from '../gpu/SunDemo'
+import { SkipDemo } from '../gpu/SkipDemo'
+import { VisionDemo } from '../gpu/VisionDemo'
+import { GlideDemo } from '../gpu/GlideDemo'
+import { PegDropDemo } from '../gpu/PegDropDemo'
+import { StackDemo } from '../gpu/StackDemo'
+import { RpsDemo } from '../gpu/RpsDemo'
+import { DiceDemo } from '../gpu/DiceDemo'
+import { PokerDemo } from '../gpu/PokerDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -395,6 +431,139 @@ const DEMOS: readonly {
     line: 'Print shop — carve a lino block with a gouge and pull prints from it, ink over ink: a reduction linocut, cut and printed on the GPU.',
     Demo: PrintshopDemo,
   },
+  // after the catalog: registered in the database by the admin's next visit, not by the draft
+  {
+    id: 'jigsaw',
+    name: 'Jigsaw',
+    line: 'Jigsaw — six painted pictures or a photo of your own, cut into 12 to 154 pieces: drag them together on the felt, and they snap when they fit.',
+    Demo: JigsawDemo,
+  },
+  {
+    id: 'palette',
+    name: 'Palette',
+    line: 'Palette — pull a colour palette out of a picture or a photo of your own, lock what you like and re-roll the rest, see it redrawn in just those colours, and check which pairs read as text.',
+    Demo: PaletteDemo,
+  },
+  {
+    id: 'beams',
+    name: 'Beams',
+    line: 'Beams — place mirrors, splitters and colour filters to bring red, green and blue lasers to every target. Colours add: red and green make yellow.',
+    Demo: BeamsDemo,
+  },
+  {
+    id: 'bridge',
+    name: 'Bridge',
+    line: 'Bridge — build a bridge from road, timber and steel on a budget, then drive a cart across and watch every member strain, bend and snap.',
+    Demo: BridgeDemo,
+  },
+  {
+    id: 'epicycles',
+    name: 'Epicycles',
+    line: 'Epicycles — draw any shape and watch a chain of spinning arms redraw it: its Fourier series. Slide from one arm to a hundred and see the corners come in.',
+    Demo: EpicyclesDemo,
+  },
+  {
+    id: 'orbit',
+    name: 'Orbit',
+    line: 'Orbit — fly a probe round a planet with two buttons: speed up, slow down. Raise, lower and stretch the orbit onto the target, and escape — on as little fuel as the textbook says.',
+    Demo: OrbitDemo,
+  },
+  {
+    id: 'wallpaper',
+    name: 'Wallpaper',
+    line: 'Wallpaper — draw, and every stroke repeats across the wall by one of the seventeen ways a pattern can: turns, mirrors and glides. Then guess which group a pattern is.',
+    Demo: WallpaperDemo,
+  },
+  {
+    id: 'nonogram',
+    name: 'Nonogram',
+    line: 'Nonogram — fill the squares so every row and column matches its numbers, and a picture appears. Then draw your own: it tells you whether logic alone can solve it.',
+    Demo: NonogramDemo,
+  },
+  {
+    id: 'gates',
+    name: 'Logic gates',
+    line: 'Logic gates — wire switches to lamps through NAND and the gates you build from it, until the truth table is all ticks: NOT, AND, XOR, then adders that really add.',
+    Demo: GatesDemo,
+  },
+  {
+    id: 'slide',
+    name: 'Slide',
+    line: 'Slide — an ice puzzle: the puck slides until something stops it. Take every coin and come to rest on the goal in as few pushes as the solver did; then endless boards, each solved before you see it.',
+    Demo: SlideDemo,
+  },
+  {
+    id: 'mix',
+    name: 'Paint mixer',
+    line: 'Paint mixer — drop five paints into a cup to match a colour. They mix like real paint, light absorbed wavelength by wavelength, so yellow and blue make green; or mix freely and copy the colour.',
+    Demo: MixDemo,
+  },
+  {
+    id: 'intervals',
+    name: 'Intervals',
+    line: 'Intervals — two notes play: name the distance between them, from an octave to a semitone. Six stages, each opened by eight of ten, and the ones you miss come back more often.',
+    Demo: IntervalsDemo,
+  },
+  {
+    id: 'graph',
+    name: 'Graph match',
+    line: 'Graph match — type an equation and lay its curve on the dashed one: lines, parabolas, V shapes, waves. Or graph anything, with sliders a, b and c to see what each number does.',
+    Demo: GraphDemo,
+  },
+  {
+    id: 'sun',
+    name: 'Sun path',
+    line: 'Sun path — where the sun is for any place, day and hour: its path across the sky, sunrise, sunset, day length and a shadow. Then guess where the sun stands over Tromsø in March.',
+    Demo: SunDemo,
+  },
+  {
+    id: 'skip',
+    name: 'Skipping stones',
+    line: 'Skipping stones — drag back, let go while the stone is nearly flat, and count the skips. Six challenges, from three skips to twenty and under a bridge.',
+    Demo: SkipDemo,
+  },
+  {
+    id: 'vision',
+    name: 'Colour sight',
+    line: 'Colour sight — see a chart, a painting or your own picture as people with colour blindness do, and check whether two colours stay apart for everyone.',
+    Demo: VisionDemo,
+  },
+  {
+    id: 'glide',
+    name: 'Soaring',
+    line: 'Soaring — race a glider across country on thermals: set your airspeed, circle under clouds to climb, and get home faster than par. The real gliding rule, in five tasks.',
+    Demo: GlideDemo,
+  },
+  {
+    id: 'pegdrop',
+    name: 'Peg drop',
+    line: 'Peg drop — drop balls through twelve rows of pegs into slots that pay up to 170 times the drop. Pick your risk; every peg is a fair coin, and the odds are printed.',
+    Demo: PegDropDemo,
+  },
+  {
+    id: 'stack',
+    name: 'Stackfall',
+    line: 'Stackfall — falling blocks that get faster the longer you last. Survive alone, or race the computer or a friend on the same keyboard: clear rows to send junk up their well.',
+    Demo: StackDemo,
+  },
+  {
+    id: 'rps',
+    name: 'Rock, paper, scissors',
+    line: 'Rock, paper, scissors — against a mind-reader that hunts for your habits and tells you what it spotted, or a friend on the same keyboard. And a coin to call: how long a run can you get?',
+    Demo: RpsDemo,
+  },
+  {
+    id: 'dice',
+    name: 'Ten thousand',
+    line: 'Ten thousand — the push-your-luck dice game: keep what scores, then bank it or roll the rest and risk the lot. First to 10,000, against the computer or a friend, with the odds of every roll shown.',
+    Demo: DiceDemo,
+  },
+  {
+    id: 'poker',
+    name: 'Hold’em',
+    line: 'Hold’em — Texas hold’em for play chips against three computer players who each play their own way. They work out their odds by dealing the unseen cards hundreds of times. Last one with chips wins.',
+    Demo: PokerDemo,
+  },
 ]
 
 type DemoId = string
@@ -448,7 +617,18 @@ function reportOf(adapter: GPUAdapter, format: string): Report {
   }
 }
 
-export function GpuLab() {
+const GUEST: Viewer = { authed: false, suspended: false, isAdmin: false }
+const KNOWN = new Set(DEMOS.map((d) => d.id))
+
+function storedFilter(): Category | 'all' {
+  try {
+    return readFilter(localStorage.getItem(FILTER_KEY))
+  } catch {
+    return 'all'
+  }
+}
+
+export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [demo, setDemo] = useState<DemoId>(storedDemo)
   const [report, setReport] = useState<Report | null>(null)
   /* ⚠️ STILL UNTIL ASKED, under reduced motion. Every demo here is motion, so none can simply
@@ -456,6 +636,77 @@ export function GpuLab() {
      its first frame still, and Run is somebody choosing to watch it move. */
   const [running, setRunning] = useState(() => !motionReduced())
   useEffect(() => onMotionChange(() => motionReduced() && setRunning(false)), [])
+
+  /* ── the catalog: the owner's flags, the vote totals a member may see, this browser's favourites.
+     ⚠️ NONE OF IT IS NEEDED TO PLAY. Without a backend, offline, or before the answer arrives,
+     every experiment is listed exactly as it always was; the server can only take away what the
+     owner hid, and add what a signed-in member may be shown. */
+  const api = useMemo(() => labApi(), [])
+  const [flags, setFlags] = useState<Map<string, Flags>>(() => new Map())
+  /** the ids the database's catalog lists — null until it has answered, and if it never does */
+  const [inCatalog, setInCatalog] = useState<Set<string> | null>(null)
+  /* ⚠️ EVERY TOY SHOWN, AND THE FILTER ONLY FADES (Evan, 9 Nov). A dropdown and a separate catalog
+     with search, Recent, New and Highly rated replaced the row of names on 8 Nov; played with,
+     the row was missed — seeing everything at once is the point of a lab. So all of them are
+     buttons again, and choosing a kind fades the rest rather than hiding them: still one press
+     away, just quieter. All is the default, and the choice is kept in this browser. */
+  const [filter, setFilter] = useState<Category | 'all'>(storedFilter)
+  const chooseFilter = (f: Category | 'all') => {
+    setFilter(f)
+    try {
+      localStorage.setItem(FILTER_KEY, f)
+    } catch {
+      /* private mode: kept for this visit */
+    }
+  }
+  /* ⚠️ THE FRONTEND CAN REACH PRODUCTION BEFORE ITS SQL DOES. Measured with every lab_* call
+     answering as PostgREST does for a function that does not exist: a member was offered 👍 👎 and
+     a note form, and a vote came back "Couldn't reach the server". So a catalog that is MISSING —
+     not one that failed to arrive — closes feedback the way a build with no backend already does. */
+  const [noFeedback, setNoFeedback] = useState(false)
+  useEffect(() => {
+    if (!api) return
+    let live = true
+    api
+      .catalog()
+      .then(async (raw) => {
+        if (!live) return
+        const ids = (r: unknown) =>
+          new Set(
+            Array.isArray(r)
+              ? r.flatMap((x) => {
+                  const id = (x as { id?: unknown })?.id
+                  return typeof id === 'string' ? [id] : []
+                })
+              : [],
+          )
+        setFlags(readFlags(raw, KNOWN))
+        const seen = ids(raw)
+        // the owner's own Lab registers an experiment the database has not met yet
+        const fresh = DEMOS.map((d) => d.id).filter((id) => !seen.has(id))
+        if (viewer.isAdmin && fresh.length && (await api.register(fresh)) > 0 && live) {
+          const again = await api.catalog()
+          if (!live) return
+          setFlags(readFlags(again, KNOWN))
+          return setInCatalog(ids(again))
+        }
+        // only an answer that is a list says what is missing from it
+        if (Array.isArray(raw)) setInCatalog(seen)
+      })
+      .catch((e: unknown) => {
+        /* no catalog: every experiment stays listed, nothing counted — the Lab still plays */
+        if (live && noLabYet(e)) setNoFeedback(true)
+      })
+    return () => {
+      live = false
+    }
+  }, [api, viewer.authed, viewer.isAdmin])
+  const all = useMemo(() => entries(DEMOS, flags), [flags])
+  const visible = useMemo(() => all.filter((e) => listed(e, viewer.isAdmin)), [all, viewer.isAdmin])
+  const shownDemos = useMemo(() => {
+    const ids = new Set(visible.map((e) => e.id))
+    return DEMOS.filter((d) => ids.has(d.id))
+  }, [visible])
 
   const pick = (id: DemoId) => {
     setDemo(id)
@@ -465,58 +716,92 @@ export function GpuLab() {
       /* private mode: it applies for this visit */
     }
   }
+  const patchFlags = (id: string, patch: Partial<Flags>) =>
+    setFlags((was) => {
+      const next = new Map(was)
+      next.set(id, {
+        ...(was.get(id) ?? { featured: false, experiment: false, hidden: false }),
+        ...patch,
+      })
+      return next
+    })
   const onAdapter = (adapter: GPUAdapter, format: GPUTextureFormat) =>
     setReport(reportOf(adapter, format))
   const props = { running, setRunning, onAdapter }
+  // a demo the owner hid is not offered; somebody who had it open lands on the first one listed
   const at = Math.max(
     0,
-    DEMOS.findIndex((d) => d.id === demo),
+    shownDemos.findIndex((d) => d.id === demo),
   )
-  const current = DEMOS[at]
-  /** the next or previous demo, round the end — browsing toys should not hit a wall */
-  const step = (by: number) => pick(DEMOS[(at + by + DEMOS.length) % DEMOS.length].id)
+  const current = shownDemos[at] ?? DEMOS[0]
+  const currentFlags = flags.get(current.id)
 
+  const counts = useMemo(() => {
+    const n = new Map<Category, number>()
+    for (const d of shownDemos) {
+      const c = META[d.id]?.category
+      if (c) n.set(c, (n.get(c) ?? 0) + 1)
+    }
+    return n
+  }, [shownDemos])
   return (
     <div className="lab">
-      {/* ⚠️ TWO PICKERS, ONE SHOWN. A row of buttons is right while it fits on one line; on a
-          phone seven were already two rows and pushed the canvas half off the first screen, and
-          every new toy made it worse. Below 640px it is a native dropdown — the phone's own
-          wheel — with buttons either side to step through, which is how people actually browse
-          toys. A width query, not a pointer one: the problem is room, not fingers. */}
-      <div className="lab-step">
-        <button className="btn btn-ghost" onClick={() => step(-1)} aria-label="Previous experiment">
-          ‹
+      <div className="lab-filter" role="group" aria-label="Show which kind">
+        <button
+          className="btn btn-ghost"
+          aria-pressed={filter === 'all'}
+          onClick={() => chooseFilter('all')}
+        >
+          All {shownDemos.length}
         </button>
-        <label className="lab-select">
-          <span className="sr-only">Which experiment</span>
-          <select value={current.id} onChange={(e) => pick(e.target.value)}>
-            {DEMOS.map((d, i) => (
-              <option key={d.id} value={d.id}>
-                {i + 1}. {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="btn btn-ghost" onClick={() => step(1)} aria-label="Next experiment">
-          ›
-        </button>
-      </div>
-      <div className="lab-picker" role="group" aria-label="Which experiment">
-        {DEMOS.map((d) => (
+        {CATEGORIES.map((c) => (
           <button
-            key={d.id}
+            key={c.id}
             className="btn btn-ghost"
-            aria-pressed={demo === d.id}
-            onClick={() => pick(d.id)}
+            aria-pressed={filter === c.id}
+            onClick={() => chooseFilter(filter === c.id ? 'all' : c.id)}
           >
-            {d.name}
+            {c.label.split(' — ')[0]} {counts.get(c.id) ?? 0}
           </button>
         ))}
       </div>
-      <p className="lab-line">{current.line}</p>
+      <div className="lab-picker" role="group" aria-label="Which experiment">
+        {shownDemos.map((d) => {
+          const other = filter !== 'all' && META[d.id]?.category !== filter
+          return (
+            <button
+              key={d.id}
+              className={`btn btn-ghost${other ? ' lab-other' : ''}`}
+              aria-pressed={current.id === d.id}
+              onClick={() => pick(d.id)}
+            >
+              {d.name}
+            </button>
+          )
+        })}
+      </div>
+
+      <p className="lab-line">
+        {currentFlags?.featured && <span className="lab-badge">⭐ Featured</span>}
+        {currentFlags?.experiment && <span className="lab-badge">🧪 Rough edges</span>}
+        {viewer.isAdmin && currentFlags?.hidden && (
+          <span className="lab-badge lab-badge-off">🙈 Hidden</span>
+        )}
+        {current.line}
+      </p>
 
       {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
       <current.Demo key={current.id} {...props} />
+
+      <LabFeedback
+        api={noFeedback ? null : api}
+        demo={current.id}
+        name={current.name}
+        flags={currentFlags}
+        viewer={viewer}
+        onFlags={patchFlags}
+        listed={inCatalog ? inCatalog.has(current.id) : undefined}
+      />
 
       {report && <GpuReport report={report} />}
     </div>

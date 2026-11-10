@@ -1,24 +1,59 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C6 (clean): both restore rules, the stray-set fix, 89 API checks.
--- after the job), then every suite that could notice them: the standing visibility guards, the
--- daily flow, the export/import round trip — and the marks test itself last.
-\echo === applying the sets draft (FIRST)
+-- RUN C7 (the release, exactly): the six drafts the release applies, in the release plan's order,
+-- with NO conversion draft, on a database built from main's migrations — which production has
+-- applied, every one (checked read-only on 9 Nov). Then the profile reader, step 7. Fingerprints of
+-- every function the release touches are printed before and after, to compare with production's.
+
+\echo === FINGERPRINT BEFORE — the six functions the release patches, as the migrations build them
+select p.proname as fn, md5(pg_get_functiondef(p.oid)) as md5, length(pg_get_functiondef(p.oid)) as bytes,
+       md5(pg_get_functiondef(p.oid)) = case p.proname
+         when 'chronicle_entry_amount' then '257c45b4256bf9d278210b86704f561e'
+         when 'chronicle_export'       then 'f3e16bed381e455b3905c13d9f3deeae'
+         when 'chronicle_goals_mine'   then 'bff4311d27e4e8f24dbe30a2ad95c258'
+         when 'chronicle_import'       then 'bc19f91904908b0831338ddbc2a7a1f8'
+         when 'chronicle_tally'        then '543f0572c074f53fc320db7f40903ee4'
+         when 'get_member_chronicle'   then '6f86f652a8f27991880a2ff890b5799a'
+       end as same_as_production_9_nov
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
+   and p.proname in ('chronicle_entry_amount','chronicle_export','chronicle_goals_mine',
+                     'chronicle_import','chronicle_tally','get_member_chronicle')
+ order by 1;
+
+\echo === 1. the sets draft (19d)
 \ir ../../docs/2026-11-08-chronicle-sets.DRAFT.sql
-\echo === applying the links draft (step 2a, after step 1)
+\echo === 2. the links draft (20c, after the sets)
 \ir ../../docs/2026-11-09-chronicle-sets-links.DRAFT.sql
-\echo === applying the grid draft (step 2b)
+\echo === 3. the grid draft (20c, after the links)
 \ir ../../docs/2026-11-09-circuit-grid-sessions.DRAFT.sql
-\echo === applying the conversion draft (step 3, a proposal)
-\ir ../../docs/2026-11-09-circuit-logs-conversion.DRAFT.sql
-\echo === applying the weekdays draft
+\echo === 4. the weekdays draft (19c)
 \ir ../../docs/2026-11-08-chronicle-weekdays.DRAFT.sql
-\echo === applying step 1
+\echo === 5. the marks draft, step 1 (17d)
 \ir ../../docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql
-\echo === applying step 3
-\ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
-\echo === applying the day-notes draft (AFTER marks)
+\echo === 6. the day-notes draft (18a)
 \ir ../../docs/2026-11-08-chronicle-day-notes.DRAFT.sql
-\echo === the standing guards, against a schema with all three drafts in it
+
+\echo === FINGERPRINT AFTER STEP 6 — every function the release creates or patches
+select p.proname as fn, md5(pg_get_functiondef(p.oid)) as md5, length(pg_get_functiondef(p.oid)) as bytes
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
+   and p.proname in ('chronicle_entry_amount','chronicle_export','chronicle_goals_mine','chronicle_import',
+     'chronicle_tally','get_member_chronicle','chronicle_entry_edit_day','chronicle_running_fix_day',
+     'chronicle_set_add','chronicle_set_change','chronicle_set_drop','chronicle_sets_between',
+     'chronicle_cell_lock','chronicle_exercise_link','chronicle_link_ok','chronicle_manual_amount',
+     'chronicle_my_exercises','chronicle_sets_uncount_if_unit_changed','chronicle_unit',
+     'circuit_cell_set','circuit_session_sums','chronicle_goal_days_set','chronicle_goal_mark',
+     'chronicle_goal_marks_for','chronicle_day_note_add','chronicle_day_notes_between')
+ order by 1;
+
+\echo === 7. the marks profile reader, step 3 of 17d (after the room is deployed)
+\ir ../../docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql
+\echo === FINGERPRINT AFTER STEP 7
+select p.proname as fn, md5(pg_get_functiondef(p.oid)) as md5, length(pg_get_functiondef(p.oid)) as bytes
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and p.proname = 'get_member_chronicle';
+
+\echo === the standing guards (main's), against the released schema
 \ir visibility-guards.orig.sql
 \echo === the daily flow
 \ir chronicle-daily-flow.sql
@@ -36,20 +71,18 @@
 \ir chronicle-sets-links.sql
 \echo === the grid
 \ir circuit-grid-sessions.sql
-\echo === the conversion
-\ir circuit-logs-conversion.sql
-\echo === a demonstration for 20e, which prints and raises nothing
-\ir demo-20e.sql
+\echo === (no conversion: it is not in the release, §20d)
 \echo === real Supabase Auth and PostgREST — LAST, because it COMMITS two accounts to this throwaway database
 create table public.api_probe(ok boolean not null, detail text not null);
-\! bash supabase/tests/api-probe.sh
+\! PROBE_CONVERSION=no bash supabase/tests/api-probe.sh
 select ok, detail from public.api_probe order by ok, detail;
 do $$
 declare n int; m int;
 begin
   select count(*) filter (where not ok), count(*) filter (where ok) into n, m from public.api_probe;
-  if n > 0 or m < 89 then
-    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 89', n, m;
+  raise notice 'API PROBE: % passed, % failed', m, n;
+  if n > 0 or m < 68 then
+    raise exception 'CHRONICLE API PROBE FAILED -- % failed, % passed of 68', n, m;
   end if;
 end $$;
-select 'the daily flow and the marks hold through Auth and PostgREST' as result;
+select 'the release holds through Auth and PostgREST, with no conversion' as result;
