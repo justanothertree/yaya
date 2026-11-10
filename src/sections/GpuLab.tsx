@@ -83,6 +83,10 @@ import { FireworksDemo } from '../gpu/FireworksDemo'
 import { LevelsDemo } from '../gpu/LevelsDemo'
 import { TypeDemo } from '../gpu/TypeDemo'
 import { BonsaiDemo } from '../gpu/BonsaiDemo'
+import { MancalaDemo } from '../gpu/MancalaDemo'
+import { HockeyDemo } from '../gpu/HockeyDemo'
+import { DotsDemo } from '../gpu/DotsDemo'
+import { ReversiDemo } from '../gpu/ReversiDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -592,6 +596,30 @@ const DEMOS: readonly {
     name: 'Bonsai',
     line: 'Bonsai — grow a little tree a season at a time, then shape it: cut branches back and it buds again, wire them to the angle you want. Choose maple, pine or blossom, the season, the pot and its glaze, moss and stones. The same seed grows the same way, so a link sends your very tree.',
     Demo: BonsaiDemo,
+  },
+  {
+    id: 'mancala',
+    name: 'Mancala',
+    line: 'Mancala — the sowing game. Sow seeds round the board into your store, end there to go again, end in an empty pit to take what is opposite. Against a computer that looks one, four or nine moves ahead, or a friend; four to six pits, three to six seeds, captures on or off, and boards and seeds to choose.',
+    Demo: MancalaDemo,
+  },
+  {
+    id: 'hockey',
+    name: 'Air hockey',
+    line: 'Air hockey — your paddle follows your finger or the mouse; knock the puck into the far slot and keep it out of yours. Against a Rookie, a Club player who goes for the corners, or a Pro who plays bank shots. Matches to 3, 5 or 7, with your record, your best run and your hardest shot.',
+    Demo: HockeyDemo,
+  },
+  {
+    id: 'dots',
+    name: 'Dots and boxes',
+    line: 'Dots and boxes — draw lines between dots, close a box to keep it and draw again. Against a computer that grabs, one that never gives a box away, or one that plays the endgame out and leaves you two boxes to keep control. Boards from 3×3 to 6×6, your colours and your letter in every box you win.',
+    Demo: DotsDemo,
+  },
+  {
+    id: 'reversi',
+    name: 'Reversi',
+    line: 'Reversi — trap a line of your opponent’s discs between two of yours and they turn over to your colour. Against a computer that grabs, one that looks two moves ahead, or one that looks further and plays the ending perfectly; boards of 6, 8 or 10, four sets of discs, three boards, and hints you can turn off.',
+    Demo: ReversiDemo,
   },
 ]
 

@@ -1585,3 +1585,256 @@ html:has(.lab) {
 .bz-branch {
   min-height: 44px;
 }
+
+/* Mancala: a board of pits and two stores, wide on a desk and turned upright on a phone */
+.mc-room {
+  --mc-board: linear-gradient(180deg, #a0662f, #7a4a22);
+  --mc-pit: radial-gradient(circle at 50% 40%, #4d2c12, #6b3e1b 70%);
+  --mc-edge: #3e220d;
+  --mc-ink: #fff4e3;
+}
+.mc-room.is-stone {
+  --mc-board: linear-gradient(180deg, #8d9299, #646a72);
+  --mc-pit: radial-gradient(circle at 50% 40%, #3b3f45, #575c63 70%);
+  --mc-edge: #2c2f33;
+  --mc-ink: #f3f5f7;
+}
+.mc-room.is-sea {
+  --mc-board: linear-gradient(180deg, #1f7a8c, #135463);
+  --mc-pit: radial-gradient(circle at 50% 40%, #0b3440, #145060 70%);
+  --mc-edge: #08262f;
+  --mc-ink: #e9fbff;
+}
+.mc-board {
+  display: grid;
+  grid-template-columns: repeat(calc(var(--n) + 2), minmax(0, 1fr));
+  grid-template-rows: auto repeat(2, minmax(64px, 1fr)) auto;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 28px;
+  background: var(--mc-board);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.18),
+    0 4px 0 var(--mc-edge);
+  color: var(--mc-ink);
+}
+.mc-side {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.mc-side.is-top {
+  grid-row: 1;
+}
+.mc-side.is-bottom {
+  grid-row: 4;
+}
+.mc-pit,
+.mc-store {
+  position: relative;
+  grid-column: var(--hc);
+  grid-row: calc(var(--hr) + 1);
+  aspect-ratio: 1;
+  min-height: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--mc-pit);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45);
+  color: inherit;
+  padding: 0;
+  font: inherit;
+}
+.mc-store {
+  grid-row: 2 / span 2;
+  aspect-ratio: auto;
+  border-radius: 999px;
+}
+.mc-pit:not(:disabled) {
+  cursor: pointer;
+  border-color: color-mix(in oklab, var(--mc-ink), transparent 60%);
+}
+.mc-pit:not(:disabled):hover {
+  border-color: var(--mc-ink);
+}
+.mc-pit:focus-visible {
+  outline: 3px solid #ffd34d;
+  outline-offset: 2px;
+}
+.mc-pit.is-lit,
+.mc-store.is-lit {
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.45),
+    0 0 0 3px color-mix(in oklab, #ffd34d, transparent 45%);
+}
+.mc-pit.is-hand,
+.mc-store.is-hand {
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.45),
+    0 0 0 4px #ffd34d;
+}
+.mc-pit.is-hint,
+.mc-store.is-hint {
+  border: 2px dashed #ffd34d;
+}
+.mc-seeds {
+  position: absolute;
+  inset: 12%;
+}
+.mc-seed {
+  position: absolute;
+  width: clamp(8px, 22%, 24px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  box-shadow:
+    inset -2px -2px 0 rgba(0, 0, 0, 0.25),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.45);
+}
+.mc-store .mc-seed {
+  width: clamp(8px, 14%, 16px);
+}
+.mc-seed.is-pebbles {
+  border-radius: 45% 55% 50% 50%;
+  box-shadow: inset -1px -2px 0 rgba(0, 0, 0, 0.3);
+}
+.mc-seed.is-gems {
+  border-radius: 30%;
+  transform: rotate(45deg);
+  box-shadow:
+    inset -2px -2px 0 rgba(0, 0, 0, 0.3),
+    inset 2px 2px 0 rgba(255, 255, 255, 0.6);
+}
+.mc-count {
+  position: absolute;
+  right: 4%;
+  bottom: 2%;
+  min-width: 1.4em;
+  padding: 0 0.25em;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.mc-store .mc-count {
+  right: 50%;
+  bottom: 6%;
+  transform: translateX(50%);
+  font-size: 1rem;
+}
+.mc-line {
+  margin: 0;
+  min-height: 1.5em;
+}
+.mc-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+/* upright: your pits down the left, theirs down the right, a store at each end — small enough
+   that the whole board fits on a phone's screen at once */
+@media (max-width: 560px) {
+  .mc-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto repeat(calc(var(--n) + 2), auto) auto;
+    width: min(100%, 220px);
+    margin-inline: auto;
+    gap: 0.35rem 0.6rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .mc-pit,
+  .mc-store {
+    grid-column: var(--vc);
+    grid-row: calc(var(--vr) + 1);
+    width: 100%;
+    max-width: 60px;
+    justify-self: center;
+  }
+  .mc-store {
+    grid-column: 1 / span 2;
+    max-width: none;
+    height: 52px;
+  }
+  .mc-store .mc-count {
+    bottom: 50%;
+    transform: translate(50%, 50%);
+  }
+  .mc-side.is-bottom {
+    grid-row: calc(var(--n) + 4);
+  }
+}
+
+/* Air hockey: a tall table, as tall as the screen allows */
+.hk-room .lab-stage.hk-stage {
+  height: min(72vh, 680px, 150vw);
+  min-height: 300px;
+  touch-action: none;
+}
+.hk-wrap {
+  border-radius: 12px;
+}
+.hk-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.hk-wrap.is-playing .lab-canvas {
+  cursor: none;
+}
+
+/* Dots and boxes: a square board of paper */
+.db-room .lab-stage.db-stage {
+  height: min(70vh, 600px, 92vw);
+  min-height: 260px;
+  touch-action: manipulation;
+}
+.db-wrap {
+  border-radius: 12px;
+}
+.db-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.db-initial {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.db-initial input {
+  width: 3.2rem;
+  min-width: 48px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+.fw-swatch:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Reversi: a square board, and disc swatches on the colour buttons */
+.rv-room .lab-stage.rv-stage {
+  height: min(70vh, 620px, 92vw);
+  min-height: 260px;
+  touch-action: manipulation;
+}
+.rv-wrap {
+  border-radius: 12px;
+}
+.rv-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.rv-discs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.rv-discs > span[aria-hidden] {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
