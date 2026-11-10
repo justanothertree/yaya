@@ -56,22 +56,42 @@ export type InstrumentId =
   | 'cello'
   | 'whistle'
   | 'fifths'
+  | 'finger'
+  | 'slap'
+  | 'upright'
+  | 'synthbass'
+  | '808'
+  | 'supersaw'
+  | 'chip'
+  | 'harpsichord'
+  | 'sitar'
   | 'drums'
 
+/**
+ * ⚠️ THE ORDER IS THE PICKER'S, AND THE BASSES SIT TOGETHER since 10 Nov 2026, when Evan asked
+ * for "several distinct bass voices". Sub moved up beside them; an id is forever (a song stores
+ * it), so reordering is free where renaming is not.
+ */
 export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['keys', '🎹', 'Keys'],
   ['rhodes', '🎛', 'Rhodes'],
+  ['harpsichord', '🏰', 'Harpsichord'],
   ['pluck', '🪕', 'Pluck'],
   ['bell', '🔔', 'Bell'],
   ['pad', '🌊', 'Pad'],
   ['bass', '🎸', 'Bass'],
+  ['finger', '🖐', 'Finger bass'],
+  ['slap', '👋', 'Slap bass'],
+  ['upright', '🌳', 'Upright bass'],
+  ['synthbass', '🎚', 'Synth bass'],
+  ['808', '💥', '808'],
+  ['sub', '🔊', 'Sub'],
   ['organ', '🎼', 'Organ'],
   ['brass', '🎺', 'Brass'],
   ['reed', '🎷', 'Reed'],
   ['accordion', '🪗', 'Accordion'],
   ['marimba', '🪘', 'Marimba'],
   ['choir', '🗣️', 'Choir'],
-  ['sub', '🔊', 'Sub'],
   ['harp', '🎶', 'Harp'],
   ['glass', '💎', 'Glass'],
   ['strings', '🎻', 'Strings'],
@@ -79,17 +99,34 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['flute', '🌬', 'Flute'],
   ['clav', '🪶', 'Clav'],
   ['lead', '⚡', 'Lead'],
+  ['supersaw', '🌈', 'Supersaw'],
+  ['chip', '👾', '8-bit'],
   ['box', '🎁', 'Music box'],
   ['steelpan', '🛢', 'Steel pan'],
   ['handpan', '🛸', 'Handpan'],
   ['vibes', '🎐', 'Vibes'],
   ['koto', '🏯', 'Koto'],
+  ['sitar', '🪷', 'Sitar'],
   ['drone', '🕉', 'Drone'],
   ['banjo', '🤠', 'Banjo'],
   ['cello', '🎗', 'Cello'],
   ['whistle', '😗', 'Whistle'],
   ['fifths', '🗼', 'Fifths'],
   ['drums', '🥁', 'Drums'],
+]
+
+/**
+ * The voices a bassline can be played on, for the backing panel's Bass row — the original Bass
+ * first, because that is what the row has always laid.
+ */
+export const BASS_VOICES: InstrumentId[] = [
+  'bass',
+  'finger',
+  'slap',
+  'upright',
+  'synthbass',
+  '808',
+  'sub',
 ]
 
 /** Attack, decay, sustain level, release — in seconds except sustain, which is a fraction. */
@@ -708,6 +745,182 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     filter: { from: 700, to: 420, q: 1 },
     level: 0.2,
+  },
+
+  /* ── added 10 Nov 2026: five basses, and four voices unlike anything above ────────────────
+     ⚠️ NONE OF THESE HAS BEEN HEARD BY A PERSON. Each was measured in the room — how loud, how
+     bright, how fast it dies away — against the others and against Bass and Sub; whether it
+     sounds like what its name says is Evan's to judge. */
+
+  /**
+   * Finger bass: a round, warm pluck that keeps sounding — a triangle (few harmonics), a little
+   * second and third for the growl of a string under a fingertip, and a gentle filter. The
+   * original Bass is a resonant square; this is the soft one.
+   */
+  finger: {
+    a: 0.008,
+    d: 0.8,
+    s: 0.35,
+    r: 0.15,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.35 },
+      { ratio: 3, detune: 0, gain: 0.12 },
+    ],
+    filter: { from: 1600, to: 500, q: 1.2 },
+    level: 0.7,
+  },
+  /**
+   * Slap bass: the snap is a filter that starts wide open and slams shut, with a resonant peak,
+   * and a pitch that lands a hair sharp. Bright for an instant and then mostly gone, which is what
+   * makes a slap line percussive rather than sung.
+   */
+  slap: {
+    a: 0.001,
+    d: 0.35,
+    s: 0.3,
+    r: 0.12,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.5 },
+      { ratio: 4, detune: 0, gain: 0.2 },
+    ],
+    filter: { from: 6000, to: 700, q: 5 },
+    pitch: { mult: 1.03, time: 0.03 },
+    level: 0.7,
+  },
+  /**
+   * Upright bass: woody and dying away — a triangle with a faint fifth harmonic for the wood, a
+   * dark filter, and almost no sustain, so a walking line has air between the notes the way a
+   * plucked double bass does.
+   */
+  upright: {
+    a: 0.006,
+    d: 1.2,
+    s: 0.08,
+    r: 0.25,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.22 },
+      { ratio: 3, detune: 0, gain: 0.1 },
+      { ratio: 5, detune: 0, gain: 0.04 },
+    ],
+    filter: { from: 1200, to: 320, q: 0.8 },
+    pitch: { mult: 1.01, time: 0.02 },
+    level: 0.72,
+  },
+  /**
+   * Synth bass: two saws pulled apart so they beat against each other, an octave below for
+   * weight, and a resonant filter — the dance-music bass. A held note stays full, unlike every
+   * plucked bass above.
+   */
+  synthbass: {
+    a: 0.004,
+    d: 0.6,
+    s: 0.7,
+    r: 0.12,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -12, gain: 1 },
+      { ratio: 1, detune: 12, gain: 0.6 },
+      { ratio: 0.5, detune: 0, gain: 0.6 },
+    ],
+    filter: { from: 2400, to: 600, q: 7 },
+    level: 0.55,
+  },
+  /**
+   * 808: a sine that drops into its note and then HOLDS — the long boom under trap and hip hop.
+   * Sub is the short thump; this one sustains, with a whisper of second and third so it still
+   * reads on a phone speaker that cannot reproduce the fundamental.
+   */
+  '808': {
+    a: 0.002,
+    d: 2.2,
+    s: 0.55,
+    r: 0.6,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.12 },
+      { ratio: 3, detune: 0, gain: 0.05 },
+    ],
+    pitch: { mult: 1.9, time: 0.06 },
+    level: 0.62,
+  },
+  /**
+   * Supersaw: five saws spread around the note — the wall of sound under trance and big pop
+   * choruses. Lead is two saws and a hard filter; this is wide and open.
+   */
+  supersaw: {
+    a: 0.02,
+    d: 0.8,
+    s: 0.75,
+    r: 0.35,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -22, gain: 0.6 },
+      { ratio: 1, detune: -11, gain: 0.8 },
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 1, detune: 11, gain: 0.8 },
+      { ratio: 1, detune: 22, gain: 0.6 },
+    ],
+    filter: { from: 6000, to: 3500, q: 0.8 },
+    level: 0.4,
+  },
+  /**
+   * 8-bit: a raw square wave, on and off with nothing in between — a game console's voice. The
+   * only patch with no filter and no envelope to speak of, which is the whole sound.
+   */
+  chip: {
+    a: 0.001,
+    d: 0.1,
+    s: 0.8,
+    r: 0.03,
+    wave: 'square',
+    partials: [{ ratio: 1, detune: 0, gain: 1 }],
+    level: 0.28,
+  },
+  /**
+   * Harpsichord: plucked by a quill, so bright and with no sustain — a saw through a filter that
+   * starts very high, and a second string an octave up slightly out of tune with the first, which
+   * is how the instrument's two registers sound together.
+   */
+  harpsichord: {
+    a: 0.001,
+    d: 2,
+    s: 0,
+    r: 0.25,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 3, gain: 0.6 },
+      { ratio: 4, detune: -2, gain: 0.25 },
+    ],
+    filter: { from: 9000, to: 2600, q: 1.5 },
+    level: 0.65,
+  },
+  /**
+   * Sitar: a buzzing string that bends up into its note. The buzz is a narrow, very resonant
+   * filter in the upper harmonics; the bend is a pitch that starts a little flat. Koto is a clean
+   * pluck; this one rings and sings.
+   */
+  sitar: {
+    a: 0.002,
+    d: 2,
+    s: 0.1,
+    r: 0.6,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 6, gain: 0.5 },
+      { ratio: 3, detune: -5, gain: 0.35 },
+    ],
+    filter: { from: 3800, to: 2200, q: 9 },
+    pitch: { mult: 0.985, time: 0.12 },
+    level: 0.35,
   },
 }
 

@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import {
+  BASS_VOICES,
   INSTRUMENTS,
   allNotesOff,
   stopLive,
@@ -850,6 +851,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   /* a style chosen before there is a backing to play it — see chordStyleNow */
   const [chordStylePick, setChordStylePick] = useState<ChordStyle>('pad')
   const [bassStylePick, setBassStylePick] = useState<BassStyle>('rootfifth')
+  /* the voice the next bassline is laid on — see the Bass row's Sound picker */
+  const [bassSoundPick, setBassSoundPick] = useState<InstrumentId>('bass')
   /** whether the pedal currently down was put there by Shift rather than by the button */
   const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
@@ -1358,7 +1361,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     )
     /* the original style keeps the original tag, so a song saved before styles reads the same */
     const tag = style === 'rootfifth' ? p.id : `${p.id}-${style}`
-    return addPatternLayer(events, len, tag, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
+    /* a swap keeps the row's own sound; a new row is laid on the voice picked in the Bass row */
+    return addPatternLayer(events, len, tag, {
+      mark: '-bass:',
+      instrument: bassSoundPick,
+      gain: 0.5,
+    })
   }
 
   /**
@@ -2808,6 +2816,41 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                       {!p ? 'follows the chords — pick some first' : 'no layer free'}
                     </span>
                   )}
+                  {/**
+                   * ⚠️ THE BASS'S VOICE, IN THE BASS ROW — Evan, 10 Nov 2026: "several distinct
+                   * bass voices … usable from the backing". The layer's own sound menu could
+                   * always change it, among forty instruments; this offers the seven that are
+                   * basses, where a bassline is chosen. It changes the loaded bass at once, and
+                   * with none loaded it is remembered for the next one — the same rule the
+                   * Played as row has. A sound the layer was given that is not a bass is shown
+                   * rather than silently relabelled.
+                   */}
+                  {(() => {
+                    const shownSound = bass ? bass.instrument : bassSoundPick
+                    const voices = BASS_VOICES.includes(shownSound)
+                      ? BASS_VOICES
+                      : [shownSound, ...BASS_VOICES]
+                    return (
+                      <label className="inst-pick">
+                        <span className="muted">Sound</span>
+                        <select
+                          value={shownSound}
+                          onChange={(e) => {
+                            const v = e.target.value as InstrumentId
+                            setBassSoundPick(v)
+                            if (bass) setLayerInstrument(bass.id, v)
+                            e.target.blur()
+                          }}
+                        >
+                          {voices.map((id) => (
+                            <option key={id} value={id}>
+                              {INSTRUMENTS.find(([x]) => x === id)?.[2] ?? id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )
+                  })()}
                   <MutedRow layer={bass ?? undefined} />
                   <OffScaleRow
                     layer={bass ?? undefined}
