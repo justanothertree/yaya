@@ -16990,7 +16990,12 @@ a.cz-msg-author:focus-visible {
   text-transform: uppercase;
   color: var(--muted);
 }
-.chron-field input,
+/* ⚠️ NOT A HIDDEN INPUT. This rule is a class and an element, so it outranks `.sr-only` (a class
+   alone) and set the sitting editor's two photo pickers, which are visually hidden file inputs,
+   to the full width of the dialog's backdrop. Invisible, and still 375px wide from where their
+   buttons sit: on a 375 phone the backdrop scrolled sideways by 315px. Measured with
+   scripts/mobile-audit.js (`insideOut`), and gone with this. */
+.chron-field input:not(.sr-only),
 .chron-field select,
 .chron-field textarea {
   width: 100%;
