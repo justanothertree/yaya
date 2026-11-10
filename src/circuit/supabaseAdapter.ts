@@ -35,9 +35,9 @@ const TABLES = [
 // mount instead of sitting empty (or flashing the demo) while the network load runs.
 // The fresh board follows moments later through the same channel realtime updates use.
 const CLOUD_CACHE_KEY = 'circuit_cloud_cache_v1'
-function readCloudCache(): CircuitState | null {
+function readCloudCache(key: string): CircuitState | null {
   try {
-    const raw = localStorage.getItem(CLOUD_CACHE_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return null
     const s = JSON.parse(raw) as CircuitState
     // a corrupt/outdated snapshot must never crash the board — validate the shape
@@ -49,7 +49,7 @@ function readCloudCache(): CircuitState | null {
       Array.isArray(s.watchlist) &&
       s.logs.every((l) => Array.isArray(l.entries))
     if (!ok) {
-      localStorage.removeItem(CLOUD_CACHE_KEY)
+      localStorage.removeItem(key)
       return null
     }
     return s
@@ -57,9 +57,9 @@ function readCloudCache(): CircuitState | null {
     return null
   }
 }
-function writeCloudCache(s: CircuitState) {
+function writeCloudCache(key: string, s: CircuitState) {
   try {
-    localStorage.setItem(CLOUD_CACHE_KEY, JSON.stringify(s))
+    localStorage.setItem(key, JSON.stringify(s))
   } catch {
     /* quota — the cache is an optimization, never required */
   }
@@ -263,8 +263,17 @@ async function must<T extends { error: { message: string } | null }>(
   return res
 }
 
-export function createSupabaseAdapter(): CircuitAdapter {
-  const sb = getSupabaseClient()
+/**
+ * ⚠️ `client` AND `cacheKey` EXIST FOR dev/circuitPreview.ts AND NOTHING ELSE. The preview stands a
+ * double in for the network and runs everything else here unchanged — the loads, the merge, the cell
+ * writer and its refusals — which is the point of it: a double that replaced this file would test
+ * itself. The key keeps the preview's board out of the cache a real session paints from.
+ */
+export function createSupabaseAdapter(
+  opts: { client?: ReturnType<typeof getSupabaseClient>; cacheKey?: string } = {},
+): CircuitAdapter {
+  const sb = opts.client ?? getSupabaseClient()
+  const cacheKey = opts.cacheKey ?? CLOUD_CACHE_KEY
 
   /**
    * The board as last loaded, by log id, with sessions in it — what a save compares against to say
@@ -367,19 +376,19 @@ export function createSupabaseAdapter(): CircuitAdapter {
 
   return {
     async load() {
-      const cached = readCloudCache()
+      const cached = readCloudCache(cacheKey)
       if (cached) {
         // serve the snapshot instantly; the fresh board lands like a realtime update
         void loadAll()
           .then((s) => {
-            writeCloudCache(s)
+            writeCloudCache(cacheKey, s)
             emitExternal?.(s)
           })
           .catch(() => undefined)
         return cached
       }
       const s = await loadAll()
-      writeCloudCache(s)
+      writeCloudCache(cacheKey, s)
       return s
     },
     async savePerson(p: Person) {
@@ -517,7 +526,7 @@ export function createSupabaseAdapter(): CircuitAdapter {
           pending = null
           void loadAll()
             .then((s) => {
-              writeCloudCache(s) // keep next mount's instant paint current
+              writeCloudCache(cacheKey, s) // keep next mount's instant paint current
               onExternalChange(s)
             })
             .catch(() => undefined)

@@ -219,6 +219,8 @@ type PvLog = {
   person: string
   date: string
   entries: Array<{ eid: string; val: number }>
+  /** the row's photograph, a member_pictures id — see circuitPreview.ts for why it is here */
+  picture?: string | null
 }
 
 type PvSet = {
@@ -2968,4 +2970,142 @@ export const pvEntryPicture = (entry: string, picture: string | null): { why: st
   }
   e.picture = picture
   return null
+}
+
+/* ── the Circuit grid's half ─────────────────────────────────────────────────── */
+
+/**
+ * The same `circuit` and `circuitLogs` the goals read, now handed to the Circuit board too — see
+ * dev/circuitPreview.ts. ⚠️ ONE STORE FOR BOTH ROOMS, on purpose: a cell typed in the grid is the
+ * manual part a Gym goal adds, and a set counted in Chronicle is the session part the cell shows.
+ * Two copies would agree with each other by construction and prove nothing about either.
+ */
+export const pvCircuitPeople = (): Array<{ id: string; exercises: PvExercise[] }> =>
+  Object.entries(db().circuit).map(([id, list]) => ({ id, exercises: list.map((x) => ({ ...x })) }))
+
+export const pvCircuitLogs = (): PvLog[] =>
+  db().circuitLogs.map((g) => ({ ...g, entries: g.entries.map((x) => ({ ...x })) }))
+
+/**
+ * A plain write to `circuit_logs`, the path the grid takes for a day the server has no sessions
+ * to protect in. ⚠️ ONLY THE COLUMNS THE CALLER NAMES — `logToRow` never sends `picture`, and an
+ * upsert leaves an unnamed column as it was, so this keeps it.
+ */
+export const pvCircuitLogPut = (row: {
+  id: string
+  person: string
+  date: string
+  entries: Array<{ eid: string; val: number }>
+}): { why: string } | null => {
+  if (!db().circuit[row.person]) {
+    return { why: 'new row violates row-level security policy for table "circuit_logs"' }
+  }
+  const was = db().circuitLogs.find((g) => g.id === row.id)
+  const entries = row.entries.map((x) => ({ eid: x.eid, val: Number(x.val) || 0 }))
+  if (was) Object.assign(was, { person: row.person, date: row.date, entries })
+  else db().circuitLogs.push({ id: row.id, person: row.person, date: row.date, entries })
+  return null
+}
+
+/** A delete under RLS: somebody else's row is not an error, it is zero rows. */
+export const pvCircuitLogDrop = (id: string): void => {
+  db().circuitLogs = db().circuitLogs.filter((g) => !(g.id === id && db().circuit[g.person]))
+}
+
+/** A photograph on a day — the seam `circuit_log_picture` would be, for the one check that needs it. */
+export const pvCircuitLogPicture = (id: string, picture: string | null): boolean => {
+  const g = db().circuitLogs.find((x) => x.id === id)
+  if (!g) return false
+  g.picture = picture
+  return true
+}
+
+/** `circuit_session_sums`: sets counted during a sitting, summed per cell, while you own the person */
+export const pvSessionSums = (
+  from: string,
+  to: string,
+): Array<{ person: string; exercise: string; on: string; value: number }> => {
+  const sums = new Map<string, { person: string; exercise: string; on: string; value: number }>()
+  for (const x of db().sets) {
+    if (x.entry == null || !x.person || !db().circuit[x.person]) continue
+    if (x.on < from || x.on >= to) continue
+    const k = `${x.person}|${x.on}|${x.exercise}`
+    const hit = sums.get(k)
+    if (hit) hit.value += x.value
+    else sums.set(k, { person: x.person, exercise: x.exercise, on: x.on, value: x.value })
+  }
+  return [...sums.values()].sort(
+    (a, b) =>
+      a.person.localeCompare(b.person) ||
+      a.on.localeCompare(b.on) ||
+      a.exercise.localeCompare(b.exercise),
+  )
+}
+
+/**
+ * `circuit_cell_set`, IN ITS OWN ORDER AND ITS OWN WORDS — docs/2026-11-09-circuit-grid-sessions
+ * .DRAFT.sql. A total in; `total − sessions` stored as the manual part; a total below the sessions
+ * refused, saying how much they count and where to change them; a save made against figures that
+ * have since moved refused with the figures as they are now. ⚠️ THE PRE-CONVERSION BODY: nobody in
+ * the double is converted, so the manual part lives in the logs, as it does for everybody until a
+ * cutover runs.
+ */
+export const pvCellSet = (
+  person: string,
+  exercise: string,
+  day: string,
+  total: number,
+  seenSessions: number,
+  seenManual: number,
+): { why: string } | { total: number; sessions: number; manual: number } => {
+  const list = db().circuit[person]
+  if (!list) return { why: 'you cannot change that person' }
+  if (!day || !exercise?.trim()) return { why: 'which day, and which exercise?' }
+  if (!list.some((x) => x.id === exercise)) return { why: 'no such exercise' }
+  if (total == null || !(total >= 0) || total > 1e9) {
+    return { why: 'that is not a number of anything' }
+  }
+  const sessions = db()
+    .sets.filter(
+      (x) => x.person === person && x.exercise === exercise && x.on === day && x.entry != null,
+    )
+    .reduce((n, x) => n + x.value, 0)
+  const rows = db().circuitLogs.filter((g) => g.person === person && g.date === day)
+  const holding = rows.filter((g) => g.entries.some((x) => x.eid === exercise)).length
+  const manual = rows
+    .flatMap((g) => g.entries)
+    .filter((x) => x.eid === exercise && x.val > 0)
+    .reduce((n, x) => n + x.val, 0)
+  if (holding > 1) {
+    return {
+      why: `that day has ${holding} logs holding this exercise — put them together before changing it`,
+    }
+  }
+  if (seenSessions !== sessions || seenManual !== manual) {
+    return {
+      why: `that day changed while you were typing — it is now ${sessions + manual} (${sessions} from sessions)`,
+    }
+  }
+  if (total < sessions) {
+    return {
+      why: `sessions count ${sessions} on that day — lower them in Chronicle, in that day's log`,
+    }
+  }
+  const v = total - sessions
+  /* the row holding this exercise first, then by id — the server's own order */
+  let row = [...rows].sort(
+    (a, b) =>
+      Number(b.entries.some((x) => x.eid === exercise)) -
+        Number(a.entries.some((x) => x.eid === exercise)) || a.id.localeCompare(b.id),
+  )[0]
+  if (!row) {
+    if (v === 0) return { total, sessions, manual: 0 }
+    row = { id: `l-${person}-${day}`, person, date: day, entries: [] }
+    db().circuitLogs.push(row)
+  }
+  row.entries = [
+    ...row.entries.filter((x) => x.eid !== exercise),
+    ...(v > 0 ? [{ eid: exercise, val: v }] : []),
+  ]
+  return { total, sessions, manual: v }
 }

@@ -45,6 +45,11 @@ import {
   pvMyExercises,
   pvLinkExercise,
   pvGiveCircuitLog,
+  pvCellSet,
+  pvSessionSums,
+  pvCircuitLogs,
+  pvCircuitLogPut,
+  pvCircuitLogPicture,
 } from './chroniclePreview'
 import type { NewGoal } from '../chronicle/cloud'
 import { localMidnight } from '../chronicle/record'
@@ -2279,5 +2284,111 @@ describe('an exercise linked to an activity', () => {
     expect(pvTally([ask]).w).toBe(12)
     /* with them: the sitting's 12 (its set is IN that 12) and the grid's 7 and 3 on the day */
     expect(pvTally([{ ...ask, from_day: DAY, to_day: '2026-10-13' }]).w).toBe(22)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF circuit_cell_set AND circuit_session_sums, which dev/circuitPreview.ts
+ * hands the Circuit grid. The server's are asked in supabase/tests/circuit-grid-sessions.sql; these
+ * keep the copy saying what the site would say, word for word, so a pane run of the grid is a run
+ * of the server's rules rather than of a kinder version of them.
+ */
+describe('a Circuit cell, as the grid writes it', () => {
+  let sit = ''
+  const manual = (eid = 'ex-quad') =>
+    pvCircuitLogs()
+      .filter((g) => g.date === DAY)
+      .flatMap((g) => g.entries)
+      .filter((x) => x.eid === eid)
+      .reduce((n, x) => n + x.val, 0)
+  beforeEach(() => {
+    pvGiveCircuit('p-1', [
+      { id: 'ex-quad', name: 'Quad Curl', unit: 'reps' },
+      { id: 'ex-plank', name: 'Plank', unit: 'sec' },
+    ])
+    pvAddEntry(gym, h(9), h(10), null)
+    sit = pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9))!.id
+    idOf(pvSetAdd('p-1', 'ex-quad', 12, DAY, sit))
+  })
+
+  it('stores the total less the sessions, the same total twice as the same part, and lets later sessions add', () => {
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 20, 12, 0)).toEqual({
+      total: 20,
+      sessions: 12,
+      manual: 8,
+    })
+    expect(manual()).toBe(8)
+    /* "Saving 20 again must still total 20 — not 28" */
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 20, 12, 8)).toEqual({
+      total: 20,
+      sessions: 12,
+      manual: 8,
+    })
+    expect(manual()).toBe(8)
+    /* "Later sessions add normally" — the typed part is not adjusted to hold the total at 20 */
+    idOf(pvSetAdd('p-1', 'ex-quad', 5, DAY, sit))
+    expect(pvSessionSums(DAY, '2026-10-13')).toEqual([
+      { person: 'p-1', exercise: 'ex-quad', on: DAY, value: 17 },
+    ])
+    expect(manual()).toBe(8)
+  })
+
+  it('refuses a total below the sessions and a save made against figures that moved, in the server words', () => {
+    pvCellSet('p-1', 'ex-quad', DAY, 20, 12, 0)
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 10, 12, 8)).toEqual({
+      why: "sessions count 12 on that day — lower them in Chronicle, in that day's log",
+    })
+    idOf(pvSetAdd('p-1', 'ex-quad', 4, DAY, sit))
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 22, 12, 8)).toEqual({
+      why: 'that day changed while you were typing — it is now 24 (16 from sessions)',
+    })
+    expect(manual()).toBe(8)
+  })
+
+  it("refuses somebody else's person, an exercise that is not there, and a total that is not a number", () => {
+    expect([
+      pvCellSet('p-9', 'ex-quad', DAY, 1, 0, 0),
+      pvCellSet('p-1', 'ex-none', DAY, 1, 0, 0),
+      pvCellSet('p-1', 'ex-plank', DAY, -1, 0, 0),
+      pvCellSet('p-1', 'ex-plank', DAY, 2e9, 0, 0),
+    ]).toEqual([
+      { why: 'you cannot change that person' },
+      { why: 'no such exercise' },
+      { why: 'that is not a number of anything' },
+      { why: 'that is not a number of anything' },
+    ])
+  })
+
+  it('refuses a day whose exercise sits in two rows, rather than choosing one', () => {
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-plank', val: 30 }])
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-plank', val: 40 }])
+    expect(pvCellSet('p-1', 'ex-plank', DAY, 90, 0, 70)).toEqual({
+      why: 'that day has 2 logs holding this exercise — put them together before changing it',
+    })
+  })
+
+  it('sums only sets with a sitting, and writes no row for a typed part of nothing', () => {
+    idOf(pvSetAdd('p-1', 'ex-quad', 30, DAY))
+    expect(pvSessionSums(DAY, '2026-10-13').map((x) => x.value)).toEqual([12])
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 12, 12, 0)).toEqual({
+      total: 12,
+      sessions: 12,
+      manual: 0,
+    })
+    expect(pvCircuitLogs().filter((g) => g.date === DAY)).toEqual([])
+  })
+
+  it('keeps a photograph through a plain write, which names every column but that one', () => {
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-plank', val: 30 }])
+    const id = pvCircuitLogs().find((g) => g.date === DAY)!.id
+    pvCircuitLogPicture(id, 'pic-1')
+    expect(pvCircuitLogPut({ id, person: 'p-1', date: DAY, entries: [] })).toBeNull()
+    expect(pvCircuitLogs().find((g) => g.id === id)).toMatchObject({
+      entries: [],
+      picture: 'pic-1',
+    })
+    expect(pvCircuitLogPut({ id: 'x', person: 'p-9', date: DAY, entries: [] })?.why).toMatch(
+      /row-level security/,
+    )
   })
 })

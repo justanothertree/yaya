@@ -7,12 +7,16 @@ import { fetchPublicCircuit, bundledPublicBoard } from './publicData'
 import { hasFinanceSupabaseEnv } from '../finance/env'
 import { onAuthStateChange, peekPersistedUserId } from '../finance/auth'
 import type { CircuitAdapter } from './adapter'
+import { previewMember } from '../dev/previewMember'
 
 let local: ReturnType<typeof createLocalAdapter> | null = null
 let supa: ReturnType<typeof createSupabaseAdapter> | null = null
 let current: CircuitAdapter | null = null
+/** DEV only: the member preview's board — see dev/circuitPreview.ts */
+let preview: CircuitAdapter | null = null
 
 function pickAdapter() {
+  if (preview) return preview
   // The persisted session is peeked synchronously — the old `await getUser()` here was a
   // network round-trip on EVERY mount, and when a stale token made it fail, a signed-in
   // member briefly got the demo sandbox (the "sign in" flash). If the session really is
@@ -38,6 +42,16 @@ async function refreshPublicInBackground() {
 
 let wired = false
 export async function connectCircuit() {
+  /**
+   * ⚠️ `import.meta.env.DEV` SPELLED OUT HERE, not only inside `previewMember`. Vite replaces the
+   * literal with `false` in a build, so this branch — and the dynamic import in it — is removed
+   * before rollup decides what to keep. An imported boolean is not folded across the module
+   * boundary the same way, and CLAUDE.md §2 has two notes about harness code that shipped anyway.
+   */
+  if (import.meta.env.DEV && previewMember && !preview) {
+    const { createPreviewCircuitAdapter } = await import('../dev/circuitPreview')
+    preview = createPreviewCircuitAdapter()
+  }
   current = pickAdapter()
   try {
     await circuitStore.init(current)
