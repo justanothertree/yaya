@@ -33,7 +33,7 @@ export const FAMILIES: readonly Family[] = [
   {
     id: 'strings',
     name: 'Strings',
-    members: ['strings', 'cello', 'harp', 'pluck', 'koto', 'sitar', 'banjo'],
+    members: ['strings', 'cello', 'guitar', 'harp', 'pluck', 'koto', 'sitar', 'banjo'],
   },
   { id: 'winds', name: 'Winds', members: ['flute', 'whistle', 'reed', 'brass', 'choir'] },
   { id: 'synth', name: 'Synth', members: ['lead', 'supersaw', 'chip', 'pad', 'fifths', 'drone'] },
