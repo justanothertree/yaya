@@ -1355,3 +1355,16 @@ production read.
 The release record's line that CI "built a database from main's migrations" was wrong in the same
 way. It is corrected on draft #112, and the release's conclusion stands, because its "same as
 production" checks were measured against production itself.
+
+## 22. What the overnight layout sweep left for a decision (10 Nov 2026)
+
+The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
+each half, view, fold, form and dialog, at 375 (touch), 820 (with the coarse-pointer rules applied)
+and 1440 (mouse), measured with `scripts/mobile-audit.js`. That tool was first made to name a
+planted 16px button and a 600px spill. Seven fixes went up as small drafts (#117, #118, #120,
+#121, #122, #123, #125, #127). Two questions are left:
+
+| §   | Question                                                                                                                                                                                                                                                                                                                         | Recommendation                                                                                                                                                                      | Blocks  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 22a | With a mouse, the Circuit's edit controls are under the 24px target floor (WCAG 2.5.8): an exercise's ✎ is 23×17, a column's 🗑 18×16, the Board's log-today ＋ 19×20, and the column-rename box 14px tall. They are small on purpose, so the sheet stays quiet. Touch screens are covered by #127. Raise them to 24 on desktop? | Yes, to 24 and no further: the smallest change that meets the floor, and the sheet stays compact                                                                                    | nothing |
+| 22b | `.sr-only` loses to any container rule that sizes inputs, because a class plus an element beats a class alone. That is how two hidden photo pickers made a dialog scroll sideways (#117 fixes that one place). Make `.sr-only` win everywhere with `!important`?                                                                 | Yes: a visually hidden element has no business being sized by anything. It is a global utility, so it touches the Lab and the Instrument too, which is why it is asked and not done | nothing |
