@@ -1,3 +1,89 @@
+-- ⛔ SCRATCH BRANCH chronicle/ci-probe-refusal-plans ONLY — never to be merged. Proves the three
+-- refusal plans on the dump plus the release's seven migrations, then runs the standing guards.
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\pset format unaligned
+\pset tuples_only on
+
+\echo '#### activity PLAN'
+select '#### activity MD5 BEFORE ' || md5(pg_get_functiondef('public.chronicle_activity_save(uuid, text, text, text, text, integer, boolean)'::regprocedure));
+\! sed '/^-- ── 0\./,/^end \$\$;$/d' supabase/tests/chronicle-activity-refusals.sql > /tmp/activity-control.sql && echo "#### activity CONTROL guard lines left: $(grep -c 'before this file' /tmp/activity-control.sql)"
+\echo '#### activity CONTROL: the test against the function as it is now, which must fail'
+\set ON_ERROR_STOP 0
+\i /tmp/activity-control.sql
+\set ON_ERROR_STOP 1
+\echo '#### activity APPLY'
+\ir ../../docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql
+select '#### activity MD5 AFTER ' || md5(pg_get_functiondef('public.chronicle_activity_save(uuid, text, text, text, text, integer, boolean)'::regprocedure));
+\echo '#### activity THE TEST, which must pass'
+\ir chronicle-activity-refusals.sql
+\echo '#### activity APPLY AGAIN, which must refuse on the md5 guard'
+\set ON_ERROR_STOP 0
+\ir ../../docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql
+\set ON_ERROR_STOP 1
+\! md5sum docs/2026-11-10-chronicle-activity-refusals-rollback/chronicle_activity_save.sql | sed 's/^/#### activity ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-activity-refusals-rollback/chronicle_activity_save.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+select '#### activity MD5 ROLLED BACK ' || md5(pg_get_functiondef('public.chronicle_activity_save(uuid, text, text, text, text, integer, boolean)'::regprocedure));
+select '#### activity GRANTS anon=' || has_function_privilege('anon', 'public.chronicle_activity_save(uuid, text, text, text, text, integer, boolean)', 'execute')
+       || ' member=' || has_function_privilege('authenticated', 'public.chronicle_activity_save(uuid, text, text, text, text, integer, boolean)', 'execute');
+
+\echo '#### goal PLAN'
+select '#### goal MD5 BEFORE ' || md5(pg_get_functiondef('public.chronicle_goal_save(uuid, text, text, date, integer, numeric, text, text, integer, uuid, text, text, integer, integer)'::regprocedure));
+\! sed '/^-- ── 0\./,/^end \$\$;$/d' supabase/tests/chronicle-goal-refusals.sql > /tmp/goal-control.sql && echo "#### goal CONTROL guard lines left: $(grep -c 'before this file' /tmp/goal-control.sql)"
+\echo '#### goal CONTROL: the test against the function as it is now, which must fail'
+\set ON_ERROR_STOP 0
+\i /tmp/goal-control.sql
+\set ON_ERROR_STOP 1
+\echo '#### goal APPLY'
+\ir ../../docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql
+select '#### goal MD5 AFTER ' || md5(pg_get_functiondef('public.chronicle_goal_save(uuid, text, text, date, integer, numeric, text, text, integer, uuid, text, text, integer, integer)'::regprocedure));
+\echo '#### goal THE TEST, which must pass'
+\ir chronicle-goal-refusals.sql
+\echo '#### goal APPLY AGAIN, which must refuse on the md5 guard'
+\set ON_ERROR_STOP 0
+\ir ../../docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql
+\set ON_ERROR_STOP 1
+\! md5sum docs/2026-11-10-chronicle-goal-refusals-rollback/chronicle_goal_save.sql | sed 's/^/#### goal ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-goal-refusals-rollback/chronicle_goal_save.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+select '#### goal MD5 ROLLED BACK ' || md5(pg_get_functiondef('public.chronicle_goal_save(uuid, text, text, date, integer, numeric, text, text, integer, uuid, text, text, integer, integer)'::regprocedure));
+select '#### goal GRANTS anon=' || has_function_privilege('anon', 'public.chronicle_goal_save(uuid, text, text, date, integer, numeric, text, text, integer, uuid, text, text, integer, integer)', 'execute')
+       || ' member=' || has_function_privilege('authenticated', 'public.chronicle_goal_save(uuid, text, text, date, integer, numeric, text, text, integer, uuid, text, text, integer, integer)', 'execute');
+
+\echo '#### routine PLAN'
+select '#### routine MD5 BEFORE ' || md5(pg_get_functiondef('public.chronicle_routine_save(uuid, text, jsonb)'::regprocedure));
+\! sed '/^-- ── 0\./,/^end \$\$;$/d' supabase/tests/chronicle-routine-refusals.sql > /tmp/routine-control.sql && echo "#### routine CONTROL guard lines left: $(grep -c 'before this file' /tmp/routine-control.sql)"
+\echo '#### routine CONTROL: the test against the function as it is now, which must fail'
+\set ON_ERROR_STOP 0
+\i /tmp/routine-control.sql
+\set ON_ERROR_STOP 1
+\echo '#### routine APPLY'
+\ir ../../docs/2026-11-10-chronicle-routine-refusals.DRAFT.sql
+select '#### routine MD5 AFTER ' || md5(pg_get_functiondef('public.chronicle_routine_save(uuid, text, jsonb)'::regprocedure));
+\echo '#### routine THE TEST, which must pass'
+\ir chronicle-routine-refusals.sql
+\echo '#### routine APPLY AGAIN, which must refuse on the md5 guard'
+\set ON_ERROR_STOP 0
+\ir ../../docs/2026-11-10-chronicle-routine-refusals.DRAFT.sql
+\set ON_ERROR_STOP 1
+\! md5sum docs/2026-11-10-chronicle-routine-refusals-rollback/chronicle_routine_save.sql | sed 's/^/#### routine ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-routine-refusals-rollback/chronicle_routine_save.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+select '#### routine MD5 ROLLED BACK ' || md5(pg_get_functiondef('public.chronicle_routine_save(uuid, text, jsonb)'::regprocedure));
+select '#### routine GRANTS anon=' || has_function_privilege('anon', 'public.chronicle_routine_save(uuid, text, jsonb)', 'execute')
+       || ' member=' || has_function_privilege('authenticated', 'public.chronicle_routine_save(uuid, text, jsonb)', 'execute');
+\pset format aligned
+\pset tuples_only off
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
