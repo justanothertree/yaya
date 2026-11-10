@@ -3540,3 +3540,97 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- tile pairs */
+.tl-room {
+  --tl-face: #fbf6e9;
+  --tl-side: #c9b78f;
+  --tl-ink0: #c0392b;
+  --tl-ink1: #1f7a4a;
+  --tl-ink2: #1f5b9a;
+  --tl-table: #2e5d4b;
+}
+.tl-room.is-jade {
+  --tl-face: #e4f5ec;
+  --tl-side: #7fb79a;
+  --tl-table: #2b3a4a;
+}
+.tl-room.is-night {
+  --tl-face: #2a3150;
+  --tl-side: #141a2e;
+  --tl-ink0: #ff8a8a;
+  --tl-ink1: #8dffb0;
+  --tl-ink2: #8ec5ff;
+  --tl-table: #0d1020;
+}
+.tl-hud {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.tl-fit {
+  /* ⚠️ THE CONTAINER IS A WRAPPER, NOT THE BOARD. An element cannot size itself by its own cqi —
+     it resolves against the next container up, or the viewport — so a board that was its own
+     container took its HEIGHT from the window's width (1,450px tall on a desktop) while its tiles
+     took theirs from the board. */
+  container-type: inline-size;
+  width: min(100%, 640px);
+}
+.tl-board {
+  position: relative;
+  width: 100%;
+  /* a tile is a share of the board's inner width; tall rather than square, with room for the layers */
+  --tl-u: calc((100cqi - 16px) / (var(--tl-w) + 0.6));
+  height: calc(var(--tl-u) * 1.3 * var(--tl-h) + var(--tl-u) * 0.8 + 16px);
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--tl-table);
+  box-sizing: border-box;
+}
+.tl-tile {
+  position: absolute;
+  left: calc(8px + var(--x) * var(--tl-u) - var(--z) * var(--tl-u) * 0.12 + var(--tl-u) * 0.4);
+  top: calc(8px + var(--y) * var(--tl-u) * 1.3 - var(--z) * var(--tl-u) * 0.12 + var(--tl-u) * 0.4);
+  width: var(--tl-u);
+  height: calc(var(--tl-u) * 1.3);
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 0.35);
+  border-radius: 5px;
+  background: var(--tl-face);
+  box-shadow:
+    3px 3px 0 var(--tl-side),
+    4px 4px 2px rgb(0 0 0 / 0.35);
+  font-size: calc(var(--tl-u) * 0.36);
+  line-height: 1;
+  letter-spacing: -0.08em;
+  overflow: hidden;
+  cursor: pointer;
+}
+.tl-tile.c0 {
+  color: var(--tl-ink0);
+}
+.tl-tile.c1 {
+  color: var(--tl-ink1);
+}
+.tl-tile.c2 {
+  color: var(--tl-ink2);
+  font-size: calc(var(--tl-u) * 0.27);
+}
+.tl-tile[aria-disabled='true'] {
+  cursor: default;
+}
+.tl-room.is-glow .tl-tile:not(.is-free) {
+  filter: brightness(0.72);
+}
+.tl-tile.is-picked {
+  outline: 3px solid #ffb000;
+  outline-offset: -3px;
+  background: color-mix(in oklab, var(--tl-face), #ffb000 25%);
+}
+.tl-tile.is-hint {
+  outline: 3px dashed #2fbf71;
+  outline-offset: -3px;
+}
+.tl-tile:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 1px;
+}

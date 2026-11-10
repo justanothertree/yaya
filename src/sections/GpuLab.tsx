@@ -105,6 +105,7 @@ import { BackgammonDemo } from '../gpu/BackgammonDemo'
 import { PoolDemo } from '../gpu/PoolDemo'
 import { ChessDemo } from '../gpu/ChessDemo'
 import { HeartsDemo } from '../gpu/HeartsDemo'
+import { TilesDemo } from '../gpu/TilesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -746,6 +747,12 @@ const DEMOS: readonly {
     name: 'Hearts',
     line: 'Hearts — you and three computers. Pass three, follow suit, and keep away from the hearts and the queen of spades, unless you can take every one of them and shoot the moon. Easy plays anything, Fair plays by habit, and Hard deals the hidden cards out two dozen ways before every card.',
     Demo: HeartsDemo,
+  },
+  {
+    id: 'tiles',
+    name: 'Tile pairs',
+    line: 'Tile pairs — take matching tiles away two at a time, each one free: nothing on top, one side open. Every deal can be cleared, because it is made by clearing the layout first; the trick is the order. Against the clock, with today’s tiles the same for everyone.',
+    Demo: TilesDemo,
   },
 ]
 
