@@ -99,3 +99,13 @@ describe('a style can pick its bass voice', () => {
     expect(styleBassVoice('808', by('pop'), by('funk'))).toBe(null)
   })
 })
+
+/* Evan, 10 Nov 2026: bass lines that fit each style */
+describe('three styles play their own bass line', () => {
+  const by = (id: string) => STARTERS.find((s) => s.id === id)!
+  it('Funk plays Funk, Reggae plays Dub, Bossa plays Bossa', () => {
+    expect(by('funk').bass).toBe('funk')
+    expect(by('reggae').bass).toBe('dub')
+    expect(by('bossa').bass).toBe('bossa')
+  })
+})

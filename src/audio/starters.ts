@@ -108,7 +108,7 @@ export const STARTERS: Starter[] = [
     beat: 'funk-syncopated',
     chords: 'vamp',
     chordStyle: 'offbeat',
-    bass: 'pulse',
+    bass: 'funk',
     bassVoice: 'slap',
   },
   {
@@ -119,7 +119,7 @@ export const STARTERS: Starter[] = [
     beat: 'reggae-onedrop',
     chords: 'simple',
     chordStyle: 'offbeat',
-    bass: 'roots',
+    bass: 'dub',
   },
   {
     id: 'jazz',
@@ -140,7 +140,7 @@ export const STARTERS: Starter[] = [
     beat: 'latin-bossa',
     chords: 'turnaround',
     chordStyle: 'pulse',
-    bass: 'rootfifth',
+    bass: 'bossa',
   },
   {
     id: 'country',
