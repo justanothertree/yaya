@@ -1361,7 +1361,7 @@ production" checks were measured against production itself.
 The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
 each half, view, fold, form and dialog, at 375 (touch), 820 (with the coarse-pointer rules applied)
 and 1440 (mouse), measured with `scripts/mobile-audit.js`. That tool was first made to name a
-planted 16px button and a 600px spill. Seven fixes went up as small drafts (#117, #118, #120,
+planted 16px button and a 600px spill. Eight fixes went up as small drafts (#117, #118, #120,
 #121, #122, #123, #125, #127). Two questions are left:
 
 | §   | Question                                                                                                                                                                                                                                                                                                                         | Recommendation                                                                                                                                                                      | Blocks  |
