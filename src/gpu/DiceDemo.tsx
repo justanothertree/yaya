@@ -327,7 +327,11 @@ export function DiceDemo() {
       <div className="dice-table" aria-live="polite">
         {winner !== null ? (
           <p className="dice-big">
-            {winner === 0 && mode === 'bot' ? '🏆 You win!' : `${names[winner]} wins`}
+            {mode === 'race' && lastRace
+              ? `${challenge?.seed === lastRace.seed && beatsDice(challenge, lastRace.turns) ? '🏆 Beaten — ' : '🏁 '}${TARGET.toLocaleString()} in ${lastRace.turns} turns`
+              : winner === 0 && mode === 'bot'
+                ? '🏆 You win!'
+                : `${names[winner]} wins`}
           </p>
         ) : !turn ? (
           <p className="muted">
