@@ -101,6 +101,7 @@ import { BricksDemo } from '../gpu/BricksDemo'
 import { GolfDemo } from '../gpu/GolfDemo'
 import { MinesDemo } from '../gpu/MinesDemo'
 import { TimeTrialDemo } from '../gpu/TimeTrialDemo'
+import { BackgammonDemo } from '../gpu/BackgammonDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -718,6 +719,12 @@ const DEMOS: readonly {
     name: 'Time trial',
     line: 'Time trial — one car, one track, the clock. Brake for the bends, keep it off the grass, and race the ghost of your best lap; the medal times come from a computer driver’s own lap. Three tracks, and a new one every day that everyone drives.',
     Demo: TimeTrialDemo,
+  },
+  {
+    id: 'backgammon',
+    name: 'Backgammon',
+    line: 'Backgammon — race your fifteen checkers home and off, hitting the computer’s lone ones on the way and blocking its path, with gammons and backgammons for a big win. Three levels, the hardest counting the rolls that would hit every lone checker; walnut, felt or marble.',
+    Demo: BackgammonDemo,
   },
 ]
 
