@@ -19361,12 +19361,15 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   font-size: 0.88rem;
 }
-/* ⚠️ not measured on screen — the routine draft editor was not reachable in the workbench this
-   pass — but it is the same markup problem as the three above and `.chron-draft li` is a flex
-   row with a min-height, so it grows the same way. Floored like the others. */
+/* The same markup problem as the three above, floored like them.
+   ⚠️ MEASURED 10 NOV, AND 110px WAS TOO RIGID A FLOOR. This said the routine draft editor had not
+   been reachable in the workbench; it is now, and at 375 a step row needed 298px in a 281px list
+   (110 for the name, then "10m" and ▲ ▼ ✕ at about 47px each), so the ✕ stood 40px past the card.
+   The basis stays 110px, so the name still grows wherever there is room; the floor is what a
+   name needs to stay readable, about eight characters, and `overflow-wrap` takes the rest. */
 .chron-draft-name {
   flex: 1 1 110px;
-  min-width: 110px;
+  min-width: 64px;
   overflow-wrap: anywhere;
 }
 
