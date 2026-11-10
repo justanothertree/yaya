@@ -83,6 +83,18 @@ import { FireworksDemo } from '../gpu/FireworksDemo'
 import { LevelsDemo } from '../gpu/LevelsDemo'
 import { TypeDemo } from '../gpu/TypeDemo'
 import { BonsaiDemo } from '../gpu/BonsaiDemo'
+import { MancalaDemo } from '../gpu/MancalaDemo'
+import { HockeyDemo } from '../gpu/HockeyDemo'
+import { DotsDemo } from '../gpu/DotsDemo'
+import { ReversiDemo } from '../gpu/ReversiDemo'
+import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
+import { TrailsDemo } from '../gpu/TrailsDemo'
+import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
+import { HexDemo } from '../gpu/HexDemo'
+import { FourRowDemo } from '../gpu/FourRowDemo'
+import { ArcheryDemo } from '../gpu/ArcheryDemo'
+import { UltimateDemo } from '../gpu/UltimateDemo'
+import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -592,6 +604,78 @@ const DEMOS: readonly {
     name: 'Bonsai',
     line: 'Bonsai — grow a little tree a season at a time, then shape it: cut branches back and it buds again, wire them to the angle you want. Choose maple, pine or blossom, the season, the pot and its glaze, moss and stones. The same seed grows the same way, so a link sends your very tree.',
     Demo: BonsaiDemo,
+  },
+  {
+    id: 'mancala',
+    name: 'Mancala',
+    line: 'Mancala — the sowing game. Sow seeds round the board into your store, end there to go again, end in an empty pit to take what is opposite. Against a computer that looks one, four or nine moves ahead, or a friend; four to six pits, three to six seeds, captures on or off, and boards and seeds to choose.',
+    Demo: MancalaDemo,
+  },
+  {
+    id: 'hockey',
+    name: 'Air hockey',
+    line: 'Air hockey — your paddle follows your finger or the mouse; knock the puck into the far slot and keep it out of yours. Against a Rookie, a Club player who goes for the corners, or a Pro who plays bank shots. Matches to 3, 5 or 7, with your record, your best run and your hardest shot.',
+    Demo: HockeyDemo,
+  },
+  {
+    id: 'dots',
+    name: 'Dots and boxes',
+    line: 'Dots and boxes — draw lines between dots, close a box to keep it and draw again. Against a computer that grabs, one that never gives a box away, or one that plays the endgame out and leaves you two boxes to keep control. Boards from 3×3 to 6×6, your colours and your letter in every box you win.',
+    Demo: DotsDemo,
+  },
+  {
+    id: 'reversi',
+    name: 'Reversi',
+    line: 'Reversi — trap a line of your opponent’s discs between two of yours and they turn over to your colour. Against a computer that grabs, one that looks two moves ahead, or one that looks further and plays the ending perfectly; boards of 6, 8 or 10, four sets of discs, three boards, and hints you can turn off.',
+    Demo: ReversiDemo,
+  },
+  {
+    id: 'seabattle',
+    name: 'Sea battle',
+    line: 'Sea battle — hide your fleet, then take turns calling squares of each other’s sea until one fleet is sunk. Against a computer that fires at random, one that hunts on a chequerboard, or one that works out where your ships most likely are (and never peeks). Three fleets, two seas, rules to choose, and a record of your fewest shots to win.',
+    Demo: SeaBattleDemo,
+  },
+  {
+    id: 'trails',
+    name: 'Light trails',
+    line: 'Light trails — ride a line of light round the arena and make the others crash into a wall before you do. One to three rivals that dodge, seek open space, or cut across your path; three arenas, three layouts, three speeds. Steer with keys, swipes or taps; first to three rounds wins.',
+    Demo: TrailsDemo,
+  },
+  {
+    id: 'codebreaker',
+    name: 'Codebreaker',
+    line: 'Codebreaker — crack a hidden code of coloured pegs from black and white clues. Today’s code is the same for everyone, once a day, with a result to copy and compare; practise on codes of your own size, or hide one and watch the computer crack it (usually in five).',
+    Demo: CodebreakerDemo,
+  },
+  {
+    id: 'hex',
+    name: 'Hex',
+    line: 'Hex — join your two sides of a board of hexagons before the other player joins theirs; there are no draws. Against a computer that fills the board at random hundreds of times to judge a move, or one that grows a tree of thousands of games and reads a fight several moves deep. Three board sizes, three looks, and the swap rule.',
+    Demo: HexDemo,
+  },
+  {
+    id: 'fourrow',
+    name: 'Four in a row',
+    line: 'Four in a row — drop discs into an upright grid and line up four before the computer does. It looks one, three or six moves ahead; play on a small, classic or wide grid, go for five on the bigger ones, and pick the discs and the frame.',
+    Demo: FourRowDemo,
+  },
+  {
+    id: 'archery',
+    name: 'Archery',
+    line: 'Archery — twelve arrows at targets further and further off. Your sight sways and your arm tires; steady it while your breath lasts, allow for the drop and the wind, and loose. Today’s round has the same wind for everyone; practise with a recurve, compound or longbow.',
+    Demo: ArcheryDemo,
+  },
+  {
+    id: 'ultimate',
+    name: 'Ultimate noughts',
+    line: 'Ultimate noughts and crosses — nine boards in one. Win small boards to win the big one, but every square you play sends your opponent to the matching board. Against a computer that grabs boards, or ones that play out thousands of games before each move; crosses, shapes, animals or rockets.',
+    Demo: UltimateDemo,
+  },
+  {
+    id: 'twentyone',
+    name: 'Twenty-one',
+    line: 'Twenty-one — get closer to 21 than the dealer without going over: hit, stand, double or split, for play chips. Turn on the book play to see the move that loses least, and how often you agree with it; one, two or six decks, and the dealer standing or hitting soft 17.',
+    Demo: TwentyOneDemo,
   },
 ]
 
