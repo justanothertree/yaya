@@ -4313,15 +4313,16 @@ html:has(.lab) {
   /* the hole is ten tiles by fifteen: as tall as it can be without running off a phone */
   aspect-ratio: 2 / 3;
   height: auto;
-  width: min(100%, 440px, calc(72vh * 2 / 3));
+  width: 100%;
   min-height: 0;
   touch-action: none;
   background: #1f2a1c;
 }
+/* the wrap carries the size: a percentage inside a shrink-to-fit box has nothing to be a percentage
+   of, and a canvas then falls back to its own 300px — which is what the hole was, everywhere */
 .pt-wrap {
   border-radius: 12px;
-  width: fit-content;
-  max-width: 100%;
+  width: min(100%, 440px, calc(72vh * 2 / 3));
 }
 .pt-wrap:focus-visible {
   outline: 3px solid var(--accent);
