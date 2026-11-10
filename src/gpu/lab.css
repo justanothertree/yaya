@@ -1766,3 +1766,20 @@ html:has(.lab) {
     grid-row: calc(var(--n) + 4);
   }
 }
+
+/* Air hockey: a tall table, as tall as the screen allows */
+.hk-room .lab-stage.hk-stage {
+  height: min(72vh, 680px, 150vw);
+  min-height: 300px;
+  touch-action: none;
+}
+.hk-wrap {
+  border-radius: 12px;
+}
+.hk-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.hk-wrap.is-playing .lab-canvas {
+  cursor: none;
+}

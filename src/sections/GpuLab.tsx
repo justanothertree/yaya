@@ -84,6 +84,7 @@ import { LevelsDemo } from '../gpu/LevelsDemo'
 import { TypeDemo } from '../gpu/TypeDemo'
 import { BonsaiDemo } from '../gpu/BonsaiDemo'
 import { MancalaDemo } from '../gpu/MancalaDemo'
+import { HockeyDemo } from '../gpu/HockeyDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -599,6 +600,12 @@ const DEMOS: readonly {
     name: 'Mancala',
     line: 'Mancala — the sowing game. Sow seeds round the board into your store, end there to go again, end in an empty pit to take what is opposite. Against a computer that looks one, four or nine moves ahead, or a friend; four to six pits, three to six seeds, captures on or off, and boards and seeds to choose.',
     Demo: MancalaDemo,
+  },
+  {
+    id: 'hockey',
+    name: 'Air hockey',
+    line: 'Air hockey — your paddle follows your finger or the mouse; knock the puck into the far slot and keep it out of yours. Against a Rookie, a Club player who goes for the corners, or a Pro who plays bank shots. Matches to 3, 5 or 7, with your record, your best run and your hardest shot.',
+    Demo: HockeyDemo,
   },
 ]
 
