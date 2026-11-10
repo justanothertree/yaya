@@ -118,6 +118,7 @@ import { LanderDemo } from '../gpu/LanderDemo'
 import { DartsDemo } from '../gpu/DartsDemo'
 import { LiarsDemo } from '../gpu/LiarsDemo'
 import { BowlingDemo } from '../gpu/BowlingDemo'
+import { PipesDemo } from '../gpu/PipesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -837,6 +838,12 @@ const DEMOS: readonly {
     name: 'Bowling',
     line: 'Bowling — ten frames against a computer bowler on a lane of real size. Choose your stance, line, hook and speed, then time the release; the pocket gives strikes, the nose gives splits.',
     Demo: BowlingDemo,
+  },
+  {
+    id: 'pipes',
+    name: 'Pipes',
+    line: 'Pipes — turn the tiles until water from the source reaches every one, with nothing left open. A new board each day, the same for everyone, against the clock and a par of turns; 5×5 to 9×9, and edges that wrap round.',
+    Demo: PipesDemo,
   },
 ]
 
