@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { FAMILIES } from './families'
-import { BASS_VOICES, INSTRUMENTS, SHAPES, filterSweeps, type InstrumentId } from './synth'
+import {
+  BASS_VOICES,
+  INSTRUMENTS,
+  SHAPES,
+  driveCurve,
+  filterSweeps,
+  type InstrumentId,
+} from './synth'
 import { packSong, readSong } from './songFile'
 
 /**
@@ -249,6 +256,8 @@ const parts = (a: Shape, b: Shape) => {
   if (ratio(a.filter?.to ?? 20000, b.filter?.to ?? 20000) >= 1.5) why.push('filter')
   if (!!a.pitch !== !!b.pitch) why.push('pitch')
   if (a.partials.length !== b.partials.length) why.push('partials')
+  /* clean against driven is the first thing anybody hears about a guitar or a bass */
+  if (!!a.drive !== !!b.drive) why.push('drive')
   return why
 }
 
@@ -359,11 +368,14 @@ describe('a filter moves where the wave can hear it', () => {
     expect(filterSweeps(SHAPES.slap, hz(36))).toBe(true)
   })
 
-  it('every saw or square bass sweeps across the whole register a bass line uses', () => {
+  /* a filter that moves less than an octave is not a sweep anybody hears — Fuzz's barely moves,
+     on purpose, and sitting still above its own buzz is the rule working, not failing */
+  it('every saw or square bass whose filter falls an octave sweeps across a bass line', () => {
     const flat: string[] = []
     for (const id of BASS_VOICES) {
       const sh = SHAPES[id as Exclude<InstrumentId, 'drums'>]
       if (!sh.filter || (sh.wave !== 'sawtooth' && sh.wave !== 'square')) continue
+      if (sh.filter.from / sh.filter.to < 2) continue
       for (let m = 36; m <= 59; m++) if (!filterSweeps(sh, hz(m))) flat.push(`${id}@${m}`)
     }
     expect(flat).toEqual([])
@@ -451,5 +463,71 @@ describe('the electric guitar', () => {
       }),
     )
     expect(back?.layers[0].instrument).toBe('guitar')
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: "more instruments". A soft clipper per voice is what makes a guitar sound
+ * driven and a bass sound fuzzed — the synth had no distortion at all, so neither could exist.
+ */
+describe('drive', () => {
+  /* the way a WaveShaperNode reads its curve: x in -1..1 lands between two points, interpolated */
+  const at = (curve: Float32Array, x: number) => {
+    const v = ((x + 1) / 2) * (curve.length - 1)
+    const i = Math.min(curve.length - 2, Math.floor(v))
+    return curve[i] + (curve[i + 1] - curve[i]) * (v - i)
+  }
+
+  it('keeps the edges where they are, so the envelope after it still decides the peak', () => {
+    for (const d of [0.1, 0.5, 0.9]) {
+      const c = driveCurve(d)
+      expect(at(c, 1)).toBeCloseTo(1, 5)
+      expect(at(c, -1)).toBeCloseTo(-1, 5)
+      expect(at(c, 0)).toBeCloseTo(0, 2)
+    }
+  })
+
+  it('is odd and never folds back: no lopsided wave, no note turned inside out', () => {
+    const c = driveCurve(0.7)
+    for (let i = 0; i < c.length; i++) expect(c[i]).toBeCloseTo(-c[c.length - 1 - i], 5)
+    for (let i = 1; i < c.length; i++) expect(c[i]).toBeGreaterThanOrEqual(c[i - 1])
+  })
+
+  it('pushes the quiet half of the wave up harder the more it is driven — that is the grit', () => {
+    expect(at(driveCurve(0.2), 0.3)).toBeGreaterThan(0.3)
+    expect(at(driveCurve(0.9), 0.3)).toBeGreaterThan(at(driveCurve(0.2), 0.3))
+  })
+
+  it('Overdrive and Fuzz are driven; the clean guitar and every other bass are not', () => {
+    expect(SHAPES.overdrive.drive).toBeGreaterThan(0)
+    expect(SHAPES.fuzz.drive).toBeGreaterThan(0)
+    expect(SHAPES.guitar.drive).toBeUndefined()
+    for (const id of BASS_VOICES) if (id !== 'fuzz') expect(shape(id).drive, id).toBeUndefined()
+  })
+
+  it('and both travel through a song file as themselves', () => {
+    for (const instrument of ['overdrive', 'fuzz'] as const) {
+      const back = readSong(
+        packSong({
+          v: 1,
+          name: 'x',
+          bpm: 96,
+          bars: 2,
+          layers: [
+            {
+              instrument,
+              muted: false,
+              len: 5,
+              events: [
+                { t: 0, midi: 40, on: true },
+                { t: 1, midi: 40, on: false },
+              ],
+              fx: { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 },
+            },
+          ],
+        }),
+      )
+      expect(back?.layers[0].instrument, instrument).toBe(instrument)
+    }
   })
 })

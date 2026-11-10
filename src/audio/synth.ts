@@ -69,6 +69,8 @@ export type InstrumentId =
   | 'harpsichord'
   | 'sitar'
   | 'guitar'
+  | 'overdrive'
+  | 'fuzz'
   | 'drums'
 
 /**
@@ -82,11 +84,13 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['harpsichord', '🏰', 'Harpsichord'],
   ['pluck', '🪕', 'Pluck'],
   ['guitar', '🤘', 'Electric guitar'],
+  ['overdrive', '🔥', 'Overdrive guitar'],
   ['bell', '🔔', 'Bell'],
   ['pad', '🌊', 'Pad'],
   ['bass', '🎸', 'Bass'],
   ['finger', '🖐', 'Finger bass'],
   ['pick', '🔺', 'Pick bass'],
+  ['fuzz', '🌀', 'Fuzz bass'],
   ['slap', '👋', 'Slap bass'],
   ['fretless', '〰️', 'Fretless'],
   ['upright', '🌳', 'Upright bass'],
@@ -131,6 +135,7 @@ export const BASS_VOICES: InstrumentId[] = [
   'bass',
   'finger',
   'pick',
+  'fuzz',
   'slap',
   'fretless',
   'upright',
@@ -161,6 +166,11 @@ type Shape = {
   filter?: { from: number; to: number; q: number }
   /** a pitch that falls (or rises) into place: multiplier at note-on, and how long it takes */
   pitch?: { mult: number; time: number }
+  /**
+   * How hard the note is pushed into a soft clipper before its envelope, 0 to 1 — an amp turned
+   * up. Absent is clean. See `driveCurve`.
+   */
+  drive?: number
   /**
    * Peak gain, so a bass patch does not drown a bell.
    *
@@ -219,6 +229,33 @@ export function filterSweeps(
   return Math.max(80, sh.filter.to) <= top * 1.6
 }
 
+const curves = new Map<number, Float32Array<ArrayBuffer>>()
+
+/**
+ * The soft clipper's transfer curve for a drive of 0 to 1: tanh, normalised so ±1 still maps to
+ * ±1. Everything in between is pushed up towards the edges, which is what an amp turned up does —
+ * the quiet part of the wave gets louder, the loud part cannot, and the corners that leaves are
+ * the odd harmonics that make it sound driven.
+ *
+ * ⚠️ PURE AND EXPORTED, so the shape can be asked a question without a browser: that it is odd
+ * (no DC, no even-harmonic lopsidedness), that it never folds back, and that ±1 stays ±1 so the
+ * envelope after it keeps the peak. Memoised, because a voice is made per note.
+ */
+export function driveCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
+  const key = Math.round(drive * 1000) / 1000 + n * 10
+  const had = curves.get(key)
+  if (had) return had
+  const k = 1 + 9 * Math.max(0, Math.min(1, drive))
+  const norm = Math.tanh(k)
+  const out = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1
+    out[i] = Math.tanh(k * x) / norm
+  }
+  curves.set(key, out)
+  return out
+}
+
 /**
  * ⚠️ EXPORTED SO SOMETHING CAN CHECK IT. `scripts/synth-levels.py` has carried the loudness
  * doctrine since September — peak is `level x sum(gains)`, held is that times sustain, and the
@@ -274,6 +311,32 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     filter: { from: 3400, to: 1300, q: 1.2 },
     level: 0.62,
+  },
+  /**
+   * Overdrive guitar: the same picked string as the clean one, through an amp turned up. The
+   * clipper squares off the wave — the grit — and squashes it, which is why it holds nearly half
+   * its level where the clean one keeps a fifth. A filter settling at 2.6kHz is the speaker
+   * cabinet, taking off the fizz a real one would never play.
+   *
+   * ⚠️ A SAW GOES IN, NOT A TRIANGLE, and the first version had it the other way round. A clipped
+   * triangle is a trapezoid, whose harmonics still fall as 1/n² — so it measured DARKER than the
+   * clean guitar (2.8% of its energy above 1kHz at C4 against 16.4%), the opposite of driven. A
+   * clipped saw keeps its 1/n harmonics and adds the corners.
+   */
+  overdrive: {
+    a: 0.002,
+    d: 2,
+    s: 0.45,
+    r: 0.2,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -5, gain: 1 },
+      { ratio: 1, detune: 5, gain: 0.6 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+    ],
+    drive: 0.6,
+    filter: { from: 3200, to: 2600, q: 1.2 },
+    level: 0.26,
   },
   // 2.76 is deliberately not a musical interval — inharmonic partials are what make metal ring
   bell: {
@@ -942,6 +1005,28 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     filter: { from: 3200, to: 900, q: 1.5 },
     level: 0.6,
+  },
+  /**
+   * Fuzz bass: a bass through a fuzz pedal, clipped hard — thick, buzzing and sustained, the bass
+   * under stoner rock and plenty of funk. A saw with an octave below it for weight, the clipper
+   * turned nearly all the way, and a filter left open at 2.4kHz so the buzz is there to hear.
+   *
+   * ⚠️ THE FIRST VERSION SHUT THE FILTER AT 900Hz on a triangle, and measured 0% of its energy
+   * above 1kHz — a fuzz with the fuzz filtered off. See the note on Overdrive about triangles.
+   */
+  fuzz: {
+    a: 0.003,
+    d: 1.2,
+    s: 0.6,
+    r: 0.15,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 0.5, detune: 0, gain: 0.5 },
+    ],
+    drive: 0.85,
+    filter: { from: 2800, to: 2400, q: 0.9 },
+    level: 0.32,
   },
   /**
    * Fretless: smooth and singing, the bass that slides. No fret means every note arrives from a
@@ -2129,6 +2214,24 @@ export function noteOn(
    */
   const partialSum = sh.partials.reduce((n, x) => n + x.gain, 0) || 1
 
+  /**
+   * ⚠️ THE CLIPPER GOES BEFORE THE ENVELOPE, NOT AFTER IT. The partials' shares sum to 1, so what
+   * reaches it never exceeds ±1 — the range its curve is drawn over — and the envelope after it
+   * still decides the peak, so `level` keeps meaning what the note above says it means. Put after
+   * the envelope it would see ±level, a different curve per voice, and a distorted note would
+   * come out louder than its own level by however much the clipper squashed it.
+   */
+  let into: AudioNode = g
+  if (sh.drive) {
+    const shaper = c.createWaveShaper()
+    shaper.curve = driveCurve(sh.drive)
+    /* a hard curve makes harmonics above Nyquist that fold back down as noise; 2x keeps most out */
+    shaper.oversample = '2x'
+    shaper.connect(g)
+    made.push(shaper)
+    into = shaper
+  }
+
   const oscs: OscillatorNode[] = []
   for (const part of sh.partials) {
     const o = c.createOscillator()
@@ -2163,11 +2266,11 @@ export function noteOn(
     bus.vib.connect(o.detune)
     const share = part.gain / partialSum
     if (share === 1) {
-      o.connect(g)
+      o.connect(into)
     } else {
       const sub = c.createGain()
       sub.gain.value = share
-      o.connect(sub).connect(g)
+      o.connect(sub).connect(into)
       made.push(sub)
     }
     o.start(at)
