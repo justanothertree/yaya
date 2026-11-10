@@ -594,13 +594,21 @@ export function TakeEditor({
       </div>
 
       <div className="take-edit-bar">
+        {/* ⚠️ "■ Stop" WHILE IT PLAYS, the way the loop's own transport says "⏹ Stop". It read
+            "■ Play" — the glyph changed and the word did not, so the one button that stops a
+            preview was labelled as the thing that starts one. Same four letters either way, so
+            the bar does not reflow when it flips. */}
         <button
           className="btn btn-ghost"
           onClick={() => (out.current ? stop() : fromCursor())}
           disabled={!heard}
-          title="Hear the edited take — from the cursor, if you have placed one"
+          title={
+            out.current
+              ? 'Stop the preview'
+              : 'Hear the edited take — from the cursor, if you have placed one'
+          }
         >
-          {out.current ? '■' : '▶'} Play
+          {out.current ? '■ Stop' : '▶ Play'}
         </button>
         <button
           className="btn"
