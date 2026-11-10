@@ -93,6 +93,7 @@ import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
 import { HexDemo } from '../gpu/HexDemo'
 import { FourRowDemo } from '../gpu/FourRowDemo'
 import { ArcheryDemo } from '../gpu/ArcheryDemo'
+import { UltimateDemo } from '../gpu/UltimateDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -662,6 +663,12 @@ const DEMOS: readonly {
     name: 'Archery',
     line: 'Archery — twelve arrows at targets further and further off. Your sight sways and your arm tires; steady it while your breath lasts, allow for the drop and the wind, and loose. Today’s round has the same wind for everyone; practise with a recurve, compound or longbow.',
     Demo: ArcheryDemo,
+  },
+  {
+    id: 'ultimate',
+    name: 'Ultimate noughts',
+    line: 'Ultimate noughts and crosses — nine boards in one. Win small boards to win the big one, but every square you play sends your opponent to the matching board. Against a computer that grabs boards, or ones that play out thousands of games before each move; crosses, shapes, animals or rockets.',
+    Demo: UltimateDemo,
   },
 ]
 
