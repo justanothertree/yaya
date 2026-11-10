@@ -53,6 +53,11 @@ select count(*) as would_error, count(distinct p.owner_user_id) as members,
 -- expect 0
 ```
 
+Proven in db guards run 42825583418 (scratch branch `chronicle/ci-probe-refusals`, 08:33 to
+08:35 EST). Given `1.2.3`, `.`, `12.`, `.5` and `3.5`, it counted 2, which are the two that fail
+the cast. With `1.2.3` stored, `chronicle_moments` raised
+`invalid input syntax for type numeric: "1.2.3"` for that member.
+
 It does not block 21a, which keeps the same pattern and cast. Any other number is reported to
 Evan before step 2. It means that for each member counted, every `chronicle_moments` window
 holding that day errors today. The client reads an error as no moments
