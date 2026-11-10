@@ -2439,6 +2439,20 @@ export function limiterReduction(): number {
 }
 
 /**
+ * Where a sound that is not one of the SHAPES plugs in — the singing prototype (singer.ts).
+ *
+ * ⚠️ THROUGH A PART'S BUS, LIKE EVERY NOTE, so the voice gets what every instrument gets for free:
+ * the part's effects and level, the polyphony headroom, the limiter, the instrument's volume, the
+ * analyser the room draws and measures from, and the call broadcast. A voice wired straight to the
+ * speakers would be the one sound in the room the volume slider could not reach.
+ */
+export function partInput(part: string, fx: Fx, gain?: number): AudioNode {
+  const c = ensure()
+  resumeAudio()
+  return busFor(c, part, fx, gain).in
+}
+
+/**
  * The post-limiter node, for the debug recorder — the same fork the visualiser draws from, so a
  * capture is the signal your speakers were asked for rather than an idealised one.
  */

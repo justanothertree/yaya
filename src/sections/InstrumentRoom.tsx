@@ -180,6 +180,7 @@ import {
   type Layer,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
+import { SingPanel } from '../audio/SingPanel'
 import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
 import { FAMILIES, familyOf, familyVoices } from '../audio/families'
 import { STARTERS, starterNow, styleBassVoice, type Starter } from '../audio/starters'
@@ -3847,6 +3848,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       {/* ⚠️ RECORDING SITS WITH THE SONG IT IS RECORDED INTO. 🎤 Record a take was below the
           sound knobs, the octave row and the scale row — 1,600px down at 1440×900 — while
           everything it is placed into (the transport, the layers) was 500px above it. */}
+      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, on a draft for
+          Evan to hear. Beside the takes because it, too, is a voice over the song. */}
+      <SingPanel
+        layers={loop.layers}
+        degrees={scale === 'chromatic' ? MAJOR_DEGREES : degrees}
+        root={scale === 'chromatic' ? 0 : root}
+      />
       <TakesPanel />
 
       {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
