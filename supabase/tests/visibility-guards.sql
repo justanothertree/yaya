@@ -1,3 +1,18 @@
+-- ⛔ SCRATCH BRANCH chronicle/ci-probe-dump ONLY — never to be merged. Prints every Chronicle and
+-- Circuit function exactly as main's migrations build them, for the preview stand-in audit, then
+-- runs the standing guards unchanged.
+\pset format unaligned
+\pset tuples_only on
+select '#### FN ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) || E'\n'
+       || pg_get_functiondef(p.oid) || E'\n#### END'
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
+   and (p.proname like 'chronicle\_%' or p.proname like 'circuit\_%'
+        or p.proname in ('get_member_chronicle', 'can_see', 'can_see_item', 'is_suspended'))
+ order by p.proname;
+\pset format aligned
+\pset tuples_only off
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
