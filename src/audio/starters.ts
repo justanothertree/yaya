@@ -39,8 +39,9 @@ export type Starter = {
   /**
    * The bass VOICE, only where one clearly belongs to the style — Evan, 10 Nov 2026: "an 808 for
    * Hip hop makes sense, so let styles pick a bass voice where it clearly fits". Absent means the
-   * plain Bass. Four styles have one, because those four are what each voice is FOR: the 808 is
-   * hip hop's bass, slap is funk's, a walking line is an upright's, and house is synth bass.
+   * plain Bass. Five styles have one, because those five are what each voice is FOR: the 808 is
+   * hip hop's bass, slap is funk's, a walking line is an upright's, house is synth bass, and rock's
+   * driving eighths are played with a pick.
    */
   bassVoice?: InstrumentId
 }
@@ -75,6 +76,7 @@ export const STARTERS: Starter[] = [
     chords: 'simple',
     chordStyle: 'stabs',
     bass: 'pulse',
+    bassVoice: 'pick',
   },
   {
     id: 'hiphop',

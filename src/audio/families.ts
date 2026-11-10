@@ -22,11 +22,14 @@ export const FAMILIES: readonly Family[] = [
     name: 'Keys',
     members: ['keys', 'rhodes', 'harpsichord', 'organ', 'clav', 'accordion'],
   },
+  /* ⚠️ TWO BASS FAMILIES since there were ten basses and a family is one row of eight at 1440 —
+     the played ones, and the ones a synth makes. "I want a bass" still lands on Bass first. */
   {
     id: 'bass',
     name: 'Bass',
-    members: ['bass', 'finger', 'slap', 'upright', 'synthbass', '808', 'sub'],
+    members: ['bass', 'finger', 'pick', 'slap', 'fretless', 'upright'],
   },
+  { id: 'synth-bass', name: 'Synth bass', members: ['synthbass', 'acid', '808', 'sub'] },
   {
     id: 'strings',
     name: 'Strings',
