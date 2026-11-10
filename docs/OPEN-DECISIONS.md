@@ -1335,3 +1335,23 @@ restored read 35. It only acts on a converted person, so like the rest of the co
 for the 20d cutover.
 
 Device and signed-in checks are §19f, and grow with each build.
+
+---
+
+## 21. What the stand-in audit found on the server side (10 Nov 2026)
+
+The overnight audit read every Chronicle writer and reader beside the function production runs.
+Production's text came from CI's database: main's baseline plus the release's seven migrations. Its
+26 release functions matched production's own fingerprints. The stand-in drift is fixed on its own
+draft. These three are about the SERVER, so none is built: each needs production SQL or a
+production read.
+
+| §   | Question                                                                                                                                                                                                                                                                                  | Recommendation                                                                                                                                       | Blocks                         |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 21a | The day's workout line rounds every number to a whole one. `chronicle_moments` prints with `to_char(v, 'FM999999990.##')`, and `.##` is not a digit pattern. Measured in CI: 12.5 prints "13" and 0.25 prints "0", so a 3.5-mile walk reads "4 mi". Fix it?                               | Yes, as a small migration printing `rtrim(to_char(v, 'FM999999990.99'), '.')`, tested in CI first. It changes no stored data                         | nothing                        |
+| 21b | `chronicle_entry_amount` refuses a negative amount, which the release's floor check started doing, and the message reads "this sitting's sets count <NULL> — change those to go lower". Nothing in the room sends a negative (the editor sends none, and the counter stops at 0). Fix it? | Yes, with 21a: a negative is "no amount" again, as it was before the release, and the message names 0 rather than NULL                               | nothing                        |
+| 21c | CI builds its database from the 4 Nov baseline dump and never runs the migration files (`[db.migrations]` is off on purpose). So nothing applied since, including this release, is in the database `db guards` tests. Regenerate the baseline?                                            | Yes. `supabase/baseline/README.md` has the four steps. Its first, `supabase db dump --linked`, reads production, so it is yours to run or to approve | CI testing the released schema |
+
+The release record's line that CI "built a database from main's migrations" was wrong in the same
+way. It is corrected on draft #112, and the release's conclusion stands, because its "same as
+production" checks were measured against production itself.
