@@ -75,7 +75,10 @@ import {
   type BassStyle,
   type ChordStyle,
   progressionEvents,
+  outsideScale,
+  revoice,
   type ChordPattern,
+  type Voicing,
 } from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
@@ -157,6 +160,7 @@ import {
   setBars,
   setBpm,
   setLayerInstrument,
+  setLayerEvents,
   layerHeard,
   layerLost,
   layerPlan,
@@ -416,11 +420,36 @@ const styleOfChord = (l: Layer): ChordStyle =>
 const styleOfBass = (l: Layer): BassStyle =>
   BASS_STYLES.find((x) => x.id === bassStyleTagOf(l))?.id ?? 'rootfifth'
 
+/**
+ * The key a backing is laid in for this room's Scale and Key — Chromatic has no degrees to build
+ * chords on, so it borrows C major exactly as `layChords` always has.
+ */
+const voicingOf = (scale: string, root: number): Voicing =>
+  scale === 'chromatic' ? { degrees: MAJOR_DEGREES, root: 0 } : { degrees: degreesOf(scale), root }
+/** every key a backing can be recognised in — see `revoice` */
+const VOICED_SCALES = SCALES.filter(([id]) => id !== 'chromatic').map(([, , d]) => d)
+
 /** Where the instrument menu behaves like a phone's: closes after a pick, starts closed. */
 const PHONE_MENU = '(max-width: 40rem)'
 
 function Why({ children }: { children: React.ReactNode }) {
   return <span className="btn-why">{children}</span>
+}
+
+/**
+ * A backing row playing notes the room's scale does not have — see `outsideScale`.
+ *
+ * ⚠️ IT ONLY HAPPENS TO A BACKING SOMEBODY EDITED, OR ONE LAID IN ANOTHER KEY. A change of key or
+ * scale re-lays every backing it can recognise, and an edited one follows a change of key note
+ * for note — but a change of scale cannot be done to notes moved by hand, so they stay in their
+ * old scale, and without this the Scale picker would look as if it had failed to reach the row.
+ * Picking the progression again lays a fresh one in the room's scale. Chromatic has every note,
+ * so it never says this.
+ */
+function OffScaleRow({ layer, voicing }: { layer: Layer | undefined; voicing: Voicing | null }) {
+  return layer && voicing && outsideScale(layer.events, voicing) ? (
+    <span className="muted inst-beats-why">outside this scale — pick it again to fit</span>
+  ) : null
 }
 
 /**
@@ -1198,7 +1227,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * a clash and naming it confidently.
    *
    * That is §2 about my own work: the hint was true the day it shipped and a neighbouring
-   * control made it false. Asking the notes instead means a key change, a scale change, and
+   * control made it false. (Since 9 Nov 2026 the Key picker re-voices the backing, but an edited
+   * one keeps its old scale through a change of scale, so asking the notes is still the only answer
+   * that cannot drift.) Asking the notes instead means a key change, a scale change, and
    * somebody editing the roll by hand all come out right without this knowing any of them
    * happened — the hint cannot drift from the sound because it IS the sound.
    *
@@ -1372,6 +1403,43 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     if (id && loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p, lead)
     return id
   }
+
+  /**
+   * ⚠️ THE BACKING FOLLOWS THE KEY — Evan's call, 9 Nov 2026. A change of Scale or Key re-lays
+   * the chords and the bass in the new key, at their own length and in their own style, keeping
+   * their sound, level, mute and arrangement; an edited one moves by the same interval, and on a
+   * change of scale keeps its old scale, which its row then says. The rules are `revoice`'s, in
+   * chordPatterns.ts.
+   *
+   * ⚠️ AN EFFECT ON THE VOICING, NOT A CALL IN EACH PICKER, because three things change it — the
+   * Scale picker, the Key picker and a rig — and the one that forgot would leave a backing in the
+   * old key under a keyboard in the new one, which is the clash this exists to end. Chromatic
+   * moving its hidden root changes no voicing and so re-lays nothing.
+   *
+   * ⚠️ NOT ON MOUNT AND NOT ON A LOAD. The ref starts at the voicing the room opened in, and
+   * opening a song changes no Scale or Key, so nothing anybody kept is rewritten by being opened.
+   */
+  const voiced = useRef<Voicing>(voicingOf(scale, root))
+  useEffect(() => {
+    const from = voiced.current
+    const to = voicingOf(scale, root)
+    voiced.current = to
+    if (from.root === to.root && from.degrees.join() === to.degrees.join()) return
+    const s = loopState()
+    const beat = 60 / s.bpm
+    for (const l of s.layers) {
+      const chords = chordPatternOf(l)
+      const p = CHORD_PATTERNS.find((x) => x.id === (chords ?? bassPatternOf(l)))
+      if (!p) continue
+      const lay = (d: readonly number[], r: number, lead: boolean) =>
+        chords !== null
+          ? progressionEvents(p, l.len, d, r, lead, styleOfChord(l), beat).events
+          : basslineEvents(p, l.len, d, r, lead, styleOfBass(l), beat).events
+      const next = revoice(l.events, lay, from, to, VOICED_SCALES)
+      /* an edited backing under a change of scale alone moves by nothing — leave it sounding */
+      if (JSON.stringify(next) !== JSON.stringify(l.events)) setLayerEvents(l.id, next)
+    }
+  }, [scale, root])
 
   useEffect(() => {
     if (!arpLit) {
@@ -2553,19 +2621,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * asked a question. Chromatic has no degrees to build on, so it borrows the major ones
        * exactly as the Chord picker does.
        *
-       * ⚠️ "AT THE MOMENT YOU DROP IT" IS THE CORRECTION — this used to say it FOLLOWS the key,
-       * present tense, and it does not. What lands is an ordinary layer of notes, which is the
-       * whole point of these being takes rather than a chord track; so moving the Key picker
-       * afterwards re-tunes the keyboard and leaves the backing where it was. Measured: a
-       * progression dropped in C still reads C–G–Am–F in its own piano roll after the key goes
-       * to D.
-       *
-       * Whether changing the key should re-voice a backing already on the table is a product
-       * decision and is written up rather than guessed at here. It is not obviously yes: the
-       * layer is editable, so re-voicing would silently overwrite anything somebody had changed
-       * in the roll — the shape CLAUDE.md calls "a save that writes every column is a delete for
-       * the ones the caller forgot". The keyboard's hint reads the layer's own notes precisely so
-       * it stays honest either way.
+       * ⚠️ AND RE-LAID WHEN THE KEY CHANGES — Evan's call, 9 Nov 2026. What lands is an ordinary
+       * layer of notes, which is the whole point of these being takes rather than a chord track,
+       * so for two months moving the Key picker re-tuned the keyboard and left the backing where
+       * it was (measured: a progression dropped in C still read C–G–Am–F after the key went to
+       * D). It was left as a question because the layer is editable and re-voicing could
+       * silently overwrite what somebody changed in the roll — the shape CLAUDE.md calls "a save
+       * that writes every column is a delete for the ones the caller forgot". The answer keeps
+       * both: an unedited backing is laid again in the new key, an edited one moves by the same
+       * interval, and on a change of scale — which cannot be done to notes moved by hand — keeps
+       * its old scale and says so.
+       * See the effect beside `layChords`, and `revoice`.
        */}
       {beatsOpen && (
         <div className="inst-beats card">
@@ -2649,6 +2715,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               )
             })()}
             <MutedRow layer={loop.layers.find((l) => chordPatternOf(l) !== null)} />
+            <OffScaleRow
+              layer={loop.layers.find((l) => chordPatternOf(l) !== null)}
+              voicing={scale === 'chromatic' ? null : voicingOf(scale, root)}
+            />
             {/**
              * ⚠️ A PROGRESSION IS NOT RE-LAID WHEN THE LOOP SHRINKS — Evan's call, 9 Nov 2026 — so
              * say when the loop is cutting it. It was laid for the loop's length when it was
@@ -2739,6 +2809,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     </span>
                   )}
                   <MutedRow layer={bass ?? undefined} />
+                  <OffScaleRow
+                    layer={bass ?? undefined}
+                    voicing={scale === 'chromatic' ? null : voicingOf(scale, root)}
+                  />
                 </>
               )
             })()}

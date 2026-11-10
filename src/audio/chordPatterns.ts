@@ -451,3 +451,91 @@ export function leadsBack(events: readonly LoopEvent[], p: ChordPattern, len: nu
   const first = [...chords.get(times[0])!].sort().join()
   return times.some((t) => t / 1e6 >= mid - eps && [...chords.get(t)!].sort().join() !== first)
 }
+
+/** The key a backing is laid in: the scale's degrees and the root they are counted from. */
+export type Voicing = { degrees: readonly number[]; root: number }
+
+/**
+ * A backing's notes in a new key.
+ *
+ * ⚠️ EVAN'S CALL, 9 NOV 2026: CHANGING KEY RE-VOICES CHORDS ALREADY LAID. Until then a progression
+ * was built in the key of the moment it was dropped and stayed there, so moving the Key picker
+ * re-tuned the keyboard over a backing still in the old key — every lock-safe note the keyboard
+ * offered was now a possible clash with what was underneath. The comment that recorded this
+ * also recorded why it was not obviously yes: the layer is editable, and re-laying it would
+ * silently overwrite anything somebody had changed in the roll. Both halves are kept here.
+ *
+ * ⚠️ SO IT FIRST ASKS WHETHER THESE ARE STILL THE NOTES THIS MODULE LAYS. `lay` is the same call
+ * that made them, and it is tried in every key of every scale the room offers, with and without
+ * the lead-back — the layer carries neither its key nor its lead-back, and a song does not store
+ * the key, so a progression laid in D and opened in a room set to C is still recognised and moves
+ * to wherever the picker now says. Recognised, it is laid again in the new key with the lead-back
+ * it was found with, so length, style and turnaround all survive and the round trip C → D → C is
+ * exact. `from` is tried first only because it is nearly always the answer.
+ *
+ * ⚠️ NOT RECOGNISED MEANS SOMEBODY CHANGED IT, AND THEN NOTHING IS REBUILT: every note moves by the
+ * interval the key moved, edits included — which, for a key change alone, is exactly what
+ * re-laying an unedited one would have done. A change of SCALE cannot be done to notes this cannot
+ * read as degrees, so those stay in the scale they were in; the room reads that off the notes
+ * (`outsideScale`) and says so, rather than remembering that it happened.
+ */
+export function revoice(
+  events: readonly LoopEvent[],
+  lay: (degrees: readonly number[], root: number, lead: boolean) => LoopEvent[],
+  from: Voicing,
+  to: Voicing,
+  scales: readonly (readonly number[])[],
+): LoopEvent[] {
+  const lead = laidLead(events, lay, from, scales)
+  if (lead !== null) return lay(to.degrees, to.root, lead)
+  const d = to.root - from.root
+  return events.map((e) => ({ ...e, midi: Math.max(0, Math.min(127, e.midi + d)) }))
+}
+
+/**
+ * Does this take play a note the scale does not have?
+ *
+ * ⚠️ READ FROM THE NOTES, LIKE `leadsBack`, NOT FROM A RECORD OF WHAT HAPPENED. The first version
+ * remembered which layers a change of scale had skipped, and the next change of KEY — which moved
+ * the same edited notes along, still in their old scale — cleared the memory and the caption with
+ * it: a backing in G minor under a keyboard in G major, and nothing on screen saying so. Asking
+ * the notes cannot drift that way, survives a reload, and also catches a song laid in another key
+ * and opened here. Anything this module lays is inside its scale by construction, so it is silent
+ * for every backing nobody has touched.
+ */
+export function outsideScale(events: readonly LoopEvent[], v: Voicing): boolean {
+  const pcs = new Set(v.degrees.map((d) => (((d + v.root) % 12) + 12) % 12))
+  return events.some((e) => e.on && !pcs.has(((e.midi % 12) + 12) % 12))
+}
+
+/** the lead-back that reproduces these notes in some key, or null when nothing does */
+function laidLead(
+  events: readonly LoopEvent[],
+  lay: (degrees: readonly number[], root: number, lead: boolean) => LoopEvent[],
+  from: Voicing,
+  scales: readonly (readonly number[])[],
+): boolean | null {
+  const mine = sorted(events)
+  const tries: Voicing[] = [from]
+  for (const degrees of scales) for (let root = 0; root < 12; root++) tries.push({ degrees, root })
+  for (const v of tries)
+    for (const lead of [false, true])
+      if (sameNotes(mine, sorted(lay(v.degrees, v.root, lead)))) return lead
+  return null
+}
+
+const sorted = (events: readonly LoopEvent[]) =>
+  [...events].sort((a, b) => a.t - b.t || a.midi - b.midi || Number(a.on) - Number(b.on))
+
+/**
+ * ⚠️ TIMES TO A TENTH OF A MILLISECOND, NOT EXACTLY. `setBpm` rescales every event by a ratio, so
+ * a progression laid at 96 and played at 120 has times that are the same numbers by a different
+ * route; exact equality would call every tempo change an edit.
+ */
+function sameNotes(a: readonly LoopEvent[], b: readonly LoopEvent[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++)
+    if (a[i].midi !== b[i].midi || a[i].on !== b[i].on || Math.abs(a[i].t - b[i].t) > 1e-4)
+      return false
+  return true
+}
