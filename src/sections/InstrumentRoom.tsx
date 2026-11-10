@@ -28,7 +28,7 @@ import {
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
-import { keySpeller, nameChord, noteLabel } from '../audio/chordName'
+import { keyName, keySpeller, nameChord, noteLabel } from '../audio/chordName'
 import { pedalBook, type PedalBook } from '../audio/pedal'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
@@ -2276,9 +2276,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 e.target.blur()
               }}
             >
+              {/* named in the scale's own convention — see keyName */}
               {NAMES.map((nm, i) => (
                 <option key={nm} value={i}>
-                  {nm}
+                  {keyName(degrees, i)}
                 </option>
               ))}
             </select>

@@ -125,6 +125,19 @@ export function keySpeller(degrees: readonly number[], root: number): (pc: numbe
 }
 
 /**
+ * The name of a key, as the Key picker lists it — E♭ major, but D♯ minor; B♭ either way.
+ *
+ * ⚠️ EVAN, 10 NOV 2026: "switch the Key picker's list to flat names where they're correct". It was
+ * one fixed list of sharps, so the picker offered "A♯" for the key every songbook calls B♭ major,
+ * while the keys and chords under it had already learned to say B♭. Asking the same speller for
+ * the tonic's own name keeps the three in agreement, and it is right per scale, which a second
+ * fixed list could not be: E♭ major and D♯ minor are both the conventional names.
+ */
+export function keyName(degrees: readonly number[], root: number): string {
+  return keySpeller(degrees, root)(root)
+}
+
+/**
  * A key's label on the keyboard: its name in the room's key, and its octave.
  *
  * ⚠️ EVAN, 10 NOV 2026: "keyboard key labels following the key like #108". The chord readouts
