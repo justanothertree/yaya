@@ -650,12 +650,15 @@ export function Log({
                 title="Click to rename this column"
                 aria-label={`Rename the ${col.label || 'Column'} column`}
                 style={{
-                  marginBottom: '0.4rem',
+                  /* 24px tall to a finger or a pointer, the floor everywhere else on this sheet,
+                     with the 5px added each side taken back out of the margins: as a button the
+                     heading counts as a control, it was 14px, and the cards below must not move */
+                  padding: '5px 0',
+                  margin: '-5px 0 calc(0.4rem - 5px)',
                   cursor: 'text',
                   display: 'inline-block',
                   background: 'none',
                   border: 'none',
-                  padding: 0,
                   fontFamily: 'inherit',
                   lineHeight: 'inherit',
                 }}
