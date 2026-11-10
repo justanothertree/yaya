@@ -307,6 +307,8 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
         <button
           className="cz-tap"
           onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={comments.length ? `Comments, ${comments.length}` : 'Comments'}
           style={{ ...chip, marginLeft: 'auto', color: 'var(--muted)' }}
         >
           💬 {comments.length || ''}
@@ -317,14 +319,32 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
           {comments.map((c) => (
             <div key={c.id} style={{ fontSize: '0.78rem' }}>
               <strong>{c.author_name || 'Member'}</strong> <span className="muted">{c.body}</span>
+              {/* ⚠️ A BUTTON, NOT A SPAN WITH A CLICK. It was a bare `×` in a <span>, measured 8.5x16
+                  at 375, out of the tab order, and named only by a title a phone never shows. */}
               {c.user_id === social.uid && (
-                <span
+                <button
+                  type="button"
                   onClick={() => void social.deleteComment(c.id)}
+                  aria-label="Delete your comment"
                   title="Delete"
-                  style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }}
+                  style={{
+                    minWidth: 24,
+                    minHeight: 24,
+                    padding: 0,
+                    marginLeft: 2,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    verticalAlign: 'middle',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    opacity: 0.5,
+                  }}
                 >
                   ×
-                </span>
+                </button>
               )}
             </div>
           ))}
