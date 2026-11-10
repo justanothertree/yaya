@@ -267,7 +267,10 @@ function SocialBar({ logId, social, me }: { logId: string; social: FeedSocial; m
             title="Add kudos"
             style={{ ...chip, border: '1px solid var(--b2, rgba(127,127,127,0.3))' }}
           >
-            ＋
+            {/* ⚠️ A WORD, NOT ONLY ＋: the meaning lived in the title, and a tooltip does not exist on
+                a phone — on a card with no kudos yet this was a plus sign with nothing to say
+                what it added (CLAUDE.md §6; found by scripts/mobile-audit.js, `wordless`) */}
+            ＋ Kudos
           </button>
           {picker && (
             <span
