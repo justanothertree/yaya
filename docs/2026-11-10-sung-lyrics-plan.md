@@ -91,3 +91,47 @@ Prices were not checked, and nothing was signed up for.
 2. **Everywhere else:** the jam, the Library, the Voice in the instrument menu, and phone layout.
 
 **What needs Evan:** whether the prototype's sound is the one he means, before phase 1 is built.
+
+## Phase 0, built — 10 Nov 2026 (draft, stacked on the plan)
+
+**🎤 Sing lyrics · prototype** is a fold below the layers.
+
+- Pick a layer whose notes it sings, type the words, choose a lead voice (**Airy** or **Bright**),
+  **+ Harmony**, and the glitches: **Stutter**, **Crush**, **Chop**, and **Robot / Natural / High**
+  formants. Then **▶ Sing**, which comes in at the top of the next loop.
+- **✎ Try a sample line** adds a short muted melody in the room's key and the lyric `glit-ter in
+the dark _ to-night`.
+- Nothing is saved.
+
+The parts:
+
+- `lyrics.ts` is pure: syllables, putting them on notes, spelling to sounds, and the harmony note.
+- `singer.ts` is the voice: a sawtooth buzz plus breath, three formant bands, noise consonants, and
+  the glitches.
+- `synth.ts` gains one export, `partInput`, so the voice goes through a part bus like every note.
+
+### Measured in the room, not heard
+
+Each note was sung through the app's own synth and read from the instrument output's analyser,
+after a silence reading of 0.0055.
+
+- **Vowels:** "see" put **8×** more energy at 2.5–3.3 kHz than at 0.85–1.4 kHz. "saw" (0.48×) and
+  "moon" (0.4×) put it low. That is the front-against-back difference that makes them different
+  vowels.
+- **Harmony:** with it on, the E5 band went from 0 to 0.0047 under a sung C5. A control band at D5
+  stayed near zero.
+- **Level:** the first pass read 0.41 against Keys' 0.24 on the same note. Brought down, Bright
+  reads 0.28 and Airy 0.24.
+- **Crush:** at twelve levels it barely registered above 6 kHz (0.0001 → 0.0002). At five it rises
+  2.5× (0.00013 → 0.00032).
+- **Chop:** the level dips to 0.03–0.11 about every 125 ms, a sixteenth at 120 bpm.
+- **In the room:** ▶ Sing started the loop and switched to ■ Stop singing, and switched back when
+  the line ended. At 375, with the panel open, the panel adds no layout problems. The one
+  undersized target in the room belongs to the audio-health strip, a developer tool.
+
+### For Evan's ears
+
+- Whether this is the sound he means. That decides whether phase 1 gets built.
+- Which voice, and how strong the crush and stutter should be.
+- Whether the words are clear enough. A high note can't sound a vowel's lowest formant, so "ee" and
+  "oo" lean on their second.
