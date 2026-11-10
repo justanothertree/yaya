@@ -18201,6 +18201,14 @@ a.cz-msg-author:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
+/* ⚠️ AND THE CHOSEN DAY STILL SHOWS FOCUS. The selection is drawn as an outline, and the rule
+   above outranks the site's plain `:focus-visible`, so tabbing onto the selected day changed
+   nothing on screen: measured on 10 Nov, the only one of 143 controls across Chronicle and the
+   Circuit whose focus could not be seen. This puts the site's own ring back for that case. */
+.chron-week-day.is-on:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .chron-week-lane {
   position: relative;

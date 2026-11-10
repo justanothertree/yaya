@@ -639,14 +639,29 @@ export function Log({
                 )}
               </div>
             ) : (
-              <div
+              /* ⚠️ A BUTTON, SO A KEYBOARD CAN RENAME A COLUMN. It was a <div> with a click, out of
+                 the tab order, and clicking it was the only way in. `.cz-sec` sets the size, weight,
+                 case and colour, and those beat a button's defaults, so only what the browser adds
+                 is undone here. */
+              <button
+                type="button"
                 className="cz-sec"
                 onClick={() => setColEdit(col.ci)}
                 title="Click to rename this column"
-                style={{ marginBottom: '0.4rem', cursor: 'text', display: 'inline-block' }}
+                aria-label={`Rename the ${col.label || 'Column'} column`}
+                style={{
+                  marginBottom: '0.4rem',
+                  cursor: 'text',
+                  display: 'inline-block',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  fontFamily: 'inherit',
+                  lineHeight: 'inherit',
+                }}
               >
                 {col.label || 'Column'}
-              </div>
+              </button>
             )}
             <div className="cz-ex-grid">
               {col.exs.map((ex) => (
@@ -950,13 +965,20 @@ function ExerciseEditModal({
   onClose: () => void
 }) {
   const [tagDraft, setTagDraft] = useState('')
+  /* where focus goes after a tag's × removes the button it was on — see removeTag */
+  const tagBox = useRef<HTMLInputElement>(null)
   const tags = ex.tags ?? []
   const addTag = (t: string) => {
     const tv = t.trim().toLowerCase()
     if (tv && !tags.includes(tv)) onPatch({ tags: [...tags, tv] })
     setTagDraft('')
   }
-  const removeTag = (t: string) => onPatch({ tags: tags.filter((x) => x !== t) })
+  /* ⚠️ AND FOCUS MOVES TO THE TAG BOX, because the button that had it is gone: left alone it falls
+     to <body>, outside the dialog, and the next Tab starts from the top of the page */
+  const removeTag = (t: string) => {
+    onPatch({ tags: tags.filter((x) => x !== t) })
+    tagBox.current?.focus()
+  }
   const label: React.CSSProperties = {
     display: 'block',
     fontSize: '0.72rem',
@@ -1062,16 +1084,33 @@ function ExerciseEditModal({
                 }}
               >
                 {t}
-                <span
+                {/* ⚠️ A BUTTON, NOT A SPAN WITH A CLICK: a keyboard could not remove a tag at all */}
+                <button
+                  type="button"
                   onClick={() => removeTag(t)}
                   title="Remove tag"
-                  style={{ cursor: 'pointer', opacity: 0.6, fontWeight: 700 }}
+                  aria-label={`Remove the tag ${t}`}
+                  style={{
+                    minWidth: 24,
+                    minHeight: 24,
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'none',
+                    border: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    opacity: 0.6,
+                    fontWeight: 700,
+                  }}
                 >
                   ×
-                </span>
+                </button>
               </span>
             ))}
             <input
+              ref={tagBox}
               value={tagDraft}
               onChange={(e) => setTagDraft(e.target.value)}
               onKeyDown={(e) => {
