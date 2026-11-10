@@ -73,3 +73,22 @@ those layers, before and after, plus the tempo and bar count when they moved.
 
 **Not verified:** a two-browser jam (a partner's edit arriving mid-history). The two-machine path
 is covered by the unit tests through `putSharedLayer`.
+
+## One press, one step — added the same night
+
+Merging all the overnight drafts together showed a gap: a genre starter (#119) lays a beat, chords
+and a bass and sets the tempo from **one click**. That is four changes to the store, so Undo took
+four presses to take back one. Changing the chord style with a bass loaded was the same, at two.
+
+Everything one event handler changes happens in one task, before the browser runs its microtasks.
+So a flag set at the first step of a press and cleared in a microtask marks exactly "the same
+press", and every later change in that press joins its step. A fader drag is many events, so many
+tasks, and is still folded by the one-second rule.
+
+Verified:
+
+- **Tests:** a new test makes a tempo change, a deletion and a mute in one press, and one Undo puts
+  all three back; Redo restores all three. Disabling the join turned it red. The fader test now
+  drags in sixty separate tasks, and disabling the fold turned that red.
+- **In the room:** Four chords, then Root & fifth, then Stabs. One Undo brought back Pad and the
+  earlier bass; a second removed the bass.
