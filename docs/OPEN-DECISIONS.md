@@ -1305,6 +1305,10 @@ apply anything to production.
 
 ## 20. Chronicle — every open question, in one place (9 Nov 2026)
 
+✅ **RELEASED 9 Nov:** 17d, 18a, 19c, 19d and 20c are applied to production and the room is deployed
+(#101), following `docs/2026-11-09-chronicle-release-plan.md`, which records each step's checks.
+§19f's device checks are the part only a signed-in phone can make.
+
 ✅ **ALL ANSWERED 9 Nov, as recommended.** Evan's words: "These answers are NOT approval to apply
 anything to production." Applying 17d, 18a, 19c, 19d and 20c is one release, approved as one
 step against `docs/2026-11-09-chronicle-release-plan.md`. Each row's own section holds the
