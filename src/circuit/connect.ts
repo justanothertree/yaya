@@ -41,6 +41,8 @@ async function refreshPublicInBackground() {
 }
 
 let wired = false
+/** whether the Circuit has been opened in this page already — see `again` below */
+let opened = false
 export async function connectCircuit() {
   /**
    * ⚠️ `import.meta.env.DEV` SPELLED OUT HERE, not only inside `previewMember`. Vite replaces the
@@ -52,7 +54,15 @@ export async function connectCircuit() {
     const { createPreviewCircuitAdapter } = await import('../dev/circuitPreview')
     preview = createPreviewCircuitAdapter()
   }
+  /**
+   * ⚠️ OPENING THE CIRCUIT AGAIN, with the same board, fetches it fresh (OPEN-DECISIONS §20b). The
+   * store keeps the board across visits and `init` does nothing for an adapter it already has, so
+   * coming back from correcting a set in Chronicle used to show the total from before.
+   */
+  const again = opened && pickAdapter() === current
   current = pickAdapter()
+  if (again) void circuitStore.refresh()
+  opened = true
   try {
     await circuitStore.init(current)
   } catch {

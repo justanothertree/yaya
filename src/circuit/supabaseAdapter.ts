@@ -391,6 +391,13 @@ export function createSupabaseAdapter(
       writeCloudCache(cacheKey, s)
       return s
     },
+    /* ⚠️ NOT load(): that answers from the cache first, which would paint an older board over the
+       one on screen before the fresh one arrived — the opposite of what reopening is for */
+    async reload() {
+      const s = await loadAll()
+      writeCloudCache(cacheKey, s)
+      return s
+    },
     async savePerson(p: Person) {
       await must(sb.from('circuit_people').upsert(personToRow(p)))
     },
