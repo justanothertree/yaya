@@ -1,3 +1,48 @@
+-- ⛔ SCRATCH BRANCH chronicle/ci-probe-21ab ONLY — never to be merged. Proves the 21a/21b drafts
+-- on the dump plus the release's seven migrations (production's text for both functions), then runs
+-- the standing guards unchanged.
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\pset format unaligned
+\pset tuples_only on
+select '#### VERSION ' || current_setting('server_version_num');
+select '#### MD5 BEFORE ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('chronicle_moments', 'chronicle_entry_amount') order by p.proname;
+select '#### FORMAT ' || v::text || ' old=[' || coalesce(trim(to_char(v, 'FM999999990.##')), 'NULL') || '] new=[' || trim_scale(round(v, 2))::text || ']'
+  from (values (3.5::numeric), (12.5), (0.25), (12), (12.345), (20), (999999999), (1000000000), (0.001)) x(v);
+\! sed '/^-- ── 0\./,/^end \$\$;$/d' supabase/tests/chronicle-21ab.sql > /tmp/ab-control.sql && echo "#### CONTROL FILE guard lines left: $(grep -c 'apply both' /tmp/ab-control.sql)"
+\echo '#### CONTROL: the test against the functions as they are now, which must fail'
+\set ON_ERROR_STOP 0
+\i /tmp/ab-control.sql
+\set ON_ERROR_STOP 1
+\echo '#### APPLY the two drafts'
+\ir ../../docs/2026-11-10-chronicle-moments-decimals.DRAFT.sql
+\ir ../../docs/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql
+select '#### MD5 AFTER ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('chronicle_moments', 'chronicle_entry_amount') order by p.proname;
+select '#### FN ' || p.proname || E'\n' || pg_get_functiondef(p.oid) || '#### END' from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('chronicle_moments', 'chronicle_entry_amount') order by p.proname;
+\echo '#### THE TEST, which must pass'
+\ir chronicle-21ab.sql
+\echo '#### APPLY AGAIN, which must refuse on the md5 guard'
+\set ON_ERROR_STOP 0
+\ir ../../docs/2026-11-10-chronicle-moments-decimals.DRAFT.sql
+\ir ../../docs/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql
+\set ON_ERROR_STOP 1
+\echo '#### ROLLBACK from the files'
+\! md5sum docs/2026-11-10-chronicle-21ab-rollback/*.sql | sed 's/^/#### ROLLBACK FILE /'
+\set rb_m `cat docs/2026-11-10-chronicle-21ab-rollback/chronicle_moments.sql`
+\set rb_a `cat docs/2026-11-10-chronicle-21ab-rollback/chronicle_entry_amount.sql`
+select set_config('probe.rb_m', :'rb_m', false) is not null, set_config('probe.rb_a', :'rb_a', false) is not null;
+do $$ begin execute current_setting('probe.rb_m'); execute current_setting('probe.rb_a'); end $$;
+select '#### MD5 ROLLED BACK ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('chronicle_moments', 'chronicle_entry_amount') order by p.proname;
+select '#### GRANTS ' || f || ' anon=' || has_function_privilege('anon', f, 'execute') || ' member=' || has_function_privilege('authenticated', f, 'execute')
+  from (values ('public.chronicle_moments(timestamptz, timestamptz)'), ('public.chronicle_entry_amount(uuid, numeric)')) v(f);
+\pset format aligned
+\pset tuples_only off
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
