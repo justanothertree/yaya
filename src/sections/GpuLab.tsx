@@ -106,6 +106,7 @@ import { PoolDemo } from '../gpu/PoolDemo'
 import { ChessDemo } from '../gpu/ChessDemo'
 import { HeartsDemo } from '../gpu/HeartsDemo'
 import { TilesDemo } from '../gpu/TilesDemo'
+import { TowersDemo } from '../gpu/TowersDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -753,6 +754,12 @@ const DEMOS: readonly {
     name: 'Tile pairs',
     line: 'Tile pairs — take matching tiles away two at a time, each one free: nothing on top, one side open. Every deal can be cleared, because it is made by clearing the layout first; the trick is the order. Against the clock, with today’s tiles the same for everyone.',
     Demo: TilesDemo,
+  },
+  {
+    id: 'towers',
+    name: 'Towers',
+    line: 'Towers — creatures walk a winding path and you build beside it: darts, cannon and frost, each with upgrades. Every wave is bigger and tougher until the field is overrun; the score is how many you held. Three fields, and a new one each day that everyone plays.',
+    Demo: TowersDemo,
   },
 ]
 
