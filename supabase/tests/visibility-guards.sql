@@ -1,5 +1,5 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-flow ONLY — never to be merged.
--- RUN C8 = C7 + the release plan's own check files, run at their checkpoints. RUN C7 (the release, exactly): the six drafts the release applies, in the release plan's order,
+-- RUN C9 = C8 + planted faults at the end. RUN C8 = C7 + the release plan's own check files, run at their checkpoints. RUN C7 (the release, exactly): the six drafts the release applies, in the release plan's order,
 -- with NO conversion draft, on a database built from main's migrations — which production has
 -- applied, every one (checked read-only on 9 Nov). Then the profile reader, step 7. Fingerprints of
 -- every function the release touches are printed before and after, to compare with production's.
@@ -96,3 +96,15 @@ begin
   end if;
 end $$;
 select 'the release holds through Auth and PostgREST, with no conversion' as result;
+
+\echo === C9: MAKING THE CHECKS SPEAK — four faults planted in the throwaway database, then check D
+grant execute on function public.chronicle_unit(text) to anon;
+grant truncate on table public.chronicle_sets to anon;
+alter table public.chronicle_goal_days disable row level security;
+create policy c9_planted on public.chronicle_goal_marks for select using (true);
+\echo === CHECK FILE D with the faults: four rows (anon can execute, granted TRUNCATE, RLS off, has a policy)
+\ir ../../docs/2026-11-09-chronicle-release-checks/d-nothing-open.sql
+\echo === CHECK FILE A after the release: six rows, every same=f, then 20 4 1
+\ir ../../docs/2026-11-09-chronicle-release-checks/a-before-step-1.sql
+\echo === CHECK FILE C after step 7: 25 same=t and get_member_chronicle same=f
+\ir ../../docs/2026-11-09-chronicle-release-checks/c-after-step-6.sql
