@@ -1,6 +1,15 @@
 -- ⛔ SCRATCH BRANCH chronicle/ci-probe-dump ONLY — never to be merged. Prints every Chronicle and
 -- Circuit function exactly as main's migrations build them, for the preview stand-in audit, then
 -- runs the standing guards unchanged.
+-- The dump is production as of 5 Nov; the only Chronicle or Circuit change since is the release's seven
+-- migrations, applied here in order, so what follows is production's text for every function printed.
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
 \pset format unaligned
 \pset tuples_only on
 select '#### FN ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) || E'\n'
