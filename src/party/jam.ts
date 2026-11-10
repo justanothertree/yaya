@@ -11,6 +11,7 @@ import {
 import { sharedCtx } from '../audio/context'
 import {
   dropBorrowedLayers,
+  fromElsewhere,
   loopState,
   putSharedLayer,
   removeLayer,
@@ -601,7 +602,7 @@ export const jam = {
         const where = localIdFor(b.lid)
         if (!where) return
         sentLayers.delete(b.lid)
-        removeLayer(where.id)
+        fromElsewhere(() => removeLayer(where.id))
         return
       }
       if (m.kind === 'jam:want' && state.on) {
@@ -628,7 +629,7 @@ export const jam = {
         if (typeof b?.id !== 'string') return
         /* ⚠️ Namespaced with the sender's own id, same as above — which is also what stops
            "delete this layer" being a message anybody can aim at anybody else's part. */
-        removeLayer(`${m.from}:${b.id}`)
+        fromElsewhere(() => removeLayer(`${m.from}:${b.id}`))
         return
       }
       if (m.kind === 'jam:song' && state.on) {

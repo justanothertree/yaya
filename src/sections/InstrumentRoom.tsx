@@ -174,12 +174,12 @@ import {
   stopLoop,
   subscribeLoop,
   toggleMute,
-  undoLast,
   seekTo,
   hushScheduled,
   type Layer,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
+import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
 
 /**
  * Somewhere to play.
@@ -1068,6 +1068,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       }),
     [],
   )
+  /* ⚠️ AFTER the workbench above, so the bench it puts back is where undo starts rather than a
+     step — it also marks that restore as from elsewhere, so the order is belt and braces */
+  useEffect(() => startHistory(), [])
+  const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
   const [libOpen, setLibOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
 
@@ -1716,6 +1720,22 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       !!t && (t.tagName === 'BUTTON' || t.tagName === 'SUMMARY' || t.tagName === 'A')
 
     const down = (e: KeyboardEvent) => {
+      /**
+       * ⚠️ CTRL+Z AND ITS REDOS, BEFORE THE MODIFIER RETURN BELOW and allowed to repeat, as undo
+       * does everywhere. Not while typing — a field has its own undo — and not while the note
+       * editor is open, whose own listener takes these keys for its notes (see PianoRoll).
+       */
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing(e)) {
+        const k = e.key.toLowerCase()
+        const back = k === 'z' && !e.shiftKey
+        const fwd = (k === 'z' && e.shiftKey) || k === 'y'
+        if ((back || fwd) && !document.querySelector('.inst-roll-host')) {
+          e.preventDefault()
+          if (back) undo()
+          else redo()
+          return
+        }
+      }
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || typing(e)) return
       if (e.key === ' ') {
         if (spaceIsTheirs(e.target as HTMLElement | null)) return
@@ -2465,10 +2485,48 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             turned into the Length buttons. See SnapPicker. */}
         <SnapPicker value={loop.quantize} onPick={setQuantize} />
 
-        {loop.layers.length > 0 && (
-          <button className="btn" onClick={undoLast} title="Take back the last thing you recorded">
-            ↶ Undo take
-          </button>
+        {/**
+         * ⚠️ UNDO AND REDO FOR THE WHOLE ROOM — Evan, 9 Nov 2026 — where "↶ Undo take" was. That
+         * took back the last LAYER and nothing else could be taken back at all; these take back
+         * the last change, whatever it was: a deletion, Clear all, a swap, a drag, a tempo, a song
+         * opened over your work. See history.ts, including why a jam partner's changes are not
+         * yours to undo.
+         *
+         * ⚠️ SHOWN WHILE THERE IS ANYTHING TO UNDO, not only while there are layers: after Clear
+         * all the room is empty and Undo is the one button that matters.
+         *
+         * ⚠️ AND STOOD DOWN WHILE THE NOTE EDITOR IS OPEN, which has its own undo for its own
+         * notes and takes Ctrl+Z for it. Two undos answering one key would each take a step.
+         */}
+        {(loop.layers.length > 0 || hist.undo > 0 || hist.redo > 0) && (
+          /* one unit, so a phone wraps the pair onto the next line together rather than
+             splitting them — measured at 375, Redo alone went down a line */
+          <span className="inst-undo" role="group" aria-label="Undo and redo">
+            <button
+              className="btn"
+              onClick={() => undo()}
+              disabled={!hist.undo || !!editing}
+              title={
+                editing
+                  ? 'The note editor has its own undo while it is open'
+                  : 'Undo your last change to the layers (Ctrl+Z)'
+              }
+            >
+              ↶ Undo
+            </button>
+            <button
+              className="btn"
+              onClick={() => redo()}
+              disabled={!hist.redo || !!editing}
+              title={
+                editing
+                  ? 'The note editor has its own redo while it is open'
+                  : 'Redo what you undid (Ctrl+Shift+Z)'
+              }
+            >
+              ↷ Redo
+            </button>
+          </span>
         )}
       </div>
 
