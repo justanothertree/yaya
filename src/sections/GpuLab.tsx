@@ -90,6 +90,7 @@ import { ReversiDemo } from '../gpu/ReversiDemo'
 import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
 import { TrailsDemo } from '../gpu/TrailsDemo'
 import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
+import { HexDemo } from '../gpu/HexDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -641,6 +642,12 @@ const DEMOS: readonly {
     name: 'Codebreaker',
     line: 'Codebreaker — crack a hidden code of coloured pegs from black and white clues. Today’s code is the same for everyone, once a day, with a result to copy and compare; practise on codes of your own size, or hide one and watch the computer crack it (usually in five).',
     Demo: CodebreakerDemo,
+  },
+  {
+    id: 'hex',
+    name: 'Hex',
+    line: 'Hex — join your two sides of a board of hexagons before the other player joins theirs; there are no draws. Against a computer that fills the board at random hundreds of times to judge a move, or one that grows a tree of thousands of games and reads a fight several moves deep. Three board sizes, three looks, and the swap rule.',
+    Demo: HexDemo,
   },
 ]
 

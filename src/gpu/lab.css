@@ -2119,3 +2119,17 @@ html:has(.lab) {
   border-radius: 3px;
   background: var(--accent);
 }
+
+/* Hex: a rhombus of hexagons, wide on a desk */
+.hx-room .lab-stage.hx-stage {
+  height: min(68vh, 560px, 66vw);
+  min-height: 230px;
+  touch-action: manipulation;
+}
+.hx-wrap {
+  border-radius: 12px;
+}
+.hx-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
