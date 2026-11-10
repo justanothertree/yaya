@@ -109,6 +109,7 @@ import { TilesDemo } from '../gpu/TilesDemo'
 import { TowersDemo } from '../gpu/TowersDemo'
 import { GoDemo } from '../gpu/GoDemo'
 import { SudokuDemo } from '../gpu/SudokuDemo'
+import { DominoesDemo } from '../gpu/DominoesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -774,6 +775,12 @@ const DEMOS: readonly {
     name: 'Sudoku',
     line: 'Sudoku — every row, column and box holds 1 to 9 once. Every puzzle has one answer and is graded by the reasoning it needs; notes, a hint that says why, and today’s puzzle the same for everyone.',
     Demo: SudokuDemo,
+  },
+  {
+    id: 'dominoes',
+    name: 'Dominoes',
+    line: 'Dominoes, the draw game — match the ends, draw from the boneyard when nothing fits, and go out first to score what is left in the other hand. Against a computer that sheds heavy tiles, remembers what you could not follow and counts what it has not seen.',
+    Demo: DominoesDemo,
   },
 ]
 

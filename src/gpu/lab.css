@@ -3879,3 +3879,103 @@ html:has(.lab) {
   font-size: 0.6rem;
   opacity: 0.6;
 }
+
+/* ---------------------------------------------------------------- dominoes */
+.dm-room {
+  --dm-face: #fbf7ec;
+  --dm-edge: #2a2420;
+  --dm-pip: #1f1b18;
+  --dm-felt: #1f5c43;
+}
+.dm-room.is-ebony {
+  --dm-face: #24201d;
+  --dm-edge: #000;
+  --dm-pip: #f5efe0;
+}
+.dm-room.is-candy {
+  --dm-face: #ffe3ef;
+  --dm-edge: #b0306a;
+  --dm-pip: #b0306a;
+  --dm-felt: #3b2a6b;
+}
+.dm-tile {
+  display: block;
+  width: 66px;
+  height: 30px;
+}
+.dm-face {
+  fill: var(--dm-face);
+  stroke: var(--dm-edge);
+  stroke-width: 1.5;
+}
+.dm-bar {
+  stroke: var(--dm-edge);
+  stroke-width: 1.2;
+}
+.dm-pips {
+  fill: var(--dm-pip);
+}
+.dm-table {
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: var(--dm-felt);
+  color: #fff;
+}
+.dm-theirs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 0.6rem;
+}
+.dm-back {
+  width: 15px;
+  height: 30px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(45deg, #3b4fa8 0 4px, #2e3f8a 4px 8px);
+  border: 1px solid #fdfdf8;
+}
+.dm-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  min-height: 34px;
+}
+.dm-line .muted {
+  color: rgb(255 255 255 / 0.75);
+}
+.dm-laid .dm-tile {
+  width: 52px;
+  height: 24px;
+}
+.dm-laid.is-end {
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px #ffd34d;
+}
+.dm-ends {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+}
+.dm-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0.75rem 0 0.25rem;
+}
+.dm-mine {
+  padding: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.dm-mine.is-ok {
+  box-shadow: 0 0 0 2px #2fbf71;
+}
+.dm-mine.is-picked {
+  box-shadow: 0 0 0 3px #ffb000;
+}
+.dm-mine:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+}
