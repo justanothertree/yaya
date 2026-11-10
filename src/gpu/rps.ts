@@ -67,8 +67,13 @@ const GUESSERS: Guesser[] = [
   },
 ]
 
-/** how fast old evidence fades, per round */
-const FADE = 0.9
+/**
+ * how fast old evidence fades, per round. ⚠️ TUNED BY SELF-PLAY, 10 Nov 2026: 0.9 → 0.958 scored
+ * 0.904 → 0.919 points a round against a squad of twelve scripted habits on held-out seeds, the
+ * gain all in the sloppy players (a noisy win-stay/lose-shift 0.75 → 0.79), and still 0.50
+ * against pure chance. A slower fade remembers a habit through the noise that hides it.
+ */
+const FADE = 0.958
 
 /** the most-played next move for this guesser's context, or null with no evidence yet */
 function guess(g: Guesser, h: Round[]): Move | null {
@@ -125,7 +130,7 @@ export function pick(h: Round[], rand: () => number): Pick {
 }
 
 /** the history it looks at: the last few dozen rounds, so a long session stays quick */
-export const MEMORY = 40
+export const MEMORY = 45
 export const recent = (h: Round[]) => h.slice(-MEMORY)
 
 /* ---------------------------------------------------------------------------- the coin */
