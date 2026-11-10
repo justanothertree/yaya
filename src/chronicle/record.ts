@@ -13,6 +13,7 @@
  */
 
 import type { VisibilityTier } from '../circuit/types'
+import { localISO } from '../circuit/dates'
 
 /** A span against an activity. `end` null is the timer that is still going. */
 export type Entry = {
@@ -584,6 +585,44 @@ export function metSession(e: Span, target: number | null, nowMs: number): boole
   const mins = overlapMs(e, -Infinity, Infinity, nowMs) / 60_000
   if (mins >= target) return true
   return e.end == null ? null : false
+}
+
+/**
+ * How long a running sitting has to have gone on before the clock says when it began.
+ *
+ * ⚠️ A JUDGEMENT, WRITTEN DOWN AS ONE. Four hours is about the longest ordinary stretch of focused
+ * anything; past it, "I am still doing this" and "I forgot to press Stop" become equally likely,
+ * and only the second needs telling. Below it the line would be noise on every long afternoon of
+ * work, which is the nagging this room has decided against more than once.
+ */
+export const LONG_RUN_HOURS = 4
+
+/**
+ * When a running sitting began, if that is now worth saying — or null.
+ *
+ * ⚠️ A CLOCK READING 14:03:22 DOES NOT SAY "SINCE YESTERDAY". The header counts up from the start
+ * and nothing else, so a timer left running overnight reads as a large number with no date on
+ * it, and the remedy — Stop, then set the time you really finished, in the dialog Stop opens —
+ * is never mentioned. A sitting that began on an earlier day is always worth a date; one that
+ * began today is worth it once it has run `LONG_RUN_HOURS`.
+ *
+ * ⚠️ DAYS ARE CALENDAR DAYS, COUNTED BETWEEN LOCAL MIDNIGHTS. Eighteen hours from 10pm is
+ * "yesterday", and so is two hours from 11pm; a day is not 24 hours twice a year, which is why
+ * the gap is rounded rather than divided.
+ */
+export function longRun(
+  start: string,
+  nowMs: number,
+): { startedOn: string; daysAgo: number } | null {
+  const s = Date.parse(start)
+  if (!Number.isFinite(s) || s > nowMs) return null
+  const startedOn = localISO(new Date(s))
+  const daysAgo = Math.round(
+    (localMidnight(localISO(new Date(nowMs))).getTime() - localMidnight(startedOn).getTime()) /
+      86_400_000,
+  )
+  if (daysAgo === 0 && nowMs - s < LONG_RUN_HOURS * 3_600_000) return null
+  return { startedOn, daysAgo }
 }
 
 /**

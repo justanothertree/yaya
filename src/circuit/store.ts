@@ -5,6 +5,7 @@
 // Every mutation is a reversible command (save/delete on one collection), so the
 // store keeps a 30-step undo/redo history. Signing in or out resets it; a realtime
 // change from somebody else does not — see adoptState for why.
+import { CellRefused } from './cellRefused'
 import { useSyncExternalStore } from 'react'
 import type { CircuitAdapter } from './adapter'
 import { showToast } from './toast'
@@ -29,6 +30,8 @@ export interface HistoryState {
 
 export interface CircuitStore {
   init(adapter: CircuitAdapter): Promise<void>
+  /** The same board, fetched fresh — see the implementation, and OPEN-DECISIONS §20b. */
+  refresh(): Promise<void>
   getState(): CircuitState
   subscribe(listener: () => void): () => void
   getHistoryState(): HistoryState
@@ -123,6 +126,8 @@ function inverseOf(s: CircuitState, op: Op): Op {
  * the one that prompted this: every new review had been refused for weeks.)
  */
 function reasonFor(err: unknown): string {
+  /* ⚠️ a cell the server refused for a reason it can name says that reason — see CellRefused */
+  if (err instanceof CellRefused) return `Not saved — ${err.message}`
   const msg = String((err as { message?: unknown })?.message ?? '')
   if (/row-level security|violates row-level/i.test(msg))
     return 'Not saved — the database refused it. That is a bug here, not something you did.'
@@ -130,7 +135,7 @@ function reasonFor(err: unknown): string {
   return 'Not saved — check your connection'
 }
 
-function createCircuitStore(): CircuitStore {
+export function createCircuitStore(): CircuitStore {
   let state: CircuitState = emptyCircuitState()
   let adapter: CircuitAdapter | null = null
   let unsub: (() => void) | null = null
@@ -160,6 +165,7 @@ function createCircuitStore(): CircuitStore {
    */
   const recent = new Map<string, { op: Op; at: number }>()
   const RECENT_MS = 4000
+  let refreshing = false
 
   const emit = () => listeners.forEach((l) => l())
   const refreshHist = () => {
@@ -291,6 +297,31 @@ function createCircuitStore(): CircuitStore {
       // Every board from elsewhere lands straight away — including the echo of our own write,
       // which is why `recent` exists to put the last few seconds of our edits back on top.
       unsub = a.subscribe((external) => adoptState(withRecent(external)))
+    },
+    /**
+     * ⚠️ THE CIRCUIT OPENING AGAIN FETCHES THE BOARD AGAIN (OPEN-DECISIONS §20b, Evan's answer of
+     * 9 Nov: "reload the board when the Circuit opens again, no realtime"). Realtime covers the
+     * Circuit's own tables and nothing tells the board about Chronicle's sets — so a cell's "change
+     * them there" sent somebody to Chronicle, they took a set back, came back to the same tab, and
+     * the cell still showed the old total. Measured in the preview: typing then was refused, "that
+     * day changed while you were typing — it is now 0", which is correct and reads like a fault.
+     *
+     * It lands the way a realtime board does — adopted, our last few seconds of writes replayed on
+     * top, undo kept — because it IS the same board, newer. One at a time; a failure leaves the
+     * board on screen as it was, which is what it was before this existed.
+     */
+    async refresh() {
+      const a = adapter
+      if (!a?.reload || refreshing) return
+      refreshing = true
+      try {
+        const next = await a.reload()
+        if (adapter === a) adoptState(withRecent(next))
+      } catch {
+        /* the board on screen stays; the next change or reload brings the rest */
+      } finally {
+        refreshing = false
+      }
     },
     getState: () => state,
     subscribe(listener) {

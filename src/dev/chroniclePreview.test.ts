@@ -9,6 +9,8 @@ import {
   pvImport,
   pvSaveRoutine,
   pvNoteAdd,
+  pvDayNoteAdd,
+  pvDayNotes,
   pvNoteEdit,
   pvRoutines,
   pvAmount,
@@ -16,7 +18,12 @@ import {
   pvEntries,
   pvFixRunning,
   pvGoals,
+  pvMarksFor,
   pvMoods,
+  pvProgress,
+  pvSetMark,
+  pvSetDays,
+  pvDropGoal,
   pvPlanDid,
   pvPlanSave,
   pvQuality,
@@ -27,6 +34,22 @@ import {
   pvTally,
   pvVisit,
   pvTotals,
+  pvDropEntry,
+  pvEditEntryDay,
+  pvFixRunningDay,
+  pvGiveCircuit,
+  pvSetAdd,
+  pvSetsBetween,
+  pvSetChange,
+  pvSetDrop,
+  pvMyExercises,
+  pvLinkExercise,
+  pvGiveCircuitLog,
+  pvCellSet,
+  pvSessionSums,
+  pvCircuitLogs,
+  pvCircuitLogPut,
+  pvCircuitLogPicture,
 } from './chroniclePreview'
 import type { NewGoal } from '../chronicle/cloud'
 import { localMidnight } from '../chronicle/record'
@@ -928,6 +951,18 @@ describe('the file you can take away', () => {
       'quality',
       'created_at',
     ],
+    sets: [
+      'id',
+      'person',
+      'exercise',
+      'name',
+      'entry',
+      'on_day',
+      'value',
+      'counted',
+      'created_at',
+      'updated_at',
+    ],
     goals: [
       'id',
       'title',
@@ -947,8 +982,13 @@ describe('the file you can take away', () => {
       'priority',
       'created_at',
       'updated_at',
+      'days',
+      'marks',
     ],
+    exercise_links: ['person', 'exercise', 'activity', 'created_at'],
     routines: ['id', 'name', 'steps', 'created_at', 'updated_at'],
+    /* no id, like a sitting's notes — an id is this account's and a file is not */
+    day_notes: ['on_day', 'at', 'body'],
     plans: ['id', 'activity', 'starts_at', 'ends_at', 'note', 'created_at'],
   } as const
 
@@ -969,6 +1009,15 @@ describe('the file you can take away', () => {
     pvSaveRoutine('Morning', [{ activity: draw, mins: 20 }])
     pvPlanSave(draw, h(16), h(17), null)
     pvPlanSave(draw, h(14), h(15), null)
+    /* two day notes, the LATER day written first, so the order test below has something to sort */
+    pvDayNoteAdd(DAY, 'the later day')
+    pvDayNoteAdd('2026-10-01', 'the earlier day')
+    /* a set counted during the nine o'clock sitting, so the sets list has a row to be about */
+    pvGiveCircuit('p-1', [{ id: 'ex-1', name: 'Quad Curl', unit: 'reps' }])
+    const nine = pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9))
+    pvSetAdd('p-1', 'ex-1', 12, DAY, nine?.id ?? null)
+    /* and a link, so the links list has a row to be about */
+    pvLinkExercise('p-1', 'ex-1', idOf(pvSaveActivity('Lifting', 'free', null, undefined, 'reps')))
   })
 
   it('says what it is, so a reader can refuse a file that is not one', () => {
@@ -1014,6 +1063,7 @@ describe('the file you can take away', () => {
     )
     expect(by(doc.routines, 'id')).toEqual(sorted(by(doc.routines, 'id')))
     expect(by(doc.plans, 'starts_at', true)).toEqual(sorted(by(doc.plans, 'starts_at', true)))
+    expect(by(doc.day_notes, 'on_day')).toEqual(sorted(by(doc.day_notes, 'on_day')))
   })
 
   /**
@@ -1048,7 +1098,7 @@ describe('putting a file back', () => {
   })
 
   const rows = (doc: Record<string, unknown>) =>
-    ['activities', 'entries', 'goals', 'routines', 'plans'].reduce(
+    ['activities', 'entries', 'sets', 'goals', 'routines', 'plans'].reduce(
       (n, k) => n + (Array.isArray(doc[k]) ? (doc[k] as unknown[]).length : 0),
       0,
     )
@@ -1172,6 +1222,11 @@ describe('putting a file back', () => {
       goals: 0,
       routines: 0,
       plans: 0,
+      marks: 0,
+      schedules: 0,
+      notes: 0,
+      sets: 0,
+      links: 0,
       skipped: rows(file),
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify({ ...file, at: '' }))
@@ -1252,7 +1307,7 @@ describe('putting a file back', () => {
           archived_at: EPOCH,
           created_at: EPOCH,
           auto: true,
-          metric: 'pages',
+          metric: 'reps',
           session_mins: 25,
           shared: true,
         },
@@ -1267,6 +1322,23 @@ describe('putting a file back', () => {
           amount: 12.5,
           quality: 4,
           created_at: h(9),
+        },
+      ],
+      /* every field away from its default: a person, a sitting, a fraction, and two moments of
+         its own — and a name the Circuit has since changed, which the file must not take */
+      sets: [
+        {
+          id: '77777777-7777-4777-8777-777777777777',
+          person: 'p-1',
+          exercise: 'ex-1',
+          name: 'Quad Curl',
+          entry: '22222222-2222-4222-8222-222222222222',
+          on_day: DAY,
+          value: 12.5,
+          /* counted: the sitting's 12.5 holds it — the one value of this field that says anything */
+          counted: true,
+          created_at: '2026-01-02T03:04:05.000Z',
+          updated_at: '2026-01-03T03:04:05.000Z',
         },
       ],
       goals: [
@@ -1287,9 +1359,56 @@ describe('putting a file back', () => {
           counts: 'amount',
           est_mins: 45,
           priority: 2,
-          created_at: EPOCH,
+          /* ⚠️ NOT EPOCH: it is the day the goal began asking (Goal.made), and a fixture sitting on
+             the default would pass a restore that threw it away */
+          created_at: '2026-01-02T15:00:00.000Z',
           updated_at: EPOCH,
+          /* a weekly goal cannot have a schedule, so it carries the empty list every goal does */
+          days: [],
+          /* one window, every field away from its default — a count, a tick, a set_at of its own */
+          marks: [
+            {
+              scope: 'week',
+              from: '2026-01-04',
+              starts_at: '2026-01-04T05:00:00.000Z',
+              ends_at: '2026-01-11T05:00:00.000Z',
+              progress: 3,
+              done_at: '2026-01-05T12:00:00.000Z',
+              set_at: '2026-01-06T12:00:00.000Z',
+            },
+          ],
         },
+        /* a repeating DAILY goal, the only kind a schedule belongs to — two changes, each with
+           its own mask and its own set_at, so a row the import drops or merges has to show */
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          title: 'Swim',
+          scope: 'day',
+          anchor: null,
+          repeat_every: 1,
+          target: null,
+          unit: null,
+          progress: 0,
+          done_at: null,
+          note: null,
+          sort: 4,
+          activity: null,
+          cat: null,
+          counts: 'minutes',
+          est_mins: null,
+          priority: 0,
+          created_at: '2026-01-03T09:00:00.000Z',
+          updated_at: EPOCH,
+          days: [
+            { from: '2026-01-03', days: 62, set_at: '2026-01-03T09:00:00.000Z' },
+            { from: '2026-02-01', days: 4, set_at: '2026-02-01T10:00:00.000Z' },
+          ],
+          marks: [],
+        },
+      ],
+      /* a link that agrees here: ex-1 is in reps, and so is Reading */
+      exercise_links: [
+        { person: 'p-1', exercise: 'ex-1', activity: act, created_at: '2026-01-04T05:06:07.000Z' },
       ],
       routines: [
         {
@@ -1300,6 +1419,8 @@ describe('putting a file back', () => {
           updated_at: EPOCH,
         },
       ],
+      /* written the day after the day it is about, so neither field can stand in for the other */
+      day_notes: [{ on_day: DAY, at: h(30), body: 'a note with no session' }],
       plans: [
         {
           id: '55555555-5555-4555-8555-555555555555',
@@ -1313,13 +1434,19 @@ describe('putting a file back', () => {
     }
 
     pvEmpty()
+    pvGiveCircuit('p-1', [{ id: 'ex-1', name: 'Quad Curls', unit: 'reps' }])
     const got = pvImport(file)
     expect(got).toEqual({
       activities: 1,
       entries: 1,
-      goals: 1,
+      goals: 2,
       routines: 1,
       plans: 1,
+      marks: 1,
+      schedules: 2,
+      notes: 1,
+      sets: 1,
+      links: 1,
       skipped: 0,
     })
     expect(JSON.stringify({ ...pvExport(), at: '' })).toBe(JSON.stringify(file))
@@ -1330,7 +1457,12 @@ describe('putting a file back', () => {
     pvEmpty()
     const got = pvImport(file) as Record<string, number>
     const added = got.activities + got.entries + got.goals + got.routines + got.plans
+    /* the marks and the schedules ride inside the goals, so `rows` does not count them, and a
+       restore into an empty account must have put every one of them back */
     expect(added + got.skipped).toBe(rows(file))
+    const inside = (k: string) =>
+      (file.goals as Array<Record<string, unknown[]>>).reduce((n, g) => n + g[k].length, 0)
+    expect([got.marks, got.schedules]).toEqual([inside('marks'), inside('days')])
   })
 })
 
@@ -1657,5 +1789,606 @@ describe('correcting the session you are in the middle of', () => {
     const before = pvEntries(dayStart(), dayEnd())
     pvFixRunning(new Date(Date.now() - 10 * 60_000).toISOString(), gym)
     expect(pvEntries(dayStart(), dayEnd())).toEqual(before)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF `chronicle_goal_mark` AND `chronicle_goal_marks_for`. The server's are
+ * asked the same questions in supabase/tests/chronicle-repeat-marks.sql; these keep the copy from
+ * drifting into a room that accepts what the site would refuse — which would read as working here
+ * and fail there, the unfaithful-double trap in its worst direction.
+ */
+describe('a repeating goal, one window at a time', () => {
+  const at = (from: string, days = 1) => ({
+    from,
+    starts: localMidnight(from).toISOString(),
+    ends: new Date(localMidnight(from).getTime() + days * 86_400_000).toISOString(),
+  })
+  const repeating = () => goalOn({ title: 'Floss', anchor: null, every: 1 })
+
+  it('keeps a tick to its own day', () => {
+    const g = repeating()
+    expect(pvSetMark(g, at(DAY), null, true)).toBeNull()
+    const got = pvMarksFor([
+      { id: g, from: DAY },
+      { id: g, from: '2026-01-01' },
+    ])
+    expect(got.marks).toEqual({ [`${g}@${DAY}`]: { progress: 0, done: true } })
+  })
+
+  it('leaves the count alone when only the tick is sent, and the tick when only the count is', () => {
+    const g = repeating()
+    const read = () => pvMarksFor([{ id: g, from: DAY }]).marks[`${g}@${DAY}`]
+    pvSetMark(g, at(DAY), 12, null)
+    pvSetMark(g, at(DAY), null, true)
+    /* ⚠️ READ BETWEEN THE WRITES — with only a final read, a third write of the count hid a second
+       write that had erased it, and the test stayed green over exactly that bug */
+    const afterTick = read()
+    pvSetMark(g, at(DAY), 13, null)
+    expect([afterTick, read()]).toEqual([
+      { progress: 12, done: true },
+      { progress: 13, done: true },
+    ])
+  })
+
+  it('refuses what the server refuses, in its words', () => {
+    const once = goalOn({ title: 'Once' })
+    const g = repeating()
+    const ahead = new Date(Date.now() + 3 * 86_400_000)
+    const aheadDay = `${ahead.getFullYear()}-${String(ahead.getMonth() + 1).padStart(2, '0')}-${String(ahead.getDate()).padStart(2, '0')}`
+    expect([
+      pvSetMark(once, at(DAY), null, true)?.why,
+      pvSetMark(g, at(aheadDay), null, true)?.why,
+      pvSetMark(g, { ...at(DAY), ends: at(DAY).starts }, null, true)?.why,
+      pvSetMark(g, at(DAY, 400), null, true)?.why,
+    ]).toEqual([
+      'no such repeating goal',
+      'that window has not started',
+      'that window does not make sense',
+      'that window does not make sense',
+    ])
+  })
+
+  it("hands back the row's old tick as legacy for a repeating goal, and only for one", () => {
+    const g = repeating()
+    const once = goalOn({ title: 'Once' })
+    pvProgress(g, 0, true)
+    pvProgress(once, 0, true)
+    const got = pvMarksFor([
+      { id: g, from: DAY },
+      { id: once, from: DAY },
+    ])
+    expect(Object.keys(got.legacy)).toEqual([g])
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF `chronicle_goal_days_set` AND OF THE IMPORT'S RULE FOR SCHEDULES. The
+ * server's are asked the same questions in supabase/tests/chronicle-weekdays.sql.
+ */
+describe('a weekday schedule', () => {
+  beforeEach(() => pvEmpty())
+  const today = new Date().toISOString().slice(0, 10)
+  const daily = () => {
+    const r = pvSaveGoal({
+      title: 'Swim',
+      scope: 'day',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    if ('why' in r) throw new Error(r.why)
+    return r.id
+  }
+
+  it('is set from today, and a second change on one day replaces the first', () => {
+    const id = daily()
+    expect(pvSetDays(id, 62, today)).toBeNull()
+    expect(pvSetDays(id, 4, today)).toBeNull()
+    expect(pvGoals().find((g) => g.id === id)?.days).toEqual([{ from: today, days: 4 }])
+  })
+
+  it('refuses what the server refuses, in its words', () => {
+    const id = daily()
+    const once = pvSaveGoal({
+      title: 'Once',
+      scope: 'day',
+      anchor: today,
+      every: null,
+      target: null,
+      unit: null,
+    })
+    const week = pvSaveGoal({
+      title: 'Weekly',
+      scope: 'week',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    if ('why' in once || 'why' in week) throw new Error('fixture')
+    const longAgo = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
+    expect([
+      pvSetDays(id, 0, today)?.why,
+      pvSetDays(id, 128, today)?.why,
+      pvSetDays(id, 4, longAgo)?.why,
+      pvSetDays(once.id, 4, today)?.why,
+      pvSetDays(week.id, 4, today)?.why,
+    ]).toEqual([
+      'a goal has to be for at least one day',
+      'a goal has to be for at least one day',
+      'a schedule change starts today or later',
+      'no such repeating daily goal',
+      'no such repeating daily goal',
+    ])
+  })
+
+  it('is kept through an edit, even one that stops the goal repeating', () => {
+    const id = daily()
+    pvSetDays(id, 4, today)
+    pvSaveGoal({
+      id,
+      title: 'Swim, renamed',
+      scope: 'day',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    pvSaveGoal({
+      id,
+      title: 'Swim, once',
+      scope: 'day',
+      anchor: today,
+      every: null,
+      target: null,
+      unit: null,
+    })
+    pvSaveGoal({
+      id,
+      title: 'Swim',
+      scope: 'day',
+      anchor: null,
+      every: 1,
+      target: null,
+      unit: null,
+    })
+    expect(pvGoals().find((g) => g.id === id)?.days).toEqual([{ from: today, days: 4 }])
+  })
+
+  it('comes back only with the goal it belongs to — never onto a goal already here', () => {
+    const id = daily()
+    pvSetDays(id, 4, today)
+    const file = pvExport()
+    /* the goal is still here, with no schedule of its own: the file's must not be merged into it */
+    pvDropGoal(id)
+    const again = daily()
+    const tampered = {
+      ...file,
+      goals: (file.goals as Array<Record<string, unknown>>).map((g) =>
+        g.id === id ? { ...g, id: again } : g,
+      ),
+    }
+    expect(pvImport(tampered)).toMatchObject({ schedules: 0 })
+    expect(pvGoals().find((g) => g.id === again)?.days).toEqual([])
+    /* and into an empty account it all comes back */
+    pvEmpty()
+    expect(pvImport(file)).toMatchObject({ schedules: 1 })
+    expect(pvGoals().find((g) => g.id === id)?.days).toEqual([{ from: today, days: 4 }])
+  })
+
+  it('sends the day a goal was made, and keeps it through a restore', () => {
+    const id = daily()
+    const made = pvGoals().find((g) => g.id === id)?.made
+    expect(typeof made).toBe('number')
+    const file = pvExport()
+    pvEmpty()
+    pvImport(file)
+    expect(pvGoals().find((g) => g.id === id)?.made).toBe(made)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF `chronicle_day_note_add` AND `chronicle_day_notes_between`. The server's
+ * are asked the same questions in supabase/tests/chronicle-day-notes.sql; these keep the copy from
+ * accepting what the site would refuse.
+ */
+describe('a note with no session', () => {
+  it('is written for a day and read back for that day only', () => {
+    expect(pvDayNoteAdd(DAY, '  slept badly  ')).toBeNull()
+    expect(pvDayNotes(DAY, '2026-10-13').map((n) => [n.on, n.body])).toEqual([[DAY, 'slept badly']])
+    expect(pvDayNotes('2026-10-13', '2026-10-14')).toEqual([])
+  })
+
+  it('refuses what the server refuses, in its words', () => {
+    const far = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10)
+    expect([
+      pvDayNoteAdd(DAY, '   ')?.why,
+      pvDayNoteAdd(DAY, 'x'.repeat(4001))?.why,
+      pvDayNoteAdd(far, 'too soon')?.why,
+    ]).toEqual([
+      'nothing to write down',
+      'that is longer than a note — 4000 characters',
+      'that day has not come yet',
+    ])
+  })
+
+  it('takes fifty to a day and not fifty-one', () => {
+    for (let i = 0; i < 50; i++) expect(pvDayNoteAdd(DAY, `n${i}`)).toBeNull()
+    expect(pvDayNoteAdd(DAY, 'one more')?.why).toBe('that is 50 notes on one day')
+  })
+
+  it('is changed, and emptied away, by the same edit a session note uses', () => {
+    pvDayNoteAdd(DAY, 'first draft')
+    const [n] = pvDayNotes(DAY, '2026-10-13')
+    expect(pvNoteEdit(n.id, 'second draft')).toBeNull()
+    expect(pvDayNotes(DAY, '2026-10-13')[0].body).toBe('second draft')
+    expect(pvNoteEdit(n.id, '')).toBeNull()
+    expect(pvDayNotes(DAY, '2026-10-13')).toEqual([])
+  })
+
+  it('goes back once from a file put back twice', () => {
+    pvDayNoteAdd(DAY, 'kept')
+    const file = pvExport()
+    pvEmpty()
+    expect(pvImport(file)).toMatchObject({ notes: 1 })
+    expect(pvImport(file)).toMatchObject({ notes: 0 })
+    expect(pvDayNotes(DAY, '2026-10-13')).toHaveLength(1)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF THE SETS DRAFT'S WRITERS. The server's are asked the same questions in
+ * supabase/tests/chronicle-sets.sql; these keep the copy from accepting what the site would refuse.
+ */
+describe('a set', () => {
+  /* the outer beforeEach has already emptied the store and made `draw` */
+  beforeEach(() => {
+    pvGiveCircuit('p-1', [
+      { id: 'ex-quad', name: 'Quad Curl' },
+      { id: 'ex-bench', name: 'Bench' },
+    ])
+  })
+  const sitting = () => {
+    pvAddEntry(draw, h(9), h(10), null)
+    return pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9))!.id
+  }
+
+  it("takes its name from the person's list, and is refused in the server's words", () => {
+    const e = sitting()
+    const ok = pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    expect('id' in ok).toBe(true)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.name, x.now, x.value])).toEqual([
+      ['Quad Curl', 'Quad Curl', 12],
+    ])
+    const far = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    const why = (r: { id: string } | { why: string }) => ('why' in r ? r.why : 'accepted')
+    expect([
+      why(pvSetAdd('p-2', 'ex-quad', 1, DAY)),
+      why(pvSetAdd('p-1', 'ex-none', 1, DAY)),
+      why(pvSetAdd('p-1', 'ex-quad', 0, DAY)),
+      why(pvSetAdd('p-1', 'ex-quad', 1, far)),
+      why(pvSetAdd('p-1', 'ex-quad', 1, DAY, 'nobody')),
+      why(pvSetAdd('p-1', 'ex-quad', 1, '2026-10-20', e)),
+    ]).toEqual([
+      'no such person of yours',
+      'no such exercise',
+      'that is not a number of anything',
+      'that day has not come yet',
+      'no such session',
+      'that is not the day that session starts on',
+    ])
+  })
+
+  it('keeps its old name when the exercise goes, and does not join one re-made under that name', () => {
+    pvSetAdd('p-1', 'ex-quad', 12, DAY)
+    pvGiveCircuit('p-1', [{ id: 'ex-quad-2', name: 'Quad Curl' }])
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.exercise, x.name, x.now])).toEqual([
+      ['ex-quad', 'Quad Curl', null],
+    ])
+  })
+
+  it('moves to the new day with its sitting, in the same call — and not at all on a refusal', () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    const back = (n: number) => new Date(Date.parse(h(9)) - n * 86_400_000).toISOString()
+    const backTo = (n: number) => new Date(Date.parse(h(10)) - n * 86_400_000).toISOString()
+    /* a day that is not the new start's, and a span that runs backwards: neither moves anything */
+    expect(pvEditEntryDay(e, back(1), backTo(1), null, '2026-10-01')?.why).toBe(
+      'that is not the day that session starts on',
+    )
+    expect(pvEditEntryDay(e, backTo(1), back(1), null, '2026-10-11')?.why).toBe(
+      'that span ends before it starts',
+    )
+    expect(pvSetsBetween('2026-10-01', '2026-10-20').map((x) => x.on)).toEqual([DAY])
+    /* and the real thing */
+    expect(pvEditEntryDay(e, back(1), backTo(1), null, '2026-10-11')).toBeNull()
+    expect(pvSetsBetween('2026-10-01', '2026-10-20').map((x) => [x.on, x.value])).toEqual([
+      ['2026-10-11', 12],
+    ])
+  })
+
+  it('stays what it is when its sitting moves to another activity', () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    const weights = idOf(pvSaveActivity('Weights', 'free', null, undefined, 'reps'))
+    expect(pvEditEntry(e, h(9), h(10), null, weights)).toBeNull()
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.exercise, x.entry, x.on])).toEqual([
+      ['ex-quad', e, DAY],
+    ])
+  })
+
+  it('goes with its sitting when the sitting is deleted', () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    pvSetAdd('p-1', 'ex-bench', 8, DAY)
+    pvDropEntry(e)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.exercise)).toEqual(['ex-bench'])
+  })
+
+  it('follows a running sitting whose start is fixed back past midnight', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date(h(1)))
+      expect(pvStart(draw)).toBeNull()
+      const e = pvEntries(dayStart(), dayEnd()).find((x) => x.end == null)!.id
+      pvSetAdd('p-1', 'ex-quad', 5, DAY, e)
+      const before = new Date(Date.parse(h(1)) - 3 * 3_600_000).toISOString()
+      expect(pvFixRunningDay(before, null, '2026-10-11')).toBeNull()
+      expect(pvSetsBetween('2026-10-11', '2026-10-13').map((x) => x.on)).toEqual(['2026-10-11'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("comes back from a file onto nobody's person when the person is not yours here", () => {
+    const e = sitting()
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, e)
+    const file = pvExport()
+    pvEmpty()
+    /* the sitting comes back with the file; the person does not exist in this account */
+    expect(pvImport(file)).toMatchObject({ sets: 1 })
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => [x.person, x.name, x.now])).toEqual([
+      [null, 'Quad Curl', null],
+    ])
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF THE LINKS DRAFT. The server's are asked the same questions in
+ * supabase/tests/chronicle-sets-links.sql; these keep the copy from counting what the site would not.
+ */
+describe('an exercise linked to an activity', () => {
+  let gym = ''
+  let holds = ''
+  beforeEach(() => {
+    pvGiveCircuit('p-1', [
+      { id: 'ex-quad', name: 'Quad Curl', unit: 'reps' },
+      { id: 'ex-plank', name: 'Plank', unit: 'sec' },
+      { id: 'ex-what', name: 'Gym', unit: 'other' },
+    ])
+    gym = idOf(pvSaveActivity('Weights', 'free', null, undefined, 'Reps'))
+    holds = idOf(pvSaveActivity('Holds', 'free', null, undefined, 'seconds'))
+  })
+  const sitting = (activity: string) => {
+    pvAddEntry(activity, h(9), h(10), null)
+    return pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9) && e.activity === activity)!
+      .id
+  }
+  const amount = (id: string) => pvEntries(dayStart(), dayEnd()).find((e) => e.id === id)?.amount
+
+  it('is refused in the server words where the units do not agree, and never by name', () => {
+    expect([
+      pvLinkExercise('p-1', 'ex-plank', gym)?.why,
+      pvLinkExercise('p-1', 'ex-what', gym)?.why,
+      pvLinkExercise('p-1', 'ex-quad', draw)?.why,
+      pvLinkExercise('p-9', 'ex-quad', gym)?.why,
+      pvLinkExercise('p-1', 'ex-none', gym)?.why,
+      pvLinkExercise('p-1', 'ex-quad', gym),
+    ]).toEqual([
+      'they count different things (sec and Reps)',
+      'those units cannot be compared (other and Reps)',
+      'that activity does not count anything',
+      'no such person of yours',
+      'no such exercise',
+      null,
+    ])
+    expect(pvMyExercises().map((x) => [x.exercise, x.canon, x.activity === gym, x.ok])).toEqual([
+      ['ex-quad', 'reps', true, true],
+      ['ex-plank', 'sec', false, null],
+      ['ex-what', null, false, null],
+    ])
+  })
+
+  it('adds a counted set to its sitting, and takes back exactly that on a change or a drop', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    const a = pvSetAdd('p-1', 'ex-quad', 12, DAY, s)
+    const b = pvSetAdd('p-1', 'ex-plank', 30, DAY, s)
+    if ('why' in a || 'why' in b) throw new Error('fixture')
+    expect(amount(s)).toBe(12)
+    expect(pvSetChange(a.id, 15)).toBeNull()
+    expect(pvSetChange(a.id, 15)).toBeNull() // the same save again
+    expect(amount(s)).toBe(15)
+    expect(pvAmount(s, 10)).toBe(false) // below its counted sets
+    expect(pvAmount(s, 40)).toBe(true)
+    expect(pvSetDrop(b.id)).toBeNull() // uncounted: nothing moves
+    expect(pvSetDrop(a.id)).toBeNull()
+    expect(amount(s)).toBe(25)
+  })
+
+  it('brings a counted set back only with its sitting, because only then does the file hold it', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    pvAmount(s, 9)
+    const a = pvSetAdd('p-1', 'ex-quad', 7, DAY, s)
+    if ('why' in a) throw new Error('fixture')
+    expect(amount(s)).toBe(16)
+    const doc = pvExport()
+    expect(pvSetDrop(a.id)).toBeNull()
+    expect(amount(s)).toBe(9)
+    /* ✕ and then a restore: the sitting is still here and no longer holds the 7 */
+    pvImport(doc)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.id)).not.toContain(a.id)
+    expect(amount(s)).toBe(9)
+    /* with the sitting gone as well, both come back, and its count holds the set again */
+    expect(pvDropEntry(s)).toBe(true)
+    pvImport(doc)
+    expect(amount(s)).toBe(16)
+    expect(pvSetsBetween(DAY, '2026-10-13').find((x) => x.id === a.id)?.counted).toBe(true)
+  })
+
+  it('takes counted sets back out of a sitting moved to another unit, and only then', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const lifting = idOf(pvSaveActivity('Lifting', 'free', null, undefined, 'reps'))
+    const s = sitting(gym)
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, s)
+    pvAmount(s, 20)
+    expect(pvEditEntryDay(s, h(9), h(10), lifting, DAY)).toBeNull()
+    expect(amount(s)).toBe(20)
+    expect(pvEditEntryDay(s, h(9), h(10), holds, DAY)).toBeNull()
+    expect(amount(s)).toBe(8)
+    expect(pvSetsBetween(DAY, '2026-10-13').map((x) => x.counted)).toEqual([false])
+  })
+
+  it('counts the grid toward a goal by local day, and never a set with a sitting twice', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    pvSetAdd('p-1', 'ex-quad', 12, DAY, s)
+    const g = goalOn({
+      target: 100,
+      activity: gym,
+      counts: 'amount',
+      unit: 'reps',
+      scope: 'week',
+      anchor: DAY,
+    })
+    const ask = {
+      key: 'w',
+      id: g,
+      from: dayStart(),
+      to: dayEnd(),
+    }
+    /* two rows for the window's first day (nothing prevents it), one the day before, one on the
+       day the window ends at, a Plank the goal's activity does not count, and a total row */
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-quad', val: 7 }])
+    pvGiveCircuitLog('p-1', DAY, [
+      { eid: 'ex-quad', val: 3 },
+      { eid: 'ex-plank', val: 60 },
+      { eid: '__total__', val: 500 },
+    ])
+    pvGiveCircuitLog('p-1', '2026-10-11', [{ eid: 'ex-quad', val: 100 }])
+    pvGiveCircuitLog('p-1', '2026-10-13', [{ eid: 'ex-quad', val: 1000 }])
+    /* without local days: only the sitting, exactly as before */
+    expect(pvTally([ask]).w).toBe(12)
+    /* with them: the sitting's 12 (its set is IN that 12) and the grid's 7 and 3 on the day */
+    expect(pvTally([{ ...ask, from_day: DAY, to_day: '2026-10-13' }]).w).toBe(22)
+  })
+})
+
+/**
+ * ⚠️ THE DOUBLE'S COPY OF circuit_cell_set AND circuit_session_sums, which dev/circuitPreview.ts
+ * hands the Circuit grid. The server's are asked in supabase/tests/circuit-grid-sessions.sql; these
+ * keep the copy saying what the site would say, word for word, so a pane run of the grid is a run
+ * of the server's rules rather than of a kinder version of them.
+ */
+describe('a Circuit cell, as the grid writes it', () => {
+  let sit = ''
+  const manual = (eid = 'ex-quad') =>
+    pvCircuitLogs()
+      .filter((g) => g.date === DAY)
+      .flatMap((g) => g.entries)
+      .filter((x) => x.eid === eid)
+      .reduce((n, x) => n + x.val, 0)
+  beforeEach(() => {
+    pvGiveCircuit('p-1', [
+      { id: 'ex-quad', name: 'Quad Curl', unit: 'reps' },
+      { id: 'ex-plank', name: 'Plank', unit: 'sec' },
+    ])
+    pvAddEntry(gym, h(9), h(10), null)
+    sit = pvEntries(dayStart(), dayEnd()).find((e) => e.start === h(9))!.id
+    idOf(pvSetAdd('p-1', 'ex-quad', 12, DAY, sit))
+  })
+
+  it('stores the total less the sessions, the same total twice as the same part, and lets later sessions add', () => {
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 20, 12, 0)).toEqual({
+      total: 20,
+      sessions: 12,
+      manual: 8,
+    })
+    expect(manual()).toBe(8)
+    /* "Saving 20 again must still total 20 — not 28" */
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 20, 12, 8)).toEqual({
+      total: 20,
+      sessions: 12,
+      manual: 8,
+    })
+    expect(manual()).toBe(8)
+    /* "Later sessions add normally" — the typed part is not adjusted to hold the total at 20 */
+    idOf(pvSetAdd('p-1', 'ex-quad', 5, DAY, sit))
+    expect(pvSessionSums(DAY, '2026-10-13')).toEqual([
+      { person: 'p-1', exercise: 'ex-quad', on: DAY, value: 17 },
+    ])
+    expect(manual()).toBe(8)
+  })
+
+  it('refuses a total below the sessions and a save made against figures that moved, in the server words', () => {
+    pvCellSet('p-1', 'ex-quad', DAY, 20, 12, 0)
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 10, 12, 8)).toEqual({
+      why: "sessions count 12 on that day — lower them in Chronicle, in that day's log",
+    })
+    idOf(pvSetAdd('p-1', 'ex-quad', 4, DAY, sit))
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 22, 12, 8)).toEqual({
+      why: 'that day changed while you were typing — it is now 24 (16 from sessions)',
+    })
+    expect(manual()).toBe(8)
+  })
+
+  it("refuses somebody else's person, an exercise that is not there, and a total that is not a number", () => {
+    expect([
+      pvCellSet('p-9', 'ex-quad', DAY, 1, 0, 0),
+      pvCellSet('p-1', 'ex-none', DAY, 1, 0, 0),
+      pvCellSet('p-1', 'ex-plank', DAY, -1, 0, 0),
+      pvCellSet('p-1', 'ex-plank', DAY, 2e9, 0, 0),
+    ]).toEqual([
+      { why: 'you cannot change that person' },
+      { why: 'no such exercise' },
+      { why: 'that is not a number of anything' },
+      { why: 'that is not a number of anything' },
+    ])
+  })
+
+  it('refuses a day whose exercise sits in two rows, rather than choosing one', () => {
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-plank', val: 30 }])
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-plank', val: 40 }])
+    expect(pvCellSet('p-1', 'ex-plank', DAY, 90, 0, 70)).toEqual({
+      why: 'that day has 2 logs holding this exercise — put them together before changing it',
+    })
+  })
+
+  it('sums only sets with a sitting, and writes no row for a typed part of nothing', () => {
+    idOf(pvSetAdd('p-1', 'ex-quad', 30, DAY))
+    expect(pvSessionSums(DAY, '2026-10-13').map((x) => x.value)).toEqual([12])
+    expect(pvCellSet('p-1', 'ex-quad', DAY, 12, 12, 0)).toEqual({
+      total: 12,
+      sessions: 12,
+      manual: 0,
+    })
+    expect(pvCircuitLogs().filter((g) => g.date === DAY)).toEqual([])
+  })
+
+  it('keeps a photograph through a plain write, which names every column but that one', () => {
+    pvGiveCircuitLog('p-1', DAY, [{ eid: 'ex-plank', val: 30 }])
+    const id = pvCircuitLogs().find((g) => g.date === DAY)!.id
+    pvCircuitLogPicture(id, 'pic-1')
+    expect(pvCircuitLogPut({ id, person: 'p-1', date: DAY, entries: [] })).toBeNull()
+    expect(pvCircuitLogs().find((g) => g.id === id)).toMatchObject({
+      entries: [],
+      picture: 'pic-1',
+    })
+    expect(pvCircuitLogPut({ id: 'x', person: 'p-9', date: DAY, entries: [] })?.why).toMatch(
+      /row-level security/,
+    )
   })
 })

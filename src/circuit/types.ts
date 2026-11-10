@@ -87,6 +87,11 @@ export interface DayLog {
   img?: string | null
   /** a member_pictures id — resolved to a signed url when drawn, never stored as one */
   picture?: string | null
+  /**
+   * The part of each cell Chronicle's sessions hold, already added into `entries` — see
+   * sessions.ts. Read-only here: a save sends totals, and the server stores the rest.
+   */
+  sessions?: LogEntry[]
 }
 
 export interface MovieReview {

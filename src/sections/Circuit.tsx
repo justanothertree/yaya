@@ -1,6 +1,6 @@
 // The Circuit — in-site module shell. Sub-tabs mirror the standalone app.
 // Backed by the shared store (localStorage now → Supabase realtime later, no UI change).
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { connectCircuit } from '../circuit/connect'
 import { circuitStore, useCircuit, useCircuitHistory } from '../circuit/store'
@@ -233,6 +233,17 @@ export function Circuit({
   useEffect(() => {
     void connectCircuit()
   }, [])
+  /**
+   * ⚠️ AND OPENING IT AGAIN WITHOUT A REMOUNT. With the canvas open on a desktop the Circuit stays
+   * mounted on every page, so coming back to its tab never calls connectCircuit — this is the same
+   * fresh fetch for that case (OPEN-DECISIONS §20b). Only on the way back in, never on mount, where
+   * connectCircuit already loads.
+   */
+  const wasActive = useRef(isActiveTab)
+  useEffect(() => {
+    if (isActiveTab && !wasActive.current) void circuitStore.refresh()
+    wasActive.current = isActiveTab
+  }, [isActiveTab])
 
   // Undo/redo keyboard shortcuts (skip while typing in a field). Works in the
   // signed-out sandbox too, since edits there are local-only.

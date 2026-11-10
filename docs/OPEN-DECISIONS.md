@@ -3,7 +3,7 @@
 Things that are blocked on Evan rather than on code. Each one names what is already built, what
 is actually being asked, and what happens if it keeps waiting.
 
-Last reviewed: 2026-11-08 (ninth pass — §14 is the Lab's votes and notes, renumbered from a §13 written in parallel with the ducking one, and updated to Evan's decision of 8 Nov to drop the vote floor; §11a DONE and §11b–c re-measured, §13 new, from the ducking pass; §12 untouched).
+Last reviewed: 2026-11-09 (two ninth passes written in parallel, merged. ⚠️ **TWO SECTIONS ARE NUMBERED 14**: the Lab's votes and notes, which an applied migration cites, and Chronicle's first three calls, which Chronicle's code and docs cite as §14a–c. Each keeps its number, and Chronicle's run on to §20, all answered by 9 Nov. From the Lab's pass: the vote floor dropped on 8 Nov. From both: §11a DONE, §11b–c re-measured, §13 new; §12 untouched).
 
 ---
 
@@ -584,3 +584,750 @@ built, `lab_can_read_comment` is the one place that would consult it.
 - **A new toy needs no migration:** the admin's own visit to the Lab registers any id the database
   has not met (`admin_lab_register`). Until then a new toy plays and lists normally but cannot be
   voted on.
+
+---
+
+> ⚠️ **A second §14.** Chronicle's sections below were written in parallel with the Lab's §14 above, and
+> both numbers are cited elsewhere — the Lab's by an applied migration — so neither moves. Here,
+> §14–§20 are Chronicle's.
+
+## 14. Three Chronicle calls, from the daily-flow pass (2026-11-07)
+
+Added closing the pass written up in `docs/2026-11-07-chronicle-the-daily-flow.md`.
+
+✅ **ANSWERED BY EVAN, 7 Nov 2026 — all three.** They are directions now rather than questions,
+and each entry below keeps its reasoning with the answer written in, because the reasoning is
+what the build has to satisfy. What is left under each is a BUILD, not a decision; the choices
+the proposals then turned up are §15.
+
+|                            | answered                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 14a weekdays               | a schedule change affects **future occurrences, not past completion history**                                                                                 |
+| 14b a note with no sitting | **private by default, in the export, never automatically on anybody's timeline**                                                                              |
+| 14c the workout model      | **Circuit supplies the exercise definitions; Chronicle owns the sessions and the progress** — plus "record once, see it in both places", counted exactly once |
+
+**Nothing here has been applied to the database.** The models, permissions, isolated tests and
+release plans are in `docs/2026-11-07-chronicle-the-daily-flow.md` §5a and
+`docs/2026-11-07-chronicle-recorded-once.md` §2–3.
+
+### 14a. ✅ Weekdays — answered: future occurrences only. What is left is the build
+
+`chronicle_goals.repeat_every` is `1..52` and only **1** is honoured, deliberately — "every other
+week" needs a PHASE and a repeating goal has no anchor to take one from. Selected weekdays is the
+same gap wearing a different hat, and it is the one example in the brief the model genuinely
+cannot express today.
+
+**The proposal, with its DDL, isolated permission test and rollback, is §5a of that file.** The
+column is the small half and can be applied inert — nullable, read as "every day", which is
+today's behaviour. What needs deciding is not the column.
+
+⚠️ **SUPERSEDED 8 Nov: A COLUMN CANNOT KEEP THE RULE BELOW.** One `days` value on the goal says
+what the schedule IS, and the mark row judges thirty-one days of what it WAS — so the answer that
+follows rules the column out. The replacement is a history table, one row per change, in
+`docs/2026-11-08-chronicle-weekdays.DRAFT.sql`, and its client half is written and tested in
+`src/chronicle/weekdays.ts`. Both unapplied and unwired; see §16b and §16c for what is left.
+
+✅ **ANSWERED: a schedule change affects future occurrences, not past completion history.** So
+`days` is read FORWARD only — the windows already behind you keep the verdict they were given
+under the schedule in force at the time, and a goal that becomes Tuesdays-only today does not
+retroactively un-miss last Wednesday or re-miss last Tuesday. That is the stronger of the two
+readings and it rules out the cheap implementation, which is to filter every window by today's
+mask: a streak is thirty-one windows of history and filtering it is exactly the rewrite this
+answer forbids. The honest shape is that the mask carries the date it took effect, so a window is
+judged by the mask that was in force when it closed.
+
+⚠️ **What a Monday means to a Tuesday goal** is the other half, and getting it wrong is
+destructive in the one way the brief rules out. `late()` and `pastIn()` read "the window closed unfinished";
+with a mask they must read "the window closed unfinished **and it was one of yours**". The wrong
+reading turns one goal into six overdue rows a week — and rewrites the streak history of
+something somebody has actually been keeping, silently, the moment the column arrives. So the
+client half is not a follow-on patch; it is the part that has to be right first.
+
+**Cost of waiting:** weekday goals get written as daily ones and read as missed four days in five,
+which is what the seed's own "Swim on Tuesdays · EVERY DAY" row has been demonstrating.
+
+### 14b. ✅ A dated note with no sitting — answered: private, exported, never shared
+
+Asked for as "writing a note must not require starting a timer". Today every journal entry hangs
+off a `chronicle_entries` row, and `chronicle_note_add` checking that row's owner **is** the
+security model for a deny-all table. A note with no sitting has no owner to check, so this is a
+schema change however small the UI is.
+
+The schema is the easy part (a nullable `entry` with an `owner` and a `day`, or a second table).
+The decision is what a note that is not about a sitting IS, because three readers would have to
+be told:
+
+- **the day log** — does a note appear as a row in a list whose every other row is a span with a
+  length? The design doc already refused this for ratings and built `chronicle_moments` instead,
+  precisely so nothing fabricated could get into the totals;
+- **the export** — a new top-level list, and `chronicle_import`'s add-never-replace rule applied
+  to it;
+- **`chronicle_friends_log`** — which carries **no note at all** today, because the profile card
+  promises that. A standalone note is more personal than a sitting's note, not less, so the
+  default has to be that it never crosses, and that needs saying rather than inheriting.
+
+✅ **ANSWERED: private by default, in the export, never automatically on anybody's timeline.**
+That settles all three readers — and `chronicle_notes` turns out to already carry
+`owner uuid not null`, so ownership is a column rather than something derived from the entry and
+the change is two `alter table`s. See §3 of `docs/2026-11-07-chronicle-recorded-once.md`, which
+also says why "`chronicle_friends_log` happens to carry no note" needs a TEST rather than a
+sentence. **Not applied.**
+
+**What is left:** the build, plus §15a — a note with no sitting has no length, and the day log
+draws spans.
+
+**And the pain is smaller than it was** as of this pass: ✎ Note on the running header opens the
+journal on the sitting you are in without stopping it, and the journal is drawn first inside that
+dialog. "I had an idea" at a bus stop with no timer running still has nowhere to go.
+
+### 14c. ✅ Which module owns "what I did today" — answered: Chronicle owns the session
+
+The brief said to reuse the Circuit's exercise and session definitions for a workout flow. Having
+read both: **the Circuit has the exercise definitions and no session, and Chronicle has the whole
+session and no exercise library.**
+
+|                      | Circuit                                                    | Chronicle                                                                  |
+| -------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| a named thing you do | `Exercise` — name, unit, points multiplier, grid position  | `Activity` — name, category, colour, metric, per-sitting target            |
+| how it is recorded   | `DayLog` → `LogEntry {eid, val}`, typed into a number grid | a sitting with a start, an end, an amount, a rating, a journal and a photo |
+| a timer              | none                                                       | the whole stopwatch, surviving reload and tab close                        |
+| who sees it          | shared, scored, other people's columns — 707 logs          | one person's own record, private by default                                |
+
+So "reuse the Circuit's exercises" means deciding which of the two owns the day, which is
+**decision 3 from the design doc's §2, still open**: _"should the Circuit sit on chronicle now?"_
+
+- ~~**Chronicle keeps its own activities** and the Circuit's per-exercise breakdown stays a
+  separate record of the same hour.~~ Not chosen.
+- ✅ **CHOSEN: Chronicle reads Circuit exercises.** One gesture logs both, and the points grid
+  gets a timer.
+
+⚠️ **AND THE OBJECTION TO IT IS WHAT THE MODEL HAS TO ANSWER**, so it is kept here rather than
+struck out: this gives two tables an opinion about the same minutes, which is the "one home for a
+thing" rule in CLAUDE.md §5 pointed at data. The answer is §2a of
+`docs/2026-11-07-chronicle-recorded-once.md` — a single `chronicle_sets` row is canonical for a
+quantity of one exercise on one day, whichever interface typed it, with `entry` nullable so a set
+from the grid and a set from the timer are the same row and not two that have to agree. A sitting
+with sets has no separately writable amount, and the tally reads set rows with no sitting through
+one `entry is null` predicate in one place. **The proposal is not applied.**
+
+**What is left:** the build, in the three inert steps of §2f — and the two things it surfaced,
+§15b and §15c.
+
+---
+
+## 15. What the Chronicle proposals turned up (2026-11-07)
+
+Four smaller choices, each surfaced by writing the models in §14's answers down properly. None
+blocks the other work; each is the kind that is cheap now and expensive once there are rows.
+
+### 15a. A note with no sitting, in a list whose every row has a length
+
+The day log draws spans. A standalone note has no start, no end and no duration, which is
+precisely why `chronicle_moments` exists as a second list rather than as rows in the first one —
+so nothing fabricated could reach the totals.
+
+A note is the same shape of problem with a different answer available: it genuinely belongs to
+the day, and a reader skimming the day wants it in the middle of what they were doing, not in a
+separate panel. The two honest options are **a row in the log with a time and no length** (which
+means the log's own renderer learns a third row type, after the sitting and the moment) or **a
+fold of its own above the log**. Not deciding it means the schema can land and nothing can draw
+it.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Standalone private notes may appear as moment rows in the Day
+log, with a genuine timestamp and no duration. Don't invent a time where only a date is known."_
+So the log learns a third row type, and it adds nothing to any total. **The second sentence is a
+real constraint, not a restatement:** a day note carries the moment it was WRITTEN and the day it
+is ABOUT, and those differ whenever somebody writes about yesterday, or a file puts one back. Only
+a note written during the day it is about has a time on that day; any other is drawn with the
+date it was written and no clock time, rather than placed at a time the record does not hold.
+
+### 15b. An exercise is a blob, so a set pointing at one has no foreign key
+
+`circuit_people.exercises` is a jsonb array, so `chronicle_sets.exercise_id` cannot be a
+reference and nothing stops an exercise being deleted out from under its sets. Today that would
+render as "something" in the feed — `chronicle_moments` already has that fallback — and the sets
+would count toward their mapped goal for ever with no name on screen.
+
+Three answers, in increasing cost: leave it and let a deleted exercise read as "something";
+**capture the name on the set at write time**, which makes the feed honest and the Circuit grid
+unable to show it; or lift exercises out of the blob into a table, which is a Circuit migration
+and a much larger thing than the workout work itself.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Exercise records retain stable exercise identity plus a
+snapshot of the name when recorded. Deleting an exercise definition must not destroy historical
+records. Never reconnect exercises by matching names."_ That is the middle answer: `exercise_id`
+stays the identity, the name is copied onto the set when it is written, and a set whose exercise
+has gone reads by that copy. **The last sentence rules out a tempting repair:** an exercise deleted
+and re-created with the same name is a different exercise, and its old sets stay attached to the
+old id under the old name rather than being folded into the new one.
+
+### 15c. Moving a sitting to another activity does not move its sets
+
+`chronicle_entry_move` exists because pressing Start on the wrong thing is the likeliest mistake
+a stopwatch allows. With sets, moving a Gym sitting to Drawing takes its minutes to Drawing and
+leaves 12 Quad Curl where they were — which is **correct**, because the exercise is still the
+exercise and the Circuit grid must not lose them.
+
+It is also the kind of correct that looks like a bug: a goal's number moves and the Circuit's
+does not. The question is whether the move dialog says so, offers to take the sets too, or
+refuses to move a sitting that has them. The first is cheapest and the third is the only one that
+cannot surprise anybody.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Moving a sitting between activities does not change which
+exercises its sets represent. Explain that consequence in the move UI. Editing its start across a
+date boundary must update associated set dates atomically, keeping feeds and tallies consistent
+without duplicates."_ So the first option, plus the case §16e added: the move dialog says the
+sets stay with their exercise, and a start edited across midnight moves the sets' day in the same
+statement as the sitting — one function, one transaction, so no reader can see the two disagree,
+and the set rows are updated in place rather than re-inserted, so nothing can count twice.
+
+### 15d. Is `circuit_logs` ever retired?
+
+The release plan in `docs/2026-11-07-chronicle-recorded-once.md` §2f deliberately stops short of
+dropping it: the table holds rows for `circuit_people` that belong to no login, and those keep
+working through the old path. So the end state has sets as canonical for everybody with an
+account and `circuit_logs` still canonical for everybody without one.
+
+That is a stable place to stop and it is two answers to one question, which this project usually
+treats as a defect. Worth deciding now whether the unclaimed people are expected to be claimed
+eventually — in which case the split is temporary and fine — or never, in which case the split is
+the design and should be written down as such rather than left looking unfinished.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026:** _"Account-linked people may use canonical sets while unclaimed
+people retain circuit_logs. Develop the model locally, but keep account-claim migration separately
+reviewable: verified ownership/claim permissions, idempotent operation, preservation of legacy data
+and a recovery plan. Do not invent claiming access or delete legacy records. Park claim-dependent
+work if those requirements remain unresolved."_ The split is the design. **Claiming is the part
+that is parked unless its four requirements can be met from what exists**: who may claim a
+`circuit_people` row is not something this project has decided (§3 is still open — no family
+account is linked to a real person), so a claim function would be inventing that permission. The
+sets model is built without it; the migration that moves a claimed person's rows is written up
+separately, as its own reviewable item, and is not a step any other release depends on.
+
+---
+
+## 16. Chronicle, the continuous pass (2026-11-08)
+
+Concrete recommendations, each parked on its own so the frontend work around it keeps moving.
+**Nothing in this section has been applied to any database**, and none of it blocks the four
+draft PRs (#33 → #36 → #37 → #38), which are frontend only.
+
+### 16a. Real signed-in checks need one line in a workflow — may I add it?
+
+This machine has no Docker and no Postgres, so there is no local Supabase to test against, and
+the brief rules out writing fixtures into production. **But CI already has the environment:** the
+`db guards` job runs `supabase start` and `supabase db reset` — a throwaway database built from
+these migrations and the seed, with members in it — and then runs exactly one SQL file,
+`supabase/tests/visibility-guards.sql`, through psql.
+
+**Recommendation:** add one step to `db-guards.yml` that runs `supabase/tests/chronicle-*.sql`
+the same way. That gives the start → switch → note → amount → stop flow a real run, as a
+simulated member against the real functions, on every push, without a credential or a byte of
+production. It is a workflow change, which the brief reserves for you; until then the evidence
+for everything server-side stays "mocked".
+
+**Cost of waiting:** none of the four drafts gains real signed-in evidence before you press the
+buttons yourself — the test steps in #33's description are still the only path to it.
+
+✅ **UPDATE 8 Nov — THE TEST EXISTS AND HAS RUN, so this is now a one-line ask.**
+`supabase/tests/chronicle-daily-flow.sql` (#51, independent, based on `main`) acts as a seeded
+member on the real functions: start, switch, a mis-press, a note on each sitting, a count written
+twice, the read-back, a goal counting it once, stop — and a second member refused at every door.
+It ran five times in the `db guards` job's throwaway database, through a scratch branch whose copy
+of the one file that job runs included this one, so **no workflow file changed**: clean twice,
+"holds · 0 failures"; with an additive count writer, exactly the three count checks failed; with a
+writer that skipped the owner check, exactly the two security checks failed. What is left is the
+step that makes it run on every push:
+
+```sh
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/visibility-guards.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/chronicle-daily-flow.sql   # the new line
+```
+
+— the second line added inside the existing "Run the visibility guards" step, because `DB_URL`
+is a shell variable that step works out for itself; a separate step would not have it. And `chronicle/ci-probe-flow`
+is scratch, never to be merged — yours to approve deleting.
+
+✅ **DONE 8 Nov — approved as a narrowly scoped change.** #67, stacked on #51 because it runs the
+file #51 adds: the one line inside the existing step, the step renamed to say so, and the header
+line. Its own `db guards` run used the workflow at that commit and printed both verdicts in one
+job — `all visibility guards hold · 0`, then `the chronicle daily flow holds · 0`. The failing
+direction was shown before it existed, by the scratch runs above: the same `psql -v
+ON_ERROR_STOP=1 -f` on this file failed the job when the test raised.
+
+### 16b. A weekday schedule edited today — does it take effect today or tomorrow?
+
+Your rule settles every CLOSED day: they keep the schedule they were judged under. Today is the
+one day it does not reach, because today's window is still open.
+
+- **Today (recommended).** "From today I swim on Tuesdays", said on a Tuesday, makes today due —
+  which is what the sentence means. The cost: a goal finished this morning under "every day" and
+  then changed to exclude today stops counting today, so its streak may drop by one.
+- **Tomorrow.** Today keeps the old schedule whatever happens; nothing that already happened
+  today can be re-judged. The cost: the Tuesday example above does nothing until next week.
+
+The client half (`weekdays.ts`) is indifferent — it judges each day by the entry in force — so
+this is decided entirely by the date the form sends. The draft writer refuses anything before
+UTC's yesterday, which permits either.
+
+### 16c. A goal CREATED as "Tuesdays" — what does it say about the days before it existed?
+
+The mark row looks back 31 days whether or not the goal existed then; today a new daily goal
+that counts an activity shows those days as missed — `streakAsks` asks about every window back to
+31 regardless of when the goal was made. A Tuesday goal given its schedule from today would be judged "every day"
+for the thirty days before it, and show twenty-six misses for Mondays it never asked about.
+
+**Recommendation:** at creation only, the form writes the schedule from the earliest date there
+is, so the goal's first schedule is its schedule for all of the past. That is not a rewrite of
+history — there is none before the goal — but it does mean the draft writer must allow one
+backdated row in exactly that case (a goal with no schedule rows yet, created today), and that
+exception is the kind that wants deciding rather than discovering.
+
+✅ **ANSWERED 8 Nov, for 16b and 16c together — and the answer differs from what I recommended in
+two places, so those two are held rather than built.** Your words: _"Weekday schedule edits take
+effect today for the current and future occurrences, but must not rewrite earlier history or erase
+a completion already recorded today. New goals must not create missed occurrences before their
+creation date."_
+
+- **Agreed, and already how `weekdays.ts` works:** an edit takes effect today; every earlier day
+  keeps the schedule it was judged under, because the schedule is a history and `maskOn` reads the
+  entry in force on each day.
+- **Different — today's completion.** My "today" accepted a cost: a goal finished this morning and
+  then edited to exclude today "stops counting today, so its streak may drop by one", because
+  `scheduledMarks` turns a met off-day into `off`. Your rule forbids exactly that. See 16f.
+- **Different — before creation.** My "yes" only stopped OFF-days before creation reading as
+  misses, by back-dating the first schedule row; a SCHEDULED day before creation would still have
+  been a miss, as it is for every new daily goal today (the 31-day row asks about every window back
+  to 31 regardless of when the goal was made). Your rule removes every miss before creation, for
+  every goal, which is better — and it makes the back-dated row and the draft writer's exception for
+  it unnecessary. See 16g.
+
+### 16d. The stacked drafts only get one of the four CI checks
+
+`lint`, `test` and `build` run on pull requests **to `main`** only; `db guards` runs on every push.
+So #36, #37 and #38 — based on each other so each diff is one commit — have had `db guards` in CI
+and lint, typecheck, tests and build **locally, at each exact head**. The full set runs on each as
+it is retargeted to `main`. Nothing to decide unless you would rather they targeted `main` now,
+which would show #33's commits again inside every one of them.
+
+### 16e. Recommendations for §15, so they can be answered with a yes
+
+✅ **ALL FOUR ANSWERED 8 Nov 2026** — each answer is written under its own question in §15a–d, in
+Evan's words. 15a and 15b are as recommended; 15c is as recommended, with "atomically" and "without
+duplicates" made explicit; 15d is as recommended, with the claim itself parked behind four
+requirements.
+
+- **15a, where a standalone note goes:** a row in the day log with a time and **no length**,
+  drawn like a moment (the rating rows already are) — not a fold. A note belongs to the day,
+  and the Journal half (#37) is where it would also be listed beside every other note — which
+  `journalRows` will need teaching, since today it only reads notes that hang off a sitting.
+- **15b, exercise identity:** keep `exercise_id` (the blob's ids are stable — `Exercise.id`) and
+  **capture the name on the set when it is written**, so a deleted exercise still reads by name.
+  Lifting exercises out of the blob is a Circuit migration and not worth it for this alone.
+- **15c, moving a sitting:** the move dialog **says so** — "the 12 Quad Curl stay with Quad Curl"
+  — rather than refusing or offering to move them. And a related case surfaced since: editing a
+  sitting's START across midnight must move its sets' day in the SAME call, because the day a set
+  counts for is a local date the client computes, and two writes would leave a window where the
+  Circuit grid and the sitting disagree about which day the reps were. The recorded-once proposal
+  stored that day as "carried rather than derived"; for a set that has a sitting it should follow
+  the sitting.
+- **15d, `circuit_logs`:** treat the split as **the design**, and say so in the migration: sets
+  are canonical for a person with an account, `circuit_logs` stays canonical for an unclaimed one.
+  Claiming a person migrates their rows at that moment, in the claim function — one path, at the
+  one point the answer changes.
+
+### 16f. A day that was met, under a schedule that now calls it off — met, or off?
+
+Your rule says an edit must not erase a completion already recorded today. Two ways to keep that,
+which differ on every OTHER day too:
+
+- **A met day is met, whatever the schedule says (recommended).** One rule with no special day:
+  today's finished goal stays finished and keeps counting toward the streak after an edit, and so
+  does an extra swim on a Wednesday for a Tuesdays goal. Nothing that was done is ever drawn as
+  "off". The cost: a streak can include days the schedule did not ask for.
+- **A met off-day is shown as done but skipped by the streak, like an off day.** The streak stays
+  strictly about the schedule. The cost: today's completion stops counting toward the streak after
+  the edit, which may be what you meant by "erase".
+
+`scheduledMarks` changes by one line either way. Nothing is built until you choose.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026 — the first option:** _"Keep earned completions and their streak
+credit when a schedule edit makes a completed day an off-day. Never erase earned history through a
+scheduling change."_ So a met day is drawn met and counts toward the streak whatever the schedule
+now says about it. **How it is built:** the rule is "a met day is met", with no special case for
+the day of the edit — because the only day an edit can reach is today (every earlier day keeps the
+schedule it was judged under), and a rule with a special case for today would be one that changes
+its answer at midnight. **One consequence to know about:** the same rule means an extra swim on a
+Wednesday, for a goal that has always been Tuesdays, also counts toward the streak. Nothing
+was erased there, so the decision does not forbid it — but it does not ask for it either. It is
+queued in the integration queue as a yes/no rather than decided here.
+
+### 16g. A day before a goal existed that the record shows as met — met, or blank?
+
+Removing misses before creation needs the goal's creation date in the room (`chronicle_goals_mine`
+does not send `created_at` today — a reader change, the marks reader could carry it). The open half
+is the days the RECORD answers for: you drew yesterday, and today you make "draw every day".
+
+- **Blank (recommended).** The goal did not exist, so it neither met nor missed; the row starts on
+  the creation day and so does the streak. It reads your "don't invent historical successes" the
+  strict way.
+- **Met.** It is a true fact about the record, and it is what the 31-day row shows today. The cost:
+  a goal made this morning can open with a ten-day streak.
+
+This changes what every NEW goal looks like on the 31-day row, weekdays or not, so it can ship
+before weekdays do.
+
+✅ **ANSWERED BY EVAN, 8 Nov 2026 — the first option:** _"Periods before a goal's creation are not
+applicable—neither successes nor misses. Older activity records remain intact, but don't
+manufacture a retroactive goal streak."_ So a window that ended before the goal's creation day is
+drawn as neither met nor missed, and a streak cannot reach back past it. The window that CONTAINS
+the creation day is judged normally, because the goal existed during it: a weekly goal made on a
+Wednesday is asked about that whole week. **What it needs:** the goals reader has to send
+`created_at`, which it does not today, so this rides in the weekday draft's reader change. Until
+that is applied the room has no creation date and draws every window as it does today — the
+same answer it gives now, not a new wrong one.
+
+---
+
+## 17. A repeating goal ticked by hand never resets — found 8 Nov 2026
+
+**This is a live defect, not a proposal for something new**, and it is the first example in the
+brief Chronicle was rebuilt from: _"Floss every day: simple check-off."_
+
+`chronicle_goals` keeps one `done_at` and one `progress` per goal. A one-off goal has one window,
+so that is right. A **repeating** goal moved by hand — a tick-box, or a count moved with − and + —
+keeps the same flag and the same count in every window after the first. "Floss every day", ticked
+once, reads ticked on every later day; "Stretch 20 minutes a day" starts day two at yesterday's
+total. Goals the **record** answers for are unaffected, because the tally is asked per window.
+
+**Evidence:** read from `chronicle_goal_progress` and from `finished()` in goal.ts, and shown in
+the preview double, which keeps the same single flag: a new daily tick-box ticked on Today was
+already ticked on Tomorrow. **Not exercised against production**, by instruction. The workaround
+today is to untick and re-tick each day — which still shows the goal as done every morning.
+
+**The fix is written and tested, and not applied:** one row per goal per window,
+`docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql`, with its client half in
+`src/chronicle/marks.ts` (9 tests; four perturbations, one of them reproducing today's behaviour
+exactly, each turned some red). It also makes a streak POSSIBLE for a repeating tick-box, which has never had the history
+for one — the room does not draw that row yet.
+
+### 17a. Approve the per-window marks table?
+
+**Recommendation: yes, before anything else on the Chronicle list.** It is the difference between
+the daily check-off working and working once. Three inert steps, each revertible on its own.
+
+### 17b. What to do with the repeating goals that already carry a tick or a count
+
+Nothing is deleted either way. **Recommendation:** copy a repeating goal's existing `done_at`
+into a mark for the window that contains it — a true fact, it was done then — and leave its
+`progress` on the row, unread, because nothing records which window a hand-moved count belonged
+to and assigning one would invent a history.
+
+### 17c. Hide "every day" on tick-box goals until 17a lands?
+
+It would stop new goals being made that work once. **Recommendation: no** — it would hide what
+the existing ones are, and it is a change to undo the day the fix ships. Better to ship 17a.
+
+✅ **UPDATE 8 Nov — 17a approved for implementation and local testing, and done; applying it is
+the next approval (17d).** Built on `chronicle/marks-wired`, draft PR #73, stacked on the frontend
+tip (#43):
+
+- **The draft is runnable**, in three steps that are each inert alone: the table, writer, reader and
+  the export/import carrying `marks` (`docs/2026-11-08-chronicle-repeat-marks.DRAFT.sql`); the room
+  (#73's frontend commit); and the profile reader
+  (`docs/2026-11-08-chronicle-repeat-marks-profile.DRAFT.sql`), which must land after the room or
+  every repeating goal on every profile would read ○.
+- **The window is keyed by goal, scope and local date, and carries its two instants**, so the
+  server can tell which mark is current without knowing anybody's zone, and refuses a window that
+  has not begun.
+- **Evidence:** `supabase/tests/chronicle-repeat-marks.sql`, as a seeded member against the real
+  functions in CI's throwaway database, with the drafts applied: clean twice; seven faults put in,
+  each named by its own check; and the standing visibility guards, the daily flow and the
+  export/import round trip all still hold with the drafts in place. In the preview double, desktop
+  and 375: Floss unticked today though its row says done, ticked for one day only, "opens tomorrow"
+  on the Tomorrow tab.
+
+**17b, done differently from the recommendation above — and the reason is your own rule.** I
+proposed copying the row's `done_at` into a mark for the window containing it. The server cannot
+place it honestly: the window is local, and an 8pm tick in California is the next day in UTC. So
+nothing is copied. The reader hands the row's `done_at` to the room as `legacy`, and the room lights
+the one local window containing it; a mark, once there is one, wins. Evidence preserved, placed
+where it is true, nothing written on anybody's behalf, nothing invented. The row's `progress` is
+still not read for a repeating goal. One visible consequence: a profile cannot place the old tick
+either, so a goal ticked under the old room reads ○ to friends for the rest of that one window.
+
+**17c is moot** once 17d is done.
+
+**One behaviour to know about:** the Tomorrow tab no longer ticks a repeating goal. It shows
+tomorrow's own window, which has not begun, so the box and ± are disabled and say "opens tomorrow".
+Before, ticking it there ticked the one shared flag — today's too.
+
+### 17d. Approve applying step 1 to production?
+
+**Recommendation: yes, then deploy the room, then step 3.** In that order each step is inert alone,
+and the rollback for each is written in its file. Two things to know first:
+
+- **The substitutions into `chronicle_export` and `chronicle_import` were matched against CI's
+  database**, which is built from the schema baseline, not from production. The migration raises
+  if any substitution does not match exactly once, so a production function that has moved on stops
+  it rather than being half-patched — but it is worth one read-only look at production's text
+  (`pg_get_functiondef`) before applying, which I have not done, by instruction.
+- **The room must not ship before step 1.** Until the table exists, every tick on a repeating goal
+  would come back refused.
+
+---
+
+## 18. A note with no session — built as a draft (2026-11-08)
+
+§14b's three rules were settled, so the build went ahead as a draft: #76, with
+`docs/2026-11-08-chronicle-day-notes.DRAFT.sql` and `supabase/tests/chronicle-day-notes.sql`.
+**Nothing is applied.** The room's door is the Journal: a box at the top, day notes listed beside
+session notes, and ✎ Note with nothing running opening that box. The test asks "never on anybody's
+timeline" two ways: as a census of every function that names the table, and as a friend reading
+a member who is sharing a session. The test first insists the friend's readers did return that
+session, so an empty answer cannot pass for privacy.
+
+### 18a. Approve applying the day-notes draft?
+
+**Recommendation: yes, after #73's step 1 or before it — the order does not matter, and both have
+run.** It changes a live table: `entry` becomes nullable, and a column and a CHECK are added. Every
+existing row satisfies the CHECK. The rollback is written in the file, and its last step deletes
+what people wrote, so that step says to export first and ask.
+
+### 18b. §15a is still open, and #76 does not need it
+
+Where the **Day** log draws one of these — a row with a time and no length, or a fold of its own
+— is still §15a, recommended in §16e. Until it is answered, a note with no session lives in the
+Journal only, which is a complete feature on its own rather than half of one.
+
+✅ **ANSWERED 8 Nov (§15a) and built** — #84, stacked on #76: a moment row in the Day log, with a
+time only when the note was written during that day. See §19.
+
+---
+
+## 19. Chronicle, the evening pass of 8 Nov 2026 — what was built, and what is asked
+
+Built under the answers recorded in §15 and §16, each as a draft PR. **Nothing is applied to any
+database, merged or deployed.**
+
+| PR  | Branch                     | On  | What                                                                         |
+| --- | -------------------------- | --- | ---------------------------------------------------------------------------- |
+| #83 | `chronicle/weekdays-wired` | #73 | weekdays and creation dates (§16b, §16c, §16f, §16g), with a runnable draft  |
+| #84 | `chronicle/day-log-notes`  | #76 | a note with no session as a moment in the Day log (§15a), frontend only      |
+| #85 | `chronicle/sets-model`     | #43 | step 1 of recorded-once (§15b, §15c, §15d), with a runnable draft            |
+| —   | on #73                     | —   | daily, weekly and monthly marks asked separately, at every boundary and zone |
+
+How they fit together, and what CI says about the combined tree, is
+`docs/2026-11-08-chronicle-integration-queue.md`.
+
+### 19a. An extra session on a day the schedule never asked about — does it count?
+
+Your §16f answer keeps an earned completion when an edit makes its day an off day. It is built as
+**"a met day is met"**, because the only day an edit can reach is today and a special case for
+today would change its answer at midnight. The same rule also counts a Wednesday swim for a goal
+that has always been Tuesdays.
+
+- **Count it (recommended, as built).** One rule, and nothing done is ever drawn as off. The cost
+  is that a streak can include days the schedule never asked for.
+- **Do not count it.** An off day stays a short tick even when met, except a day that an edit
+  turned off after it was met. The cost is a second rule that compares the schedule row's `set_at`
+  with when the day was met.
+
+### 19b. A friend's view of a weekday goal on its off day
+
+`get_member_chronicle` counts a repeating goal as open when its current window has no mark. The
+server has no zone, so it cannot tell a member's Wednesday from their Tuesday, and on a friend's
+view of a profile a Tuesdays goal still reads as open on a Wednesday. The member's own room is
+right.
+
+- **Leave it (recommended for now).** The friend's count is off by one on off days, and only there.
+- **Store a time zone name on each profile** so the server can work out the member's local day.
+  That is a new column of personal data and a settings screen, which is your call rather than mine.
+
+### 19c. Apply the weekday draft?
+
+**Recommendation: yes.** Apply it in any order with the other three drafts, then deploy the room
+(#83, which needs #73's room). It adds a table, a writer and two fields to the goals reader. Until
+the room ships, a goal with no schedule reads exactly as today. The rollback is written in the file.
+The same caveat as §17d applies: the substitutions were matched against CI's database, so a
+read-only look at production's `pg_get_functiondef` first is worth one call.
+
+### 19d. Apply the sets draft (step 1 of recorded-once)?
+
+**Recommendation: yes, whenever convenient. Nothing reads the table yet**, so applying it changes no
+number on any screen. #85's room only reads it to explain a move and to carry a moved sitting's
+sets. Step 2, where the tally, the Circuit grid and the day's feed read sets, is the next build. It
+changes three live readers, and each will be its own reviewable draft.
+
+### 19e. The claim migration (§15d) is parked, and here is exactly why
+
+§15d asks for verified ownership and claim permissions, an idempotent operation, preserved legacy
+data and a recovery plan before a claimed person's `circuit_logs` move to sets. The last three can
+be written. **The first does not exist:** `claim_person` lets any member of a group that contains
+an unclaimed person claim that person, first come, with no check that they ARE that person. Moving
+history on claim would hand somebody's whole log to whichever relative pressed the button first.
+
+**Question: what should make a claim verified?** For example, an admin approves it, or the person
+being claimed confirms it from their own account. Until that is decided, sets stay writable only
+for a person `owner_user_id` already names (#85), `circuit_logs` stays canonical for everybody
+else, and nothing is migrated.
+
+### 19f. Device and signed-in checks, for whenever you are on the site
+
+None of this can be exercised signed in from here, by instruction. Once the drafts are applied and
+the room deployed:
+
+1. Make a daily goal, tick it, then edit it to leave today out. It should stay ticked and say "not
+   due today".
+2. Look at the Tomorrow tab when tomorrow is an off day. The goal should not be there.
+3. On yesterday's Day log, press ✎ Note and write something. Yesterday's log should then show it
+   with "written <today>" and no time.
+4. On a phone: the seven day toggles and the note row's ✎.
+5. Link an exercise in an activity's editor; start that activity; count a few sets; Undo one. Then
+   open the Circuit: the cell should say how much came from sessions, and typing a total below it
+   should be refused, saying so.
+6. With sets counted on a sitting, change its activity in its editor: the move sentence should say
+   the sets stay with their exercises. (Until the counter could write sets this had no device check.)
+7. On a sitting with counted sets, Account → ⬇ Save a copy, then ✕ one set in the sitting's editor,
+   then ⬆ Put one back with that file. The set should stay out, the sitting's count should not move,
+   and the toast should not claim the file added anything it did not.
+8. On a Circuit cell that holds sessions, tap "change them there". Chronicle should open on that
+   day's log, not today's. Then type a total into the cell and wait for "Saved ✓": the line saying
+   how much came from sessions should still be there.
+9. On a phone, open a past day in the Circuit log that has a workout saved. The date row should
+   wrap, with "Saved ✓" whole on the second line rather than cut off at the edge.
+10. On a Circuit day with a photo, type one number, then clear every number. The day and its photo
+    should still be there. (Before this, the board forgot the photo after one typed save, and
+    clearing then deleted the day, with its comments.)
+11. Open the Circuit, follow a cell's "change them there", take a set back in Chronicle, and come
+    back to the Circuit. The cell should show the new total without a reload, and typing into it
+    should save the first time (§20b). Try it once with the canvas on, where the Circuit stays
+    mounted, and once with it off.
+
+The preview now has a stand-in for the signed-in Circuit board (`src/dev/circuitPreview.ts`), and
+8–10 were driven there first. It shares Chronicle's preview store and runs the real adapter, so it
+is evidence about the frontend; it is not a session, and the server's half is the SQL tests.
+
+### 19g. Sets, step 2: three questions before anything reads them
+
+Step 2 is where the numbers people see start reading sets:
+
+- a sitting's count, and the goals that count it;
+- the Circuit grid;
+- the day's workout line.
+
+Writing it down properly turned up three things the recorded-once proposal assumes without
+saying. Each changes what a number on screen means, so **step 2 is parked on these and nothing
+else**. Step 1 (#85) does not depend on them.
+
+1. **Units.** A set carries its exercise's unit (reps, min, sec, mi, km, hr), and a sitting's
+   count carries its activity's one metric. "12 Quad Curl + 30 sec Plank" is not a number of
+   anything, so which sets add up to a sitting's count, and to a goal counting it?
+   **Recommendation:** an exercise can only be linked to an activity whose metric is its own
+   unit. Plank does not link to Gym, and it still counts in the Circuit, where points use `mult`.
+2. **A grid cell is a day's total; sets are separate entries.** For a person with an account,
+   when they type 20 into Quad Curl's cell and 12 came from a Chronicle sitting, what is written?
+   **Recommendation:** one set with no sitting, holding the difference (8). A cell can never be
+   set below what sittings counted on that day; lowering that part is done by editing the
+   sitting. Nothing typed in the grid deletes a sitting's sets.
+3. **The logs an already-linked person has.** Until those `circuit_logs` rows become sets, the
+   grid would show a day's legacy total and its sets side by side for the same exercise.
+   **Recommendation:** for a person `owner_user_id` already names, run step 3 of the proposal
+   before the grid reads sets: one set per `{eid, val}`, and `circuit_logs.entries` frozen rather
+   than dropped. It is a migration of existing records, so it would be its own reviewable draft
+   with a dry-run count, and applying it would be its own approval. It is NOT the claim migration
+   in §19e. Nobody becomes linked by it, and an unclaimed person's logs stay exactly where they
+   are.
+
+✅ **ANSWERED BY EVAN, 9 Nov 2026 — all three, with rules.** Evan's words, then what each means for
+the build. Approved for implementation and isolated testing only; nothing here is approval to
+apply anything to production.
+
+1. _"UNITS: YES. Link exercises to activities only when their actual normalized units match.
+   Don't infer compatibility from names or mix seconds with reps. Preserve unmapped legacy
+   records; queue ambiguous mappings instead of guessing."_
+   - One normalisation table, in SQL and in TypeScript, kept in step by a test. An exercise's unit
+     and an activity's metric each map to a canonical unit or to nothing.
+   - A link needs both to map and to agree. "Nothing" never matches anything: an exercise in
+     `other`, or an activity counting "laps", is listed as **needs a decision** rather than linked.
+   - Names never take part, and an unlinked exercise's records stay exactly where they are.
+   - The check runs at write AND at read, because either side's unit can change after linking.
+2. _"GRID EDITS: YES, WITH THESE RULES. If sessions contribute 12 and I enter 20, store an
+   editable manual contribution of 8. Saving 20 again must still total 20—not 28. Later sessions
+   add normally; don't keep adjusting the manual contribution to hold the total at 20. Reject
+   totals below the session contribution with a clear explanation and a discoverable way to
+   correct the underlying sessions. Don't silently clamp the number, delete sessions or overwrite
+   their recorded amounts. Enforce permissions and concurrent-update correctness on the server
+   too."_
+   - A cell is written as a TOTAL. The server works out `manual = total − sessions` against the
+     sessions as they stand, and stores the manual part.
+   - A second save of the same total writes the same manual part, so the total stays 20.
+   - A later session adds to the total; the manual part is untouched until the cell is typed
+     into again.
+   - A total below the sessions is refused, naming the session amount, with a link to that day
+     in Chronicle.
+   - The client sends what it SAW (sessions and manual). If either has moved, the save is refused
+     and the cell shows the new figures, rather than guessing which of two meanings "20" had.
+3. _"EXISTING LOGS: YES TO A SEPARATE CONVERSION DRAFT. … Preserve originals and stable source
+   identifiers. Re-running conversion must not duplicate records. Reconcile amounts by person,
+   exercise, day and unit. Preserve date-only records without inventing times; report records
+   that cannot be converted rather than dropping them. Keep the existing reader until conversion
+   is validated, then switch without missing or double-counting records. Freezing legacy writes
+   belongs to that coordinated future cutover—not an independent production change now."_
+   - Its own branch and its own draft.
+   - Each set made from a log carries the log's id and the entry's position as its source. A
+     unique key on that source makes a re-run add nothing.
+   - Duplicate rows for one person and day are summed per exercise and reported.
+   - `__total__` entries, exercises no longer on the person's list, and units that do not
+     normalise are reported, never dropped.
+   - The grid reads the legacy log until a person is marked converted, in the same transaction
+     as their conversion. After that it reads sets only, so there is no window in which a day is
+     read twice or not at all.
+   - Nothing freezes or deletes legacy writes.
+
+**Built on 9 Nov, as three follow-on branches from the integration boundary, none applied:**
+
+- `chronicle/sets-links`: links (1).
+  - A unit table kept identical in SQL and TypeScript.
+  - Counted sets written through into their sitting's amount, so no reader of an amount changed.
+  - Goals adding the grid's typed part by local day.
+  - The counter's sets mode, and the activity editor's "From the Circuit" row.
+- `chronicle/sets-grid`: cells (2).
+  - circuit_session_sums, behind the Circuit's own see rule.
+  - circuit_cell_set storing total − sessions under a lock every set writer shares, with stale and
+    below-sessions saves refused.
+  - The board showing totals.
+  - A cell saying "12 from Chronicle sessions · change them there".
+- `chronicle/sets-conversion`: the separate conversion proposal (3), and the switch every reader
+  makes at its marker.
+
+---
+
+## 20. Chronicle — every open question, in one place (9 Nov 2026)
+
+✅ **ALL ANSWERED 9 Nov, as recommended.** Evan's words: "These answers are NOT approval to apply
+anything to production." Applying 17d, 18a, 19c, 19d and 20c is one release, approved as one
+step against `docs/2026-11-09-chronicle-release-plan.md`. Each row's own section holds the
+reasoning.
+
+| §   | Question                                                                       | Answer                                                                              |
+| --- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| 17d | Apply the per-window marks draft (step 1)?                                     | Yes, as part of the release plan                                                    |
+| 18a | Apply the day-notes draft?                                                     | Yes, as part of the release plan                                                    |
+| 19a | Does an extra session on a day the schedule never asked about count?           | Yes, as built                                                                       |
+| 19b | A friend's view of a Tuesdays goal on a Wednesday: leave it, or store a zone?  | Leave it. No stored time zone                                                       |
+| 19c | Apply the weekday draft?                                                       | Yes, as part of the release plan                                                    |
+| 19d | Apply the sets draft (step 1)?                                                 | Yes, as part of the release plan                                                    |
+| 19e | What makes claiming a Circuit person verified?                                 | An admin approves it, or the person confirms from their own account. Not yet built  |
+| 20a | A set counted in Chronicle shows in that person's Circuit column. OK?          | Yes: the number only; the session's details stay private                            |
+| 20b | The board does not see Chronicle's sets until it reloads. Realtime, or reload? | Reload the board when the Circuit opens again; no realtime. Built as a draft (#100) |
+| 20c | Apply the links draft, then the grid draft?                                    | Yes, after 19d, links then grid, as part of the release plan                        |
+| 20d | The conversion: when, and with which freeze?                                   | No conversion until Evan picks a cutover date                                       |
+
+✅ **20e, answered 9 Nov: keep it as built.** A restore leaves out a converted person's sets with no
+sitting. The question was what to do after a converted cell is retyped: restoring an older file put
+the replaced sets back beside the new manual part, and a cell converted at 10, retyped to 25 and
+restored read 35. It only acts on a converted person, so like the rest of the conversion it waits
+for the 20d cutover.
+
+Device and signed-in checks are §19f, and grow with each build.

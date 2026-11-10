@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { showToast } from '../circuit/toast'
 import { exportMine, importMine } from './cloud'
+import { putBackSays } from './putBackCopy'
 
 /**
  * Your record, out of the account and back into it.
@@ -77,19 +78,10 @@ export function YourCopy({ onPutBack }: { onPutBack?: () => void } = {}) {
         showToast(got.why.charAt(0).toUpperCase() + got.why.slice(1))
         return
       }
-      const added = got.activities + got.entries + got.goals + got.routines + got.plans
-      /**
-       * ⚠️ COUNTED SEPARATELY, because "added 0" and "that file was already here" are different
-       * things to be told and only one of them sounds like a failure. The same distinction the
-       * Account page's own restore makes.
-       */
-      showToast(
-        added
-          ? `Added ${added} — ${got.entries} sessions, ${got.activities} activities, ${got.goals} goals.`
-          : got.skipped
-            ? 'Everything in that file was already here'
-            : 'There was nothing in that file',
-      )
+      /* ⚠️ EVERY KIND THE FILE CAN ADD COUNTS, and that sum lives in putBackCopy.ts now, where a
+         test can ask it — written out inline here, it had missed the sets and the links */
+      const { text, added } = putBackSays(got)
+      showToast(text)
       /**
        * ⚠️ TELL THE ROOM, or it goes on showing what it loaded before the file arrived. Found by
        * doing it: a put-back into an empty account restored seventeen sessions and eleven goals,

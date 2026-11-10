@@ -1,6 +1,7 @@
 import { localISO } from '../circuit/dates'
 import { localMidnight, type Activity } from './record'
 import type { VisibilityTier } from '../circuit/types'
+import { dueOn, type Schedule } from './weekdays'
 
 /**
  * A goal, and the window it is judged over.
@@ -105,6 +106,21 @@ export type Goal = {
    * and created_at behind it, rather than a second opinion about where a row belongs.
    */
   priority: 0 | 1 | 2
+  /**
+   * When the goal was made, as epoch milliseconds — or absent, when the reader does not say.
+   *
+   * ⚠️ BEFORE IT, THE GOAL ASKED ABOUT NOTHING (§16g, answered): a window that ended before this
+   * local day is neither met nor missed, so a goal made this morning cannot open with a ten-day
+   * streak of things done before anybody asked, and a new daily goal does not open with thirty
+   * misses either. ABSENT MEANS UNKNOWN, not "always": `chronicle_goals_mine` carries it only once
+   * the weekday draft is applied, and until then every window is drawn as it always was.
+   */
+  made?: number | null
+  /**
+   * A repeating daily goal's weekdays, as a history — see weekdays.ts. Absent or empty is every
+   * day, which is what every goal had before the column's draft existed.
+   */
+  days?: Schedule
 }
 
 /** Inclusive `from`, EXCLUSIVE `to`, both local ISO dates. Null for 'life', which has no window. */
@@ -250,7 +266,9 @@ export const homeFor = (s: Scope): Scope => (SHOWN_SCOPES.includes(s) ? s : 'yea
 export function inScope(g: Goal, scope: Scope, on: string): boolean {
   if (homeFor(g.scope) !== scope) return false
   if (g.scope === 'life') return true
-  if (repeats(g)) return true
+  /* ⚠️ A REPEATING DAILY GOAL IS ONLY DUE ON ITS OWN DAYS — a Tuesday swim is not today's work on
+     a Wednesday. Every other scope repeats over every window it has. */
+  if (repeats(g)) return !offOn(g, on)
   const w = windowOf(scope, on)
   return !!w && !!g.anchor && g.anchor >= w.from && g.anchor < w.to
 }
@@ -340,8 +358,135 @@ export function lateIn(
   return pastIn(g, scope, on, today) && !finished(g, tally, today)
 }
 
+/**
+ * Whether a repeating daily goal's schedule leaves this day out.
+ *
+ * ⚠️ NOT "NOT IN SCOPE": a goal can be off today and still be on screen, because it was done
+ * anyway, or ticked before an edit made today an off day. The room keeps those rows (see `mine`
+ * in Chronicle.tsx), and this is how it tells them from the day's real work.
+ */
+export const offOn = (g: Goal, on: string): boolean =>
+  repeats(g) && g.scope === 'day' && !dueOn(g.days ?? [], on)
+
 /** Whether the record answers for this goal, rather than you doing. */
 export const derived = (g: Goal): boolean => !!g.activity || !!g.cat
+
+/**
+ * Which goals were already finished on arrival — the snapshot `arrange` reads — together with the
+ * tab and the DAY it was taken for.
+ *
+ * ⚠️ THE DAY IS PART OF THE KEY, and the first version left it out. The snapshot was keyed by the
+ * tab alone, so a room left open across midnight — which is what a phone does with a tab — kept
+ * yesterday's set on Today. A repeating goal has the same id every day, so one finished yesterday
+ * was filed under Done today, unfinished, under a heading that told a screen reader it was done,
+ * while the Aims count two inches above still counted it as due. The fix is that a snapshot only
+ * answers for the window it was taken in; any other gets nothing, which files everything as open
+ * — the safe direction, because an open row that is really done is merely tidy-able, and a done
+ * row that is really due is work hidden.
+ */
+export type Settled = { view: string; on: string; ids: ReadonlySet<string> }
+
+const NONE: ReadonlySet<string> = new Set()
+
+/** The snapshot's ids if it was taken for this tab on this day, and nothing otherwise. */
+export const settledFor = (s: Settled | null, view: string, on: string): ReadonlySet<string> =>
+  s && s.view === view && s.on === on ? s.ids : NONE
+
+/**
+ * A window's list, in the order somebody holding a phone wants it.
+ *
+ * ⚠️ WHAT IS LEFT FIRST. The list was ordered by priority alone, so a goal finished this morning
+ * sat at the top of the evening's list with a line through it, and the three things still to do
+ * were underneath it. Done things are the least actionable rows on the screen and they were
+ * taking the best position on it.
+ *
+ * ⚠️ BUT NOTHING MOVES WHILE YOU ARE LOOKING. `settled` is the set of goals that were ALREADY
+ * finished when you arrived at this view, and it is a snapshot: tick something now and it stays
+ * where it is, struck through, exactly as before. The room learned this the hard way with late
+ * goals — a tick that moves its own row puts the row out from under the thumb, and the untick
+ * you then want is somewhere else. So a section is decided on arrival and kept for the visit,
+ * and the next arrival sorts again.
+ *
+ * Within each section the order is the one it arrived in, which is priority, then sort, then
+ * creation — nothing here re-ranks anything.
+ */
+export function arrange(
+  mine: readonly Goal[],
+  late: readonly Goal[],
+  settled: ReadonlySet<string>,
+): { open: Goal[]; late: Goal[]; done: Goal[] } {
+  const open: Goal[] = []
+  const done: Goal[] = []
+  for (const g of mine) (settled.has(g.id) ? done : open).push(g)
+  return { open, late: [...late], done }
+}
+
+/**
+ * The longest title a goal may have.
+ *
+ * ⚠️ THE SERVER'S NUMBER, NOT A CHOICE MADE HERE: `chronicle_goals` checks
+ * `char_length(btrim(title)) between 1 and 120`. A shorter ceiling here would cut ideas that fit;
+ * a longer one would hand the save a title it refuses, and the form would say "that did not
+ * save" about a goal that looked fine.
+ */
+export const TITLE_MAX = 120
+
+/**
+ * A journal entry turned into the first draft of a goal's title.
+ *
+ * ⚠️ A DRAFT, FOR A FORM — never saved by itself. The note "ring the physio about the knee, and
+ * ask whether the left one is the same" is a perfectly good goal, but a long reflective entry is
+ * not, and only the person can tell which this is. So the text lands in the add form's title box,
+ * the form is the confirmation, and nothing is written until they press Add.
+ *
+ * ⚠️ ONE LINE, AND CUT AT A WORD. A journal entry can hold newlines and a goal title is drawn on
+ * one row; a title cut mid-word reads as a typo, so a long one stops at the last space that fits
+ * and says it was cut. A single unbroken run longer than the limit has no space to stop at and is
+ * cut where it has to be.
+ */
+export function ideaTitle(body: string): string {
+  const one = body.replace(/\s+/g, ' ').trim()
+  if (one.length <= TITLE_MAX) return one
+  const room = one.slice(0, TITLE_MAX - 1)
+  const space = room.lastIndexOf(' ')
+  return (space > 0 ? room.slice(0, space) : room).trimEnd() + '…'
+}
+
+/** What the ▶ on an Aims row would start — see `startFor`. */
+export type StartFrom = { activity: string; name: string; running: boolean }
+
+/**
+ * The activity a goal can be started from, or null when there is nothing to start.
+ *
+ * ⚠️ THE ROOM KNEW WHAT TO DO AND HAD NO WAY TO DO IT. "Work out 20 minutes a day" is a goal
+ * pointing at an activity, and the only way to spend those minutes was to leave the Aims half,
+ * find that activity among the switch tiles on the Day half and press it there — so the two
+ * halves of one sentence lived on two screens. The goal already names its source; this is that
+ * name turned into a button.
+ *
+ * ⚠️ THE SAME THREE REFUSALS AS `tilesFor`, and deliberately the same three. `chronicle_start`
+ * refuses an activity with an `archived_at`, so a ▶ on one is a button whose only possible
+ * answer is an error — the lesson an archived routine step taught, and the row already says
+ * "archived" beside the source. An `auto` activity is written by the site itself and is not a
+ * thing a person starts. A category source names no single activity, so there is nothing for a
+ * ▶ to be about; `counts = 'minutes'` over a whole category is still only ever moved by starting
+ * one of the activities in it, which is what the Day half is for.
+ *
+ * ⚠️ AND IT REPORTS `running` RATHER THAN HIDING. Pressing Start on the activity you are already
+ * in closes that sitting and opens a new one — `chronicle_start` says so — which silently splits
+ * what you are doing in two. A row that says it is running is the useful half of that fact
+ * anyway: it is the only thing on the Aims half tying the clock at the top to the goal it feeds.
+ */
+export function startFor(
+  g: Goal,
+  acts: readonly Activity[],
+  runningActivity: string | null,
+): StartFrom | null {
+  if (!g.activity) return null
+  const a = acts.find((x) => x.id === g.activity)
+  if (!a || a.archived || a.auto) return null
+  return { activity: a.id, name: a.name, running: runningActivity === a.id }
+}
 
 /** What the ◍/◉/○ button in the Aims row shows, and what pressing it should do. */
 export type ProfileGlyph = { glyph: string; press: 'share' | 'unshare' | 'open-sharing' }
@@ -499,11 +644,25 @@ export const finished = (
  * so a tally that computed its own windows would disagree with the view above it for one day in
  * seven, forever. The server is given ranges and does arithmetic it cannot have an opinion about.
  */
-export function tallyAsks(
-  goals: Goal[],
-  on: string,
-): Array<{ key: string; id: string; from: string; to: string }> {
-  const out: Array<{ key: string; id: string; from: string; to: string }> = []
+/**
+ * One question to the tally: a goal's window as instants, and as the LOCAL days it covers.
+ *
+ * ⚠️ BOTH, BECAUSE A SITTING HAS AN INSTANT AND A CIRCUIT GRID ENTRY HAS ONLY A DATE. The instants
+ * place sittings; the dates place what was typed into the grid for a linked exercise, which the
+ * server cannot turn into an instant without a zone it does not have. A server that predates the
+ * links draft ignores the two dates and answers exactly as before.
+ */
+export type TallyAsk = {
+  key: string
+  id: string
+  from: string
+  to: string
+  from_day: string
+  to_day: string
+}
+
+export function tallyAsks(goals: Goal[], on: string): TallyAsk[] {
+  const out: TallyAsk[] = []
   for (const g of goals) {
     if (!derived(g)) continue
     const w = goalWindow(g, on)
@@ -512,7 +671,14 @@ export function tallyAsks(
     if (!w) continue
     const from = dayStartISO(w.from)
     /* ⚠️ a key per WINDOW, not per goal — see windowKey, and the bug it is named after */
-    out.push({ key: windowKey(g.id, from), id: g.id, from, to: dayStartISO(w.to) })
+    out.push({
+      key: windowKey(g.id, from),
+      id: g.id,
+      from,
+      to: dayStartISO(w.to),
+      from_day: w.from,
+      to_day: w.to,
+    })
   }
   return out
 }
@@ -703,22 +869,21 @@ export const streakKey = (id: string, back: number): string => `${id}|${back}`
  * and a hand-moved goal keeps its progress in a single column — there is no per-window history to
  * count, so a streak would be invented rather than measured.
  */
-export function streakAsks(
-  goals: Goal[],
-  on: string,
-  back = STREAK_BACK,
-): Array<{ key: string; id: string; from: string; to: string }> {
-  const out: Array<{ key: string; id: string; from: string; to: string }> = []
+export function streakAsks(goals: Goal[], on: string, back = STREAK_BACK): TallyAsk[] {
+  const out: TallyAsk[] = []
   for (const g of goals) {
     if (!repeats(g) || !derived(g) || g.target == null) continue
     for (let i = 0; i <= back; i++) {
       const w = windowBack(g.scope, on, i)
       if (!w) break
+      /* the local days too, so the row of a month counts the grid's days the way the meter does */
       out.push({
         key: streakKey(g.id, i),
         id: g.id,
         from: dayStartISO(w.from),
         to: dayStartISO(w.to),
+        from_day: w.from,
+        to_day: w.to,
       })
     }
   }
@@ -759,6 +924,66 @@ export function marksOf(g: Goal, got: Record<string, number>, back = STREAK_BACK
     else out.push(had != null && had >= g.target ? 'met' : 'missed')
   }
   return out
+}
+
+/** A window's verdict on the row, with one answer more than `Mark`: the goal was not for it. */
+export type RowMark = Mark | 'off'
+
+/**
+ * How each window the goal was ASKING ABOUT went, oldest first — the row the room draws.
+ *
+ * `marksOf` answers from the record alone. This applies the two things the record cannot know:
+ *
+ * ⚠️ WINDOWS BEFORE THE GOAL WAS MADE ARE NOT ON THE ROW AT ALL (§16g). Not drawn as misses,
+ * because nothing was asked; not drawn as met either, because "you drew yesterday" is a fact about
+ * the record and not about a goal that did not exist. The window CONTAINING the creation day is
+ * kept — the goal existed during it — so a weekly goal made on a Wednesday is asked about that
+ * week. The row is shorter rather than padded, so it begins where the goal did.
+ *
+ * ⚠️ A DAY THE SCHEDULE LEAVES OUT IS `off` — UNLESS IT WAS MET (§16f). A met day is met whatever
+ * the schedule now says of it, because Evan's rule is that a scheduling change never erases an
+ * earned completion, and the only day an edit can reach is today: every earlier day keeps the
+ * schedule it was judged under. A special case for today alone would be a rule that changes its
+ * answer at midnight. The same rule counts an extra swim on a Wednesday for a Tuesday goal, which
+ * nothing forbids and the integration queue asks about.
+ */
+export function rowOf(
+  g: Goal,
+  got: Record<string, number>,
+  on: string,
+  back = STREAK_BACK,
+): RowMark[] {
+  const base = marksOf(g, got, back)
+  if (!base.length) return []
+  const madeDay = g.made != null && Number.isFinite(g.made) ? localISO(new Date(g.made)) : null
+  const out: RowMark[] = []
+  base.forEach((m, i) => {
+    const w = windowBack(g.scope, on, back - i)
+    if (!w) return
+    if (madeDay && w.to <= madeDay) return
+    out.push(m !== 'met' && g.scope === 'day' && !dueOn(g.days ?? [], w.from) ? 'off' : m)
+  })
+  return out
+}
+
+/**
+ * The run of met windows at the end of a row, stepping over the ones the goal was not for.
+ *
+ * ⚠️ THE SAME TWO RULES AS `streakOf`, plus one: the window you are in does not break the run
+ * because it is not over, an `off` day neither extends nor breaks it — a Tuesday goal met four
+ * Tuesdays running has a streak of four, not of one — and the run cannot reach back past the
+ * start of the row, which is the day the goal was made.
+ */
+export function streakFrom(row: readonly RowMark[]): number {
+  let run = 0
+  let i = row.length - 1
+  if (row[i] === 'now') i--
+  for (; i >= 0; i--) {
+    if (row[i] === 'off') continue
+    if (row[i] !== 'met') break
+    run++
+  }
+  return run
 }
 
 export function streakOf(g: Goal, got: Record<string, number>, back = STREAK_BACK): number {

@@ -348,6 +348,11 @@ that render nothing at zero first**.
   site read `0 / 30` with the minutes in the totals two inches above it. **A room with nothing in
   it passes every check there is**, so count what the sweep examined before believing it, and give
   a members-only surface a stand-in the way `src/dev/chroniclePreview.ts` does.
+  The signed-in Circuit board has one since 9 Nov: `src/dev/circuitPreview.ts` runs the REAL
+  adapter over a double that shares Chronicle's preview store, so a set counted in one room shows
+  in the other's cell. Its first run found two autosave bugs that unit tests and SQL could not see:
+  a cell's sessions line vanished after every save, and a day's photo was forgotten, so clearing
+  the numbers deleted the day.
 - **A DEV-only harness is a claim about the BUNDLE, and the bundle is greppable.** `previewMember`
   folds to `false` in production, which kills the branches and not necessarily the module: a
   statement-level call at module scope — `let S = seed()` — is a side effect rollup cannot prove

@@ -12,7 +12,17 @@ import {
   pvEntries,
   pvExport,
   pvFixRunning,
+  pvFixRunningDay,
+  pvEditEntryDay,
+  pvSetsBetween,
+  pvMyExercises,
+  pvLinkExercise,
+  pvSetAdd,
+  pvSetDrop,
   pvImport,
+  pvMarksFor,
+  pvSetMark,
+  pvSetDays,
   pvQuality,
   pvMoods,
   pvPlanDid,
@@ -38,11 +48,17 @@ import {
   pvMoments,
   pvEntryPicture,
   pvNoteAdd,
+  pvDayNoteAdd,
+  pvDayNotes,
   pvNoteEdit,
 } from '../dev/chroniclePreview'
 import { inBatches } from './goal'
 import { SPANS_AT_ONCE } from './year'
 import type { Goal, Scope } from './goal'
+import { NO_MARKS, type Marked, type MarkAt } from './marks'
+import { validMask, type DayMask, type Schedule } from './weekdays'
+import type { DayNote } from './journal'
+import type { ChronSet } from './sets'
 import type { Plan } from './plan'
 import type { Activity, Entry, Moods } from './record'
 
@@ -100,6 +116,9 @@ type Row = {
   counts: Goal['counts']
   est: number | string | null
   priority: number | string | null
+  /* the weekday draft's two: absent from a reader that predates it */
+  made?: number | string | null
+  days?: unknown
 }
 
 /**
@@ -156,7 +175,33 @@ const read = (r: Row): Goal => ({
      and no flag — rather than as undefined */
   est: r.est == null ? null : num(r.est) || null,
   priority: (Math.min(Math.max(num(r.priority), 0), 2) || 0) as Goal['priority'],
+  /**
+   * ⚠️ ABSENT STAYS ABSENT, never a guess. Until the weekday draft is applied the reader sends
+   * neither, and a goal with no `made` draws every window as it always has — reading a missing
+   * creation as "now" would wipe every row in the room down to one cell.
+   */
+  made: r.made == null ? null : num(r.made, NaN) || null,
+  days: readDays(r.days),
 })
+
+/**
+ * A goal's schedule as the reader sends it: `[{from, days}]`, dates in ISO.
+ *
+ * ⚠️ ANYTHING THAT IS NOT A DATE AND A MASK IS DROPPED rather than defaulted. A row read as "every
+ * day" when it said something else would re-judge the days it covers, which is the one thing the
+ * schedule exists to prevent; dropping it leaves the entry before it in force, which is the
+ * nearest thing to true the client can say.
+ */
+function readDays(v: unknown): Schedule {
+  if (!Array.isArray(v)) return []
+  const out: { from: string; days: number }[] = []
+  for (const x of v) {
+    const from = typeof x?.from === 'string' ? x.from : ''
+    const days = Number(x?.days)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from) && validMask(days)) out.push({ from, days })
+  }
+  return out
+}
 
 /** Every goal of mine. Empty rather than throwing, so a dead network is a quiet room. */
 export async function myGoals(): Promise<Goal[]> {
@@ -240,6 +285,86 @@ export async function setProgress(id: string, progress: number, done: boolean): 
     p_done: done,
   })
   return !error
+}
+
+/**
+ * The marks for the windows on screen, and the ticks from before marks existed — see marks.ts.
+ *
+ * ⚠️ AN EMPTY ANSWER ON FAILURE, LIKE `myGoals`, and that is safe in exactly one direction: every
+ * repeating goal reads as untouched for the window, which is a goal you can tick again rather than
+ * one that claims to be done. The asks go in batches like the tally's, because the function caps
+ * a call and a quiet cap would drop windows without saying so.
+ */
+export async function marksFor(asks: ReadonlyArray<{ id: string; from: string }>): Promise<Marked> {
+  if (!asks.length) return NO_MARKS
+  if (previewMember) return pvMarksFor(asks)
+  const out: Marked = { marks: {}, legacy: {} }
+  for (const batch of inBatches(asks)) {
+    const { data, error } = await getSupabaseClient().rpc('chronicle_goal_marks_for', {
+      p_asks: batch.map((a) => ({ id: a.id, from: a.from })),
+    })
+    if (error || !data || typeof data !== 'object') return NO_MARKS
+    const d = data as {
+      marks?: Record<string, { progress?: unknown; done?: unknown }>
+      legacy?: Record<string, unknown>
+    }
+    for (const [k, m] of Object.entries(d.marks ?? {})) {
+      out.marks[k] = { progress: num(m.progress as number | string | null), done: m.done === true }
+    }
+    for (const [id, at] of Object.entries(d.legacy ?? {})) {
+      const ms = num(at as number | string | null, NaN)
+      if (Number.isFinite(ms)) out.legacy[id] = ms
+    }
+  }
+  return out
+}
+
+/**
+ * Tick, untick or move a repeating goal for ONE window. Null for either value leaves it alone.
+ *
+ * ⚠️ THE REFUSAL IS RETURNED, NOT SWALLOWED. The one a person can meet is "that window has not
+ * started" — ticking tomorrow's floss — and the room does not offer that tick, but a page left
+ * open past midnight can still send one, and a tick that silently did nothing is the failure this
+ * whole module exists to end.
+ */
+export async function setMark(
+  id: string,
+  at: MarkAt,
+  progress: number | null,
+  done: boolean | null,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvSetMark(id, at, progress, done)
+  const { error } = await getSupabaseClient().rpc('chronicle_goal_mark', {
+    p_goal: id,
+    p_from: at.from,
+    p_starts: at.starts,
+    p_ends: at.ends,
+    p_progress: progress,
+    p_done: done,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Set which weekdays a repeating daily goal is for, from a day on.
+ *
+ * ⚠️ `from` IS ALWAYS TODAY, AND THE SERVER INSISTS. A schedule is a history (weekdays.ts) and
+ * Evan's rule is that a change reaches today and the days after it, never the days before — so
+ * the writer refuses anything earlier than UTC's yesterday, and the room only ever sends its own
+ * local today. Changing it twice in a day replaces that day's entry rather than adding a second.
+ */
+export async function setDays(
+  id: string,
+  days: DayMask,
+  from: string,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvSetDays(id, days, from)
+  const { error } = await getSupabaseClient().rpc('chronicle_goal_days_set', {
+    p_goal: id,
+    p_days: days,
+    p_from: from,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
 }
 
 /**
@@ -426,6 +551,37 @@ export async function setEntryPicture(
   return error ? { why: error.message || 'that did not save' } : null
 }
 
+/**
+ * The notes that belong to days rather than sittings, for the days `[fromDay, toDay)`.
+ *
+ * ⚠️ EMPTY ON FAILURE, which includes the function not existing yet — the draft is not applied —
+ * so the Journal goes on listing what it always listed rather than showing nothing.
+ */
+export async function dayNotesBetween(fromDay: string, toDay: string): Promise<DayNote[]> {
+  if (previewMember) return pvDayNotes(fromDay, toDay)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_day_notes_between', {
+    p_from: fromDay,
+    p_to: toDay,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    on: String(r.on),
+    at: String(r.at),
+    body: String(r.body ?? ''),
+  }))
+}
+
+/** Write something down about a day, with no session — see chronicle_day_note_add. */
+export async function addDayNote(day: string, body: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvDayNoteAdd(day, body)
+  const { error } = await getSupabaseClient().rpc('chronicle_day_note_add', {
+    p_day: day,
+    p_body: body,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
 /** ⚠️ an empty body DELETES it — see chronicle_note_edit for why that is right here and nowhere else */
 export async function editNote(id: string, body: string): Promise<{ why: string } | null> {
   if (previewMember) return pvNoteEdit(id, body)
@@ -482,7 +638,14 @@ export async function dropEntry(id: string): Promise<boolean> {
  * of a duplicate — so a streak was unaskable. Omitting the key still answers by goal id.
  */
 export async function tally(
-  asks: Array<{ id: string; from: string; to: string; key?: string }>,
+  asks: Array<{
+    id: string
+    from: string
+    to: string
+    key?: string
+    from_day?: string
+    to_day?: string
+  }>,
 ): Promise<Record<string, number>> {
   if (!asks.length) return {}
   if (previewMember) return pvTally(asks)
@@ -571,6 +734,154 @@ export async function editEntry(
     p_to: toISO,
     p_note: note,
     p_activity: activity ?? null,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/* ── sets: one exercise's quantity on one day — see sets.ts ───────────────── */
+
+/**
+ * Your sets on [fromDay, toDay), half-open like every range here.
+ *
+ * ⚠️ EMPTY ON ANY REFUSAL, including the one every account gets until the sets draft is applied —
+ * the function does not exist yet, and a sitting with no sets is exactly what that means.
+ */
+export async function setsBetween(fromDay: string, toDay: string): Promise<ChronSet[]> {
+  if (previewMember) return pvSetsBetween(fromDay, toDay)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_sets_between', {
+    p_from: fromDay,
+    p_to: toDay,
+  })
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    entry: r.entry == null ? null : String(r.entry),
+    person: r.person == null ? null : String(r.person),
+    exercise: String(r.exercise ?? ''),
+    name: String(r.name ?? ''),
+    now: r.now == null ? null : String(r.now),
+    on: String(r.on ?? ''),
+    value: num(r.value as number | string | null),
+    /* absent from the step-1 reader, which never counted anything */
+    counted: r.counted === true,
+  }))
+}
+
+/**
+ * Every exercise on your own Circuit people, with its unit as written and as normalised, and the
+ * activity it counts toward if it is linked — see units.ts and the links draft.
+ *
+ * ⚠️ EMPTY ON ANY REFUSAL, which is what every account gets until the links draft is applied: no
+ * exercises to offer is exactly the room before this existed.
+ */
+export type MyExercise = {
+  person: string
+  exercise: string
+  name: string
+  unit: string
+  canon: string | null
+  activity: string | null
+  /** whether the link still agrees, null when there is no link */
+  ok: boolean | null
+}
+
+export async function myExercises(): Promise<MyExercise[]> {
+  if (previewMember) return pvMyExercises()
+  const { data, error } = await getSupabaseClient().rpc('chronicle_my_exercises')
+  if (error || !Array.isArray(data)) return []
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    person: String(r.person),
+    exercise: String(r.exercise),
+    name: String(r.name ?? ''),
+    unit: String(r.unit ?? ''),
+    canon: r.canon == null ? null : String(r.canon),
+    activity: r.activity == null ? null : String(r.activity),
+    ok: r.ok == null ? null : r.ok === true,
+  }))
+}
+
+/** Link an exercise to an activity, or unlink it with null — refused in the server's words. */
+export async function linkExercise(
+  person: string,
+  exercise: string,
+  activity: string | null,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvLinkExercise(person, exercise, activity)
+  const { error } = await getSupabaseClient().rpc('chronicle_exercise_link', {
+    p_person: person,
+    p_exercise: exercise,
+    p_activity: activity,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Count a set. With a sitting and a link that agrees, the server adds it to the sitting's amount in
+ * the same statement — so the counter must NOT also write that amount, or it counts twice.
+ */
+export async function addSet(
+  person: string,
+  exercise: string,
+  value: number,
+  day: string,
+  entry: string | null,
+): Promise<{ id: string } | { why: string }> {
+  if (previewMember) return pvSetAdd(person, exercise, value, day, entry)
+  const { data, error } = await getSupabaseClient().rpc('chronicle_set_add', {
+    p_person: person,
+    p_exercise: exercise,
+    p_value: value,
+    p_day: day,
+    p_entry: entry,
+  })
+  if (error || typeof data !== 'string') return { why: error?.message || 'that did not save' }
+  return { id: data }
+}
+
+/** Take a set back — and, if it was counted, exactly what it added to its sitting. */
+export async function dropSet(id: string): Promise<{ why: string } | null> {
+  if (previewMember) return pvSetDrop(id)
+  const { error } = await getSupabaseClient().rpc('chronicle_set_drop', { p_id: id })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/**
+ * Change a finished sitting AND move its sets to the local day it now starts on — one call, so
+ * the two cannot disagree (§15c).
+ *
+ * ⚠️ ONLY FOR A SITTING THAT HAS SETS. It wraps `chronicle_entry_edit` on the server and adds the
+ * day; a sitting with none goes on using `editEntry`, so nothing calls this until a sitting has
+ * sets, which nothing can make until the sets draft is applied.
+ */
+export async function editEntryDay(
+  id: string,
+  fromISO: string,
+  toISO: string,
+  activity: string | null,
+  day: string,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvEditEntryDay(id, fromISO, toISO, activity, day)
+  const { error } = await getSupabaseClient().rpc('chronicle_entry_edit_day', {
+    p_id: id,
+    p_from: fromISO,
+    p_to: toISO,
+    p_activity: activity,
+    p_day: day,
+  })
+  return error ? { why: error.message || 'that did not save' } : null
+}
+
+/** The same for the sitting still running — `chronicle_running_fix`, and its sets' day with it. */
+export async function fixRunningDay(
+  fromISO: string | null,
+  activity: string | null,
+  day: string,
+): Promise<{ why: string } | null> {
+  if (previewMember) return pvFixRunningDay(fromISO, activity, day)
+  const { error } = await getSupabaseClient().rpc('chronicle_running_fix_day', {
+    p_from: fromISO,
+    p_activity: activity,
+    p_day: day,
   })
   return error ? { why: error.message || 'that did not save' } : null
 }
@@ -798,6 +1109,16 @@ export type Putback = {
   goals: number
   routines: number
   plans: number
+  /** windows of repeating goals put back — see marks.ts */
+  marks: number
+  /** weekday schedule entries put back, only ever with the goal they belong to — see weekdays.ts */
+  schedules: number
+  /** notes that belong to a day rather than a session — see journal.ts */
+  notes: number
+  /** sets of an exercise put back — see sets.ts */
+  sets: number
+  /** exercise-to-activity links put back, only where the units agree here — see units.ts */
+  links: number
   skipped: number
 }
 
@@ -828,6 +1149,11 @@ export async function importMine(doc: unknown): Promise<Putback | { why: string 
     goals: n('goals'),
     routines: n('routines'),
     plans: n('plans'),
+    marks: n('marks'),
+    schedules: n('schedules'),
+    notes: n('notes'),
+    sets: n('sets'),
+    links: n('links'),
     skipped: n('skipped'),
   }
 }

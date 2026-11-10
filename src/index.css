@@ -1856,6 +1856,15 @@
   align-items: center;
   gap: 6px;
 }
+/* the part of a cell Chronicle's sessions hold, and the way to it — see circuit/sessions.ts */
+.cz-slot-sessions {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
 .cz-add-slot {
   background: transparent;
   border: 1.5px dashed var(--b2, rgba(127, 127, 127, 0.3));
@@ -16446,9 +16455,12 @@ a.cz-msg-author:focus-visible {
  * pay the entire bill, so it gets `min-width: 0` and the ellipsis rather than a shrink to a
  * three-pixel column. Measured at 320: "what you are aiming at" ellipses, both labels whole.
  */
+/* ⚠️ FOUR SINCE THE JOURNAL, AND STILL ONE ROW. Measured at 375 before settling on it: each
+   button is ~77px, "Journal" and "Friends" fit their labels, and "Aims" keeps room for its count.
+   The hints already drop below 34rem (see below), which is what made a fourth affordable. */
 .chron-halves {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.4rem;
   margin: 0 0 0.7rem;
 }
@@ -16462,6 +16474,49 @@ a.cz-msg-author:focus-visible {
   padding: 0.4rem 0.6rem;
   text-align: left;
   min-width: 0;
+}
+/**
+ * ⚠️ THE LABEL AND ITS COUNT ARE ONE LINE, under the hint rather than beside it. The button is a
+ * column — a word over a sentence — so a badge dropped in as a third child became a third line
+ * and made every half button taller for the sake of one of them.
+ */
+.chron-half-top {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+/* the word is what gets clipped if anything does; the count is two characters and must not */
+.chron-half-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/**
+ * What is due today, on the button that leads to it — see the note in Chronicle.tsx.
+ *
+ * ⚠️ NOT RED. The room keeps amber for a priority somebody chose themselves and has no alarming
+ * colour anywhere; a count of what you meant to do today is news, not a warning. It borrows the
+ * accent the pressed half already uses, and carries a border so it is still a distinct shape
+ * when the half it sits on is filled.
+ */
+.chron-due {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  min-width: 1.15rem;
+  padding: 0.18rem 0.3rem;
+  border-radius: 100px;
+  text-align: center;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.chron-halves .btn.is-on .chron-due {
+  border-color: currentColor;
 }
 .chron-halves .btn small {
   font-size: 0.72rem;
@@ -16493,6 +16548,106 @@ a.cz-msg-author:focus-visible {
   .chron-halves .btn small {
     display: none;
   }
+}
+
+/* ── the journal, read across sittings — see src/chronicle/JournalList.tsx ──── */
+.chron-journal-list {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.chron-journal-top {
+  display: grid;
+  gap: 0.45rem;
+}
+.chron-journal-top h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.chron-journal-day h4 {
+  margin: 0.5rem 0 0.3rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chron-journal-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+/**
+ * One note, and the door to the sitting it was written about.
+ *
+ * ⚠️ THE WHOLE ROW IS THE BUTTON, and its text is left alone: a note is read, so it wraps at its
+ * own length rather than being clipped to a line, and nothing about it is styled as a control
+ * except the border that says it can be pressed. A long word breaks rather than pushing the row
+ * past its list — the same floor-and-wrap rule the goal titles were given.
+ */
+.chron-journal-row {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.chron-journal-row:hover:not(:disabled),
+.chron-journal-row:focus-visible {
+  border-color: var(--accent);
+}
+.chron-journal-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.chron-journal-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.chron-journal-body {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+/* the box a note with no session is written in, and the one it is changed in — see JournalList */
+.chron-journal-write,
+.chron-journal-fix {
+  display: grid;
+  gap: 0.35rem;
+}
+.chron-journal-write textarea,
+.chron-journal-fix textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  font: inherit;
+}
+.chron-journal-write-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* the hint takes the slack and the buttons keep their size — a floor in px, because rem is fluid */
+.chron-journal-write-row .muted {
+  flex: 1 1 140px;
+  font-size: 0.8rem;
+}
+.chron-journal-said {
+  margin: 0;
+  font-size: 0.85rem;
+  /* the theme token, which the light theme darkens to stay readable on white */
+  color: var(--loss);
+}
+.chron-journal-more {
+  justify-self: start;
 }
 
 /* ── a friend's timeline ─────────────────────────────────────────────────── */
@@ -16951,6 +17106,68 @@ a.cz-msg-author:focus-visible {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
+/* which Circuit exercises an activity counts, in the activity editor — see units.ts */
+.chron-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+}
+.chron-link,
+.chron-tally-pick {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.7rem;
+}
+.chron-link.is-on,
+.chron-tally-pick.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.chron-links-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.chron-tally-where {
+  margin: 0;
+  font-size: 0.76rem;
+}
+/* which exercise the counter is counting, in sets mode */
+.chron-tally-ex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* a sitting's sets in its editor, each with the way to take it back */
+.chron-sets ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+.chron-sets li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* ⚠️ PIXELS: the root size is fluid, and a touch target is a length */
+.chron-set-x {
+  min-width: 32px;
+  min-height: 32px;
+}
+.chron-sets-floor {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--warn, #f0b429);
+}
+/* what a move does not take with it — see moveNote in sets.ts */
+.chron-move-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
 .chron-when-len {
   font-size: 0.82rem;
   color: var(--muted);
@@ -17048,13 +17265,43 @@ a.cz-msg-author:focus-visible {
 .chron-moment.is-workout {
   background: rgba(255, 255, 255, 0.045);
 }
+/**
+ * A note with no session — §15a. A moment, not a sitting: no length and no clock range, and only
+ * the time it was written when it was written that day.
+ *
+ * ⚠️ IT CARRIES A ✎ WHERE A RATING DOES NOT, and that is the one departure from the rule above. A
+ * rating is changed in the room it was given in; a note is yours and is changed in the Journal,
+ * and a row with words in it and no way to reach their editor is a dead end on a phone. It has no
+ * ✕, so it still cannot be mistaken for a sitting's pair of controls.
+ */
+.chron-moment.is-note {
+  align-items: center;
+}
+.chron-moment.is-note .chron-moment-what {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+/* ⚠️ THREE LINES, THEN AN ELLIPSIS: a note can be four thousand characters, and the day's log is a
+   list of a day, not a place to read a letter — the Journal is where it is read whole */
+.chron-note-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 
 /**
  * Tap to count, while the clock runs.
  *
- * ⚠️ WRAPS RATHER THAN SCROLLS, unlike the horizon strip two rooms over — there are only ever
- * five controls here and they are the ones a thumb goes to between sets, so a second line is
- * better than a row that hides one of them off the edge.
+ * ⚠️ THREE ROWS NOW, NOT ONE THAT WRAPS. It was five controls in a wrapping line, which put the
+ * count, the three steps and `−1` wherever the width happened to break them — at 375 the `−1`
+ * landed beside the `+10` it corrects. The count gets a line of its own and is the largest thing
+ * in the row, the steps share the full width in equal columns, and the two corrections sit
+ * underneath, apart from what they correct.
  *
  * ⚠️ 44px, NOT 24. The WCAG floor is the outside bar; this is a control somebody taps thirty
  * times in a row with their hands shaking, which is the case the comfortable size is for.
@@ -17068,25 +17315,60 @@ a.cz-msg-author:focus-visible {
  * guessing would have said "a padding somewhere".
  */
 .chron-tally {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
+  display: grid;
+  gap: 0.4rem;
   width: 100%;
+  /* ⚠️ A CEILING IN PIXELS, because equal columns across a desktop timer made three 329px
+     buttons — a thumb-sized row stretched to the width of a room nobody uses with a thumb.
+     440px is a phone held sideways; below it the row is the full width, as it should be. */
+  max-width: 440px;
 }
+.chron-tally-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+/* the number you glance at with your hands full — the biggest thing in the row */
 .chron-tally-at {
-  flex: 1 1 auto;
-  min-width: 4.5rem;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 1.05rem;
+}
+.chron-tally-at strong {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+.chron-tally-state {
+  font-size: 0.78rem;
+}
+/* equal columns, so the step you want is under the thumb wherever it lands */
+.chron-tally-steps,
+.chron-tally-fix {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+.chron-tally-fix {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .chron-timer .chron-tally .btn {
   min-width: 52px;
   min-height: 44px;
   font-variant-numeric: tabular-nums;
 }
-.chron-tally-down {
-  margin-left: auto;
+/* ⚠️ THE STEPS ARE TALLER THAN THE CORRECTIONS. 56px is the size the Now room's tiles were, for
+   the same reason — the control tapped thirty times in a row — and it makes the two rows read as
+   two different kinds of thing without a word of explanation. */
+.chron-timer .chron-tally .chron-tally-up {
+  min-height: 56px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+/* the retry is a sentence, not a step: it takes the width it needs, and the 44px floor above */
+.chron-timer .chron-tally .chron-tally-retry {
+  min-width: 0;
+  font-size: 0.78rem;
 }
 
 /* the tick that decides whether any of the above can exist */
@@ -17191,6 +17473,11 @@ a.cz-msg-author:focus-visible {
  * which two of them survived and three did not: at 375 a short goal put ✎ and ◯ beside the title
  * and left ✕ alone on the next line, under an empty space. `nowrap` keeps them together and
  * `margin-left: auto` keeps them right, which is exactly what `.chron-ent-do` does for a log row.
+ *
+ * ⚠️ FOUR OF THEM ON A GOAL THAT COUNTS AN ACTIVITY, since the ▶. Measured at 375: the group is
+ * 206px wide against 151px with three, inside a 327px row, and the title keeps its 150px floor
+ * with 175px to spare. It costs no HEIGHT — such a row already wrapped the group onto its own
+ * line, and a four-button row and a three-button one both measure 156px tall.
  */
 .chron-goal-do {
   display: flex;
@@ -17247,6 +17534,11 @@ a.cz-msg-author:focus-visible {
   border-radius: 100px;
   padding: 0.05rem 0.4rem;
 }
+/* a repeating goal's window that has not begun — Tomorrow's floss — says so in words, because a
+   greyed-out box with only a tooltip to explain it does not exist on a phone */
+.chron-notyet {
+  font-size: 0.75rem;
+}
 /* ⚠️ IT OPTS OUT OF THE UPPERCASE, for the same reason `is-est` does: this chip carries a DATE,
    and "WAS FOR WED, 14 OCT" shouts a proper noun at somebody about a thing they already feel bad
    about. No colour either — the room keeps amber for a priority somebody chose themselves, and a
@@ -17257,6 +17549,48 @@ a.cz-msg-author:focus-visible {
 .chron-chip.is-auto.is-gone {
   opacity: 0.65;
   border-style: dashed;
+}
+/**
+ * The goal whose activity is running right now — see the note on `startFor`.
+ *
+ * ⚠️ IT TAKES THE ▶'S PLACE RATHER THAN SITTING BESIDE IT, so the row never offers to restart
+ * what it is already in. Same shape as every other chip; the colour is the one the room uses for
+ * a thing that is happening, which is the stopwatch's own green.
+ */
+/**
+ * ▶ on a goal row — start the activity it counts, or switch to it.
+ *
+ * ⚠️ IT IS THE ONLY AFFIRMATIVE CONTROL IN A GROUP OF THREE (change, share, delete), so it takes
+ * the stopwatch's green to say which one does the thing the row is about. The 44px floor comes
+ * from `.chron-goal-do .btn` with the rest of the group.
+ */
+.chron-goal-do .chron-go {
+  color: var(--accent);
+}
+/**
+ * ✎ Note on the running header — the door to the sitting's journal.
+ *
+ * ⚠️ GHOST, NOT FILLED. Stop is the one filled button in that row and must stay the only one;
+ * this sits beside it as an offer. The count rides inside rather than beside, so the control
+ * stays one tap target instead of becoming a button with a chip glued to its edge.
+ */
+.chron-jot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.chron-jot-n {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 0.12rem 0.3rem;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.chron-chip.is-going {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .chron-chip.is-late {
   text-transform: none;
@@ -17344,6 +17678,40 @@ a.cz-msg-author:focus-visible {
   min-height: 36px;
   font-size: 0.86rem;
   color: var(--muted);
+}
+/* which weekdays a repeating daily goal is for — see the picker in Chronicle.tsx */
+.chron-wdays {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+/* ⚠️ PIXELS, because the root size is fluid and a touch target is a length: 32px clears WCAG's
+   24px floor with room to spare on the one control here a thumb presses seven of in a row */
+.chron-wday {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chron-wday.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.chron-wday:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chron-wdays-note {
+  flex-basis: 100%;
+  font-size: 0.75rem;
 }
 .chron-say {
   margin: 0.5rem 0 0;
@@ -17905,6 +18273,14 @@ a.cz-msg-author:focus-visible {
   width: 100%;
 }
 /* ⚠️ monospace and tabular, or a running clock jiggles every second as the digits change width */
+/* when a running sitting began, once that is worth saying — see `longRun` in record.ts. A full-width
+   line under the clock rather than a chip beside it, because it is a sentence and has to wrap. */
+.chron-longrun {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
 .chron-run {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -18607,6 +18983,14 @@ a.cz-msg-author:focus-visible {
 .chron-marks i.is-now {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* ⚠️ A DAY THE GOAL WAS NOT FOR IS THINNER, NOT FAINTER. Faint is what a miss already is, and an
+   off day is not a quieter miss — it is a day nothing was asked. A short tick keeps the row a
+   calendar, so a Tuesday goal still reads as one cell a week, in its place. */
+.chron-marks i.is-off {
+  height: 4px;
+  margin-top: 3px;
+  opacity: 0.6;
 }
 
 /* a flagged goal, and a guess at how long it takes — see Chronicle.tsx */

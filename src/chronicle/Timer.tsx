@@ -3,10 +3,19 @@ import {
   addEntry,
   addNote,
   archiveActivity,
+  dayNotesBetween,
   dropEntry,
   editEntry,
+  editEntryDay,
   editNote,
   fixRunning,
+  fixRunningDay,
+  setsBetween,
+  myExercises,
+  linkExercise,
+  addSet,
+  dropSet,
+  type MyExercise,
   setAmount,
   setEntryPicture,
   setQuality,
@@ -29,10 +38,17 @@ import { HoldButton } from '../ui/HoldButton'
 import { seenPictures, type Kept } from '../pictures/cloud'
 import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
+import { JournalList } from './JournalList'
+import { dayLogNotes, type DayNote } from './journal'
+import { localISO } from '../circuit/dates'
+import { countedIn, dayOfStart, moveNote, setName, type ChronSet } from './sets'
+import { fit, fitText, unitOf } from './units'
+import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
   clockOfLocal,
   clockText,
+  longRun,
   COLOURS,
   dayBounds,
   gapSince,
@@ -147,6 +163,10 @@ export function Timer({
   beat,
   onChange,
   show,
+  onRunning,
+  onShow,
+  onIdea,
+  openDay,
 }: {
   day: string
   /**
@@ -155,13 +175,20 @@ export function Timer({
    * nine different questions. The room is 38 and 37 now, and the note on `half` in
    * sections/Chronicle.tsx says why that figure is not the 86 I first wrote down.
    *
+   * ⚠️ THOSE TWO FIGURES ARE OLDER THAN THE FIXTURE THEY WOULD BE RE-MEASURED AGAINST, so do not
+   * read them as today's count — §2's rule about a measured number in a comment, applied to this
+   * one before it misleads somebody. The aims half also gains one control per goal that can be
+   * started (see `startFor`), which is the only thing since that adds controls per ROW rather
+   * than per room. Measured on the preview seed, 7 Nov 2026, at 375: day **26** in-room controls,
+   * aims **40**, one of those being the ▶.
+   *
    * ⚠️ THE STOPWATCH IS IN NEITHER HALF. Everything from the running clock down to the gap form
    * renders whatever `show` says, because a session you forgot to stop must not be able to hide
    * behind a tab — the same reason the timer sits above the horizon strip rather than inside it.
    * What `show` gates is the DAY (its stepper, totals, log, plans, routines and activity list)
    * against the AIMS half, which lives in the room above.
    */
-  show: 'day' | 'aims' | 'friends'
+  show: 'day' | 'aims' | 'journal' | 'friends'
   /**
    * Bumped by the room when something OUTSIDE this half changed the record — today only a
    * put-back, which rewrites everything at once.
@@ -175,6 +202,40 @@ export function Timer({
    */
   beat?: number
   onChange?: () => void
+  /**
+   * What is running, told to the room above — the activity's id, or null.
+   *
+   * ⚠️ THE OPEN SITTING LIVES DOWN HERE AND THE AIMS HALF NEEDS IT. The ▶ on a goal row has to
+   * know whether it is about to restart the thing you are already in, which `chronicle_start`
+   * would do by closing that sitting and opening a new one. The alternative was a second
+   * `entriesBetween` in the room above, which is the same question asked twice of the server and
+   * two answers that can disagree for as long as one of them is stale.
+   */
+  onRunning?: (activity: string | null) => void
+  /**
+   * Ask the room to show the Day half — the one thing this component cannot do for itself.
+   *
+   * ⚠️ THE JOURNAL OPENS A SITTING ON THE DAY IT HAPPENED, and that day's log lives on the Day
+   * half: the editor finds its sitting in `log`, which only holds the day being looked at, and
+   * the effect above puts `seeing` back on today whenever the half is not Day. So "take me to
+   * that sitting" is three moves — the day, the editor, the half — and the last belongs to the
+   * room above.
+   */
+  onShow?: (half: 'day' | 'journal') => void
+  /**
+   * Hand a journal entry to the room as the first draft of a goal — see `ideaTitle` in goal.ts.
+   *
+   * ⚠️ THE ROOM ABOVE OWNS THE GOAL FORM, so this only says what was written; the form opens
+   * there, prefilled, and nothing is saved until the person presses Add. "A dated note or idea
+   * can become a task" was in the first brief for this room, and the note was the one half of the
+   * room with no way into the other.
+   */
+  onIdea?: (text: string) => void
+  /**
+   * A day a link asked for — `#chronicle?day=`, see dayLink.ts. The Day log opens on it instead of
+   * on `day`, and moves to it again if another link asks for a different one.
+   */
+  openDay?: string | null
 }) {
   /**
    * The day being looked at, which is not always the day the room asked for.
@@ -188,8 +249,12 @@ export function Timer({
    * to win over wherever the stepper had wandered to, or the two controls would disagree about
    * which day is on screen and the room would be showing a date nothing had named.
    */
-  const [seeing, setSeeing] = useState(day)
+  const [seeing, setSeeing] = useState(openDay ?? day)
   useEffect(() => setSeeing(day), [day])
+  /* ⚠️ AFTER the effect above, which also runs on mount and would put the stepper back on `day` */
+  useEffect(() => {
+    if (openDay) setSeeing(openDay)
+  }, [openDay])
   /**
    * ⚠️ THE DAY BEING READ BELONGS TO THE DAY HALF, and the stopwatch above it does not travel
    * with it. Two controls in the permanent header — the switch row and the "you have an unlogged
@@ -234,6 +299,19 @@ export function Timer({
    * in the row rather than behind a button that covers it up.
    */
   const [fixAct, setFixAct] = useState<string | null>(null)
+  /** whether the Activities fold is open — see the note where it is drawn */
+  const [actsOpen, setActsOpen] = useState(false)
+  /** the activity editor's "also counts" box, so the door to it can land the cursor there */
+  const metricBox = useRef<HTMLInputElement>(null)
+  /* bumped by the door; the effect below acts once per bump, after the fold has rendered open */
+  const [toMetric, setToMetric] = useState(0)
+  useEffect(() => {
+    if (!toMetric) return
+    const el = metricBox.current
+    if (!el) return
+    el.scrollIntoView({ block: 'center' })
+    el.focus()
+  }, [toMetric])
   const [actName, setActName] = useState('')
   const [actCat, setActCat] = useState<Activity['cat']>('free')
   /** what this activity counts besides time — "pages", "reps", blank for nothing */
@@ -263,6 +341,10 @@ export function Timer({
   /** how the span being edited went, '' for unrated — see Entry.quality */
   const [entMood, setEntMood] = useState('')
   const [fixEnt, setFixEnt] = useState<string | null>(null)
+  /* bumped by ✎ Note with nothing running, so the Journal's box takes the cursor */
+  const [writeNow, setWriteNow] = useState(0)
+  /* the day that box writes about — a past day's ✎ Note sends that day, today's sends nothing */
+  const [writeDay, setWriteDay] = useState<string | undefined>(undefined)
   const [entAct, setEntAct] = useState('')
   const [entNote, setEntNote] = useState('')
   /**
@@ -280,6 +362,31 @@ export function Timer({
    * chose and the truncation is theirs.
    */
   const entWas = useRef<{ from: string; to: string | null } | null>(null)
+  /**
+   * The sets counted during the sitting being edited — see sets.ts.
+   *
+   * ⚠️ READ SO THE EDITOR CAN SAY WHAT A MOVE DOES NOT DO, and so a start moved across midnight
+   * takes them with it. Empty for every sitting until the sets draft is applied, and then for
+   * every sitting nobody counted sets in — and an editor with no sets is exactly the editor there
+   * has always been.
+   */
+  const [entSets, setEntSets] = useState<ChronSet[]>([])
+  /**
+   * Every exercise on your own Circuit people, and what each is linked to — see units.ts.
+   *
+   * ⚠️ EMPTY UNTIL THE LINKS DRAFT IS APPLIED, and then for anybody with no Circuit person: the
+   * activity editor shows no "From the Circuit" row and the counter counts as it always has.
+   */
+  const [exercises, setExercises] = useState<MyExercise[] | null>(null)
+  /* the exercise the counter is counting, when the running activity has linked ones */
+  const [pickEx, setPickEx] = useState<string | null>(null)
+  /**
+   * The sets this visit's counter wrote, newest last — what Undo takes back.
+   *
+   * ⚠️ A REF AND NOT THE TALLY'S OWN HISTORY, because a set is a row on the server with an id, and
+   * taking one back is deleting THAT row; the tally only knows numbers.
+   */
+  const setStack = useRef<Array<{ id: string; value: number; name: string }>>([])
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
@@ -333,6 +440,13 @@ export function Timer({
   }, [log, loadWeek])
 
   const running = log.find((e) => e.end == null) ?? null
+  /* ⚠️ ON THE ACTIVITY'S ID, NOT ON THE ENTRY. The room above only asks "is this goal's
+     activity the one running", so re-announcing on every reload of the same sitting would be a
+     render of the whole Aims list each time the day's log is re-fetched. */
+  const runningAct = running?.activity ?? null
+  useEffect(() => {
+    onRunning?.(runningAct)
+  }, [runningAct, onRunning])
   /* ⚠️ it follows `beat`, which already ticks once a second while something runs — and when
      nothing runs the log itself is the only thing that can change it, so the memo is honest
      either way rather than a clock the component does not own. */
@@ -442,6 +556,59 @@ export function Timer({
     }
   }, [bounds.fromMs, bounds.toMs, beat])
 
+  /**
+   * The day's notes with no session — the third kind of row, after a sitting and a moment.
+   *
+   * ⚠️ PRIVATE, AND THIS IS YOUR OWN LOG: nothing here reaches Friends, which reads a different
+   * function that carries no note at all. Fetched again when the Journal half hands back, since
+   * that is where they are written and changed.
+   */
+  const [dayNotes, setDayNotes] = useState<DayNote[]>([])
+  useEffect(() => {
+    if (show !== 'day') return
+    let dead = false
+    void (async () => {
+      /* ⚠️ HALF-OPEN, like every range here: [this day, the next) — asking (day, day) asks for
+         nothing, and the reader refuses an empty range by returning none */
+      const got = await dayNotesBetween(seeing, localISO(new Date(bounds.toMs)))
+      if (!dead) setDayNotes(got)
+    })()
+    return () => {
+      dead = true
+    }
+  }, [seeing, bounds.toMs, beat, show])
+
+  useEffect(() => {
+    let dead = false
+    void (async () => {
+      const got = await myExercises()
+      if (!dead) setExercises(got)
+    })()
+    return () => {
+      dead = true
+    }
+  }, [beat])
+
+  const fixStart = fixEnt ? (log.find((e) => e.id === fixEnt)?.start ?? null) : null
+  useEffect(() => {
+    if (!fixEnt || !fixStart) {
+      setEntSets([])
+      return
+    }
+    let dead = false
+    /* the sets of a sitting are on the local day it starts — see dayOfStart */
+    const day = dayOfStart(fixStart)
+    const next = new Date(fixStart)
+    next.setDate(next.getDate() + 1)
+    void (async () => {
+      const got = await setsBetween(day, dayOfStart(next.toISOString()))
+      if (!dead) setEntSets(got.filter((x) => x.entry === fixEnt))
+    })()
+    return () => {
+      dead = true
+    }
+  }, [fixEnt, fixStart])
+
   const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
   const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
   /**
@@ -453,7 +620,11 @@ export function Timer({
    */
   const stream = useMemo(() => {
     const rows: Array<
-      { at: number } & ({ kind: 'sat'; e: Entry } | { kind: 'moment'; m: Moment })
+      { at: number } & (
+        | { kind: 'sat'; e: Entry }
+        | { kind: 'moment'; m: Moment }
+        | { kind: 'note'; n: DayNote; timed: boolean }
+      )
     > = []
     for (const e of seeSite ? log : didMyself)
       rows.push({ at: Date.parse(e.start), kind: 'sat', e })
@@ -471,8 +642,12 @@ export function Timer({
       if (m.at) rows.push({ at: Date.parse(m.at), kind: 'moment', m })
       else if (m.on === seeing) rows.push({ at: Infinity, kind: 'moment', m })
     }
+    /* ⚠️ A NOTE HAS ITS TIME ONLY IF IT WAS WRITTEN THAT DAY — see `dayLogNotes`. One written
+       about this day from another goes to the head of it, with no clock, like a workout */
+    for (const x of dayLogNotes(dayNotes, seeing, bounds.fromMs, bounds.toMs))
+      rows.push({ at: x.at, kind: 'note', n: x.n, timed: x.timed })
     return rows.sort((x, y) => y.at - x.at)
-  }, [log, didMyself, moments, seeSite, seeing])
+  }, [log, didMyself, moments, dayNotes, seeSite, seeing, bounds.fromMs, bounds.toMs])
 
   const onSiteMs = useMemo(
     () => onSite.reduce((n, e) => n + overlapMs(e, bounds.fromMs, bounds.toMs, Date.now()), 0),
@@ -630,8 +805,14 @@ export function Timer({
   const flushReps = async () => {
     if (!runId || reps === repsSaved.current) return
     const want = reps
-    if (await setAmount(runId, want)) repsSaved.current = want
-    else moan('those reps did not save')
+    if (await setAmount(runId, want)) {
+      repsSaved.current = want
+      setRepsFailed(false)
+      setRepsSavedAt(Date.now())
+    } else {
+      setRepsFailed(true)
+      moan('those reps did not save')
+    }
   }
 
   /**
@@ -713,16 +894,80 @@ export function Timer({
    * the number this screen is showing, where `amount = amount + n` would double a rep for every
    * retry.
    */
-  const [reps, setReps] = useState<number | null>(null)
+  /* ⚠️ ONE VALUE FOR THE COUNT AND ITS UNDO HISTORY — see tally.ts for why they cannot be two */
+  const [tally, setTally] = useState<Tally>(() => fresh(null))
+  const reps = tally.n
+  /**
+   * Whether the last flush failed, so the row can say so and offer to try again.
+   *
+   * ⚠️ THE ROW USED TO SAY NOTHING EITHER WAY. A failed write sent one toast and then waited for
+   * the next tap to try again — so a count you stopped tapping at, on a bad connection, sat on
+   * screen looking saved while the sitting held the old number. Between sets is exactly when you
+   * stop tapping.
+   */
+  const [repsFailed, setRepsFailed] = useState(false)
+  /* ⚠️ A RE-RENDER ON EVERY SAVE, which is all this is for. `repsSaved` is a ref because the
+     flush guard must read the latest value, and a ref changing draws nothing — so "saving…"
+     would sit on screen until the clock's next tick happened to repaint it. */
+  const [, setRepsSavedAt] = useState(0)
   const repsSaved = useRef<number | null>(null)
   const liveReps = useRef<number | null>(null)
   liveReps.current = running?.amount ?? null
   useEffect(() => {
     /* the count belongs to the sitting exactly as a journal entry does */
     const was = liveReps.current
-    setReps(was)
+    setTally(fresh(was))
+    setRepsFailed(false)
     repsSaved.current = was
+    setStack.current = []
   }, [runId])
+
+  /**
+   * A press on the counter, for an exercise linked to the running activity — a SET, not a number.
+   *
+   * ⚠️ THE AMOUNT IS NOT WRITTEN FROM HERE. `chronicle_set_add` adds a counted set to its sitting's
+   * amount in the same statement, so this moves the screen and tells the flush the server already
+   * has it (`repsSaved`). Letting the absolute flush run as well would race the set: a flush that
+   * landed first and a set after it counts the same reps twice.
+   */
+  const pressSet = async (by: number, x: MyExercise) => {
+    if (!running) return
+    setRepsFailed(false)
+    repsSaved.current = (repsSaved.current ?? 0) + by
+    setTally((t) => bumpTally(t, by))
+    const r = await addSet(x.person, x.exercise, by, dayOfStart(running.start), running.id)
+    if ('why' in r) {
+      repsSaved.current = (repsSaved.current ?? 0) - by
+      setTally((t) => bumpTally(t, -by))
+      return moan(r.why)
+    }
+    setStack.current.push({ id: r.id, value: by, name: x.name })
+  }
+
+  /** Undo, in sets mode: the last set this visit wrote, and exactly what it added */
+  const dropLastSet = async () => {
+    const last = setStack.current.pop()
+    if (!last) return
+    repsSaved.current = Math.max(0, (repsSaved.current ?? 0) - last.value)
+    setTally((t) => bumpTally(t, -last.value))
+    const bad = await dropSet(last.id)
+    if (bad) {
+      setStack.current.push(last)
+      repsSaved.current = (repsSaved.current ?? 0) + last.value
+      setTally((t) => bumpTally(t, last.value))
+      moan(bad.why)
+    }
+  }
+
+  /** link or unlink one exercise, in the server's words when it refuses */
+  const toggleLink = async (x: MyExercise, activity: string | null) => {
+    if (busy) return
+    setBusy(true)
+    const bad = await linkExercise(x.person, x.exercise, activity)
+    setExercises(await myExercises())
+    setBusy(false)
+    if (bad) moan(bad.why)
+  }
 
   /* tapped fast, written slowly: one round trip a beat after the last tap rather than one each */
   useEffect(() => {
@@ -884,7 +1129,11 @@ export function Timer({
       setBusy(true)
       const w = entWas.current
       const kept = w != null && forInput(w.from) === entFrom
-      const no = await fixRunning(kept ? w!.from : new Date(entFrom).toISOString(), entAct || null)
+      const from = kept ? w!.from : new Date(entFrom).toISOString()
+      /* ⚠️ A SITTING WITH SETS MOVES THEM WITH ITS START, in the same call — §15c */
+      const no = entSets.length
+        ? await fixRunningDay(from, entAct || null, dayOfStart(from))
+        : await fixRunning(from, entAct || null)
       setBusy(false)
       if (no) return moan(no.why)
       setFixEnt(null)
@@ -907,27 +1156,37 @@ export function Timer({
     const sameFrom = was != null && forInput(was.from) === entFrom
     const sameTo = was?.to != null && forInput(was.to) === entTo
     setBusy(true)
-    const bad = await editEntry(
-      fixEnt,
-      sameFrom ? was!.from : new Date(entFrom).toISOString(),
-      sameTo ? was!.to! : new Date(entTo).toISOString(),
-      /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
+    const fromISO = sameFrom ? was!.from : new Date(entFrom).toISOString()
+    const toISO = sameTo ? was!.to! : new Date(entTo).toISOString()
+    /**
+     * ⚠️ A SITTING WITH SETS GOES THROUGH THE DAY EDITOR, which edits the span and moves the sets to
+     * the local day it now starts on IN ONE CALL (§15c) — two calls would leave a moment, or a
+     * failure, in which the Circuit grid and the sitting disagree about which day the reps were.
+     * The note is not sent at all on that path, and the server leaves it alone.
+     */
+    const bad = entSets.length
+      ? await editEntryDay(fixEnt, fromISO, toISO, entAct || null, dayOfStart(fromISO))
+      : await editEntry(
+          fixEnt,
+          fromISO,
+          toISO,
+          /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
          read null as "clear it" — so opening a session's editor and pressing Save, changing
          nothing, destroyed whatever you had written about it. The server now reads null as "leave
          it alone" so no caller can lose one by forgetting; this sends the box, so you can change
          one or empty it on purpose. */
-      /**
-       * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
-       * box now, not this session's note — sending it here would copy whatever is half-typed in
-       * that box into the legacy `note` column on every Save. The journal is the one home for
-       * what you write about a sitting; the column is frozen where it stood.
-       */
-      null,
-      /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
+          /**
+           * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
+           * box now, not this session's note — sending it here would copy whatever is half-typed in
+           * that box into the legacy `note` column on every Save. The journal is the one home for
+           * what you write about a sitting; the column is frozen where it stood.
+           */
+          null,
+          /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
          mistake this room allows and the only remedy used to be deleting the session and typing
          it in again — losing the amount, the rating and the day it was recorded. */
-      entAct || null,
-    )
+          entAct || null,
+        )
     /**
      * ⚠️ THE AMOUNT IS A SECOND CALL, and only when the activity has something to count. It is a
      * separate function on the server for a reason the migration records — three signatures would
@@ -1049,6 +1308,43 @@ export function Timer({
     }
   }
 
+  /**
+   * Open a sitting's editor on the day it happened — from the week grid, or from the journal.
+   *
+   * ⚠️ ONE FUNCTION FOR BOTH, lifted out of the week grid's handler rather than written again.
+   * The editor's fields are seeded from the sitting here, and a second copy of these six lines
+   * is where one of them would quietly stop seeding a field the other does — the amount, say,
+   * which the week grid's version already had to remember.
+   */
+  /**
+   * Open an activity's editor, seeded with what it holds now.
+   *
+   * ⚠️ ONE FUNCTION FOR THE ROW'S NAME BUTTON AND FOR THE "NAME WHAT THIS COUNTS" DOOR, for the
+   * reason `openSitting` below is one: a second copy of these seven lines is where a field stops
+   * being seeded, and an unseeded field here is not a blank — it is the PREVIOUS activity's value,
+   * saved onto this one by the next Save.
+   */
+  const editActivity = (a: Activity) => {
+    setFixAct(a.id)
+    setActName(a.name)
+    setActCat(a.cat)
+    setActColour(a.colour)
+    setActMetric(a.metric ?? '')
+    setActSession(a.session == null ? '' : String(a.session))
+    setActShared(a.shared)
+  }
+
+  const openSitting = (day: string, e: Entry) => {
+    setSeeing(day)
+    setFixEnt(e.id)
+    entWas.current = { from: e.start, to: e.end }
+    setEntAct(e.activity)
+    setEntFrom(forInput(e.start))
+    setEntTo(e.end ? forInput(e.end) : '')
+    setEntAmount(e.amount == null ? '' : String(e.amount))
+    setEntMood(e.quality == null ? '' : String(e.quality))
+  }
+
   const forget = async (e: Entry) => {
     const name = byId.get(e.activity)?.name ?? 'that'
     const here = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
@@ -1127,7 +1423,10 @@ export function Timer({
       <div className="chron-timer">
         {running ? (
           <>
-            <span className="chron-run" aria-live="off">
+            {/* ⚠️ `role="timer"`, which is what this is. Its implicit live setting is already
+                `off` — a clock announcing every second would drown everything else on the page —
+                so the role adds the name a screen reader gives it without adding any noise. */}
+            <span className="chron-run" role="timer" aria-live="off">
               {clockText(Date.now() - Date.parse(running.start))}
             </span>
             <span className="chron-run-name">
@@ -1159,6 +1458,31 @@ export function Timer({
               )
             })()}
             {/**
+             * ⚠️ A FACT AND THE WAY OUT, NEVER A QUESTION THAT HAS TO BE ANSWERED. The clock reads
+             * 14:03:22 for a timer left running overnight and says nothing about yesterday, so
+             * this says when it began — and that the dialog Stop opens is where the real finishing
+             * time is set. It asks nothing and blocks nothing: somebody genuinely at it for five
+             * hours reads one line and carries on, which is the whole difference between a fact
+             * and a nag. The rule for when it appears is `longRun`, with its own tests.
+             */}
+            {(() => {
+              const long = longRun(running.start, Date.now())
+              if (!long) return null
+              const t = new Date(running.start)
+              const time = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+              const when =
+                long.daysAgo === 0
+                  ? time
+                  : long.daysAgo === 1
+                    ? `${time} yesterday`
+                    : `${t.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`
+              return (
+                <p className="chron-longrun">
+                  Running since {when}. Forgot to stop? Press Stop, then set when you finished.
+                </p>
+              )
+            })()}
+            {/**
              * ⚠️ ONLY WHEN THE ACTIVITY COUNTS SOMETHING. A metric is what makes a quantity mean
              * anything — "24" against Drawing is a number with no unit, where "24 reps" against
              * Gym is the set you just did. The activity editor is where a metric is named, so
@@ -1166,38 +1490,174 @@ export function Timer({
              *
              * ⚠️ AND THE STEPS ARE +1 / +5 / +10 RATHER THAN A NUMBER FIELD. The whole request
              * was "simple ui buttons to easily tap add reps" — a keyboard between sets is the
-             * thing being replaced, not the thing to offer. The one ✕ undoes a mis-tap, which is
-             * the only other thing a thumb needs here.
+             * thing being replaced, not the thing to offer. `−1` and Undo are the only other
+             * things a thumb needs here — see the note on Undo below.
              */}
             {(() => {
               const metric = running ? (byId.get(running.activity)?.metric ?? null) : null
               if (!metric) return null
               const at = reps ?? 0
-              const bump = (by: number) => setReps(Math.max(0, Math.round(at + by)))
+              /**
+               * ⚠️ SETS MODE, WHEN THE ACTIVITY HAS EXERCISES LINKED TO IT. Each press is then a set
+               * of the chosen exercise, which the Circuit sees and the count includes — see
+               * `pressSet`. An activity with none counts exactly as it always has.
+               */
+              const linked = running
+                ? (exercises ?? []).filter((x) => x.activity === running.activity && x.ok)
+                : []
+              const chosen =
+                linked.find((x) => `${x.person}/${x.exercise}` === pickEx) ?? linked[0] ?? null
+              const lastSet = setStack.current[setStack.current.length - 1]
+              /**
+               * ⚠️ THE UPDATER FORM, FOR THE REASON THE NUDGE BUTTONS IN THE EDITOR ALREADY
+               * CARRY IN A COMMENT — and now through `tally.ts`, which is where the arithmetic
+               * can be asked a question. Measured in the pane before the fix: three `+5` presses
+               * inside one task gave **5 reps**; through the updater they give **15**. A thumb
+               * cannot press three times inside one task, but the window is "before React
+               * commits", which on a slow render is as long as the render takes.
+               */
+              const press = (by: number) => {
+                setRepsFailed(false)
+                setTally((t) => bumpTally(t, by))
+              }
+              const back = undoTo(tally)
+              /**
+               * What the row says about the server's copy.
+               *
+               * ⚠️ NOTHING AT ALL WHEN THERE IS NOTHING TO SAY. "0 reps · saved" on a sitting
+               * that has counted nothing is a word about a non-event; the state appears the
+               * moment there is a number for it to be about.
+               */
+              const saving = reps !== repsSaved.current
+              const state = repsFailed ? (
+                <button
+                  className="btn btn-ghost chron-tally-retry"
+                  onClick={() => void flushReps()}
+                  disabled={busy}
+                >
+                  not saved — try again
+                </button>
+              ) : saving ? (
+                <span className="muted chron-tally-state">saving…</span>
+              ) : at > 0 ? (
+                <span className="muted chron-tally-state">saved</span>
+              ) : null
               return (
-                <div className="chron-tally">
-                  <span className="chron-tally-at">
-                    <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
-                  </span>
-                  {[1, 5, 10].map((n) => (
-                    <button
-                      key={n}
-                      className="btn btn-ghost chron-tally-up"
-                      onClick={() => bump(n)}
-                      disabled={busy}
-                    >
-                      +{n}
-                    </button>
-                  ))}
-                  <button
-                    className="btn btn-ghost chron-tally-down"
-                    onClick={() => bump(-1)}
-                    disabled={busy || at === 0}
-                    aria-label={`One fewer ${metric}`}
-                    title={`One fewer ${metric}`}
-                  >
-                    −1
-                  </button>
+                /**
+                 * ⚠️ BUILT FOR BETWEEN SETS. The count is the biggest thing in the row because it
+                 * is the thing you glance at with your hands full; the three steps share the full
+                 * width so the one you want is under the thumb wherever it lands; and the two
+                 * corrections sit on their own line so a correction is never one finger-width
+                 * from the thing it corrects.
+                 *
+                 * ⚠️ AND THE UNIT IS SAID OUT LOUD. The buttons read "+5" on screen, which is
+                 * unambiguous beside "24 reps", and "Add 5 reps" to a screen reader, which has no
+                 * "beside". The count is an `<output>` that announces politely, so a run of taps
+                 * reads back as the number they arrived at rather than every step on the way.
+                 */
+                <div className="chron-tally" role="group" aria-label={`Count ${metric}`}>
+                  <div className="chron-tally-head">
+                    <output className="chron-tally-at" aria-live="polite" aria-atomic="true">
+                      <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
+                    </output>
+                    {state}
+                  </div>
+                  {/**
+                   * ⚠️ SAID, BECAUSE THIS IS THE ONE CHRONICLE NUMBER THAT LEAVES CHRONICLE. A set is
+                   * part of the person's Circuit cell, and the Circuit shows that cell to the
+                   * circuits the person is in — while everything else in this room is private
+                   * unless shared. The sitting itself, its time and its activity stay here.
+                   */}
+                  {chosen ? (
+                    <p className="muted chron-tally-where">
+                      Each set also counts in your Circuit column.
+                    </p>
+                  ) : null}
+                  {chosen ? (
+                    <div className="chron-tally-ex" role="group" aria-label="Which exercise">
+                      {linked.map((x) => {
+                        const key = `${x.person}/${x.exercise}`
+                        const on = key === `${chosen.person}/${chosen.exercise}`
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            className={'btn btn-ghost chron-tally-pick' + (on ? ' is-on' : '')}
+                            aria-pressed={on}
+                            onClick={() => setPickEx(key)}
+                          >
+                            {x.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="chron-tally-steps">
+                    {[1, 5, 10].map((n) => (
+                      <button
+                        key={n}
+                        className="btn btn-ghost chron-tally-up"
+                        onClick={() => (chosen ? void pressSet(n, chosen) : press(n))}
+                        disabled={busy}
+                        aria-label={
+                          chosen ? `Add a set of ${n} ${chosen.name}` : `Add ${n} ${metric}`
+                        }
+                      >
+                        +{n}
+                      </button>
+                    ))}
+                  </div>
+                  {chosen ? (
+                    <div className="chron-tally-fix">
+                      {/* ⚠️ ONE CORRECTION IN SETS MODE: Undo takes back the last SET, which is
+                          what a mis-press made. A −1 would have to edit some set, and which one
+                          is a question nobody between sets should have to answer. */}
+                      <button
+                        className="btn btn-ghost chron-tally-undo"
+                        onClick={() => void dropLastSet()}
+                        disabled={busy || !lastSet}
+                        aria-label={
+                          lastSet
+                            ? `Undo — take back ${countText(lastSet.value)} ${lastSet.name}`
+                            : 'Nothing to undo'
+                        }
+                      >
+                        ↶ Undo
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="chron-tally-fix">
+                      <button
+                        className="btn btn-ghost chron-tally-down"
+                        onClick={() => press(-1)}
+                        disabled={busy || at === 0}
+                        aria-label={`Take 1 off — ${metric}`}
+                      >
+                        −1
+                      </button>
+                      {/**
+                       * ⚠️ UNDO TAKES BACK THE LAST PRESS, WHATEVER ITS SIZE. `−1` was the only
+                       * correction, so a `+10` meant as a `+1` was nine more taps to repair, made
+                       * between sets with the wrong number on screen the whole time. The label says
+                       * where it goes back to, because "Undo" alone does not say how far.
+                       */}
+                      <button
+                        className="btn btn-ghost chron-tally-undo"
+                        onClick={() => {
+                          setRepsFailed(false)
+                          setTally((t) => undoTally(t))
+                        }}
+                        disabled={busy || back === undefined}
+                        aria-label={
+                          back === undefined
+                            ? 'Nothing to undo'
+                            : `Undo — back to ${countText(back ?? 0)} ${metric}`
+                        }
+                      >
+                        ↶ Undo
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })()}
@@ -1205,6 +1665,39 @@ export function Timer({
                 had ended it, in one line — and it was the only moment the room ever offered to
                 write anything down. Stopping opens a dialog instead, where the rating is a tap
                 and the journal takes as many entries as you like. */}
+            {/**
+             * ⚠️ AND THAT LEFT THE JOURNAL WITH NO DOOR ANYBODY WOULD FIND. The decision above is
+             * right — a one-line box beside Stop asks the wrong question at the wrong moment —
+             * but the consequence it did not name is that writing something down became "press ✎
+             * on the row in the day log that happens to be the one with no end on it", which is
+             * two taps into a list on the other half of the room, and nothing says it is there.
+             * The dialog it opens is the same dialog; this is only the door, and the journal is
+             * drawn first inside it while a sitting is open so the door leads somewhere.
+             *
+             * ⚠️ NOT A SECOND WRITE PATH. It sets `fixEnt`, which is what the log row's ✎ sets.
+             * A box here with its own `addNote` would be the third place a note has been written
+             * from in this file, and the first two both lost one — see the autosave that moved a
+             * sentence onto the wrong sitting, and `chronicle_running_note`, which no longer
+             * exists.
+             */}
+            <button
+              className="btn btn-ghost chron-jot"
+              disabled={busy}
+              onClick={() => setFixEnt(running.id)}
+              title="Write something about this session, without stopping it"
+            >
+              ✎ Note
+              {running.notes.length ? (
+                <span className="chron-jot-n" aria-hidden>
+                  {running.notes.length}
+                </span>
+              ) : null}
+              <span className="sr-only">
+                {running.notes.length
+                  ? ` — ${running.notes.length} already written`
+                  : ' — nothing written yet'}
+              </span>
+            </button>
             <button className="btn" disabled={busy} onClick={() => void halt()}>
               ■ Stop
             </button>
@@ -1212,23 +1705,64 @@ export function Timer({
         ) : seeing !== todayISO() ? (
           /* ⚠️ a timer runs in the present or not at all. On another day the controls would be a
              lie — there is nothing to time — so the day offers the repair tools instead. */
-          <span className="muted">
+          <>
+            <span className="muted">
+              {/**
+               * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. The condition here is "not
+               * today", which is true in both directions, and the copy was written for one of them:
+               * stepping forward to Saturday said "Looking back. Use ⏱ Fill a gap to add time",
+               * which is wrong twice — you are looking forward, and you cannot have spent time on a
+               * day you have not lived. Pointing somebody at Fill a gap there invites them to record
+               * work they have not done.
+               *
+               * ⚠️ AND IT POINTS AT THE THING THAT IS ACTUALLY FOR THIS. A future day is what the
+               * planner is for, and the plan list is a few inches further down the same column.
+               */}
+              {seeing > todayISO()
+                ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
+                : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
+            </span>
             {/**
-             * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. The condition here is "not
-             * today", which is true in both directions, and the copy was written for one of them:
-             * stepping forward to Saturday said "Looking back. Use ⏱ Fill a gap to add time",
-             * which is wrong twice — you are looking forward, and you cannot have spent time on a
-             * day you have not lived. Pointing somebody at Fill a gap there invites them to record
-             * work they have not done.
-             *
-             * ⚠️ AND IT POINTS AT THE THING THAT IS ACTUALLY FOR THIS. A future day is what the
-             * planner is for, and the plan list is a few inches further down the same column.
+             * ⚠️ A NOTE ABOUT THIS DAY, FROM THIS DAY. The Journal's box only ever wrote about
+             * today, so "slept badly on Tuesday", remembered on Thursday, had to be filed under
+             * Thursday. On a past day this opens the same box on THIS day; the note keeps the moment
+             * it was written, and this day's log shows it with that date and no clock. Not on a day
+             * still to come: the writer refuses one, and you cannot have noticed anything about it.
              */}
-            {seeing > todayISO()
-              ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
-              : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
-          </span>
-        ) : null}
+            {seeing < todayISO() ? (
+              <button
+                className="btn btn-ghost chron-jot"
+                onClick={() => {
+                  setWriteDay(seeing)
+                  setWriteNow((n) => n + 1)
+                  onShow?.('journal')
+                }}
+              >
+                ✎ Note
+                <span className="sr-only"> — write something down about this day</span>
+              </button>
+            ) : null}
+          </>
+        ) : (
+          /**
+           * ⚠️ A NOTE WITHOUT A TIMER, which is the whole of "writing a note must not require
+           * starting a timer". With a session running, ✎ Note writes about it; with nothing
+           * running it used to be absent, so writing anything down meant timing something first.
+           * This goes to the Journal and puts the cursor in its box — the one place a note with
+           * no session is written and changed.
+           */
+          <button
+            className="btn btn-ghost chron-jot"
+            onClick={() => {
+              setWriteDay(undefined)
+              setWriteNow((n) => n + 1)
+              onShow?.('journal')
+            }}
+          >
+            ✎ Note
+            <span className="sr-only"> — write something down, no session needed</span>
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
           ＋ Activity
         </button>
@@ -1527,6 +2061,20 @@ export function Timer({
 
       {/* ⚠️ the three categories, which is the reading the whole thing exists for — and zero is
           shown as nothing rather than as "0m", because a day with no upkeep in it is not news */}
+      {show === 'journal' && acts !== null && (
+        <JournalList
+          acts={acts}
+          beat={beat}
+          writeNow={writeNow}
+          writeDay={writeDay}
+          onOpen={(row, e) => {
+            /* ⚠️ THE DAY FIRST, THEN THE HALF, in one handler so they commit together: with the
+               half changed alone, the effect that resets `seeing` would run against 'journal' */
+            openSitting(row.sat, e)
+            onShow?.('day')
+          }}
+        />
+      )}
       {show === 'day' && Object.keys(cats).length > 0 && (
         <p className="chron-cats">
           {CATS.map(([c, label]) =>
@@ -1571,6 +2119,41 @@ export function Timer({
       {show === 'day' && stream.length > 0 && (
         <ul className="chron-log">
           {stream.map((row) => {
+            if (row.kind === 'note') {
+              const n = row.n
+              return (
+                <li key={`n-${n.id}`} className="chron-moment is-note">
+                  <span className="chron-moment-what">
+                    <span aria-hidden>📝</span>{' '}
+                    <span className="sr-only">A note only you can read: </span>
+                    <span className="chron-note-text">{n.body}</span>
+                  </span>
+                  {/* ⚠️ THE TIME IT WAS WRITTEN, OR THE DAY — never a time on this day that the
+                      note does not have. See `dayLogNotes`. */}
+                  <span className="muted chron-moment-when">
+                    {row.timed
+                      ? new Date(n.at).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : `written ${new Date(n.at).toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                        })}`}
+                  </span>
+                  {/* changed where it is written — one editor for a note, not two that drift */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost chron-x"
+                    aria-label="Change this note, in the Journal"
+                    onClick={() => onShow?.('journal')}
+                  >
+                    ✎
+                  </button>
+                </li>
+              )
+            }
             if (row.kind === 'moment') {
               const m = row.m
               const workout = m.kind === 'workout'
@@ -1811,6 +2394,14 @@ export function Timer({
         const finishing = fixEnt == null
         const a = byId.get(e.activity)
         const metric = byId.get(entAct)?.metric
+        /**
+         * What the sitting's counted sets hold, which its count may not go below — unless this
+         * save moves it to an activity in another unit, which takes them back out on the server.
+         */
+        const unitMoves = unitOf(a?.metric) !== unitOf(metric)
+        const floor = unitMoves ? 0 : countedIn(entSets, e.id)
+        const asked = entAmount.trim() === '' ? 0 : Number(entAmount)
+        const below = !!e.end && floor > 0 && Number.isFinite(asked) && asked < floor
         const len = minsBetweenLocal(entFrom, entTo)
         const was = entWas.current
         const untouched =
@@ -1852,6 +2443,93 @@ export function Timer({
             </div>
           </div>
         )
+        /**
+         * ⚠️ A JOURNAL, NOT A FIELD. This was one `note` column, so a sitting you wanted to
+         * say three things about got one, and saying the third meant rewriting the first two.
+         * Each entry keeps the moment it was written, which is the half that makes it a
+         * journal rather than a longer box — "instead of just a single note id want to be
+         * able to journal multiple things into an activity".
+         *
+         * ⚠️ AND CLEARING ONE DELETES IT, which is `chronicle_note_edit`'s own rule and the
+         * one place in this room where empty means remove: a journal entry you have cleared
+         * is one you did not mean to write, and a blank row is a thing to tidy up later.
+         */
+        /**
+         * ⚠️ LIFTED OUT SO IT CAN BE DRAWN IN TWO PLACES, AND IT LEADS WHILE THE SITTING IS OPEN.
+         * The dialog is ordered for a session you have finished — what it was, when it ran, how
+         * long, how much, how it went — and the journal is last because it is the longest thing
+         * on it. Opened on the sitting you are IN, that order is wrong: there is no end, no
+         * length and nothing yet to rate, and the one reason to open it mid-session is to say
+         * what you are doing. So ✎ Note on the running header lands on the box instead of above
+         * four fields it has to be scrolled past, and nothing has to steal focus from the Modal
+         * to manage it — see the note above about what getting that right cost once already.
+         */
+        const journal = (
+          <div className="chron-field">
+            <label>Journal</label>
+            {e.notes.length > 0 && (
+              <ul className="chron-journal">
+                {e.notes.map((n) => (
+                  <li key={n.id}>
+                    <time dateTime={n.at}>
+                      {new Date(n.at).toLocaleTimeString(undefined, {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                    <textarea
+                      rows={1}
+                      defaultValue={n.body}
+                      aria-label={`Written at ${new Date(n.at).toLocaleTimeString()}`}
+                      onBlur={(ev) => {
+                        if (ev.target.value.trim() === n.body) return
+                        void (async () => {
+                          const bad = await editNote(n.id, ev.target.value)
+                          if (bad) moan(bad.why)
+                          await after()
+                        })()
+                      }}
+                    />
+                    {onIdea && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost chron-idea"
+                        aria-label="Make this a goal for today"
+                        onClick={(ev) => {
+                          /* ⚠️ THE BOX'S TEXT, NOT `n.body`. The box is edited in place and saves
+                             on blur, so a line changed and then sent straight here would
+                             otherwise arrive as the version from before the change. */
+                          const box = ev.currentTarget.parentElement?.querySelector('textarea')
+                          const text = box?.value ?? n.body
+                          setFixEnt(null)
+                          setJustDid(null)
+                          onIdea(text)
+                        }}
+                      >
+                        ＋ Goal
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="chron-journal-add">
+              <textarea
+                rows={1}
+                value={entNote}
+                placeholder={e.notes.length ? 'and another thing…' : 'write something down'}
+                onChange={(ev) => setEntNote(ev.target.value)}
+              />
+              <button
+                className="btn btn-ghost"
+                disabled={busy || !entNote.trim()}
+                onClick={() => void addJournal(e.id)}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )
         return (
           <Modal
             title={
@@ -1884,7 +2562,7 @@ export function Timer({
                   </button>
                   <button
                     className="btn"
-                    disabled={busy || (len ?? 0) < 0}
+                    disabled={busy || (len ?? 0) < 0 || below}
                     onClick={() => void saveEnt(metric)}
                   >
                     Save
@@ -1893,6 +2571,8 @@ export function Timer({
               </div>
             }
           >
+            {e.end == null ? journal : null}
+
             <div className="chron-field">
               <label htmlFor="ent-act">What it was</label>
               <select
@@ -1914,6 +2594,12 @@ export function Timer({
                   </option>
                 ))}
               </select>
+              {/* ⚠️ SAID AT THE MOMENT IT HAPPENS (§15c): a move takes the time to the new
+                  activity and leaves every set the exercise it was. Correct, and it looks like a
+                  bug — a goal's number moves and the Circuit's does not. */}
+              {entAct !== e.activity && moveNote(entSets, e.id) ? (
+                <p className="muted chron-move-note">{moveNote(entSets, e.id)}</p>
+              ) : null}
             </div>
 
             <div className="chron-frow">
@@ -1967,6 +2653,91 @@ export function Timer({
                 />
               </div>
             )}
+
+            {/**
+             * ⚠️ THE SETS THIS SITTING COUNTED, AND THE WAY TO TAKE ONE BACK. Its count holds the
+             * counted ones, so it cannot be lowered below them here — the server refuses that too —
+             * and the line under the field says so and says where the fix is: ✕ on a set takes back
+             * exactly what it added. A set that is not counted is shown as such, so the two numbers
+             * on this dialog never look like they disagree for no reason.
+             */}
+            {entSets.some((x) => x.entry === e.id) ? (
+              <div className="chron-sets">
+                <span className="muted">Sets</span>
+                <ul>
+                  {entSets
+                    .filter((x) => x.entry === e.id)
+                    .map((x) => (
+                      <li key={x.id}>
+                        {countText(x.value)} {setName(x)}
+                        {x.counted ? null : <span className="muted"> · not in the count</span>}
+                        <button
+                          type="button"
+                          className="btn btn-ghost chron-set-x"
+                          disabled={busy}
+                          aria-label={`Take back ${countText(x.value)} ${setName(x)}`}
+                          onClick={async () => {
+                            setBusy(true)
+                            const bad = await dropSet(x.id)
+                            setBusy(false)
+                            if (bad) return moan(bad.why)
+                            setEntSets((all) => all.filter((y) => y.id !== x.id))
+                            if (x.counted && entAmount.trim() !== '') {
+                              const n = Number(entAmount)
+                              if (Number.isFinite(n)) setEntAmount(String(Math.max(0, n - x.value)))
+                            }
+                            await after()
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+                {below ? (
+                  <p className="chron-sets-floor" role="alert">
+                    Its sets count {countText(floor)} {metric}. Take one back above to go lower.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/**
+             * ⚠️ THE DOOR TO THE COUNTER, FOR AN ACTIVITY THAT HAS NONE. The `+1 / +5 / +10` row on
+             * the clock appears only once an activity has been told what it counts — and that is
+             * said in the Activities fold at the foot of the Day half, closed, under a box whose
+             * only label is a placeholder reading "pages?". So somebody timing Gym had a rep
+             * counter one setting away and nothing on any screen saying so. This is where they
+             * already are when the question occurs to them: looking at the session they just did.
+             *
+             * ⚠️ IT OPENS THE ACTIVITY EDITOR, NOT A SECOND ONE. The metric is a property of the
+             * activity, saved through `chronicle_activity_save` with every other field it has; a
+             * box here that saved just the metric would be the second write path to a row whose
+             * every OTHER column it would then have to pass through untouched.
+             */}
+            {(() => {
+              const act = byId.get(entAct)
+              if (metric || !act || act.auto || act.archived) return null
+              return (
+                <p className="muted chron-count-door">
+                  Counted reps, laps or pages?{' '}
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setFixEnt(null)
+                      setJustDid(null)
+                      setActsOpen(true)
+                      editActivity(act)
+                      setToMetric((n) => n + 1)
+                      onShow?.('day')
+                    }}
+                  >
+                    Name what {act.name} counts
+                  </button>
+                </p>
+              )
+            })()}
 
             {/**
              * ⚠️ BUTTONS RATHER THAN A SELECT, which is the other thing the HTML version has
@@ -2032,62 +2803,7 @@ export function Timer({
               </div>
             )}
 
-            {/**
-             * ⚠️ A JOURNAL, NOT A FIELD. This was one `note` column, so a sitting you wanted to
-             * say three things about got one, and saying the third meant rewriting the first two.
-             * Each entry keeps the moment it was written, which is the half that makes it a
-             * journal rather than a longer box — "instead of just a single note id want to be
-             * able to journal multiple things into an activity".
-             *
-             * ⚠️ AND CLEARING ONE DELETES IT, which is `chronicle_note_edit`'s own rule and the
-             * one place in this room where empty means remove: a journal entry you have cleared
-             * is one you did not mean to write, and a blank row is a thing to tidy up later.
-             */}
-            <div className="chron-field">
-              <label>Journal</label>
-              {e.notes.length > 0 && (
-                <ul className="chron-journal">
-                  {e.notes.map((n) => (
-                    <li key={n.id}>
-                      <time dateTime={n.at}>
-                        {new Date(n.at).toLocaleTimeString(undefined, {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </time>
-                      <textarea
-                        rows={1}
-                        defaultValue={n.body}
-                        aria-label={`Written at ${new Date(n.at).toLocaleTimeString()}`}
-                        onBlur={(ev) => {
-                          if (ev.target.value.trim() === n.body) return
-                          void (async () => {
-                            const bad = await editNote(n.id, ev.target.value)
-                            if (bad) moan(bad.why)
-                            await after()
-                          })()
-                        }}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="chron-journal-add">
-                <textarea
-                  rows={1}
-                  value={entNote}
-                  placeholder={e.notes.length ? 'and another thing…' : 'write something down'}
-                  onChange={(ev) => setEntNote(ev.target.value)}
-                />
-                <button
-                  className="btn btn-ghost"
-                  disabled={busy || !entNote.trim()}
-                  onClick={() => void addJournal(e.id)}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
+            {e.end == null ? null : journal}
           </Modal>
         )
       })()}
@@ -2137,16 +2853,11 @@ export function Timer({
            * supposed to save.
            */
           onOpen={(day, id) => {
-            setSeeing(day)
-            setFixEnt(id)
             const e = weekLog.find((x) => x.id === id)
-            if (e) {
-              entWas.current = { from: e.start, to: e.end }
-              setEntAct(e.activity)
-              setEntFrom(forInput(e.start))
-              setEntTo(e.end ? forInput(e.end) : '')
-              setEntAmount(e.amount == null ? '' : String(e.amount))
-              setEntMood(e.quality == null ? '' : String(e.quality))
+            if (e) openSitting(day, e)
+            else {
+              setSeeing(day)
+              setFixEnt(id)
             }
           }}
           /**
@@ -2187,7 +2898,14 @@ export function Timer({
       {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
       {show === 'day' && open.length > 0 && (
-        <details className="chron-tidy">
+        /* ⚠️ CONTROLLED, because something besides its own summary now opens it — the "name what
+           this counts" door in a sitting's editor. `onToggle` keeps the state honest when a person
+           opens or closes it by hand, so the two never disagree about whether it is open. */
+        <details
+          className="chron-tidy"
+          open={actsOpen}
+          onToggle={(ev) => setActsOpen(ev.currentTarget.open)}
+        >
           <summary>Activities</summary>
           <ul className="chron-acts">
             {(acts ?? []).map((a) =>
@@ -2241,6 +2959,7 @@ export function Timer({
                   <label className="chron-qty">
                     <span className="sr-only">Also counts (optional)</span>
                     <input
+                      ref={metricBox}
                       value={actMetric}
                       placeholder="pages?"
                       onChange={(e) => setActMetric(e.target.value)}
@@ -2278,6 +2997,82 @@ export function Timer({
                    * the quick switch for the two states it can express, and it defers when the
                    * value is the third.
                    */}
+                  {/**
+                   * ⚠️ FROM THE CIRCUIT: WHICH EXERCISES COUNT TOWARD THIS, decided by units and
+                   * never by names (§19g). Three kinds of row — ones that fit, as toggles; ones in a
+                   * different unit, said plainly; and ones whose unit nobody can compare, listed as
+                   * needing a decision rather than linked by a guess. It reads the SAVED metric,
+                   * because that is what the server compares.
+                   */}
+                  {(() => {
+                    const act = byId.get(fixAct ?? '')
+                    if (!act || !exercises?.length) return null
+                    const rows = exercises.map((x) => ({ x, f: fit(x.unit, act.metric) }))
+                    const can = rows.filter((r) => r.f.ok).map((r) => r.x)
+                    const other = rows.filter((r) => !r.f.ok && r.f.why === 'different')
+                    const unsure = rows.filter((r) => !r.f.ok && r.f.why === 'unknown')
+                    if (!act.metric?.trim()) {
+                      return (
+                        <p className="muted chron-links-note">
+                          Give this a count (reps, minutes, miles…) to link Circuit exercises to it.
+                        </p>
+                      )
+                    }
+                    return (
+                      <div
+                        className="chron-links"
+                        role="group"
+                        aria-label="Circuit exercises this counts"
+                      >
+                        <span className="muted">From the Circuit, in {act.metric}</span>
+                        {can.map((x) => {
+                          const mine = x.activity === act.id
+                          const elsewhere =
+                            x.activity && x.activity !== act.id ? byId.get(x.activity)?.name : null
+                          return (
+                            <button
+                              key={`${x.person}/${x.exercise}`}
+                              type="button"
+                              className={'btn btn-ghost chron-link' + (mine ? ' is-on' : '')}
+                              aria-pressed={mine}
+                              disabled={busy}
+                              onClick={() => void toggleLink(x, mine ? null : act.id)}
+                            >
+                              {x.name}
+                              {elsewhere ? (
+                                <span className="muted"> · counts as {elsewhere}</span>
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                        {can.length === 0 ? (
+                          <span className="muted">none in {act.metric}</span>
+                        ) : null}
+                        {other.length ? (
+                          <p className="muted chron-links-note">
+                            Not here: {other.map((r) => `${r.x.name} (${r.x.unit})`).join(', ')}.
+                          </p>
+                        ) : null}
+                        {unsure.length ? (
+                          <p className="muted chron-links-note">
+                            Needs a decision — these units cannot be compared with anything:{' '}
+                            {unsure.map((r) => `${r.x.name} (${r.x.unit || 'none'})`).join(', ')}.
+                          </p>
+                        ) : null}
+                        {exercises.some((x) => x.activity === act.id && x.ok === false) ? (
+                          <p className="muted chron-links-note">
+                            A link here no longer agrees on units, so it counts nothing until it
+                            does:{' '}
+                            {exercises
+                              .filter((x) => x.activity === act.id && x.ok === false)
+                              .map((x) => `${x.name} (${fitText(fit(x.unit, act.metric))})`)
+                              .join(', ')}
+                            .
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
                   {byId.get(fixAct ?? '')?.visibility === 'certain' ? (
                     <p className="muted chron-share-note">
                       Shared with the friends you chose. Change who in <strong>Sharing</strong>.
@@ -2317,15 +3112,7 @@ export function Timer({
                    */}
                   <button
                     className="btn btn-ghost chron-act-name"
-                    onClick={() => {
-                      setFixAct(a.id)
-                      setActName(a.name)
-                      setActCat(a.cat)
-                      setActColour(a.colour)
-                      setActMetric(a.metric ?? '')
-                      setActSession(a.session == null ? '' : String(a.session))
-                      setActShared(a.shared)
-                    }}
+                    onClick={() => editActivity(a)}
                     title={`Rename ${a.name}, or change what kind it is`}
                   >
                     {a.colour ? (

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { VisibilityTier } from '../circuit/types'
 import {
   ASKS_AT_ONCE,
+  arrange,
+  settledFor,
   profileGlyph,
   inBatches,
   derived,
@@ -17,6 +19,7 @@ import {
   repeats,
   share,
   SCOPES,
+  startFor,
   streakAsks,
   streakKey,
   streakOf,
@@ -24,6 +27,8 @@ import {
   likeForLike,
   marksOf,
   homeFor,
+  ideaTitle,
+  TITLE_MAX,
   SHOWN_SCOPES,
   tallyAsks,
   tallyKey,
@@ -1298,5 +1303,162 @@ describe('profileGlyph', () => {
        glyph is "on your profile", not "off" */
     expect(profileGlyph('members').press).toBe('unshare')
     expect(profileGlyph('public').press).toBe('unshare')
+  })
+})
+
+/**
+ * ⚠️ THE FIXTURE IS `reading` ABOVE, every field set to something other than its default, for
+ * the reason CLAUDE.md §2 gives: a rule reading the wrong field has to have somewhere to be
+ * wrong. Each refusal below is also asserted against a list where only ONE field differs, so a
+ * guard that has been dropped cannot be covered by a neighbouring one.
+ */
+describe('the activity a goal can be started from', () => {
+  const onActivity = goal({ activity: 'a-read', counts: 'minutes', target: 30, unit: 'minutes' })
+
+  it('offers the activity a derived goal counts', () => {
+    expect(startFor(onActivity, [reading], null)).toEqual({
+      activity: 'a-read',
+      name: 'Reading',
+      running: false,
+    })
+  })
+
+  it('offers nothing for a tick-box goal, which names no activity at all', () => {
+    expect(startFor(goal(), [reading], null)).toBeNull()
+  })
+
+  it('offers nothing for a goal counting a whole category', () => {
+    /* a category names no single activity, so there is nothing for one button to start */
+    expect(startFor(goal({ cat: 'free' }), [reading], null)).toBeNull()
+  })
+
+  it('offers nothing when the source has been archived', () => {
+    /* chronicle_start refuses an activity with an archived_at — the button's only possible
+       answer would be an error, which is what the row's "archived" chip already says */
+    expect(startFor(onActivity, [{ ...reading, archived: true }], null)).toBeNull()
+  })
+
+  it('offers nothing when the source is one the site writes itself', () => {
+    expect(startFor(onActivity, [{ ...reading, auto: true }], null)).toBeNull()
+  })
+
+  it('offers nothing when the source is not in the list it was handed', () => {
+    /* the goals and the activities are two fetches — one can land before the other */
+    expect(startFor(onActivity, [], null)).toBeNull()
+  })
+
+  it('says it is running rather than offering to start it again', () => {
+    /* pressing Start on what you are already in closes that sitting and opens a new one */
+    expect(startFor(onActivity, [reading], 'a-read')?.running).toBe(true)
+  })
+
+  it('says it is not running when something else is', () => {
+    expect(startFor(onActivity, [reading], 'a-gym')?.running).toBe(false)
+  })
+})
+
+describe('the order a window lists its goals in', () => {
+  const a = goal({ id: 'a', priority: 2 })
+  const b = goal({ id: 'b', priority: 1 })
+  const c = goal({ id: 'c' })
+  const old = goal({ id: 'old', anchor: '2026-10-01' })
+  const ids = (gs: Goal[]) => gs.map((g) => g.id)
+
+  it('puts what was already finished on arrival after everything still to do', () => {
+    const r = arrange([a, b, c], [old], new Set(['a']))
+    expect([ids(r.open), ids(r.late), ids(r.done)]).toEqual([['b', 'c'], ['old'], ['a']])
+  })
+
+  it('keeps the arrival order inside each section, which is priority', () => {
+    /* nothing here re-ranks — the order handed in is the order kept */
+    const r = arrange([a, b, c], [], new Set(['a', 'c']))
+    expect([ids(r.open), ids(r.done)]).toEqual([['b'], ['a', 'c']])
+  })
+
+  it('leaves a goal finished during the visit where it was', () => {
+    /* the snapshot is what decides the section, never the goal's state now — so ticking `b`
+       after arriving, which the caller sees as finished, still lists it among the open ones */
+    const r = arrange([a, b, c], [], new Set<string>())
+    expect(ids(r.open)).toEqual(['a', 'b', 'c'])
+    expect(r.done).toEqual([])
+  })
+
+  it('leaves a goal unticked during the visit in the done section until the next arrival', () => {
+    /* the other direction of the same rule: a row does not jump up the list either */
+    const r = arrange([a, b], [], new Set(['b']))
+    expect(ids(r.done)).toEqual(['b'])
+  })
+
+  it('never puts a late goal among the done ones', () => {
+    /* a late goal is listed for being unfinished; the snapshot is about this window's own */
+    const r = arrange([a], [old], new Set(['old']))
+    expect([ids(r.late), ids(r.done)]).toEqual([['old'], []])
+  })
+})
+
+describe('a note turned into the first draft of a goal', () => {
+  it('passes a short note through, trimmed', () => {
+    expect(ideaTitle('  ring the physio  ')).toBe('ring the physio')
+  })
+
+  it('makes one line of a note written on several', () => {
+    expect(ideaTitle('ring the physio\n\nabout the   knee')).toBe('ring the physio about the knee')
+  })
+
+  it('never hands the save a title longer than the table allows', () => {
+    /* 120 is the server's CHECK, asserted as a number so a change to either side is noticed */
+    expect(TITLE_MAX).toBe(120)
+    const long = 'word '.repeat(60)
+    expect(ideaTitle(long).length).toBeLessThanOrEqual(120)
+  })
+
+  it('cuts a long note at a word, and says it was cut', () => {
+    /* ⚠️ ELEVEN-CHARACTER UNITS, so the 119th character lands INSIDE a word. With six-letter
+       words it landed exactly on a word's end, and a cut that ignored word boundaries passed —
+       the fixture was making the one thing under test come out right by arithmetic. */
+    const t = ideaTitle('abcdefghij '.repeat(20))
+    expect(t.endsWith(' abcdefghij…')).toBe(true)
+    expect(t.length).toBeLessThanOrEqual(120)
+  })
+
+  it('cuts an unbroken run where it has to, rather than returning nothing', () => {
+    const t = ideaTitle('x'.repeat(200))
+    expect([t.length, t.endsWith('…')]).toEqual([120, true])
+  })
+
+  it('keeps a note of exactly the limit whole', () => {
+    const exact = 'y'.repeat(120)
+    expect(ideaTitle(exact)).toBe(exact)
+  })
+
+  it('gives nothing for a note of nothing but space', () => {
+    expect(ideaTitle(' \n\t ')).toBe('')
+  })
+})
+
+describe('the arrival snapshot, across midnight', () => {
+  /* a daily repeating goal: the same id on every day it is due */
+  const floss = goal({ id: 'floss', anchor: null, every: 1 })
+  const ids = (gs: Goal[]) => gs.map((g) => g.id)
+
+  it('answers for the day it was taken on', () => {
+    const snap = { view: 'today', on: '2026-11-07', ids: new Set(['floss']) }
+    expect([...settledFor(snap, 'today', '2026-11-07')]).toEqual(['floss'])
+  })
+
+  it('files a repeating goal finished yesterday as open today, not as done', () => {
+    /* the tab stayed open over midnight: same view, new day */
+    const snap = { view: 'today', on: '2026-11-07', ids: new Set(['floss']) }
+    const r = arrange([floss], [], settledFor(snap, 'today', '2026-11-08'))
+    expect([ids(r.open), ids(r.done)]).toEqual([['floss'], []])
+  })
+
+  it('answers nothing for a different tab', () => {
+    const snap = { view: 'today', on: '2026-11-07', ids: new Set(['floss']) }
+    expect(settledFor(snap, 'tomorrow', '2026-11-07').size).toBe(0)
+  })
+
+  it('answers nothing before any snapshot has been taken', () => {
+    expect(settledFor(null, 'today', '2026-11-07').size).toBe(0)
   })
 })

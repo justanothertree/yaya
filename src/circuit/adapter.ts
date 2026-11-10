@@ -47,4 +47,10 @@ export interface CircuitAdapter {
    * wire it to realtime. Returns an unsubscribe fn.
    */
   subscribe(onExternalChange: (next: CircuitState) => void): () => void
+
+  /**
+   * The board fetched fresh, never from a cache — for the Circuit opening again (OPEN-DECISIONS
+   * §20b). Optional, because the signed-out sandbox has nowhere else to fetch it from.
+   */
+  reload?(): Promise<CircuitState>
 }
