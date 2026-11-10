@@ -2397,3 +2397,135 @@ html:has(.lab) {
     radial-gradient(circle, #ffe680 1.5px, transparent 2px) 0 0 / 9px 9px,
     #1c2a5c;
 }
+
+/* ---------------------------------------------------------------- nine men's morris */
+.mo-room {
+  --mo-bg: #d9b47c;
+  --mo-line: #5a3a1a;
+  --mo-dot: #5a3a1a;
+  --mo-p1: #f6f1e6;
+  --mo-p1-edge: #8b7b5c;
+  --mo-p2: #2b2522;
+  --mo-p2-edge: #000;
+  --mo-lit: #2fbf71;
+}
+.mo-room.is-slate {
+  --mo-bg: #39424a;
+  --mo-line: #c9d3dc;
+  --mo-dot: #c9d3dc;
+  --mo-lit: #ffd34d;
+}
+.mo-room.is-garden {
+  --mo-bg: #8fc46b;
+  --mo-line: #f5f0dc;
+  --mo-dot: #f5f0dc;
+  --mo-lit: #ff8a3d;
+}
+.mo-room.pieces-coins {
+  --mo-p1: #f2c94c;
+  --mo-p1-edge: #a07a12;
+  --mo-p2: #b9c2cc;
+  --mo-p2-edge: #5d6670;
+}
+.mo-room.pieces-gems {
+  --mo-p1: #ff4f7b;
+  --mo-p1-edge: #9b1238;
+  --mo-p2: #3fa9ff;
+  --mo-p2-edge: #0d4f8c;
+}
+.mo-board {
+  position: relative;
+  width: min(100%, 480px);
+  aspect-ratio: 1;
+  border-radius: 14px;
+  background: var(--mo-bg);
+  box-shadow: inset 0 0 0 3px rgb(0 0 0 / 0.15);
+}
+.mo-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--mo-line);
+  stroke-width: 0.012;
+}
+.mo-lines .mo-mill {
+  stroke: var(--mo-lit);
+  stroke-width: 0.03;
+  stroke-linecap: round;
+  opacity: 0.8;
+}
+.mo-point {
+  position: absolute;
+  width: 11%;
+  height: 11%;
+  min-width: 30px;
+  min-height: 30px;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.mo-point > span {
+  width: 26%;
+  height: 26%;
+  border-radius: 50%;
+  background: var(--mo-dot);
+  transition:
+    width 0.18s,
+    height 0.18s,
+    background 0.18s;
+}
+.mo-point.is-p1 > span,
+.mo-point.is-p2 > span {
+  width: 78%;
+  height: 78%;
+}
+.mo-point.is-p1 > span {
+  background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--mo-p1);
+  box-shadow:
+    0 0 0 2px var(--mo-p1-edge),
+    0 2px 3px rgb(0 0 0 / 0.35);
+}
+.mo-point.is-p2 > span {
+  background: radial-gradient(circle at 35% 30%, #fff5, transparent 55%), var(--mo-p2);
+  box-shadow:
+    0 0 0 2px var(--mo-p2-edge),
+    0 2px 3px rgb(0 0 0 / 0.35);
+}
+.pieces-gems .mo-point.is-p1 > span,
+.pieces-gems .mo-point.is-p2 > span {
+  border-radius: 22%;
+  transform: rotate(45deg) scale(0.86);
+}
+.mo-point.is-lit > span {
+  outline: 3px solid var(--mo-lit);
+  outline-offset: 2px;
+}
+.mo-point.is-lit:not(.is-p1):not(.is-p2) > span {
+  width: 40%;
+  height: 40%;
+  background: var(--mo-lit);
+}
+.mo-point.is-picked > span {
+  outline: 3px solid #ffb000;
+  outline-offset: 3px;
+}
+.mo-point.is-last:not(.is-picked) > span {
+  outline: 2px dashed #ffb000;
+  outline-offset: 2px;
+}
+.mo-point:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mo-point > span {
+    transition: none;
+  }
+}

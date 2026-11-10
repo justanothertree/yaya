@@ -95,6 +95,7 @@ import { FourRowDemo } from '../gpu/FourRowDemo'
 import { ArcheryDemo } from '../gpu/ArcheryDemo'
 import { UltimateDemo } from '../gpu/UltimateDemo'
 import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
+import { MorrisDemo } from '../gpu/MorrisDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -676,6 +677,12 @@ const DEMOS: readonly {
     name: 'Twenty-one',
     line: 'Twenty-one — get closer to 21 than the dealer without going over: hit, stand, double or split, for play chips. Turn on the book play to see the move that loses least, and how often you agree with it; one, two or six decks, and the dealer standing or hitting soft 17.',
     Demo: TwentyOneDemo,
+  },
+  {
+    id: 'morris',
+    name: "Nine men's morris",
+    line: "Nine men's morris — the old board game of mills: place your nine men, then move them along the lines, and every three in a row takes one of theirs. Down to three, you fly. Against a computer that looks one, two or four moves ahead, or a friend; wood, slate or garden boards with stones, coins or gems.",
+    Demo: MorrisDemo,
   },
 ]
 
