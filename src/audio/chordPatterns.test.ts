@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BASS_STYLES,
   CHORD_PATTERNS,
+  CHORD_STYLES,
   basslineEvents,
   leadBackStep,
   leadsBack,
@@ -62,6 +64,40 @@ describe('the four-chord song', () => {
       'G♯ major',
       'F minor',
     ])
+  })
+})
+
+/**
+ * The five added on 9 Nov 2026, each by the chords a songbook would print — in C major, and in A
+ * minor, which is what a minor room makes of the same degrees.
+ */
+describe('the five added for Evan to judge by ear', () => {
+  const by = (id: string) => CHORD_PATTERNS.find((x) => x.id === id)!
+  it.each([
+    [
+      'canon',
+      ['C major', 'G major', 'A minor', 'E minor', 'F major', 'C major', 'F major', 'G major'],
+    ],
+    ['rising', ['F major', 'G major', 'E minor', 'A minor']],
+    ['spanish', ['A minor', 'G major', 'F major', 'E minor']],
+    ['circle', ['A minor', 'D minor', 'G major', 'C major']],
+    ['vamp', ['C major', 'F major', 'C major', 'F major']],
+  ] as const)('%s in C major', (id, names) => {
+    expect(chordsAt(progressionEvents(by(id), 8, major, 0).events)).toEqual(names)
+  })
+
+  it('and Spanish in A minor is the flamenco descent it is named for', () => {
+    /* [6, 5, 4, 3] in A minor: F, E minor, D minor, C — the same steps down, from VI */
+    expect(chordsAt(progressionEvents(by('spanish'), 8, minor, 9).events)).toEqual([
+      'F major',
+      'E minor',
+      'D minor',
+      'C major',
+    ])
+  })
+
+  it('there are ten', () => {
+    expect(CHORD_PATTERNS).toHaveLength(10)
   })
 })
 
@@ -293,6 +329,9 @@ describe('the chord that leans back to the top', () => {
     expect(leadBackStep(by('simple'), SEVEN), 'I IV V IV returns to I, so V').toBe(5)
     expect(leadBackStep(by('sad'), SEVEN), 'vi IV I V returns to vi, so iii').toBe(3)
     expect(leadBackStep(by('turnaround'), SEVEN), 'ii V I I returns to ii, so vi').toBe(6)
+    expect(leadBackStep(by('rising'), SEVEN), 'IV V iii vi returns to IV, so I').toBe(1)
+    expect(leadBackStep(by('circle'), SEVEN), 'vi ii V I returns to vi, so iii').toBe(3)
+    expect(leadBackStep(by('vamp'), SEVEN), 'I IV I IV returns to I, so V').toBe(5)
   })
 
   /**
@@ -301,6 +340,9 @@ describe('the chord that leans back to the top', () => {
    */
   it('is nothing when the progression already ends there', () => {
     expect(leadBackStep(by('fifties'), SEVEN), 'I vi IV V already ends on V').toBeNull()
+    expect(leadBackStep(by('canon'), SEVEN), 'Canon already ends on V').toBeNull()
+    /* the Andalusian cadence ends on the chord that leads back to its own top — that is the sound */
+    expect(leadBackStep(by('spanish'), SEVEN), 'vi V IV iii already ends on iii').toBeNull()
   })
 
   it('stays inside the scale, whatever size it is', () => {
@@ -401,19 +443,19 @@ describe('reading the turnaround back off a take', () => {
 
   it('sees one that is there', () => {
     const { events } = progressionEvents(four, 8, MAJOR_DEGREES, 0, true)
-    expect(leadsBack(events, four)).toBe(true)
+    expect(leadsBack(events, four, 8)).toBe(true)
   })
 
   it('and does not invent one that is not', () => {
     const { events } = progressionEvents(four, 8, MAJOR_DEGREES, 0)
-    expect(leadsBack(events, four)).toBe(false)
+    expect(leadsBack(events, four, 8)).toBe(false)
   })
 
   it('says no for a progression that cannot have one', () => {
     /* Fifties already ends on its lead-back, so asking for one changes nothing and there is
        nothing to read back — the control is disabled for exactly this reason */
     const { events } = progressionEvents(fifties, 8, MAJOR_DEGREES, 0, true)
-    expect(leadsBack(events, fifties)).toBe(false)
+    expect(leadsBack(events, fifties, 8)).toBe(false)
   })
 
   /**
@@ -427,14 +469,208 @@ describe('reading the turnaround back off a take', () => {
         for (const p of CHORD_PATTERNS) {
           const asked = leadBackStep(p, degrees.length) !== null
           const built = progressionEvents(p, 8, degrees, root, true).events
-          expect(leadsBack(built, p), `${p.id} root ${root}`).toBe(asked)
-          expect(leadsBack(progressionEvents(p, 8, degrees, root).events, p)).toBe(false)
+          expect(leadsBack(built, p, 8), `${p.id} root ${root}`).toBe(asked)
+          expect(leadsBack(progressionEvents(p, 8, degrees, root).events, p, 8)).toBe(false)
         }
       }
     }
   })
 
   it('answers nothing for a pattern with no degrees', () => {
-    expect(leadsBack([], { id: 'x', name: 'x', degrees: [], hint: '' })).toBe(false)
+    expect(leadsBack([], { id: 'x', name: 'x', degrees: [], hint: '' }, 8)).toBe(false)
+  })
+})
+
+/**
+ * How the backing is PLAYED — the styles. Every expectation is a fact a musician would state:
+ * where a hit lands against the beat, which chord is sounding, which note leads where. Two bars
+ * of 4/4 at 120bpm: a beat is half a second, the lap is four seconds, Four chords gives each
+ * chord one second — two beats.
+ */
+describe('the backing played in different styles', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+  const BEAT = 0.5
+  const LAP = 4
+  const onsets = (events: readonly LoopEvent[]) => [
+    ...new Set(events.filter((e) => e.on).map((e) => Math.round(e.t * 1000) / 1000)),
+  ]
+  /* which pitch classes start at time t */
+  const chordAt = (events: readonly LoopEvent[], t: number) =>
+    [
+      ...new Set(
+        events
+          .filter((e) => e.on && Math.abs(e.t - t) < 1e-6)
+          .map((e) => ((e.midi % 12) + 12) % 12),
+      ),
+    ].sort((a, b) => a - b)
+  const pad = progressionEvents(four, LAP, MAJOR_DEGREES, 0)
+
+  it('Pad is exactly what the room played before styles existed', () => {
+    expect(progressionEvents(four, LAP, MAJOR_DEGREES, 0, false, 'pad', BEAT)).toEqual(pad)
+    expect(basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, 'rootfifth', BEAT)).toEqual(
+      basslineEvents(four, LAP, MAJOR_DEGREES, 0),
+    )
+  })
+
+  it('Stabs strikes on every beat — eight in two bars', () => {
+    const { events } = progressionEvents(four, LAP, MAJOR_DEGREES, 0, false, 'stabs', BEAT)
+    expect(onsets(events)).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5])
+  })
+
+  it('Offbeat strikes only on the “and”', () => {
+    const { events } = progressionEvents(four, LAP, MAJOR_DEGREES, 0, false, 'offbeat', BEAT)
+    expect(onsets(events)).toEqual([0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75])
+  })
+
+  it('Pulse strikes every eighth note', () => {
+    const { events } = progressionEvents(four, LAP, MAJOR_DEGREES, 0, false, 'pulse', BEAT)
+    expect(onsets(events)).toHaveLength(16)
+    expect(onsets(events)[1]).toBe(0.25)
+  })
+
+  it('and every style plays the same chords as the pad, in the same places', () => {
+    for (const style of CHORD_STYLES.map((s) => s.id)) {
+      const { events } = progressionEvents(four, LAP, MAJOR_DEGREES, 0, false, style, BEAT)
+      /* C, G, Am, F — one per second; the first hit inside each second is that chord */
+      for (const [i, padAt] of [0, 1, 2, 3].entries()) {
+        const first = onsets(events).find((t) => t >= padAt && t < padAt + 1)!
+        expect(chordAt(events, first), `${style} chord ${i}`).toEqual(chordAt(pad.events, padAt))
+      }
+    }
+  })
+
+  it('no chord rings into the next one', () => {
+    for (const style of CHORD_STYLES.map((s) => s.id)) {
+      const { events } = progressionEvents(four, LAP, MAJOR_DEGREES, 0, true, style, BEAT)
+      const sorted = [...events].sort((a, b) => a.t - b.t)
+      for (const e of sorted.filter((x) => x.on)) {
+        const off = sorted.find((x) => !x.on && x.midi === e.midi && x.t > e.t)!
+        /* the change after this onset: the next onset with different notes */
+        const nextChange = onsets(events).find(
+          (t) => t > e.t && chordAt(events, t).join() !== chordAt(events, e.t).join(),
+        )
+        if (nextChange !== undefined) expect(off.t, style).toBeLessThanOrEqual(nextChange + 1e-9)
+        expect(off.t).toBeGreaterThan(e.t)
+      }
+    }
+  })
+
+  it('a chord too short for the grid still sounds once', () => {
+    /* a two-second beat under half-second chords: most of them end before their "and" */
+    const { events } = progressionEvents(four, 2, MAJOR_DEGREES, 0, false, 'offbeat', 2)
+    expect(onsets(events)).toHaveLength(4)
+  })
+
+  /**
+   * ⚠️ THE TURNAROUND, READ BACK, IN EVERY STYLE AND EVERY KEY. This is the control that shows
+   * ↩ pressed or not; the old rule ("more onsets than chords") would have said yes to every
+   * stab. Same sweep as above, now across the styles.
+   */
+  it('the lead-back is read correctly whatever the style', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root += 5)
+        for (const p of CHORD_PATTERNS)
+          for (const style of CHORD_STYLES.map((s) => s.id)) {
+            const asked = leadBackStep(p, degrees.length) !== null
+            const on = progressionEvents(p, LAP, degrees, root, true, style, BEAT).events
+            const off = progressionEvents(p, LAP, degrees, root, false, style, BEAT).events
+            expect(leadsBack(on, p, LAP), `${p.id} ${style} ${root}`).toBe(asked)
+            expect(leadsBack(off, p, LAP), `${p.id} ${style} ${root} off`).toBe(false)
+          }
+    }
+  })
+})
+
+describe('the bass played in different styles', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+  const BEAT = 0.5
+  const LAP = 4
+  const ons = (events: readonly LoopEvent[]) => events.filter((e) => e.on)
+  const name = (m: number) =>
+    ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][m % 12]
+
+  it('Roots holds one note per chord: C G A F', () => {
+    const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, 'roots', BEAT)
+    expect(ons(events).map((e) => name(e.midi))).toEqual(['C', 'G', 'A', 'F'])
+  })
+
+  it('Pulse repeats the root on every eighth', () => {
+    const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, 'pulse', BEAT)
+    expect(ons(events)).toHaveLength(16)
+    /* four eighths of C across its two beats, then the change to G */
+    expect(
+      ons(events)
+        .slice(3, 5)
+        .map((e) => name(e.midi)),
+    ).toEqual(['C', 'G'])
+  })
+
+  /**
+   * Two beats per chord, so Walk is the root and then the step below the next root: C then F
+   * (below G), G then G (below A), A then E (below F), F then B (below C — the loop wraps).
+   */
+  it('Walk steps into each next chord from the scale note below it', () => {
+    const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, 'walk', BEAT)
+    expect(ons(events).map((e) => name(e.midi))).toEqual(['C', 'F', 'G', 'G', 'A', 'E', 'F', 'B'])
+    /* and each approach is BELOW what it approaches, within an octave */
+    const notes = ons(events).map((e) => e.midi)
+    for (let i = 1; i < notes.length; i += 2) {
+      const target = notes[(i + 1) % notes.length]
+      expect(notes[i]).toBeLessThan(target)
+      expect(target - notes[i]).toBeLessThanOrEqual(12)
+    }
+  })
+
+  it('a walk over four beats is root, third, fifth, then the approach', () => {
+    /* one chord per bar: four beats each */
+    const { events } = basslineEvents(four, 8, MAJOR_DEGREES, 0, false, 'walk', BEAT)
+    expect(
+      ons(events)
+        .slice(0, 4)
+        .map((e) => name(e.midi)),
+    ).toEqual(['C', 'E', 'G', 'F'])
+  })
+
+  /**
+   * ⚠️ THE SAME REGISTER AS ROOT & FIFTH, so changing style never moves the bass an octave. In D#
+   * the vi chord's root is C at 48 — under that key's pad, which starts at 51 — and root & fifth
+   * plays it there; a style folding at an absolute 48 would drop it to 36 alone among its roots.
+   */
+  it('every style plays each chord’s root where root & fifth does, in every key', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++)
+        for (const p of CHORD_PATTERNS) {
+          const rf = ons(basslineEvents(p, LAP, degrees, root, false, 'rootfifth', BEAT).events)
+          const roots = ons(basslineEvents(p, LAP, degrees, root, false, 'roots', BEAT).events)
+          /* root & fifth plays two notes a chord, the root first */
+          expect(
+            roots.map((e) => e.midi),
+            `${p.id} ${root}`,
+          ).toEqual(rf.filter((_, i) => i % 2 === 0).map((e) => e.midi))
+        }
+    }
+  })
+
+  it('every style stays under the pad and inside the scale, in every key', () => {
+    for (const [, , degrees] of SCALES) {
+      if (degrees.length !== 7) continue
+      for (let root = 0; root < 12; root++) {
+        const inScale = new Set(degrees.map((d) => (d + root) % 12))
+        for (const p of CHORD_PATTERNS)
+          for (const style of BASS_STYLES.map((s) => s.id)) {
+            const { events } = basslineEvents(p, LAP, degrees, root, true, style, BEAT)
+            /* the rule the root-and-fifth test states: under the pad's lowest note, in this key */
+            const floor = Math.min(
+              ...progressionEvents(p, LAP, degrees, root, true).events.map((e) => e.midi),
+            )
+            for (const e of ons(events)) {
+              expect(e.midi, `${p.id} ${style} ${root}`).toBeLessThan(floor)
+              expect(inScale.has(e.midi % 12), `${p.id} ${style} ${root} ${e.midi}`).toBe(true)
+            }
+          }
+      }
+    }
   })
 })

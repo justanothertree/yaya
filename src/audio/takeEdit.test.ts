@@ -14,19 +14,20 @@ import {
   logNow,
   logRedo,
   logUndo,
-  loudSpan,
   MIN_SPAN,
   MIN_VIEW,
   normalise,
   panView,
   peaks,
   pickRange,
+  playedFrom,
   readLog,
   renderSamples,
   startLog,
   timeToFrac,
   toPlayed,
   toSource,
+  trimTo,
   viewAround,
   wholeEdit,
   xToTime,
@@ -533,127 +534,70 @@ describe('the picture', () => {
 })
 
 /**
- * ⚠️ EVERY EXPECTATION HERE IS WRITTEN FROM WHERE THE SOUND IS, never from what the function
- * does with it. "A tone from 2s to 3s, so the span is 2s to 3s give or take the margin" is a
- * claim about the world; comparing against `(first * per) / hz` would be a second copy of the
- * code and would agree with it however wrong it was. CLAUDE.md, §2.
+ * ⚠️ WRITTEN AS TIMES IN A RECORDING, never as sums over the spans: "a ten-second take with
+ * seconds 2 to 4 cut out" and "tapping at 3 starts at what was second 4" are facts about the
+ * audio, and they would stay true if every helper above were rewritten.
  */
-describe('finding the sound in a recording', () => {
-  const RATE = 48000
+describe('playing from where you tapped', () => {
+  /* ten seconds with 2–4 cut out: you hear 0–2 then 4–10, eight seconds in all */
+  const gap = () => cutOut(whole(), { from: 2, to: 4 }, FULL)
 
-  /** silence, then `amp` of 300Hz between `from` and `to` seconds, then silence */
-  const buried = (len: number, from: number, to: number, amp = 0.8, noise = 0) => {
-    const d = new Float32Array(Math.round(len * RATE))
-    for (let i = 0; i < d.length; i++) {
-      const t = i / RATE
-      d[i] = noise ? noise * Math.sin((2 * Math.PI * 2000 * i) / RATE) : 0
-      if (t >= from && t < to) d[i] += amp * Math.sin((2 * Math.PI * 300 * i) / RATE)
-    }
-    return [d]
-  }
-
-  /**
-   * ⚠️ 1.92 AND 3.08, NOT `2 - QUIET_EDGE`. Written against the constant, this and the four
-   * assertions like it all stayed GREEN when the margin was perturbed to zero — the
-   * expectation moved with the code and cancelled the error out exactly, which is the trap
-   * CLAUDE.md names under 'a test built from the same sum as the code'. The claim is 'about
-   * eighty milliseconds of room either side'; the numbers say that.
-   */
-  it('finds a phrase buried in silence, with a margin either side', () => {
-    const got = loudSpan(buried(6, 2, 3), 6, RATE)!
-    expect(got.from).toBeCloseTo(1.92, 2)
-    expect(got.to).toBeCloseTo(3.08, 2)
+  it('starts at that moment of the recording', () => {
+    expect(playedFrom(whole(), 3.25)).toBeCloseTo(3.25, 9)
+    /* second 5 of the recording is the fourth second you hear, the cut being behind it */
+    expect(playedFrom(gap(), 5)).toBeCloseTo(3, 9)
   })
 
-  /**
-   * The invariant the whole threshold decision rests on. Turn the same recording down by a
-   * factor of a hundred — a phone at arm's length rather than at the mouth — and the answer
-   * must not move. Perturbed with an absolute floor in place of a relative one, this is the
-   * test that goes red: the quiet copy reads as silent all the way through.
-   */
-  it('answers the same for a quiet recording as for a loud one', () => {
-    const loud = loudSpan(buried(6, 2, 3, 0.9), 6, RATE)!
-    const quiet = loudSpan(buried(6, 2, 3, 0.009), 6, RATE)!
-    expect(quiet.from).toBeCloseTo(loud.from, 4)
-    expect(quiet.to).toBeCloseTo(loud.to, 4)
+  it('and from the next thing you will hear when the tap lands in a cut', () => {
+    /* second 3 was cut; the next sound is second 4, which is heard at 2 */
+    expect(playedFrom(gap(), 3)).toBeCloseTo(2, 9)
   })
 
-  /**
-   * ⚠️ TOP AND TAIL, NOT THE FIRST RUN. Two phrases with a gap between them is what a sentence
-   * looks like, and the gap is below the floor like the ends are. A function that stopped at
-   * the first quiet window would hand back the first word.
-   */
-  it('keeps the gap between two phrases', () => {
-    const d = buried(10, 1, 2)[0]
-    for (let i = Math.round(7 * RATE); i < Math.round(8 * RATE); i++)
-      d[i] = 0.8 * Math.sin((2 * Math.PI * 300 * i) / RATE)
-    const got = loudSpan([d], 10, RATE)!
-    expect(got.from).toBeCloseTo(0.92, 2)
-    expect(got.to).toBeCloseTo(8.08, 2)
+  it('from the top before the start, and nowhere past the end', () => {
+    expect(playedFrom(keepOnly(whole(), { from: 1, to: 6 }, FULL), 0.4)).toBe(0)
+    expect(playedFrom(keepOnly(whole(), { from: 1, to: 6 }, FULL), 6.5)).toBe(null)
+    expect(playedFrom(whole(), NaN)).toBe(0)
+  })
+})
+
+describe('trimming to a moment', () => {
+  it('starts or ends the take exactly there, to the millisecond', () => {
+    expect(spans(trimTo(whole(), 'start', 1.234, FULL)!)).toEqual([[1.234, 10]])
+    expect(spans(trimTo(whole(), 'end', 8.765, FULL)!)).toEqual([[0, 8.765]])
   })
 
-  /**
-   * ⚠️ AND IT DOES NOT START ON A WHOLE SECOND, because every other fixture here does and that
-   * hid the measuring window completely: perturbed to a window a whole second long, a phrase
-   * from 2s to 3s still answered 2s to 3s — it filled exactly one window, so the error had
-   * nowhere to show. The same shape as the click planted at sample 24037 further up. A take's
-   * words do not line up with anything.
-   */
-  it('is accurate to a fraction of a second, not to the second', () => {
-    const got = loudSpan(buried(6, 2.37, 3.11), 6, RATE)!
-    expect(got.from).toBeCloseTo(2.28, 1)
-    expect(got.to).toBeCloseTo(3.2, 1)
+  it('gives back what an earlier trim took, because nothing was ever removed', () => {
+    const trimmed = keepOnly(whole(), { from: 2, to: 8 }, FULL)
+    expect(spans(trimTo(trimmed, 'start', 0.5, FULL)!)).toEqual([[0.5, 8]])
+    expect(spans(trimTo(trimmed, 'end', 9.5, FULL)!)).toEqual([[2, 9.5]])
   })
 
-  it('does not run off either end of the recording', () => {
-    const got = loudSpan(buried(4, 0, 4), 4, RATE)!
-    expect(got.from).toBe(0)
-    expect(got.to).toBe(4)
+  it('moves only the outer edges, leaving a cut from the middle cut', () => {
+    const gap = cutOut(whole(), { from: 4, to: 6 }, FULL)
+    expect(spans(trimTo(gap, 'start', 1, FULL)!)).toEqual([
+      [1, 4],
+      [6, 10],
+    ])
+    /* a start inside the cut drops the piece before it and begins at the next sound */
+    expect(spans(trimTo(gap, 'start', 5, FULL)!)).toEqual([[6, 10]])
+    expect(spans(trimTo(gap, 'end', 5, FULL)!)).toEqual([[0, 4]])
   })
 
-  /** room noise forty decibels down is silence; a take recorded in a kitchen still trims */
-  it('is not fooled by a noise floor', () => {
-    const got = loudSpan(buried(6, 2, 3, 0.8, 0.002), 6, RATE)!
-    expect(got.from).toBeCloseTo(1.92, 2)
-    expect(got.to).toBeCloseTo(3.08, 2)
+  it('refuses to do nothing, or to leave nothing', () => {
+    const trimmed = keepOnly(whole(), { from: 2, to: 8 }, FULL)
+    expect(trimTo(trimmed, 'start', 2, FULL)).toBe(null)
+    expect(trimTo(trimmed, 'end', 8, FULL)).toBe(null)
+    expect(trimTo(trimmed, 'start', 8, FULL)).toBe(null)
+    expect(trimTo(trimmed, 'end', 2, FULL)).toBe(null)
+    expect(trimTo(trimmed, 'start', NaN, FULL)).toBe(null)
   })
 
-  it('says nothing rather than something about a silent recording', () => {
-    expect(loudSpan([new Float32Array(RATE * 3)], 3, RATE)).toBe(null)
-    expect(loudSpan([], 3, RATE)).toBe(null)
-    expect(loudSpan([new Float32Array(0)], 3, RATE)).toBe(null)
-    for (const bad of [0, -1, NaN, Infinity])
-      expect(loudSpan(buried(6, 2, 3), bad, RATE)).toBe(null)
-    expect(loudSpan(buried(6, 2, 3), 6, 0)).toBe(null)
-  })
-
-  it('reads every channel, not only the first', () => {
-    const left = new Float32Array(RATE * 6)
-    const right = buried(6, 2, 3)[0]
-    const got = loudSpan([left, right], 6, RATE)!
-    expect(got.from).toBeCloseTo(1.92, 2)
-  })
-
-  /**
-   * ⚠️ THE CLAIM IS ABOUT THE THRESHOLD, which is why the recording here is a quiet one. A
-   * corrupt sample that reached `loudest` would make the floor NaN, nothing would pass it,
-   * and the function would answer 'silent' about a take with a phrase plainly in it — the
-   * same shape `peaks` above was bitten by, where a NaN dragged the envelope to the edge.
-   */
-  it('is not pinned at the top by a corrupt sample', () => {
-    const d = buried(6, 2, 3, 0.02)[0]
-    d[Math.round(2.5 * RATE)] = NaN
-    const got = loudSpan([d], 6, RATE)!
-    expect(got.from).toBeCloseTo(1.92, 2)
-  })
-
-  /** and the thing the button is for: applied as an ordinary edit, it is one step like any other */
-  it('composes with an edit already made, and is undoable like the rest', () => {
-    const len = 6
-    const loud = loudSpan(buried(len, 2, 3), len, RATE)!
-    const log = logDo(startLog(wholeEdit(len)), keepOnly(wholeEdit(len), loud, len))
-    expect(editLen(logNow(log))).toBeCloseTo(1.16, 2)
-    expect(canUndo(log)).toBe(true)
-    expect(isWholeEdit(logNow(logUndo(log)), len)).toBe(true)
+  it('keeps the recording and the history: each trim is one step, and Undo walks them back', () => {
+    let log = startLog(whole())
+    log = logDo(log, trimTo(logNow(log), 'start', 1.5, FULL)!)
+    log = logDo(log, trimTo(logNow(log), 'end', 7.25, FULL)!)
+    expect(spans(logNow(log))).toEqual([[1.5, 7.25]])
+    expect(spans(logNow(logUndo(log)))).toEqual([[1.5, 10]])
+    expect(isWholeEdit(logNow(logUndo(logUndo(log))), FULL)).toBe(true)
   })
 })

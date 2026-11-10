@@ -554,6 +554,8 @@ export const jam = {
         if (typeof b?.lid !== 'string' || b.lid.length > 120) return
         const where = localIdFor(b.lid)
         if (!where) return
+        /* the room's full range — a partner's 1.8 plays at 1.8 here, since 9 Nov 2026; see
+           the note above readSong's limits in songFile.ts */
         const song = readSong(b.song)
         const one = song && songToLayers(song)[0]
         if (!one) return
@@ -564,19 +566,32 @@ export const jam = {
           // it is in the room, so nobody should be streaming its notes at us as well
           shared: true,
         }
+        /**
+         * ⚠️ Remember it as though we had sent it — BEFORE it lands, not after. Our own diff runs
+         * the moment this lands, and without the record it sees a layer that differs from what we
+         * last sent and sends it straight back. Fingerprinted from the layer AS APPLIED, because
+         * readSong normalises, and a fingerprint of what arrived would differ from the next read.
+         *
+         * ⚠️ AND IT WAS WRITTEN ONE LINE TOO LATE FOR THE WHOLE OF ITS LIFE. The looper notifies
+         * its listeners synchronously, so the diff ran INSIDE putSharedLayer — before this record
+         * existed — and every layer that arrived was sent straight back to the room. Its author
+         * then received a message about its own layer and applied it: a wasted message per edit,
+         * a `releaseLayer` that cut the author's own sounding notes, and, because a partner then
+         * read at the jam's own ceilings (until 9 Nov 2026), a fader above 1.5 pulled down at
+         * home. Measured with two rooms in jam.test.ts. The guard was right; its position was not.
+         */
+        const was = sentLayers.get(b.lid)
+        sentLayers.set(b.lid, layerFingerprint(layer))
         if (!putSharedLayer(layer)) {
+          /* nothing landed, so nothing ran — put the record back as it was */
+          if (was === undefined) sentLayers.delete(b.lid)
+          else sentLayers.set(b.lid, was)
           /* ⚠️ The desk is full and their part is not in the song. Said once, by name, rather
              than left as a take that exists for them and not for us — see putSharedLayer. */
           const who = state.names[m.from]
           showToast(`No room for ${who ? `${who}'s` : 'their'} take — delete a layer`)
           return
         }
-        /* ⚠️ Remember it as though we had sent it. Our own diff runs the moment this lands,
-           and without this it would see a layer that differs from what we last sent and send it
-           straight back — which with three people is a message that never stops. Fingerprinted
-           from the layer AS APPLIED, because readSong normalises, and a fingerprint of what
-           arrived rather than of what we hold would differ from the next local read. */
-        sentLayers.set(b.lid, layerFingerprint(layer))
         return
       }
       if (m.kind === 'jam:drop' && state.on) {
@@ -591,7 +606,18 @@ export const jam = {
       }
       if (m.kind === 'jam:want' && state.on) {
         if (!allowed(m.from)) return
-        sentLayers.clear()
+        /**
+         * ⚠️ ONLY OUR OWN LAYERS ARE SENT AGAIN, NOT EVERY LAYER WE HOLD. This cleared every
+         * record, so every machine re-sent every layer — partners' included, each as THAT machine
+         * had read it. The author then received its own layer back from somebody else and applied
+         * it: with a third person joining, a fader at 1.8 dropped to the 1.5 a partner then read at,
+         * measured in jam.test.ts. Each layer's author is always here to answer (an author leaving
+         * takes their layers with them — see dropBorrowedLayers), and the author's copy already
+         * holds any edit somebody made to it, so the newcomer gets everything, once, from the
+         * one machine that owns it.
+         */
+        const mine = `${myPeerId()}:`
+        for (const lid of [...sentLayers.keys()]) if (lid.startsWith(mine)) sentLayers.delete(lid)
         seenLayers = null
         shareLayers()
         return
@@ -606,6 +632,7 @@ export const jam = {
         return
       }
       if (m.kind === 'jam:song' && state.on) {
+        // the full range, as above — an offered sixteen-bar song loads as sixteen
         const song = readSong(m.body)
         if (song) set({ offer: { from: m.from, name: m.name || 'Someone', song } })
         return

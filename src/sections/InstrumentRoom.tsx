@@ -70,8 +70,15 @@ import {
   basslineEvents,
   leadBackStep,
   leadsBack,
+  BASS_STYLES,
+  CHORD_STYLES,
+  type BassStyle,
+  type ChordStyle,
   progressionEvents,
+  outsideScale,
+  revoice,
   type ChordPattern,
+  type Voicing,
 } from '../audio/chordPatterns'
 import { SnapPicker } from '../audio/SnapPicker'
 import { toSong, songNotes, songToLayers } from '../audio/songFile'
@@ -145,12 +152,15 @@ import {
   splitDrumLayer,
   beatPatternOf,
   bassPatternOf,
+  bassStyleTagOf,
   fillPatternOf,
   chordPatternOf,
+  chordStyleTagOf,
   soleDrumPiece,
   setBars,
   setBpm,
   setLayerInstrument,
+  setLayerEvents,
   layerHeard,
   layerLost,
   layerPlan,
@@ -167,7 +177,9 @@ import {
   undoLast,
   seekTo,
   hushScheduled,
+  type Layer,
 } from '../audio/looper'
+import { benchTroubleText, openWorkbench } from '../audio/workbench'
 
 /**
  * Somewhere to play.
@@ -382,6 +394,72 @@ function NumField({
       />
     </label>
   )
+}
+
+/**
+ * What a toggle does, said on the toggle — or, while it is disabled, why.
+ *
+ * ⚠️ ON THE BUTTON, NOT IN ITS `title`. Hold, Lead back, the bass and the fill each explained
+ * themselves only in a tooltip, and a tooltip does not exist on a phone — so on the device most
+ * people play this on, four controls said a word or two and nothing else, and a disabled one
+ * gave no reason at all. A second line of three or four words is the smallest thing that is
+ * always there; the `title` stays for the longer sentence a mouse can still reach.
+ *
+ * ⚠️ AND IT CHANGES WITH THE STATE rather than adding a line: the same slot says what the
+ * control does or why it cannot, so a disabled control costs no extra space to explain itself.
+ */
+/** The sound each chord style starts on — see layChords for when a change of style may change it. */
+const CHORD_SOUND: Record<ChordStyle, InstrumentId> = {
+  pad: 'pad',
+  stabs: 'keys',
+  offbeat: 'keys',
+  pulse: 'keys',
+}
+const styleOfChord = (l: Layer): ChordStyle =>
+  CHORD_STYLES.find((x) => x.id === chordStyleTagOf(l))?.id ?? 'pad'
+const styleOfBass = (l: Layer): BassStyle =>
+  BASS_STYLES.find((x) => x.id === bassStyleTagOf(l))?.id ?? 'rootfifth'
+
+/**
+ * The key a backing is laid in for this room's Scale and Key — Chromatic has no degrees to build
+ * chords on, so it borrows C major exactly as `layChords` always has.
+ */
+const voicingOf = (scale: string, root: number): Voicing =>
+  scale === 'chromatic' ? { degrees: MAJOR_DEGREES, root: 0 } : { degrees: degreesOf(scale), root }
+/** every key a backing can be recognised in — see `revoice` */
+const VOICED_SCALES = SCALES.filter(([id]) => id !== 'chromatic').map(([, , d]) => d)
+
+/** Where the instrument menu behaves like a phone's: closes after a pick, starts closed. */
+const PHONE_MENU = '(max-width: 40rem)'
+
+function Why({ children }: { children: React.ReactNode }) {
+  return <span className="btn-why">{children}</span>
+}
+
+/**
+ * A backing row playing notes the room's scale does not have — see `outsideScale`.
+ *
+ * ⚠️ IT ONLY HAPPENS TO A BACKING SOMEBODY EDITED, OR ONE LAID IN ANOTHER KEY. A change of key or
+ * scale re-lays every backing it can recognise, and an edited one follows a change of key note
+ * for note — but a change of scale cannot be done to notes moved by hand, so they stay in their
+ * old scale, and without this the Scale picker would look as if it had failed to reach the row.
+ * Picking the progression again lays a fresh one in the room's scale. Chromatic has every note,
+ * so it never says this.
+ */
+function OffScaleRow({ layer, voicing }: { layer: Layer | undefined; voicing: Voicing | null }) {
+  return layer && voicing && outsideScale(layer.events, voicing) ? (
+    <span className="muted inst-beats-why">outside this scale — pick it again to fit</span>
+  ) : null
+}
+
+/**
+ * ⚠️ A PRESSED BUTTON THAT MAKES NO SOUND, said beside it. Since 9 Nov 2026 a swap keeps the
+ * row's mute (see addPatternLayer), so picking a new beat under a silenced kit lights the button
+ * and plays nothing — which, unexplained, reads as the picker being broken. The 🔇 that undoes it
+ * is on the layer's own row below; this only says where the silence comes from.
+ */
+function MutedRow({ layer }: { layer: Layer | undefined }) {
+  return layer?.muted ? <span className="muted inst-beats-why">muted in the layers</span> : null
 }
 
 /**
@@ -769,6 +847,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      where the pedal is silently down means your first chord never stops and nothing on screen
      says why — the one setting whose wrong state is indistinguishable from a broken synth. */
   const [hold, setHold] = useState(false)
+  /* a style chosen before there is a backing to play it — see chordStyleNow */
+  const [chordStylePick, setChordStylePick] = useState<ChordStyle>('pad')
+  const [bassStylePick, setBassStylePick] = useState<BassStyle>('rootfifth')
   /** whether the pedal currently down was put there by Shift rather than by the button */
   const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
@@ -787,7 +868,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * ⚠️ OFF BY DEFAULT, and that is a decision rather than caution. A turnaround is a strong
    * flavour: it is what makes four chords sound like a song rather than a loop, and it is also
    * the thing somebody writing a calm two-chord bed does not want pulling at them every lap. The
-   * five progressions are what they say on the tin until you ask for more.
+   * progressions are what they say on the tin until you ask for more.
    *
    * Remembered like every other playing setting here, so asking once is asking for good.
    */
@@ -816,8 +897,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * plain `number[]` for the keyboard and for TakesPanel, which is what it has always been.
    */
   const [lead, setLead] = useState<number[]>([])
-  /* only read on narrow screens, where the instrument grid becomes a menu */
-  const [picksOpen, setPicksOpen] = useState(false)
+  /**
+   * ⚠️ OPEN ON A DESKTOP, CLOSED ON A PHONE — Evan's call, 9 Nov 2026. On a phone the open grid
+   * covers the page, which is why it closes after a pick there; on a desktop it fits, and seeing
+   * the sounds is how somebody new finds out there are two dozen of them. Same query as the
+   * close-after-pick below, so the two cannot disagree about which screen this is.
+   */
+  const [picksOpen, setPicksOpen] = useState(() => !window.matchMedia(PHONE_MENU).matches)
   const loop = useSyncExternalStore(subscribeLoop, loopState, loopState)
   const [vol, setVol] = useState(() => volume('instrument'))
   useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
@@ -964,6 +1050,24 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const narrowBoard = useMediaQuery(PHONE_KEYBOARD)
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
   const [capMsg, setCapMsg] = useState<string | null>(null)
+  /**
+   * ⚠️ WHAT YOU WERE WORKING ON SURVIVED WALKING TO ANOTHER ROOM AND NOT A RELOAD, which is
+   * exactly what an in-memory module looks like from the outside: this component unmounts and
+   * looper.ts does not, so the layers were still there when you came back and gone when the
+   * page was made again. The room remembered nine playing settings and your saved rigs across
+   * the same reload, which is what made the one thing it forgot read as a fault. See
+   * workbench.ts — it is idempotent, so mounting twice costs nothing and restores once.
+   */
+  useEffect(
+    () =>
+      openWorkbench((t) => {
+        /* ⚠️ said, not swallowed: a recording that would not open, a disk that is full, or a
+           saved bench this page will not overwrite — see BenchTrouble */
+        setCapMsg(benchTroubleText(t))
+        window.setTimeout(() => setCapMsg(null), 9000)
+      }),
+    [],
+  )
   const [libOpen, setLibOpen] = useState(false)
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
 
@@ -1123,7 +1227,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * a clash and naming it confidently.
    *
    * That is §2 about my own work: the hint was true the day it shipped and a neighbouring
-   * control made it false. Asking the notes instead means a key change, a scale change, and
+   * control made it false. (Since 9 Nov 2026 the Key picker re-voices the backing, but an edited
+   * one keeps its old scale through a change of scale, so asking the notes is still the only answer
+   * that cannot drift.) Asking the notes instead means a key change, a scale change, and
    * somebody editing the roll by hand all come out right without this knowing any of them
    * happened — the hint cannot drift from the sound because it IS the sound.
    *
@@ -1227,15 +1333,32 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * `triadAt` exists to prevent, one level up: the pad and the bass agreeing about a chord is
    * worth nothing if the room can hand them different progressions.
    */
-  const layBass = (p: ChordPattern, lead = leadBack) => {
+  /**
+   * The style the backing is in: the loaded layer's when there is one — what you are hearing —
+   * and otherwise the one last chosen, so a style can be picked before the chords are.
+   */
+  const chordStyleNow = (): ChordStyle => {
+    const l = loopState().layers.find((x) => chordPatternOf(x) !== null)
+    return l ? styleOfChord(l) : chordStylePick
+  }
+  const bassStyleNow = (): BassStyle => {
+    const l = loopState().layers.find((x) => bassPatternOf(x) !== null)
+    return l ? styleOfBass(l) : bassStylePick
+  }
+
+  const layBass = (p: ChordPattern, lead = leadBack, style: BassStyle = bassStyleNow()) => {
     const { events, len } = basslineEvents(
       p,
       loopLength(),
       scale === 'chromatic' ? MAJOR_DEGREES : degrees,
       scale === 'chromatic' ? 0 : root,
       lead,
+      style,
+      60 / loopState().bpm,
     )
-    return addPatternLayer(events, len, p.id, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
+    /* the original style keeps the original tag, so a song saved before styles reads the same */
+    const tag = style === 'rootfifth' ? p.id : `${p.id}-${style}`
+    return addPatternLayer(events, len, tag, { mark: '-bass:', instrument: 'bass', gain: 0.5 })
   }
 
   /**
@@ -1253,22 +1376,70 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * lead-back on the pad but not under it changes chord half a bar apart. Both now come from
    * here, so there is no version of this a caller can get half right.
    */
-  const layChords = (p: ChordPattern, lead = leadBack) => {
+  const layChords = (p: ChordPattern, lead = leadBack, style: ChordStyle = chordStyleNow()) => {
     const { events, len } = progressionEvents(
       p,
       loopLength(),
       scale === 'chromatic' ? MAJOR_DEGREES : degrees,
       scale === 'chromatic' ? 0 : root,
       lead,
+      style,
+      60 / loopState().bpm,
     )
-    const id = addPatternLayer(events, len, p.id, {
+    const was = loopState().layers.find((l) => chordPatternOf(l) !== null) ?? null
+    const id = addPatternLayer(events, len, style === 'pad' ? p.id : `${p.id}-${style}`, {
       mark: '-chords:',
-      instrument: 'pad',
+      instrument: CHORD_SOUND[style],
       gain: 0.42,
     })
+    /**
+     * ⚠️ A STAB ON A PAD SOUND IS BARELY THERE — the pad swells in, and a note a quarter of a beat
+     * long ends before it has. So a change of style brings the style's own sound with it, but
+     * ONLY if the layer still has the sound the old style gave it: somebody who put their chords
+     * on a harp chose that, and a style button is not theirs to overrule it.
+     */
+    if (id && was && was.instrument === CHORD_SOUND[styleOfChord(was)])
+      setLayerInstrument(id, CHORD_SOUND[style])
     if (id && loop.layers.some((l) => bassPatternOf(l) !== null)) layBass(p, lead)
     return id
   }
+
+  /**
+   * ⚠️ THE BACKING FOLLOWS THE KEY — Evan's call, 9 Nov 2026. A change of Scale or Key re-lays
+   * the chords and the bass in the new key, at their own length and in their own style, keeping
+   * their sound, level, mute and arrangement; an edited one moves by the same interval, and on a
+   * change of scale keeps its old scale, which its row then says. The rules are `revoice`'s, in
+   * chordPatterns.ts.
+   *
+   * ⚠️ AN EFFECT ON THE VOICING, NOT A CALL IN EACH PICKER, because three things change it — the
+   * Scale picker, the Key picker and a rig — and the one that forgot would leave a backing in the
+   * old key under a keyboard in the new one, which is the clash this exists to end. Chromatic
+   * moving its hidden root changes no voicing and so re-lays nothing.
+   *
+   * ⚠️ NOT ON MOUNT AND NOT ON A LOAD. The ref starts at the voicing the room opened in, and
+   * opening a song changes no Scale or Key, so nothing anybody kept is rewritten by being opened.
+   */
+  const voiced = useRef<Voicing>(voicingOf(scale, root))
+  useEffect(() => {
+    const from = voiced.current
+    const to = voicingOf(scale, root)
+    voiced.current = to
+    if (from.root === to.root && from.degrees.join() === to.degrees.join()) return
+    const s = loopState()
+    const beat = 60 / s.bpm
+    for (const l of s.layers) {
+      const chords = chordPatternOf(l)
+      const p = CHORD_PATTERNS.find((x) => x.id === (chords ?? bassPatternOf(l)))
+      if (!p) continue
+      const lay = (d: readonly number[], r: number, lead: boolean) =>
+        chords !== null
+          ? progressionEvents(p, l.len, d, r, lead, styleOfChord(l), beat).events
+          : basslineEvents(p, l.len, d, r, lead, styleOfBass(l), beat).events
+      const next = revoice(l.events, lay, from, to, VOICED_SCALES)
+      /* an edited backing under a change of scale alone moves by nothing — leave it sounding */
+      if (JSON.stringify(next) !== JSON.stringify(l.events)) setLayerEvents(l.id, next)
+    }
+  }, [scale, root])
 
   useEffect(() => {
     if (!arpLit) {
@@ -1821,14 +1992,139 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       </div>
 
       {/**
+       * ⚠️ WHAT YOUR HANDS NEED WHILE THEY ARE ON THE KEYS, DIRECTLY UNDER THEM. Octave, Volume,
+       * Hold and Panic sat in a row below the whole song — measured with an arrangement loaded,
+       * 1,150px under the keyboard at 1440×900 and 1,350px under it on a phone — so changing
+       * octave or catching a chord with Hold meant scrolling away from the thing being played.
+       * Evan's note asked for exactly this group. The row moved; nothing in it changed.
+       */}
+      <div className="inst-row inst-playbar">
+        <span className="muted inst-oct">
+          Octave
+          <button
+            className="btn"
+            onClick={() => setOctave((o) => shiftOctave(o, -1))}
+            disabled={octave <= 1}
+            aria-label="Octave down"
+          >
+            −
+          </button>
+          <strong>{octave}</strong>
+          <button
+            className="btn"
+            onClick={() => setOctave((o) => shiftOctave(o, 1))}
+            disabled={octave >= 6}
+            aria-label="Octave up"
+          >
+            +
+          </button>
+        </span>
+
+        <label className="appearance-slider">
+          <span className="muted">Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={vol}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              setVol(v)
+              setVolume('instrument', v)
+            }}
+          />
+          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
+        </label>
+        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
+            typing sometimes plays and sometimes does not */}
+        <span
+          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
+          title={
+            keysLive
+              ? 'Your computer keyboard plays notes'
+              : 'Typing is going into a control — click the page to play with the keys again'
+          }
+        >
+          <span aria-hidden>⌨</span>
+          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
+        </span>
+
+        {/**
+         * A stuck note is the one failure every synth has, and hunting for the key that caused
+         * it is miserable. One button, always there.
+         *
+         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
+         * transport running, so the loop immediately scheduled the next repetition and whatever
+         * you were panicking about came straight back — you had to hit it, then find Stop, and
+         * in between the thing was still playing. "Make it stop" has one meaning.
+         */}
+        {/**
+         * The pedal every keyboard has and this one did not.
+         *
+         * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
+         * the only safe answer anyway: notes ringing with no finger and no pedal would be
+         * unreachable by anything except Panic.
+         *
+         * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
+         * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
+         * that visibly does nothing is worse than one that is not offered. The title says so
+         * rather than the button vanishing, which would make the setting hard to find again.
+         */}
+        <button
+          className={'btn' + (hold ? ' is-on' : '')}
+          aria-pressed={hold}
+          disabled={arp !== 'off'}
+          onClick={() => {
+            if (hold)
+              for (const v of pedal.release()) {
+                noteOff(v.voice)
+                report(v.midi, false)
+              }
+            setHold(!hold)
+          }}
+          title={
+            arp !== 'off'
+              ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
+              : hold
+                ? 'Notes keep ringing after you let go — click to let them stop'
+                : 'Keep notes ringing after you let go, like a piano pedal'
+          }
+        >
+          🦶 Hold
+          <Why>{arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}</Why>
+        </button>
+
+        <button
+          className="btn"
+          onClick={() => {
+            stopLoop()
+            hush('all')
+          }}
+          title="Silence everything and stop the loop"
+        >
+          ⏹ Panic
+        </button>
+      </div>
+
+      {/**
        * ⚠️ A MENU ON A PHONE, exactly like the paint room's brushes and for the same measurement:
        * two dozen instruments in a four-wide grid is six rows and about seven hundred pixels of
        * picker, so the keys are the only thing on screen and everything else — the knobs, the
        * looper, the recorder — is below a wall you have to scroll past to reach.
        *
-       * The grid is untouched on a desktop, where it fits and browsing it is the point. One list
-       * either way, shown or hidden by a media query: two renderings would drift, and the second
-       * would be the one nobody tested.
+       * ⚠️ AND NOW A MENU ON A DESKTOP TOO, which this note used to rule out: "the grid is
+       * untouched on a desktop, where it fits and browsing it is the point". It fits, at 323px —
+       * and those 323px were what kept ▶ Play below the fold at 1440×900 with the keys on
+       * screen, the one thing the room's grouping exists to avoid. The button names the sound
+       * you have, so the choice is never hidden, and on a desktop the menu stays open while you
+       * try sounds, which keeps browsing the point. One list either way: two renderings would
+       * drift, and the second would be the one nobody tested.
+       *
+       * ⚠️ AND ON A DESKTOP IT NOW STARTS OPEN — Evan's call, 9 Nov 2026, made knowing the cost
+       * above. Measured on the dev server: at 1440×900 ▶ Play sits at 998–1036px with the grid
+       * open and 711–750 closed; at 1920×1080 it ends at 1109. One press of the menu button
+       * gives the fold back. A phone still starts closed (375, touch: `display: none`).
        */}
       <div className="inst-bar">
         <button
@@ -1852,9 +2148,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 // a loop playing underneath is not yours to interrupt
                 hush()
                 setInst(id)
-                /* closes on a phone, where it is a menu; ignored on a desktop, where the grid is
-                   always open and this flag is not read */
-                setPicksOpen(false)
+                /* closes on a phone, where it covers the page; stays open on a desktop, where
+                   trying three sounds in a row is the point of opening it */
+                if (window.matchMedia(PHONE_MENU).matches) setPicksOpen(false)
               }}
             >
               <span aria-hidden>{icon}</span>
@@ -2325,19 +2621,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * asked a question. Chromatic has no degrees to build on, so it borrows the major ones
        * exactly as the Chord picker does.
        *
-       * ⚠️ "AT THE MOMENT YOU DROP IT" IS THE CORRECTION — this used to say it FOLLOWS the key,
-       * present tense, and it does not. What lands is an ordinary layer of notes, which is the
-       * whole point of these being takes rather than a chord track; so moving the Key picker
-       * afterwards re-tunes the keyboard and leaves the backing where it was. Measured: a
-       * progression dropped in C still reads C–G–Am–F in its own piano roll after the key goes
-       * to D.
-       *
-       * Whether changing the key should re-voice a backing already on the table is a product
-       * decision and is written up rather than guessed at here. It is not obviously yes: the
-       * layer is editable, so re-voicing would silently overwrite anything somebody had changed
-       * in the roll — the shape CLAUDE.md calls "a save that writes every column is a delete for
-       * the ones the caller forgot". The keyboard's hint reads the layer's own notes precisely so
-       * it stays honest either way.
+       * ⚠️ AND RE-LAID WHEN THE KEY CHANGES — Evan's call, 9 Nov 2026. What lands is an ordinary
+       * layer of notes, which is the whole point of these being takes rather than a chord track,
+       * so for two months moving the Key picker re-tuned the keyboard and left the backing where
+       * it was (measured: a progression dropped in C still read C–G–Am–F after the key went to
+       * D). It was left as a question because the layer is editable and re-voicing could
+       * silently overwrite what somebody changed in the roll — the shape CLAUDE.md calls "a save
+       * that writes every column is a delete for the ones the caller forgot". The answer keeps
+       * both: an unedited backing is laid again in the new key, an edited one moves by the same
+       * interval, and on a change of scale — which cannot be done to notes moved by hand — keeps
+       * its old scale and says so.
+       * See the effect beside `layChords`, and `revoice`.
        */}
       {beatsOpen && (
         <div className="inst-beats card">
@@ -2368,7 +2662,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             {/**
              * ⚠️ IN THE CHORDS ROW, NOT A ROW OF ITS OWN. It is a property OF the progression —
              * what its last bar does — and a room that already carries thirty-odd controls does
-             * not need a fourth line to say one word. The five patterns and this sit together
+             * not need a fourth line to say one word. The patterns and this sit together
              * because you choose them in one breath.
              *
              * ⚠️ AND IT REBUILDS WHAT IS ALREADY DOWN. A toggle that only affected the NEXT
@@ -2396,7 +2690,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                * controls in one row cannot mean two different things.
                */
               const loaded = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
-              const shown = p && loaded ? leadsBack(loaded.events, p) : leadBack
+              const shown = p && loaded ? leadsBack(loaded.events, p, loaded.len) : leadBack
               return (
                 <button
                   className={'btn' + (shown ? '' : ' btn-ghost')}
@@ -2416,8 +2710,58 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   }
                 >
                   ↩ Lead back
+                  <Why>{pointless ? 'already ends there' : 'last bar leads home'}</Why>
                 </button>
               )
+            })()}
+            <MutedRow layer={loop.layers.find((l) => chordPatternOf(l) !== null)} />
+            <OffScaleRow
+              layer={loop.layers.find((l) => chordPatternOf(l) !== null)}
+              voicing={scale === 'chromatic' ? null : voicingOf(scale, root)}
+            />
+            {/**
+             * ⚠️ A PROGRESSION IS NOT RE-LAID WHEN THE LOOP SHRINKS — Evan's call, 9 Nov 2026 — so
+             * say when the loop is cutting it. It was laid for the loop's length when it was
+             * picked; shorten the loop and the bars past the end, lead-back included, simply stop
+             * being heard while every button here still reads pressed. Picking it again lays it
+             * at the length the loop is now, which is the re-lay, on purpose. Growing the loop
+             * repeats the progression and needs no word.
+             */}
+            {(() => {
+              const loaded = loop.layers.find((l) => chordPatternOf(l) !== null)
+              /* a hair of slack: len and the loop are both seconds derived from the same tempo */
+              return loaded && loaded.len > loopLength() + 0.001 ? (
+                <span className="muted inst-beats-why">cut short — pick it again to fit</span>
+              ) : null
+            })()}
+          </div>
+          {/**
+           * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the beat rows below have
+           * always offered and the backing never did. Picking one re-lays what is loaded in that
+           * style; with nothing loaded it is remembered for the next progression you pick.
+           */}
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Played as</span>
+            {(() => {
+              const loaded = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+              const p = loaded ? CHORD_PATTERNS.find((x) => x.id === chordPatternOf(loaded)) : null
+              const shown = loaded ? styleOfChord(loaded) : chordStylePick
+              return CHORD_STYLES.map((st) => (
+                <button
+                  key={st.id}
+                  className={'btn' + (shown === st.id ? '' : ' btn-ghost')}
+                  aria-pressed={shown === st.id}
+                  onClick={() => {
+                    setChordStylePick(st.id)
+                    if (!p || !loaded) return
+                    layChords(p, leadsBack(loaded.events, p, loaded.len), st.id)
+                    if (!loop.playing) startLoop()
+                  }}
+                  title={st.hint}
+                >
+                  {st.name}
+                </button>
+              ))
             })()}
           </div>
           {/**
@@ -2432,30 +2776,44 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             {(() => {
               const live = loop.layers.map((l) => chordPatternOf(l)).find((x) => x) ?? null
               const p = CHORD_PATTERNS.find((x) => x.id === live)
-              const on = loop.layers.some((l) => bassPatternOf(l) !== null)
+              const bass = loop.layers.find((l) => bassPatternOf(l) !== null) ?? null
+              const chords = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
+              const full = loop.layers.length >= MAX_LAYERS && !bass
+              const shown = bass ? styleOfBass(bass) : null
               return (
-                <button
-                  className={'btn' + (on ? '' : ' btn-ghost')}
-                  aria-pressed={on}
-                  disabled={
-                    !p ||
-                    (loop.layers.length >= MAX_LAYERS &&
-                      !loop.layers.some((l) => bassPatternOf(l) !== null))
-                  }
-                  onClick={() => {
-                    if (!p) return
-                    /* the same builder the chord picker uses when it swaps — see layBass */
-                    if (!layBass(p)) return
-                    if (!loop.playing) startLoop()
-                  }}
-                  title={
-                    p
-                      ? `A root-and-fifth bass under ${p.name}`
-                      : 'Pick some chords first — the bass follows them'
-                  }
-                >
-                  Follow the chords
-                </button>
+                <>
+                  {BASS_STYLES.map((st) => (
+                    <button
+                      key={st.id}
+                      className={'btn' + (shown === st.id ? '' : ' btn-ghost')}
+                      aria-pressed={shown === st.id}
+                      disabled={!p || full}
+                      onClick={() => {
+                        if (!p) return
+                        setBassStylePick(st.id)
+                        /* the lead-back the chords HAVE, so the bass turns when they do */
+                        const lead = chords ? leadsBack(chords.events, p, chords.len) : leadBack
+                        if (!layBass(p, lead, st.id)) return
+                        if (!loop.playing) startLoop()
+                      }}
+                      title={p ? `${st.name} — ${st.hint}, under ${p.name}` : st.hint}
+                    >
+                      {st.name}
+                    </button>
+                  ))}
+                  {/* ⚠️ ONE REASON FOR THE ROW, not one per button — four disabled buttons each
+                      saying "pick chords first" is the clutter the captions were meant to avoid */}
+                  {(!p || full) && (
+                    <span className="muted inst-beats-why">
+                      {!p ? 'follows the chords — pick some first' : 'no layer free'}
+                    </span>
+                  )}
+                  <MutedRow layer={bass ?? undefined} />
+                  <OffScaleRow
+                    layer={bass ?? undefined}
+                    voicing={scale === 'chromatic' ? null : voicingOf(scale, root)}
+                  />
+                </>
               )
             })()}
           </div>
@@ -2497,15 +2855,25 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                     if (!loop.playing) startLoop()
                   }}
                   title={
-                    room
-                      ? 'A tom roll on the last bar, to end the phrase'
-                      : 'A fill needs more than one bar — on a one-bar loop every bar is the last one'
+                    !room
+                      ? 'A fill needs more than one bar — on a one-bar loop every bar is the last one'
+                      : loop.layers.length >= MAX_LAYERS && !on
+                        ? `All ${MAX_LAYERS} layers are in use — delete one to add a fill`
+                        : 'A tom roll on the last bar, to end the phrase — it follows the last bar if the length changes'
                   }
                 >
                   On the last bar
+                  <Why>
+                    {!room
+                      ? 'needs 2+ bars'
+                      : loop.layers.length >= MAX_LAYERS && !on
+                        ? 'no layer free'
+                        : 'tom roll to end'}
+                  </Why>
                 </button>
               )
             })()}
+            <MutedRow layer={loop.layers.find((l) => fillPatternOf(l) !== null)} />
           </div>
           <p className="muted inst-beats-lede">
             {/* ⚠️ THE LEDE HAD TO CHANGE WITH THE PANEL, and then the panel changed twice
@@ -2545,6 +2913,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   {p.name}
                 </button>
               ))}
+              <MutedRow
+                layer={loop.layers.find((l) =>
+                  DRUM_PATTERNS.some((p) => p.genre === genre && p.id === beatPatternOf(l)),
+                )}
+              />
             </div>
           ))}
         </div>
@@ -2765,12 +3138,15 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 {/* Keeping ONE layer. This is the drum-loop case: a part worth reusing is almost
                   never a whole song, and a library of one-layer loops is what makes the next
                   song faster to start than the last one. */}
+                {/* ⚠️ A WORD AS WELL AS THE ARROW — Evan's call, 9 Nov 2026. ⬇ alone was
+                    explained only by its title, which a phone never shows, and every other
+                    ⬇ in the room already says what it does: ⬇ Keep song. */}
                 <button
                   className="btn"
                   onClick={() => keep('loop', l.id)}
                   title="Keep this layer as a loop you can reuse"
                 >
-                  ⬇
+                  ⬇ Keep
                 </button>
 
                 {/* ⚠️ On the row, not behind a dialog. Balancing parts is done BY EAR, which means
@@ -2872,13 +3248,25 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               anyway — the list stays a list. */}
           {/* ⚠️ The note editor used to be an <li> here, between the layers and everything
               below them. See where it went. */}
+          {/* ⚠️ LAYERS ONLY, and a recording placed in the loop stays where it is — Evan's call,
+              9 Nov 2026, on the question #35 left open. A take has its own controls in the takes
+              panel; this button lives in the layer list and clears the layer list. */}
           <li className="inst-layers-all">
-            <button className="btn" onClick={clearLayers}>
+            <button
+              className="btn"
+              onClick={clearLayers}
+              title="Delete every layer — recordings in the loop stay"
+            >
               Clear all
             </button>
           </li>
         </ul>
       )}
+
+      {/* ⚠️ RECORDING SITS WITH THE SONG IT IS RECORDED INTO. 🎤 Record a take was below the
+          sound knobs, the octave row and the scale row — 1,600px down at 1440×900 — while
+          everything it is placed into (the transport, the layers) was 500px above it. */}
+      <TakesPanel />
 
       <div className="inst-row inst-knobs">
         {KNOBS.map(([k, label, hint]) => (
@@ -2910,114 +3298,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           siblings has never decided where it draws — see .inst-wrap.has-visuals. Below the
           breakpoint the wrap is a plain flex column, and there it was 593px of visuals
           standing between the picker and ▶ Play. */}
-
-      <div className="inst-row">
-        <span className="muted inst-oct">
-          Octave
-          <button
-            className="btn"
-            onClick={() => setOctave((o) => shiftOctave(o, -1))}
-            disabled={octave <= 1}
-            aria-label="Octave down"
-          >
-            −
-          </button>
-          <strong>{octave}</strong>
-          <button
-            className="btn"
-            onClick={() => setOctave((o) => shiftOctave(o, 1))}
-            disabled={octave >= 6}
-            aria-label="Octave up"
-          >
-            +
-          </button>
-        </span>
-
-        <label className="appearance-slider">
-          <span className="muted">Volume</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={vol}
-            onChange={(e) => {
-              const v = Number(e.target.value)
-              setVol(v)
-              setVolume('instrument', v)
-            }}
-          />
-          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
-        </label>
-        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
-            typing sometimes plays and sometimes does not */}
-        <span
-          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
-          title={
-            keysLive
-              ? 'Your computer keyboard plays notes'
-              : 'Typing is going into a control — click the page to play with the keys again'
-          }
-        >
-          <span aria-hidden>⌨</span>
-          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
-        </span>
-
-        {/**
-         * A stuck note is the one failure every synth has, and hunting for the key that caused
-         * it is miserable. One button, always there.
-         *
-         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
-         * transport running, so the loop immediately scheduled the next repetition and whatever
-         * you were panicking about came straight back — you had to hit it, then find Stop, and
-         * in between the thing was still playing. "Make it stop" has one meaning.
-         */}
-        {/**
-         * The pedal every keyboard has and this one did not.
-         *
-         * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
-         * the only safe answer anyway: notes ringing with no finger and no pedal would be
-         * unreachable by anything except Panic.
-         *
-         * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
-         * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
-         * that visibly does nothing is worse than one that is not offered. The title says so
-         * rather than the button vanishing, which would make the setting hard to find again.
-         */}
-        <button
-          className={'btn' + (hold ? ' is-on' : '')}
-          aria-pressed={hold}
-          disabled={arp !== 'off'}
-          onClick={() => {
-            if (hold)
-              for (const v of pedal.release()) {
-                noteOff(v.voice)
-                report(v.midi, false)
-              }
-            setHold(!hold)
-          }}
-          title={
-            arp !== 'off'
-              ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
-              : hold
-                ? 'Notes keep ringing after you let go — click to let them stop'
-                : 'Keep notes ringing after you let go, like a piano pedal'
-          }
-        >
-          🦶 Hold
-        </button>
-
-        <button
-          className="btn"
-          onClick={() => {
-            stopLoop()
-            hush('all')
-          }}
-          title="Silence everything and stop the loop"
-        >
-          ⏹ Panic
-        </button>
-      </div>
 
       {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
           degrees, so there is no wrong note left to press. */}
@@ -3279,7 +3559,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           library is where it belongs — but the library row collapses, and a recording you can
           only reach by opening a panel is one nobody finds. It is not in the layer list either,
           on purpose: a take is not a Layer. See TakesPanel. */}
-      <TakesPanel />
 
       <p className="muted inst-note">
         Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two

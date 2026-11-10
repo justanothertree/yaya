@@ -35,9 +35,20 @@ export type ChordPattern = {
 }
 
 /**
- * ⚠️ FIVE, AND EACH ONE HAS TO SOUND DIFFERENT. drumPatterns' rule applies unchanged: "ten
+ * ⚠️ TEN, AND EACH ONE HAS TO SOUND DIFFERENT. drumPatterns' rule applies unchanged: "ten
  * variations on a backbeat with different labels is a longer list that helps nobody choose".
  * These differ in where they start and where they resolve, which is what you actually hear.
+ *
+ * ⚠️ FIVE MORE ON 9 NOV 2026, at Evan's ask ("around ten common ones — I'll judge by ear"), against
+ * thirty drum patterns. Chosen for being everywhere AND unlike the five already here, which are
+ * mostly the same four chords turned round: a long walk (Canon), a climb that lands somewhere
+ * else (Rising, the "royal road" of Japanese pop), a descent (Spanish, the Andalusian cadence),
+ * the circle of fifths (Circle), and a two-chord vamp to play over. All are written in major
+ * degrees like the rest, so in a minor room they become the minor versions of themselves.
+ *
+ * ⚠️ AND NOT THE TWELVE-BAR BLUES, which is the obvious sixth. Its twelve chords are a bar each by
+ * definition, and this module divides the LOOP between the chords — so in the room's default two
+ * bars it would change chord six times a bar. It wants a loop that knows its own length first.
  */
 export const CHORD_PATTERNS: ChordPattern[] = [
   { id: 'four', name: 'Four chords', degrees: [1, 5, 6, 4], hint: 'The one most songs use' },
@@ -50,6 +61,74 @@ export const CHORD_PATTERNS: ChordPattern[] = [
   },
   { id: 'simple', name: 'Simple', degrees: [1, 4, 5, 4], hint: 'Three chords, nothing clever' },
   { id: 'turnaround', name: 'Turnaround', degrees: [2, 5, 1, 1], hint: 'Leans home, then rests' },
+  {
+    id: 'canon',
+    name: 'Canon',
+    degrees: [1, 5, 6, 3, 4, 1, 4, 5],
+    hint: 'Pachelbel’s eight chords — the wedding one',
+  },
+  {
+    id: 'rising',
+    name: 'Rising',
+    degrees: [4, 5, 3, 6],
+    hint: 'Climbs, then lands somewhere bittersweet — J-pop and anime',
+  },
+  {
+    id: 'spanish',
+    name: 'Spanish',
+    degrees: [6, 5, 4, 3],
+    hint: 'Four chords stepping down — flamenco, surf rock',
+  },
+  {
+    id: 'circle',
+    name: 'Circle',
+    degrees: [6, 2, 5, 1],
+    hint: 'Round the circle of fifths and home — jazz and Motown',
+  },
+  {
+    id: 'vamp',
+    name: 'Two chords',
+    degrees: [1, 4, 1, 4],
+    hint: 'Back and forth between two — a bed to play over',
+  },
+]
+
+/**
+ * HOW the chords are played, as opposed to WHICH chords — the choice the beat picker has always
+ * offered for drums and the backing never did. Five progressions, each held as a pad, was the
+ * whole of it: harmony could be chosen and rhythm could not.
+ *
+ * ⚠️ EVERY STYLE IS BLOCK CHORDS — all of a triad's notes together — and that is a constraint,
+ * not an omission. `leadsBack` reads the turnaround off the notes by asking whether a DIFFERENT
+ * chord arrives halfway through the last slot; a broken chord plays different notes at every step,
+ * so it would read as a turnaround on every bar. Arpeggiating is the keyboard's job here (the
+ * room's Arpeggio picker), and a broken-chord backing waits for a reader that can tell the two
+ * apart.
+ *
+ * ⚠️ THE FIRST IS TODAY'S SOUND, BYTE FOR BYTE, and it has no tag of its own: a layer laid before
+ * styles existed reads as "pad" because that is what it is.
+ */
+export type ChordStyle = 'pad' | 'stabs' | 'offbeat' | 'pulse'
+export const CHORD_STYLES: { id: ChordStyle; name: string; hint: string }[] = [
+  { id: 'pad', name: 'Pad', hint: 'Held through each chord' },
+  { id: 'stabs', name: 'Stabs', hint: 'A short chord on every beat' },
+  { id: 'offbeat', name: 'Offbeat', hint: 'On the “and” of every beat — reggae, ska' },
+  { id: 'pulse', name: 'Pulse', hint: 'Eighth notes that push it along' },
+]
+
+/**
+ * The bass's styles, for the same reason. Root & fifth is today's, unchanged.
+ *
+ * ⚠️ NO OCTAVE BASS, which is the obvious fifth and was left out on purpose: its upper note lands
+ * at 48–59, in the pad's own register, and "a bass crossing above the chords it is supposed to
+ * sit under" is the bug this module's own test exists to catch.
+ */
+export type BassStyle = 'rootfifth' | 'roots' | 'pulse' | 'walk'
+export const BASS_STYLES: { id: BassStyle; name: string; hint: string }[] = [
+  { id: 'rootfifth', name: 'Root & fifth', hint: 'The root, then the fifth below it' },
+  { id: 'roots', name: 'Roots', hint: 'One long note per chord' },
+  { id: 'pulse', name: 'Pulse', hint: 'Eighth notes on the root' },
+  { id: 'walk', name: 'Walk', hint: 'A note on every beat, stepping into the next chord' },
 ]
 
 /**
@@ -91,6 +170,8 @@ const HOLD = 0.96
  * @param scaleDegrees the active scale's degrees — Chromatic has none that answer "the fifth
  *   degree", so the room passes the major degrees, exactly as the Chord picker does
  * @param root the key, as a pitch class
+ * @param style how the chords are played — see CHORD_STYLES
+ * @param beat seconds per beat; the rhythmic styles land on the beat grid, the pad ignores it
  */
 export function progressionEvents(
   p: ChordPattern,
@@ -98,19 +179,54 @@ export function progressionEvents(
   scaleDegrees: readonly number[],
   root: number,
   leadBack = false,
+  style: ChordStyle = 'pad',
+  beat = 0,
 ): { events: LoopEvent[]; len: number } {
   const L = scaleDegrees.length
   if (!L || !(loopLen > 0) || p.degrees.length === 0)
     return { events: [], len: Math.max(0, loopLen) }
   const events: LoopEvent[] = []
   for (const s of slotsOf(p, loopLen, L, leadBack)) {
-    for (const note of triadOf(s.degree, scaleDegrees, root, BASS)) {
-      events.push({ t: s.at, midi: note, on: true })
-      events.push({ t: s.at + s.dur * HOLD, midi: note, on: false })
-    }
+    const chord = triadOf(s.degree, scaleDegrees, root, BASS)
+    for (const [at, until] of hitsIn(s, style, beat))
+      for (const note of chord) {
+        events.push({ t: at, midi: note, on: true })
+        events.push({ t: until, midi: note, on: false })
+      }
   }
   events.sort((a, b) => a.t - b.t)
   return { events, len: loopLen }
+}
+
+/**
+ * When a chord sounds inside its slot, as [start, end] pairs.
+ *
+ * ⚠️ ON THE LOOP'S BEAT GRID, NOT THE SLOT'S. Counting from each chord's own start would put a
+ * stab on "beat one" of a chord that began halfway through a bar — the turnaround's half-slot is
+ * exactly that — and the groove would lurch at every change. Measured from zero, every hit lands
+ * where the drums do.
+ *
+ * ⚠️ AT LEAST ONE HIT PER CHORD, whatever the grid says. A chord slot shorter than the gap
+ * between hits (a fast turnaround, an offbeat that falls past the slot's end) would otherwise be
+ * a chord that never sounds — so it gets one at its start, which is the right thing to hear.
+ */
+function hitsIn(s: Slot, style: ChordStyle, beat: number): [number, number][] {
+  const end = s.at + s.dur
+  /* the pad: the whole slot, with the sliver that lets a repeat re-articulate (see HOLD) */
+  if (style === 'pad' || !(beat > 0)) return [[s.at, s.at + s.dur * HOLD]]
+  const step = style === 'pulse' ? beat / 2 : beat
+  const offset = style === 'offbeat' ? beat / 2 : 0
+  const gate = style === 'stabs' ? 0.45 * beat : style === 'offbeat' ? 0.3 * beat : 0.4 * beat
+  const out: [number, number][] = []
+  const eps = 1e-9
+  for (let k = Math.ceil((s.at - offset - eps) / step); ; k++) {
+    const t = k * step + offset
+    if (t >= end - eps) break
+    if (t < s.at - eps) continue
+    out.push([t, Math.min(t + gate, end - (end - s.at) * (1 - HOLD))])
+  }
+  if (!out.length) out.push([s.at, Math.min(s.at + gate, s.at + s.dur * HOLD)])
+  return out
 }
 
 /** the 1-based degree a pattern plays on step `i` */
@@ -150,13 +266,18 @@ function triadOf(
  * ⚠️ A FIFTH ABOVE WHAT IT RETURNS TO, not simply the key's dominant, and the difference is the
  * whole reason this rule was chosen. A turnaround's job is to pull toward the chord that comes
  * next, and the chord that comes next is the progression's FIRST one, which is not always the
- * tonic. Worked out for all five:
+ * tonic. Worked out for all ten:
  *
- *     Four chords  I V vi IV   returns to I   → V      IV then V
- *     Fifties      I vi IV V   returns to I   → V      already ends on V — nothing to add
- *     Wistful      vi IV I V   returns to vi  → iii    V then iii
- *     Simple       I IV V IV   returns to I   → V      IV then V
- *     Turnaround   ii V I I    returns to ii  → vi     I then vi
+ *     Four chords  I V vi IV              returns to I   → V     IV then V
+ *     Fifties      I vi IV V              returns to I   → V     already ends on V — nothing to add
+ *     Wistful      vi IV I V              returns to vi  → iii   V then iii
+ *     Simple       I IV V IV              returns to I   → V     IV then V
+ *     Turnaround   ii V I I               returns to ii  → vi    I then vi
+ *     Canon        I V vi iii IV I IV V   returns to I   → V     already ends on V — nothing to add
+ *     Rising       IV V iii vi            returns to IV  → I     vi then I
+ *     Spanish      vi V IV iii            returns to vi  → iii   already ends on iii — nothing to add
+ *     Circle       vi ii V I              returns to vi  → iii   I then iii
+ *     Two chords   I IV I IV              returns to I   → V     IV then V
  *
  * The simpler rule — always play V — was the first idea and is worse: it leaves BOTH Fifties and
  * Wistful unchanged, because each already ends on V, and for Wistful that is the wrong answer
@@ -226,9 +347,12 @@ export function basslineEvents(
   scaleDegrees: readonly number[],
   root: number,
   leadBack = false,
+  style: BassStyle = 'rootfifth',
+  beat = 0,
 ): { events: LoopEvent[]; len: number } {
   if (!scaleDegrees.length || !(loopLen > 0) || p.degrees.length === 0)
     return { events: [], len: Math.max(0, loopLen) }
+  if (style !== 'rootfifth') return otherBass(p, loopLen, scaleDegrees, root, leadBack, style, beat)
   const events: LoopEvent[] = []
   for (const s of slotsOf(p, loopLen, scaleDegrees.length, leadBack)) {
     const triad = triadOf(s.degree, scaleDegrees, root, BASS_LOW)
@@ -256,6 +380,80 @@ export function basslineEvents(
   return { events, len: loopLen }
 }
 
+/** A scale step as a midi note — negative steps reach below the root, which a walk needs. */
+function scaleNote(step: number, scaleDegrees: readonly number[], root: number, base: number) {
+  const L = scaleDegrees.length
+  return base + root + Math.floor(step / L) * 12 + scaleDegrees[((step % L) + L) % L]
+}
+
+/**
+ * Below the pad, always: anything at or above the pad's floor comes down an octave.
+ *
+ * ⚠️ THE FLOOR IS `BASS + root`, NOT 48. The pad's lowest note moves with the key — 51 in D# —
+ * and root & fifth already sits under THAT, reaching 48 in D# quite correctly. Folding at an
+ * absolute 48 would drop half the roots in the higher keys an octave for no reason; caught by the
+ * first run of this file's own sweep, which asserted 48 and failed on the unchanged root & fifth.
+ */
+const underPad = (midi: number, root: number) => (midi >= BASS + root ? midi - 12 : midi)
+
+/**
+ * The three basslines that are not root-and-fifth, on the same slots as everything else.
+ *
+ * ⚠️ WALK STEPS INTO THE NEXT CHORD FROM THE SCALE NOTE BELOW ITS ROOT — never a chromatic
+ * approach, which is the jazz move and would put a note outside the scale under a keyboard whose
+ * whole promise is that every note fits. The rest of the bar is root, third and fifth of the
+ * chord it is under. "The next chord" wraps: the last slot walks into the first, because the loop
+ * does.
+ */
+function otherBass(
+  p: ChordPattern,
+  loopLen: number,
+  scaleDegrees: readonly number[],
+  root: number,
+  leadBack: boolean,
+  style: BassStyle,
+  beat: number,
+): { events: LoopEvent[]; len: number } {
+  const slots = slotsOf(p, loopLen, scaleDegrees.length, leadBack)
+  const events: LoopEvent[] = []
+  const add = (t: number, d: number, midi: number) => {
+    events.push({ t, midi, on: true })
+    events.push({ t: t + d, midi, on: false })
+  }
+  slots.forEach((s, i) => {
+    const step = Math.max(0, s.degree - 1)
+    const rootNote = underPad(scaleNote(step, scaleDegrees, root, BASS_LOW), root)
+    const end = s.at + s.dur
+    if (style === 'roots' || !(beat > 0)) return add(s.at, s.dur * HOLD, rootNote)
+    if (style === 'pulse') {
+      const hits = hitsIn(s, 'pulse', beat)
+      for (const [t, until] of hits) add(t, until - t, rootNote)
+      return
+    }
+    /* walk: one note per beat that falls in this chord; the last of them leads into the next */
+    const beats: number[] = []
+    for (let k = Math.ceil(s.at / beat - 1e-9); k * beat < end - 1e-9; k++) beats.push(k * beat)
+    if (!beats.length || beats[0] > s.at + 1e-9) beats.unshift(s.at)
+    const next = slots[(i + 1) % slots.length]
+    /* the scale note just under the next root. A root from this table always sits below the pad's
+       floor (BASS_LOW + root + at most 11), so it is never folded and the step under it never
+       needs to be — see the register test, which holds every style's roots where root & fifth
+       plays them. */
+    const nextStep = Math.max(0, next.degree - 1)
+    const approach = scaleNote(nextStep - 1, scaleDegrees, root, BASS_LOW)
+    const tones = [0, 2, 4, 2].map((up) =>
+      underPad(scaleNote(step + up, scaleDegrees, root, BASS_LOW), root),
+    )
+    beats.forEach((t, n) => {
+      const last = n === beats.length - 1 && beats.length > 1
+      const until = n + 1 < beats.length ? beats[n + 1] : end
+      add(t, (until - t) * HOLD, last ? approach : tones[n % tones.length])
+    })
+  })
+  events.sort((a, b) => a.t - b.t)
+  return { events, len: loopLen }
+}
+
 /**
  * Does this take already end on the chord that leans home?
  *
@@ -272,9 +470,118 @@ export function basslineEvents(
  * which key, under which scale — all of which the room may since have changed. The notes are
  * the evidence; the setting is only an intention.
  */
-export function leadsBack(events: readonly LoopEvent[], p: ChordPattern): boolean {
-  if (!p.degrees.length) return false
-  const starts = new Set<number>()
-  for (const e of events) if (e.on) starts.add(Math.round(e.t * 1000))
-  return starts.size > p.degrees.length
+export function leadsBack(events: readonly LoopEvent[], p: ChordPattern, len: number): boolean {
+  if (!p.degrees.length || !(len > 0)) return false
+  /**
+   * ⚠️ A DIFFERENT CHORD IN THE SECOND HALF OF THE LAST SLOT — no longer "more onsets than the
+   * pattern has chords". That rule was exact while every chord was one onset (the pad), and is
+   * wrong for every other style: Stabs strikes each chord once a beat, so it would read as a
+   * turnaround on every take. What a lead-back actually IS — the last slot split in two, the second
+   * half a different chord (see `slotsOf`) — is true in every block-chord style, so that is what
+   * is asked. Still read from the notes, never from the setting: see above.
+   */
+  const slot = len / p.degrees.length
+  const from = len - slot
+  const mid = len - slot / 2
+  const eps = 1e-6
+  const chords = new Map<number, Set<number>>()
+  for (const e of events) {
+    if (!e.on || e.t < from - eps) continue
+    const at = Math.round(e.t * 1e6)
+    const pcs = chords.get(at) ?? new Set<number>()
+    pcs.add(((e.midi % 12) + 12) % 12)
+    chords.set(at, pcs)
+  }
+  const times = [...chords.keys()].sort((a, b) => a - b)
+  if (!times.length) return false
+  const first = [...chords.get(times[0])!].sort().join()
+  return times.some((t) => t / 1e6 >= mid - eps && [...chords.get(t)!].sort().join() !== first)
+}
+
+/** The key a backing is laid in: the scale's degrees and the root they are counted from. */
+export type Voicing = { degrees: readonly number[]; root: number }
+
+/**
+ * A backing's notes in a new key.
+ *
+ * ⚠️ EVAN'S CALL, 9 NOV 2026: CHANGING KEY RE-VOICES CHORDS ALREADY LAID. Until then a progression
+ * was built in the key of the moment it was dropped and stayed there, so moving the Key picker
+ * re-tuned the keyboard over a backing still in the old key — every lock-safe note the keyboard
+ * offered was now a possible clash with what was underneath. The comment that recorded this
+ * also recorded why it was not obviously yes: the layer is editable, and re-laying it would
+ * silently overwrite anything somebody had changed in the roll. Both halves are kept here.
+ *
+ * ⚠️ SO IT FIRST ASKS WHETHER THESE ARE STILL THE NOTES THIS MODULE LAYS. `lay` is the same call
+ * that made them, and it is tried in every key of every scale the room offers, with and without
+ * the lead-back — the layer carries neither its key nor its lead-back, and a song does not store
+ * the key, so a progression laid in D and opened in a room set to C is still recognised and moves
+ * to wherever the picker now says. Recognised, it is laid again in the new key with the lead-back
+ * it was found with, so length, style and turnaround all survive and the round trip C → D → C is
+ * exact. `from` is tried first only because it is nearly always the answer.
+ *
+ * ⚠️ NOT RECOGNISED MEANS SOMEBODY CHANGED IT, AND THEN NOTHING IS REBUILT: every note moves by the
+ * interval the key moved, edits included — which, for a key change alone, is exactly what
+ * re-laying an unedited one would have done. A change of SCALE cannot be done to notes this cannot
+ * read as degrees, so those stay in the scale they were in; the room reads that off the notes
+ * (`outsideScale`) and says so, rather than remembering that it happened.
+ */
+export function revoice(
+  events: readonly LoopEvent[],
+  lay: (degrees: readonly number[], root: number, lead: boolean) => LoopEvent[],
+  from: Voicing,
+  to: Voicing,
+  scales: readonly (readonly number[])[],
+): LoopEvent[] {
+  const lead = laidLead(events, lay, from, scales)
+  if (lead !== null) return lay(to.degrees, to.root, lead)
+  const d = to.root - from.root
+  return events.map((e) => ({ ...e, midi: Math.max(0, Math.min(127, e.midi + d)) }))
+}
+
+/**
+ * Does this take play a note the scale does not have?
+ *
+ * ⚠️ READ FROM THE NOTES, LIKE `leadsBack`, NOT FROM A RECORD OF WHAT HAPPENED. The first version
+ * remembered which layers a change of scale had skipped, and the next change of KEY — which moved
+ * the same edited notes along, still in their old scale — cleared the memory and the caption with
+ * it: a backing in G minor under a keyboard in G major, and nothing on screen saying so. Asking
+ * the notes cannot drift that way, survives a reload, and also catches a song laid in another key
+ * and opened here. Anything this module lays is inside its scale by construction, so it is silent
+ * for every backing nobody has touched.
+ */
+export function outsideScale(events: readonly LoopEvent[], v: Voicing): boolean {
+  const pcs = new Set(v.degrees.map((d) => (((d + v.root) % 12) + 12) % 12))
+  return events.some((e) => e.on && !pcs.has(((e.midi % 12) + 12) % 12))
+}
+
+/** the lead-back that reproduces these notes in some key, or null when nothing does */
+function laidLead(
+  events: readonly LoopEvent[],
+  lay: (degrees: readonly number[], root: number, lead: boolean) => LoopEvent[],
+  from: Voicing,
+  scales: readonly (readonly number[])[],
+): boolean | null {
+  const mine = sorted(events)
+  const tries: Voicing[] = [from]
+  for (const degrees of scales) for (let root = 0; root < 12; root++) tries.push({ degrees, root })
+  for (const v of tries)
+    for (const lead of [false, true])
+      if (sameNotes(mine, sorted(lay(v.degrees, v.root, lead)))) return lead
+  return null
+}
+
+const sorted = (events: readonly LoopEvent[]) =>
+  [...events].sort((a, b) => a.t - b.t || a.midi - b.midi || Number(a.on) - Number(b.on))
+
+/**
+ * ⚠️ TIMES TO A TENTH OF A MILLISECOND, NOT EXACTLY. `setBpm` rescales every event by a ratio, so
+ * a progression laid at 96 and played at 120 has times that are the same numbers by a different
+ * route; exact equality would call every tempo change an edit.
+ */
+function sameNotes(a: readonly LoopEvent[], b: readonly LoopEvent[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++)
+    if (a[i].midi !== b[i].midi || a[i].on !== b[i].on || Math.abs(a[i].t - b[i].t) > 1e-4)
+      return false
+  return true
 }

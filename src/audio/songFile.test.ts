@@ -204,6 +204,47 @@ describe('a song survives being written down', () => {
     const after = readSong(packSong(before))!
     expect(after.layers[0].play).toEqual(before.layers[0].play)
   })
+
+  /**
+   * ⚠️ BAR 32 IS THE SIGN BIT. The mask packs to one number, a bit per bar, and `1 << 31` is
+   * negative in JavaScript — so a 32-bar mask with bar 32 playing has always been stored as a
+   * negative number, and the reader took every negative number to mean "no mask". The muted
+   * bars came back playing. Only -1 is the sentinel; any other negative is a mask with its top
+   * bit set, and reading it as one repairs every song already saved that way.
+   */
+  it('and a 32-bar mask with bar 32 playing keeps its silent bars', () => {
+    const play = Array.from({ length: 32 }, (_, i) => i !== 0 && i !== 15)
+    const before = songFrom({
+      bars: 32,
+      layers: [
+        layerOf(
+          [
+            { t: 0, midi: 60, on: true },
+            { t: 0.5, midi: 60, on: false },
+          ],
+          { play },
+        ),
+      ],
+    })
+    const packed = packSong(before)
+    /* the form already on people's disks: the top bit makes it negative */
+    expect(packed.l[0].p).toBeLessThan(0)
+    expect(readSong(packed)!.layers[0].play).toEqual(play)
+  })
+
+  it('while -1 still means every bar', () => {
+    const before = songFrom({
+      layers: [
+        layerOf([
+          { t: 0, midi: 60, on: true },
+          { t: 0.5, midi: 60, on: false },
+        ]),
+      ],
+    })
+    const packed = packSong(before)
+    expect(packed.l[0].p).toBe(-1)
+    expect(readSong(packed)!.layers[0].play).toBeUndefined()
+  })
 })
 
 describe('a song file from somebody else', () => {
@@ -393,12 +434,15 @@ describe('a song file from somebody else', () => {
     expect(s.bpm).toBeGreaterThanOrEqual(40)
     expect(s.bpm).toBeLessThanOrEqual(200)
     expect(s.bars).toBeGreaterThanOrEqual(1)
-    expect(s.bars).toBeLessThanOrEqual(8)
+    /* ⚠️ the room's own ceilings, not this reader's — see the describe below. Both of these
+       read 8 and 1.5 until the day it turned out the reader was the only thing that still
+       thought so, and a test agreeing with a stale number is the reason it lasted. */
+    expect(s.bars).toBeLessThanOrEqual(32)
     const l = s.layers[0]
     expect(l.len).toBeGreaterThan(0)
     expect(l.len).toBeLessThanOrEqual(60)
     expect(l.gain!).toBeGreaterThanOrEqual(0)
-    expect(l.gain!).toBeLessThanOrEqual(1.5)
+    expect(l.gain!).toBeLessThanOrEqual(2)
     for (const v of Object.values(l.fx)) {
       expect(Number.isFinite(v)).toBe(true)
       expect(v).toBeGreaterThanOrEqual(0)
@@ -562,5 +606,69 @@ describe('which picker owns a layer', () => {
     const layers = songToLayers(readSong(packed)!)
     expect(layers.every((l) => !/-(beat|chords|bass):/.test(l.id))).toBe(true)
     expect(layers).toHaveLength(2)
+  })
+})
+
+/**
+ * ⚠️ TWO CEILINGS MOVED IN looper.ts AND NOT IN THE PARSER, so both shrank a song quietly —
+ * at Keep, because saveToLibrary runs this reader before it stores anything (library.test.ts
+ * reads the disk back to show it). Neither was a decision and neither had a test, which is why
+ * both survived: a song that reopens a little shorter and a little quieter than you left it
+ * looks like a memory of having made it differently, not like a reader with an old number in it.
+ */
+describe('a ceiling the room offers is a ceiling the file keeps', () => {
+  const at = (over: Record<string, unknown>, layer: Record<string, unknown> = {}) =>
+    songFrom({
+      ...over,
+      layers: [
+        layerOf(
+          [
+            { t: 0, midi: 60, on: true },
+            { t: 0.5, midi: 60, on: false },
+          ],
+          layer,
+        ),
+      ],
+    })
+
+  it('keeps a layer pushed past 1.5, because the fader goes to 2', () => {
+    /* setLayerGain clamps to 2 and the slider's max is 2 — the Layer type's own note says the
+       1.5 ceiling "WAS NOT ENOUGH TO CLOSE THE GAP" and why. Kept at 1.5, a layer raised to
+       be heard over a loud one sat back underneath it. */
+    expect(at({}, { gain: 1.8 }).layers[0].gain).toBe(1.8)
+    expect(readSong(packSong(at({}, { gain: 1.8 })))!.layers[0].gain).toBe(1.8)
+  })
+
+  it('and still refuses one past the fader', () => {
+    expect(at({}, { gain: 9 }).layers[0].gain).toBe(2)
+    expect(at({}, { gain: -3 }).layers[0].gain).toBe(0)
+  })
+
+  it('keeps a song longer than eight bars, because setBars goes to thirty-two', () => {
+    /* "eight bars is a loop and a track is not" — MAX_BARS in looper.ts. A sixteen-bar
+       arrangement was stored as eight, and the second half of it was simply not there. */
+    expect(at({ bars: 16 }).bars).toBe(16)
+    expect(readSong(packSong(at({ bars: 16 })))!.bars).toBe(16)
+    expect(at({ bars: 32 }).bars).toBe(32)
+  })
+
+  it('and still refuses one longer than the looper will play', () => {
+    expect(at({ bars: 400 }).bars).toBe(32)
+    expect(at({ bars: 0 }).bars).toBe(1)
+  })
+
+  it('and a mask on a bar past the old ceiling survives the packed form', () => {
+    /* the mask packs to one integer, a bit per bar, so a ceiling of 8 was also eight bits */
+    const play = Array.from({ length: 16 }, (_, i) => i !== 12)
+    const back = readSong(packSong(at({ bars: 16 }, { play })))!
+    expect(back.layers[0].play).toEqual(play)
+  })
+
+  it('and a packed mask with no length of its own spans the song, all sixteen bars of it', () => {
+    /* ⚠️ the fallback for a file written before `pb` existed is the song's own bar count, which
+       was clamped at eight for every reader once and for a jam partner until 9 Nov 2026 */
+    const old = { ...packSong(at({ bars: 16 })) }
+    old.l = old.l.map((l) => ({ ...l, p: 0b1, pb: undefined }))
+    expect(readSong(old)!.layers[0].play).toHaveLength(16)
   })
 })

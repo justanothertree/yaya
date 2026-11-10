@@ -79,7 +79,8 @@ function fin(v: number, fallback: number, lo: number, hi: number): number {
  * A plan shorter than the song plays nothing in the bars past its end, which is the opposite of
  * `play`'s rule — see the note on `pb` in songFile.ts. That asymmetry is deliberate and predates
  * this: an absent `play` entry means "plays", an absent `plan` entry means "silent", because a
- * mask is a set of exceptions and a plan is an order.
+ * mask is a set of exceptions and a plan is an order. (Since 9 Nov 2026 `setBars` carries a plan
+ * into the bars a song grows by — `growPlan` below — so a short plan now mostly arrives by file.)
  */
 export function partAt(
   plan: readonly (number | null)[] | undefined,
@@ -138,4 +139,73 @@ export function takeTimeAt(
   const src = partAt(plan, bar, parts)
   if (src == null) return null
   return src * barLen + (at - bar * barLen)
+}
+
+/**
+ * A plan that sounds only in its LAST bar, moved to the last bar of a loop that is now `bars`
+ * long — or null when this plan is not one of those, or the loop is too short to have an end.
+ *
+ * ⚠️ WHY THE FILL NEEDS THIS AND NOTHING ELSE DOES. "On the last bar" lays a drum fill as a plan
+ * of nulls and one slot, sized to the bar count AT THE MOMENT IT WAS PRESSED — and a bar past a
+ * plan's end is silent (see `partAt`). Measured: a fill laid on a two-bar loop that then grew to
+ * four played in bar TWO, the middle, and not in bar four; one laid on four that shrank to two
+ * never played at all — while the button went on reading pressed. The label was a promise the
+ * arrangement stopped keeping the first time anybody changed the length.
+ *
+ * ⚠️ ONLY A PLAN THAT IS EXACTLY "LAST SLOT ONLY" FOLLOWS. The fill can be dragged to another
+ * bar on purpose — its own comment says so — and an arrangement somebody chose is not this
+ * function's to move. Anything else answers null, and a growing song hands it to `growPlan`,
+ * which repeats it rather than moving it.
+ *
+ * ⚠️ AND NOTHING MOVES BELOW TWO BARS. On a one-bar loop every bar is the last one, which is why
+ * the button is disabled there; leaving the old plan in place keeps it silent (its last slot is
+ * past the end) and lets a return to two or more find it again, where rewriting it to `[0]` would
+ * turn the fill into the groove.
+ */
+export function followLastBar(
+  plan: readonly (number | null)[] | undefined,
+  bars: number,
+): (number | null)[] | null {
+  if (!plan || !plan.length || !Number.isInteger(bars) || bars < 2) return null
+  const last = plan.length - 1
+  const src = plan[last]
+  if (src == null || !Number.isFinite(src)) return null
+  for (let i = 0; i < last; i++) if (plan[i] != null) return null
+  if (plan.length === bars) return null
+  return Array.from({ length: bars }, (_, i) => (i === bars - 1 ? src : null))
+}
+
+/**
+ * An arrangement carried into the bars a song has just grown by — or null when there is nothing
+ * to carry: no plan, no growth, or a plan that already reaches that far.
+ *
+ * ⚠️ EVAN'S CALL, 9 NOV 2026: GROWING A SONG EXTENDS THE ARRANGEMENT. Until then a bar past a
+ * plan's end stayed silent (see `partAt`), so an arranged layer went quiet in every bar a song
+ * grew by while an untouched layer beside it tiled across them — measured in the room, a two-bar
+ * progression arranged and grown read "Bar 3: silent" onwards. It was documented as deliberate and
+ * left as a question; this is the answer.
+ *
+ * ⚠️ THE NEW BARS REPEAT WHAT THE SONG PLAYED, which is what tiling already does for a layer
+ * nobody arranged: going 4 → 8 plays the four bars twice. So the phrase is the plan read out to
+ * the length the song WAS, with a missing entry read as the silence it was heard as — a plan from
+ * a file can be shorter than its song, and repeating only its stored entries would put sound
+ * where somebody had been hearing none.
+ *
+ * ⚠️ AND NOTHING ALREADY STORED IS REWRITTEN. Shrinking never touches a plan, so 8 → 4 → 8 has to
+ * give the original eight back rather than the first four twice; an entry that exists is kept,
+ * and only the bars the plan never had are filled. That is also why a plan already long enough
+ * answers null instead of being cut to the new length.
+ *
+ * The fill's "On the last bar" is the one arrangement that MOVES rather than repeats, and
+ * `followLastBar` is asked first for it — see setBars.
+ */
+export function growPlan(
+  plan: readonly (number | null)[] | undefined,
+  from: number,
+  to: number,
+): (number | null)[] | null {
+  if (!plan || !plan.length || !Number.isInteger(from) || !Number.isInteger(to)) return null
+  if (from < 1 || to <= from || plan.length >= to) return null
+  const phrase = Array.from({ length: Math.max(from, plan.length) }, (_, i) => plan[i] ?? null)
+  return Array.from({ length: to }, (_, i) => phrase[i % phrase.length])
 }
