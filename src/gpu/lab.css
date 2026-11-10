@@ -3411,3 +3411,132 @@ html:has(.lab) {
 .ch-moves li > span:first-child {
   opacity: 0.6;
 }
+
+/* ---------------------------------------------------------------- hearts */
+.ht-room {
+  --ht-felt: #0f5132;
+}
+.ht-room.is-blue {
+  --ht-felt: #123d6b;
+}
+.ht-room.is-red {
+  --ht-felt: #6b1520;
+}
+.ht-scores {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.ht-table {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 4.5rem;
+  grid-template-rows: auto minmax(9.5rem, auto);
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--ht-felt), #fff 10%),
+    var(--ht-felt)
+  );
+  color: #fff;
+  width: min(100%, 560px);
+}
+.ht-seat {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+.ht-seat.is-s2 {
+  grid-column: 2;
+  grid-row: 1;
+}
+.ht-seat.is-s1 {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+}
+.ht-seat.is-s3 {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: center;
+}
+.ht-count {
+  align-self: center;
+  justify-self: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+}
+.ht-trick {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  min-height: 9.5rem;
+}
+.ht-played {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+.ht-played.is-s0 {
+  transform: translate(-50%, 4%);
+}
+.ht-played.is-s2 {
+  transform: translate(-50%, -104%);
+}
+.ht-played.is-s1 {
+  transform: translate(-130%, -50%);
+}
+.ht-played.is-s3 {
+  transform: translate(30%, -50%);
+}
+/* thirteen cards across a phone: they overlap, each keeping a sliver wider than a fingertip's
+   minimum. `contain: inline-size` matters: without it the row's smallest width is all thirteen
+   cards side by side, every container above it grew to fit, and the page scrolled sideways 233px */
+.ht-hand {
+  display: flex;
+  padding: 0.75rem 0 0.25rem;
+  width: 100%;
+  max-width: 680px;
+  contain: inline-size;
+}
+.ht-mine {
+  /* every card positioned, so they stack in hand order: a lifted card is transformed, and a
+     transformed card would otherwise paint over its right-hand neighbour and take its taps */
+  position: relative;
+  flex: 0 1 50px;
+  min-width: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.ht-mine:last-child {
+  flex: 0 0 auto;
+}
+.ht-mine.is-picked {
+  transform: translateY(-14px);
+}
+.ht-mine.is-dim .pk-card {
+  filter: brightness(0.6);
+}
+.ht-mine.is-new .pk-card {
+  box-shadow:
+    0 0 0 2px #ffd34d,
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.ht-mine:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+  border-radius: 6px;
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ht-mine {
+    transition: none;
+  }
+}

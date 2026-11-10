@@ -104,6 +104,7 @@ import { TimeTrialDemo } from '../gpu/TimeTrialDemo'
 import { BackgammonDemo } from '../gpu/BackgammonDemo'
 import { PoolDemo } from '../gpu/PoolDemo'
 import { ChessDemo } from '../gpu/ChessDemo'
+import { HeartsDemo } from '../gpu/HeartsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -739,6 +740,12 @@ const DEMOS: readonly {
     name: 'Chess',
     line: 'Chess against the computer, with every rule — castling, en passant, promotion, and all the draws. Easy, Fair and Hard look one, two and three moves ahead and follow every capture to the end. Take back a move whenever you like; you swap colours each game.',
     Demo: ChessDemo,
+  },
+  {
+    id: 'hearts',
+    name: 'Hearts',
+    line: 'Hearts — you and three computers. Pass three, follow suit, and keep away from the hearts and the queen of spades, unless you can take every one of them and shoot the moon. Easy plays anything, Fair plays by habit, and Hard deals the hidden cards out two dozen ways before every card.',
+    Demo: HeartsDemo,
   },
 ]
 
