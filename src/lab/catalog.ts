@@ -106,6 +106,22 @@ export const META: Record<string, { category: Category; added: string }> = {
   levels: { category: 'puzzles', added: '2026-11-10' },
   type: { category: 'make', added: '2026-11-10' },
   bonsai: { category: 'make', added: '2026-11-10' },
+  mancala: { category: 'games', added: '2026-11-10' },
+  hockey: { category: 'games', added: '2026-11-10' },
+  dots: { category: 'games', added: '2026-11-10' },
+  reversi: { category: 'games', added: '2026-11-10' },
+  seabattle: { category: 'games', added: '2026-11-10' },
+  trails: { category: 'games', added: '2026-11-10' },
+  codebreaker: { category: 'puzzles', added: '2026-11-10' },
+  hex: { category: 'games', added: '2026-11-10' },
+  fourrow: { category: 'games', added: '2026-11-10' },
+  archery: { category: 'games', added: '2026-11-10' },
+  ultimate: { category: 'games', added: '2026-11-10' },
+  twentyone: { category: 'games', added: '2026-11-10' },
+  morris: { category: 'games', added: '2026-11-10' },
+  draughts: { category: 'games', added: '2026-11-10' },
+  bricks: { category: 'games', added: '2026-11-10' },
+  golf: { category: 'puzzles', added: '2026-11-10' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */
