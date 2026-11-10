@@ -1783,3 +1783,33 @@ html:has(.lab) {
 .hk-wrap.is-playing .lab-canvas {
   cursor: none;
 }
+
+/* Dots and boxes: a square board of paper */
+.db-room .lab-stage.db-stage {
+  height: min(70vh, 600px, 92vw);
+  min-height: 260px;
+  touch-action: manipulation;
+}
+.db-wrap {
+  border-radius: 12px;
+}
+.db-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.db-initial {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.db-initial input {
+  width: 3.2rem;
+  min-width: 48px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+.fw-swatch:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
