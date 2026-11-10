@@ -18,7 +18,7 @@ export const W = 160
 export const H = 90
 /** the puck's radius and how hard the air drags it toward its own speed, per second */
 export const PUCK_R = 4
-export const DRAG = 3.2
+export const DRAG = 6.5
 /** walls give back this much of the speed into them */
 export const BOUNCE = 0.82
 /** each goal is an opening this many cells either side of the middle of an end wall */
@@ -36,7 +36,7 @@ export const BUMPERS: [number, number, number][] = [
  */
 export const FAN_R = 6
 export const JET = 20
-export const FAN_PUSH = 700
+export const FAN_PUSH = 850
 /** the last SLOPE cells before a goal line tip toward it, at TIP cells a second², so a slow puck that
  *  has reached the mouth drops in rather than sitting on the line */
 export const SLOPE = 8
@@ -119,11 +119,35 @@ export function aim(f: Fan, p: Puck): V2 {
   return [dx / d, dy / d]
 }
 
-/** keep a fan in its own half: player 0 the left, player 1 the right, clear of the walls */
+/** how far past halfway a fan may go, in cells: 15% of the rink (Evan, 9 Nov). Both fans can
+ *  reach the middle, so the centre is contested rather than a wall neither can cross. */
+export const REACH = Math.round(W * 0.15)
+
+/** keep a fan in its own zone — its half and REACH past halfway — and clear of the walls */
 export function inHalf(side: number, at: V2): V2 {
-  const lo = side === 0 ? 3 : W / 2 + 2
-  const hi = side === 0 ? W / 2 - 2 : W - 3
+  const lo = side === 0 ? 3 : W / 2 - REACH
+  const hi = side === 0 ? W / 2 + REACH : W - 3
   return [Math.max(lo, Math.min(hi, at[0])), Math.max(3, Math.min(H - 3, at[1]))]
+}
+
+/** a fan's body, in cells: what keeps it outside a post */
+export const FAN_BODY = 5
+
+/** a fan pushed back out of any post it has moved into — the posts are solid to fans as well as
+ *  to the puck and the air (Evan, 9 Nov: fans went straight through them) */
+export function clearOfPosts(f: { x: number; y: number }) {
+  for (const [bx, by, br] of BUMPERS) {
+    const dx = f.x - bx
+    const dy = f.y - by
+    const d = Math.hypot(dx, dy)
+    const min = br + FAN_BODY
+    if (d < min) {
+      // dead centre has no direction: step out along the line away from the middle of the rink
+      const [nx, ny] = d > 1e-9 ? [dx / d, dy / d] : [0, by < H / 2 ? -1 : 1]
+      f.x = bx + nx * min
+      f.y = by + ny * min
+    }
+  }
 }
 
 /** how fast a fan crosses the ice, cells a second: quick, but not where-you-point-instantly */
@@ -140,15 +164,22 @@ export function steer(f: Fan, side: number, to: V2, dt: number, speed = FAN_SPEE
     f.x += (dx / d) * step
     f.y += (dy / d) * step
   }
+  clearOfPosts(f)
   ;[f.x, f.y] = inHalf(side, [f.x, f.y])
 }
 
 /**
- * Where the computer wants to stand (it plays the right, attacking the left goal): behind the puck as
- * seen from the goal it is shooting at, so its wind carries the puck that way — or as near that as its
- * own half allows, which is still a shot while the puck is within its jet's reach. A puck further off
- * than that is out of its reach, so it goes back to guard its goal, level with the puck. It blows only
- * once nearly at its spot, with breath to spare and the puck within reach.
+ * Where the computer wants to stand (it plays the right, attacking the left goal), and when to blow.
+ *
+ *   attack  — the puck is within its jet's reach from behind it, as seen from the goal it is
+ *             shooting at: go there and blow, so the wind carries the puck at that goal.
+ *   guard   — the puck is coming at its own goal, or is already deep on its side: get between them,
+ *             level with the puck.
+ *   press   — otherwise the puck is out of reach on the other side. ⚠️ IT USED TO GO HOME AND WAIT
+ *             here, which is why it read as only ever defending (Evan, 9 Nov): measured, against a
+ *             guard who never blows it scored freely, but a player who kept the puck on their side
+ *             met a computer parked in its goal. Now it comes forward to the front of its zone,
+ *             level with the puck, and blows the moment the puck is within reach.
  */
 export function brain(p: Puck, me: Fan): { at: V2; blow: boolean } {
   const dx = p.x
@@ -156,9 +187,15 @@ export function brain(p: Puck, me: Fan): { at: V2; blow: boolean } {
   const d = Math.hypot(dx, dy) || 1
   const at = inHalf(1, [p.x + (dx / d) * 12, p.y + (dy / d) * 12])
   const reach = Math.hypot(at[0] - p.x, at[1] - p.y)
-  if (reach > JET) return { at: inHalf(1, [W - 16, H / 2 + (p.y - H / 2) * 0.6]), blow: false }
-  const there = Math.hypot(me.x - at[0], me.y - at[1]) < 5
-  return { at, blow: there && me.breath > 0.15 }
+  if (reach <= JET) {
+    const there = Math.hypot(me.x - at[0], me.y - at[1]) < 8
+    return { at, blow: there && me.breath > 0.1 }
+  }
+  const coming = p.vx > 25 || p.x > W - W / 4
+  if (coming) return { at: inHalf(1, [W - 16, H / 2 + (p.y - H / 2) * 0.6]), blow: false }
+  const front = inHalf(1, [W / 2 - REACH, p.y])
+  const near = Math.hypot(front[0] - p.x, front[1] - p.y) <= JET
+  return { at: front, blow: near && me.breath > 0.1 }
 }
 
 export type Match = {

@@ -1,0 +1,94 @@
+/* The Lab's catalog and feedback. Sizes in px where they are a target or a floor, because the
+   root font-size is fluid here (CLAUDE.md §6) and a rem is not a length. */
+
+.lab-badge {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+.lab-badge-off {
+  border-style: dashed;
+}
+/* a labelled text box, used by Nonogram for naming a puzzle */
+.lab-search {
+  flex: 1 1 14rem;
+  min-width: 160px;
+}
+.lab-search input {
+  width: 100%;
+  /* an input's min-width is its `size` until told otherwise — see CLAUDE.md §6 */
+  min-width: 0;
+  min-height: 40px;
+}
+
+.lab-feedback {
+  display: grid;
+  gap: 0.6rem;
+}
+.lab-votes .btn {
+  min-width: 64px;
+}
+/* the count sits inside its button: the highlight (lab.css, aria-pressed) says which one is yours */
+.lab-vote-n {
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.lab-notes summary,
+.lab-owner summary {
+  cursor: pointer;
+  min-height: 32px;
+  padding: 0.3rem 0;
+}
+.lab-notes[open],
+.lab-owner[open] {
+  display: grid;
+  gap: 0.6rem;
+}
+.lab-compose {
+  display: grid;
+  gap: 0.5rem;
+}
+.lab-note-box textarea {
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  min-height: 72px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.lab-note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.lab-note {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 0;
+}
+.lab-note[data-removed] {
+  border-style: dashed;
+  opacity: 0.75;
+}
+.lab-note-meta,
+.lab-note-body {
+  margin: 0;
+}
+.lab-note-body {
+  /* plain text, kept as written: React escapes it, and its line breaks are the writer's own */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.lab-note-actions .btn {
+  min-height: 32px;
+  padding: 0.3rem 0.7rem;
+}
