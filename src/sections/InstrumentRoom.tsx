@@ -3300,7 +3300,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                * ⚠️ A PRESET IS THE LINE AND THE VOICE TOGETHER — Evan, 10 Nov 2026: "bass presets".
                * It sets the two controls beside it rather than being a third thing, so what it
                * picks stays editable right here, and it READS them: a bass whose line and voice
-               * match a preset shows that preset, and changing either one shows "Your own". With no
+               * match a preset shows that preset, and changing either one shows "No preset". With no
                * bass loaded it shows the pair that will be laid next, the way Sound does.
                */
               const presetNow = bass
@@ -3328,7 +3328,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                         if (!loop.playing) startLoop()
                       }}
                     >
-                      <option value="">{bass ? 'Your own' : 'Choose one'}</option>
+                      <option value="">{bass ? 'No preset' : 'Choose one'}</option>
                       {BASS_PRESETS.map((pr) => (
                         <option key={pr.id} value={pr.id} title={pr.hint}>
                           {`${pr.name} · ${INSTRUMENTS.find(([x]) => x === pr.voice)?.[2] ?? pr.voice}`}
