@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BASS_VOICES, INSTRUMENTS, SHAPES, type InstrumentId } from './synth'
+import { FAMILIES } from './families'
 import { packSong, readSong } from './songFile'
 
 /**
@@ -237,20 +238,21 @@ describe('the three voices added alongside this file', () => {
  * how dark the filter closes, or a pitch that falls into place. Whether they sound like their
  * NAMES is a listening question and is Evan's; the room measurement is in the PR.
  */
-describe('the basses', () => {
-  const shape = (id: InstrumentId) => (SHAPES as Record<string, Shape>)[id]
-  const ratio = (a: number, b: number) => Math.max(a, b) / Math.max(1e-6, Math.min(a, b))
-  const parts = (a: Shape, b: Shape) => {
-    const why: string[] = []
-    if (a.wave !== b.wave) why.push('wave')
-    if (Math.abs(a.s - b.s) >= 0.15) why.push('held')
-    if (ratio(a.d, b.d) >= 1.5) why.push('decay')
-    if (ratio(a.filter?.to ?? 20000, b.filter?.to ?? 20000) >= 1.5) why.push('filter')
-    if (!!a.pitch !== !!b.pitch) why.push('pitch')
-    if (a.partials.length !== b.partials.length) why.push('partials')
-    return why
-  }
+const shape = (id: InstrumentId) => (SHAPES as Record<string, Shape>)[id]
+const ratio = (a: number, b: number) => Math.max(a, b) / Math.max(1e-6, Math.min(a, b))
+/** what a listener could hear differ between two voices — see the note on 'the basses' */
+const parts = (a: Shape, b: Shape) => {
+  const why: string[] = []
+  if (a.wave !== b.wave) why.push('wave')
+  if (Math.abs(a.s - b.s) >= 0.15) why.push('held')
+  if (ratio(a.d, b.d) >= 1.5) why.push('decay')
+  if (ratio(a.filter?.to ?? 20000, b.filter?.to ?? 20000) >= 1.5) why.push('filter')
+  if (!!a.pitch !== !!b.pitch) why.push('pitch')
+  if (a.partials.length !== b.partials.length) why.push('partials')
+  return why
+}
 
+describe('the basses', () => {
   it('offers at least six, every one on the picker with a preset', () => {
     expect(BASS_VOICES.length).toBeGreaterThanOrEqual(6)
     const offered = new Set(INSTRUMENTS.map(([id]) => id))
@@ -337,5 +339,51 @@ describe('the new voices travel', () => {
       )
       expect(back?.layers[0].instrument, instrument).toBe(instrument)
     }
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: "more instruments". The Strings family had a harp, a koto, a sitar and a
+ * banjo and no guitar — the instrument most people would look for there first.
+ */
+describe('the electric guitar', () => {
+  const plucked = ['harp', 'koto', 'banjo', 'pluck'] as const
+
+  it('holds a part of its note, where every other plucked string dies to nothing', () => {
+    for (const id of plucked) expect(SHAPES[id].s, id).toBe(0)
+    expect(SHAPES.guitar.s).toBeGreaterThanOrEqual(0.15)
+  })
+
+  it('is built differently from everything else in the Strings family', () => {
+    const family = FAMILIES.find((f) => f.id === 'strings')!.members
+    expect(family).toContain('guitar')
+    const alike = family
+      .filter((id) => id !== 'guitar')
+      .filter((id) => parts(shape('guitar'), shape(id as InstrumentId)).length < 2)
+    expect(alike).toEqual([])
+  })
+
+  it('travels through a song file as itself', () => {
+    const back = readSong(
+      packSong({
+        v: 1,
+        name: 'x',
+        bpm: 96,
+        bars: 2,
+        layers: [
+          {
+            instrument: 'guitar',
+            muted: false,
+            len: 5,
+            events: [
+              { t: 0, midi: 52, on: true },
+              { t: 1, midi: 52, on: false },
+            ],
+            fx: { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 },
+          },
+        ],
+      }),
+    )
+    expect(back?.layers[0].instrument).toBe('guitar')
   })
 })

@@ -65,6 +65,7 @@ export type InstrumentId =
   | 'chip'
   | 'harpsichord'
   | 'sitar'
+  | 'guitar'
   | 'drums'
 
 /**
@@ -77,6 +78,7 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['rhodes', '🎛', 'Rhodes'],
   ['harpsichord', '🏰', 'Harpsichord'],
   ['pluck', '🪕', 'Pluck'],
+  ['guitar', '🤘', 'Electric guitar'],
   ['bell', '🔔', 'Bell'],
   ['pad', '🌊', 'Pad'],
   ['bass', '🎸', 'Bass'],
@@ -199,6 +201,28 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     partials: [{ ratio: 1, detune: 0, gain: 1 }],
     filter: { from: 4200, to: 500, q: 3 },
     level: 0.55,
+  },
+  /**
+   * Electric guitar, clean: a picked string through an amp. ⚠️ IT HOLDS, which is the whole
+   * difference from every other plucked voice here — Harp, Koto, Banjo and Pluck all die to
+   * nothing, while a pickup and an amp keep a fifth of the note ringing, so a chord can sit under
+   * a song. Two copies of the note a few cents apart are the chorus pedal nearly every clean tone
+   * is played through, and a filter that settles at a mid-bright 1.3kHz keeps it from turning into
+   * the Supersaw. (Evan, 10 Nov 2026: "more instruments".)
+   */
+  guitar: {
+    a: 0.002,
+    d: 1.2,
+    s: 0.22,
+    r: 0.25,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -4, gain: 1 },
+      { ratio: 1, detune: 4, gain: 0.5 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+    ],
+    filter: { from: 3400, to: 1300, q: 1.2 },
+    level: 0.62,
   },
   // 2.76 is deliberately not a musical interval — inharmonic partials are what make metal ring
   bell: {
