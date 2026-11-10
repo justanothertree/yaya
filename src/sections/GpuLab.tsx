@@ -80,6 +80,7 @@ import { RpsDemo } from '../gpu/RpsDemo'
 import { DiceDemo } from '../gpu/DiceDemo'
 import { PokerDemo } from '../gpu/PokerDemo'
 import { FireworksDemo } from '../gpu/FireworksDemo'
+import { LevelsDemo } from '../gpu/LevelsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -571,6 +572,12 @@ const DEMOS: readonly {
     name: 'Fireworks',
     line: 'Fireworks — design shells (eight bursts, two colours, size, height, trails, crackle), tap the sky to set them off, and build a show over a city, hills or a lake. Send it as a link and they see it spark for spark.',
     Demo: FireworksDemo,
+  },
+  {
+    id: 'levels',
+    name: 'Level maker',
+    line: 'Level maker — build a room from walls, crates and holes, ice, spikes, keys and doors, plates and gates, then play it. A solver proves every room can be done and finds the fewest moves, and the room goes to a friend as a link.',
+    Demo: LevelsDemo,
   },
 ]
 

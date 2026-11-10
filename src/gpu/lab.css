@@ -1477,3 +1477,46 @@ html:has(.lab) {
     0 0 0 3px var(--bg, #fff),
     0 0 0 6px var(--text, #111);
 }
+
+/* Level maker: the room is wider than tall, so the stage follows the width on a phone */
+.lv-room .lab-stage.lv-stage {
+  height: min(62vh, 560px, 76vw);
+  touch-action: none;
+}
+.lv-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-auto-rows: 48px;
+  gap: 0.3rem;
+  justify-content: center;
+}
+.lv-pad .btn {
+  min-height: 48px;
+  padding: 0;
+  font-size: 1.1rem;
+}
+.lv-build {
+  display: grid;
+  gap: 0.6rem;
+}
+.lv-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.3rem;
+}
+.lv-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-start;
+  padding: 0.25rem 0.4rem;
+  min-height: 40px;
+  font-size: 0.85rem;
+  text-align: left;
+}
+.lv-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  flex: none;
+}
