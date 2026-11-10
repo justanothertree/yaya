@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BASS_VOICES, INSTRUMENTS, SHAPES, type InstrumentId } from './synth'
+import { BASS_VOICES, INSTRUMENTS, SHAPES, filterSweeps, type InstrumentId } from './synth'
 import { packSong, readSong } from './songFile'
 
 /**
@@ -337,5 +337,40 @@ describe('the new voices travel', () => {
       )
       expect(back?.layers[0].instrument, instrument).toBe(instrument)
     }
+  })
+})
+
+/**
+ * ⚠️ A FILTER SWEEP IS THE SOUND OF SEVERAL OF THESE VOICES, and from 8 Sep to 10 Nov 2026 it was
+ * switched off wherever the note's highest partial RATIO sat under the filter — which a saw's own
+ * harmonics make untrue. Each case below is something a listener can name, at a pitch it is
+ * actually played at.
+ */
+describe('a filter moves where the wave can hear it', () => {
+  const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
+
+  it('Slap snaps on the E a bass line plays, not only from A2 up', () => {
+    expect(filterSweeps(SHAPES.slap, hz(40))).toBe(true)
+    expect(filterSweeps(SHAPES.slap, hz(36))).toBe(true)
+  })
+
+  it('every saw or square bass sweeps across the whole register a bass line uses', () => {
+    const flat: string[] = []
+    for (const id of BASS_VOICES) {
+      const sh = SHAPES[id as Exclude<InstrumentId, 'drums'>]
+      if (!sh.filter || (sh.wave !== 'sawtooth' && sh.wave !== 'square')) continue
+      for (let m = 36; m <= 59; m++) if (!filterSweeps(sh, hz(m))) flat.push(`${id}@${m}`)
+    }
+    expect(flat).toEqual([])
+  })
+
+  it('Brass swells into middle C and the C above, which is the brass', () => {
+    expect(filterSweeps(SHAPES.brass, hz(60))).toBe(true)
+    expect(filterSweeps(SHAPES.brass, hz(72))).toBe(true)
+  })
+
+  it('near-sines keep the crackle fix as it was measured: whistle at C5, Keys at middle C', () => {
+    expect(filterSweeps(SHAPES.whistle, hz(72))).toBe(false)
+    expect(filterSweeps(SHAPES.keys, hz(60))).toBe(false)
   })
 })
