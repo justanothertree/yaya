@@ -1,3 +1,67 @@
+-- ⛔ SCRATCH BRANCH chronicle/ci-probe-server-batch ONLY — never to be merged. Runs the batch
+-- plan's apply order on the dump plus the release's seven migrations, then its rollback, then the
+-- standing guards.
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\pset format unaligned
+\pset tuples_only on
+\echo '#### CHECK A'
+select '#### BEFORE ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname in ('chronicle_moments', 'chronicle_entry_amount', 'chronicle_activity_save', 'chronicle_goal_save', 'chronicle_routine_save') order by p.proname;
+select '#### GRANTS ' || p.proname || ' anon=' || has_function_privilege('anon', p.oid, 'execute') || ' member=' || has_function_privilege('authenticated', p.oid, 'execute') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname in ('chronicle_moments', 'chronicle_entry_amount', 'chronicle_activity_save', 'chronicle_goal_save', 'chronicle_routine_save') order by p.proname;
+select '#### VERSION ' || (current_setting('server_version_num')::int >= 130000);
+\echo '#### APPLY, in the plan''s order'
+\echo '#### STEP 2 docs/2026-11-10-chronicle-moments-decimals.DRAFT.sql'
+\ir ../../docs/2026-11-10-chronicle-moments-decimals.DRAFT.sql
+\echo '#### STEP 3 docs/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql'
+\ir ../../docs/2026-11-10-chronicle-entry-amount-negative.DRAFT.sql
+\echo '#### STEP 4 docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql'
+\ir ../../docs/2026-11-10-chronicle-activity-refusals.DRAFT.sql
+\echo '#### STEP 5 docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql'
+\ir ../../docs/2026-11-10-chronicle-goal-refusals.DRAFT.sql
+\echo '#### STEP 6 docs/2026-11-10-chronicle-routine-refusals.DRAFT.sql'
+\ir ../../docs/2026-11-10-chronicle-routine-refusals.DRAFT.sql
+\echo '#### CHECK B'
+select '#### AFTER ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname in ('chronicle_moments', 'chronicle_entry_amount', 'chronicle_activity_save', 'chronicle_goal_save', 'chronicle_routine_save') order by p.proname;
+select '#### GRANTS ' || p.proname || ' anon=' || has_function_privilege('anon', p.oid, 'execute') || ' member=' || has_function_privilege('authenticated', p.oid, 'execute') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname in ('chronicle_moments', 'chronicle_entry_amount', 'chronicle_activity_save', 'chronicle_goal_save', 'chronicle_routine_save') order by p.proname;
+\echo '#### TEST chronicle-21ab.sql'
+\ir chronicle-21ab.sql
+\echo '#### TEST chronicle-activity-refusals.sql'
+\ir chronicle-activity-refusals.sql
+\echo '#### TEST chronicle-goal-refusals.sql'
+\ir chronicle-goal-refusals.sql
+\echo '#### TEST chronicle-routine-refusals.sql'
+\ir chronicle-routine-refusals.sql
+\echo '#### ROLLBACK, most recent first'
+\! md5sum docs/2026-11-10-chronicle-routine-refusals-rollback/chronicle_routine_save.sql | sed 's/^/#### ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-routine-refusals-rollback/chronicle_routine_save.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+\! md5sum docs/2026-11-10-chronicle-goal-refusals-rollback/chronicle_goal_save.sql | sed 's/^/#### ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-goal-refusals-rollback/chronicle_goal_save.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+\! md5sum docs/2026-11-10-chronicle-activity-refusals-rollback/chronicle_activity_save.sql | sed 's/^/#### ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-activity-refusals-rollback/chronicle_activity_save.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+\! md5sum docs/2026-11-10-chronicle-21ab-rollback/chronicle_entry_amount.sql | sed 's/^/#### ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-21ab-rollback/chronicle_entry_amount.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+\! md5sum docs/2026-11-10-chronicle-21ab-rollback/chronicle_moments.sql | sed 's/^/#### ROLLBACK FILE /'
+\set rb `cat docs/2026-11-10-chronicle-21ab-rollback/chronicle_moments.sql`
+select set_config('probe.rb', :'rb', false) is not null;
+do $$ begin execute current_setting('probe.rb'); end $$;
+select '#### ROLLED BACK ' || p.proname || ' ' || md5(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname in ('chronicle_moments', 'chronicle_entry_amount', 'chronicle_activity_save', 'chronicle_goal_save', 'chronicle_routine_save') order by p.proname;
+select '#### GRANTS ' || p.proname || ' anon=' || has_function_privilege('anon', p.oid, 'execute') || ' member=' || has_function_privilege('authenticated', p.oid, 'execute') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and p.proname in ('chronicle_moments', 'chronicle_entry_amount', 'chronicle_activity_save', 'chronicle_goal_save', 'chronicle_routine_save') order by p.proname;
+\pset format aligned
+\pset tuples_only off
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
