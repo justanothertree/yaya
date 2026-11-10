@@ -290,6 +290,27 @@ function set(patch: Partial<State>) {
   for (const fn of listeners) fn()
 }
 
+/**
+ * Changes nobody here made: a partner's edit arriving, the jam's own bookkeeping, a bench put back
+ * on load.
+ *
+ * ⚠️ THE ROOM'S UNDO HISTORY LEAVES THESE OUT, and that is the whole of "own changes only in a
+ * jam" (Evan, 9 Nov 2026). A history that recorded every change to the layer list would hand
+ * Ctrl+Z somebody else's mute to take back, or the restore that put last night's work on the
+ * bench — so anything that is not a person at this keyboard runs inside this, and history.ts
+ * asks `changingFromElsewhere()` before writing a step.
+ */
+let elsewhere = 0
+export function fromElsewhere<T>(fn: () => T): T {
+  elsewhere++
+  try {
+    return fn()
+  } finally {
+    elsewhere--
+  }
+}
+export const changingFromElsewhere = () => elsewhere > 0
+
 export function subscribeLoop(fn: () => void): () => void {
   listeners.add(fn)
   return () => {
@@ -1371,6 +1392,10 @@ export function loopOrigin(): number {
  * which is exactly what setBpm does and why this is not simply setBpm plus a nudge.
  */
 export function setTransport(t: { bpm: number; bars: number; playing: boolean; origin: number }) {
+  /* somebody else's transport — see fromElsewhere */
+  fromElsewhere(() => adoptTransport(t))
+}
+function adoptTransport(t: { bpm: number; bars: number; playing: boolean; origin: number }) {
   const bpm = Math.max(40, Math.min(200, Math.round(t.bpm)))
   /* ⚠️ MAX_BARS, NOT 8 — the same ceiling setBars has. This was the last 8 left from before
      MAX_BARS went to 32, and it was a jam-only one: a partner's 16-bar loop played as 8 here, and
@@ -1403,13 +1428,6 @@ export function setMetronome(on: boolean) {
 
 export function setQuantize(q: number) {
   set({ quantize: q })
-}
-
-/** Take back the last thing you recorded, without hunting for it in the list. */
-export function undoLast() {
-  if (!state.layers.length) return
-  releaseLayer(state.layers[state.layers.length - 1].id)
-  set({ layers: state.layers.slice(0, -1) })
 }
 
 /**
@@ -1597,6 +1615,24 @@ export function setLayerFx(id: string) {
  * note owned by a layer that no longer exists, and nothing left to release it — the same
  * stranding that mute and delete had to be taught about.
  */
+/**
+ * Put the layers — and, when it changed, the transport — back to an earlier state: undo and redo.
+ *
+ * ⚠️ RELEASES WHAT IT REPLACES, like every other edit here. A layer swapped for its earlier
+ * version owns whatever it is sounding right now, and the earlier version has no record of those
+ * notes; leaving them would be the stranding mute and delete were taught about. A change of
+ * tempo or length restarts the loop for the reason `restart` gives.
+ */
+export function restoreArrangement(layers: Layer[], transport?: { bpm: number; bars: number }) {
+  for (const l of state.layers) if (!layers.includes(l)) releaseLayer(l.id)
+  if (transport && (transport.bpm !== state.bpm || transport.bars !== state.bars)) {
+    restart()
+    set({ layers, bpm: transport.bpm, bars: transport.bars })
+    return
+  }
+  set({ layers })
+}
+
 export function loadSong(bpm: number, bars: number, layers: Layer[]) {
   stopLoop()
   releaseAllLayers()
@@ -1662,6 +1698,9 @@ export function setLayerInstrument(id: string, instrument: InstrumentId) {
  * the id the transport stamped, which is the only value a message cannot lie about.
  */
 export function putSharedLayer(layer: Layer): boolean {
+  return fromElsewhere(() => putShared(layer))
+}
+function putShared(layer: Layer): boolean {
   const at = state.layers.findIndex((l) => l.id === layer.id)
   if (at === -1) {
     /* ⚠️ REPORTED, not just refused. A take that does not fit is a part of the song that
@@ -1689,7 +1728,7 @@ export function dropLayersFrom(peer: string) {
   const going = state.layers.filter((l) => l.from === peer)
   if (!going.length) return
   for (const l of going) releaseLayer(l.id)
-  set({ layers: state.layers.filter((l) => l.from !== peer) })
+  fromElsewhere(() => set({ layers: state.layers.filter((l) => l.from !== peer) }))
 }
 
 /**
@@ -1705,7 +1744,7 @@ export function dropBorrowedLayers() {
   const going = state.layers.filter((l) => l.from)
   if (!going.length) return
   for (const l of going) releaseLayer(l.id)
-  set({ layers: state.layers.filter((l) => !l.from) })
+  fromElsewhere(() => set({ layers: state.layers.filter((l) => !l.from) }))
 }
 
 /**
@@ -1718,7 +1757,10 @@ export function dropBorrowedLayers() {
  */
 export function setLayersShared(on: boolean) {
   if (!state.layers.some((l) => !!l.shared !== on && !l.from)) return
-  set({ layers: state.layers.map((l) => (l.from ? l : { ...l, shared: on || undefined })) })
+  /* bookkeeping, not an edit — see fromElsewhere */
+  fromElsewhere(() =>
+    set({ layers: state.layers.map((l) => (l.from ? l : { ...l, shared: on || undefined })) }),
+  )
 }
 
 /**

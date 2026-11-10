@@ -3587,6 +3587,11 @@ section[id] {
   margin: 0 0 0.5rem;
   font-size: 0.78rem;
 }
+/* undo and redo wrap as a pair — see the transport row */
+.inst-undo {
+  display: inline-flex;
+  gap: 0.3rem;
+}
 .inst-beats-row {
   display: flex;
   align-items: baseline;
