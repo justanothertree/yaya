@@ -8779,6 +8779,24 @@ a.cz-msg-author:focus-visible {
 .inst-picks:not(.is-open) {
   display: none;
 }
+/* the singing prototype — see SingPanel */
+.inst-sing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.7rem;
+  min-width: 0;
+}
+.inst-sing > .btn {
+  align-self: flex-start;
+}
+.inst-sing-lyric {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  resize: vertical;
+}
 /* the instrument menu's families — one row of tiles at a time, see families.ts */
 .inst-families {
   display: flex;
