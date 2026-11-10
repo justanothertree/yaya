@@ -1093,6 +1093,8 @@ describe('finding the block a tap meant', () => {
     activity: 'a',
     left,
     width,
+    /* an ordinary 24-hour day, where a block's length is its width of the day */
+    ms: (width / 100) * 86_400_000,
     cut: false,
   })
   /* 9am–10am and 2pm–2.30pm, as percentages of a day */

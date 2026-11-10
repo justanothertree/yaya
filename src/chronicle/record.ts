@@ -502,6 +502,16 @@ export function dayBounds(iso: string): { fromMs: number; toMs: number } {
 }
 
 /**
+ * Where the day after a window's day ends, given where that day ends: the end of tomorrow, when
+ * `toMs` is the end of today.
+ *
+ * ⚠️ A DAY ON, NOT 24 HOURS ON. The rail asked for plans up to `toMs + 86_400_000`, which on the eve
+ * of the clocks going back stops an hour short of the end of tomorrow, so a plan in its last hour was
+ * not "ahead", and on the eve of them going forward runs an hour into the day after.
+ */
+export const endOfNextDay = (toMs: number): number => dayBounds(localISO(new Date(toMs))).toMs
+
+/**
  * What the server says about a window's minutes, keyed by rating: '1'…'5' and 'none'.
  *
  * ⚠️ RAW, NOT BUCKETED, deliberately. "4 and 5 are good" is a product decision, and a server that
@@ -680,11 +690,17 @@ export function gapSince(
   return { ms: nowMs - Date.parse(last.end!), activity: last.activity }
 }
 
-/** Where one span sits on a day, as percentages of that day's width. */
+/** Where one span sits on a day, as percentages of that day's clock face, and how long it is. */
 export type Block = {
   activity: string
   left: number
   width: number
+  /**
+   * The span's real length inside the window, `overlapMs`. ⚠️ CARRIED, NOT WORKED BACK OUT OF
+   * `width`: the week grid's tooltip did `width% × 1440`, which is exact only on a 24-hour day, so a
+   * one-hour sitting read "1h 2m" on the day the clocks go forward and "57m" on the day they go back.
+   */
+  ms: number
   cut: boolean
   /**
    * Which session this block IS, when the caller knows.
@@ -699,6 +715,21 @@ export type Block = {
 }
 
 /**
+ * How far into a window a moment is ON THE CLOCK, in milliseconds: the time elapsed since the
+ * window began, corrected by however far the clocks moved in between.
+ *
+ * ⚠️ A DAY IS DRAWN ON A 24-HOUR DIAL, AND TWICE A YEAR IT IS NOT 24 HOURS LONG. The week grid's
+ * hour lines (`hours()` in week.ts) and the day strip's 6, 12 and 18 sit where a 24-hour dial puts
+ * them, so a block has to be placed the same way. By elapsed time over a 23-hour day, a sitting at
+ * nine on 8 March landed 39 minutes above the "9a" line, and about 55 minutes off just after the
+ * change. On every other day this IS the elapsed time, so nothing else moves. A sitting across the
+ * skipped hour spans its clock times; one inside the hour a fall-back repeats is drawn as a sliver,
+ * because on a clock face it starts and ends in the same place. Its real length is still `ms`.
+ */
+const onClock = (t: number, fromMs: number): number =>
+  t - fromMs - (new Date(t).getTimezoneOffset() - new Date(fromMs).getTimezoneOffset()) * 60_000
+
+/**
  * A day laid out as a strip: one block per span, positioned across the window.
  *
  * ⚠️ IT COSTS NOTHING, like the streak marks. The day's entries are already in hand with their
@@ -706,10 +737,12 @@ export type Block = {
  * one thing the record cannot currently tell you is the SHAPE of a day: that the morning was
  * solid and the afternoon went somewhere else. Same spans, read instead of discarded.
  *
- * ⚠️ AND THE WIDTH IS `overlapMs`, NOT A SECOND SUBTRACTION. Only the left edge is new arithmetic
+ * ⚠️ AND THE LENGTH IS `overlapMs`, NOT A SECOND SUBTRACTION. Only the placing is new arithmetic
  * here; the length of every block is the same function the totals, the goals and the day's
- * categories all use. A strip that disagreed with the minutes printed beside it would be two
- * answers to one question — and the test asserts that pairing rather than any particular pixel.
+ * categories all use, carried as `ms`. A strip that disagreed with the minutes printed beside it
+ * would be two answers to one question — and the test asserts that pairing rather than any
+ * particular pixel. `left` and `width` are on the clock face (`onClock`), which on every day but
+ * two a year is the same as `ms` over the day's width.
  *
  * ⚠️ `cut` SAYS THE SPAN RUNS PAST THIS DAY, which a clipped block cannot say by itself: a
  * session from 23:00 to 01:00 is a block hard against the right edge on one day and against the
@@ -721,8 +754,8 @@ export function lane(
   toMs: number,
   nowMs: number,
 ): Block[] {
-  const width = toMs - fromMs
-  if (!(width > 0)) return []
+  const dial = onClock(toMs, fromMs)
+  if (!(toMs > fromMs) || !(dial > 0)) return []
   const out: Block[] = []
   for (const s of spans) {
     const ms = overlapMs(s, fromMs, toMs, nowMs)
@@ -730,11 +763,13 @@ export function lane(
     const began = Date.parse(s.start)
     const ended = s.end == null ? nowMs : Date.parse(s.end)
     const lo = Math.max(began, fromMs)
+    const from = onClock(lo, fromMs)
     out.push({
       activity: s.activity,
       id: s.id,
-      left: ((lo - fromMs) / width) * 100,
-      width: (ms / width) * 100,
+      left: (from / dial) * 100,
+      width: ((onClock(lo + ms, fromMs) - from) / dial) * 100,
+      ms,
       cut: began < fromMs || (Number.isFinite(ended) ? ended : nowMs) > toMs,
     })
   }
@@ -751,7 +786,8 @@ export function lane(
 export function nowAt(fromMs: number, toMs: number, nowMs: number): number | null {
   if (!(toMs > fromMs)) return null
   if (nowMs < fromMs || nowMs > toMs) return null
-  return ((nowMs - fromMs) / (toMs - fromMs)) * 100
+  /* on the clock face, like the blocks it is drawn among — see `onClock` */
+  return (onClock(nowMs, fromMs) / onClock(toMs, fromMs)) * 100
 }
 
 /* ── a datetime-local value, which is a STRING and not a moment ─────────────────────────────── */
