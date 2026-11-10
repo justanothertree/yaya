@@ -600,7 +600,7 @@ export function Log({
                 }}
               >
                 <input
-                  className="cz-num"
+                  className="cz-num cz-col-rename"
                   value={col.label}
                   onChange={(e) => renameCol(col.ci, e.target.value)}
                   onBlur={() => {
