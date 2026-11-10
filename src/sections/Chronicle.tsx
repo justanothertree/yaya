@@ -81,6 +81,7 @@ import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
 import { Lifetime } from '../chronicle/Lifetime'
+import { LIMIT } from '../chronicle/limits'
 import { Toast } from '../circuit/ui/Toast'
 import { showToast } from '../circuit/toast'
 
@@ -1659,6 +1660,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                       <input
                         autoFocus
                         value={title}
+                        maxLength={LIMIT.goalTitle}
                         placeholder={v.scope === 'life' ? 'Learn to animate' : 'What needs doing?'}
                         onChange={(e) => setTitle(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && void add()}
@@ -1701,6 +1703,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                       <span className="sr-only">Why does this matter? Optional</span>
                       <input
                         value={why}
+                        maxLength={LIMIT.goalNote}
                         placeholder="why, if it helps"
                         onChange={(e) => setWhy(e.target.value)}
                       />
@@ -1728,6 +1731,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                        */}
                       <input
                         value={unit}
+                        maxLength={LIMIT.unit}
                         placeholder={unitFor('', {
                           counts: goalCounts,
                           activity: srcAct,
