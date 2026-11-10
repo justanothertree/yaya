@@ -502,6 +502,16 @@ export function dayBounds(iso: string): { fromMs: number; toMs: number } {
 }
 
 /**
+ * Where the day after a window's day ends, given where that day ends: the end of tomorrow, when
+ * `toMs` is the end of today.
+ *
+ * ⚠️ A DAY ON, NOT 24 HOURS ON. The rail asked for plans up to `toMs + 86_400_000`, which on the eve
+ * of the clocks going back stops an hour short of the end of tomorrow, so a plan in its last hour was
+ * not "ahead", and on the eve of them going forward runs an hour into the day after.
+ */
+export const endOfNextDay = (toMs: number): number => dayBounds(localISO(new Date(toMs))).toMs
+
+/**
  * What the server says about a window's minutes, keyed by rating: '1'…'5' and 'none'.
  *
  * ⚠️ RAW, NOT BUCKETED, deliberately. "4 and 5 are good" is a product decision, and a server that
