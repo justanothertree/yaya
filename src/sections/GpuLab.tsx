@@ -86,6 +86,7 @@ import { BonsaiDemo } from '../gpu/BonsaiDemo'
 import { MancalaDemo } from '../gpu/MancalaDemo'
 import { HockeyDemo } from '../gpu/HockeyDemo'
 import { DotsDemo } from '../gpu/DotsDemo'
+import { ReversiDemo } from '../gpu/ReversiDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -613,6 +614,12 @@ const DEMOS: readonly {
     name: 'Dots and boxes',
     line: 'Dots and boxes — draw lines between dots, close a box to keep it and draw again. Against a computer that grabs, one that never gives a box away, or one that plays the endgame out and leaves you two boxes to keep control. Boards from 3×3 to 6×6, your colours and your letter in every box you win.',
     Demo: DotsDemo,
+  },
+  {
+    id: 'reversi',
+    name: 'Reversi',
+    line: 'Reversi — trap a line of your opponent’s discs between two of yours and they turn over to your colour. Against a computer that grabs, one that looks two moves ahead, or one that looks further and plays the ending perfectly; boards of 6, 8 or 10, four sets of discs, three boards, and hints you can turn off.',
+    Demo: ReversiDemo,
   },
 ]
 

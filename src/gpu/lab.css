@@ -1813,3 +1813,28 @@ html:has(.lab) {
   opacity: 0.25;
   cursor: not-allowed;
 }
+
+/* Reversi: a square board, and disc swatches on the colour buttons */
+.rv-room .lab-stage.rv-stage {
+  height: min(70vh, 620px, 92vw);
+  min-height: 260px;
+  touch-action: manipulation;
+}
+.rv-wrap {
+  border-radius: 12px;
+}
+.rv-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.rv-discs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.rv-discs > span[aria-hidden] {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
