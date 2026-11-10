@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { BASS_STYLES, CHORD_PATTERNS, CHORD_STYLES } from './chordPatterns'
 import { DRUM_PATTERNS } from './drumPatterns'
-import { STARTERS, starterNow } from './starters'
+import { STARTERS, starterNow, styleBassVoice } from './starters'
+import { BASS_VOICES } from './synth'
 
 /**
  * A starter is a set of names for parts the backing panel already has. A name that points at
@@ -59,5 +60,36 @@ describe('the starters', () => {
     /* change one thing in the panel and it is no longer the starter, it is yours */
     expect(starterNow({ ...parts, bass: 'walk' })).toBe(null)
     expect(starterNow({ ...parts, beat: null })).toBe(null)
+  })
+})
+
+/** Evan, 10 Nov 2026: "an 808 for Hip hop makes sense, so let styles pick a bass voice where it clearly fits". */
+describe('a style can pick its bass voice', () => {
+  const by = (id: string) => STARTERS.find((s) => s.id === id)!
+
+  it('Hip hop is an 808, Funk slap, Jazz upright, House synth bass — and the rest plain Bass', () => {
+    expect(by('hiphop').bassVoice).toBe('808')
+    expect(by('funk').bassVoice).toBe('slap')
+    expect(by('jazz').bassVoice).toBe('upright')
+    expect(by('house').bassVoice).toBe('synthbass')
+    for (const s of STARTERS) if (s.bassVoice) expect(BASS_VOICES, s.name).toContain(s.bassVoice)
+  })
+
+  it('a fresh bass, or one still on the plain Bass, takes the style’s voice', () => {
+    expect(styleBassVoice(null, null, by('hiphop'))).toBe('808')
+    expect(styleBassVoice('bass', null, by('hiphop'))).toBe('808')
+  })
+
+  it('moving from Hip hop to Pop takes the 808 back to plain Bass', () => {
+    expect(styleBassVoice('808', by('hiphop'), by('pop'))).toBe('bass')
+    expect(styleBassVoice('808', by('hiphop'), by('funk'))).toBe('slap')
+  })
+
+  /* the rule layChords keeps for the chords' sound: a style button is not yours to overrule */
+  it('but a voice you picked yourself is kept', () => {
+    expect(styleBassVoice('finger', null, by('hiphop'))).toBe(null)
+    expect(styleBassVoice('finger', by('pop'), by('hiphop'))).toBe(null)
+    /* an 808 you picked under Pop is yours too, not Hip hop's */
+    expect(styleBassVoice('808', by('pop'), by('funk'))).toBe(null)
   })
 })

@@ -182,7 +182,7 @@ import {
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
 import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
 import { FAMILIES, familyOf, familyVoices } from '../audio/families'
-import { STARTERS, starterNow, type Starter } from '../audio/starters'
+import { STARTERS, starterNow, styleBassVoice, type Starter } from '../audio/starters'
 
 /**
  * Somewhere to play.
@@ -1470,13 +1470,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     const p = CHORD_PATTERNS.find((x) => x.id === s.chords)
     const d = DRUM_PATTERNS.find((x) => x.id === s.beat)
     if (!p || !d) return
+    /* what the bass is on and which style the backing is, BEFORE this press — see styleBassVoice */
+    const before = loopState().layers
+    const bassWas = before.find((l) => bassPatternOf(l) !== null) ?? null
+    const chordWas = before.find((l) => chordPatternOf(l) !== null) ?? null
+    const prev = starterNow({
+      beat: before.map((l) => beatPatternOf(l)).find((x) => x) ?? null,
+      chords: chordWas ? chordPatternOf(chordWas) : null,
+      chordStyle: chordWas ? styleOfChord(chordWas) : null,
+      bass: bassWas ? styleOfBass(bassWas) : null,
+    })
     if (!ownParts(loopState().layers)) setBpm(s.bpm)
     const beat = patternEvents(d, loopState().bpm)
     if (!addPatternLayer(beat.events, beat.len, d.id)) return
     setChordStylePick(s.chordStyle)
     setBassStylePick(s.bass)
     if (!layChords(p, leadBack, s.chordStyle)) return
-    layBass(p, leadBack, s.bass)
+    const bassId = layBass(p, leadBack, s.bass)
+    const voice = styleBassVoice(bassWas?.instrument ?? null, prev, s)
+    if (bassId && voice) {
+      setLayerInstrument(bassId, voice)
+      setBassSoundPick(voice)
+    }
     if (!loopState().playing) startLoop()
   }
 
