@@ -166,6 +166,7 @@ export function Timer({
   onRunning,
   onShow,
   onIdea,
+  openDay,
 }: {
   day: string
   /**
@@ -230,6 +231,11 @@ export function Timer({
    * room with no way into the other.
    */
   onIdea?: (text: string) => void
+  /**
+   * A day a link asked for — `#chronicle?day=`, see dayLink.ts. The Day log opens on it instead of
+   * on `day`, and moves to it again if another link asks for a different one.
+   */
+  openDay?: string | null
 }) {
   /**
    * The day being looked at, which is not always the day the room asked for.
@@ -243,8 +249,12 @@ export function Timer({
    * to win over wherever the stepper had wandered to, or the two controls would disagree about
    * which day is on screen and the room would be showing a date nothing had named.
    */
-  const [seeing, setSeeing] = useState(day)
+  const [seeing, setSeeing] = useState(openDay ?? day)
   useEffect(() => setSeeing(day), [day])
+  /* ⚠️ AFTER the effect above, which also runs on mount and would put the stepper back on `day` */
+  useEffect(() => {
+    if (openDay) setSeeing(openDay)
+  }, [openDay])
   /**
    * ⚠️ THE DAY BEING READ BELONGS TO THE DAY HALF, and the stopwatch above it does not travel
    * with it. Two controls in the permanent header — the switch row and the "you have an unlogged

@@ -74,6 +74,7 @@ import {
   type DayMask,
 } from '../chronicle/weekdays'
 import { Timer } from '../chronicle/Timer'
+import { dayAsked } from '../chronicle/dayLink'
 import { Friends } from '../chronicle/Friends'
 import { Sharing } from '../chronicle/Sharing'
 import { Looking } from '../chronicle/Looking'
@@ -298,7 +299,23 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * What moves a tab away is the sitting-down half: the day log, the totals, the week strip, the
    * rail, plans, routines and the activity list. `Day` is the first button in the strip.
    */
-  const [half, setHalf] = useState<Half>('aims')
+  /**
+   * A day a link asked for, `#chronicle?day=` — the Circuit's "change them there". ⚠️ IT OPENS THE
+   * DAY HALF, because that is where a day's sittings are, and the room otherwise starts on its aims.
+   * Read again on a hash change, so a second link works while the room is already open.
+   */
+  const [asked, setAsked] = useState<string | null>(() => dayAsked(window.location.hash))
+  const [half, setHalf] = useState<Half>(() => (asked ? 'day' : 'aims'))
+  useEffect(() => {
+    const onHash = () => {
+      const d = dayAsked(window.location.hash)
+      if (!d) return
+      setAsked(d)
+      setHalf('day')
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
   const [adding, setAdding] = useState(false)
   /**
    * The goal the form is editing, or null when it is adding a new one.
@@ -1050,6 +1067,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
               void load()
             }}
             show={half}
+            openDay={asked}
             onRunning={setRunningAct}
             onShow={setHalf}
             onIdea={(text) => {

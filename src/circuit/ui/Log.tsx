@@ -10,6 +10,8 @@ import { isImportedTotal, logPoints } from '../scoring'
 import { CAT_COLORS, catColor } from '../catColors'
 import { ScrubInput } from './ScrubInput'
 import { sessionsIn } from '../sessions'
+import { daySave } from '../daySave'
+import { dayHref } from '../../chronicle/dayLink'
 import { Modal } from './Modal'
 import { GoalBar } from './GoalBar'
 import { todayISO, localISO } from '../dates'
@@ -168,12 +170,8 @@ export function Log({
       if (entries.length === 0 && !existing?.picture) {
         if (existing) void circuitStore.deleteLog(existing.id)
       } else {
-        void circuitStore.saveLog({
-          id: existing?.id ?? `l-${pid}-${date}`,
-          personId: pid,
-          date,
-          entries,
-        })
+        /* ⚠️ the day as the board has it, numbers replaced — see daySave for what was being lost */
+        void circuitStore.saveLog(daySave(existing, pid, date, entries))
       }
       dirty.current = false
       setSavedPulse((n) => n + 1)
@@ -401,9 +399,16 @@ export function Log({
         </div>
       )}
 
-      {/* date row */}
+      {/* date row — ⚠️ it wraps: a past day with a workout carries ‹ date › Today and Saved ✓, which is
+          385px of row, and on a 375 phone the badge sat 34px past the edge reading "S" */}
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '0.5rem',
+          marginBottom: '0.75rem',
+        }}
       >
         <button className="btn" aria-label="Previous day" onClick={() => shiftDay(-1)}>
           ‹
@@ -643,6 +648,7 @@ export function Log({
                   ex={ex}
                   val={vals[ex.id] ?? ''}
                   sessions={sessionsIn(existing, ex.id)}
+                  date={date}
                   best={bestByEx[ex.id]}
                   dragging={dragId === ex.id}
                   over={overId === ex.id}
@@ -760,6 +766,7 @@ function Slot({
   ex,
   val,
   sessions,
+  date,
   best,
   dragging,
   over,
@@ -777,6 +784,8 @@ function Slot({
   val: string
   /** how much of this cell Chronicle's sessions hold — see circuit/sessions.ts */
   sessions: number
+  /** the day on screen, which the sessions link opens Chronicle on */
+  date: string
   best?: number
   dragging: boolean
   over: boolean
@@ -876,7 +885,7 @@ function Slot({
        * after the save has already been refused.
        */}
       {sessions > 0 ? (
-        <a className="cz-slot-sessions" href="#chronicle">
+        <a className="cz-slot-sessions" href={dayHref(date)}>
           {Math.round(sessions * 10) / 10} from Chronicle sessions · change them there
         </a>
       ) : null}
