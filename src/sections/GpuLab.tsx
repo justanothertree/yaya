@@ -108,6 +108,7 @@ import { HeartsDemo } from '../gpu/HeartsDemo'
 import { TilesDemo } from '../gpu/TilesDemo'
 import { TowersDemo } from '../gpu/TowersDemo'
 import { GoDemo } from '../gpu/GoDemo'
+import { SudokuDemo } from '../gpu/SudokuDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -767,6 +768,12 @@ const DEMOS: readonly {
     name: 'Go 9×9',
     line: 'Go on a nine-by-nine board — surround territory, capture stones with no breath left, and mind the ko. Against a computer that plays out hundreds or thousands of random games before every move; you swap colours each game.',
     Demo: GoDemo,
+  },
+  {
+    id: 'sudoku',
+    name: 'Sudoku',
+    line: 'Sudoku — every row, column and box holds 1 to 9 once. Every puzzle has one answer and is graded by the reasoning it needs; notes, a hint that says why, and today’s puzzle the same for everyone.',
+    Demo: SudokuDemo,
   },
 ]
 

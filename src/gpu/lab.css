@@ -3759,3 +3759,123 @@ html:has(.lab) {
   outline: 3px solid #e23d3d;
   outline-offset: -4px;
 }
+
+/* ---------------------------------------------------------------- sudoku */
+.su-room {
+  --su-bg: #fffdf7;
+  --su-ink: #1f2937;
+  --su-given: #111827;
+  --su-mine: #1d4ed8;
+  --su-line: #cbd5e1;
+  --su-thick: #334155;
+  --su-near: #eef2f7;
+  --su-sel: #fde68a;
+  --su-same: #dbeafe;
+}
+.su-room.is-night {
+  --su-bg: #111827;
+  --su-ink: #e5e7eb;
+  --su-given: #f9fafb;
+  --su-mine: #93c5fd;
+  --su-line: #374151;
+  --su-thick: #9ca3af;
+  --su-near: #1f2937;
+  --su-sel: #854d0e;
+  --su-same: #1e3a8a;
+}
+.su-room.is-mint {
+  --su-bg: #f0fdf4;
+  --su-mine: #047857;
+  --su-near: #dcfce7;
+  --su-sel: #fef08a;
+  --su-same: #bbf7d0;
+}
+.su-hud {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.su-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-rows: repeat(9, minmax(0, 1fr));
+  width: min(100%, 460px);
+  aspect-ratio: 1;
+  border: 3px solid var(--su-thick);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--su-bg);
+}
+.su-cell {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--su-line);
+  border-bottom: 1px solid var(--su-line);
+  border-radius: 0;
+  background: var(--su-bg);
+  color: var(--su-mine);
+  font-size: min(6vw, 1.6rem);
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.su-cell.edge-r {
+  border-right: 2px solid var(--su-thick);
+}
+.su-cell.edge-b {
+  border-bottom: 2px solid var(--su-thick);
+}
+.su-cell.is-given {
+  color: var(--su-given);
+  font-weight: 800;
+}
+.su-cell.is-near {
+  background: var(--su-near);
+}
+.su-cell.is-same {
+  background: var(--su-same);
+}
+.su-cell.is-sel {
+  background: var(--su-sel);
+}
+.su-cell.is-bad {
+  color: #dc2626;
+  background: color-mix(in oklab, #dc2626, var(--su-bg) 85%);
+}
+.su-cell:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: -3px;
+}
+.su-notes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+  font-size: min(2.4vw, 0.62rem);
+  font-weight: 500;
+  color: var(--su-ink);
+  opacity: 0.8;
+  place-items: center;
+}
+.su-pad {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 4px;
+  width: min(100%, 460px);
+  margin-top: 0.5rem;
+}
+.su-key {
+  position: relative;
+  min-width: 0;
+  padding: 0.45rem 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.su-left {
+  position: absolute;
+  right: 3px;
+  top: 1px;
+  font-size: 0.6rem;
+  opacity: 0.6;
+}
