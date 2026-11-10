@@ -116,6 +116,7 @@ import { PuttDemo } from '../gpu/PuttDemo'
 import { CribbageDemo } from '../gpu/CribbageDemo'
 import { LanderDemo } from '../gpu/LanderDemo'
 import { DartsDemo } from '../gpu/DartsDemo'
+import { LiarsDemo } from '../gpu/LiarsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -823,6 +824,12 @@ const DEMOS: readonly {
     name: 'Darts',
     line: 'Darts — 501, double out, first to two legs against the computer. Aim, hold your breath while the ring tightens, and let go; the computer aims where its own hand scores best and knows every way out.',
     Demo: DartsDemo,
+  },
+  {
+    id: 'liars',
+    name: "Liar's dice",
+    line: "Liar's dice — five dice under a cup, bids on what's under everyone's, and a call of \"Liar!\" that costs someone a die. Against two or three computers that read the odds, read your bids, and on Hard play each round out in their heads.",
+    Demo: LiarsDemo,
   },
 ]
 
