@@ -102,6 +102,7 @@ import { GolfDemo } from '../gpu/GolfDemo'
 import { MinesDemo } from '../gpu/MinesDemo'
 import { TimeTrialDemo } from '../gpu/TimeTrialDemo'
 import { BackgammonDemo } from '../gpu/BackgammonDemo'
+import { PoolDemo } from '../gpu/PoolDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -725,6 +726,12 @@ const DEMOS: readonly {
     name: 'Backgammon',
     line: 'Backgammon — race your fifteen checkers home and off, hitting the computer’s lone ones on the way and blocking its path, with gammons and backgammons for a big win. Three levels, the hardest counting the rolls that would hit every lone checker; walnut, felt or marble.',
     Demo: BackgammonDemo,
+  },
+  {
+    id: 'pool',
+    name: 'Pool',
+    line: 'Pool — eight-ball against the computer. Drag back like a slingshot and let go; the line shows where the cue ball meets its first ball. Solids or stripes, fouls and ball in hand, and the black to finish. The computer plans every shot by playing it through first.',
+    Demo: PoolDemo,
   },
 ]
 

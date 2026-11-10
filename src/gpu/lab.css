@@ -3266,3 +3266,36 @@ html:has(.lab) {
 .bg-bar .muted {
   color: rgb(255 255 255 / 0.7);
 }
+
+/* ---------------------------------------------------------------- pool */
+.pl-room .lab-stage.pl-stage {
+  /* the table is a long rectangle: no taller than its width wants */
+  height: min(62vh, 560px, 56vw);
+  min-height: 200px;
+  touch-action: none;
+  background: #1a120c;
+}
+.pl-wrap {
+  border-radius: 12px;
+}
+.pl-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.pl-wrap.is-aiming .lab-canvas {
+  cursor: crosshair;
+}
+.pl-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  font-size: 0.9rem;
+  min-height: 1.4rem;
+}
+.pl-mini {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.3);
+}
