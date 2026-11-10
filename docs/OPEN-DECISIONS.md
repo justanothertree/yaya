@@ -1335,3 +1335,46 @@ restored read 35. It only acts on a converted person, so like the rest of the co
 for the 20d cutover.
 
 Device and signed-in checks are §19f, and grow with each build.
+
+---
+
+## 21. What the stand-in audit found on the server side (10 Nov 2026)
+
+The overnight audit read every Chronicle writer and reader beside the function production runs.
+Production's text came from CI's database: main's baseline plus the release's seven migrations. Its
+26 release functions matched production's own fingerprints. The stand-in drift is fixed on its own
+draft. These three are about the SERVER, so none is built: each needs production SQL or a
+production read.
+
+| §   | Question                                                                                                                                                                                                                                                                                  | Recommendation                                                                                                                                       | Blocks                         |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 21a | The day's workout line rounds every number to a whole one. `chronicle_moments` prints with `to_char(v, 'FM999999990.##')`, and `.##` is not a digit pattern. Measured in CI: 12.5 prints "13" and 0.25 prints "0", so a 3.5-mile walk reads "4 mi". Fix it?                               | Yes, as a small migration printing `rtrim(to_char(v, 'FM999999990.99'), '.')`, tested in CI first. It changes no stored data                         | nothing                        |
+| 21b | `chronicle_entry_amount` refuses a negative amount, which the release's floor check started doing, and the message reads "this sitting's sets count <NULL> — change those to go lower". Nothing in the room sends a negative (the editor sends none, and the counter stops at 0). Fix it? | Yes, with 21a: a negative is "no amount" again, as it was before the release, and the message names 0 rather than NULL                               | nothing                        |
+| 21c | CI builds its database from the 4 Nov baseline dump and never runs the migration files (`[db.migrations]` is off on purpose). So nothing applied since, including this release, is in the database `db guards` tests. Regenerate the baseline?                                            | Yes. `supabase/baseline/README.md` has the four steps. Its first, `supabase db dump --linked`, reads production, so it is yours to run or to approve | CI testing the released schema |
+
+The release record's line that CI "built a database from main's migrations" was wrong in the same
+way. It is corrected on draft #112, and the release's conclusion stands, because its "same as
+production" checks were measured against production itself.
+
+## 22. What the overnight layout sweep left for a decision (10 Nov 2026)
+
+The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
+each half, view, fold, form and dialog, at 375 (touch), 820 (with the coarse-pointer rules applied)
+and 1440 (mouse), measured with `scripts/mobile-audit.js`. That tool was first made to name a
+planted 16px button and a 600px spill. Nine fixes went up as small drafts (#117, #118, #120,
+#121, #122, #123, #125, #127, #128).
+
+Three states have no stand-in, because they read Supabase directly. The pane renders them empty, so
+the sweep could not reach them:
+
+- the Circuits panel's list of circuits (only its create and join forms render, and those are clean)
+- the feed's comments
+- the feed's reactions
+
+#128 was found by reading the comments code, not by measuring. Three questions are left:
+
+| §   | Question                                                                                                                                                                                                                                                                                                                         | Recommendation                                                                                                                                                                                                                                   | Blocks  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| 22a | With a mouse, the Circuit's edit controls are under the 24px target floor (WCAG 2.5.8): an exercise's ✎ is 23×17, a column's 🗑 18×16, the Board's log-today ＋ 19×20, and the column-rename box 14px tall. They are small on purpose, so the sheet stays quiet. Touch screens are covered by #127. Raise them to 24 on desktop? | Yes, to 24 and no further: the smallest change that meets the floor, and the sheet stays compact                                                                                                                                                 | nothing |
+| 22b | `.sr-only` loses to any container rule that sizes inputs, because a class plus an element beats a class alone. That is how two hidden photo pickers made a dialog scroll sideways (#117 fixes that one place). Make `.sr-only` win everywhere with `!important`?                                                                 | Yes: a visually hidden element has no business being sized by anything. It is a global utility, so it touches the Lab and the Instrument too, which is why it is asked and not done                                                              | nothing |
+| 22c | Give the feed's comments and reactions, and the Circuits panel's list, a preview stand-in, the way `circuitPreview.ts` covers the board, so the pane can reach them?                                                                                                                                                             | Yes for comments and reactions: two tables, each read, added to and deleted from, plus the user id, and #128 shipped on a seeded copy only because there was none. The Circuits panel is nine server functions, so later, and only if it changes | nothing |

@@ -50,6 +50,11 @@ import {
   pvCircuitLogs,
   pvCircuitLogPut,
   pvCircuitLogPicture,
+  pvPlans,
+  pvDropRoutine,
+  pvMemberChronicle,
+  pvMoments,
+  pvSpans,
 } from './chroniclePreview'
 import type { NewGoal } from '../chronicle/cloud'
 import { localMidnight } from '../chronicle/record'
@@ -2390,5 +2395,320 @@ describe('a Circuit cell, as the grid writes it', () => {
     expect(pvCircuitLogPut({ id: 'x', person: 'p-9', date: DAY, entries: [] })?.why).toMatch(
       /row-level security/,
     )
+  })
+})
+
+/**
+ * ⚠️ THE STAND-IN AUDIT OF 10 NOV. Every writer here was read beside the function production runs
+ * (main's baseline plus the release's seven migrations, printed from CI's database and checked
+ * against production's own fingerprints), and these are the places they disagreed. Each test asks
+ * for what the SERVER does, in its own words — a double that is kinder than the site hides bugs.
+ */
+describe('the stand-ins keep the server rules the audit found missing', () => {
+  const goalNamed = (title: string) => pvGoals().find((g) => g.title === title)!
+
+  it('shares a goal by its tier, and an edit keeps the tier as well as the flag', () => {
+    const id = goalOn({ title: 'g' })
+    expect(pvShareGoal(id, true)).toBe(true)
+    expect([goalNamed('g').visibility, goalNamed('g').shared]).toEqual(['friends', true])
+    idOf(
+      pvSaveGoal({
+        id,
+        title: 'g',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        unit: 'min',
+        target: null,
+      }),
+    )
+    expect([goalNamed('g').visibility, goalNamed('g').shared]).toEqual(['friends', true])
+    pvShareGoal(id, false)
+    expect([goalNamed('g').visibility, goalNamed('g').shared]).toEqual(['private', false])
+  })
+
+  it('cleans a goal the way chronicle_goal_save does', () => {
+    idOf(
+      pvSaveGoal({
+        title: '  floss  ',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        unit: '  min ',
+        target: null,
+        note: '   ',
+        activity: 'not-an-activity-of-yours',
+        est: 0,
+        priority: 5 as never,
+      }),
+    )
+    const g = goalNamed('floss')
+    expect([g.unit, g.note, g.activity, g.est, g.priority]).toEqual(['min', null, null, null, 2])
+    const big = goalOn({ title: 'big', est: 20000 })
+    expect(pvGoals().find((x) => x.id === big)!.est).toBe(10080)
+  })
+
+  it('stores progress between 0 and 1e9', () => {
+    const id = goalOn({ title: 'p' })
+    pvProgress(id, -3, false)
+    expect(goalNamed('p').progress).toBe(0)
+    pvProgress(id, 2e9, false)
+    expect(goalNamed('p').progress).toBe(1e9)
+  })
+
+  it('says no to dropping a goal, a sitting or a routine that is not there', () => {
+    expect([pvDropGoal('nope'), pvDropEntry('nope'), pvDropRoutine('nope')]).toEqual([
+      false,
+      false,
+      false,
+    ])
+  })
+
+  it('trims an activity and keeps its session to 1-1440 minutes', () => {
+    const id = idOf(pvSaveActivity('  Reading  ', 'free', ' #abc ', undefined, ' pages ', 2000))
+    const a = pvActivities().find((x) => x.id === id)!
+    expect([a.name, a.colour, a.metric, a.session]).toEqual(['Reading', '#abc', 'pages', 1440])
+    idOf(pvSaveActivity('Reading', 'free', null, id, null, 0))
+    expect(pvActivities().find((x) => x.id === id)!.session).toBeNull()
+  })
+
+  it('refuses a negative amount, as the floor check does there, and caps at 1e9', () => {
+    pvAddEntry(gym, h(9), h(10), null)
+    const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
+    /* ⚠️ chronicle_entry_amount compares coalesce(p_amount, 0) with the counted sets' sum, 0 here,
+       so -4 is refused rather than stored as none — see OPEN-DECISIONS §21 */
+    expect(pvAmount(e.id, -4)).toBe(false)
+    expect(pvAmount(e.id, 2e9)).toBe(true)
+    expect(pvEntries(dayStart(), dayEnd()).find((x) => x.id === e.id)!.amount).toBe(1e9)
+  })
+
+  it('counts a note in characters, as Postgres does, not in UTF-16 units', () => {
+    pvAddEntry(gym, h(9), h(10), null)
+    const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
+    /* 3,000 characters and 6,000 code units: the site takes it */
+    expect(pvNoteAdd(e.id, '😀'.repeat(3000))).toBeNull()
+    expect(pvNoteAdd(e.id, 'a'.repeat(4001))).toEqual({
+      why: 'that is longer than a note — 4000 characters',
+    })
+    expect(pvDayNoteAdd(DAY, '😀'.repeat(4000))).toBeNull()
+  })
+
+  it('treats blanking a note that is not there as the nothing it is', () => {
+    expect(pvNoteEdit('nope', '   ')).toBeNull()
+    expect(pvNoteEdit('nope', 'words')).toEqual({ why: 'no such note' })
+  })
+
+  it('stamps a note added with a past sitting when it is written, and caps it at 4000', () => {
+    const before = Date.now()
+    pvAddEntry(gym, h(9), h(10), 'x'.repeat(4100))
+    const e = pvEntries(dayStart(), dayEnd()).find((x) => x.start === h(9))!
+    expect(Date.parse(e.notes[0].at)).toBeGreaterThanOrEqual(before)
+    expect([...e.notes[0].body].length).toBe(4000)
+  })
+
+  it('refuses an edit to a routine that is not there, and cleans its steps', () => {
+    expect(pvSaveRoutine('r', [], 'gone')).toEqual({ why: 'no such routine' })
+    const id = idOf(
+      pvSaveRoutine('  Morning  ', [
+        { activity: gym, mins: 900 },
+        { activity: draw, mins: 2.5 },
+        { activity: 'not-yours', mins: 10 },
+      ]),
+    )
+    const r = pvRoutines().find((x) => x.id === id)!
+    expect([r.name, r.steps]).toEqual([
+      'Morning',
+      [
+        { activity: gym, mins: 600 },
+        { activity: draw, mins: null },
+      ],
+    ])
+  })
+
+  it('refuses an edit to a plan that is not there, and trims its note to 500 characters', () => {
+    expect(pvPlanSave(gym, h(9), h(10), null, 'gone')).toEqual({ why: 'no such plan' })
+    idOf(pvPlanSave(gym, h(11), h(12), '   '))
+    idOf(pvPlanSave(gym, h(13), h(14), '  ' + 'n'.repeat(600)))
+    const notes = pvPlans(dayStart(), dayEnd()).map((p) =>
+      p.note == null ? null : [...p.note].length,
+    )
+    expect(notes).toEqual([null, 500])
+  })
+
+  it('answers a range the server refuses with the empty answer the client turns it into', () => {
+    pvAddEntry(gym, h(9), h(10), null)
+    pvPlanSave(gym, h(11), h(12), null)
+    const long = new Date(localMidnight(DAY).getTime() - 401 * 86_400_000).toISOString()
+    expect([
+      pvEntries(long, dayEnd()).length,
+      pvTotals(long, dayEnd()).length,
+      Object.keys(pvMoods(long, dayEnd())).length,
+      pvPlans(long, dayEnd()).length,
+      pvEntries(dayEnd(), dayStart()).length,
+    ]).toEqual([0, 0, 0, 0, 0])
+    /* and the reads that are allowed still read */
+    expect(pvEntries(dayStart(), dayEnd()).length).toBe(1)
+    expect(pvPlans(dayStart(), dayEnd()).length).toBe(1)
+    expect(pvSetsBetween('2026-10-13', '2026-10-12')).toEqual([])
+    expect(pvSetsBetween(DAY, DAY)).toEqual([])
+  })
+})
+
+/**
+ * ⚠️ A FRIEND'S VIEW, AS get_member_chronicle ANSWERS IT SINCE STEP 3 OF 17d (applied 9 Nov). The
+ * double still read the row tick for every goal, the thing that step replaced, and listed the
+ * first six goals in storage order rather than in the server's.
+ */
+describe("a friend's view of the goals, as the profile reader answers it", () => {
+  const dayOf = (ms: number) => new Date(ms).toLocaleDateString('en-CA')
+  const windowAt = (ms: number) => {
+    const from = dayOf(ms)
+    const starts = localMidnight(from).getTime()
+    return {
+      from,
+      starts: new Date(starts).toISOString(),
+      ends: new Date(starts + 86_400_000).toISOString(),
+    }
+  }
+  const daily = (title: string, priority: 0 | 1 | 2 = 0) => {
+    const id = idOf(
+      pvSaveGoal({
+        title,
+        scope: 'day',
+        anchor: DAY,
+        every: 1,
+        unit: 'min',
+        target: null,
+        priority,
+      }),
+    )
+    pvShareGoal(id, true)
+    return id
+  }
+
+  it('reads a repeating goal as done only by a mark on its current window', () => {
+    const today = daily('floss')
+    const before = daily('stretch')
+    expect(pvSetMark(today, windowAt(Date.now()), null, true)).toBeNull()
+    expect(pvSetMark(before, windowAt(Date.now() - 2 * 86_400_000), null, true)).toBeNull()
+    const card = pvMemberChronicle(7, false, true)
+    expect(card.goals.map((g) => [g.title, g.done])).toEqual([
+      ['floss', true],
+      ['stretch', false],
+    ])
+    expect([card.reached, card.open]).toEqual([1, 1])
+  })
+
+  it('counts a one-off as reached only when it was finished inside the days asked about', () => {
+    const id = idOf(
+      pvSaveGoal({
+        title: 'old',
+        scope: 'day',
+        anchor: DAY,
+        every: null,
+        unit: 'min',
+        target: null,
+      }),
+    )
+    pvShareGoal(id, true)
+    vi.useFakeTimers()
+    vi.setSystemTime(Date.now() - 30 * 86_400_000)
+    pvProgress(id, 0, true)
+    vi.useRealTimers()
+    const card = pvMemberChronicle(7, false, true)
+    expect([card.reached, card.open]).toEqual([0, 0])
+  })
+
+  it("lists the six it shows in the server's order: priority, then place, then title", () => {
+    for (const t of ['g', 'f', 'e', 'd', 'c', 'b']) daily(t)
+    daily('first', 2)
+    expect(pvMemberChronicle(7, false, true).goals.map((g) => g.title)).toEqual([
+      'first',
+      'b',
+      'c',
+      'd',
+      'e',
+      'f',
+    ])
+  })
+})
+
+/**
+ * ⚠️ THE DAY'S WORKOUT LINE, FROM THE STORE THE CIRCUIT STAND-IN WRITES — chronicle_moments' own
+ * rules, including the one that is a bug there: `.##` prints no decimals, so 12.5 reads 13
+ * (measured in CI on 10 Nov; OPEN-DECISIONS §21).
+ */
+describe("the day's workout line, as chronicle_moments builds it", () => {
+  beforeEach(() => {
+    pvGiveCircuit('p-1', [
+      { id: 'ex-quad', name: 'Quad Curl', unit: 'reps' },
+      { id: 'ex-plank', name: 'Plank', unit: 'sec' },
+      { id: 'ex-what', name: 'Mystery', unit: 'other' },
+      { id: 'ex-laps', name: 'Laps', unit: ' LAPS ' },
+      { id: 'ex-row', name: 'Row', unit: 'min' },
+      { id: 'ex-none', name: 'Bench', unit: 'reps' },
+    ])
+  })
+  const around = (day: string) => [
+    new Date(localMidnight(day).getTime()).toISOString(),
+    new Date(localMidnight(day).getTime() + 86_400_000).toISOString(),
+  ]
+
+  it('says the first four over zero, rounded the way to_char rounds, and counts them all', () => {
+    pvGiveCircuitLog('p-1', DAY, [
+      { eid: 'ex-none', val: 0 },
+      { eid: 'ex-quad', val: 12.5 },
+      { eid: 'ex-plank', val: 90 },
+      { eid: 'ex-what', val: 3 },
+      { eid: 'ex-laps', val: 2 },
+      { eid: 'ex-row', val: 10 },
+    ])
+    const [from, to] = around(DAY)
+    expect(pvMoments(from, to).filter((m) => m.kind === 'workout')).toEqual([
+      {
+        kind: 'workout',
+        at: null,
+        on: DAY,
+        title: 'Quad Curl 13 reps · Plank 90 sec · Mystery 3 · Laps 2 laps',
+        score: null,
+        about: null,
+        detail: '5',
+      },
+    ])
+  })
+
+  it('reads a day a little either side of the window, and nothing further', () => {
+    pvGiveCircuitLog('p-1', '2026-10-11', [{ eid: 'ex-quad', val: 4 }])
+    pvGiveCircuitLog('p-1', '2026-10-08', [{ eid: 'ex-quad', val: 5 }])
+    const [from, to] = around(DAY)
+    expect(
+      pvMoments(from, to)
+        .filter((m) => m.kind === 'workout')
+        .map((m) => m.on),
+    ).toEqual(['2026-10-11'])
+  })
+
+  it('shows a cell typed in the Circuit stand-in, the way the site shows a typed cell', () => {
+    pvCellSet('p-1', 'ex-row', DAY, 25, 0, 0)
+    const [from, to] = around(DAY)
+    expect(pvMoments(from, to).find((m) => m.kind === 'workout')?.title).toBe('Row 25 min')
+  })
+})
+
+describe('a minute is counted on the raw time, then rounded', () => {
+  it('leaves out 40 seconds, which rounds to a minute but is not one', () => {
+    const t = Date.now() - 3_600_000
+    pvAddEntry(gym, new Date(t).toISOString(), new Date(t + 40_000).toISOString(), null)
+    expect(
+      pvSpans([
+        {
+          key: 'k',
+          from: new Date(t - 60_000).toISOString(),
+          to: new Date(t + 60_000).toISOString(),
+        },
+      ]),
+    ).toEqual({ k: {} })
+    const card = pvMemberChronicle(7, false, false)
+    expect([card.time, card.top]).toEqual([{}, []])
   })
 })
