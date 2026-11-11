@@ -5068,3 +5068,53 @@ html:has(.lab) {
   align-items: center;
   gap: 0.4rem;
 }
+
+/* ---------------------------------------------------------------- curling */
+.cu-room .lab-stage.cu-stage {
+  /* the far end of the sheet: eight and a half metres of it, four and three-quarters across */
+  aspect-ratio: 8.5 / 4.75;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  background: #eef4f8;
+}
+.cu-room .lab-canvas {
+  cursor: crosshair;
+}
+/* the wrap carries the size, so the canvas is never left at its own default width */
+.cu-wrap {
+  border-radius: 12px;
+  width: min(100%, 900px);
+}
+.cu-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.cu-dot {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  margin-right: 0.35em;
+  vertical-align: -0.05em;
+  box-shadow: 0 0 0 2px #8e969e;
+}
+/* each choice with its own buttons, so a narrow screen wraps them as a set */
+.cu-set {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.cu-room .btn.cu-go {
+  min-height: 48px;
+  min-width: 10rem;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cu-room .btn.cu-go.is-on {
+  background: color-mix(in oklab, var(--accent), transparent 70%);
+}

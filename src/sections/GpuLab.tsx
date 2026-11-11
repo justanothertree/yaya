@@ -120,6 +120,7 @@ import { LiarsDemo } from '../gpu/LiarsDemo'
 import { BowlingDemo } from '../gpu/BowlingDemo'
 import { PipesDemo } from '../gpu/PipesDemo'
 import { ArtilleryDemo } from '../gpu/ArtilleryDemo'
+import { CurlingDemo } from '../gpu/CurlingDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -851,6 +852,12 @@ const DEMOS: readonly {
     name: 'Artillery',
     line: 'Artillery — two guns on rolling hills, turn about. Set the angle and the charge, mind a wind that shifts every turn, and dig craters until the other gun is out of action.',
     Demo: ArtilleryDemo,
+  },
+  {
+    id: 'curling',
+    name: 'Curling',
+    line: 'Curling — slide stones at the house against a computer skip. Mark where yours should stop, choose its turn, throw, and hold Sweep to carry it further and straighter; draw, guard or knock them out.',
+    Demo: CurlingDemo,
   },
 ]
 
