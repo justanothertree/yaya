@@ -6151,3 +6151,116 @@ html:has(.lab) {
   outline-offset: -2px;
   z-index: 2;
 }
+
+/* ---------------------------------------------------------------- noughts and crosses in a cube */
+.cq-room {
+  --cq-face: color-mix(in oklab, #7fb4ff, transparent 86%);
+  --cq-edge: color-mix(in oklab, #7fb4ff, transparent 45%);
+  --cq-x: #e5484d;
+  --cq-o: #2f7ff0;
+  --cq-mark: #ffb000;
+}
+.cq-room.is-chalk {
+  --cq-face: #2c3a33;
+  --cq-edge: #c9d4cc;
+  --cq-x: #fff6d6;
+  --cq-o: #9fe0ff;
+  --cq-mark: #ff9ec7;
+}
+.cq-room.is-neon {
+  --cq-face: #120f24;
+  --cq-edge: #5b4bd6;
+  --cq-x: #ff4fd8;
+  --cq-o: #3df5ff;
+  --cq-mark: #c6ff3d;
+}
+/* four layers side by side where there is room, two by two where there is not */
+.cq-cube {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  width: min(100%, 760px);
+}
+@media (max-width: 640px) {
+  .cq-cube {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.cq-layer {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.cq-name {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+/* each layer a slab with a little depth under it, so the four read as slices of one solid. Leaning
+   them back in perspective was tried: the near edge widens past its column and the slabs overlap */
+.cq-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--cq-face);
+  box-shadow:
+    inset 0 0 0 1px var(--cq-edge),
+    0 4px 0 color-mix(in oklab, var(--cq-edge), transparent 55%);
+}
+.cq-cell {
+  aspect-ratio: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid var(--cq-edge);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  font-size: clamp(14px, 3.4vw, 22px);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.cq-cell:hover:not(.is-s1, .is-s2) {
+  background: color-mix(in oklab, var(--cq-edge), transparent 75%);
+}
+.cq-cell.is-s1 {
+  color: var(--cq-x);
+}
+.cq-cell.is-s2 {
+  color: var(--cq-o);
+}
+.cq-cell.is-last {
+  background: color-mix(in oklab, var(--cq-mark), transparent 78%);
+}
+.cq-cell.is-win {
+  background: color-mix(in oklab, var(--cq-mark), transparent 45%);
+  box-shadow: 0 0 0 2px var(--cq-mark);
+}
+/* a cell that would complete four: ringed in the colour of the side it would win for */
+.cq-cell.is-t1 {
+  box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--cq-x), transparent 30%);
+}
+.cq-cell.is-t2 {
+  box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--cq-o), transparent 30%);
+}
+.cq-cell.is-t1.is-t2 {
+  box-shadow:
+    inset 0 0 0 2px var(--cq-x),
+    inset 0 0 0 4px var(--cq-o);
+}
+.cq-cell:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cq-cell {
+    transition: none;
+  }
+}
