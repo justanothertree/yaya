@@ -125,6 +125,7 @@ import { BreakthroughDemo } from '../gpu/BreakthroughDemo'
 import { KeepyDemo } from '../gpu/KeepyDemo'
 import { PegsDemo } from '../gpu/PegsDemo'
 import { CagesDemo } from '../gpu/CagesDemo'
+import { EchoDemo } from '../gpu/EchoDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -886,6 +887,12 @@ const DEMOS: readonly {
     name: 'Cages',
     line: 'Cages — every number once in each row and column, and the numbers in each outlined cage make its target by adding, multiplying, subtracting or dividing. A board a day at 4×4, 5×5 and 6×6, each with exactly one answer.',
     Demo: CagesDemo,
+  },
+  {
+    id: 'echo',
+    name: 'Echo',
+    line: 'Echo — the pads play a tune, and you play it back; each time, it grows by a note and plays a little quicker. In order or backwards, four pads or six, bells, piano or plucked. How long can you go?',
+    Demo: EchoDemo,
   },
 ]
 

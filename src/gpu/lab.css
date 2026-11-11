@@ -5501,3 +5501,93 @@ html:has(.lab) {
 .ck-grid.is-done .ck-cell {
   background: color-mix(in oklab, #22c55e, var(--ck-bg) 85%);
 }
+
+/* ---------------------------------------------------------------- echo */
+.ec-pads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  /* square, so as tall as it is wide: no taller than the screen leaves between the tune's line and
+     the audio dock, measured on an iPhone 13 at about 350px of header, line and dock together,
+     with room to spare */
+  width: max(240px, min(100%, 400px, calc(100dvh - 380px)));
+}
+.ec-pads.is-6 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 480px);
+}
+.ec-pad {
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 72px;
+  padding: 0;
+  border: 0;
+  border-radius: 22%;
+  /* a pad at rest is its colour, quietened; lit, it is the colour itself and glows */
+  background: color-mix(in oklab, var(--ec-c), #6b7280 52%);
+  box-shadow:
+    inset 0 -6px 0 rgb(0 0 0 / 0.18),
+    0 2px 4px rgb(0 0 0 / 0.2);
+  color: #fff;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.55);
+  font-size: clamp(1.1rem, 5vw, 1.6rem);
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    background 0.08s,
+    box-shadow 0.08s,
+    transform 0.08s;
+}
+.ec-pad.is-lit {
+  background: var(--ec-c);
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--ec-c), #fff 40%),
+    0 0 28px var(--ec-c);
+  transform: scale(1.04);
+}
+.ec-pad.is-wanted {
+  box-shadow:
+    0 0 0 5px #fff,
+    0 0 0 8px var(--ec-c);
+}
+.ec-pad.is-missed {
+  opacity: 0.45;
+}
+.ec-pad:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 3px;
+}
+.ec-pads.is-listening .ec-pad {
+  cursor: default;
+}
+/* the tune's line, the start and the pads together, put at the top of the screen when a game
+   starts: below the sticky header, and clear of the audio dock that floats over the bottom */
+.ec-stage {
+  scroll-margin-top: 72px;
+}
+.ec-top {
+  align-items: center;
+  flex-wrap: nowrap;
+  margin-bottom: 0.75rem;
+}
+.ec-top .mc-line {
+  margin: 0;
+  min-width: 0;
+}
+.ec-room .btn.ec-go {
+  flex: none;
+  min-height: 44px;
+  min-width: 9rem;
+  font-weight: 700;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ec-pad {
+    transition: none;
+  }
+  .ec-pad.is-lit {
+    transform: none;
+  }
+}

@@ -148,6 +148,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   keepy: { category: 'games', added: '2026-11-11' },
   pegs: { category: 'puzzles', added: '2026-11-11' },
   cages: { category: 'puzzles', added: '2026-11-11' },
+  echo: { category: 'games', added: '2026-11-11' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */
