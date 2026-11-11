@@ -5916,3 +5916,126 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- crazy eights */
+.ce-room {
+  --ce-felt: #0f5132;
+}
+.ce-room.is-blue {
+  --ce-felt: #123d6b;
+}
+.ce-room.is-red {
+  --ce-felt: #6b1520;
+}
+.ce-scores {
+  grid-template-columns: repeat(var(--ce-n), minmax(0, 1fr));
+}
+.ce-table {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--ce-felt), #fff 10%),
+    var(--ce-felt)
+  );
+  color: #fff;
+  width: min(100%, 560px);
+}
+.ce-seats {
+  display: flex;
+  justify-content: space-around;
+  gap: 0.5rem;
+}
+.ce-seat {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+.ce-seat.is-up > span:last-child {
+  color: #ffd34d;
+  font-weight: 700;
+}
+.ce-count {
+  align-self: center;
+  justify-self: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+}
+.ce-middle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 7rem;
+}
+.ce-stock {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.ce-stock:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.ce-stock:not(:disabled) {
+  box-shadow: 0 0 0 2px #ffd34d;
+}
+.ce-stock:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+}
+.ce-pile {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.ce-asked {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.55);
+  font-size: 0.8rem;
+}
+/* the hand across a phone, overlapping; contained so the row's width never pushes the page */
+.ce-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0.75rem 0 0.25rem;
+  width: 100%;
+  max-width: 680px;
+}
+.ce-mine {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.ce-mine.is-dim .pk-card {
+  filter: brightness(0.6);
+}
+.ce-mine.is-new .pk-card {
+  box-shadow:
+    0 0 0 2px #ffd34d,
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+.ce-mine:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+  border-radius: 6px;
+  z-index: 1;
+}

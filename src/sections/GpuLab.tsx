@@ -129,6 +129,7 @@ import { EchoDemo } from '../gpu/EchoDemo'
 import { SpadesDemo } from '../gpu/SpadesDemo'
 import { HalmaDemo } from '../gpu/HalmaDemo'
 import { LampsDemo } from '../gpu/LampsDemo'
+import { EightsDemo } from '../gpu/EightsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -914,6 +915,12 @@ const DEMOS: readonly {
     name: 'Lamps',
     line: 'Lamps — press a lamp and it switches, and so do its neighbours; switch them all off in as few presses as you can. Par is worked out exactly. A board a day, four sizes, two ways of switching.',
     Demo: LampsDemo,
+  },
+  {
+    id: 'eights',
+    name: 'Crazy eights',
+    line: 'Crazy eights — match the top card by suit or number, play an eight to name the suit, and be first to empty your hand. Against one, two or three computers, first to a hundred.',
+    Demo: EightsDemo,
   },
 ]
 
