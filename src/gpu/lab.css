@@ -5118,3 +5118,127 @@ html:has(.lab) {
 .cu-room .btn.cu-go.is-on {
   background: color-mix(in oklab, var(--accent), transparent 70%);
 }
+
+/* ---------------------------------------------------------------- breakthrough */
+.bt-room {
+  --bt-light: #e9e4da;
+  --bt-dark: #b7ad9c;
+  --bt-edge: #5b5246;
+  --bt-p1: #fbfaf6;
+  --bt-p1-edge: #6d6658;
+  --bt-p2: #2b2824;
+  --bt-p2-edge: #000;
+  --bt-lit: #ffb000;
+}
+.bt-room.is-garden {
+  --bt-light: #dcefc7;
+  --bt-dark: #9fcb7f;
+  --bt-edge: #3f6b2a;
+  /* daisy yellow: a white pawn all but vanished on the light squares */
+  --bt-p1: #ffd84a;
+  --bt-p1-edge: #8a6400;
+  --bt-p2: #3a2a6b;
+  --bt-p2-edge: #170b35;
+  --bt-lit: #ff6b4a;
+}
+.bt-room.is-neon {
+  --bt-light: #1a1d2e;
+  --bt-dark: #10121e;
+  --bt-edge: #000;
+  --bt-p1: #2fe6ff;
+  --bt-p1-edge: #0a7f94;
+  --bt-p2: #ff3fae;
+  --bt-p2-edge: #8a0f58;
+  --bt-lit: #fff15a;
+}
+.bt-board {
+  display: grid;
+  grid-template-columns: repeat(var(--bt-n), 1fr);
+  width: min(100%, 480px);
+  aspect-ratio: 1;
+  border: 6px solid var(--bt-edge);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.bt-sq {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bt-light);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.bt-sq.is-dark {
+  background: var(--bt-dark);
+}
+.bt-sq > span {
+  width: 0;
+  height: 0;
+  border-radius: 50% 50% 42% 42%;
+  transition: transform 0.15s;
+}
+/* a pawn: a round head on a wide foot */
+.bt-sq.is-p1 > span,
+.bt-sq.is-p2 > span {
+  width: 62%;
+  height: 70%;
+  clip-path: polygon(30% 0, 70% 0, 72% 38%, 62% 52%, 92% 100%, 8% 100%, 38% 52%, 28% 38%);
+}
+.bt-sq.is-p1 > span {
+  background: linear-gradient(160deg, #fff8 10%, transparent 50%), var(--bt-p1);
+  filter: drop-shadow(0 0 1.5px var(--bt-p1-edge)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
+}
+.bt-sq.is-p2 > span {
+  background: linear-gradient(160deg, #fff4 10%, transparent 50%), var(--bt-p2);
+  filter: drop-shadow(0 0 1.5px var(--bt-p2-edge)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
+}
+.bt-sq.is-last {
+  box-shadow: inset 0 0 0 999px color-mix(in oklab, #ffb000, transparent 72%);
+}
+.bt-sq.can-move::before,
+.bt-sq.is-picked::before {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  border: 2px solid var(--bt-lit);
+}
+.bt-sq.is-picked::before {
+  border-width: 3px;
+  inset: 4%;
+}
+.bt-sq.is-picked > span {
+  transform: scale(1.08);
+}
+.bt-sq.is-lit::after {
+  content: '';
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: var(--bt-lit);
+}
+.bt-sq.is-lit.is-p1::after,
+.bt-sq.is-lit.is-p2::after {
+  width: 86%;
+  height: 86%;
+  background: none;
+  border: 3px solid var(--bt-lit);
+}
+.bt-sq:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: -3px;
+  z-index: 1;
+}
+.bt-board.is-thinking {
+  cursor: progress;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bt-sq > span {
+    transition: none;
+  }
+}
