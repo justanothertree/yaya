@@ -5831,3 +5831,88 @@ html:has(.lab) {
   outline-offset: -2px;
   z-index: 1;
 }
+
+/* ---------------------------------------------------------------- lamps */
+.lp-room {
+  --lp-bg: #1d2333;
+  --lp-off: #3a4256;
+  --lp-on: #ffd34d;
+  --lp-glow: rgb(255 211 77 / 0.55);
+}
+.lp-room.is-lanterns {
+  --lp-bg: #2b1c14;
+  --lp-off: #4a3326;
+  --lp-on: #ff7a3d;
+  --lp-glow: rgb(255 122 61 / 0.55);
+}
+.lp-room.is-neon {
+  --lp-bg: #0b0e18;
+  --lp-off: #1d2235;
+  --lp-on: #4dffd8;
+  --lp-glow: rgb(77 255 216 / 0.55);
+}
+.lp-board {
+  display: grid;
+  grid-template-columns: repeat(var(--lp-n), minmax(0, 1fr));
+  gap: 6px;
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--lp-bg);
+}
+.lp-lamp {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.lp-lamp > span {
+  width: 82%;
+  height: 82%;
+  border-radius: 50%;
+  background: var(--lp-off);
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.45);
+  transition:
+    background 0.18s,
+    box-shadow 0.18s;
+}
+.lp-lamp.is-on > span {
+  background: radial-gradient(circle at 40% 35%, #fff, var(--lp-on) 55%);
+  box-shadow:
+    0 0 14px var(--lp-glow),
+    0 0 4px var(--lp-on);
+}
+/* the lamps a press here would switch, lightly ringed, so the pattern can be seen before pressing */
+.lp-lamp.is-near::after {
+  content: '';
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  border: 1px dashed rgb(255 255 255 / 0.35);
+}
+.lp-lamp.is-hint::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid #fff;
+}
+.lp-lamp:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 1px;
+}
+.lp-board.is-done {
+  box-shadow: 0 0 0 3px #22c55e;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-lamp > span {
+    transition: none;
+  }
+}

@@ -128,6 +128,7 @@ import { CagesDemo } from '../gpu/CagesDemo'
 import { EchoDemo } from '../gpu/EchoDemo'
 import { SpadesDemo } from '../gpu/SpadesDemo'
 import { HalmaDemo } from '../gpu/HalmaDemo'
+import { LampsDemo } from '../gpu/LampsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -907,6 +908,12 @@ const DEMOS: readonly {
     name: 'Chinese checkers',
     line: 'Chinese checkers — race ten pegs across the star into the far point, stepping or hopping over any peg, as many hops in a row as the board allows. Against a computer that looks at your answer before it moves, or a friend.',
     Demo: HalmaDemo,
+  },
+  {
+    id: 'lamps',
+    name: 'Lamps',
+    line: 'Lamps — press a lamp and it switches, and so do its neighbours; switch them all off in as few presses as you can. Par is worked out exactly. A board a day, four sizes, two ways of switching.',
+    Demo: LampsDemo,
   },
 ]
 
