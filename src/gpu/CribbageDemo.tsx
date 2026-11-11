@@ -62,7 +62,7 @@ function Face({ c, small }: { c: Card; small?: boolean }) {
   const red = suitOf(c) === 1 || suitOf(c) === 2
   return (
     <span
-      className={`pk-card cb-card${red ? ' is-red' : ''}${small ? ' is-small' : ''}`}
+      className={`pk-card cg-card${red ? ' is-red' : ''}${small ? ' is-small' : ''}`}
       aria-hidden
     >
       <span>{RANK_NAMES[rankOf(c)]}</span>
@@ -283,7 +283,7 @@ export function CribbageDemo() {
     r.phase === 'show' || r.phase === 'done' || (r.phase === 'over' && shown.length > 0)
 
   return (
-    <div className={`lab-keys cb-room is-${saved.board}`}>
+    <div className={`lab-keys cg-room is-${saved.board}`}>
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="How well the computer plays">
           {LEVELS.map((l) => (
@@ -306,22 +306,22 @@ export function CribbageDemo() {
       </div>
 
       <div
-        className="cb-board"
+        className="cg-board"
         role="img"
         aria-label={`The board: you ${r.scores[0]}, the computer ${r.scores[1]}, of ${TARGET}.`}
       >
         {([0, 1] as Who[]).map((w) => (
-          <div key={w} className={`cb-lane is-${w}`}>
-            <span className="cb-who">
+          <div key={w} className={`cg-lane is-${w}`}>
+            <span className="cg-who">
               {w === 0 ? 'You' : LEVEL_NAMES[level]}
               {r.dealer === w ? ' · deals' : ''}
             </span>
-            <span className="cb-track">
-              <span className="cb-fill" style={{ width: `${(r.scores[w] / TARGET) * 100}%` }} />
-              <span className="cb-peg is-back" style={{ left: `${(back[w] / TARGET) * 100}%` }} />
-              <span className="cb-peg" style={{ left: `${(r.scores[w] / TARGET) * 100}%` }} />
+            <span className="cg-track">
+              <span className="cg-fill" style={{ width: `${(r.scores[w] / TARGET) * 100}%` }} />
+              <span className="cg-peg is-back" style={{ left: `${(back[w] / TARGET) * 100}%` }} />
+              <span className="cg-peg" style={{ left: `${(r.scores[w] / TARGET) * 100}%` }} />
             </span>
-            <strong className="cb-score">{r.scores[w]}</strong>
+            <strong className="cg-score">{r.scores[w]}</strong>
           </div>
         ))}
       </div>
@@ -329,22 +329,22 @@ export function CribbageDemo() {
         {line}
       </p>
 
-      <div className="cb-table">
+      <div className="cg-table">
         <div
-          className="cb-row"
+          className="cg-row"
           aria-label={`The computer holds ${r.hands[1].length} cards`}
           role="img"
         >
           {r.hands[1].map((_, k) => (
-            <span key={k} className="pk-card is-back tw-back cb-back" />
+            <span key={k} className="pk-card is-back tw-back cg-back" />
           ))}
         </div>
-        <div className="cb-middle">
-          <div className="cb-spot">
-            <span className="cb-label">Starter</span>
+        <div className="cg-middle">
+          <div className="cg-spot">
+            <span className="cg-label">Starter</span>
             {r.phase === 'discard' ? (
               <span
-                className="pk-card is-back tw-back cb-back"
+                className="pk-card is-back tw-back cg-back"
                 role="img"
                 aria-label="The starter, face down"
               />
@@ -354,37 +354,37 @@ export function CribbageDemo() {
               </span>
             )}
           </div>
-          <div className="cb-spot">
-            <span className="cb-label">{r.dealer === 0 ? 'Your crib' : 'Its crib'}</span>
+          <div className="cg-spot">
+            <span className="cg-label">{r.dealer === 0 ? 'Your crib' : 'Its crib'}</span>
             <span
-              className="cb-crib"
+              className="cg-crib"
               role="img"
               aria-label={`${r.dealer === 0 ? 'Your' : 'The computer’s'} crib: ${r.crib.length} cards`}
             >
               {r.crib.length ? (
                 r.crib.map((_, k) => (
-                  <span key={k} className="pk-card is-back tw-back cb-back is-small" />
+                  <span key={k} className="pk-card is-back tw-back cg-back is-small" />
                 ))
               ) : (
                 <span className="muted">empty</span>
               )}
             </span>
           </div>
-          <div className="cb-spot cb-count">
-            <span className="cb-label">Count</span>
+          <div className="cg-spot cg-count">
+            <span className="cg-label">Count</span>
             <strong>{r.phase === 'peg' ? count(r) : '—'}</strong>
           </div>
         </div>
         {r.phase === 'peg' && (
           <div
-            className="cb-row cb-pile"
+            className="cg-row cg-pile"
             role="img"
             aria-label={`Cards in this count: ${r.pile.map(longName).join(', ') || 'none yet'}`}
           >
             {r.pile.map((c) => {
               const by = r.played.find((p) => p.card === c)?.by
               return (
-                <span key={c} className={`cb-played by-${by}`}>
+                <span key={c} className={`cg-played by-${by}`}>
                   <Face c={c} small />
                 </span>
               )
@@ -394,7 +394,7 @@ export function CribbageDemo() {
       </div>
 
       <div
-        className="cb-hand"
+        className="cg-hand"
         role="group"
         aria-label={r.phase === 'discard' ? 'Your hand: pick two for the crib' : 'Your hand'}
       >
@@ -403,7 +403,7 @@ export function CribbageDemo() {
           return (
             <button
               key={c}
-              className={`cb-mine${picked.includes(c) ? ' is-picked' : ''}${r.phase === 'peg' && !playable.has(c) ? ' is-dim' : ''}`}
+              className={`cg-mine${picked.includes(c) ? ' is-picked' : ''}${r.phase === 'peg' && !playable.has(c) ? ' is-dim' : ''}`}
               disabled={!can || r.winner !== null}
               aria-pressed={r.phase === 'discard' ? picked.includes(c) : undefined}
               aria-label={`${longName(c)}${r.phase === 'peg' && r.turn === 0 && !playable.has(c) ? ', would pass thirty-one' : ''}`}
@@ -441,14 +441,14 @@ export function CribbageDemo() {
       </div>
 
       {showing && shown.length > 0 && (
-        <section className="fw-panel cb-show" aria-label="The show">
+        <section className="fw-panel cg-show" aria-label="The show">
           <h3 className="fw-h">
             The show · starter {RANK_NAMES[rankOf(r.starter)]}
             {SUITS[suitOf(r.starter)]}
           </h3>
           {shown.map((s) => (
-            <div key={s.who} className="cb-shown">
-              <span className="cb-shown-cards" aria-hidden>
+            <div key={s.who} className="cg-shown">
+              <span className="cg-shown-cards" aria-hidden>
                 {[...s.cards].sort(order).map((c) => (
                   <Face key={c} c={c} small />
                 ))}
