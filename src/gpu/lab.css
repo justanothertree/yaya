@@ -6375,3 +6375,23 @@ html:has(.lab) {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------- popper */
+.bp-wrap {
+  width: min(100%, 440px);
+  border-radius: 12px;
+}
+.bp-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.bp-room .lab-stage.bp-stage {
+  /* the field's own shape: 22 bubble radii across, a little under 28 down */
+  aspect-ratio: 22 / 27.85;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  border-radius: 12px;
+  overflow: hidden;
+}
