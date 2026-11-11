@@ -130,6 +130,7 @@ import { SpadesDemo } from '../gpu/SpadesDemo'
 import { HalmaDemo } from '../gpu/HalmaDemo'
 import { LampsDemo } from '../gpu/LampsDemo'
 import { EightsDemo } from '../gpu/EightsDemo'
+import { GomokuDemo } from '../gpu/GomokuDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -921,6 +922,12 @@ const DEMOS: readonly {
     name: 'Crazy eights',
     line: 'Crazy eights — match the top card by suit or number, play an eight to name the suit, and be first to empty your hand. Against one, two or three computers, first to a hundred.',
     Demo: EightsDemo,
+  },
+  {
+    id: 'gomoku',
+    name: 'Five in a row',
+    line: 'Five in a row — place stones anywhere on the board, and be first to line up five across, down or on a diagonal. Against a computer that looks at your answer before it moves, or a friend.',
+    Demo: GomokuDemo,
   },
 ]
 
