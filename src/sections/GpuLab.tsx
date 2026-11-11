@@ -126,6 +126,7 @@ import { KeepyDemo } from '../gpu/KeepyDemo'
 import { PegsDemo } from '../gpu/PegsDemo'
 import { CagesDemo } from '../gpu/CagesDemo'
 import { EchoDemo } from '../gpu/EchoDemo'
+import { SpadesDemo } from '../gpu/SpadesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -893,6 +894,12 @@ const DEMOS: readonly {
     name: 'Echo',
     line: 'Echo — the pads play a tune, and you play it back; each time, it grows by a note and plays a little quicker. In order or backwards, four pads or six, bells, piano or plucked. How long can you go?',
     Demo: EchoDemo,
+  },
+  {
+    id: 'spades',
+    name: 'Spades',
+    line: 'Spades — you and a computer partner against two computers. Bid your tricks or bid nil, spades are trumps, and mind the bags; Hard plays every hand out many ways before it bids.',
+    Demo: SpadesDemo,
   },
 ]
 

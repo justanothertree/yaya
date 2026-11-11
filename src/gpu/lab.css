@@ -5591,3 +5591,134 @@ html:has(.lab) {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------- spades */
+.sd-room {
+  --sd-felt: #0f5132;
+}
+.sd-room.is-blue {
+  --sd-felt: #123d6b;
+}
+.sd-room.is-red {
+  --sd-felt: #6b1520;
+}
+.sd-scores {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sd-table {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr 5.5rem;
+  grid-template-rows: auto minmax(9.5rem, auto);
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--sd-felt), #fff 10%),
+    var(--sd-felt)
+  );
+  color: #fff;
+  width: min(100%, 560px);
+}
+.sd-seat {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+.sd-seat.is-up .sd-name {
+  color: #ffd34d;
+  font-weight: 700;
+}
+.sd-seat.is-s2 {
+  grid-column: 2;
+  grid-row: 1;
+}
+.sd-seat.is-s1 {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+}
+.sd-seat.is-s3 {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: center;
+}
+.sd-bid {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+.sd-count {
+  align-self: center;
+  justify-self: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+}
+.sd-trick {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  min-height: 9.5rem;
+}
+.sd-played {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+.sd-played.is-s0 {
+  transform: translate(-50%, 4%);
+}
+.sd-played.is-s2 {
+  transform: translate(-50%, -104%);
+}
+.sd-played.is-s1 {
+  transform: translate(-130%, -50%);
+}
+.sd-played.is-s3 {
+  transform: translate(30%, -50%);
+}
+.sd-me {
+  margin: 0.3rem 0 0;
+}
+.sd-bidding {
+  align-items: center;
+}
+.sd-bidnum {
+  min-width: 3ch;
+  text-align: center;
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+}
+/* thirteen cards across a phone, overlapping; contained so the row's width never pushes the page */
+.sd-hand {
+  display: flex;
+  padding: 0.75rem 0 0.25rem;
+  width: 100%;
+  max-width: 680px;
+  contain: inline-size;
+}
+.sd-mine {
+  position: relative;
+  flex: 0 1 50px;
+  min-width: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.sd-mine:last-child {
+  flex: 0 0 auto;
+}
+.sd-mine.is-dim .pk-card {
+  filter: brightness(0.6);
+}
+.sd-mine:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 2px;
+  border-radius: 6px;
+  z-index: 1;
+}
