@@ -217,7 +217,7 @@ export function ArtilleryDemo() {
   const untouched = shots === 0 && field.turn === 0 && field.winner === null
 
   return (
-    <div className={`lab-keys ar-room is-${saved.sky}`}>
+    <div className={`lab-keys at-room is-${saved.sky}`}>
       <div className="lab-controls">
         <div className="lab-group" role="group" aria-label="How well the computer shoots">
           {LEVELS.map((l) => (
@@ -246,7 +246,7 @@ export function ArtilleryDemo() {
           >
             <span>{w === 0 ? 'Your gun' : `The computer · ${LEVEL_NAMES[level]}`}</span>
             <strong>{field.guns[w].life}</strong>
-            <span className="ar-life" aria-hidden>
+            <span className="at-life" aria-hidden>
               <span
                 style={{ width: `${(field.guns[w].life / LIFE) * 100}%`, background: GUNS[w] }}
               />
@@ -259,14 +259,14 @@ export function ArtilleryDemo() {
       </p>
 
       <div
-        className="ar-wrap"
+        className="at-wrap"
         tabIndex={0}
         role="group"
         aria-label="The field. Drag from anywhere to aim your gun — the direction from your gun is the angle, the distance the charge. Keys: left and right turn the barrel, up and down set the charge, Space fires."
         onKeyDown={onKey}
       >
         <CanvasStage
-          className="ar-stage"
+          className="at-stage"
           label={`A field with two guns, ${windWords(field.wind)}. ${line}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -420,7 +420,7 @@ export function ArtilleryDemo() {
       </div>
 
       <div className="lab-controls" role="group" aria-label="Your aim">
-        <span className="ar-set">
+        <span className="at-set">
           <button
             className="btn btn-ghost"
             aria-label="Raise the barrel"
@@ -429,7 +429,7 @@ export function ArtilleryDemo() {
           >
             ↺
           </button>
-          <span className="ar-read">Angle {angle}°</span>
+          <span className="at-read">Angle {angle}°</span>
           <button
             className="btn btn-ghost"
             aria-label="Lower the barrel"
@@ -439,7 +439,7 @@ export function ArtilleryDemo() {
             ↻
           </button>
         </span>
-        <span className="ar-set">
+        <span className="at-set">
           <button
             className="btn btn-ghost"
             aria-label="Less charge"
@@ -448,7 +448,7 @@ export function ArtilleryDemo() {
           >
             −
           </button>
-          <span className="ar-read">Charge {Math.round(charge * 100)}%</span>
+          <span className="at-read">Charge {Math.round(charge * 100)}%</span>
           <button
             className="btn btn-ghost"
             aria-label="More charge"
@@ -459,7 +459,7 @@ export function ArtilleryDemo() {
           </button>
         </span>
         <button
-          className="btn ar-fire"
+          className="btn at-fire"
           disabled={!yourTurn}
           onClick={() => fire(field, angle, charge)}
         >
