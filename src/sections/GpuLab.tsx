@@ -83,6 +83,54 @@ import { FireworksDemo } from '../gpu/FireworksDemo'
 import { LevelsDemo } from '../gpu/LevelsDemo'
 import { TypeDemo } from '../gpu/TypeDemo'
 import { BonsaiDemo } from '../gpu/BonsaiDemo'
+import { MancalaDemo } from '../gpu/MancalaDemo'
+import { HockeyDemo } from '../gpu/HockeyDemo'
+import { DotsDemo } from '../gpu/DotsDemo'
+import { ReversiDemo } from '../gpu/ReversiDemo'
+import { SeaBattleDemo } from '../gpu/SeaBattleDemo'
+import { TrailsDemo } from '../gpu/TrailsDemo'
+import { CodebreakerDemo } from '../gpu/CodebreakerDemo'
+import { HexDemo } from '../gpu/HexDemo'
+import { FourRowDemo } from '../gpu/FourRowDemo'
+import { ArcheryDemo } from '../gpu/ArcheryDemo'
+import { UltimateDemo } from '../gpu/UltimateDemo'
+import { TwentyOneDemo } from '../gpu/TwentyOneDemo'
+import { MorrisDemo } from '../gpu/MorrisDemo'
+import { DraughtsDemo } from '../gpu/DraughtsDemo'
+import { BricksDemo } from '../gpu/BricksDemo'
+import { GolfDemo } from '../gpu/GolfDemo'
+import { MinesDemo } from '../gpu/MinesDemo'
+import { TimeTrialDemo } from '../gpu/TimeTrialDemo'
+import { BackgammonDemo } from '../gpu/BackgammonDemo'
+import { PoolDemo } from '../gpu/PoolDemo'
+import { ChessDemo } from '../gpu/ChessDemo'
+import { HeartsDemo } from '../gpu/HeartsDemo'
+import { TilesDemo } from '../gpu/TilesDemo'
+import { TowersDemo } from '../gpu/TowersDemo'
+import { GoDemo } from '../gpu/GoDemo'
+import { SudokuDemo } from '../gpu/SudokuDemo'
+import { DominoesDemo } from '../gpu/DominoesDemo'
+import { GinDemo } from '../gpu/GinDemo'
+import { FencesDemo } from '../gpu/FencesDemo'
+import { PuttDemo } from '../gpu/PuttDemo'
+import { CribbageDemo } from '../gpu/CribbageDemo'
+import { LanderDemo } from '../gpu/LanderDemo'
+import { DartsDemo } from '../gpu/DartsDemo'
+import { LiarsDemo } from '../gpu/LiarsDemo'
+import { BowlingDemo } from '../gpu/BowlingDemo'
+import { PipesDemo } from '../gpu/PipesDemo'
+import { ArtilleryDemo } from '../gpu/ArtilleryDemo'
+import { CurlingDemo } from '../gpu/CurlingDemo'
+import { BreakthroughDemo } from '../gpu/BreakthroughDemo'
+import { KeepyDemo } from '../gpu/KeepyDemo'
+import { PegsDemo } from '../gpu/PegsDemo'
+import { CagesDemo } from '../gpu/CagesDemo'
+import { EchoDemo } from '../gpu/EchoDemo'
+import { SpadesDemo } from '../gpu/SpadesDemo'
+import { HalmaDemo } from '../gpu/HalmaDemo'
+import { LampsDemo } from '../gpu/LampsDemo'
+import { EightsDemo } from '../gpu/EightsDemo'
+import { GomokuDemo } from '../gpu/GomokuDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -592,6 +640,294 @@ const DEMOS: readonly {
     name: 'Bonsai',
     line: 'Bonsai — grow a little tree a season at a time, then shape it: cut branches back and it buds again, wire them to the angle you want. Choose maple, pine or blossom, the season, the pot and its glaze, moss and stones. The same seed grows the same way, so a link sends your very tree.',
     Demo: BonsaiDemo,
+  },
+  {
+    id: 'mancala',
+    name: 'Mancala',
+    line: 'Mancala — the sowing game. Sow seeds round the board into your store, end there to go again, end in an empty pit to take what is opposite. Against a computer that looks one, four or nine moves ahead, or a friend; four to six pits, three to six seeds, captures on or off, and boards and seeds to choose.',
+    Demo: MancalaDemo,
+  },
+  {
+    id: 'hockey',
+    name: 'Air hockey',
+    line: 'Air hockey — your paddle follows your finger or the mouse; knock the puck into the far slot and keep it out of yours. Against a Rookie, a Club player who goes for the corners, or a Pro who plays bank shots. Matches to 3, 5 or 7, with your record, your best run and your hardest shot.',
+    Demo: HockeyDemo,
+  },
+  {
+    id: 'dots',
+    name: 'Dots and boxes',
+    line: 'Dots and boxes — draw lines between dots, close a box to keep it and draw again. Against a computer that grabs, one that never gives a box away, or one that plays the endgame out and leaves you two boxes to keep control. Boards from 3×3 to 6×6, your colours and your letter in every box you win.',
+    Demo: DotsDemo,
+  },
+  {
+    id: 'reversi',
+    name: 'Reversi',
+    line: 'Reversi — trap a line of your opponent’s discs between two of yours and they turn over to your colour. Against a computer that grabs, one that looks two moves ahead, or one that looks further and plays the ending perfectly; boards of 6, 8 or 10, four sets of discs, three boards, and hints you can turn off.',
+    Demo: ReversiDemo,
+  },
+  {
+    id: 'seabattle',
+    name: 'Sea battle',
+    line: 'Sea battle — hide your fleet, then take turns calling squares of each other’s sea until one fleet is sunk. Against a computer that fires at random, one that hunts on a chequerboard, or one that works out where your ships most likely are (and never peeks). Three fleets, two seas, rules to choose, and a record of your fewest shots to win.',
+    Demo: SeaBattleDemo,
+  },
+  {
+    id: 'trails',
+    name: 'Light trails',
+    line: 'Light trails — ride a line of light round the arena and make the others crash into a wall before you do. One to three rivals that dodge, seek open space, or cut across your path; three arenas, three layouts, three speeds. Steer with keys, swipes or taps; first to three rounds wins.',
+    Demo: TrailsDemo,
+  },
+  {
+    id: 'codebreaker',
+    name: 'Codebreaker',
+    line: 'Codebreaker — crack a hidden code of coloured pegs from black and white clues. Today’s code is the same for everyone, once a day, with a result to copy and compare; practise on codes of your own size, or hide one and watch the computer crack it (usually in five).',
+    Demo: CodebreakerDemo,
+  },
+  {
+    id: 'hex',
+    name: 'Hex',
+    line: 'Hex — join your two sides of a board of hexagons before the other player joins theirs; there are no draws. Against a computer that fills the board at random hundreds of times to judge a move, or one that grows a tree of thousands of games and reads a fight several moves deep. Three board sizes, three looks, and the swap rule.',
+    Demo: HexDemo,
+  },
+  {
+    id: 'fourrow',
+    name: 'Four in a row',
+    line: 'Four in a row — drop discs into an upright grid and line up four before the computer does. It looks one, three or six moves ahead; play on a small, classic or wide grid, go for five on the bigger ones, and pick the discs and the frame.',
+    Demo: FourRowDemo,
+  },
+  {
+    id: 'archery',
+    name: 'Archery',
+    line: 'Archery — twelve arrows at targets further and further off. Your sight sways and your arm tires; steady it while your breath lasts, allow for the drop and the wind, and loose. Today’s round has the same wind for everyone; practise with a recurve, compound or longbow.',
+    Demo: ArcheryDemo,
+  },
+  {
+    id: 'ultimate',
+    name: 'Ultimate noughts',
+    line: 'Ultimate noughts and crosses — nine boards in one. Win small boards to win the big one, but every square you play sends your opponent to the matching board. Against a computer that grabs boards, or ones that play out thousands of games before each move; crosses, shapes, animals or rockets.',
+    Demo: UltimateDemo,
+  },
+  {
+    id: 'twentyone',
+    name: 'Twenty-one',
+    line: 'Twenty-one — get closer to 21 than the dealer without going over: hit, stand, double or split, for play chips. Turn on the book play to see the move that loses least, and how often you agree with it; one, two or six decks, and the dealer standing or hitting soft 17.',
+    Demo: TwentyOneDemo,
+  },
+  {
+    id: 'morris',
+    name: "Nine men's morris",
+    line: "Nine men's morris — the old board game of mills: place your nine men, then move them along the lines, and every three in a row takes one of theirs. Down to three, you fly. Against a computer that looks one, two or four moves ahead, or a friend; wood, slate or garden boards with stones, coins or gems.",
+    Demo: MorrisDemo,
+  },
+  {
+    id: 'draughts',
+    name: 'Draughts',
+    line: 'Draughts — jump to take, and when a take is there you must take it, as many in a row as the piece can reach. Crown a king on the far row. Against a computer that looks two, four or six moves ahead and follows every take to its end, or a friend; three boards and three sets of pieces.',
+    Demo: DraughtsDemo,
+  },
+  {
+    id: 'bricks',
+    name: 'Bricks',
+    line: 'Bricks — keep the ball in play and knock out the wall. Where it lands on the paddle sets where it goes, a run of bricks multiplies the points, and what falls out widens the paddle, splits the ball or slows it. Today’s walls are everyone’s to beat; or draw a wall of your own and send it to a friend.',
+    Demo: BricksDemo,
+  },
+  {
+    id: 'golf',
+    name: 'Golf patience',
+    line: 'Golf patience — clear seven columns by taking cards one above or one below the last, for as long a run as you can, and turn the stock when nothing fits. Lowest score wins, and every deal comes with par: the best it allows, found by trying every way through. Today’s deal is the same for everyone.',
+    Demo: GolfDemo,
+  },
+  {
+    id: 'mines',
+    name: 'Mines',
+    line: 'Mines — open squares, read the numbers, mark the mines, and clear the board against the clock. Every board can be cleared by reasoning alone: each is played through by a solver before you see it, so no run ends on a coin toss. Today’s board is the same for everyone.',
+    Demo: MinesDemo,
+  },
+  {
+    id: 'timetrial',
+    name: 'Time trial',
+    line: 'Time trial — one car, one track, the clock. Brake for the bends, keep it off the grass, and race the ghost of your best lap; the medal times come from a computer driver’s own lap. Three tracks, and a new one every day that everyone drives.',
+    Demo: TimeTrialDemo,
+  },
+  {
+    id: 'backgammon',
+    name: 'Backgammon',
+    line: 'Backgammon — race your fifteen checkers home and off, hitting the computer’s lone ones on the way and blocking its path, with gammons and backgammons for a big win. Three levels, the hardest counting the rolls that would hit every lone checker; walnut, felt or marble.',
+    Demo: BackgammonDemo,
+  },
+  {
+    id: 'pool',
+    name: 'Pool',
+    line: 'Pool — eight-ball against the computer. Drag back like a slingshot and let go; the line shows where the cue ball meets its first ball. Solids or stripes, fouls and ball in hand, and the black to finish. The computer plans every shot by playing it through first.',
+    Demo: PoolDemo,
+  },
+  {
+    id: 'chess',
+    name: 'Chess',
+    line: 'Chess against the computer, with every rule — castling, en passant, promotion, and all the draws. Easy, Fair and Hard look one, two and three moves ahead and follow every capture to the end. Take back a move whenever you like; you swap colours each game.',
+    Demo: ChessDemo,
+  },
+  {
+    id: 'hearts',
+    name: 'Hearts',
+    line: 'Hearts — you and three computers. Pass three, follow suit, and keep away from the hearts and the queen of spades, unless you can take every one of them and shoot the moon. Easy plays anything, Fair plays by habit, and Hard deals the hidden cards out two dozen ways before every card.',
+    Demo: HeartsDemo,
+  },
+  {
+    id: 'tiles',
+    name: 'Tile pairs',
+    line: 'Tile pairs — take matching tiles away two at a time, each one free: nothing on top, one side open. Every deal can be cleared, because it is made by clearing the layout first; the trick is the order. Against the clock, with today’s tiles the same for everyone.',
+    Demo: TilesDemo,
+  },
+  {
+    id: 'towers',
+    name: 'Towers',
+    line: 'Towers — creatures walk a winding path and you build beside it: darts, cannon and frost, each with upgrades. Every wave is bigger and tougher until the field is overrun; the score is how many you held. Three fields, and a new one each day that everyone plays.',
+    Demo: TowersDemo,
+  },
+  {
+    id: 'go',
+    name: 'Go 9×9',
+    line: 'Go on a nine-by-nine board — surround territory, capture stones with no breath left, and mind the ko. Against a computer that plays out hundreds or thousands of random games before every move; you swap colours each game.',
+    Demo: GoDemo,
+  },
+  {
+    id: 'sudoku',
+    name: 'Sudoku',
+    line: 'Sudoku — every row, column and box holds 1 to 9 once. Every puzzle has one answer and is graded by the reasoning it needs; notes, a hint that says why, and today’s puzzle the same for everyone.',
+    Demo: SudokuDemo,
+  },
+  {
+    id: 'dominoes',
+    name: 'Dominoes',
+    line: 'Dominoes, the draw game — match the ends, draw from the boneyard when nothing fits, and go out first to score what is left in the other hand. Against a computer that sheds heavy tiles, remembers what you could not follow and counts what it has not seen.',
+    Demo: DominoesDemo,
+  },
+  {
+    id: 'gin',
+    name: 'Gin rummy',
+    line: 'Gin rummy — draw, discard, and make melds of three or four of a kind or runs of a suit; knock at ten deadwood or go gin with none. Your hand shows its best melds as you play; first to a hundred against the computer.',
+    Demo: GinDemo,
+  },
+  {
+    id: 'fences',
+    name: 'Fences',
+    line: 'Fences — a race to the far edge, where each turn you either step or put down a fence to lengthen the computer’s way, but never shut it in. On a 9×9 or a quick 7×7 board, against a computer that saves its fences for when they hurt.',
+    Demo: FencesDemo,
+  },
+  {
+    id: 'putt',
+    name: 'Putt',
+    line: 'Putt — mini golf against the computer over six holes of grass, sand, water and walls, and a builder to paint your own holes, try them, keep them and send them by link.',
+    Demo: PuttDemo,
+  },
+  {
+    id: 'cribbage',
+    name: 'Cribbage',
+    line: 'Cribbage — throw two to the crib, peg to 31 for fifteens, pairs and runs, then count your hand with the starter, read out the way it is said at the table. First to 121 against a computer that weighs its crib and your replies.',
+    Demo: CribbageDemo,
+  },
+  {
+    id: 'lander',
+    name: 'Lander',
+    line: 'Lander — lean and burn to set a craft down on a pad, slow and upright, with fuel to spare; the narrow pad pays five times. An autopilot flies the same terrain as a ghost, and its score is the one to beat.',
+    Demo: LanderDemo,
+  },
+  {
+    id: 'darts',
+    name: 'Darts',
+    line: 'Darts — 501, double out, first to two legs against the computer. Aim, hold your breath while the ring tightens, and let go; the computer aims where its own hand scores best and knows every way out.',
+    Demo: DartsDemo,
+  },
+  {
+    id: 'liars',
+    name: "Liar's dice",
+    line: "Liar's dice — five dice under a cup, bids on what's under everyone's, and a call of \"Liar!\" that costs someone a die. Against two or three computers that read the odds, read your bids, and on Hard play each round out in their heads.",
+    Demo: LiarsDemo,
+  },
+  {
+    id: 'bowling',
+    name: 'Bowling',
+    line: 'Bowling — ten frames against a computer bowler on a lane of real size. Choose your stance, line, hook and speed, then time the release; the pocket gives strikes, the nose gives splits.',
+    Demo: BowlingDemo,
+  },
+  {
+    id: 'pipes',
+    name: 'Pipes',
+    line: 'Pipes — turn the tiles until water from the source reaches every one, with nothing left open. A new board each day, the same for everyone, against the clock and a par of turns; 5×5 to 9×9, and edges that wrap round.',
+    Demo: PipesDemo,
+  },
+  {
+    id: 'artillery',
+    name: 'Artillery',
+    line: 'Artillery — two guns on rolling hills, turn about. Set the angle and the charge, mind a wind that shifts every turn, and dig craters until the other gun is out of action.',
+    Demo: ArtilleryDemo,
+  },
+  {
+    id: 'curling',
+    name: 'Curling',
+    line: 'Curling — slide stones at the house against a computer skip. Mark where yours should stop, choose its turn, throw, and hold Sweep to carry it further and straighter; draw, guard or knock them out.',
+    Demo: CurlingDemo,
+  },
+  {
+    id: 'breakthrough',
+    name: 'Breakthrough',
+    line: 'Breakthrough — two armies of pawns, each racing to get one through to the far row. Step forward, take on the diagonal, guard each other; against a computer that looks up to five moves ahead, or a friend.',
+    Demo: BreakthroughDemo,
+  },
+  {
+    id: 'keepy',
+    name: 'Keepy-up',
+    line: 'Keepy-up — tap a ball as it comes down to kick it back up, and never let one touch the ground. Where you tap steers it; more balls join as you go. A balloon, a beach ball or a football, calm or in a breeze.',
+    Demo: KeepyDemo,
+  },
+  {
+    id: 'pegs',
+    name: 'Peg solitaire',
+    line: 'Peg solitaire — jump pegs over each other until one is left, on the 33-hole cross or the 15-hole triangle. Choose which hole starts empty; a solver gives hints and can play it out for you.',
+    Demo: PegsDemo,
+  },
+  {
+    id: 'cages',
+    name: 'Cages',
+    line: 'Cages — every number once in each row and column, and the numbers in each outlined cage make its target by adding, multiplying, subtracting or dividing. A board a day at 4×4, 5×5 and 6×6, each with exactly one answer.',
+    Demo: CagesDemo,
+  },
+  {
+    id: 'echo',
+    name: 'Echo',
+    line: 'Echo — the pads play a tune, and you play it back; each time, it grows by a note and plays a little quicker. In order or backwards, four pads or six, bells, piano or plucked. How long can you go?',
+    Demo: EchoDemo,
+  },
+  {
+    id: 'spades',
+    name: 'Spades',
+    line: 'Spades — you and a computer partner against two computers. Bid your tricks or bid nil, spades are trumps, and mind the bags; Hard plays every hand out many ways before it bids.',
+    Demo: SpadesDemo,
+  },
+  {
+    id: 'halma',
+    name: 'Chinese checkers',
+    line: 'Chinese checkers — race ten pegs across the star into the far point, stepping or hopping over any peg, as many hops in a row as the board allows. Against a computer that looks at your answer before it moves, or a friend.',
+    Demo: HalmaDemo,
+  },
+  {
+    id: 'lamps',
+    name: 'Lamps',
+    line: 'Lamps — press a lamp and it switches, and so do its neighbours; switch them all off in as few presses as you can. Par is worked out exactly. A board a day, four sizes, two ways of switching.',
+    Demo: LampsDemo,
+  },
+  {
+    id: 'eights',
+    name: 'Crazy eights',
+    line: 'Crazy eights — match the top card by suit or number, play an eight to name the suit, and be first to empty your hand. Against one, two or three computers, first to a hundred.',
+    Demo: EightsDemo,
+  },
+  {
+    id: 'gomoku',
+    name: 'Five in a row',
+    line: 'Five in a row — place stones anywhere on the board, and be first to line up five across, down or on a diagonal. Against a computer that looks at your answer before it moves, or a friend.',
+    Demo: GomokuDemo,
   },
 ]
 
