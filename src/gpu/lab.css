@@ -5013,3 +5013,55 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- artillery */
+.ar-room .lab-stage.ar-stage {
+  /* the field is twice as wide as it is tall */
+  aspect-ratio: 2 / 1;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  background: #2b1d3f;
+}
+/* the wrap carries the size, so the canvas is never left at its own default width */
+.ar-wrap {
+  border-radius: 12px;
+  width: min(100%, 860px);
+}
+.ar-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.ar-life {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 0.15);
+  overflow: hidden;
+}
+.ar-life span {
+  display: block;
+  height: 100%;
+  transition: width 0.3s;
+}
+.ar-read {
+  min-width: 10ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ar-room .btn.ar-fire {
+  min-height: 44px;
+  font-weight: 700;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ar-life span {
+    transition: none;
+  }
+}
+/* each setting with its own two buttons, so a narrow screen wraps them as a set */
+.ar-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}

@@ -119,6 +119,7 @@ import { DartsDemo } from '../gpu/DartsDemo'
 import { LiarsDemo } from '../gpu/LiarsDemo'
 import { BowlingDemo } from '../gpu/BowlingDemo'
 import { PipesDemo } from '../gpu/PipesDemo'
+import { ArtilleryDemo } from '../gpu/ArtilleryDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -844,6 +845,12 @@ const DEMOS: readonly {
     name: 'Pipes',
     line: 'Pipes — turn the tiles until water from the source reaches every one, with nothing left open. A new board each day, the same for everyone, against the clock and a par of turns; 5×5 to 9×9, and edges that wrap round.',
     Demo: PipesDemo,
+  },
+  {
+    id: 'artillery',
+    name: 'Artillery',
+    line: 'Artillery — two guns on rolling hills, turn about. Set the angle and the charge, mind a wind that shifts every turn, and dig craters until the other gun is out of action.',
+    Demo: ArtilleryDemo,
   },
 ]
 
