@@ -5376,3 +5376,128 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- cages */
+.ck-room {
+  --ck-bg: #fffdf7;
+  --ck-ink: #1f2937;
+  --ck-mine: #1d4ed8;
+  --ck-line: #d6dbe3;
+  --ck-cage: #1f2937;
+  --ck-sel: #fde68a;
+  --ck-mate: #eef2f7;
+  --ck-label: #374151;
+}
+.ck-room.is-slate {
+  --ck-bg: #111827;
+  --ck-ink: #e5e7eb;
+  --ck-mine: #93c5fd;
+  --ck-line: #374151;
+  --ck-cage: #cbd5e1;
+  --ck-sel: #854d0e;
+  --ck-mate: #1f2937;
+  --ck-label: #cbd5e1;
+}
+.ck-room.is-sun {
+  --ck-bg: #fff8e7;
+  --ck-mine: #b45309;
+  --ck-cage: #7c2d12;
+  --ck-sel: #fecaca;
+  --ck-mate: #ffedd5;
+  --ck-label: #7c2d12;
+}
+.ck-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ck-n), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--ck-n), minmax(0, 1fr));
+  width: min(100%, 440px);
+  aspect-ratio: 1;
+  border: 3px solid var(--ck-cage);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--ck-bg);
+}
+.ck-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--ck-line);
+  border-radius: 0;
+  background: var(--ck-bg);
+  color: var(--ck-mine);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+/* a cage's outline: a heavy edge wherever the cell beside it is in another cage */
+.ck-cell.b-t {
+  border-top: 2px solid var(--ck-cage);
+}
+.ck-cell.b-b {
+  border-bottom: 2px solid var(--ck-cage);
+}
+.ck-cell.b-l {
+  border-left: 2px solid var(--ck-cage);
+}
+.ck-cell.b-r {
+  border-right: 2px solid var(--ck-cage);
+}
+.ck-cell.is-cage {
+  background: var(--ck-mate);
+}
+.ck-cell.is-sel {
+  background: var(--ck-sel);
+}
+.ck-cell.is-bad .ck-v {
+  color: #dc2626;
+}
+.ck-cell.is-bad {
+  background: color-mix(in oklab, #dc2626, var(--ck-bg) 86%);
+}
+.ck-cell:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: -3px;
+}
+.ck-label {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: clamp(0.6rem, 2.6vw, 0.78rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ck-label);
+  white-space: nowrap;
+}
+.ck-v {
+  font-size: clamp(1.1rem, 6vw, 1.7rem);
+  font-weight: 600;
+  margin-top: 0.4em;
+}
+.ck-notes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: 86%;
+  height: 70%;
+  margin-top: 22%;
+  font-size: clamp(0.5rem, 2.2vw, 0.66rem);
+  color: var(--ck-ink);
+  opacity: 0.8;
+  place-items: center;
+}
+.ck-pad {
+  display: grid;
+  grid-template-columns: repeat(var(--ck-n), minmax(0, 1fr));
+  gap: 4px;
+  width: min(100%, 440px);
+  margin-top: 0.5rem;
+}
+.ck-key {
+  min-width: 0;
+  padding: 0.45rem 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.ck-grid.is-done .ck-cell {
+  background: color-mix(in oklab, #22c55e, var(--ck-bg) 85%);
+}

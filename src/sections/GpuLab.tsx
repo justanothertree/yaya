@@ -124,6 +124,7 @@ import { CurlingDemo } from '../gpu/CurlingDemo'
 import { BreakthroughDemo } from '../gpu/BreakthroughDemo'
 import { KeepyDemo } from '../gpu/KeepyDemo'
 import { PegsDemo } from '../gpu/PegsDemo'
+import { CagesDemo } from '../gpu/CagesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -879,6 +880,12 @@ const DEMOS: readonly {
     name: 'Peg solitaire',
     line: 'Peg solitaire — jump pegs over each other until one is left, on the 33-hole cross or the 15-hole triangle. Choose which hole starts empty; a solver gives hints and can play it out for you.',
     Demo: PegsDemo,
+  },
+  {
+    id: 'cages',
+    name: 'Cages',
+    line: 'Cages — every number once in each row and column, and the numbers in each outlined cage make its target by adding, multiplying, subtracting or dividing. A board a day at 4×4, 5×5 and 6×6, each with exactly one answer.',
+    Demo: CagesDemo,
   },
 ]
 
