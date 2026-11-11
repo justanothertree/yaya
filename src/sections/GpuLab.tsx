@@ -122,6 +122,7 @@ import { PipesDemo } from '../gpu/PipesDemo'
 import { ArtilleryDemo } from '../gpu/ArtilleryDemo'
 import { CurlingDemo } from '../gpu/CurlingDemo'
 import { BreakthroughDemo } from '../gpu/BreakthroughDemo'
+import { KeepyDemo } from '../gpu/KeepyDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -865,6 +866,12 @@ const DEMOS: readonly {
     name: 'Breakthrough',
     line: 'Breakthrough — two armies of pawns, each racing to get one through to the far row. Step forward, take on the diagonal, guard each other; against a computer that looks up to five moves ahead, or a friend.',
     Demo: BreakthroughDemo,
+  },
+  {
+    id: 'keepy',
+    name: 'Keepy-up',
+    line: 'Keepy-up — tap a ball as it comes down to kick it back up, and never let one touch the ground. Where you tap steers it; more balls join as you go. A balloon, a beach ball or a football, calm or in a breeze.',
+    Demo: KeepyDemo,
   },
 ]
 

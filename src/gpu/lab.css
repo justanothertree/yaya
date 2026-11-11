@@ -5242,3 +5242,29 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- keepy-up */
+.kp-room .lab-stage.kp-stage {
+  /* the field is one wide and 1.4 tall */
+  aspect-ratio: 1 / 1.4;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  background: #8fd3ff;
+}
+.kp-room .lab-canvas {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+/* the wrap carries the size: as wide as it can be while the whole field fits in the window */
+.kp-wrap {
+  border-radius: 12px;
+  width: min(100%, 460px, calc(72vh / 1.4));
+}
+.kp-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}

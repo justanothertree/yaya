@@ -145,6 +145,7 @@ export const META: Record<string, { category: Category; added: string }> = {
   artillery: { category: 'games', added: '2026-11-11' },
   curling: { category: 'games', added: '2026-11-11' },
   breakthrough: { category: 'games', added: '2026-11-11' },
+  keepy: { category: 'games', added: '2026-11-11' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */
