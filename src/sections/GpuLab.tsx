@@ -123,6 +123,7 @@ import { ArtilleryDemo } from '../gpu/ArtilleryDemo'
 import { CurlingDemo } from '../gpu/CurlingDemo'
 import { BreakthroughDemo } from '../gpu/BreakthroughDemo'
 import { KeepyDemo } from '../gpu/KeepyDemo'
+import { PegsDemo } from '../gpu/PegsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -872,6 +873,12 @@ const DEMOS: readonly {
     name: 'Keepy-up',
     line: 'Keepy-up — tap a ball as it comes down to kick it back up, and never let one touch the ground. Where you tap steers it; more balls join as you go. A balloon, a beach ball or a football, calm or in a breeze.',
     Demo: KeepyDemo,
+  },
+  {
+    id: 'pegs',
+    name: 'Peg solitaire',
+    line: 'Peg solitaire — jump pegs over each other until one is left, on the 33-hole cross or the 15-hole triangle. Choose which hole starts empty; a solver gives hints and can play it out for you.',
+    Demo: PegsDemo,
   },
 ]
 

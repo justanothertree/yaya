@@ -5268,3 +5268,111 @@ html:has(.lab) {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
+
+/* ---------------------------------------------------------------- peg solitaire */
+.ps-room {
+  --ps-board: #8a5a2b;
+  --ps-board-2: #6b4220;
+  --ps-hole: #3a2414;
+  --ps-peg: #4fa3ff;
+  --ps-peg-hi: #d7ecff;
+  --ps-lit: #ffd34d;
+}
+.ps-room.is-wood {
+  --ps-board: #d9b382;
+  --ps-board-2: #b8895a;
+  --ps-hole: #6e4a2e;
+  --ps-peg: #8a5a2b;
+  --ps-peg-hi: #e6c48f;
+  --ps-lit: #2f7ff0;
+}
+.ps-room.is-glow {
+  --ps-board: #141827;
+  --ps-board-2: #0b0e18;
+  --ps-hole: #000;
+  --ps-peg: #5dff9b;
+  --ps-peg-hi: #e2ffee;
+  --ps-lit: #ff5dd2;
+}
+.ps-board {
+  position: relative;
+  width: min(100%, 440px);
+  aspect-ratio: 1;
+  border-radius: 18px;
+  background: radial-gradient(circle at 40% 35%, var(--ps-board), var(--ps-board-2));
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 0.35);
+}
+.ps-board.is-choosing {
+  outline: 3px dashed var(--ps-lit);
+  outline-offset: 4px;
+}
+.ps-hole {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+/* the hole itself, and the peg standing in it */
+.ps-hole::before {
+  content: '';
+  position: absolute;
+  width: 46%;
+  height: 46%;
+  border-radius: 50%;
+  background: var(--ps-hole);
+  box-shadow: inset 0 2px 3px rgb(0 0 0 / 0.6);
+}
+.ps-hole > span {
+  position: relative;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  transition:
+    width 0.15s,
+    height 0.15s,
+    transform 0.15s;
+}
+.ps-hole.has-peg > span {
+  width: 74%;
+  height: 74%;
+  background: radial-gradient(circle at 35% 30%, var(--ps-peg-hi), var(--ps-peg) 55%);
+  box-shadow: 0 2px 3px rgb(0 0 0 / 0.45);
+}
+.ps-hole.is-home::before {
+  box-shadow:
+    inset 0 2px 3px rgb(0 0 0 / 0.6),
+    0 0 0 2px color-mix(in oklab, var(--ps-lit), transparent 45%);
+}
+.ps-hole.is-picked > span {
+  transform: scale(1.12);
+  box-shadow:
+    0 0 0 3px var(--ps-lit),
+    0 3px 6px rgb(0 0 0 / 0.5);
+}
+.ps-hole.is-lit::after {
+  content: '';
+  position: absolute;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: var(--ps-lit);
+}
+.ps-hole.is-hint::before {
+  box-shadow:
+    inset 0 2px 3px rgb(0 0 0 / 0.6),
+    0 0 0 4px var(--ps-lit);
+}
+.ps-hole:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ps-hole > span {
+    transition: none;
+  }
+}
