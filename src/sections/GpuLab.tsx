@@ -127,6 +127,7 @@ import { PegsDemo } from '../gpu/PegsDemo'
 import { CagesDemo } from '../gpu/CagesDemo'
 import { EchoDemo } from '../gpu/EchoDemo'
 import { SpadesDemo } from '../gpu/SpadesDemo'
+import { HalmaDemo } from '../gpu/HalmaDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -900,6 +901,12 @@ const DEMOS: readonly {
     name: 'Spades',
     line: 'Spades — you and a computer partner against two computers. Bid your tricks or bid nil, spades are trumps, and mind the bags; Hard plays every hand out many ways before it bids.',
     Demo: SpadesDemo,
+  },
+  {
+    id: 'halma',
+    name: 'Chinese checkers',
+    line: 'Chinese checkers — race ten pegs across the star into the far point, stepping or hopping over any peg, as many hops in a row as the board allows. Against a computer that looks at your answer before it moves, or a friend.',
+    Demo: HalmaDemo,
   },
 ]
 

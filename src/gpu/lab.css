@@ -5722,3 +5722,112 @@ html:has(.lab) {
   border-radius: 6px;
   z-index: 1;
 }
+
+/* ---------------------------------------------------------------- chinese checkers */
+.hm-room {
+  --hm-board: #d9b382;
+  --hm-board-2: #b8895a;
+  --hm-hole: #6e4a2e;
+  --hm-p1: #d7263d;
+  --hm-p2: #2f6fd1;
+  --hm-lit: #ffd34d;
+}
+.hm-room.is-marble {
+  --hm-board: #eef0f2;
+  --hm-board-2: #cdd3d9;
+  --hm-hole: #8b95a1;
+  --hm-p1: #e0a92a;
+  --hm-p2: #2d8a5a;
+  --hm-lit: #e5484d;
+}
+.hm-room.is-night {
+  --hm-board: #1a1d2e;
+  --hm-board-2: #0d0f19;
+  --hm-hole: #000;
+  --hm-p1: #2fe6ff;
+  --hm-p2: #ff3fae;
+  --hm-lit: #fff15a;
+}
+/* thirteen holes across and nearly fifteen rows' height: each hole is a thirteenth of the width */
+.hm-board {
+  position: relative;
+  width: min(100%, 520px);
+  aspect-ratio: 13 / 14.86;
+  border-radius: 18px;
+  background: radial-gradient(circle at 45% 40%, var(--hm-board), var(--hm-board-2));
+}
+.hm-hole {
+  position: absolute;
+  width: calc(100% / 13);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.hm-hole::before {
+  content: '';
+  position: absolute;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: var(--hm-hole);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.5);
+}
+.hm-hole.is-goal1::before {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hm-p1), transparent 55%);
+}
+.hm-hole.is-goal2::before {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hm-p2), transparent 55%);
+}
+.hm-hole > span {
+  position: relative;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+}
+.hm-hole.is-p1 > span,
+.hm-hole.is-p2 > span {
+  width: 76%;
+  height: 76%;
+  box-shadow: 0 2px 2px rgb(0 0 0 / 0.4);
+}
+.hm-hole.is-p1 > span {
+  background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--hm-p1);
+}
+.hm-hole.is-p2 > span {
+  background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--hm-p2);
+}
+.hm-hole.can-move > span {
+  outline: 2px solid var(--hm-lit);
+  outline-offset: 1px;
+}
+.hm-hole.is-picked > span {
+  outline: 3px solid var(--hm-lit);
+  outline-offset: 2px;
+}
+.hm-hole.is-lit::after {
+  content: '';
+  position: absolute;
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  background: var(--hm-lit);
+}
+.hm-hole.is-trail:not(.is-p1):not(.is-p2)::after {
+  content: '';
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--hm-lit), transparent 30%);
+}
+.hm-hole:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: -2px;
+  z-index: 1;
+}
