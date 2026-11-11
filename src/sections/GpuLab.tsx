@@ -132,6 +132,7 @@ import { LampsDemo } from '../gpu/LampsDemo'
 import { EightsDemo } from '../gpu/EightsDemo'
 import { GomokuDemo } from '../gpu/GomokuDemo'
 import { CubeDemo } from '../gpu/CubeDemo'
+import { BridgesDemo } from '../gpu/BridgesDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -935,6 +936,12 @@ const DEMOS: readonly {
     name: 'Noughts and crosses in a cube',
     line: 'Noughts and crosses in a cube — four layers of four by four, and four in a line wins, through the layers as well as across them. Seventy-six lines, against a computer that hunts for threats you cannot all answer, or a friend.',
     Demo: CubeDemo,
+  },
+  {
+    id: 'bridges',
+    name: 'Island bridges',
+    line: 'Island bridges — join every island with straight bridges, as many as its number, none crossing, until they all connect. A new map each day, the same for everyone, against the clock.',
+    Demo: BridgesDemo,
   },
 ]
 

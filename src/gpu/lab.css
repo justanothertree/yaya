@@ -6264,3 +6264,114 @@ html:has(.lab) {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------- island bridges */
+.ib-room {
+  --ib-water: #cfe8f3;
+  --ib-wave: #b6dcec;
+  --ib-isle: #fff8e6;
+  --ib-ink: #1f3340;
+  --ib-bridge: #7a4a24;
+  --ib-full: #9fd8a8;
+  --ib-over: #e5484d;
+  --ib-pick: #ffb000;
+}
+.ib-room.is-map {
+  --ib-water: #efe2c2;
+  --ib-wave: #e3d2aa;
+  --ib-isle: #fbf5e4;
+  --ib-ink: #4a321b;
+  --ib-bridge: #4a321b;
+  --ib-full: #c9d79b;
+  --ib-over: #b0302a;
+  --ib-pick: #d2691e;
+}
+.ib-room.is-night {
+  --ib-water: #0f1a2e;
+  --ib-wave: #16243d;
+  --ib-isle: #1f3354;
+  --ib-ink: #e8f1ff;
+  --ib-bridge: #ffcf4d;
+  --ib-full: #2f7a5a;
+  --ib-over: #ff5d6c;
+  --ib-pick: #4dd2ff;
+}
+.ib-sea {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--ib-n), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--ib-n), minmax(0, 1fr));
+  width: min(100%, 520px);
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 30% 20%, var(--ib-wave) 0 2px, transparent 3px) 0 0 / 28px 28px,
+    var(--ib-water);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ib-ink), transparent 80%);
+}
+.ib-bridges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.ib-bridge {
+  stroke: var(--ib-bridge);
+  stroke-width: 0.09;
+  stroke-linecap: round;
+}
+/* where the picked island can reach: a faint dashed line to each island it sees */
+.ib-reach {
+  stroke: var(--ib-pick);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.12 0.12;
+  opacity: 0.8;
+}
+.ib-isle {
+  position: relative;
+  z-index: 1;
+  place-self: center;
+  width: 82%;
+  aspect-ratio: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 2px solid var(--ib-ink);
+  border-radius: 50%;
+  background: var(--ib-isle);
+  color: var(--ib-ink);
+  font-weight: 700;
+  font-size: calc(min(100vw - 32px, 520px) / var(--ib-n) * 0.42);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    transform 0.15s;
+}
+.ib-isle.is-full {
+  background: var(--ib-full);
+}
+.ib-isle.is-over {
+  border-color: var(--ib-over);
+  color: var(--ib-over);
+}
+.ib-isle.is-picked {
+  box-shadow: 0 0 0 3px var(--ib-pick);
+  transform: scale(1.08);
+}
+.ib-isle:focus-visible {
+  outline: 3px solid var(--ib-pick);
+  outline-offset: 2px;
+}
+.ib-sea.is-done .ib-isle {
+  background: var(--ib-full);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ib-isle {
+    transition: none;
+  }
+  .ib-isle.is-picked {
+    transform: none;
+  }
+}
