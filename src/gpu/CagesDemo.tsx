@@ -36,6 +36,7 @@ const PENALTY = 30
 const dayNumber = (d = new Date()) =>
   Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
 const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 7919)) >>> 0
+const blank = (n: number) => new Array<number>(n * n).fill(0)
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 export function CagesDemo() {
@@ -44,8 +45,21 @@ export function CagesDemo() {
   const daily = seed === seedFor(saved.size)
   const p: Puzzle = useMemo(() => make(saved.size, seed), [saved.size, seed])
   const n = p.n
-  const [grid, setGrid] = useState<number[]>(() => new Array(n * n).fill(0))
-  const [notes, setNotes] = useState<number[]>(() => new Array(n * n).fill(0))
+  /**
+   * The numbers and notes, kept with the puzzle they belong to. A new size renders once before the
+   * effect below can reset anything, and a grid of the old size read against the new puzzle's cages
+   * crashed the whole Lab: 4×4 after 5×5 asked for the cage of a sixteenth cell that has none
+   */
+  const [play, setPlay] = useState(() => ({ p, grid: blank(n), notes: blank(n) }))
+  const { grid, notes } = play.p === p ? play : { grid: blank(n), notes: blank(n) }
+  const change = (f: (s: { grid: number[]; notes: number[] }) => Partial<typeof play>) =>
+    setPlay((s) => {
+      const base = s.p === p ? s : { p, grid: blank(n), notes: blank(n) }
+      return { ...base, ...f(base) }
+    })
+  const setGrid = (g: number[]) => change(() => ({ grid: g }))
+  const setNotes = (f: number[] | ((x: number[]) => number[])) =>
+    change((s) => ({ notes: typeof f === 'function' ? f(s.notes) : f }))
   const [history, setHistory] = useState<{ grid: number[]; notes: number[] }[]>([])
   const [sel, setSel] = useState(0)
   const [pencil, setPencil] = useState(false)
@@ -66,8 +80,7 @@ export function CagesDemo() {
   }, [saved])
   // a fresh grid whenever the puzzle changes
   useEffect(() => {
-    setGrid(new Array(p.n * p.n).fill(0))
-    setNotes(new Array(p.n * p.n).fill(0))
+    setPlay({ p, grid: blank(p.n), notes: blank(p.n) })
     setHistory([])
     setSel(0)
     setStarted(null)
