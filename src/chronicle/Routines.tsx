@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dropRoutine, myRoutines, saveRoutine, type Routine } from './cloud'
-import { spanText, type Activity } from './record'
+import { spanText, typedMinutes, type Activity } from './record'
 import { readRoutine } from './routine'
 import { LIMIT } from './limits'
 
@@ -290,11 +290,7 @@ export function Routines({
                   : undefined
               }
               onClick={() => {
-                const n = Number(stepMins)
-                setDraftSteps((d) => [
-                  ...d,
-                  { activity: pick, mins: Number.isFinite(n) && n > 0 ? Math.round(n) : null },
-                ])
+                setDraftSteps((d) => [...d, { activity: pick, mins: typedMinutes(stepMins) }])
                 setPick('')
                 setStepMins('')
               }}

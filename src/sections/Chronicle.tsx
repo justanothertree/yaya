@@ -62,7 +62,7 @@ import {
   type Marked,
   type MarkAt,
 } from '../chronicle/marks'
-import { CATS, countText, spanText, type Activity } from '../chronicle/record'
+import { CATS, countText, spanText, typedMinutes, type Activity } from '../chronicle/record'
 import {
   EVERY_DAY,
   dayLetter,
@@ -717,10 +717,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
       counts: hasTarget ? goalCounts : 'minutes',
       /* ⚠️ a blank or unreadable guess is null, not zero: "no idea" is a real answer and zero
          minutes of work is not — see Goal.est, and `weight`, which has to count the difference */
-      est: (() => {
-        const n = Number(est)
-        return est.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
-      })(),
+      est: typedMinutes(est),
       priority: pri,
       /** see `unitFor` — a target always carries a unit, and the room usually knows which */
       unit: hasTarget

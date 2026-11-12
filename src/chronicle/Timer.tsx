@@ -67,6 +67,7 @@ import {
   straddles,
   countText,
   spanText,
+  typedMinutes,
   writeLocal,
   type Activity,
   type Entry,
@@ -855,12 +856,6 @@ export function Timer({
     await after()
   }
 
-  /* ⚠️ blank and nonsense both mean "no opinion", never zero — see Activity.session */
-  const asMins = (typed: string): number | null => {
-    const n = Number(typed)
-    return typed.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
-  }
-
   /**
    * The note, which belongs to the sitting it was typed about and used to follow you off it.
    *
@@ -1023,7 +1018,7 @@ export function Timer({
     const n = newName.trim()
     if (!n || busy) return
     setBusy(true)
-    const r = await saveActivity(n, newCat, null, undefined, newMetric, asMins(newSession))
+    const r = await saveActivity(n, newCat, null, undefined, newMetric, typedMinutes(newSession))
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setNewName('')
@@ -1103,7 +1098,7 @@ export function Timer({
       actColour ?? '',
       fixAct,
       actMetric,
-      asMins(actSession),
+      typedMinutes(actSession),
       actShared,
     )
     setBusy(false)
