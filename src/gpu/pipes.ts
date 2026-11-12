@@ -7,6 +7,7 @@
  * Pure, so pipes.test.ts can make and solve a few thousand boards without a page. A tile is the
  * set of sides it opens on, as bits: north 1, east 2, south 4, west 8.
  */
+import { keepBestOf } from './daily'
 import { rng } from './bricks'
 
 export const N = 1
@@ -187,11 +188,11 @@ export function readSaved(text: string | null): Saved {
   }
 }
 /** keep a finish if it beats what is there for that day and board, and only recent days */
-export function keepBest(bests: Best[], b: Best, today: number): Best[] {
-  const same = (x: Best) => x.day === b.day && x.size === b.size && x.wrap === b.wrap
-  const old = bests.find(same)
-  const better =
-    !old || b.seconds < old.seconds || (b.seconds === old.seconds && b.turns < old.turns)
-  const kept = better ? [...bests.filter((x) => !same(x)), b] : bests
-  return kept.filter((x) => x.day > today - 14)
-}
+export const keepBest = (bests: Best[], b: Best, today: number): Best[] =>
+  keepBestOf(
+    bests,
+    b,
+    today,
+    (x, y) => x.day === y.day && x.size === y.size && x.wrap === y.wrap,
+    (x, old) => x.seconds < old.seconds || (x.seconds === old.seconds && x.turns < old.turns),
+  )

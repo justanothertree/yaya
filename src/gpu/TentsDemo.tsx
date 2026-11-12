@@ -17,6 +17,7 @@ import {
   type Saved,
   type Size,
 } from './tents'
+import { clock, dayNumber } from './daily'
 
 const load = (): Saved => {
   try {
@@ -28,10 +29,7 @@ const load = (): Saved => {
 const LOOK_NAMES: Record<Saved['look'], string> = { park: 'Park', beach: 'Beach', night: 'Night' }
 /** seconds added for each hint */
 const PENALTY = 30
-const dayNumber = (d = new Date()) =>
-  Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
 const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 104729)) >>> 0
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 const MARK_WORDS = ['empty', 'a tent', 'grass']
 
 export function TentsDemo() {

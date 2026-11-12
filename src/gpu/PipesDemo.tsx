@@ -19,6 +19,7 @@ import {
   type Saved,
   type Size,
 } from './pipes'
+import { clock, dayNumber } from './daily'
 
 const load = (): Saved => {
   try {
@@ -29,11 +30,8 @@ const load = (): Saved => {
 }
 const LOOK_NAMES: Record<Saved['look'], string> = { water: 'Water', lava: 'Lava', neon: 'Neon' }
 /** a day as a count of days, so "the last fortnight" can be worked out */
-const dayNumber = (d = new Date()) =>
-  Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
 const seedFor = (size: number, wrap: boolean) =>
   (daySeed(new Date()) ^ (size * 7919) ^ (wrap ? 0x5bd1e995 : 0)) >>> 0
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 const SIDE_WORDS: [number, string][] = [
   [N, 'up'],
   [E, 'right'],

@@ -15,6 +15,7 @@ import {
   type Saved,
   type Size,
 } from './cages'
+import { clock, dayNumber } from './daily'
 
 const load = (): Saved => {
   try {
@@ -33,11 +34,8 @@ const OP_WORDS: Record<string, string> = {
 }
 /** seconds added for each hint */
 const PENALTY = 30
-const dayNumber = (d = new Date()) =>
-  Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
 const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 7919)) >>> 0
 const blank = (n: number) => new Array<number>(n * n).fill(0)
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 export function CagesDemo() {
   const [saved, setSaved] = useState<Saved>(load)

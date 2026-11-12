@@ -16,6 +16,7 @@ import {
   type Saved,
   type Size,
 } from './lamps'
+import { dayNumber } from './daily'
 
 const load = (): Saved => {
   try {
@@ -30,8 +31,6 @@ const LOOK_NAMES: Record<Saved['look'], string> = {
   neon: 'Neon',
 }
 const PATTERN_NAMES: Record<Pattern, string> = { plus: '✚ Beside', cross: '✖ Corners' }
-const dayNumber = (d = new Date()) =>
-  Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
 const seedFor = (size: number, pattern: Pattern) =>
   (daySeed(new Date()) ^ (size * 7919) ^ (pattern === 'cross' ? 0x2545f491 : 0)) >>> 0
 

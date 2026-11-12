@@ -8,6 +8,7 @@
  * solution of one linear system, and when that system has more than one solution (a 5 × 5 board
  * has four) the fewest presses are found by trying every one.
  */
+import { keepBestOf } from './daily'
 import { rng } from './bricks'
 
 export const SIZES = [4, 5, 6, 7] as const
@@ -155,9 +156,11 @@ export function readSaved(text: string | null): Saved {
   }
 }
 /** keep a finish if it took fewer presses than what is there for that day and board */
-export function keepBest(bests: Best[], b: Best, today: number): Best[] {
-  const same = (x: Best) => x.day === b.day && x.size === b.size && x.pattern === b.pattern
-  const old = bests.find(same)
-  const kept = !old || b.presses < old.presses ? [...bests.filter((x) => !same(x)), b] : bests
-  return kept.filter((x) => x.day > today - 14)
-}
+export const keepBest = (bests: Best[], b: Best, today: number): Best[] =>
+  keepBestOf(
+    bests,
+    b,
+    today,
+    (x, y) => x.day === y.day && x.size === y.size && x.pattern === y.pattern,
+    (x, old) => x.presses < old.presses,
+  )

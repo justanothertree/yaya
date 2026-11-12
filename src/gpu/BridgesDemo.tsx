@@ -17,6 +17,7 @@ import {
   type Saved,
   type Size,
 } from './bridges'
+import { clock, dayNumber } from './daily'
 
 const load = (): Saved => {
   try {
@@ -28,10 +29,7 @@ const load = (): Saved => {
 const LOOK_NAMES: Record<Saved['look'], string> = { sea: 'Sea', map: 'Old map', night: 'Night' }
 /** seconds added for each hint */
 const PENALTY = 30
-const dayNumber = (d = new Date()) =>
-  Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
 const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 7919)) >>> 0
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 const DIRS: Record<string, [number, number, string]> = {
   ArrowUp: [-1, 0, 'up'],
   ArrowDown: [1, 0, 'down'],

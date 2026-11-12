@@ -7,6 +7,7 @@
  * Pure, so bridges.test.ts can make and solve hundreds of puzzles without a page. The grid is n by
  * n; a cell is row * n + column.
  */
+import { keepBestOf } from './daily'
 import { rng } from './bricks'
 
 export const SIZES = [7, 9, 11] as const
@@ -367,9 +368,11 @@ export function readSaved(text: string | null): Saved {
   }
 }
 /** keep a finish if it beats what is there for that day and size, and only the last fortnight */
-export function keepBest(bests: Best[], b: Best, today: number): Best[] {
-  const same = (x: Best) => x.day === b.day && x.size === b.size
-  const old = bests.find(same)
-  const kept = !old || b.seconds < old.seconds ? [...bests.filter((x) => !same(x)), b] : bests
-  return kept.filter((x) => x.day > today - 14)
-}
+export const keepBest = (bests: Best[], b: Best, today: number): Best[] =>
+  keepBestOf(
+    bests,
+    b,
+    today,
+    (x, y) => x.day === y.day && x.size === y.size,
+    (x, old) => x.seconds < old.seconds,
+  )

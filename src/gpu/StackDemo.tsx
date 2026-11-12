@@ -30,6 +30,7 @@ import {
   type Saved,
   type Well,
 } from './stack'
+import { clock } from './daily'
 
 type Mode = 'solo' | 'bot' | 'two'
 const MODES: { id: Mode; label: string }[] = [
@@ -131,8 +132,6 @@ function newGame(mode: Mode, bot: Bot, seed = newSeed()): Game {
     seed,
   }
 }
-
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 export function StackDemo() {
   const [saved, setSaved] = useState<Saved>(load)
