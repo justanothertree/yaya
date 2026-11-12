@@ -688,12 +688,7 @@ export function Timer({
     if (!id) return
     const e = log.find((x) => x.id === id)
     if (!e) return
-    entWas.current = { from: e.start, to: e.end }
-    setEntAct(e.activity)
-    setEntFrom(forInput(e.start))
-    setEntTo(e.end ? forInput(e.end) : '')
-    setEntAmount(e.amount == null ? '' : String(e.amount))
-    setEntMood(e.quality == null ? '' : String(e.quality))
+    seedSitting(e)
     setEntNote('')
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [fixEnt, justDid])
@@ -1169,6 +1164,23 @@ export function Timer({
   const forInput = (iso: string): string => writeLocal(new Date(iso))
 
   /**
+   * Fill the sitting editor's fields from a session.
+   *
+   * ⚠️ ONE COPY FOR ALL THREE DOORS. The seeding effect above, the row's ✎ and `openSitting` each
+   * had these six lines, which is how one of them came to fill in less than the others before.
+   * The two clicks still seed at once rather than leaving it to the effect, so the dialog never
+   * draws a frame of the previous session's fields.
+   */
+  const seedSitting = (e: Entry) => {
+    entWas.current = { from: e.start, to: e.end }
+    setEntAct(e.activity)
+    setEntFrom(forInput(e.start))
+    setEntTo(e.end ? forInput(e.end) : '')
+    setEntAmount(e.amount == null ? '' : String(e.amount))
+    setEntMood(e.quality == null ? '' : String(e.quality))
+  }
+
+  /**
    * ⚠️ IT ASKS ABOUT THE WHOLE SESSION, BECAUSE THAT IS WHAT IT DELETES. The day list shows a
    * straddling session's OVERLAP with the day you are looking at, so this read "Delete the 30m of
    * Writing?" for a session that was 1h 30m and then removed all of it, including the hour sitting
@@ -1234,12 +1246,7 @@ export function Timer({
   const openSitting = (day: string, e: Entry) => {
     setSeeing(day)
     setFixEnt(e.id)
-    entWas.current = { from: e.start, to: e.end }
-    setEntAct(e.activity)
-    setEntFrom(forInput(e.start))
-    setEntTo(e.end ? forInput(e.end) : '')
-    setEntAmount(e.amount == null ? '' : String(e.amount))
-    setEntMood(e.quality == null ? '' : String(e.quality))
+    seedSitting(e)
   }
 
   const forget = async (e: Entry) => {
@@ -2244,12 +2251,7 @@ export function Timer({
                     className="btn btn-ghost chron-x"
                     onClick={() => {
                       setFixEnt(fixEnt === e.id ? null : e.id)
-                      setEntAct(e.activity)
-                      entWas.current = { from: e.start, to: e.end }
-                      setEntFrom(forInput(e.start))
-                      setEntTo(e.end ? forInput(e.end) : '')
-                      setEntAmount(e.amount == null ? '' : String(e.amount))
-                      setEntMood(e.quality == null ? '' : String(e.quality))
+                      seedSitting(e)
                     }}
                     aria-label="Change this session"
                     title="Change this session"
