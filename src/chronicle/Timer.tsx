@@ -2,7 +2,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   addEntry,
   addNote,
-  archiveActivity,
   dayNotesBetween,
   dropEntry,
   editEntry,
@@ -42,15 +41,16 @@ import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
 import { countedIn, dayOfStart, moveNote, setName, type ChronSet } from './sets'
-import { fit, fitText, unitOf } from './units'
+import { unitOf } from './units'
 import { LIMIT } from './limits'
+import { ActivitiesFold } from './ActivitiesFold'
+import { useActivityEditor } from './useActivityEditor'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
   clockOfLocal,
   clockText,
   longRun,
-  COLOURS,
   dayBounds,
   gapSince,
   sitting,
@@ -292,36 +292,6 @@ export function Timer({
    * needs a thing has to carry the control for it.
    */
   const [gapAct, setGapAct] = useState('')
-  /**
-   * Which activity and which span are being edited, if any.
-   *
-   * ⚠️ INLINE RATHER THAN IN A DIALOG, and the reason is what they are for. Both of these are
-   * repairs made while you are looking at the thing that is wrong — "that says Free Time and it
-   * should say Life", "that ran for four hours because I forgot to stop it" — so the fix belongs
-   * in the row rather than behind a button that covers it up.
-   */
-  const [fixAct, setFixAct] = useState<string | null>(null)
-  /** whether the Activities fold is open — see the note where it is drawn */
-  const [actsOpen, setActsOpen] = useState(false)
-  /** the activity editor's "also counts" box, so the door to it can land the cursor there */
-  const metricBox = useRef<HTMLInputElement>(null)
-  /* bumped by the door; the effect below acts once per bump, after the fold has rendered open */
-  const [toMetric, setToMetric] = useState(0)
-  useEffect(() => {
-    if (!toMetric) return
-    const el = metricBox.current
-    if (!el) return
-    el.scrollIntoView({ block: 'center' })
-    el.focus()
-  }, [toMetric])
-  const [actName, setActName] = useState('')
-  const [actCat, setActCat] = useState<Activity['cat']>('free')
-  /** what this activity counts besides time — "pages", "reps", blank for nothing */
-  const [actColour, setActColour] = useState<string | null>(null)
-  const [actMetric, setActMetric] = useState('')
-  /** how long a sitting of it ought to be, in minutes — blank for no opinion */
-  const [actSession, setActSession] = useState('')
-  const [actShared, setActShared] = useState(false)
   /* ⚠️ false, and it resets on every load rather than being remembered: the site's own minutes
      are a thing you look up, not a thing you read every day */
   const [seeSite, setSeeSite] = useState(false)
@@ -695,6 +665,9 @@ export function Timer({
     onChange?.()
   }
 
+  /** the Activities fold's editor — see useActivityEditor */
+  const actEd = useActivityEditor({ acts, busy, setBusy, moan, after })
+
   /**
    * ⚠️ FLUSHED FROM `go` AND FROM `halt`, because a switch closes the sitting and a count still
    * sitting in React state when that happens is a count nobody logged. In `halt` it goes BEFORE
@@ -1056,57 +1029,6 @@ export function Timer({
     await after()
   }
 
-  const saveAct = async () => {
-    const n = actName.trim()
-    if (!fixAct || !n || busy) return
-    /**
-     * ⚠️ RENAMING WHAT AN ACTIVITY COUNTS RELABELS EVERY NUMBER ALREADY RECORDED AGAINST IT, and
-     * it does it silently. An entry's `amount` is a bare number; the word beside it is the
-     * activity's metric, read live. Change "reps" to "pages" and a 45-minute gym session that
-     * said "60 reps" says "60 pages", and a goal counting it reads "FROM GYM · PAGES · 180 /
-     * 20000 reps" — the chip and the meter disagreeing in one row.
-     *
-     * ⚠️ SO IT ASKS, RATHER THAN REPAIRING. Putting those numbers right means deleting
-     * quantities out of sessions somebody recorded, which is not a thing to do on their behalf —
-     * see the design doc, where it is left open deliberately. What IS right is to say what this
-     * will do at the moment somebody is choosing, which is the same lesson as the delete
-     * confirmation that used to understate what it removed.
-     *
-     * ⚠️ ONLY WORD → DIFFERENT WORD. Naming a metric for the first time cannot relabel anything
-     * that was recorded without one, and clearing a metric hides the numbers rather than
-     * reinterpreting them — measured, both. The one that rewrites meaning is the swap.
-     */
-    const was = (acts ?? []).find((a) => a.id === fixAct)?.metric?.trim() || ''
-    const now = actMetric.trim()
-    if (
-      was &&
-      now &&
-      was !== now &&
-      !window.confirm(
-        `Anything already recorded against ${n} was counted in ${was}. Changing this to ${now} makes every one of those numbers read as ${now} instead. Change it?`,
-      )
-    )
-      return
-    setBusy(true)
-    /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
-       id since step 2 and nothing had ever passed one, which is why a category was permanent */
-    /* ⚠️ '' rather than null when there is no colour: null means "leave it alone" on the way in —
-       see chronicle_activity_save — so clearing one has to be asked for. */
-    const r = await saveActivity(
-      n,
-      actCat,
-      actColour ?? '',
-      fixAct,
-      actMetric,
-      typedMinutes(actSession),
-      actShared,
-    )
-    setBusy(false)
-    if ('why' in r) return moan(r.why)
-    setFixAct(null)
-    await after()
-  }
-
   /**
    * ⚠️ LOCAL TIME IN, ISO OUT. A `datetime-local` input gives "2026-10-12T21:30" with no zone,
    * which `new Date()` reads as LOCAL — correct here, and the one case where parsing a date string
@@ -1308,23 +1230,6 @@ export function Timer({
    * is where one of them would quietly stop seeding a field the other does — the amount, say,
    * which the week grid's version already had to remember.
    */
-  /**
-   * Open an activity's editor, seeded with what it holds now.
-   *
-   * ⚠️ ONE FUNCTION FOR THE ROW'S NAME BUTTON AND FOR THE "NAME WHAT THIS COUNTS" DOOR, for the
-   * reason `openSitting` below is one: a second copy of these seven lines is where a field stops
-   * being seeded, and an unseeded field here is not a blank — it is the PREVIOUS activity's value,
-   * saved onto this one by the next Save.
-   */
-  const editActivity = (a: Activity) => {
-    setFixAct(a.id)
-    setActName(a.name)
-    setActCat(a.cat)
-    setActColour(a.colour)
-    setActMetric(a.metric ?? '')
-    setActSession(a.session == null ? '' : String(a.session))
-    setActShared(a.shared)
-  }
 
   const openSitting = (day: string, e: Entry) => {
     setSeeing(day)
@@ -2721,9 +2626,9 @@ export function Timer({
                     onClick={() => {
                       setFixEnt(null)
                       setJustDid(null)
-                      setActsOpen(true)
-                      editActivity(act)
-                      setToMetric((n) => n + 1)
+                      actEd.setActsOpen(true)
+                      actEd.editActivity(act)
+                      actEd.setToMetric((n) => n + 1)
                       onShow?.('day')
                     }}
                   >
@@ -2892,269 +2797,16 @@ export function Timer({
       {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
       {show === 'day' && open.length > 0 && (
-        /* ⚠️ CONTROLLED, because something besides its own summary now opens it — the "name what
-           this counts" door in a sitting's editor. `onToggle` keeps the state honest when a person
-           opens or closes it by hand, so the two never disagree about whether it is open. */
-        <details
-          className="chron-tidy"
-          open={actsOpen}
-          onToggle={(ev) => setActsOpen(ev.currentTarget.open)}
-        >
-          <summary>Activities</summary>
-          <ul className="chron-acts">
-            {(acts ?? []).map((a) =>
-              fixAct === a.id ? (
-                <li key={a.id} className="chron-fix">
-                  <label>
-                    <span className="sr-only">Name</span>
-                    <input
-                      value={actName}
-                      maxLength={LIMIT.name}
-                      onChange={(e) => setActName(e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span className="sr-only">Which kind</span>
-                    <select
-                      value={actCat}
-                      onChange={(e) => setActCat(e.target.value as Activity['cat'])}
-                    >
-                      {CATS.map(([c, label]) => (
-                        <option key={c} value={c}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {/**
-                   * ⚠️ A COLOUR IS DECORATION BESIDE A NAME, never the only thing carrying it.
-                   * The dot sits next to the word everywhere it is drawn, so somebody who cannot
-                   * tell the colours apart loses nothing — which is the only reason a row of
-                   * swatches is allowed to be the control.
-                   */}
-                  <span className="chron-swatches" role="group" aria-label="A colour for this">
-                    {COLOURS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={'chron-swatch' + (actColour === c ? ' is-on' : '')}
-                        style={{ background: c }}
-                        aria-pressed={actColour === c}
-                        aria-label={`Colour ${COLOURS.indexOf(c) + 1} of ${COLOURS.length}`}
-                        onClick={() => setActColour(c)}
-                      />
-                    ))}
-                    <button
-                      type="button"
-                      className={'chron-swatch is-none' + (actColour == null ? ' is-on' : '')}
-                      aria-pressed={actColour == null}
-                      aria-label="No colour"
-                      onClick={() => setActColour(null)}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                  <label className="chron-qty">
-                    <span className="sr-only">Also counts (optional)</span>
-                    <input
-                      ref={metricBox}
-                      value={actMetric}
-                      maxLength={LIMIT.unit}
-                      placeholder="pages?"
-                      onChange={(e) => setActMetric(e.target.value)}
-                    />
-                  </label>
-                  <label className="chron-qty">
-                    <span className="sr-only">How long should one sitting be, in minutes</span>
-                    <input
-                      value={actSession}
-                      inputMode="numeric"
-                      placeholder="30m a sitting?"
-                      onChange={(e) => setActSession(e.target.value)}
-                    />
-                  </label>
-                  {/**
-                   * ⚠️ THE ONE CONTROL IN THIS ROOM THAT SHOWS SOMETHING TO SOMEBODY ELSE, so it
-                   * says who rather than just "share". "Shared" alone would be answered with
-                   * "with whom?" and the answer is not guessable: friends, never members, never
-                   * the web — see docs/2026-10-23-chronicle-friends-timeline.sql for why a
-                   * sitting-by-sitting record does not inherit the wider tiers the profile card
-                   * may be set to.
-                   *
-                   * ⚠️ AND IT IS PER ACTIVITY BECAUSE THAT IS THE DECISION PEOPLE ACTUALLY MAKE.
-                   * Nobody wants to rule on each sitting; everybody can say whether Gym is
-                   * anybody's business. The line under it is drawn from `shared` itself rather
-                   * than written once, so it cannot drift from what the tick does.
-                   */}
-                  {/**
-                   * ⚠️ AND A TICK CANNOT SAY `certain`, SO IT STANDS ASIDE RATHER THAN LYING.
-                   * `chronicle_activities_tier_agrees` pins `shared` to friends-or-wider, so an
-                   * activity shared with three chosen friends has `shared = false` — this box
-                   * would show empty above sittings those three can see, and ticking it would
-                   * widen the activity to every friend and strip the list on the way out. The
-                   * three-level picker lives in Sharing, which has room for the list; this is
-                   * the quick switch for the two states it can express, and it defers when the
-                   * value is the third.
-                   */}
-                  {/**
-                   * ⚠️ FROM THE CIRCUIT: WHICH EXERCISES COUNT TOWARD THIS, decided by units and
-                   * never by names (§19g). Three kinds of row — ones that fit, as toggles; ones in a
-                   * different unit, said plainly; and ones whose unit nobody can compare, listed as
-                   * needing a decision rather than linked by a guess. It reads the SAVED metric,
-                   * because that is what the server compares.
-                   */}
-                  {(() => {
-                    const act = byId.get(fixAct ?? '')
-                    if (!act || !exercises?.length) return null
-                    const rows = exercises.map((x) => ({ x, f: fit(x.unit, act.metric) }))
-                    const can = rows.filter((r) => r.f.ok).map((r) => r.x)
-                    const other = rows.filter((r) => !r.f.ok && r.f.why === 'different')
-                    const unsure = rows.filter((r) => !r.f.ok && r.f.why === 'unknown')
-                    if (!act.metric?.trim()) {
-                      return (
-                        <p className="muted chron-links-note">
-                          Give this a count (reps, minutes, miles…) to link Circuit exercises to it.
-                        </p>
-                      )
-                    }
-                    return (
-                      <div
-                        className="chron-links"
-                        role="group"
-                        aria-label="Circuit exercises this counts"
-                      >
-                        <span className="muted">From the Circuit, in {act.metric}</span>
-                        {can.map((x) => {
-                          const mine = x.activity === act.id
-                          const elsewhere =
-                            x.activity && x.activity !== act.id ? byId.get(x.activity)?.name : null
-                          return (
-                            <button
-                              key={`${x.person}/${x.exercise}`}
-                              type="button"
-                              className={'btn btn-ghost chron-link' + (mine ? ' is-on' : '')}
-                              aria-pressed={mine}
-                              disabled={busy}
-                              onClick={() => void toggleLink(x, mine ? null : act.id)}
-                            >
-                              {x.name}
-                              {elsewhere ? (
-                                <span className="muted"> · counts as {elsewhere}</span>
-                              ) : null}
-                            </button>
-                          )
-                        })}
-                        {can.length === 0 ? (
-                          <span className="muted">none in {act.metric}</span>
-                        ) : null}
-                        {other.length ? (
-                          <p className="muted chron-links-note">
-                            Not here: {other.map((r) => `${r.x.name} (${r.x.unit})`).join(', ')}.
-                          </p>
-                        ) : null}
-                        {unsure.length ? (
-                          <p className="muted chron-links-note">
-                            Needs a decision — these units cannot be compared with anything:{' '}
-                            {unsure.map((r) => `${r.x.name} (${r.x.unit || 'none'})`).join(', ')}.
-                          </p>
-                        ) : null}
-                        {exercises.some((x) => x.activity === act.id && x.ok === false) ? (
-                          <p className="muted chron-links-note">
-                            A link here no longer agrees on units, so it counts nothing until it
-                            does:{' '}
-                            {exercises
-                              .filter((x) => x.activity === act.id && x.ok === false)
-                              .map((x) => `${x.name} (${fitText(fit(x.unit, act.metric))})`)
-                              .join(', ')}
-                            .
-                          </p>
-                        ) : null}
-                      </div>
-                    )
-                  })()}
-                  {byId.get(fixAct ?? '')?.visibility === 'certain' ? (
-                    <p className="muted chron-share-note">
-                      Shared with the friends you chose. Change who in <strong>Sharing</strong>.
-                    </p>
-                  ) : (
-                    <label className="chron-share">
-                      <input
-                        type="checkbox"
-                        checked={actShared}
-                        onChange={(e) => setActShared(e.target.checked)}
-                      />
-                      <span>Friends can see this</span>
-                    </label>
-                  )}
-                  <button
-                    className="btn"
-                    disabled={!actName.trim() || busy}
-                    onClick={() => void saveAct()}
-                  >
-                    Save
-                  </button>
-                  <button className="btn btn-ghost" onClick={() => setFixAct(null)}>
-                    Cancel
-                  </button>
-                </li>
-              ) : (
-                <li key={a.id}>
-                  {/**
-                   * ⚠️ THE NAME IS THE BUTTON, like the instrument's layer rows: the row already
-                   * names the thing and says what kind it is, so it may as well be the control
-                   * for changing both. A separate pencil would be a sixth small target in a row.
-                   *
-                   * ⚠️ AND THE SITE-WRITTEN ONES ARE EDITABLE TOO, which is the point of making
-                   * them ordinary activities. They arrive as Free Time because that is the only
-                   * honest guess, and reading a week back showed exactly why it matters: time in
-                   * the Instrument sitting in the same bucket as actual free time.
-                   */}
-                  <button
-                    className="btn btn-ghost chron-act-name"
-                    onClick={() => editActivity(a)}
-                    title={`Rename ${a.name}, or change what kind it is`}
-                  >
-                    {a.colour ? (
-                      <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-                    ) : null}
-                    {a.name}
-                    <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
-                    {/**
-                     * ⚠️ THE TWO OPTIONAL FACTS ARE MARKED, so a phone can drop them. The row
-                     * carries a name, a category, a metric, a sitting length, today's minutes and
-                     * an Archive button; at 375 the name button gets about 178px of that and was
-                     * wrapping to three ragged lines with "· 30m a sitting" spilling past its own
-                     * rounded background. Same answer as `.chron-plan-note` and `.chron-ent-when`:
-                     * the first things to go when a row will not fit a thumb are the ones the
-                     * editor shows anyway — and this button IS the editor's door.
-                     */}
-                    {a.metric ? <span className="muted chron-act-extra">· {a.metric}</span> : null}
-                    {a.session ? (
-                      <span className="muted chron-act-extra">
-                        · {spanText(a.session * 60_000)} a sitting
-                      </span>
-                    ) : null}
-                    {a.auto ? <span className="chron-chip">on the site</span> : null}
-                  </button>
-                  {mins[a.id] ? (
-                    <span className="chron-ent-span">{spanText(mins[a.id] * 60_000)}</span>
-                  ) : null}
-                  <button
-                    className="btn btn-ghost"
-                    onClick={async () => {
-                      await archiveActivity(a.id, !a.archived)
-                      /* ⚠️ `after` for the same reason as makeActivity: archiving the last
-                         activity leaves the goals half still offering it as a source */
-                      await after()
-                    }}
-                  >
-                    {a.archived ? 'Bring back' : 'Archive'}
-                  </button>
-                </li>
-              ),
-            )}
-          </ul>
-        </details>
+        <ActivitiesFold
+          ed={actEd}
+          acts={acts}
+          byId={byId}
+          exercises={exercises}
+          mins={mins}
+          busy={busy}
+          after={after}
+          toggleLink={toggleLink}
+        />
       )}
 
       {say && <p className="chron-say">{say}</p>}
