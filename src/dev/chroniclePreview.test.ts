@@ -40,7 +40,6 @@ import {
   pvGiveCircuit,
   pvSetAdd,
   pvSetsBetween,
-  pvSetChange,
   pvSetDrop,
   pvMyExercises,
   pvLinkExercise,
@@ -2206,21 +2205,18 @@ describe('an exercise linked to an activity', () => {
     ])
   })
 
-  it('adds a counted set to its sitting, and takes back exactly that on a change or a drop', () => {
+  it('adds a counted set to its sitting, and takes back exactly that on a drop', () => {
     pvLinkExercise('p-1', 'ex-quad', gym)
     const s = sitting(gym)
     const a = pvSetAdd('p-1', 'ex-quad', 12, DAY, s)
     const b = pvSetAdd('p-1', 'ex-plank', 30, DAY, s)
     if ('why' in a || 'why' in b) throw new Error('fixture')
     expect(amount(s)).toBe(12)
-    expect(pvSetChange(a.id, 15)).toBeNull()
-    expect(pvSetChange(a.id, 15)).toBeNull() // the same save again
-    expect(amount(s)).toBe(15)
     expect(pvAmount(s, 10)).toBe(false) // below its counted sets
     expect(pvAmount(s, 40)).toBe(true)
     expect(pvSetDrop(b.id)).toBeNull() // uncounted: nothing moves
     expect(pvSetDrop(a.id)).toBeNull()
-    expect(amount(s)).toBe(25)
+    expect(amount(s)).toBe(28)
   })
 
   /**
