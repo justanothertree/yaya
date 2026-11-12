@@ -6395,3 +6395,145 @@ html:has(.lab) {
   border-radius: 12px;
   overflow: hidden;
 }
+
+/* ---------------------------------------------------------------- yacht */
+.yt-room {
+  --yt-cloth: #1d6b45;
+  --yt-cloth-2: #0e3d27;
+  --yt-ink: #eaf7ef;
+  --yt-mark: #ffd34d;
+}
+.yt-room.is-wood {
+  --yt-cloth: #8a5a32;
+  --yt-cloth-2: #5b3a1f;
+  --yt-ink: #fff4e4;
+  --yt-mark: #ffe08a;
+}
+.yt-room.is-sea {
+  --yt-cloth: #1c5d86;
+  --yt-cloth-2: #0d3350;
+  --yt-ink: #e8f6ff;
+  --yt-mark: #7ff0ff;
+}
+/* the dice beside the card where there is room, so a turn needs no scrolling between them */
+.yt-play {
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  width: 100%;
+}
+@media (min-width: 900px) {
+  .yt-play {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .yt-play .yt-table {
+    position: sticky;
+    top: 5rem;
+  }
+}
+.yt-table {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  width: min(100%, 520px);
+  padding: 1rem 0.75rem;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at center, var(--yt-cloth), var(--yt-cloth-2) 80%);
+  color: var(--yt-ink);
+}
+.yt-table .die:disabled {
+  cursor: default;
+}
+/* the dice the best player would keep: a dotted ring, beside the solid one of a die kept */
+.die.is-advised {
+  outline: 3px dotted var(--yt-mark);
+  outline-offset: 3px;
+}
+.yt-tumble {
+  animation: yt-tumble 0.35s ease-out;
+}
+@keyframes yt-tumble {
+  from {
+    transform: rotate(-120deg) scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .yt-tumble {
+    animation: none;
+  }
+}
+.yt-card {
+  width: min(100%, 520px);
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.yt-card th,
+.yt-card td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid color-mix(in oklab, currentColor, transparent 85%);
+  text-align: left;
+}
+.yt-card thead th {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+.yt-card td {
+  width: 5.5rem;
+  text-align: center;
+}
+.yt-card tbody th {
+  font-weight: 600;
+}
+.yt-rule {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.yt-split th,
+.yt-split td {
+  border-top: 2px solid color-mix(in oklab, currentColor, transparent 70%);
+}
+.yt-box {
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0.15rem 0.5rem;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in oklab, currentColor, transparent 60%);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.yt-box:disabled {
+  cursor: default;
+  border-color: transparent;
+  opacity: 0.5;
+}
+.yt-box:not(:disabled):hover {
+  background: color-mix(in oklab, currentColor, transparent 90%);
+}
+.yt-box.is-advised {
+  border: 2px solid #e6a700;
+  background: color-mix(in oklab, #ffd34d, transparent 70%);
+}
+.yt-done {
+  font-weight: 700;
+}
+.yt-total th,
+.yt-total td {
+  font-weight: 800;
+  border-bottom: 0;
+}
+/* on a phone the card is tighter, and each box's rule is left to the help below it and the box's
+   own name: the whole card and the dice then nearly fit one screen */
+@media (max-width: 640px) {
+  .yt-card th,
+  .yt-card td {
+    padding: 0.1rem 0.35rem;
+  }
+  .yt-rule {
+    display: none;
+  }
+}
