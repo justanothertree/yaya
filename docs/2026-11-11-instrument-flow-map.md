@@ -81,3 +81,4 @@ made too long.
 | 2. The layer list                                 | 3,266                | `src/instrument/LayerList.tsx` 432                                                     |
 | 3. The backing's state and calls (`useBacking`)   | 3,053                | `src/instrument/useBacking.ts` 272, `backing.ts` 61 (+ test)                           |
 | 4. The Beats & chords panel                       | 2,593                | `src/instrument/BackingPanel.tsx` 498                                                  |
+| 5. Song & transport (`SongControls`)              | 2,139                | `src/instrument/SongControls.tsx` 487                                                  |

@@ -34,6 +34,38 @@ import { ownParts, styleOfBass, styleOfChord, voicingOf } from './backing'
 import { useBacking } from './useBacking'
 
 /**
+ * The beat picker.
+ *
+ * ⚠️ GROUPED BY GENRE AND NAMED BY FEEL, not by tempo or time signature. Somebody who does
+ * not play drums cannot choose between "16th hats at 95bpm" and "shuffled 8ths"; they can
+ * absolutely choose between Reggae and Metal. The grouping is derived from the patterns
+ * themselves so adding one never means editing a second list.
+ */
+/**
+ * Chords to start from, beside the beats, for the reason drumPatterns' header gives:
+ * "somebody who does not play an instrument needs a bar of something in front of them".
+ * Beats answered that for rhythm; this answers it for harmony, which is the half that
+ * makes scale lock worth having — every key is a right note, and now there is something
+ * underneath for those right notes to be right ABOUT.
+ *
+ * ⚠️ IT IS BUILT FROM THE ROOM'S KEY AND SCALE AT THE MOMENT YOU DROP IT, so the
+ * progression and the notes you then play are in the same world without anybody being
+ * asked a question. Chromatic has no degrees to build on, so it borrows the major ones
+ * exactly as the Chord picker does.
+ *
+ * ⚠️ AND RE-LAID WHEN THE KEY CHANGES — Evan's call, 9 Nov 2026. What lands is an ordinary
+ * layer of notes, which is the whole point of these being takes rather than a chord track,
+ * so for two months moving the Key picker re-tuned the keyboard and left the backing where
+ * it was (measured: a progression dropped in C still read C–G–Am–F after the key went to
+ * D). It was left as a question because the layer is editable and re-voicing could
+ * silently overwrite what somebody changed in the roll — the shape CLAUDE.md calls "a save
+ * that writes every column is a delete for the ones the caller forgot". The answer keeps
+ * both: an unedited backing is laid again in the new key, an edited one moves by the same
+ * interval, and on a change of scale — which cannot be done to notes moved by hand — keeps
+ * its old scale and says so.
+ * See the effect beside `layChords`, and `revoice`.
+ */
+/**
  * The Beats & chords panel: Styles, Chords, Played as, Bass, Beat and Fill — moved out of
  * InstrumentRoom.tsx unchanged on 11 Nov 2026.
  *
