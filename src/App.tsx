@@ -1267,8 +1267,15 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const tag = target?.tagName?.toLowerCase()
+      /* a focused <select> uses the arrow keys itself to change its option, and does it as the
+         key's DEFAULT action — so `defaultPrevented` below is false and cannot catch it. Without
+         this, ArrowRight on any dropdown changed the option AND walked off the page (found on
+         the Lab's Level maker). The help listener further down already counts select as typing. */
       const isTyping =
-        tag === 'input' || tag === 'textarea' || (target as HTMLElement)?.isContentEditable
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        (target as HTMLElement)?.isContentEditable
       if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
       /**
        * ⚠️ AND NOT IF SOMETHING HAS ALREADY ANSWERED IT. This listener is on WINDOW, so a
