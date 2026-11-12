@@ -42,7 +42,7 @@ const INSTRUMENT_IDS = INSTRUMENTS.map(([id]) => id)
 export const PHONE_MENU = '(max-width: 40rem)'
 
 /** The room's sound settings, as the room holds them — this panel reads and changes them. */
-export type SoundSettings = {
+type SoundSettings = {
   inst: InstrumentId
   setInst: Dispatch<SetStateAction<InstrumentId>>
   octave: number

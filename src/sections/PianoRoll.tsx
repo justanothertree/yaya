@@ -10,6 +10,7 @@ import {
   type Layer,
 } from '../audio/looper'
 import { SnapPicker } from '../audio/SnapPicker'
+import { isBlack } from '../audio/keyboardSpan'
 import { noteOff, noteOn } from '../audio/synth'
 
 /**
@@ -34,7 +35,6 @@ import { noteOff, noteOn } from '../audio/synth'
  */
 
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-const isBlack = (m: number) => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12)
 const nameOf = (m: number) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`
 
 const ROW_H = 18
