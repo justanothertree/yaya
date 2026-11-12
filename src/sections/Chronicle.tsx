@@ -832,14 +832,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   }
 
   /**
-   * Open the add form empty, or with a title already in it.
-   *
-   * ⚠️ CLEARED ON THE WAY IN, or opening Add straight after a Cancel would show the goal you were
-   * editing and quietly save over it — which is why this is one function for both doors: the
-   * ＋ button and a journal entry handed over by `onIdea`. A second copy of these ten lines is
-   * where one field would quietly stop being cleared.
-   */
-  /**
    * Fill the goal form: from a goal being changed, or empty for a new one, with an optional first
    * draft of its title (see `ideaTitle`).
    *
@@ -860,6 +852,14 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     setWhy(g?.note ?? '')
   }
 
+  /**
+   * Open the add form empty, or with a title already in it.
+   *
+   * ⚠️ CLEARED ON THE WAY IN, or opening Add straight after a Cancel would show the goal you were
+   * editing and quietly save over it — which is why this is one function for both doors: the
+   * ＋ button and a journal entry handed over by `onIdea`. The ten fields themselves are filled by
+   * `fillGoalForm`, for the same reason.
+   */
   const openAdd = (draft: string) => {
     setFixing(null)
     fillGoalForm(null, draft)
