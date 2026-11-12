@@ -22,6 +22,7 @@ import {
 import { DRUMS, INSTRUMENTS, type InstrumentId } from '../audio/synth'
 import { useTouchOnly } from '../ui/pointerKind'
 import { fxWord } from './fxWord'
+import { layerTitle } from './layerTitle'
 
 /**
  * The layers: one row per part, with its sound, the bars it plays in and the controls for it —
@@ -126,7 +127,15 @@ export function LayerList({
                   {soleDrumPiece(l) !== null && (
                     <span className="inst-layer-piece"> {DRUMS[soleDrumPiece(l) as number]}</span>
                   )}
-                  <span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
+                  {/* ⚠️ WHAT IT IS, WHEN THE BACKING LAID IT — item 1 of the 11 Nov 2026 flow map. A
+                      style laid "1. 10 notes", "2. 48 notes" and "3. 8 notes", and which was the
+                      beat was only in each row's sound menu. A part somebody played still counts
+                      its notes, because that count is the handle for "show me those notes". */}
+                  {layerTitle(l) !== null ? (
+                    <span> {layerTitle(l)}</span>
+                  ) : (
+                    <span className="muted"> {l.events.filter((e) => e.on).length} notes</span>
+                  )}
                   {/* ⚠️ WHOSE PART IT IS, when it is not yours. Layers from the room sit in the
                   same list and work the same way — that is the point of sharing them — but an
                   arrangement where you cannot tell your bassline from your friend's is one
