@@ -3,7 +3,7 @@
  * question without a GPU — the same reason the park's physics lives in play.ts.
  *
  * Everything here is pure. What talks to a device is swarmEngine.ts; what talks to React is
- * sections/GpuLab.tsx.
+ * SwarmDemo.tsx.
  */
 
 /** pos.xy + vel.xy as f32, matching `struct Particle` in swarm-types.wgsl */

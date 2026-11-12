@@ -25,7 +25,8 @@ export const CATEGORIES: { id: Category; label: string }[] = [
 
 /**
  * Each experiment's kind, and the day it was added — the author date of the commit that first put
- * its id in the DEMOS list (`git log --format=%as -S "'id'" -- src/sections/GpuLab.tsx`). A new
+ * its id in the DEMOS list (`git log --format=%as -S "'id'" -- src/sections/labDemos.tsx
+ * src/sections/GpuLab.tsx` — the list moved to labDemos.tsx on 12 Nov 2026). A new
  * experiment needs a line here: catalog.test.ts fails until every DEMOS id has one.
  */
 export const META: Record<string, { category: Category; added: string }> = {
