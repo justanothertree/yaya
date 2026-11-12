@@ -102,6 +102,7 @@ import { LayerList } from '../instrument/LayerList'
 import { useBacking } from '../instrument/useBacking'
 import { BackingPanel } from '../instrument/BackingPanel'
 import { SongControls } from '../instrument/SongControls'
+import { openEditor } from '../instrument/openEditor'
 
 /**
  * Somewhere to play.
@@ -485,6 +486,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     opened.current = id
     if (loop.layers.length === 1) setEditing(id)
   }, [loop.made, loop.layers.length])
+  /* ⚠️ an editor for a layer that has gone is not open — see openEditor */
+  useEffect(() => {
+    const still = openEditor(editing, loop.layers)
+    if (still !== editing) setEditing(still)
+  }, [editing, loop.layers])
   /* must agree with the stylesheet about what a phone is — the query is shared, not retyped */
   const narrowBoard = useMediaQuery(PHONE_KEYBOARD)
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
