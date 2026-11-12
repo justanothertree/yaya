@@ -2223,6 +2223,22 @@ describe('an exercise linked to an activity', () => {
     expect(amount(s)).toBe(25)
   })
 
+  /**
+   * ⚠️ IN DECIMALS, THE WAY `numeric` ADDS. The server's write-through sums sets exactly, so 1.1 and
+   * 2.2 make 3.3; JavaScript makes 3.3000000000000003, and a copy holding that would agree with the
+   * room's own floor when both are wrong, which is how a double hides a bug.
+   */
+  it('adds and takes back decimal sets the way the server does, so 1.1 and 2.2 make 3.3', () => {
+    pvLinkExercise('p-1', 'ex-quad', gym)
+    const s = sitting(gym)
+    const a = pvSetAdd('p-1', 'ex-quad', 1.1, DAY, s)
+    const b = pvSetAdd('p-1', 'ex-quad', 2.2, DAY, s)
+    if ('why' in a || 'why' in b) throw new Error('fixture')
+    expect(amount(s)).toBe(3.3)
+    expect(pvSetDrop(a.id)).toBeNull()
+    expect(amount(s)).toBe(2.2)
+  })
+
   it('brings a counted set back only with its sitting, because only then does the file hold it', () => {
     pvLinkExercise('p-1', 'ex-quad', gym)
     const s = sitting(gym)
