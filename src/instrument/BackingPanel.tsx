@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { motionReduced } from '../ui/motion'
 import { BASS_VOICES, INSTRUMENTS, type InstrumentId } from '../audio/synth'
 import { MAJOR_DEGREES } from '../audio/scales'
 import {
@@ -117,8 +118,11 @@ export function BackingPanel({
     if (!el) return
     const top = el.getBoundingClientRect().top
     if (top < window.innerHeight - 48) return
-    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    window.scrollTo({ top: window.scrollY + top - 72, behavior: calm ? 'auto' : 'smooth' })
+    /* motionReduced, not the media query: it also honours the site's own reduce-motion switch */
+    window.scrollTo({
+      top: window.scrollY + top - 72,
+      behavior: motionReduced() ? 'auto' : 'smooth',
+    })
   }, [])
   return (
     <div className="inst-beats card" ref={panel}>
