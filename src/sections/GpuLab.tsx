@@ -135,6 +135,7 @@ import { CubeDemo } from '../gpu/CubeDemo'
 import { BridgesDemo } from '../gpu/BridgesDemo'
 import { PopperDemo } from '../gpu/PopperDemo'
 import { YachtDemo } from '../gpu/YachtDemo'
+import { FoxDemo } from '../gpu/FoxDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -956,6 +957,12 @@ const DEMOS: readonly {
     name: 'Yacht',
     line: 'Yacht — the old dice game: three rolls a turn, keep what you like, and score it in one of twelve boxes, each once. Against a computer that works out every roll left, or alone for a best score.',
     Demo: YachtDemo,
+  },
+  {
+    id: 'fox',
+    name: 'Fox and geese',
+    line: 'Fox and geese — the old hunt game: seventeen geese try to hem in one fox, which jumps and takes them. Play either side against a computer that looks four moves ahead, or a friend.',
+    Demo: FoxDemo,
   },
 ]
 

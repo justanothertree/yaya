@@ -6537,3 +6537,123 @@ html:has(.lab) {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------- fox and geese */
+.fg-room {
+  --fg-field: #cfe6b8;
+  --fg-line: #5f7a46;
+  --fg-goose: #ffffff;
+  --fg-goose-edge: #8a8a7a;
+  --fg-fox: #f08a24;
+  --fg-mark: #2f7ff0;
+}
+.fg-room.is-snow {
+  --fg-field: #eef3f8;
+  --fg-line: #8ea3b8;
+  --fg-goose: #fffdf4;
+  --fg-goose-edge: #6c7a89;
+  --fg-fox: #e0561b;
+  --fg-mark: #7a3cf0;
+}
+.fg-room.is-dusk {
+  --fg-field: #2a2440;
+  --fg-line: #8d7fc0;
+  --fg-goose: #f4f0ff;
+  --fg-goose-edge: #b8a8ff;
+  --fg-fox: #ff9a3d;
+  --fg-mark: #ffd34d;
+}
+.fg-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  width: min(100%, 440px);
+  aspect-ratio: 1;
+  border-radius: 14px;
+  background: var(--fg-field);
+}
+.fg-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  stroke: var(--fg-line);
+  stroke-width: 0.04;
+  stroke-linecap: round;
+}
+.fg-trail {
+  fill: none;
+  stroke: var(--fg-mark);
+  stroke-width: 0.08;
+  stroke-dasharray: 0.12 0.1;
+  opacity: 0.8;
+}
+.fg-pt {
+  position: relative;
+  z-index: 1;
+  place-self: center;
+  width: 74%;
+  aspect-ratio: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  font-size: clamp(16px, 5vw, 28px);
+  line-height: 1;
+  cursor: pointer;
+}
+/* an empty point: a small dot where the lines meet */
+.fg-pt::before {
+  content: '';
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background: var(--fg-line);
+}
+.fg-pt.is-goose::before,
+.fg-pt.is-fox::before {
+  inset: 0;
+}
+.fg-pt.is-goose::before {
+  background: var(--fg-goose);
+  box-shadow:
+    inset 0 0 0 2px var(--fg-goose-edge),
+    0 2px 3px rgb(0 0 0 / 0.3);
+}
+.fg-pt.is-fox::before {
+  background: var(--fg-fox);
+  box-shadow: 0 2px 3px rgb(0 0 0 / 0.35);
+}
+.fg-pt > span {
+  position: relative;
+}
+.fg-pt.is-movable::before {
+  box-shadow:
+    inset 0 0 0 2px var(--fg-goose-edge),
+    0 0 0 3px color-mix(in oklab, var(--fg-mark), transparent 60%);
+}
+.fg-pt.is-picked::before {
+  box-shadow: 0 0 0 4px var(--fg-mark);
+}
+.fg-pt.is-to::before {
+  inset: 30%;
+  background: var(--fg-mark);
+  opacity: 0.75;
+}
+.fg-pt.is-take::before {
+  inset: 22%;
+  background: #e5484d;
+}
+.fg-pt.is-last:not(.is-goose):not(.is-fox)::before {
+  background: var(--fg-mark);
+}
+.fg-pt:focus-visible {
+  outline: 3px solid var(--fg-mark);
+  outline-offset: 2px;
+}
