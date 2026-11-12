@@ -31,6 +31,7 @@ export const BASS_PRESETS: readonly BassPreset[] = [
     hint: 'Finger bass, root and fifth',
   },
   { id: 'rock', name: 'Rock', style: 'pulse', voice: 'pick', hint: 'Pick bass, driving eighths' },
+  { id: 'fuzz', name: 'Fuzz rock', style: 'roots', voice: 'fuzz', hint: 'Fuzz bass, long notes' },
   { id: 'funk', name: 'Funk', style: 'funk', voice: 'slap', hint: 'Slap bass, syncopated' },
   { id: 'walking', name: 'Walking', style: 'walk', voice: 'upright', hint: 'Upright, every beat' },
   { id: 'bossa', name: 'Bossa', style: 'bossa', voice: 'upright', hint: 'Upright, bossa rhythm' },
