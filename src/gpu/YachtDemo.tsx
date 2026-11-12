@@ -22,6 +22,7 @@ import {
   type Saved,
 } from './yacht'
 import { motionReduced as reduced } from '../ui/motion'
+import { DieFace } from './DieFace'
 
 type Mode = 'bot' | 'alone'
 const load = (): Saved => {
@@ -46,15 +47,6 @@ const BOXES: Record<Cat, [string, string]> = {
   big: ['Big straight', '2 to 6: 30'],
   choice: ['Choice', 'all five'],
   yacht: ['Yacht', 'five alike: 50'],
-}
-/** which of the nine places on a die's face hold a pip, for 1 to 6 */
-const PIPS: Record<number, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
 }
 const dicePhrase = (dice: number[]) => (dice.length ? [...dice].sort().join(' ') : 'nothing')
 
@@ -306,11 +298,7 @@ export function YachtDemo() {
                 onClick={() => toggle(i)}
                 style={rolled ? undefined : { opacity: 0.45 }}
               >
-                <span className="die-face" aria-hidden>
-                  {Array.from({ length: 9 }, (_, k) => (
-                    <span key={k} className={PIPS[d].includes(k) ? 'pip' : undefined} />
-                  ))}
-                </span>
+                <DieFace face={d} />
               </button>
             ))}
           </div>

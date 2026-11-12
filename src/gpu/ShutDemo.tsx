@@ -23,6 +23,7 @@ import {
   type Turn,
 } from './shut'
 import { motionReduced as reduced } from '../ui/motion'
+import { DieFace } from './DieFace'
 
 type Mode = 'bot' | 'alone'
 type Whose = 'you' | 'computer' | 'done'
@@ -35,15 +36,6 @@ const load = (): Saved => {
 }
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', felt: 'Felt', brass: 'Brass' }
-/** which of the nine places on a die's face hold a pip, for 1 to 6 */
-const PIPS: Record<number, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
-}
 const TILES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 const and = (t: number[]) =>
   t.length > 1 ? `${t.slice(0, -1).join(', ')} and ${t[t.length - 1]}` : String(t[0] ?? '')
@@ -320,11 +312,7 @@ export function ShutDemo() {
                 role="img"
                 aria-label={`A die showing ${d}`}
               >
-                <span className="die-face" aria-hidden>
-                  {Array.from({ length: 9 }, (_, k) => (
-                    <span key={k} className={PIPS[d].includes(k) ? 'pip' : undefined} />
-                  ))}
-                </span>
+                <DieFace face={d} />
               </span>
             ))
           ) : (

@@ -18,6 +18,7 @@ import {
   type Saved,
 } from './liars'
 import { motionReduced as reduced } from '../ui/motion'
+import { PIPS } from './pips'
 
 const load = (): Saved => {
   try {
@@ -34,15 +35,6 @@ const FACE_WORDS = ['', 'ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const FACE_ONE = ['', 'one', 'two', 'three', 'four', 'five', 'six']
 const say = (b: Bid) => `${b.q} ${b.q === 1 ? FACE_ONE[b.f] : FACE_WORDS[b.f]}`
 const seed = () => (Math.random() * 2 ** 31) | 0
-/** which of the nine pip places a face uses, reading across the rows */
-const PIPS: Record<number, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
-}
 
 function Die({ f, lit, small }: { f: number; lit?: boolean; small?: boolean }) {
   return (

@@ -20,6 +20,7 @@ import {
   type Tile,
 } from './dominoes'
 import { motionReduced as reduced } from '../ui/motion'
+import { PIPS } from './pips'
 
 const load = (): Saved => {
   try {
@@ -38,15 +39,6 @@ const WORDS = ['blank', 'one', 'two', 'three', 'four', 'five', 'six']
 const tileName = (t: [number, number]) => `${WORDS[t[0]]}–${WORDS[t[1]]}`
 
 /** where the pips sit on a half, for each number, in a 3 × 3 */
-const PIPS: number[][] = [
-  [],
-  [4],
-  [0, 8],
-  [0, 4, 8],
-  [0, 2, 6, 8],
-  [0, 2, 4, 6, 8],
-  [0, 2, 3, 5, 6, 8],
-]
 function Half({ n, x }: { n: number; x: number }) {
   return (
     <>
