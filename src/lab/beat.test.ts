@@ -12,7 +12,7 @@ import {
 } from './beat'
 import { roll } from '../gpu/dice'
 import { seeded } from '../gpu/stack'
-import registry from '../sections/GpuLab.tsx?raw'
+import registry from '../sections/labDemos.tsx?raw'
 
 describe('beat links', () => {
   it('round-trip, every field away from its default', () => {

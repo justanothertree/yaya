@@ -36,12 +36,6 @@ import { describe, expect, it } from 'vitest'
 const ROOT = 'src'
 /** The only module allowed to ask the browser. Everything else asks it. */
 const OWNER = join('src', 'ui', 'motion.ts')
-/**
- * ⚠️ `src/gpu` IS SOMEBODY ELSE'S. Another thread owns the WebGPU Lab and this sweep must not
- * reach into it — excluded by directory rather than by filename, so a new Lab file is excluded
- * too and a file moving OUT of the Lab is caught.
- */
-const NOT_OURS = join('src', 'gpu')
 
 const walk = (dir) =>
   readdirSync(dir).flatMap((entry) => {
@@ -54,7 +48,7 @@ describe('one answer to whether things move', () => {
   it('is the only place that asks the browser directly', () => {
     const offenders = []
     for (const file of walk(ROOT)) {
-      if (file === OWNER || file.startsWith(NOT_OURS)) continue
+      if (file === OWNER) continue
       const src = readFileSync(file, 'utf8')
       /* the call, not the words — a comment mentioning the query is fine and several explain
          why the rule exists */
@@ -72,7 +66,7 @@ describe('one answer to whether things move', () => {
     /* a weak but useful floor: if this drops to nothing, the sweep has been undone wholesale
        rather than one file at a time */
     const users = walk(ROOT).filter((f) => {
-      if (f === OWNER || f.startsWith(NOT_OURS)) return false
+      if (f === OWNER) return false
       return /from '[^']*(\.\/|ui\/)(motion|useMotion)'/.test(readFileSync(f, 'utf8'))
     })
     expect(users.length).toBeGreaterThanOrEqual(15)

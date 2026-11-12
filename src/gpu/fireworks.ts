@@ -9,6 +9,8 @@
  * and the test can count a burst's sparks and measure its spread.
  */
 
+import { rng as seeded } from './bricks'
+
 export const PATTERNS = [
   'peony',
   'ring',
@@ -78,15 +80,7 @@ export const DEFAULT_SHELL: Shell = {
 }
 
 /** a seeded random source */
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { seeded }
 
 /* ---------------------------------------------------------------------------- flight and burst */
 
