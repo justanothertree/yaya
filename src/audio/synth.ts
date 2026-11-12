@@ -61,10 +61,16 @@ export type InstrumentId =
   | 'upright'
   | 'synthbass'
   | '808'
+  | 'pick'
+  | 'fretless'
+  | 'acid'
   | 'supersaw'
   | 'chip'
   | 'harpsichord'
   | 'sitar'
+  | 'guitar'
+  | 'overdrive'
+  | 'fuzz'
   | 'drums'
 
 /**
@@ -77,13 +83,19 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['rhodes', '🎛', 'Rhodes'],
   ['harpsichord', '🏰', 'Harpsichord'],
   ['pluck', '🪕', 'Pluck'],
+  ['guitar', '🤘', 'Electric guitar'],
+  ['overdrive', '🔥', 'Overdrive guitar'],
   ['bell', '🔔', 'Bell'],
   ['pad', '🌊', 'Pad'],
   ['bass', '🎸', 'Bass'],
   ['finger', '🖐', 'Finger bass'],
+  ['pick', '🔺', 'Pick bass'],
+  ['fuzz', '🌀', 'Fuzz bass'],
   ['slap', '👋', 'Slap bass'],
+  ['fretless', '〰️', 'Fretless'],
   ['upright', '🌳', 'Upright bass'],
   ['synthbass', '🎚', 'Synth bass'],
+  ['acid', '🧪', 'Acid bass'],
   ['808', '💥', '808'],
   ['sub', '🔊', 'Sub'],
   ['organ', '🎼', 'Organ'],
@@ -122,9 +134,13 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
 export const BASS_VOICES: InstrumentId[] = [
   'bass',
   'finger',
+  'pick',
+  'fuzz',
   'slap',
+  'fretless',
   'upright',
   'synthbass',
+  'acid',
   '808',
   'sub',
 ]
@@ -151,6 +167,11 @@ type Shape = {
   /** a pitch that falls (or rises) into place: multiplier at note-on, and how long it takes */
   pitch?: { mult: number; time: number }
   /**
+   * How hard the note is pushed into a soft clipper before its envelope, 0 to 1 — an amp turned
+   * up. Absent is clean. See `driveCurve`.
+   */
+  drive?: number
+  /**
    * Peak gain, so a bass patch does not drown a bell.
    *
    * ⚠️ IT IS PER PARTIAL, AND THE PARTIALS SUM, which is why reading this column on its own
@@ -164,6 +185,75 @@ type Shape = {
    * than at the number you just typed.
    */
   level: number
+}
+
+/**
+ * How far above a note its WAVEFORM reaches, in harmonics, before it stops mattering to a filter.
+ *
+ * ⚠️ A PARTIAL IS NOT A SINE UNLESS THE WAVE IS ONE. `partials` lists the oscillators stacked to
+ * make a note, but each of them is a whole waveform with its own harmonics: a saw at 82Hz has
+ * energy at 164, 246, 328Hz and on up, falling only as 1/n, so its tenth harmonic is still within
+ * 20dB of the note. A sine has none, and a triangle's fall as 1/n² — its third is already 19dB
+ * down — which is why both are treated as the bare partial, the case the crackle fix was measured on.
+ */
+const WAVE_REACH: Record<OscillatorType, number> = {
+  sine: 1,
+  triangle: 1,
+  sawtooth: 10,
+  square: 10,
+  custom: 1,
+}
+
+/**
+ * Whether a note's filter should sweep, or sit still at its destination.
+ *
+ * ⚠️ 8 Sep 2026's crackle fix skipped the sweep "where the filter's destination sits well above the
+ * highest partial this note actually has" — and measured the highest partial as the highest RATIO,
+ * which is only true of a sine. On a saw or a square that switched the sweep off across most of the
+ * keyboard: Slap lost its snap below A2, Synth bass never swept anywhere a bass line plays, and
+ * Brass lost the swell its own comment calls "the brass" from A♭3 up — eighteen voices in all, and
+ * the timbre changed abruptly at the pitch where the rule flipped. Measured in the room, the share of
+ * a Slap E2's energy above 1.5kHz in its first 43ms was 0.07% before this and 7.8% after — and a
+ * Slap B2, where the old rule did sweep, reads 11–12% either way.
+ *
+ * Near-sines keep the rule exactly as it was measured, because they are where the crackle is
+ * audible; a saw or a square is the "rich patch" that commit found it hides in.
+ */
+export function filterSweeps(
+  sh: Pick<Shape, 'wave' | 'partials' | 'filter'>,
+  freq: number,
+): boolean {
+  if (!sh.filter) return false
+  const top =
+    freq * sh.partials.reduce((m, x) => Math.max(m, x.ratio), 1) * (WAVE_REACH[sh.wave] ?? 1)
+  return Math.max(80, sh.filter.to) <= top * 1.6
+}
+
+const curves = new Map<number, Float32Array<ArrayBuffer>>()
+
+/**
+ * The soft clipper's transfer curve for a drive of 0 to 1: tanh, normalised so ±1 still maps to
+ * ±1. Everything in between is pushed up towards the edges, which is what an amp turned up does —
+ * the quiet part of the wave gets louder, the loud part cannot, and the corners that leaves are
+ * the odd harmonics that make it sound driven.
+ *
+ * ⚠️ PURE AND EXPORTED, so the shape can be asked a question without a browser: that it is odd
+ * (no DC, no even-harmonic lopsidedness), that it never folds back, and that ±1 stays ±1 so the
+ * envelope after it keeps the peak. Memoised, because a voice is made per note.
+ */
+export function driveCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
+  const key = Math.round(drive * 1000) / 1000 + n * 10
+  const had = curves.get(key)
+  if (had) return had
+  const k = 1 + 9 * Math.max(0, Math.min(1, drive))
+  const norm = Math.tanh(k)
+  const out = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1
+    out[i] = Math.tanh(k * x) / norm
+  }
+  curves.set(key, out)
+  return out
 }
 
 /**
@@ -199,6 +289,54 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     partials: [{ ratio: 1, detune: 0, gain: 1 }],
     filter: { from: 4200, to: 500, q: 3 },
     level: 0.55,
+  },
+  /**
+   * Electric guitar, clean: a picked string through an amp. ⚠️ IT HOLDS, which is the whole
+   * difference from every other plucked voice here — Harp, Koto, Banjo and Pluck all die to
+   * nothing, while a pickup and an amp keep a fifth of the note ringing, so a chord can sit under
+   * a song. Two copies of the note a few cents apart are the chorus pedal nearly every clean tone
+   * is played through, and a filter that settles at a mid-bright 1.3kHz keeps it from turning into
+   * the Supersaw. (Evan, 10 Nov 2026: "more instruments".)
+   */
+  guitar: {
+    a: 0.002,
+    d: 1.2,
+    s: 0.22,
+    r: 0.25,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -4, gain: 1 },
+      { ratio: 1, detune: 4, gain: 0.5 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+    ],
+    filter: { from: 3400, to: 1300, q: 1.2 },
+    level: 0.62,
+  },
+  /**
+   * Overdrive guitar: the same picked string as the clean one, through an amp turned up. The
+   * clipper squares off the wave — the grit — and squashes it, which is why it holds nearly half
+   * its level where the clean one keeps a fifth. A filter settling at 2.6kHz is the speaker
+   * cabinet, taking off the fizz a real one would never play.
+   *
+   * ⚠️ A SAW GOES IN, NOT A TRIANGLE, and the first version had it the other way round. A clipped
+   * triangle is a trapezoid, whose harmonics still fall as 1/n² — so it measured DARKER than the
+   * clean guitar (2.8% of its energy above 1kHz at C4 against 16.4%), the opposite of driven. A
+   * clipped saw keeps its 1/n harmonics and adds the corners.
+   */
+  overdrive: {
+    a: 0.002,
+    d: 2,
+    s: 0.45,
+    r: 0.2,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: -5, gain: 1 },
+      { ratio: 1, detune: 5, gain: 0.6 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+    ],
+    drive: 0.6,
+    filter: { from: 3200, to: 2600, q: 1.2 },
+    level: 0.26,
   },
   // 2.76 is deliberately not a musical interval — inharmonic partials are what make metal ring
   bell: {
@@ -849,6 +987,84 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     ],
     pitch: { mult: 1.9, time: 0.06 },
     level: 0.62,
+  },
+  /**
+   * Pick bass: an electric played with a plectrum — the rock bass. Brighter and harder at the
+   * front than Finger, from a saw rather than a triangle, and it holds half its level, so a run
+   * of eighths stays even where Slap would bounce.
+   */
+  pick: {
+    a: 0.002,
+    d: 1,
+    s: 0.5,
+    r: 0.12,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.25 },
+    ],
+    filter: { from: 3200, to: 900, q: 1.5 },
+    level: 0.6,
+  },
+  /**
+   * Fuzz bass: a bass through a fuzz pedal, clipped hard — thick, buzzing and sustained, the bass
+   * under stoner rock and plenty of funk. A saw with an octave below it for weight, the clipper
+   * turned nearly all the way, and a filter left open at 2.4kHz so the buzz is there to hear.
+   *
+   * ⚠️ THE FIRST VERSION SHUT THE FILTER AT 900Hz on a triangle, and measured 0% of its energy
+   * above 1kHz — a fuzz with the fuzz filtered off. See the note on Overdrive about triangles.
+   */
+  fuzz: {
+    a: 0.003,
+    d: 1.2,
+    s: 0.6,
+    r: 0.15,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 0.5, detune: 0, gain: 0.5 },
+    ],
+    drive: 0.85,
+    filter: { from: 2800, to: 2400, q: 0.9 },
+    level: 0.32,
+  },
+  /**
+   * Fretless: smooth and singing, the bass that slides. No fret means every note arrives from a
+   * little under its pitch, so the pitch RISES into place (0.97) where Slap and the 808 fall; a
+   * triangle with a soft octave and a long, held note does the rest.
+   */
+  fretless: {
+    a: 0.02,
+    d: 1.6,
+    s: 0.6,
+    r: 0.3,
+    wave: 'triangle',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.3 },
+    ],
+    filter: { from: 900, to: 900, q: 2 },
+    pitch: { mult: 0.97, time: 0.08 },
+    level: 0.7,
+  },
+  /**
+   * Acid: one saw through a very resonant filter that snaps shut on every note — the squelch of
+   * acid house. The resonance is the instrument; with the per-note sweep it is a "yow" on each
+   * step, and with the part's Glide turned up the notes slide into each other the way the sound is
+   * known for.
+   *
+   * ⚠️ IT NEEDS THE SWEEP, which a saw only gets in the bass register since `filterSweeps` counts
+   * the wave's own harmonics. Under the old rule this was a static resonant hum.
+   */
+  acid: {
+    a: 0.002,
+    d: 0.25,
+    s: 0.2,
+    r: 0.08,
+    wave: 'sawtooth',
+    partials: [{ ratio: 1, detune: 0, gain: 1 }],
+    filter: { from: 3600, to: 260, q: 10 },
+    level: 0.4,
   },
   /**
    * Supersaw: five saws spread around the note — the wall of sound under trance and big pop
@@ -1963,18 +2179,16 @@ export function noteOn(
      *     flute     0%       0.76%                    1.18%
      *     whistle   0%       0.53%                    0.67%
      *
-     * ⚠️ STATIC WHERE THE SWEEP CANNOT BE HEARD. If the filter's destination sits well above the
-     * highest partial this note actually has, the sweep shapes nothing — it only costs the
-     * artefact. Whistle is the clearest case: its filter runs 4000->3200Hz while a C5 tops out at
-     * 1046Hz, three octaves below, so the whole sweep was inaudible and pure cost.
+     * ⚠️ STATIC WHERE THE SWEEP CANNOT BE HEARD — see `filterSweeps`, which decides it. Whistle
+     * is the clearest case: its filter runs 4000->3200Hz while a C5 tops out at 1046Hz, three
+     * octaves below, so the whole sweep was inaudible and pure cost.
      *
      * Everywhere else the sweep genuinely shapes the tone and has to stay, so it uses
      * setTargetAtTime, which measured two and a half times cleaner than the ramp on organ and is
      * a truer shape for a filter decaying anyway.
      */
-    const topPartial = freq * sh.partials.reduce((m, x) => Math.max(m, x.ratio), 1)
     const dest = Math.max(80, sh.filter.to)
-    if (dest > topPartial * 1.6) {
+    if (!filterSweeps(sh, freq)) {
       f.frequency.value = dest
     } else {
       f.frequency.setValueAtTime(sh.filter.from, at)
@@ -1999,6 +2213,24 @@ export function noteOn(
    * changes the total, so the timbre is untouched and the headroom is predictable.
    */
   const partialSum = sh.partials.reduce((n, x) => n + x.gain, 0) || 1
+
+  /**
+   * ⚠️ THE CLIPPER GOES BEFORE THE ENVELOPE, NOT AFTER IT. The partials' shares sum to 1, so what
+   * reaches it never exceeds ±1 — the range its curve is drawn over — and the envelope after it
+   * still decides the peak, so `level` keeps meaning what the note above says it means. Put after
+   * the envelope it would see ±level, a different curve per voice, and a distorted note would
+   * come out louder than its own level by however much the clipper squashed it.
+   */
+  let into: AudioNode = g
+  if (sh.drive) {
+    const shaper = c.createWaveShaper()
+    shaper.curve = driveCurve(sh.drive)
+    /* a hard curve makes harmonics above Nyquist that fold back down as noise; 2x keeps most out */
+    shaper.oversample = '2x'
+    shaper.connect(g)
+    made.push(shaper)
+    into = shaper
+  }
 
   const oscs: OscillatorNode[] = []
   for (const part of sh.partials) {
@@ -2034,11 +2266,11 @@ export function noteOn(
     bus.vib.connect(o.detune)
     const share = part.gain / partialSum
     if (share === 1) {
-      o.connect(g)
+      o.connect(into)
     } else {
       const sub = c.createGain()
       sub.gain.value = share
-      o.connect(sub).connect(g)
+      o.connect(sub).connect(into)
       made.push(sub)
     }
     o.start(at)

@@ -67,11 +67,19 @@ describe('the starters', () => {
 describe('a style can pick its bass voice', () => {
   const by = (id: string) => STARTERS.find((s) => s.id === id)!
 
-  it('Hip hop is an 808, Funk slap, Jazz upright, House synth bass — and the rest plain Bass', () => {
+  it('Hip hop 808, Funk slap, Jazz and Bossa upright, House synth, Rock pick, Reggae sub — rest plain', () => {
     expect(by('hiphop').bassVoice).toBe('808')
     expect(by('funk').bassVoice).toBe('slap')
     expect(by('jazz').bassVoice).toBe('upright')
     expect(by('house').bassVoice).toBe('synthbass')
+    expect(by('rock').bassVoice).toBe('pick')
+    expect(by('bossa').bassVoice).toBe('upright')
+    expect(by('reggae').bassVoice).toBe('sub')
+    expect(
+      STARTERS.filter((s) => s.bassVoice)
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual(['bossa', 'funk', 'hiphop', 'house', 'jazz', 'reggae', 'rock'])
     for (const s of STARTERS) if (s.bassVoice) expect(BASS_VOICES, s.name).toContain(s.bassVoice)
   })
 
@@ -91,5 +99,16 @@ describe('a style can pick its bass voice', () => {
     expect(styleBassVoice('finger', by('pop'), by('hiphop'))).toBe(null)
     /* an 808 you picked under Pop is yours too, not Hip hop's */
     expect(styleBassVoice('808', by('pop'), by('funk'))).toBe(null)
+  })
+})
+
+/* Evan, 10 Nov 2026: bass lines that fit each style */
+describe('four styles play their own bass line', () => {
+  const by = (id: string) => STARTERS.find((s) => s.id === id)!
+  it('Funk plays Funk, Reggae Dub, Bossa Bossa and House Offbeat', () => {
+    expect(by('funk').bass).toBe('funk')
+    expect(by('reggae').bass).toBe('dub')
+    expect(by('bossa').bass).toBe('bossa')
+    expect(by('house').bass).toBe('offbeat')
   })
 })

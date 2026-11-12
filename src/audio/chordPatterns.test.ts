@@ -674,3 +674,107 @@ describe('the bass played in different styles', () => {
     }
   })
 })
+
+/**
+ * Evan, 10 Nov 2026: bass lines that fit each style. Stated as where each note falls in the bar,
+ * in sixteenths, and what it plays — the way a bass player would count the line, never the table.
+ * One chord per bar here (four chords over four bars at 120), so bar one is all C.
+ */
+describe('the bass lines a style plays', () => {
+  const four = CHORD_PATTERNS.find((p) => p.id === 'four')!
+  const BEAT = 0.5
+  const SIX = BEAT / 4
+  const LAP = 8
+  const ons = (events: readonly LoopEvent[]) => events.filter((e) => e.on)
+  const name = (m: number) =>
+    ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][m % 12]
+  const barOne = (style: Parameters<typeof basslineEvents>[5]) =>
+    ons(basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, style, BEAT).events).filter(
+      (e) => e.t < 4 * BEAT - 1e-9,
+    )
+  const lengths = (style: Parameters<typeof basslineEvents>[5]) => {
+    const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, style, BEAT)
+    const starts = ons(events).filter((e) => e.t < 4 * BEAT - 1e-9)
+    return starts.map((on) => {
+      const off = events.find((e) => !e.on && e.midi === on.midi && e.t > on.t)!
+      return Math.round((off.t - on.t) / SIX / 0.96)
+    })
+  }
+
+  it('Funk: the one, the "a" of one, the "and" of two on the fifth — off the beat as often as on', () => {
+    const bar = barOne('funk')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([0, 3, 6, 8, 10, 11, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'C', 'G', 'C', 'C', 'G', 'C'])
+    /* syncopated: five of the seven are off the beat, and two of those between the eighths */
+    expect(bar.filter((e) => Math.round(e.t / SIX) % 4 !== 0)).toHaveLength(5)
+    expect(bar.filter((e) => Math.round(e.t / SIX) % 2 === 1)).toHaveLength(2)
+  })
+
+  it('Dub: a long root on the one, then a hook', () => {
+    const bar = barOne('dub')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([0, 6, 8, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'C', 'G', 'C'])
+    expect(lengths('dub')[0]).toBe(5)
+  })
+
+  it('Bossa: root and fifth, dotted quarter then eighth, twice a bar', () => {
+    const bar = barOne('bossa')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([0, 6, 8, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'G', 'G', 'C'])
+    expect(lengths('bossa')).toEqual([6, 2, 6, 2])
+  })
+
+  it('Octaves: eighths jumping from the low root to its octave and back, all bar', () => {
+    const bar = barOne('octaves')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([0, 2, 4, 6, 8, 10, 12, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'C', 'C', 'C', 'C', 'C', 'C', 'C'])
+    /* the jump IS the line: low on the beat, an octave up on the "and" */
+    const gaps = bar.slice(1).map((e, i) => e.midi - bar[i].midi)
+    expect(gaps).toEqual([12, -12, 12, -12, 12, -12, 12])
+  })
+
+  it('Offbeat: the root on every "and", nothing on the beat where the kick is', () => {
+    const bar = barOne('offbeat')
+    expect(bar.map((e) => Math.round(e.t / SIX))).toEqual([2, 6, 10, 14])
+    expect(bar.map((e) => name(e.midi))).toEqual(['C', 'C', 'C', 'C'])
+    expect(bar.filter((e) => Math.round(e.t / SIX) % 4 === 0)).toHaveLength(0)
+  })
+
+  /* a five-string bass's low B is the floor anybody plays a bassline on */
+  it('the low octave stays playable: never under B0, in any key', () => {
+    for (let root = 0; root < 12; root++) {
+      const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, root, true, 'octaves', BEAT)
+      expect(Math.min(...ons(events).map((e) => e.midi)), `${root}`).toBeGreaterThanOrEqual(23)
+    }
+  })
+
+  it('and each line follows the chords: bar two of Four chords is G', () => {
+    for (const style of ['funk', 'dub', 'bossa', 'octaves', 'offbeat'] as const) {
+      const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, false, style, BEAT)
+      const first = ons(events).find((e) => e.t >= 4 * BEAT - 1e-9)!
+      expect(name(first.midi), style).toBe('G')
+    }
+  })
+
+  /**
+   * ⚠️ ON THE BAR'S GRID, NOT THE CHORD'S: with the lead-back on, the last bar is F for its first
+   * half and G from its middle, and the line carries straight through — G picks it up on the
+   * "three", on its root, exactly where the bar is.
+   */
+  it('a chord that starts mid-bar picks the line up where the bar is', () => {
+    const { events } = basslineEvents(four, LAP, MAJOR_DEGREES, 0, true, 'funk', BEAT)
+    const last = ons(events).filter((e) => e.t >= 3 * 4 * BEAT - 1e-9)
+    expect(last.map((e) => Math.round((e.t - 6) / SIX))).toEqual([0, 3, 6, 8, 10, 11, 14])
+    expect(last.map((e) => name(e.midi))).toEqual(['F', 'F', 'C', 'G', 'G', 'D', 'G'])
+  })
+
+  /* four chords in one second: some meet no step of the line, some only its fifth */
+  it('a chord too short for the line still sounds its root, and every chord is entered on it', () => {
+    for (const style of ['funk', 'dub', 'bossa', 'octaves', 'offbeat'] as const) {
+      const { events } = basslineEvents(four, 1, MAJOR_DEGREES, 0, false, style, BEAT)
+      const heard = new Set(ons(events).map((e) => name(e.midi)))
+      for (const root of ['C', 'G', 'A', 'F'])
+        expect(heard.has(root), `${style} ${root}`).toBe(true)
+    }
+  })
+})
