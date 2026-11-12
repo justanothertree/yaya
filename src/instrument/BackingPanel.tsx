@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import { motionReduced } from '../ui/motion'
 import { BASS_VOICES, INSTRUMENTS, type InstrumentId } from '../audio/synth'
 import { MAJOR_DEGREES } from '../audio/scales'
 import {
@@ -102,8 +104,28 @@ export function BackingPanel({
     layChords,
     applyStarter,
   } = backing
+  /**
+   * ⚠️ IT OPENS WHERE YOU CAN SEE IT — item 4 of the 11 Nov 2026 flow map. The first-run
+   * "🥁 Pick a style" button sits in the transport and the panel opens below the row under it:
+   * measured 385px lower at 375, so from the bottom half of a phone screen the press looked like
+   * it did nothing — the trap the library button fell into first. Only when its top is past the
+   * bottom of the screen, so a panel that opened in view never moves the page; the margin keeps it
+   * clear of the site's header.
+   */
+  const panel = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = panel.current
+    if (!el) return
+    const top = el.getBoundingClientRect().top
+    if (top < window.innerHeight - 48) return
+    /* motionReduced, not the media query: it also honours the site's own reduce-motion switch */
+    window.scrollTo({
+      top: window.scrollY + top - 72,
+      behavior: motionReduced() ? 'auto' : 'smooth',
+    })
+  }, [])
   return (
-    <div className="inst-beats card">
+    <div className="inst-beats card" ref={panel}>
       {/**
        * ⚠️ FIRST, BECAUSE IT IS THE WHOLE PANEL IN ONE PRESS — Evan, 10 Nov 2026: "one-press
        * genre starters". The rows below are the same choices one at a time; a style makes them
