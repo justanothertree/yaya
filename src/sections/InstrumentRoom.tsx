@@ -28,6 +28,7 @@ import { soundingBook, type SoundingBook } from '../audio/sounding'
 import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit'
 import { KitBar } from '../ui/KitBar'
 import { useMediaQuery } from '../ui/media'
+import { useTouchOnly } from '../ui/pointerKind'
 import {
   OCTAVE_HIGH,
   OCTAVE_LOW,
@@ -491,6 +492,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     const still = openEditor(editing, loop.layers)
     if (still !== editing) setEditing(still)
   }, [editing, loop.layers])
+  /* a touch screen gets touch words in the help below — see the note there */
+  const touch = useTouchOnly()
   /* must agree with the stylesheet about what a phone is — the query is shared, not retyped */
   const narrowBoard = useMediaQuery(PHONE_KEYBOARD)
   /** what Capture just did, shown briefly — it is otherwise a button with no visible effect */
@@ -2007,24 +2010,41 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           on purpose: a take is not a Layer. See TakesPanel. */}
 
       <p className="muted inst-note">
-        Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are two
-        octaves of white keys, <kbd>S</kbd> and the number row are the black ones
-        {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys to
-        slide.{' '}
-        {/* ⚠️ A SHORTCUT NOBODY IS TOLD ABOUT IS A SHORTCUT NOBODY HAS. These two are the only
-            way to change octave or sustain without reaching for the mouse, and the keyboard is
-            how most people play this — so the sentence goes next to the one that already
-            explains the typing rows, not into a title attribute that a phone cannot show. */}
-        <kbd>−</kbd> and <kbd>=</kbd> move an octave, and holding <kbd>Shift</kbd> lets the notes
-        ring.{' '}
+        {/* ⚠️ A TOUCH SCREEN HAS NO Z, NO SHIFT AND NO MOUSE — item 5 of the 11 Nov 2026 flow
+            map. This sentence explained the typing rows and two shortcuts to everybody, so on the
+            device most people play this on, the help was about a keyboard they do not have. */}
+        {touch ? (
+          <>
+            Tap the keys, or drag across them to slide
+            {scale === 'chromatic' ? '' : ' — every key is in the scale'}.{' '}
+          </>
+        ) : (
+          <>
+            Play with the mouse, or four rows of your keyboard — <kbd>Z</kbd> and <kbd>Q</kbd> are
+            two octaves of white keys, <kbd>S</kbd> and the number row are the black ones
+            {scale === 'chromatic' ? '' : ', and every key is in the scale'}. Drag across the keys
+            to slide.{' '}
+            {/* ⚠️ A SHORTCUT NOBODY IS TOLD ABOUT IS A SHORTCUT NOBODY HAS. These two are the only
+                way to change octave or sustain without reaching for the mouse, and the keyboard is
+                how most people play this — so the sentence goes next to the one that already
+                explains the typing rows, not into a title attribute that a phone cannot show. */}
+            <kbd>−</kbd> and <kbd>=</kbd> move an octave, and holding <kbd>Shift</kbd> lets the
+            notes ring.{' '}
+          </>
+        )}
         {jamming.on
           ? 'While Jam is on, the notes you play are sent to everyone in the call — nothing else is.'
           : 'Nothing is recorded or sent anywhere.'}
       </p>
-      <p className="muted inst-note">
-        Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
-        yourself play.
-      </p>
+      {/* ⚠️ ONLY WHEN THE ROOM'S OWN VISUALS ARE NOT SHOWING. This predates the theatre below,
+          and told everybody to go to another tab for what was already on the screen; it still
+          helps whoever hid them, popped them out or is on the canvas. */}
+      {!visualsShown && (
+        <p className="muted inst-note">
+          Open the <strong>🎚️ Visualiser</strong> and pick <strong>Instrument</strong> to watch
+          yourself play.
+        </p>
+      )}
 
       {/* ⚠️ Here rather than behind Canvas mode. Seeing what you play used to mean knowing the
           account menu hides a Canvas toggle, turning it on, and opening the visualiser in a
