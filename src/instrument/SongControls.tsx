@@ -24,7 +24,7 @@ import {
   seekTo,
 } from '../audio/looper'
 import { historyNow, redo, subscribeHistory, undo } from '../audio/history'
-import { NumField } from './rowParts'
+import { NumField, Why } from './rowParts'
 
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 
@@ -183,6 +183,11 @@ export function SongControls({
                 ? `⏳ ${loop.countIn}…`
                 : '⏳ Armed…'
               : '⏺ Record'}
+          {/* ⚠️ SAID ON THE BUTTON — item 2 of the 11 Nov 2026 flow map. Record, Capture and the
+              mic take are three ways to keep something, and the one sentence that told them apart
+              belonged to the starter row, which is gone after the first layer. Pressing it while
+              armed or recording throws the pass away (cancelRecord), so that is what it says. */}
+          <Why>{loop.waiting || loop.recording ? 'tap to cancel' : 'from the top'}</Why>
         </button>
 
         {/**
@@ -215,6 +220,7 @@ export function SongControls({
           title="Keep the last loop's worth of what you just played — no need to have been recording"
         >
           ⧉ Capture
+          <Why>keep what you played</Why>
         </button>
 
         <button
