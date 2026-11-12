@@ -21,9 +21,6 @@ import { dueOn, type Schedule } from './weekdays'
  */
 export type Scope = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'life'
 
-/** Smallest first, which is the order the room shows them in. */
-export const SCOPES: readonly Scope[] = ['day', 'week', 'month', 'quarter', 'year', 'life']
-
 export type Goal = {
   id: string
   title: string

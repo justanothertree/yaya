@@ -1611,19 +1611,6 @@ export const pvSetAdd = (
   return { id }
 }
 
-/** `chronicle_set_change`: one number, and what it added to its sitting moves with it */
-export const pvSetChange = (id: string, value: number): { why: string } | null => {
-  if (!(value > 0) || value > 1e9) return { why: 'that is not a number of anything' }
-  const x = db().sets.find((y) => y.id === id)
-  if (!x) return { why: 'no such set' }
-  const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
-  if (sit)
-    sit.amount =
-      asNumeric(Math.max(0, Math.min((sit.amount ?? 0) + (value - x.value), 1e9))) || null
-  Object.assign(x, { value, updated: Date.now() })
-  return null
-}
-
 /** `chronicle_set_drop`: gone, and exactly what it added to its sitting with it */
 export const pvSetDrop = (id: string): { why: string } | null => {
   const x = db().sets.find((y) => y.id === id)
