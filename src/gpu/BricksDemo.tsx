@@ -520,7 +520,7 @@ export function BricksDemo() {
                 : '⏸ Pause'}
         </button>
         <button className="btn btn-ghost" onClick={() => fresh()} disabled={!playable}>
-          New game
+          ↻ New game
         </button>
       </div>
 

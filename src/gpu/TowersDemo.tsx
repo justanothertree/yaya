@@ -289,7 +289,7 @@ export function TowersDemo() {
           Double speed
         </button>
         <button className="btn btn-ghost" onClick={() => fresh()}>
-          New game
+          ↻ New game
         </button>
       </div>
       <div className="dice-scores tw-hud">
