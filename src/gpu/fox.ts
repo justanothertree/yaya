@@ -41,7 +41,11 @@ export const START_GEESE = POINTS.filter(
   (i) => Math.floor(i / N) <= 2 || (Math.floor(i / N) === 3 && (i % N <= 1 || i % N >= 5)),
 )
 export const START_FOX = 3 * N + 3
-/** geese the fox must take to win: with fewer than nine left, they cannot close a ring round it */
+/**
+ * Geese the fox must take to win. Measured with both sides on Fair (before the geese had a clock),
+ * five, six and seven made next to no difference — the geese won seven games in twenty each time —
+ * so the middle one: a fox that has taken six has broken any line that could hold it
+ */
 export const TAKE_TO_WIN = 6
 /**
  * Goose moves in a row without one stepping forward before the fox is called the winner: without a

@@ -52,7 +52,7 @@ export function FoxDemo() {
   const [line, setLine] = useState(
     saved.side === 'geese'
       ? 'You are the geese, and move first: hem the fox in so it cannot move.'
-      : 'You are the fox: the geese move first. Jump them, and take five to win.',
+      : `You are the fox: the geese move first. Jump them, and take ${TAKE_TO_WIN} to win.`,
   )
   const refs = useRef<Map<number, HTMLButtonElement>>(new Map())
   const recorded = useRef(false)
@@ -149,7 +149,7 @@ export function FoxDemo() {
         ? 'The geese move first.'
         : side === 'geese'
           ? 'You are the geese, and move first: hem the fox in so it cannot move.'
-          : 'You are the fox: the geese move first. Jump them, and take five to win.',
+          : `You are the fox: the geese move first. Jump them, and take ${TAKE_TO_WIN} to win.`,
     )
   }
   const tap = (i: number) => {
