@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 import {
   CATEGORIES,
   FILTER_KEY,
@@ -10,6 +18,7 @@ import {
   type Category,
   type Flags,
 } from '../lab/catalog'
+import { rescueFocus } from '../gpu/focusRescue'
 import { labApi, noLabYet } from '../lab/feedback'
 import { LabFeedback, type Viewer } from '../lab/LabFeedback'
 import '../lab/lab-catalog.css'
@@ -1054,6 +1063,12 @@ function storedFilter(): Category | 'all' {
 
 export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const [demo, setDemo] = useState<DemoId>(storedDemo)
+  /** one watcher round whichever toy is showing, keeping a keyboard player's place (focusRescue.ts) */
+  const stopRescue = useRef<(() => void) | null>(null)
+  const watchToy = useCallback((el: HTMLDivElement | null) => {
+    stopRescue.current?.()
+    stopRescue.current = el ? rescueFocus(el) : null
+  }, [])
   // and a link clicked while the Lab is already open changes only the hash
   useEffect(() => {
     const on = () => {
@@ -1223,8 +1238,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
         {current.line}
       </p>
 
-      {/* keyed, so a switch is a whole new device rather than one demo inheriting another's */}
-      <current.Demo key={current.id} {...props} />
+      {/* keyed, so a switch is a whole new device rather than one demo inheriting another's; the
+          wrapper lays nothing out (display: contents) and is only there to be watched */}
+      <div className="lab-toy" ref={watchToy}>
+        <current.Demo key={current.id} {...props} />
+      </div>
 
       <LabFeedback
         api={noFeedback ? null : api}

@@ -71,9 +71,6 @@ export function YachtDemo() {
   /** who went first in this game against the computer: the next one, the other side does */
   const [starter, setStarter] = useState<0 | 1>(0)
   const recorded = useRef(false)
-  const playRef = useRef<HTMLDivElement | null>(null)
-  /** whether the player was last working among the dice and the card, by key or by pointer */
-  const inPlay = useRef(false)
   useEffect(() => {
     try {
       localStorage.setItem(YACHT_KEY, JSON.stringify(saved))
@@ -215,29 +212,6 @@ export function YachtDemo() {
     e.preventDefault()
   }
 
-  // a control pressed and then disabled or removed by what it did drops the focus on the page: the
-  // third roll disables the Roll button, and scoring a box turns its button into a number. A
-  // keyboard player's next key then went nowhere, so the focus moves on to what comes next — an open
-  // box once the rolls are spent, the Roll button when a roll is due
-  useEffect(() => {
-    const play = playRef.current
-    const active = document.activeElement as HTMLButtonElement | null
-    const dropped =
-      !active || active === document.body || (play?.contains(active) && active.disabled)
-    if (!play || !inPlay.current || !dropped) return
-    const next = play.querySelector<HTMLButtonElement>(
-      game.rolls === 0 ? '.yt-box:not(:disabled)' : '.yt-roll .btn:not(:disabled)',
-    )
-    next?.focus()
-  }, [game.rolls, game.turn, game.over])
-  useEffect(() => {
-    const away = (e: FocusEvent) => {
-      if (!playRef.current?.contains(e.target as Node)) inPlay.current = false
-    }
-    document.addEventListener('focusin', away)
-    return () => document.removeEventListener('focusin', away)
-  }, [])
-
   const record = saved.record[saved.level]
   const meTotal = total(mine)
   return (
@@ -305,16 +279,7 @@ export function YachtDemo() {
         {line}
       </p>
 
-      <div
-        ref={playRef}
-        className="yt-play"
-        onKeyDown={() => {
-          inPlay.current = true
-        }}
-        onPointerDown={() => {
-          inPlay.current = true
-        }}
-      >
+      <div className="yt-play">
         <div className="yt-table" onKeyDown={onKey}>
           <div
             className="dice-row"
@@ -351,7 +316,12 @@ export function YachtDemo() {
             ))}
           </div>
           <div className="lab-controls yt-roll">
-            <button className="btn" onClick={rollMine} disabled={!yours || game.rolls === 0}>
+            <button
+              className="btn"
+              onClick={rollMine}
+              disabled={!yours || game.rolls === 0}
+              data-focus-next=".yt-box:not(:disabled)"
+            >
               🎲 {rolled ? 'Roll again' : 'Roll'} ({game.rolls} left)
             </button>
           </div>
@@ -382,6 +352,7 @@ export function YachtDemo() {
                       <button
                         className={`yt-box${could && adviceBox === k ? ' is-advised' : ''}`}
                         disabled={!could}
+                        data-focus-next=".yt-roll .btn:not(:disabled)"
                         aria-label={
                           could
                             ? `Score ${score(game.dice, k)} in ${BOXES[k][0].toLowerCase()}${adviceBox === k ? ', the best box' : ''}`

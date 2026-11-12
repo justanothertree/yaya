@@ -3,6 +3,10 @@
   gap: 0.75rem;
   min-width: 0;
 }
+/* round the toy only so focusRescue can watch it: it takes no part in the layout */
+.lab-toy {
+  display: contents;
+}
 
 /* ⚠️ A FOCUSED CONTROL MUST LAND ABOVE THE PHONE'S BOTTOM NAV, NOT UNDER IT. Focus scrolls a
    control just into view, and on a phone "just" is the bottom edge, where the fixed nav sits —

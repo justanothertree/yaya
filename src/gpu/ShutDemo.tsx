@@ -69,9 +69,6 @@ export function ShutDemo() {
     'Roll, then shut tiles that add up to the roll. Lowest total left wins; shut them all to shut the box.',
   )
   const recorded = useRef(false)
-  const boxRef = useRef<HTMLDivElement | null>(null)
-  /** whether the player was last working in the box, by key or by pointer */
-  const inBox = useRef(false)
   useEffect(() => {
     try {
       localStorage.setItem(SHUT_KEY, JSON.stringify(saved))
@@ -214,29 +211,6 @@ export function ShutDemo() {
     e.preventDefault()
   }
 
-  // a control that is pressed and then disabled by what it did drops the focus on the page, and a
-  // keyboard player's next key goes nowhere: after a roll the Roll button is disabled, and after a
-  // shut the tiles are. So the focus moves on to what comes next — a tile, or the Roll button —
-  // when it was in the box and has just been dropped
-  useEffect(() => {
-    const box = boxRef.current
-    const active = document.activeElement as HTMLButtonElement | null
-    const dropped =
-      !active || active === document.body || (box?.contains(active) && active.disabled)
-    if (!box || !inBox.current || !dropped) return
-    const next = box.querySelector<HTMLButtonElement>(
-      yours.live ? '.xb-tile:not(:disabled)' : '.xb-roll .btn:not(:disabled)',
-    )
-    next?.focus()
-  }, [yours.live, yours.over, whose])
-  useEffect(() => {
-    const away = (e: FocusEvent) => {
-      if (!boxRef.current?.contains(e.target as Node)) inBox.current = false
-    }
-    document.addEventListener('focusin', away)
-    return () => document.removeEventListener('focusin', away)
-  }, [])
-
   const record = saved.record[saved.level]
   const showDice = t.dice.length > 0
   return (
@@ -305,17 +279,7 @@ export function ShutDemo() {
         {line}
       </p>
 
-      <div
-        ref={boxRef}
-        className="xb-box"
-        onKeyDown={(e) => {
-          inBox.current = true
-          onKey(e)
-        }}
-        onPointerDown={() => {
-          inBox.current = true
-        }}
-      >
+      <div className="xb-box" onKeyDown={onKey}>
         <p className="xb-whose">{whose === 'computer' ? 'The computer’s box' : 'Your box'}</p>
         <div
           className="xb-tiles"
@@ -341,6 +305,7 @@ export function ShutDemo() {
                 aria-pressed={picked}
                 aria-label={`${tile}: ${up ? (picked ? 'picked' : 'up') : 'shut'}${best & bit ? ', in the best way' : ''}`}
                 onClick={() => tap(tile)}
+                data-focus-next=".xb-tile:not(:disabled) || .xb-roll .btn:not(:disabled)"
               >
                 {tile}
               </button>
@@ -372,6 +337,7 @@ export function ShutDemo() {
             className="btn"
             onClick={() => rollMine(2)}
             disabled={!mine || yours.live || yours.over}
+            data-focus-next=".xb-tile:not(:disabled)"
           >
             🎲🎲 Roll two
           </button>
@@ -379,6 +345,7 @@ export function ShutDemo() {
             className="btn btn-ghost"
             onClick={() => rollMine(1)}
             disabled={!mine || yours.live || yours.over || !oneDieAllowed(yours.up)}
+            data-focus-next=".xb-tile:not(:disabled)"
           >
             🎲 Roll one
           </button>
