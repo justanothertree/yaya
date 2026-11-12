@@ -80,3 +80,4 @@ made too long.
 | 1. Row parts, `fxWord` and the audio health strip | 3,648                | `src/instrument/rowParts.tsx` 192, `fxWord.ts` 17 (+ test), `AudioHealthStrip.tsx` 270 |
 | 2. The layer list                                 | 3,266                | `src/instrument/LayerList.tsx` 432                                                     |
 | 3. The backing's state and calls (`useBacking`)   | 3,053                | `src/instrument/useBacking.ts` 272, `backing.ts` 61 (+ test)                           |
+| 4. The Beats & chords panel                       | 2,593                | `src/instrument/BackingPanel.tsx` 498                                                  |
