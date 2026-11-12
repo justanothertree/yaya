@@ -6657,3 +6657,93 @@ html:has(.lab) {
   outline: 3px solid var(--fg-mark);
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------- tents */
+.tn-room {
+  --tn-field: #d9eebf;
+  --tn-cell: #eef8e2;
+  --tn-grass: #9fd06f;
+  --tn-line: #9cbf7a;
+  --tn-ink: #2c4a1b;
+  --tn-done: #2f9e44;
+  --tn-bad: #e5484d;
+}
+.tn-room.is-beach {
+  --tn-field: #f6e7c1;
+  --tn-cell: #fff6df;
+  --tn-grass: #b7dd8f;
+  --tn-line: #d9bf86;
+  --tn-ink: #5a4220;
+  --tn-done: #1c8f7a;
+  --tn-bad: #d83a3a;
+}
+.tn-room.is-night {
+  --tn-field: #10221a;
+  --tn-cell: #183328;
+  --tn-grass: #2f5c38;
+  --tn-line: #2c4d3d;
+  --tn-ink: #d8f5e1;
+  --tn-done: #5fe39a;
+  --tn-bad: #ff6b73;
+}
+.tn-grid {
+  display: grid;
+  gap: 2px;
+  width: min(100%, 480px);
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--tn-field);
+  color: var(--tn-ink);
+}
+/* each row of squares, with its number at the end; the last row holds the columns' numbers */
+.tn-row {
+  display: grid;
+  grid-template-columns: repeat(calc(var(--tn-n) + 1), minmax(0, 1fr));
+  gap: 2px;
+}
+.tn-cell {
+  aspect-ratio: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid var(--tn-line);
+  border-radius: 4px;
+  background: var(--tn-cell);
+  display: grid;
+  place-items: center;
+  font-size: calc(min(100vw - 48px, 468px) / (var(--tn-n) + 1) * 0.6);
+  line-height: 1;
+  cursor: pointer;
+}
+.tn-cell.is-tree {
+  cursor: default;
+  background: color-mix(in oklab, var(--tn-cell), var(--tn-grass) 30%);
+}
+.tn-cell.is-grass {
+  background: var(--tn-grass);
+}
+.tn-cell.is-bad {
+  box-shadow: inset 0 0 0 3px var(--tn-bad);
+}
+.tn-cell.is-sel {
+  border-color: var(--tn-ink);
+}
+.tn-cell:focus-visible {
+  outline: 3px solid #ffb000;
+  outline-offset: -1px;
+}
+.tn-clue {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.tn-clue.is-done {
+  color: var(--tn-done);
+}
+.tn-clue.is-over {
+  color: var(--tn-bad);
+}
+.tn-grid.is-done .tn-cell {
+  border-color: var(--tn-done);
+}

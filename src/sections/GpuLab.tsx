@@ -136,6 +136,7 @@ import { BridgesDemo } from '../gpu/BridgesDemo'
 import { PopperDemo } from '../gpu/PopperDemo'
 import { YachtDemo } from '../gpu/YachtDemo'
 import { FoxDemo } from '../gpu/FoxDemo'
+import { TentsDemo } from '../gpu/TentsDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -963,6 +964,12 @@ const DEMOS: readonly {
     name: 'Fox and geese',
     line: 'Fox and geese — the old hunt game: seventeen geese try to hem in one fox, which jumps and takes them. Play either side against a computer that looks four moves ahead, or a friend.',
     Demo: FoxDemo,
+  },
+  {
+    id: 'tents',
+    name: 'Tents',
+    line: 'Tents — pitch a tent beside every tree, no two touching even at a corner, with the counts for each row and column to go by. One answer per field, a new field each day, against the clock.',
+    Demo: TentsDemo,
   },
 ]
 
