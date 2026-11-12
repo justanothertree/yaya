@@ -78,3 +78,4 @@ made too long.
 | ------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
 | (main, `dae27c8d`)                                | 4,111                |                                                                                        |
 | 1. Row parts, `fxWord` and the audio health strip | 3,648                | `src/instrument/rowParts.tsx` 192, `fxWord.ts` 17 (+ test), `AudioHealthStrip.tsx` 270 |
+| 2. The layer list                                 | 3,266                | `src/instrument/LayerList.tsx` 432                                                     |
