@@ -8,6 +8,7 @@
  * 1.6 wide and heights are measured up from the bottom; time in seconds.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const FIELD_W = 1.6
 export const COLS = 320
@@ -263,8 +264,6 @@ export const EMPTY: Saved = {
   trail: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

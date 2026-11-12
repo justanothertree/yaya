@@ -9,6 +9,8 @@
  * still counted unless it is captured, so the game is played until it is.
  */
 
+import { whole } from './kept'
+
 export const N = 9
 export type Stone = 0 | 1 | 2
 export type Who = 1 | 2
@@ -379,8 +381,6 @@ export const EMPTY: Saved = {
   shade: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

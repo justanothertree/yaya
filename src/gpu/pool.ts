@@ -7,6 +7,7 @@
  * cue ball, 1–7 the solids, 8 the black and 9–15 the stripes.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const TW = 2.24
 export const TH = 1.12
@@ -459,8 +460,6 @@ export const EMPTY: Saved = {
   guide: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

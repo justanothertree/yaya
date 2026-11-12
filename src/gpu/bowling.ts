@@ -8,6 +8,8 @@
  * across the lane (right positive, as you face the pins), y down it from the foul line.
  */
 
+import { whole } from './kept'
+
 export const LANE_HALF = 0.527
 export const HEAD_PIN = 18.29
 /** where the oil ends and the ball starts to hook */
@@ -376,8 +378,6 @@ export const EMPTY: Saved = {
   stance: DEFAULT_SHOT,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 const within = (v: unknown, lo: number, hi: number, d: number) =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : d
 export function readSaved(text: string | null): Saved {

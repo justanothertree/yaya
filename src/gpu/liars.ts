@@ -9,6 +9,7 @@
  * Pure, so liars.test.ts can play a few thousand games without a page.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export type Bid = { q: number; f: number }
 export type Game = {
@@ -314,8 +315,6 @@ export const EMPTY: Saved = {
   cup: 'leather',
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

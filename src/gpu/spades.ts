@@ -10,6 +10,7 @@
  * 3 clubs. Seats run clockwise: 0 you, 1 West, 2 North, 3 East; teams are seat % 2.
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
+import { whole } from './kept'
 
 export const SPADE = 0
 export const teamOf = (seat: number) => seat % 2
@@ -388,8 +389,6 @@ export const EMPTY: Saved = {
   back: 'lattice',
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

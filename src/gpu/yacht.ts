@@ -11,6 +11,8 @@
  * Pure, so yacht.test.ts can play hundreds of games without a page.
  */
 
+import { whole } from './kept'
+
 export const CATS = [
   'ones',
   'twos',
@@ -315,8 +317,6 @@ export const EMPTY: Saved = {
   record: { easy: NONE, fair: NONE, hard: NONE },
   best: 0,
 }
-const whole = (v: unknown, max = 1e6) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

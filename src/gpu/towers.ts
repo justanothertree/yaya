@@ -8,6 +8,7 @@
  * the right edge, and a creature's place on it is a distance along it.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const COLS = 12
 export const ROWS = 8
@@ -402,8 +403,6 @@ export type Saved = {
   today: { day: number; waves: number } | null
 }
 export const EMPTY: Saved = { map: 'meadow', theme: 'meadow', fast: false, best: {}, today: null }
-const whole = (v: unknown, max = 1e5) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -416,7 +415,7 @@ export function readSaved(text: string | null): Saved {
   const ids = MAPS.map((m) => m.id)
   const best: Record<string, number> = {}
   const b = (typeof o.best === 'object' && o.best ? o.best : {}) as Record<string, unknown>
-  for (const id of ids) if (whole(b[id])) best[id] = whole(b[id])
+  for (const id of ids) if (whole(b[id], 1e5)) best[id] = whole(b[id], 1e5)
   const t = (typeof o.today === 'object' && o.today ? o.today : null) as Record<
     string,
     unknown
@@ -427,8 +426,8 @@ export function readSaved(text: string | null): Saved {
     fast: typeof o.fast === 'boolean' ? o.fast : EMPTY.fast,
     best,
     today:
-      t && whole(t.day, 2 ** 32) && whole(t.waves)
-        ? { day: whole(t.day, 2 ** 32), waves: whole(t.waves) }
+      t && whole(t.day, 2 ** 32) && whole(t.waves, 1e5)
+        ? { day: whole(t.day, 2 ** 32), waves: whole(t.waves, 1e5) }
         : null,
   }
 }

@@ -12,6 +12,7 @@
  * and half heights, and a tile covers x..x+2 and y..y+2 on its layer z.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export type Place = { x: number; y: number; z: number }
 export type Layout = { id: string; name: string; places: Place[] }
@@ -218,8 +219,6 @@ export const EMPTY: Saved = {
   today: null,
   cleared: 0,
 }
-const whole = (v: unknown, max = 1e7) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -232,7 +231,7 @@ export function readSaved(text: string | null): Saved {
   const ids = LAYOUTS.map((l) => l.id)
   const best: Record<string, number> = {}
   const b = (typeof o.best === 'object' && o.best ? o.best : {}) as Record<string, unknown>
-  for (const id of ids) if (whole(b[id])) best[id] = whole(b[id])
+  for (const id of ids) if (whole(b[id], 1e7)) best[id] = whole(b[id], 1e7)
   const t = (typeof o.today === 'object' && o.today ? o.today : null) as Record<
     string,
     unknown
@@ -243,9 +242,9 @@ export function readSaved(text: string | null): Saved {
     glow: typeof o.glow === 'boolean' ? o.glow : EMPTY.glow,
     best,
     today:
-      t && whole(t.day, 2 ** 32) && whole(t.seconds)
-        ? { day: whole(t.day, 2 ** 32), seconds: whole(t.seconds) }
+      t && whole(t.day, 2 ** 32) && whole(t.seconds, 1e7)
+        ? { day: whole(t.day, 2 ** 32), seconds: whole(t.seconds, 1e7) }
         : null,
-    cleared: whole(o.cleared),
+    cleared: whole(o.cleared, 1e7),
   }
 }

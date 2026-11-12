@@ -6,6 +6,8 @@
  * row; 1 is black, 2 white.
  */
 
+import { whole } from './kept'
+
 export type Side = 1 | 2
 export const SIZES = [11, 13] as const
 export type Size = (typeof SIZES)[number]
@@ -236,8 +238,6 @@ export const EMPTY: Saved = {
   look: 'wood',
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

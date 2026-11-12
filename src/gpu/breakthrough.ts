@@ -10,6 +10,8 @@
  * row by row from the top-left; side 1 starts at the bottom and moves up, side 2 the other way.
  */
 
+import { whole } from './kept'
+
 export type Side = 1 | 2
 export type Board = { n: number; cells: Int8Array }
 export type Move = { from: number; to: number; take: boolean }
@@ -277,8 +279,6 @@ export const EMPTY: Saved = {
   hints: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

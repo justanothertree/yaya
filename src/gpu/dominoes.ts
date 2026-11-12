@@ -6,6 +6,7 @@
  * First to the target wins. Pure, so dominoes.test.ts can play thousands of rounds without a page.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 /** a tile as its two ends, low first */
 export type Tile = [number, number]
@@ -187,8 +188,6 @@ export const EMPTY: Saved = {
   hints: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

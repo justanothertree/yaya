@@ -10,6 +10,7 @@
  */
 
 import { rngStep as roll } from './bricks'
+import { whole } from './kept'
 
 export const W = 16
 export const H = 12
@@ -305,8 +306,6 @@ export const EMPTY: Saved = {
   best: { calm: 0, normal: 0, wild: 0 },
   games: 0,
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e9 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -322,7 +321,7 @@ export function readSaved(text: string | null): Saved {
   return {
     pace: pick(PACES, o.pace, EMPTY.pace),
     look: pick(LOOKS, o.look, EMPTY.look),
-    best: { calm: whole(b.calm), normal: whole(b.normal), wild: whole(b.wild) },
-    games: whole(o.games),
+    best: { calm: whole(b.calm, 1e9), normal: whole(b.normal, 1e9), wild: whole(b.wild, 1e9) },
+    games: whole(o.games, 1e9),
   }
 }

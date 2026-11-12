@@ -8,6 +8,8 @@
  * 1.4 tall, heights measured up from the ground; time in seconds.
  */
 
+import { whole } from './kept'
+
 export const W = 1
 export const H = 1.4
 export const R = 0.055
@@ -216,8 +218,6 @@ export const EMPTY: Saved = {
   best: { balloon: ZERO, beach: ZERO, football: ZERO },
   played: 0,
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e7 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -233,13 +233,13 @@ export function readSaved(text: string | null): Saved {
   const best = {} as Saved['best']
   for (const k of BALLS) {
     const x = (typeof raw[k] === 'object' && raw[k] ? raw[k] : {}) as Record<string, unknown>
-    best[k] = { calm: whole(x.calm), breezy: whole(x.breezy) }
+    best[k] = { calm: whole(x.calm, 1e7), breezy: whole(x.breezy, 1e7) }
   }
   return {
     ball: pick(BALLS, o.ball, EMPTY.ball),
     field: pick(FIELDS, o.field, EMPTY.field),
     breeze: typeof o.breeze === 'boolean' ? o.breeze : EMPTY.breeze,
     best,
-    played: whole(o.played),
+    played: whole(o.played, 1e7),
   }
 }

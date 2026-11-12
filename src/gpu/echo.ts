@@ -7,6 +7,7 @@
  * pentatonic scale, so any tune the dice make is one worth humming.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const PAD_COUNTS = [4, 6] as const
 export type PadCount = (typeof PAD_COUNTS)[number]
@@ -102,8 +103,6 @@ export const EMPTY: Saved = {
   palette: 'bright',
   best: { strict: { 4: best0(), 6: best0() }, gentle: { 4: best0(), 6: best0() } },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e4 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -122,7 +121,7 @@ export function readSaved(text: string | null): Saved {
     best[k] = { 4: best0(), 6: best0() }
     for (const p of PAD_COUNTS) {
       const q = obj(b[p])
-      best[k][p] = { echo: whole(q.echo), mirror: whole(q.mirror) }
+      best[k][p] = { echo: whole(q.echo, 1e4), mirror: whole(q.mirror, 1e4) }
     }
   }
   return {

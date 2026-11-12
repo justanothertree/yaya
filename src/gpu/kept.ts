@@ -33,3 +33,11 @@ export function useKept<T>(
   useEffect(() => storeKept(key, kept), [key, kept])
   return [kept, setKept]
 }
+
+/**
+ * A count read back from the store: a whole number from nought up to just under `max`, or nought.
+ * What is stored can be anything a person (or an old version) left there, so a count is believed
+ * only when it is one. Forty-four readers had their own copy of this line, differing only in max.
+ */
+export const whole = (v: unknown, max = 1e6) =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0

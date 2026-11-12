@@ -9,6 +9,7 @@
  * 0–51, rank = c >> 2 (0 a two, 6 an eight, 12 an ace), suit = c & 3.
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
+import { whole } from './kept'
 
 export const EIGHT = 6
 export const isEight = (c: Card) => rankOf(c) === EIGHT
@@ -206,8 +207,6 @@ export const EMPTY: Saved = {
   back: 'lattice',
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

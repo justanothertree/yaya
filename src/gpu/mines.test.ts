@@ -64,7 +64,9 @@ describe('reasoning', () => {
   it('finishes a board only when every safe square can be reached', () => {
     // two wide and three tall, one mine in the bottom row: both numbers above it see the same two
     // squares and say 1, and nothing anywhere tells the two apart — a coin toss
-    expect(solve({ w: 2, h: 3, mines: 1 }, [false, false, false, false, true, false], 0)).toBe(false)
+    expect(solve({ w: 2, h: 3, mines: 1 }, [false, false, false, false, true, false], 0)).toBe(
+      false,
+    )
     expect(solve({ w: 3, h: 1, mines: 1 }, [false, false, true], 0)).toBe(true)
   })
 })

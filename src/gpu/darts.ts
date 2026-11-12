@@ -8,6 +8,8 @@
  * board are millimetres from the middle, x right and y UP, as the board is measured.
  */
 
+import { whole } from './kept'
+
 /** the board's numbers, clockwise from the top */
 export const ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
 /** radii in millimetres: bull, outer bull, treble ring, double ring, edge of scoring */
@@ -276,8 +278,6 @@ export const EMPTY: Saved = {
   hints: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

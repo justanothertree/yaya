@@ -9,6 +9,7 @@
  * breadth-first search over at most 81 squares, cheap enough to run a few thousand times a move.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export type Who = 0 | 1
 export type Sq = [number, number]
@@ -397,8 +398,6 @@ export const EMPTY: Saved = {
   guide: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

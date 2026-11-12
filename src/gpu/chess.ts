@@ -8,6 +8,8 @@
  * PNBRQK for white, pnbrqk for black, '' for empty.
  */
 
+import { whole } from './kept'
+
 export type Side = 'w' | 'b'
 export type Pos = {
   sq: string[]
@@ -499,8 +501,6 @@ export const EMPTY: Saved = {
   hints: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

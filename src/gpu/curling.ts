@@ -10,6 +10,7 @@
  * right as you look down it), y along it from where the stone is let go.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const HALF_W = 2.375
 export const HOG = 8
@@ -436,8 +437,6 @@ export const EMPTY: Saved = {
   line: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

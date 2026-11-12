@@ -9,6 +9,7 @@
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
 import { rng } from './bricks'
+import { whole } from './kept'
 
 /** an ace is 0, a two 1, … a king 12 */
 export const gRank = (c: Card) => (rankOf(c) === 12 ? 0 : rankOf(c) + 1)
@@ -289,8 +290,6 @@ export const EMPTY: Saved = {
   melds: true,
   record: { easy: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

@@ -7,6 +7,7 @@
  * digit d.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export type Grid = number[]
 const ALL = 0x1ff
@@ -343,8 +344,6 @@ export const EMPTY: Saved = {
   today: null,
   solved: 0,
 }
-const whole = (v: unknown, max = 1e7) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -356,7 +355,7 @@ export function readSaved(text: string | null): Saved {
   const o = v as Record<string, unknown>
   const best: Saved['best'] = {}
   const b = (typeof o.best === 'object' && o.best ? o.best : {}) as Record<string, unknown>
-  for (const l of LEVELS) if (whole(b[l])) best[l] = whole(b[l])
+  for (const l of LEVELS) if (whole(b[l], 1e7)) best[l] = whole(b[l], 1e7)
   const t = (typeof o.today === 'object' && o.today ? o.today : null) as Record<
     string,
     unknown
@@ -367,9 +366,9 @@ export function readSaved(text: string | null): Saved {
     clashes: typeof o.clashes === 'boolean' ? o.clashes : EMPTY.clashes,
     best,
     today:
-      t && whole(t.day, 2 ** 32) && whole(t.seconds)
-        ? { day: whole(t.day, 2 ** 32), seconds: whole(t.seconds) }
+      t && whole(t.day, 2 ** 32) && whole(t.seconds, 1e7)
+        ? { day: whole(t.day, 2 ** 32), seconds: whole(t.seconds, 1e7) }
         : null,
-    solved: whole(o.solved),
+    solved: whole(o.solved, 1e7),
   }
 }

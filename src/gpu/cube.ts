@@ -7,6 +7,8 @@
  * column; 1 is crosses, who move first, and 2 noughts.
  */
 
+import { whole } from './kept'
+
 export type Side = 1 | 2
 export const other = (s: Side): Side => (s === 1 ? 2 : 1)
 const idx = (l: number, r: number, c: number) => l * 16 + r * 4 + c
@@ -303,8 +305,6 @@ export const EMPTY: Saved = {
   hints: false,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

@@ -9,6 +9,7 @@
  */
 import { keepBestOf } from './daily'
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const SIZES = [4, 5, 6] as const
 export type Size = (typeof SIZES)[number]
@@ -273,8 +274,6 @@ export type Saved = {
   solvedCount: number
 }
 export const EMPTY: Saved = { size: 5, look: 'paper', clashes: true, bests: [], solvedCount: 0 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e9 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -290,9 +289,9 @@ export function readSaved(text: string | null): Saved {
     ? o.bests
         .filter((b): b is Record<string, unknown> => typeof b === 'object' && b !== null)
         .map((b) => ({
-          day: whole(b.day),
+          day: whole(b.day, 1e9),
           size: pick(SIZES, b.size, 5 as Size),
-          seconds: whole(b.seconds),
+          seconds: whole(b.seconds, 1e9),
         }))
         .filter((b) => b.day > 0 && b.seconds > 0)
         .slice(-42)
@@ -302,7 +301,7 @@ export function readSaved(text: string | null): Saved {
     look: pick(LOOKS, o.look, EMPTY.look),
     clashes: typeof o.clashes === 'boolean' ? o.clashes : EMPTY.clashes,
     bests,
-    solvedCount: whole(o.solvedCount),
+    solvedCount: whole(o.solvedCount, 1e9),
   }
 }
 /** keep a finish if it beats what is there for that day and size, and only the last fortnight */

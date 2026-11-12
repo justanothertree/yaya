@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadKept, storeKept } from './kept'
+import { loadKept, storeKept, whole } from './kept'
 
 /** a stand-in for the browser's store, or one that refuses as private mode does */
 function store(refuse = false) {
@@ -41,5 +41,20 @@ describe('what a toy keeps', () => {
     vi.stubGlobal('localStorage', undefined)
     expect(loadKept('lab_x_v1', read)).toEqual({ n: 0 })
     expect(() => storeKept('lab_x_v1', { n: 1 })).not.toThrow()
+  })
+})
+
+describe('a whole number kept', () => {
+  it('is a whole number from nought up to just under its limit, or nought', () => {
+    expect(whole(7)).toBe(7)
+    expect(whole(0)).toBe(0)
+    expect(whole(999_999)).toBe(999_999)
+    // the limit is a million unless the toy says otherwise
+    expect(whole(1_000_000)).toBe(0)
+    expect(whole(1_000_000, 1e9)).toBe(1_000_000)
+    expect(whole(297, 298)).toBe(297)
+    expect(whole(298, 298)).toBe(0)
+    for (const bad of [-1, 2.5, NaN, Infinity, '7', null, undefined, {}, [3]])
+      expect(whole(bad)).toBe(0)
   })
 })

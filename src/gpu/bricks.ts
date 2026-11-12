@@ -7,6 +7,8 @@
  * today's walls are the same for everybody, and a wall somebody drew travels as 80 characters.
  */
 
+import { whole } from './kept'
+
 export const W = 1
 export const H = 1.4
 export const COLS = 10
@@ -465,8 +467,6 @@ export const EMPTY: Saved = {
   drawn: BLANK_WALL,
   drawnBest: 0,
 }
-const whole = (v: unknown, max = 1e9) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -485,13 +485,13 @@ export function readSaved(text: string | null): Saved {
     paddle: whole(o.paddle, PADDLES.length),
     trail: typeof o.trail === 'boolean' ? o.trail : EMPTY.trail,
     sound: typeof o.sound === 'boolean' ? o.sound : EMPTY.sound,
-    best: whole(o.best),
+    best: whole(o.best, 1e9),
     today:
       t && typeof t === 'object' && whole(t.day, 2 ** 32)
-        ? { day: whole(t.day, 2 ** 32), best: whole(t.best) }
+        ? { day: whole(t.day, 2 ** 32), best: whole(t.best, 1e9) }
         : null,
     furthest: whole(o.furthest, 1e4),
     drawn,
-    drawnBest: whole(o.drawnBest),
+    drawnBest: whole(o.drawnBest, 1e9),
   }
 }

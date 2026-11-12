@@ -7,6 +7,7 @@
  * wide and wraps at the sides; heights are measured up from the bottom; time is in seconds.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const WORLD_H = 0.75
 export const G = 0.035
@@ -299,8 +300,6 @@ export const EMPTY: Saved = {
   ghost: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

@@ -8,6 +8,8 @@
  * to 23 and bears off above it. `board[i]` counts checkers: positive for side 1, negative for 2.
  */
 
+import { whole } from './kept'
+
 export type Who = 1 | 2
 export const other = (w: Who): Who => (w === 1 ? 2 : 1)
 export const BAR = -1
@@ -283,8 +285,6 @@ export const EMPTY: Saved = {
   pips: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

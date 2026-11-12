@@ -10,6 +10,7 @@
  */
 
 import { rngStep as roll } from './bricks'
+import { whole } from './kept'
 
 export const COLS = 11
 /** rows above the line; one more row below it holds a bubble only long enough to lose */
@@ -345,8 +346,6 @@ export const EMPTY: Saved = {
   best: { 4: 0, 5: 0, 6: 0 },
   games: 0,
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e9 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -363,7 +362,7 @@ export function readSaved(text: string | null): Saved {
     colours: pick(COLOUR_COUNTS, o.colours, EMPTY.colours),
     look: pick(LOOKS, o.look, EMPTY.look),
     guide: typeof o.guide === 'boolean' ? o.guide : EMPTY.guide,
-    best: { 4: whole(b[4]), 5: whole(b[5]), 6: whole(b[6]) },
-    games: whole(o.games),
+    best: { 4: whole(b[4], 1e9), 5: whole(b[5], 1e9), 6: whole(b[6], 1e9) },
+    games: whole(o.games, 1e9),
   }
 }

@@ -11,6 +11,8 @@
  * Pure, so fox.test.ts can play hundreds of games without a page. A point is row * 7 + column.
  */
 
+import { whole } from './kept'
+
 export type Side = 'geese' | 'fox'
 export const N = 7
 export const onBoard = (r: number, c: number) =>
@@ -280,8 +282,6 @@ export const EMPTY: Saved = {
   guides: true,
   record: { geese: NONE, fox: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

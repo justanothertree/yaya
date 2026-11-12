@@ -10,6 +10,7 @@
  */
 import { rankOf, shuffled, type Card } from './poker'
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export const COLUMNS = 7
 export const DEPTH = 5
@@ -159,8 +160,6 @@ export const EMPTY: Saved = {
   onPar: 0,
   today: null,
 }
-const whole = (v: unknown, max = 1e9) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 const golfScore = (v: unknown) =>
   typeof v === 'number' && Number.isInteger(v) && v >= -16 && v <= 35 ? v : null
 export function readSaved(text: string | null): Saved {
@@ -178,7 +177,7 @@ export function readSaved(text: string | null): Saved {
     string,
     unknown
   > | null
-  const played = whole(o.played)
+  const played = whole(o.played, 1e9)
   const tScore = t ? golfScore(t.score) : null
   return {
     back: pick(BACKS, o.back, EMPTY.back),
@@ -186,9 +185,9 @@ export function readSaved(text: string | null): Saved {
     wrap: typeof o.wrap === 'boolean' ? o.wrap : EMPTY.wrap,
     hints: typeof o.hints === 'boolean' ? o.hints : EMPTY.hints,
     played,
-    cleared: Math.min(played, whole(o.cleared)),
+    cleared: Math.min(played, whole(o.cleared, 1e9)),
     best: golfScore(o.best),
-    onPar: Math.min(played, whole(o.onPar)),
+    onPar: Math.min(played, whole(o.onPar, 1e9)),
     today:
       t && whole(t.day, 2 ** 32) && tScore !== null
         ? { day: whole(t.day, 2 ** 32), score: tScore }

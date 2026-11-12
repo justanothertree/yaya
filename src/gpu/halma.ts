@@ -8,6 +8,8 @@
  * Side 1 starts at the bottom point and races to the top; side 2 the other way.
  */
 
+import { whole } from './kept'
+
 export type Side = 1 | 2
 export type Hole = { q: number; r: number; s: number }
 export const DIRS: [number, number][] = [
@@ -208,8 +210,6 @@ export const EMPTY: Saved = {
   hints: true,
   record: { easy: NONE, fair: NONE, hard: NONE },
 }
-const whole = (v: unknown) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {

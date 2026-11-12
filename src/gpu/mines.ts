@@ -10,6 +10,7 @@
  * another laid. The time is then a measure of the player, and a board shared by everyone is fair.
  */
 import { rng } from './bricks'
+import { whole } from './kept'
 
 export type Size = { w: number; h: number; mines: number }
 export const SIZES = {
@@ -235,8 +236,6 @@ export const EMPTY: Saved = {
   played: 0,
   today: null,
 }
-const whole = (v: unknown, max = 1e9) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
@@ -250,22 +249,22 @@ export function readSaved(text: string | null): Saved {
     list.includes(x as T) ? (x as T) : d
   const best: Saved['best'] = {}
   const b = (typeof o.best === 'object' && o.best ? o.best : {}) as Record<string, unknown>
-  for (const k of Object.keys(SIZES) as SizeName[]) if (whole(b[k])) best[k] = whole(b[k])
+  for (const k of Object.keys(SIZES) as SizeName[]) if (whole(b[k], 1e9)) best[k] = whole(b[k], 1e9)
   const t = (typeof o.today === 'object' && o.today ? o.today : null) as Record<
     string,
     unknown
   > | null
-  const played = whole(o.played)
+  const played = whole(o.played, 1e9)
   return {
     size: pick(Object.keys(SIZES) as SizeName[], o.size, EMPTY.size),
     theme: pick(THEMES, o.theme, EMPTY.theme),
     mark: pick(MARKS, o.mark, EMPTY.mark),
     best,
-    won: Math.min(played, whole(o.won)),
+    won: Math.min(played, whole(o.won, 1e9)),
     played,
     today:
-      t && whole(t.day, 2 ** 32) && whole(t.tenths)
-        ? { day: whole(t.day, 2 ** 32), tenths: whole(t.tenths) }
+      t && whole(t.day, 2 ** 32) && whole(t.tenths, 1e9)
+        ? { day: whole(t.day, 2 ** 32), tenths: whole(t.tenths, 1e9) }
         : null,
   }
 }

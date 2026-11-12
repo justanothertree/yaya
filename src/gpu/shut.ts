@@ -9,6 +9,8 @@
  * number with a bit for each: bit 0 for the 1, up to bit 8 for the 9.
  */
 
+import { whole } from './kept'
+
 export const ALL = 0b111111111
 export const tilesOf = (up: number) =>
   [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((t) => up & (1 << (t - 1)))
@@ -175,8 +177,6 @@ export const EMPTY: Saved = {
   shut: 0,
   turns: 0,
 }
-const whole = (v: unknown, max = 1e6) =>
-  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max ? v : 0
 export function readSaved(text: string | null): Saved {
   let v: unknown
   try {
