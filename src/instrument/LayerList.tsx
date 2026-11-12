@@ -158,15 +158,6 @@ export function LayerList({
                 </select>
 
                 {/**
-                 * What this take SOUNDS like, and a way to change your mind.
-                 *
-                 * The settings are frozen onto the layer when you commit it, which is the whole
-                 * point — but frozen with no way back would mean replaying a part you were happy
-                 * with just to give it more room. This shows what it kept and re-stamps the
-                 * current knobs onto it, so changing the reverb costs a click rather than a
-                 * performance.
-                 */}
-                {/**
                  * The arrangement: which bars this layer plays in.
                  *
                  * ⚠️ Every bar is ON until you turn one off, so a take you just recorded behaves
@@ -311,17 +302,31 @@ export function LayerList({
                     onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
                   />
                 </label>
+                {/**
+                 * What this take SOUNDS like, and a way to change your mind.
+                 *
+                 * The settings are frozen onto the layer when you commit it, which is the whole
+                 * point — but frozen with no way back would mean replaying a part you were happy
+                 * with just to give it more room. This shows what it kept and re-stamps the
+                 * current knobs onto it, so changing the reverb costs a click rather than a
+                 * performance.
+                 */}
+                {/* ⚠️ "COPY FX", NOT WHAT IT HAS — Evan, 11 Nov 2026. The face read "dry" or "echo +
+                    room", which looks like a label and is a button: pressing it copies the effects
+                    you have set now onto this layer, and only its tooltip said so, which a phone
+                    never shows. The words for what the layer has moved into its name and title. */}
                 <button
                   className="btn inst-layer-fx"
                   onClick={() => setLayerFx(l.id)}
+                  aria-label={`Copy your current effects onto this layer (now: ${fxWord(l.fx)})`}
                   title={
                     `This layer plays with echo ${Math.round(l.fx.echo * 100)}, ` +
                     `space ${Math.round(l.fx.space * 100)}, ` +
                     `vibrato ${Math.round(l.fx.vibrato * 100)}. ` +
-                    'Click to give it the settings you have now.'
+                    'Click to copy the effects you have set now onto it.'
                   }
                 >
-                  {fxWord(l.fx)}
+                  Copy FX
                 </button>
 
                 {/* The third way to fix a take, after undo and re-voice: play it again over the
