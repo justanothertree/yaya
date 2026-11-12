@@ -137,6 +137,7 @@ import { PopperDemo } from '../gpu/PopperDemo'
 import { YachtDemo } from '../gpu/YachtDemo'
 import { FoxDemo } from '../gpu/FoxDemo'
 import { TentsDemo } from '../gpu/TentsDemo'
+import { RocksDemo } from '../gpu/RocksDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -970,6 +971,12 @@ const DEMOS: readonly {
     name: 'Tents',
     line: 'Tents — pitch a tent beside every tree, no two touching even at a corner, with the counts for each row and column to go by. One answer per field, a new field each day, against the clock.',
     Demo: TentsDemo,
+  },
+  {
+    id: 'rocks',
+    name: 'Rocks',
+    line: 'Rocks — fly a little ship through drifting rocks that wrap round the edges: break the big ones into smaller ones, clear the field, and survive the next, bigger wave. Three paces, a best score for each.',
+    Demo: RocksDemo,
   },
 ]
 

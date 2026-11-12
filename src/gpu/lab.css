@@ -6747,3 +6747,36 @@ html:has(.lab) {
 .tn-grid.is-done .tn-cell {
   border-color: var(--tn-done);
 }
+
+/* ---------------------------------------------------------------- rocks */
+.rk-wrap {
+  width: min(100%, 720px);
+  border-radius: 12px;
+}
+.rk-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.rk-room .lab-stage.rk-stage {
+  /* the field's own shape: 16 across, 12 down */
+  aspect-ratio: 16 / 12;
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  touch-action: none;
+  border-radius: 12px;
+  overflow: hidden;
+}
+/* the flying buttons: big enough for a thumb, and not a text selection when held */
+.rk-pads {
+  justify-content: center;
+}
+.rk-pad {
+  min-width: 56px;
+  min-height: 48px;
+  font-size: 1.4rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
