@@ -30,6 +30,7 @@ import {
   OCTAVE_HIGH,
   OCTAVE_LOW,
   PHONE_KEYBOARD,
+  isBlack,
   keysToShow,
   shiftOctave,
 } from '../audio/keyboardSpan'
@@ -105,10 +106,10 @@ import { openEditor } from '../instrument/openEditor'
 /**
  * Somewhere to play.
  *
- * Solo for now, and built so that playing together is an addition rather than a rewrite: every
- * press goes through `press`/`lift` with an id and a note, which is exactly the payload a peer
- * would send. When the room arrives, a remote note is the same two calls with a different id
- * prefix — see synth.ts on why events travel and audio does not.
+ * Built so that playing together was an addition rather than a rewrite: every press goes through
+ * `press`/`lift` with an id and a note, which is exactly the payload a peer sends — and since the
+ * jam arrived (see party/jam.ts), a remote note is those same two calls with a different id prefix.
+ * See synth.ts on why events travel and audio does not.
  *
  * ⚠️ THE KEYBOARD IS THE INSTRUMENT, not a decoration on a picture of one. Computer keys, mouse
  * and touch all reach the same two functions, and a key that is held stays held: the common
@@ -158,10 +159,6 @@ const KEY_MAP: Record<string, number> = {
   u: 23,
   i: 24,
 }
-
-const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
-
-const isBlack = (midi: number) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12)
 
 const INST_KEY = 'instrument_v1'
 const OCT_KEY = 'instrument_octave_v1'
@@ -1514,8 +1511,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               }}
             >
               {/* named in the scale's own convention — see keyName */}
-              {NAMES.map((nm, i) => (
-                <option key={nm} value={i}>
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i} value={i}>
                   {keyName(degrees, i)}
                 </option>
               ))}
