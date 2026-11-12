@@ -1,4 +1,5 @@
 import { localISO } from '../circuit/dates'
+import { LIMIT } from './limits'
 import { localMidnight, type Activity } from './record'
 import type { VisibilityTier } from '../circuit/types'
 import { dueOn, type Schedule } from './weekdays'
@@ -427,9 +428,10 @@ export function arrange(
  * ⚠️ THE SERVER'S NUMBER, NOT A CHOICE MADE HERE: `chronicle_goals` checks
  * `char_length(btrim(title)) between 1 and 120`. A shorter ceiling here would cut ideas that fit;
  * a longer one would hand the save a title it refuses, and the form would say "that did not
- * save" about a goal that looked fine.
+ * save" about a goal that looked fine. It is the same number the title box stops at, from
+ * limits.ts, whose test reads it out of the schema, so there is one copy of it, not two.
  */
-export const TITLE_MAX = 120
+export const TITLE_MAX = LIMIT.goalTitle
 
 /**
  * A journal entry turned into the first draft of a goal's title.
