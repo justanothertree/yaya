@@ -20,6 +20,7 @@ import {
   type Saved,
   type Side,
 } from './mancala'
+import { motionReduced as still } from '../ui/motion'
 
 type Mode = 'bot' | 'two'
 type Game = {
@@ -42,8 +43,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const still = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', stone: 'Stone', sea: 'Sea' }

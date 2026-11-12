@@ -19,6 +19,7 @@ import {
   type Side,
   type Tile,
 } from './dominoes'
+import { motionReduced as reduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -27,8 +28,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const STYLE_NAMES: Record<Saved['style'], string> = {
   ivory: 'Ivory',

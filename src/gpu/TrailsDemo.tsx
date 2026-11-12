@@ -22,6 +22,7 @@ import {
   type Saved,
   type Speed,
 } from './trails'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'ready' | 'play' | 'paused' | 'between' | 'over'
 const ROUNDS_TO_WIN = 3
@@ -32,8 +33,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SIZE_NAMES: Record<ArenaSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' }

@@ -28,6 +28,7 @@ import {
   type Kind,
   type Saved,
 } from './towers'
+import { motionReduced as reduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -36,8 +37,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const KIND_NAMES: Record<Kind, string> = { dart: 'Darts', cannon: 'Cannon', frost: 'Frost' }
 const KIND_ABOUT: Record<Kind, string> = {
   dart: 'quick shots at one',

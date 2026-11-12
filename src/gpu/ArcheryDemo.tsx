@@ -24,6 +24,7 @@ import {
   type RoundName,
   type Saved,
 } from './archery'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Mode = 'daily' | 'practice'
 type Phase = 'aim' | 'fly' | 'end' | 'over'
@@ -35,8 +36,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const STAMINA = 2.5
 
 const ROUND_NAMES: Record<RoundName, string> = {

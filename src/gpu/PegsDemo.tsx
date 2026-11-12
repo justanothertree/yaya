@@ -17,6 +17,7 @@ import {
   type Game,
   type Saved,
 } from './pegs'
+import { motionReduced as reduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -25,8 +26,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const BOARD_NAMES: Record<BoardKind, string> = { english: 'Cross (33)', triangle: 'Triangle (15)' }
 const LOOK_NAMES: Record<Saved['look'], string> = { marble: 'Marbles', wood: 'Wood', glow: 'Glow' }
 /** how long the solver takes over a hint before it owns up, in positions */

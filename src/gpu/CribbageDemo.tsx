@@ -24,6 +24,7 @@ import {
 } from './cribbage'
 import { value } from './gin'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
+import { motionReduced as reduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -32,8 +33,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { oak: 'Oak', walnut: 'Walnut', mint: 'Mint' }
 const LONG = [

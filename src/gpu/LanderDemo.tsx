@@ -31,6 +31,7 @@ import {
   type Saved,
   type World,
 } from './lander'
+import { motionReduced as reduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -39,8 +40,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
   Saved['look'],

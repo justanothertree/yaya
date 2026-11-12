@@ -21,6 +21,7 @@ import {
   type Seen,
   type Shot,
 } from './seabattle'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'setup' | 'battle' | 'over'
 const load = (): Saved => {
@@ -30,8 +31,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FLEET_NAMES: Record<FleetName, string> = {

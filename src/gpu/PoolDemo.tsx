@@ -23,6 +23,7 @@ import {
   type Saved,
   type ShotLog,
 } from './pool'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'aim' | 'rolling' | 'cpu' | 'over'
 const load = (): Saved => {
@@ -32,8 +33,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const CLOTH: Record<Saved['cloth'], { cloth: string; name: string }> = {
   green: { cloth: '#1f7a4a', name: 'Green' },

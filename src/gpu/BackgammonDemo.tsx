@@ -19,6 +19,7 @@ import {
   type Saved,
   type Step,
 } from './backgammon'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'opening' | 'roll' | 'move' | 'cpu' | 'over'
 const load = (): Saved => {
@@ -28,8 +29,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
   walnut: 'Walnut',

@@ -20,6 +20,7 @@ import {
   type Size,
   type Who,
 } from './fourrow'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Mode = 'bot' | 'two'
 const load = (): Saved => {
@@ -29,8 +30,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SIZE_NAMES: Record<Size, string> = {

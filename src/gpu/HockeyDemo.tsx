@@ -28,6 +28,7 @@ import {
   type Table,
   type Vec,
 } from './hockey'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'ready' | 'play' | 'paused' | 'over'
 
@@ -38,8 +39,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const LEVEL_NAMES: Record<Level, string> = { rookie: 'Rookie', club: 'Club', pro: 'Pro' }
 const TABLE_NAMES: Record<Saved['table'], string> = {

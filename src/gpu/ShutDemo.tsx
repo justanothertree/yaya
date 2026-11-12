@@ -22,6 +22,7 @@ import {
   type Saved,
   type Turn,
 } from './shut'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Mode = 'bot' | 'alone'
 type Whose = 'you' | 'computer' | 'done'
@@ -32,8 +33,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', felt: 'Felt', brass: 'Brass' }
 /** which of the nine places on a die's face hold a pip, for 1 to 6 */

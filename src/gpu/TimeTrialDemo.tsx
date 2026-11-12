@@ -25,6 +25,7 @@ import {
   type Saved,
   type Track,
 } from './timetrial'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'driving' | 'paused'
 const load = (): Saved => {
@@ -34,8 +35,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const COLOUR_NAMES = ['Red', 'Blue', 'Yellow', 'Green', 'Violet']
 const fmt = (s: number) =>
   `${Math.floor(s / 60) ? `${Math.floor(s / 60)}:` : ''}${(s % 60).toFixed(2).padStart(Math.floor(s / 60) ? 5 : 1, '0')}`

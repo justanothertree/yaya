@@ -29,6 +29,7 @@ import {
   type Power,
   type Saved,
 } from './bricks'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Mode = 'today' | 'practice' | 'wall'
 type Phase = 'play' | 'paused' | 'over'
@@ -39,8 +40,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const PALETTE_NAMES: Record<Saved['palette'], string> = {
   candy: 'Candy',
   neon: 'Neon night',

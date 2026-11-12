@@ -16,6 +16,7 @@ import {
   type Size,
   type World,
 } from './rocks'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'ready' | 'playing' | 'paused' | 'over'
 type Hold = 'left' | 'right' | 'thrust' | 'fire'
@@ -26,8 +27,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const PACE_NAMES: Record<Saved['pace'], string> = { calm: 'Calm', normal: 'Normal', wild: 'Wild' }
 const LOOK_NAMES: Record<Saved['look'], string> = { vector: 'Vector', neon: 'Neon', paper: 'Paper' }
 type Look = { bg: string; ink: string; rock: string; shot: string; glow: boolean; fill: boolean }

@@ -17,6 +17,7 @@ import {
   type Run,
   type Saved,
 } from './echo'
+import { motionReduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -115,7 +116,7 @@ export function EchoDemo() {
        lower pads. The tune and the pads go to the top of the screen, clear of it. */
     stage.current?.scrollIntoView({
       block: 'start',
-      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      behavior: motionReduced() ? 'auto' : 'smooth',
     })
     const r = newRun(
       (Math.random() * 2 ** 31) >>> 0,

@@ -21,6 +21,7 @@ import {
   type Level,
   type Saved,
 } from './yacht'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Mode = 'bot' | 'alone'
 const load = (): Saved => {
@@ -30,8 +31,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { felt: 'Felt', wood: 'Wood', sea: 'Sea' }
 const BOXES: Record<Cat, [string, string]> = {

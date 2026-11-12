@@ -23,6 +23,7 @@ import {
   type Saved,
 } from './hearts'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'pass' | 'play' | 'between' | 'over'
 const load = (): Saved => {
@@ -32,8 +33,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
 const BACK_NAMES: Record<Saved['back'], string> = {

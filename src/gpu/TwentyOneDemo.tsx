@@ -17,6 +17,7 @@ import {
   type Act,
   type Saved,
 } from './twentyone'
+import { motionReduced as reduced } from '../ui/motion'
 
 type Phase = 'bet' | 'play' | 'dealer' | 'done'
 type Hand = { cards: Card[]; doubled: boolean; split: boolean; stake: number; result?: number }
@@ -27,8 +28,6 @@ const load = (): Saved => {
     return readSaved(null)
   }
 }
-const reduced = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const SUIT_NAMES = ['spades', 'hearts', 'diamonds', 'clubs']
 const LONG = [
   'two',

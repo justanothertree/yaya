@@ -26,6 +26,7 @@ import {
   type Segment,
   type Tree,
 } from './bonsai'
+import { motionReduced } from '../ui/motion'
 
 const load = (): Saved => {
   try {
@@ -648,9 +649,7 @@ export function BonsaiDemo() {
           onPointerMove={onMove}
           onPointerUp={onUp}
           make={(ctx, canvas) => {
-            const still =
-              typeof matchMedia === 'function' &&
-              matchMedia('(prefers-reduced-motion: reduce)').matches
+            const still = motionReduced()
             let last = ''
             let t = 0
             return {
