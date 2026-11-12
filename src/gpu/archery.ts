@@ -8,6 +8,8 @@
  * across, ten rings of 6.1 cm, gold in the middle.
  */
 
+import { rng as seeded } from './bricks'
+
 export const FACE_R = 0.61
 export const RING = FACE_R / 10
 const G = 9.81
@@ -78,15 +80,7 @@ export function sway(
   }
 }
 
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { seeded }
 /** the wind for every arrow of a round, from a seed: steady within an end, shifting between them */
 export function winds(seed: number, round: RoundName): number[] {
   const rand = seeded(seed)

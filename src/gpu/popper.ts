@@ -9,6 +9,8 @@
  * a bubble is 2 across, the field 22 wide.
  */
 
+import { rngStep as roll } from './bricks'
+
 export const COLS = 11
 /** rows above the line; one more row below it holds a bubble only long enough to lose */
 export const ROWS = 13
@@ -77,14 +79,6 @@ const at = (g: Game, r: number, c: number) => g.cells[r * COLS + c]
 
 /* --------------------------------------------------------------------------- luck */
 
-/** one step of a xorshift generator kept in the game, and a number in [0, 1) from it */
-function roll(s: number): [number, number] {
-  s ^= s << 13
-  s ^= s >>> 17
-  s ^= s << 5
-  s >>>= 0
-  return [s || 1, s / 2 ** 32]
-}
 /** the colours still on the board */
 export function present(g: Pick<Game, 'cells'>): number[] {
   return [...new Set([...g.cells].filter(Boolean))].sort((a, b) => a - b)

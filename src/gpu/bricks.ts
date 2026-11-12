@@ -65,6 +65,18 @@ export type Event =
 
 /* ---------------------------------------------------------------------------- walls */
 
+/**
+ * One step of the same generator with its state kept outside it — in a game object that is copied
+ * from move to move (Popper, Rocks) — giving the next state and a number in [0, 1). From the same
+ * seed it gives the same numbers as `rng`.
+ */
+export function rngStep(s: number): [number, number] {
+  s ^= s << 13
+  s ^= s >>> 17
+  s ^= s << 5
+  s >>>= 0
+  return [s || 1, s / 2 ** 32]
+}
 export function rng(seed: number) {
   let s = seed >>> 0 || 1
   return () => {

@@ -9,6 +9,8 @@
  * the field is 16 across and 12 down; times in seconds.
  */
 
+import { rngStep as roll } from './bricks'
+
 export const W = 16
 export const H = 12
 export const SHIP_R = 0.35
@@ -82,13 +84,6 @@ export function gap(ax: number, ay: number, bx: number, by: number): number {
   dx = Math.min(dx, W - dx)
   dy = Math.min(dy, H - dy)
   return Math.hypot(dx, dy)
-}
-function roll(s: number): [number, number] {
-  s ^= s << 13
-  s ^= s >>> 17
-  s ^= s << 5
-  s >>>= 0
-  return [s || 1, s / 2 ** 32]
 }
 /** a random number from the world's own generator, so a game is the same from the same seed */
 function luck(w: World): number {

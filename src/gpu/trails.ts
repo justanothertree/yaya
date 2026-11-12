@@ -8,6 +8,8 @@
  * race to a square by being earlier in a list. A rider going out leaves its trail where it is.
  */
 
+import { rng } from './bricks'
+
 export type Dir = 0 | 1 | 2 | 3 // up, right, down, left
 export const DX = [0, 1, 0, -1] as const
 export const DY = [-1, 0, 1, 0] as const
@@ -19,16 +21,6 @@ export const ARENAS = { small: [32, 24], medium: [44, 32], large: [56, 40] } as 
 export type ArenaSize = keyof typeof ARENAS
 export const LAYOUTS = ['open', 'pillars', 'scatter'] as const
 export type Layout = (typeof LAYOUTS)[number]
-
-const seededRand = (seed: number) => {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
 
 /** the riders start spread round the arena, facing in; up to four of them */
 export function newArena(size: ArenaSize, riders: number, layout: Layout, seed = 1): Arena {
@@ -57,7 +49,7 @@ export function newArena(size: ArenaSize, riders: number, layout: Layout, seed =
           if (clearOfStarts(cx + dx, cy + dy)) cells[(cy + dy) * w + cx + dx] = 1
     }
   } else if (layout === 'scatter') {
-    const rand = seededRand(seed)
+    const rand = rng(seed)
     for (let k = 0; k < Math.floor((w * h) / 60); k++) {
       const x = 2 + Math.floor(rand() * (w - 4))
       const y = 2 + Math.floor(rand() * (h - 4))

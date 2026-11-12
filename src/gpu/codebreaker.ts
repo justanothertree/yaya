@@ -63,15 +63,7 @@ export function consistent(pool: Code[], history: { guess: Code; mark: Mark }[])
 }
 
 /** a source of numbers from a seed, so a daily code is the same for everyone on that day */
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { rng as seeded } from './bricks'
 /** the day's code: the same for every player on a given date, and different on the next */
 export function dailySeed(date: Date): number {
   const key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
