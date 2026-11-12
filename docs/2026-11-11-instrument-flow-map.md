@@ -82,3 +82,4 @@ made too long.
 | 3. The backing's state and calls (`useBacking`)   | 3,053                | `src/instrument/useBacking.ts` 272, `backing.ts` 61 (+ test)                           |
 | 4. The Beats & chords panel                       | 2,593                | `src/instrument/BackingPanel.tsx` 498                                                  |
 | 5. Song & transport (`SongControls`)              | 2,139                | `src/instrument/SongControls.tsx` 487                                                  |
+| 6. Sound: the instrument menu and More sound      | 1,945                | `src/instrument/SoundPanel.tsx` 319                                                    |
