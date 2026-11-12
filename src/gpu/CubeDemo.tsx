@@ -14,15 +14,9 @@ import {
   type Saved,
   type Side,
 } from './cube'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(CUBE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { glass: 'Glass', chalk: 'Chalk', neon: 'Neon' }
 const MARK = ['', '✕', '◯']
@@ -35,7 +29,7 @@ const cellName = (i: number) =>
   `${LAYER[Math.floor(i / 16)].toLowerCase()} layer ${COLS[i % 4]}${(Math.floor(i / 4) % 4) + 1}`
 
 export function CubeDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(CUBE_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [game, setGame] = useState<Game>(() => newGame())
@@ -47,13 +41,6 @@ export function CubeDemo() {
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(CUBE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const computerTurn = mode === 'bot' && !game.over && game.turn !== you
   const yours = !game.over && (mode === 'two' || game.turn === you)

@@ -18,16 +18,10 @@ import {
   type Saved,
 } from './twentyone'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'bet' | 'play' | 'dealer' | 'done'
 type Hand = { cards: Card[]; doubled: boolean; split: boolean; stake: number; result?: number }
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TWENTYONE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const SUIT_NAMES = ['spades', 'hearts', 'diamonds', 'clubs']
 const LONG = [
   'two',
@@ -84,7 +78,7 @@ const say = (cards: Card[]) => {
 }
 
 export function TwentyOneDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TWENTYONE_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('bet')
   const [hands, setHands] = useState<Hand[]>([])
   const [active, setActive] = useState(0)
@@ -94,13 +88,6 @@ export function TwentyOneDemo() {
   const at = useRef(0)
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(TWENTYONE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const draw = (): Card => {
     if (!cards.current.length || at.current >= cards.current.length) {

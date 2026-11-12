@@ -24,14 +24,8 @@ import {
   type Who,
 } from './darts'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(DARTS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
   Saved['board'],
@@ -89,7 +83,7 @@ const LEGS_TO_WIN = 2
 type Thrown = { x: number; y: number; who: Who }
 
 export function DartsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(DARTS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [leg, setLeg] = useState<Leg>(() => newLeg(0))
   const [legs, setLegs] = useState<[number, number]>([0, 0])
@@ -109,13 +103,6 @@ export function DartsDemo() {
   const timers = useRef<number[]>([])
   const myDarts = useRef(0)
   const [, redraw] = useState(0)
-  useEffect(() => {
-    try {
-      localStorage.setItem(DARTS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 

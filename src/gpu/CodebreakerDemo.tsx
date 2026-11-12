@@ -25,16 +25,10 @@ import {
   type Rules,
   type Saved,
 } from './codebreaker'
+import { useKept } from './kept'
 
 type Mode = 'daily' | 'practice' | 'computer'
 type Row = { guess: Code; mark: Mark; left?: number }
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(CODE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const COLOURS = [
   '#e63946',
@@ -92,7 +86,7 @@ const sayMark = (m: Mark) =>
   `${m.exact} in the right place${m.near ? `, ${m.near} the right colour elsewhere` : ''}`
 
 export function CodebreakerDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(CODE_KEY, readSaved)
   const today = dayKey(new Date())
   const playedToday = saved.daily?.day === today
   const [mode, setMode] = useState<Mode>(playedToday ? 'practice' : 'daily')
@@ -115,13 +109,6 @@ export function CodebreakerDemo() {
   )
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(CODE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const { rules } = game
   const pool = useMemo(() => allCodes(rules), [rules])

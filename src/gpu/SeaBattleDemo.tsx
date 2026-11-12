@@ -22,15 +22,9 @@ import {
   type Shot,
 } from './seabattle'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'setup' | 'battle' | 'over'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(SEA_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FLEET_NAMES: Record<FleetName, string> = {
@@ -201,7 +195,7 @@ function Sea({
 }
 
 export function SeaBattleDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(SEA_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('setup')
   const [b, setB] = useState<Battle>(() => fresh(saved))
   const [picked, setPicked] = useState(0)
@@ -211,13 +205,6 @@ export function SeaBattleDemo() {
   const timer = useRef(0)
   const firstMove = useRef<'you' | 'cpu'>('you')
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(SEA_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const restart = (s: Saved = saved) => {
     window.clearTimeout(timer.current)

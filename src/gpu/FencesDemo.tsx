@@ -24,14 +24,8 @@ import {
   type Who,
 } from './fences'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(FENCES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const THEME_NAMES: Record<Saved['theme'], string> = {
   meadow: 'Meadow',
@@ -58,7 +52,7 @@ const squares = (k: number) => `${k} square${k === 1 ? '' : 's'}`
 type Aim = { o: Orient; r: number; c: number }
 
 export function FencesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(FENCES_KEY, readSaved)
   const [game, setGame] = useState<Game>(() => newGame(saved.size, 0))
   const [level, setLevel] = useState<Level>(saved.level)
   const [fencing, setFencing] = useState(false)
@@ -79,13 +73,6 @@ export function FencesDemo() {
   const board = useRef<HTMLDivElement>(null)
   const pointer = useRef('mouse')
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(FENCES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const n = game.n
   const you: Who = 0

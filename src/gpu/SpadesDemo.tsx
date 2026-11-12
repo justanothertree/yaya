@@ -24,14 +24,8 @@ import {
   type Team,
 } from './spades'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(SPADES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
 const BACK_NAMES: Record<Saved['back'], string> = {
@@ -75,7 +69,7 @@ function Face({ c }: { c: Card }) {
 }
 
 export function SpadesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(SPADES_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [dealer, setDealer] = useState(3)
   const [hand, setHand] = useState<Hand>(() => deal(Math.random, 3))
@@ -95,13 +89,6 @@ export function SpadesDemo() {
   teamsRef.current = teams
   const levelRef = useRef(level)
   levelRef.current = level
-  useEffect(() => {
-    try {
-      localStorage.setItem(SPADES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
   const gap = () => (reduced() ? 120 : 480)

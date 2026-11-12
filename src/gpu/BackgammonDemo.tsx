@@ -20,15 +20,9 @@ import {
   type Step,
 } from './backgammon'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'opening' | 'roll' | 'move' | 'cpu' | 'over'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(BACKGAMMON_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
   walnut: 'Walnut',
@@ -54,7 +48,7 @@ const placeName = (i: number) =>
   i === BAR ? 'the bar' : i === OFF ? 'off the board' : `point ${i + 1}`
 
 export function BackgammonDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(BACKGAMMON_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [pos, setPos] = useState<Pos>(startPos)
   const [phase, setPhase] = useState<Phase>('opening')
@@ -68,13 +62,6 @@ export function BackgammonDemo() {
   const [cursor, setCursor] = useState(5)
   const refs = useRef(new Map<number, HTMLButtonElement | null>())
   const timers = useRef<number[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(BACKGAMMON_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 

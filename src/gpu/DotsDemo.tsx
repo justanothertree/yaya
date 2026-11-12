@@ -20,15 +20,9 @@ import {
   type Saved,
 } from './dots'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(DOTS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FILL_NAMES: Record<Saved['fill'], string> = {
@@ -179,7 +173,7 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number, k: Look): Vie
 /* ---------------------------------------------------------------------------- the room */
 
 export function DotsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(DOTS_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   /** the game itself lives in a ref and is drawn from there; `tick` re-renders the page around it */
   const game = useRef<Game>(newGame(saved.size, saved.size, 0))
@@ -197,13 +191,6 @@ export function DotsDemo() {
   const modeRef = useRef(mode)
   modeRef.current = mode
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(DOTS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const g = game.current
   const names = mode === 'bot' ? ['You', 'The computer'] : ['Player 1', 'Player 2']

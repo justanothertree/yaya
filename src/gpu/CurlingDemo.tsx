@@ -42,14 +42,8 @@ import {
   type Team,
 } from './curling'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(CURLING_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const ICE: Record<
   Saved['ice'],
@@ -118,7 +112,7 @@ type Live = {
 }
 
 export function CurlingDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(CURLING_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   // the computer has the hammer in your first game, so you throw first; after that it alternates
   const [game, setGame] = useState<Game>(() => newGame(saved.ends, 1))
@@ -148,13 +142,6 @@ export function CurlingDemo() {
   const drag = useRef(false)
   const recorded = useRef(false)
   const firstHammer = useRef<Team>(1)
-  useEffect(() => {
-    try {
-      localStorage.setItem(CURLING_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
   const setSweep = (on: boolean) => {

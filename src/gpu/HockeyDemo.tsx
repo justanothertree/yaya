@@ -29,16 +29,9 @@ import {
   type Vec,
 } from './hockey'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'ready' | 'play' | 'paused' | 'over'
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(HOCKEY_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const LEVEL_NAMES: Record<Level, string> = { rookie: 'Rookie', club: 'Club', pro: 'Pro' }
 const TABLE_NAMES: Record<Saved['table'], string> = {
@@ -241,7 +234,7 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number, sc: Scene) {
 /* ---------------------------------------------------------------------------- the room */
 
 export function HockeyDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(HOCKEY_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('ready')
   const [score, setScore] = useState<[number, number]>([0, 0])
   const [said, setSaid] = useState('')
@@ -263,13 +256,6 @@ export function HockeyDemo() {
   savedRef.current = saved
   const view = useRef<View | null>(null)
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(HOCKEY_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // a hidden tab pauses the match, so nobody comes back to a lost game
   useEffect(() => {
     const hide = () => {

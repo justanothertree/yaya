@@ -18,14 +18,8 @@ import {
   type Saved,
 } from './echo'
 import { motionReduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(ECHO_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 const noteName = (m: number) => {
   const pc = [0, 2, 4, 5, 7, 9, 11].indexOf(m % 12)
@@ -49,7 +43,7 @@ const PALETTE_NAMES: Record<Saved['palette'], string> = {
 type Phase = 'idle' | 'playing' | 'yours' | 'over'
 
 export function EchoDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(ECHO_KEY, readSaved)
   const [run, setRun] = useState<Run | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [lit, setLit] = useState<number | null>(null)
@@ -62,13 +56,6 @@ export function EchoDemo() {
   const voice = useRef(0)
   const runRef = useRef(run)
   runRef.current = run
-  useEffect(() => {
-    try {
-      localStorage.setItem(ECHO_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   const hush = () => {
     for (const t of timers.current) window.clearTimeout(t)
     timers.current = []

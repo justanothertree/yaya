@@ -15,15 +15,9 @@ import {
   type Side,
   type Size,
 } from './gomoku'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(GOMOKU_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', paper: 'Paper', night: 'Night' }
 const COLOUR = ['', 'Black', 'White']
@@ -31,7 +25,7 @@ const COLS = 'ABCDEFGHJKLMN'
 const pointName = (n: number, i: number) => `${COLS[i % n]}${n - Math.floor(i / n)}`
 
 export function GomokuDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(GOMOKU_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [game, setGame] = useState<Game>(() => newGame(saved.size))
@@ -43,13 +37,6 @@ export function GomokuDemo() {
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(GOMOKU_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const n = game.n
   const computerTurn = mode === 'bot' && !game.over && game.turn !== you

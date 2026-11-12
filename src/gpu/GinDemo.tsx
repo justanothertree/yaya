@@ -17,14 +17,8 @@ import {
 } from './gin'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(GIN_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
 const BACK_NAMES: Record<Saved['back'], string> = {
@@ -77,7 +71,7 @@ const laidOut = (cards: Card[]) => {
 }
 
 export function GinDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(GIN_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [hand, setHand] = useState<Hand>(() => deal((Math.random() * 2 ** 31) | 0, 0))
   const [totals, setTotals] = useState<[number, number]>([0, 0])
@@ -90,13 +84,6 @@ export function GinDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const timer = useRef(0)
   const levelRef = useRef(level)
-  useEffect(() => {
-    try {
-      localStorage.setItem(GIN_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const settle = (h: Hand, t: [number, number]) => {

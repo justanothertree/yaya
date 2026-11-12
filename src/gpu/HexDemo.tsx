@@ -19,15 +19,9 @@ import {
   type Player,
   type Saved,
 } from './hex'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(HEX_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const THEME_NAMES: Record<Saved['theme'], string> = {
   classic: 'Classic',
@@ -165,7 +159,7 @@ function draw(
 }
 
 export function HexDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(HEX_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const game = useRef({
     b: empty(saved.size),
@@ -191,13 +185,6 @@ export function HexDemo() {
   const savedRef = useRef(saved)
   savedRef.current = saved
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(HEX_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const g = game.current
   const computerTurn = mode === 'bot' && !g.over && g.turn !== g.you

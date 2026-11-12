@@ -22,19 +22,12 @@ import {
   unpackGhost,
   type Car,
   type Lap,
-  type Saved,
   type Track,
 } from './timetrial'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'driving' | 'paused'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TIMETRIAL_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const COLOUR_NAMES = ['Red', 'Blue', 'Yellow', 'Green', 'Violet']
 const fmt = (s: number) =>
   `${Math.floor(s / 60) ? `${Math.floor(s / 60)}:` : ''}${(s % 60).toFixed(2).padStart(Math.floor(s / 60) ? 5 : 1, '0')}`
@@ -74,7 +67,7 @@ function carShape(ctx: CanvasRenderingContext2D, s: Sample, colour: string, alph
 }
 
 export function TimeTrialDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TIMETRIAL_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('paused')
   const day = daySeed(new Date())
   const today = useMemo(() => dailyTrack(day), [day])
@@ -105,13 +98,6 @@ export function TimeTrialDemo() {
   const paceRef = useRef(pace)
   paceRef.current = pace
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(TIMETRIAL_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => {
     const hide = () => {
       if (document.hidden && phaseRef.current === 'driving') setPhase('paused')

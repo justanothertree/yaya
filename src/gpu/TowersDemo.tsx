@@ -29,14 +29,8 @@ import {
   type Saved,
 } from './towers'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TOWERS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const KIND_NAMES: Record<Kind, string> = { dart: 'Darts', cannon: 'Cannon', frost: 'Frost' }
 const KIND_ABOUT: Record<Kind, string> = {
   dart: 'quick shots at one',
@@ -62,7 +56,7 @@ const fit = (w: number, h: number): View => {
 }
 
 export function TowersDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TOWERS_KEY, readSaved)
   const day = daySeed(new Date())
   const today = useMemo(() => dailyMap(day), [day])
   const mapOf = (id: string) =>
@@ -94,13 +88,6 @@ export function TowersDemo() {
   const cursorRef = useRef(cursor)
   cursorRef.current = cursor
   const view = useRef<View | null>(null)
-  useEffect(() => {
-    try {
-      localStorage.setItem(TOWERS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => {
     const hide = () => {
       if (document.hidden) setPlaying(false)

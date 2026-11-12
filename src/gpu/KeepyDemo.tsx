@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   BALLS,
@@ -21,14 +21,8 @@ import {
   type World,
 } from './keepy'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(KEEPY_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const BALL_NAMES: Record<BallKind, string> = {
   balloon: '🎈 Balloon',
   beach: '🏖️ Beach ball',
@@ -56,7 +50,7 @@ type Phase = 'ready' | 'playing' | 'paused' | 'over'
 type Burst = { x: number; y: number; t: number; points: number }
 
 export function KeepyDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(KEEPY_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('ready')
   const [score, setScore] = useState(0)
   const [balls, setBalls] = useState(1)
@@ -71,13 +65,6 @@ export function KeepyDemo() {
   const bursts = useRef<Burst[]>([])
   const lean = useRef({ left: false, right: false })
   const misses = useRef<{ x: number; y: number; t: number }[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(KEEPY_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const best = saved.best[saved.ball][saved.breeze ? 'breezy' : 'calm']
   const fresh = (kind: BallKind = saved.ball, breeze = saved.breeze) => {

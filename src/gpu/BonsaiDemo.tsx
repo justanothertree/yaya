@@ -27,14 +27,8 @@ import {
   type Tree,
 } from './bonsai'
 import { motionReduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(BONSAI_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const newSeed = () => (Math.random() * 2 ** 32) >>> 0
 /** a first tree is a few seasons old, so there is something to shape from the start */
 const STARTER: Op[] = Array.from({ length: 7 }, () => ({ kind: 'grow' }) as Op)
@@ -411,7 +405,7 @@ function neighbours(tree: Tree, id: string | null) {
 }
 
 export function BonsaiDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(BONSAI_KEY, readSaved)
   const [start] = useState(() => startTree(saved))
   const [seed, setSeed] = useState(start.seed)
   const [ops, setOps] = useState<Op[]>(start.ops)
@@ -436,15 +430,8 @@ export function BonsaiDemo() {
   now.current = { tree, segs, dress, picked }
 
   useEffect(() => {
-    try {
-      localStorage.setItem(BONSAI_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
-  useEffect(() => {
     if (!fromLink) setSaved((s) => ({ ...s, current: code }))
-  }, [code, fromLink])
+  }, [code, fromLink, setSaved])
   // a picked branch that a cut or an undo took away is no longer in hand
   useEffect(() => {
     if (picked !== null && !tree.branches.has(picked)) setPicked(null)

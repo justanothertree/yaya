@@ -32,14 +32,8 @@ import {
   type Show,
   type Spark,
 } from './fireworks'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(FIREWORKS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const SCENE_NAMES: Record<Scene, string> = { city: 'City', hills: 'Hills', lake: 'Lake' }
 /** after a tap places a shell, the playhead moves on this far, so taps lay a show out in order */
 const STEP = 0.6
@@ -62,7 +56,7 @@ function startShow(saved: Saved): { show: Show; fromLink: boolean } {
 }
 
 export function FireworksDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(FIREWORKS_KEY, readSaved)
   const [start] = useState(() => startShow(saved))
   const [show, setShow] = useState<Show>(start.show)
   const [fromLink, setFromLink] = useState(start.fromLink)
@@ -77,18 +71,11 @@ export function FireworksDemo() {
   live.current.show = show
   const roomRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(FIREWORKS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // what is designed and composed is kept as you go — a shared show only once you change it
-  useEffect(() => setSaved((s) => ({ ...s, shell })), [shell])
+  useEffect(() => setSaved((s) => ({ ...s, shell })), [shell, setSaved])
   useEffect(() => {
     if (!fromLink) setSaved((s) => ({ ...s, show: encode(show) }))
-  }, [show, fromLink])
+  }, [show, fromLink, setSaved])
   // a show link clicked while the Lab is already open
   useEffect(() => {
     const on = () => {

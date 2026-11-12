@@ -24,16 +24,10 @@ import {
 } from './shut'
 import { motionReduced as reduced } from '../ui/motion'
 import { DieFace } from './DieFace'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'alone'
 type Whose = 'you' | 'computer' | 'done'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(SHUT_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', felt: 'Felt', brass: 'Brass' }
 const TILES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -47,7 +41,7 @@ const expectBy = (up: number, n: 1 | 2) =>
   }, 0)
 
 export function ShutDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(SHUT_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [whose, setWhose] = useState<Whose>('you')
@@ -60,13 +54,6 @@ export function ShutDemo() {
     'Roll, then shut tiles that add up to the roll. Lowest total left wins; shut them all to shut the box.',
   )
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(SHUT_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const t = whose === 'computer' ? theirs : yours
   const mine = whose === 'you'

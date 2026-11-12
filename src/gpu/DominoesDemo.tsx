@@ -21,14 +21,8 @@ import {
 } from './dominoes'
 import { motionReduced as reduced } from '../ui/motion'
 import { PIPS } from './pips'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(DOMINOES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const STYLE_NAMES: Record<Saved['style'], string> = {
   ivory: 'Ivory',
@@ -62,7 +56,7 @@ function Domino({ a, b }: { a: number; b: number }) {
 }
 
 export function DominoesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(DOMINOES_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [round, setRound] = useState<Round>(() => deal((Math.random() * 2 ** 31) | 0, 0))
   const [totals, setTotals] = useState<[number, number]>([0, 0])
@@ -73,13 +67,6 @@ export function DominoesDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const timer = useRef(0)
   const levelRef = useRef(level)
-  useEffect(() => {
-    try {
-      localStorage.setItem(DOMINOES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const settle = (r: Round, t: [number, number]) => {

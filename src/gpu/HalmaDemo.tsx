@@ -17,15 +17,9 @@ import {
   type Saved,
   type Side,
 } from './halma'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(HALMA_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', marble: 'Marble', night: 'Night' }
 const SIDES: Record<Saved['look'], [string, string]> = {
@@ -45,7 +39,7 @@ const holeName = (i: number) => {
 }
 
 export function HalmaDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(HALMA_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [game, setGame] = useState<Game>(() => newGame(1))
@@ -58,13 +52,6 @@ export function HalmaDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
   const firstRef = useRef<Side>(1)
-  useEffect(() => {
-    try {
-      localStorage.setItem(HALMA_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const sides = SIDES[saved.look]
   const all = moves(game)

@@ -21,15 +21,9 @@ import {
   type Who,
 } from './fourrow'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(FOUR_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SIZE_NAMES: Record<Size, string> = {
@@ -154,7 +148,7 @@ function draw(
 }
 
 export function FourRowDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(FOUR_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const game = useRef({
     g: newGrid(saved.size, saved.need),
@@ -175,13 +169,6 @@ export function FourRowDemo() {
   const savedRef = useRef(saved)
   savedRef.current = saved
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(FOUR_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const g = game.current
   const nameOf = (w: Who) =>

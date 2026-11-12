@@ -25,17 +25,11 @@ import {
   type Saved,
 } from './archery'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Mode = 'daily' | 'practice'
 type Phase = 'aim' | 'fly' | 'end' | 'over'
 type Shot = { x: number; y: number; ring: number; x10: boolean }
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(ARCHERY_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const STAMINA = 2.5
 
 const ROUND_NAMES: Record<RoundName, string> = {
@@ -218,7 +212,7 @@ function draw(
 }
 
 export function ArcheryDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(ARCHERY_KEY, readSaved)
   const today = dayKey(new Date())
   const playedToday = saved.daily?.day === today
   const [mode, setMode] = useState<Mode>(playedToday ? 'practice' : 'daily')
@@ -258,13 +252,6 @@ export function ArcheryDemo() {
   const staminaRef = useRef<HTMLSpanElement | null>(null)
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(ARCHERY_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const L = live.current
   const ends = ROUNDS[L.round]

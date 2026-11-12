@@ -23,14 +23,8 @@ import {
   type Saved,
   type Side,
 } from './chess'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(CHESS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { wood: 'Wood', green: 'Green', blue: 'Blue' }
 const SET_NAMES: Record<Saved['set'], string> = {
@@ -51,7 +45,7 @@ const sideName = (s: Side) => (s === 'w' ? 'white' : 'black')
 type Turn = { pos: Pos; move: Move | null; name: string }
 
 export function ChessDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(CHESS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [you, setYou] = useState<Side>('w')
   const [line, setLine] = useState<Turn[]>(() => [{ pos: fromFen(START), move: null, name: '' }])
@@ -71,13 +65,6 @@ export function ChessDemo() {
    */
   const youRef = useRef(you)
   const levelRef = useRef(level)
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHESS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const pos = line[line.length - 1].pos

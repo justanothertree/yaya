@@ -17,14 +17,8 @@ import {
   type Size,
 } from './lamps'
 import { dayNumber } from './daily'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(LAMPS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LOOK_NAMES: Record<Saved['look'], string> = {
   bulbs: 'Bulbs',
   lanterns: 'Lanterns',
@@ -35,7 +29,7 @@ const seedFor = (size: number, pattern: Pattern) =>
   (daySeed(new Date()) ^ (size * 7919) ^ (pattern === 'cross' ? 0x2545f491 : 0)) >>> 0
 
 export function LampsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(LAMPS_KEY, readSaved)
   const [seed, setSeed] = useState(() => seedFor(saved.size, saved.pattern))
   const n = saved.size
   const pattern = saved.pattern
@@ -53,13 +47,6 @@ export function LampsDemo() {
     'Press a lamp and it switches, and so do the ones beside it. Switch them all off.',
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(LAMPS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // a fresh board whenever the size, pattern or seed changes
   useEffect(() => {
     setLit(fresh)

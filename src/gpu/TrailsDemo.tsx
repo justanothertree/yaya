@@ -23,16 +23,10 @@ import {
   type Speed,
 } from './trails'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'ready' | 'play' | 'paused' | 'between' | 'over'
 const ROUNDS_TO_WIN = 3
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TRAILS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SIZE_NAMES: Record<ArenaSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' }
@@ -137,7 +131,7 @@ function draw(
 }
 
 export function TrailsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TRAILS_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('ready')
   const [wins, setWins] = useState<number[]>(() => Array(saved.rivals + 1).fill(0))
   const [line, setLine] = useState('Tap the arena or press Space to ride.')
@@ -165,13 +159,6 @@ export function TrailsDemo() {
   const view = useRef<View | null>(null)
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(TRAILS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => {
     const hide = () => {
       if (document.hidden && phaseRef.current === 'play') setPhase('paused')

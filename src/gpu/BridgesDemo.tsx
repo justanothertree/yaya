@@ -18,14 +18,8 @@ import {
   type Size,
 } from './bridges'
 import { clock, dayNumber } from './daily'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(BRIDGES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LOOK_NAMES: Record<Saved['look'], string> = { sea: 'Sea', map: 'Old map', night: 'Night' }
 /** seconds added for each hint */
 const PENALTY = 30
@@ -38,7 +32,7 @@ const DIRS: Record<string, [number, number, string]> = {
 }
 
 export function BridgesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(BRIDGES_KEY, readSaved)
   const [seed, setSeed] = useState(() => seedFor(saved.size))
   const daily = seed === seedFor(saved.size)
   const p: Puzzle = useMemo(() => make(saved.size, seed), [saved.size, seed])
@@ -61,13 +55,6 @@ export function BridgesDemo() {
     'Join the islands: each needs as many bridges as its number, and all must connect. Tap an island, then a neighbour.',
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(BRIDGES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // everything else fresh whenever the puzzle changes
   useEffect(() => {
     setPlay({ p, laid: p.edges.map(() => 0) })

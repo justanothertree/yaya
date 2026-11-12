@@ -24,15 +24,9 @@ import {
   type ShotLog,
 } from './pool'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'aim' | 'rolling' | 'cpu' | 'over'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(POOL_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const CLOTH: Record<Saved['cloth'], { cloth: string; name: string }> = {
   green: { cloth: '#1f7a4a', name: 'Green' },
@@ -60,7 +54,7 @@ function fit(w: number, h: number): View {
 }
 
 export function PoolDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(POOL_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [game, setGame] = useState<Game>(() => newGame((Math.random() * 2 ** 31) | 0, 0))
   const [phase, setPhase] = useState<Phase>('aim')
@@ -80,13 +74,6 @@ export function PoolDemo() {
   const view = useRef<View | null>(null)
   const timers = useRef<number[]>([])
   const [, redraw] = useState(0)
-  useEffect(() => {
-    try {
-      localStorage.setItem(POOL_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 

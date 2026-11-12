@@ -23,15 +23,9 @@ import {
 } from './yacht'
 import { motionReduced as reduced } from '../ui/motion'
 import { DieFace } from './DieFace'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'alone'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(YACHT_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { felt: 'Felt', wood: 'Wood', sea: 'Sea' }
 const BOXES: Record<Cat, [string, string]> = {
@@ -51,7 +45,7 @@ const BOXES: Record<Cat, [string, string]> = {
 const dicePhrase = (dice: number[]) => (dice.length ? [...dice].sort().join(' ') : 'nothing')
 
 export function YachtDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(YACHT_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [game, setGame] = useState<Game>(() => newGame(0))
@@ -62,13 +56,6 @@ export function YachtDemo() {
   /** who went first in this game against the computer: the next one, the other side does */
   const [starter, setStarter] = useState<0 | 1>(0)
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(YACHT_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const mine = game.cards[0]
   const theirs = game.cards[1]

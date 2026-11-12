@@ -21,15 +21,9 @@ import {
   type Saved,
   type Who,
 } from './draughts'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(DRAUGHTS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { classic: 'Classic', wood: 'Wood', ice: 'Ice' }
 /** each set of pieces names its two sides */
@@ -44,7 +38,7 @@ const squareName = (i: number) => `${FILES[colOf(i)]}${8 - rowOf(i)}`
 const same = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i])
 
 export function DraughtsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(DRAUGHTS_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [game, setGame] = useState<Game>(newGame)
   const [you, setYou] = useState<Who>(1)
@@ -56,13 +50,6 @@ export function DraughtsDemo() {
   const [cursor, setCursor] = useState(at(5, 0))
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(DRAUGHTS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const sides = SIDES[saved.pieces]
   const all = moves(game)

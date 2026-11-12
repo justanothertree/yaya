@@ -16,14 +16,8 @@ import {
   type Size,
 } from './cages'
 import { clock, dayNumber } from './daily'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(CAGES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LOOK_NAMES: Record<Saved['look'], string> = { paper: 'Paper', slate: 'Slate', sun: 'Sunny' }
 const OP_WORDS: Record<string, string> = {
   '+': 'add to',
@@ -38,7 +32,7 @@ const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 7919)) >>> 0
 const blank = (n: number) => new Array<number>(n * n).fill(0)
 
 export function CagesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(CAGES_KEY, readSaved)
   const [seed, setSeed] = useState(() => seedFor(saved.size))
   const daily = seed === seedFor(saved.size)
   const p: Puzzle = useMemo(() => make(saved.size, seed), [saved.size, seed])
@@ -69,13 +63,6 @@ export function CagesDemo() {
     'Fill each row and column with every number once, so each cage makes its target.',
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(CAGES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // a fresh grid whenever the puzzle changes
   useEffect(() => {
     setPlay({ p, grid: blank(p.n), notes: blank(p.n) })

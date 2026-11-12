@@ -17,15 +17,9 @@ import {
   type Saved,
   type SizeName,
 } from './mines'
+import { useKept } from './kept'
 
 type Mode = 'today' | 'practice'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(MINES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const SIZE_NAMES: Record<SizeName, string> = { small: 'Small', medium: 'Medium', large: 'Large' }
 const THEME_NAMES: Record<Saved['theme'], string> = {
   meadow: 'Meadow',
@@ -132,7 +126,7 @@ const Cell = memo(function Cell(p: CellProps) {
 })
 
 export function MinesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(MINES_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('today')
   const startToday = () =>
     reveal(newGame(SIZES[TODAY_SIZE], daySeed(new Date())), middle(TODAY_SIZE))
@@ -152,13 +146,6 @@ export function MinesDemo() {
     const el = scroller.current
     if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
   }, [game.seed, game.size])
-  useEffect(() => {
-    try {
-      localStorage.setItem(MINES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const sizeName: SizeName = mode === 'today' ? TODAY_SIZE : saved.size
   const s = game.size

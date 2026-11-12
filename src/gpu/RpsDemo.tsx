@@ -16,6 +16,7 @@ import {
   type Saved,
   type Side,
 } from './rps'
+import { useKept } from './kept'
 
 type Tab = 'reader' | 'two' | 'coin'
 const TABS: { id: Tab; label: string }[] = [
@@ -24,27 +25,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'coin', label: '🪙 Call the coin' },
 ]
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(RPS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
 const said = (r: 1 | 0 | -1) =>
   r > 0 ? 'You win the round' : r < 0 ? 'It wins the round' : 'A draw'
 
 export function RpsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(RPS_KEY, readSaved)
   const [tab, setTab] = useState<Tab>('reader')
-  useEffect(() => {
-    try {
-      localStorage.setItem(RPS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   return (
     <div className="lab-keys rps-room">

@@ -25,14 +25,8 @@ import {
   type Shot,
 } from './bowling'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(BOWLING_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
   Saved['lane'],
@@ -103,7 +97,7 @@ type Side = 0 | 1
 type Show = { roll: Roll; who: Side; t: number; after: () => void }
 
 export function BowlingDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(BOWLING_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [shot, setShot] = useState<Shot>(saved.stance)
   const [rolls, setRolls] = useState<[number[], number[]]>([[], []])
@@ -125,13 +119,6 @@ export function BowlingDemo() {
   const timers = useRef<number[]>([])
   const recorded = useRef(false)
   const [, redraw] = useState(0)
-  useEffect(() => {
-    try {
-      localStorage.setItem(BOWLING_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 

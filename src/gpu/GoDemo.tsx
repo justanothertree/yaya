@@ -17,14 +17,8 @@ import {
   type Saved,
   type Who,
 } from './goboard'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(GO_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
   kaya: 'Kaya wood',
@@ -38,7 +32,7 @@ const STARS = new Set([2 * N + 2, 2 * N + 6, 6 * N + 2, 6 * N + 6, 4 * N + 4])
 const colourName = (w: Who) => (w === 1 ? 'black' : 'white')
 
 export function GoDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(GO_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [you, setYou] = useState<Who>(1)
   const [game, setGame] = useState<Game>(newGame)
@@ -52,13 +46,6 @@ export function GoDemo() {
   const youRef = useRef(you)
   const levelRef = useRef(level)
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(GO_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const finish = (g: Game, resigned?: Who) => {

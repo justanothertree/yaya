@@ -18,15 +18,9 @@ import {
   type Side,
   type Size,
 } from './breakthrough'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(BREAKTHROUGH_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { stone: 'Stone', garden: 'Garden', neon: 'Neon' }
 /** each look names its two sides */
@@ -39,7 +33,7 @@ const FILES = 'abcdefgh'
 const squareName = (n: number, i: number) => `${FILES[i % n]}${n - Math.floor(i / n)}`
 
 export function BreakthroughDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(BREAKTHROUGH_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [game, setGame] = useState<Game>(() => newGame(saved.size, 1))
@@ -53,13 +47,6 @@ export function BreakthroughDemo() {
   const recorded = useRef(false)
   /** who moved first in the game being played, so the next game can give the first move away */
   const firstRef = useRef<Side>(1)
-  useEffect(() => {
-    try {
-      localStorage.setItem(BREAKTHROUGH_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const n = game.board.n
   const sides = SIDES[saved.look]

@@ -24,15 +24,9 @@ import {
 } from './hearts'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'pass' | 'play' | 'between' | 'over'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(HEARTS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
 const BACK_NAMES: Record<Saved['back'], string> = {
@@ -73,7 +67,7 @@ function Face({ c, small }: { c: Card; small?: boolean }) {
 }
 
 export function HeartsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(HEARTS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [round, setRound] = useState(0)
   const [dealt, setDealt] = useState<Card[][]>(() => deal(Math.random))
@@ -88,13 +82,6 @@ export function HeartsDemo() {
   const [cursor, setCursor] = useState(0)
   const timers = useRef<number[]>([])
   const cardRefs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(HEARTS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
   const way = PASS[round % 4]

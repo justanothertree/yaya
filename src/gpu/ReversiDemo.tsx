@@ -22,15 +22,9 @@ import {
   type Who,
 } from './reversi'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(REVERSI_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { felt: 'Felt', wood: 'Wood', slate: 'Slate' }
@@ -160,7 +154,7 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number, k: Look): Vie
 /* ---------------------------------------------------------------------------- the room */
 
 export function ReversiDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(REVERSI_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const game = useRef({
     b: start(saved.size),
@@ -186,13 +180,6 @@ export function ReversiDemo() {
   const modeRef = useRef(mode)
   modeRef.current = mode
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(REVERSI_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const g = game.current
   const nameOf = (w: Who) =>

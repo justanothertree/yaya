@@ -18,14 +18,8 @@ import {
   type Saved,
 } from './pegs'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(PEGS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const BOARD_NAMES: Record<BoardKind, string> = { english: 'Cross (33)', triangle: 'Triangle (15)' }
 const LOOK_NAMES: Record<Saved['look'], string> = { marble: 'Marbles', wood: 'Wood', glow: 'Glow' }
 /** how long the solver takes over a hint before it owns up, in positions */
@@ -45,7 +39,7 @@ const name = (kind: BoardKind, i: number) => {
 }
 
 export function PegsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(PEGS_KEY, readSaved)
   const [game, setGame] = useState<Game>(() => newGame(saved.board))
   const [picked, setPicked] = useState<number | null>(null)
   const [hint, setHint] = useState<[number, number, number] | null>(null)
@@ -58,13 +52,6 @@ export function PegsDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const timer = useRef<number | null>(null)
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(PEGS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(
     () => () => {
       if (timer.current !== null) window.clearTimeout(timer.current)

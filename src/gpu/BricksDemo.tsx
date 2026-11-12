@@ -30,16 +30,10 @@ import {
   type Saved,
 } from './bricks'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Mode = 'today' | 'practice' | 'wall'
 type Phase = 'play' | 'paused' | 'over'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(BRICKS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const PALETTE_NAMES: Record<Saved['palette'], string> = {
   candy: 'Candy',
   neon: 'Neon night',
@@ -289,7 +283,7 @@ const hudOf = (g: Game): Hud => ({
 })
 
 export function BricksDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(BRICKS_KEY, readSaved)
   const linked = useRef(readWall(hashParam('wall')))
   const [mode, setMode] = useState<Mode>(linked.current ? 'wall' : 'today')
   /** the wall played in "your wall": a linked one for this visit, or the one being drawn */
@@ -317,13 +311,6 @@ export function BricksDemo() {
   const view = useRef<View | null>(null)
   const cells = useRef<(HTMLButtonElement | null)[]>([])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(BRICKS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // a hidden tab pauses, so nobody comes back to a lost ball
   useEffect(() => {
     const hide = () => {

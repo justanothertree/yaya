@@ -21,15 +21,9 @@ import {
   type Saved,
   type Side,
 } from './fox'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(FOX_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { meadow: 'Meadow', snow: 'Snow', dusk: 'Dusk' }
 const COLS = 'ABCDEFG'
@@ -42,7 +36,7 @@ const LINES: [number, number][] = POINTS.flatMap((i) =>
 )
 
 export function FoxDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(FOX_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [level, setLevel] = useState<Level>(saved.level)
   const [you, setYou] = useState<Side>(saved.side)
@@ -56,13 +50,6 @@ export function FoxDemo() {
   )
   const refs = useRef<Map<number, HTMLButtonElement>>(new Map())
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(FOX_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const done = over(game)
   const computer = mode === 'bot' && !done && game.turn !== you

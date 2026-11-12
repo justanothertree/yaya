@@ -15,15 +15,9 @@ import {
   type Saved,
   type Who,
 } from './ultimate'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(ULTIMATE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const MARK_NAMES: Record<MarkSet, string> = {
   classic: 'Crosses and noughts',
@@ -55,7 +49,7 @@ const indexAt = (row: number, col: number) =>
   (Math.floor(row / 3) * 3 + Math.floor(col / 3)) * 9 + (row % 3) * 3 + (col % 3)
 
 export function UltimateDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(ULTIMATE_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [game, setGame] = useState<Game>(newGame)
   const [you, setYou] = useState<Who>(1)
@@ -67,13 +61,6 @@ export function UltimateDemo() {
   const [thinking, setThinking] = useState(false)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(ULTIMATE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const marks = MARK_SETS[saved.marks]
   const nameOf = (w: Who) =>

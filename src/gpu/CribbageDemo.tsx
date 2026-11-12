@@ -25,14 +25,8 @@ import {
 import { value } from './gin'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(CRIBBAGE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { oak: 'Oak', walnut: 'Walnut', mint: 'Mint' }
 const LONG = [
@@ -111,7 +105,7 @@ function readOut(ps: Part[]): string {
 type Shown = { who: string; cards: Card[]; points: number; spoken: string }
 
 export function CribbageDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(CRIBBAGE_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [r, setR] = useState<Round>(() => deal(seed(), 1))
   const [picked, setPicked] = useState<Card[]>([])
@@ -122,13 +116,6 @@ export function CribbageDemo() {
   const best = useRef(0)
   const timer = useRef(0)
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(CRIBBAGE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const whose = (w: Who) => (w === 0 ? 'your' : 'the computer’s')

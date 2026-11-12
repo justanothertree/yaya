@@ -19,15 +19,9 @@ import {
   type Board,
   type Saved,
 } from './tiles'
+import { useKept } from './kept'
 
 type Mode = 'today' | 'practice'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TILES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const STYLE_NAMES: Record<Saved['style'], string> = { ivory: 'Ivory', jade: 'Jade', night: 'Night' }
 const SHAPE_NAMES = ['circle', 'triangle', 'square', 'diamond', 'star', 'heart']
 /** a kind is a shape and how many of it: one, two or three — never told apart by colour alone */
@@ -47,7 +41,7 @@ function Clock({ from, to, extra }: { from: number | null; to: number | null; ex
 }
 
 export function TilesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TILES_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('today')
   const layoutFor = (m: Mode, id: string) =>
     m === 'today'
@@ -68,13 +62,6 @@ export function TilesDemo() {
   const [share, setShare] = useState('')
   const [cursor, setCursor] = useState(-1)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(TILES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const places = board.layout.places
   const isFree = (i: number) => free(places, board.filled, i)

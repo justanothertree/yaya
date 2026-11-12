@@ -25,14 +25,8 @@ import {
   type Saved,
 } from './putt'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(PUTT_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 type Theme = Saved['theme']
 const LOOK: Record<
@@ -131,7 +125,7 @@ function firstLeg(h: Hole, from: Pt, angle: number, power: number): Pt[] {
 }
 
 export function PuttDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(PUTT_KEY, readSaved)
   const sentHole = useMemo(() => {
     const t = hashParam('hole')
     return t ? readHole(t, 'A sent hole') : null
@@ -167,13 +161,6 @@ export function PuttDemo() {
   const painting = useRef(false)
   const timers = useRef<number[]>([])
   const [, redraw] = useState(0)
-  useEffect(() => {
-    try {
-      localStorage.setItem(PUTT_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 

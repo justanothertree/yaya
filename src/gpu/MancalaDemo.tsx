@@ -21,6 +21,7 @@ import {
   type Side,
 } from './mancala'
 import { motionReduced as still } from '../ui/motion'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
 type Game = {
@@ -34,14 +35,6 @@ type Game = {
   first: Side
   /** how well the computer plays this game; a change waits for the next one */
   level: Level
-}
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(MANCALA_KEY))
-  } catch {
-    return readSaved(null)
-  }
 }
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -95,7 +88,7 @@ function Seeds({
 }
 
 export function MancalaDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(MANCALA_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [game, setGame] = useState<Game>(() => ({
     rules: saved.rules,
@@ -114,13 +107,6 @@ export function MancalaDemo() {
   const boardRef = useRef<HTMLDivElement | null>(null)
   const later = (f: () => void, ms: number) => timers.current.push(window.setTimeout(f, ms))
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(MANCALA_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const names = mode === 'bot' ? ['You', 'The computer'] : ['Player 1', 'Player 2']
   const busy = shown !== null

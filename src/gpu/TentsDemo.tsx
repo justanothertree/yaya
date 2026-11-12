@@ -18,14 +18,8 @@ import {
   type Size,
 } from './tents'
 import { clock, dayNumber } from './daily'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(TENTS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LOOK_NAMES: Record<Saved['look'], string> = { park: 'Park', beach: 'Beach', night: 'Night' }
 /** seconds added for each hint */
 const PENALTY = 30
@@ -33,7 +27,7 @@ const seedFor = (size: number) => (daySeed(new Date()) ^ (size * 104729)) >>> 0
 const MARK_WORDS = ['empty', 'a tent', 'grass']
 
 export function TentsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(TENTS_KEY, readSaved)
   const [seed, setSeed] = useState(() => seedFor(saved.size))
   const daily = seed === seedFor(saved.size)
   const p: Puzzle = useMemo(() => make(saved.size, seed), [saved.size, seed])
@@ -54,13 +48,6 @@ export function TentsDemo() {
     'Pitch a tent beside each tree — above, below, left or right — with no two tents touching, even at a corner.',
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(TENTS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // everything else fresh whenever the field changes
   useEffect(() => {
     setPlay({ p, marks: new Array<Mark>(p.n * p.n).fill(0) })

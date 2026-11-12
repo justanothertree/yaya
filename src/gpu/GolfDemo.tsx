@@ -19,15 +19,9 @@ import {
   type Saved,
 } from './golf'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
+import { useKept } from './kept'
 
 type Mode = 'today' | 'practice'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(GOLF_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const BACK_NAMES: Record<Saved['back'], string> = {
   lattice: 'Lattice backs',
   stripes: 'Striped backs',
@@ -68,7 +62,7 @@ function Face({ c }: { c: Card }) {
 }
 
 export function GolfDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(GOLF_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('today')
   const [seed, setSeed] = useState(() => daySeed(new Date()))
   const [game, setGame] = useState<Game>(() => deal(daySeed(new Date()), saved.wrap))
@@ -80,13 +74,6 @@ export function GolfDemo() {
   )
   const [share, setShare] = useState('')
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(GOLF_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   // par is worked out a slice at a time between frames, so the cards never wait for it
   useEffect(() => {

@@ -19,15 +19,9 @@ import {
   type Saved,
   type Who,
 } from './morris'
+import { useKept } from './kept'
 
 type Mode = 'bot' | 'two'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(MORRIS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
   wood: 'Wood',
@@ -94,7 +88,7 @@ function stepFrom(p: number, dx: number, dy: number): number {
 }
 
 export function MorrisDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(MORRIS_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
   const [game, setGame] = useState<Game>(newGame)
   const [you, setYou] = useState<Who>(1)
@@ -107,13 +101,6 @@ export function MorrisDemo() {
   const [cursor, setCursor] = useState(0)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(MORRIS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const all = moves(game)
   const yours = !game.winner && (mode === 'two' || game.turn === you)

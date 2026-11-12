@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   COLOUR_COUNTS,
@@ -25,14 +25,8 @@ import {
   type Saved,
 } from './popper'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(POPPER_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LOOK_NAMES: Record<Saved['look'], string> = { candy: 'Candy', gems: 'Gems', night: 'Night' }
 type Look = { bg: string; line: string; ink: string; glow: boolean; colours: string[] }
 const PALETTES: Record<Saved['look'], Look> = {
@@ -71,7 +65,7 @@ type Flying = { path: Pt[]; length: number; t: number; colour: number; after: ()
 type Bit = { x: number; y: number; vy: number; colour: number; fell: boolean; t: number }
 
 export function PopperDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(POPPER_KEY, readSaved)
   const [game, setGame] = useState<Game>(() => newGame(saved.colours, Date.now() >>> 0))
   const [aim, setAim] = useState(Math.PI / 2)
   const [busy, setBusy] = useState(false)
@@ -87,13 +81,6 @@ export function PopperDemo() {
   const flying = useRef<Flying | null>(null)
   const bits = useRef<Bit[]>([])
   const drag = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(POPPER_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const best = saved.best[saved.colours]
   /**

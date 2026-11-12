@@ -17,16 +17,10 @@ import {
   type World,
 } from './rocks'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
 type Phase = 'ready' | 'playing' | 'paused' | 'over'
 type Hold = 'left' | 'right' | 'thrust' | 'fire'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(ROCKS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const PACE_NAMES: Record<Saved['pace'], string> = { calm: 'Calm', normal: 'Normal', wild: 'Wild' }
 const LOOK_NAMES: Record<Saved['look'], string> = { vector: 'Vector', neon: 'Neon', paper: 'Paper' }
 type Look = { bg: string; ink: string; rock: string; shot: string; glow: boolean; fill: boolean }
@@ -79,7 +73,7 @@ const KEYS: Record<string, Hold> = {
 }
 
 export function RocksDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(ROCKS_KEY, readSaved)
   const [phase, setPhase] = useState<Phase>('ready')
   const [hud, setHud] = useState({ score: 0, lives: 3, wave: 1 })
   const [line, setLine] = useState(
@@ -99,13 +93,6 @@ export function RocksDemo() {
   /** a press of fire kept until a step has used it, so a tap shorter than a frame still fires */
   const queued = useRef(0)
   const bits = useRef<Bit[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(ROCKS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // a hidden tab is a paused game
   useEffect(() => {
     const away = () => {

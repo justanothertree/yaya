@@ -32,14 +32,8 @@ import {
   type World,
 } from './lander'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(LANDER_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
   Saved['look'],
@@ -77,7 +71,7 @@ type Phase = 'ready' | 'flying' | 'done'
 type Gauges = { alt: number; vx: number; vy: number; tilt: number; fuel: number }
 
 export function LanderDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(LANDER_KEY, readSaved)
   const linked = useMemo(() => {
     const t = Number(hashParam('terrain'))
     return Number.isInteger(t) && t > 0 ? t : null
@@ -114,13 +108,6 @@ export function LanderDemo() {
   const buttons = useRef<Input>({ ...IDLE })
   const savedRef = useRef(saved)
   savedRef.current = saved
-  useEffect(() => {
-    try {
-      localStorage.setItem(LANDER_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const reset = (w: World = world, lv: Level = saved.level) => {
     sim.current = {

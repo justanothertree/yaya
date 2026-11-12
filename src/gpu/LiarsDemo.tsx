@@ -19,14 +19,8 @@ import {
 } from './liars'
 import { motionReduced as reduced } from '../ui/motion'
 import { PIPS } from './pips'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(LIARS_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const CUP_NAMES: Record<Saved['cup'], string> = { leather: 'Leather', tin: 'Tin', velvet: 'Velvet' }
 /** the computer players, by where they sit */
@@ -47,7 +41,7 @@ function Die({ f, lit, small }: { f: number; lit?: boolean; small?: boolean }) {
 }
 
 export function LiarsDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(LIARS_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [g, setG] = useState<Game>(() => newGame(1 + saved.rivals, seed(), saved.wild, 0))
   const [pick, setPick] = useState<Bid>({ q: 1, f: 2 })
@@ -57,13 +51,6 @@ export function LiarsDemo() {
   const [paused, setPaused] = useState(false)
   const recorded = useRef(false)
   const timer = useRef(0)
-  useEffect(() => {
-    try {
-      localStorage.setItem(LIARS_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const name = (p: number) => (p === 0 ? 'You' : SEATS[(p - 1) % SEATS.length])

@@ -20,14 +20,8 @@ import {
   type Who,
 } from './artillery'
 import { motionReduced as reduced } from '../ui/motion'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(ARTILLERY_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SKY: Record<
   Saved['sky'],
@@ -42,7 +36,7 @@ const GUNS = ['#ffd34d', '#ff6b6b']
 type Show = { path: number[]; t: number; burst: { x: number; y: number } | null; after: () => void }
 
 export function ArtilleryDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(ARTILLERY_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [field, setField] = useState<Field>(() => newField((Math.random() * 2 ** 31) >>> 0, 0))
   const [angle, setAngle] = useState(45)
@@ -64,13 +58,6 @@ export function ArtilleryDemo() {
   const drag = useRef(false)
   const timers = useRef<number[]>([])
   const recorded = useRef(false)
-  useEffect(() => {
-    try {
-      localStorage.setItem(ARTILLERY_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 

@@ -18,15 +18,9 @@ import {
   type Level,
   type Saved,
 } from './sudoku'
+import { useKept } from './kept'
 
 type Mode = 'today' | 'practice'
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(SUDOKU_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LEVEL_NAMES: Record<Level, string> = { gentle: 'Gentle', steady: 'Steady', tricky: 'Tricky' }
 const THEME_NAMES: Record<Saved['theme'], string> = { paper: 'Paper', night: 'Night', mint: 'Mint' }
 const NEEDS = ['', 'only singles', 'pointing and pairs', 'hidden pairs and X-wings']
@@ -47,7 +41,7 @@ type Puzzle = { puzzle: Grid; answer: Grid; level: number }
 const todayPuzzle = () => make('steady', daySeed(new Date()))
 
 export function SudokuDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(SUDOKU_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('today')
   const [p, setP] = useState<Puzzle>(todayPuzzle)
   const [cells, setCells] = useState<Grid>(() => p.puzzle.slice())
@@ -64,13 +58,6 @@ export function SudokuDemo() {
   )
   const [share, setShare] = useState('')
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(SUDOKU_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const fresh = (m: Mode = mode, level: Level = saved.level) => {
     const next = m === 'today' ? todayPuzzle() : make(level, (Math.random() * 2 ** 31) | 0)

@@ -20,14 +20,8 @@ import {
   type Size,
 } from './pipes'
 import { clock, dayNumber } from './daily'
+import { useKept } from './kept'
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(PIPES_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const LOOK_NAMES: Record<Saved['look'], string> = { water: 'Water', lava: 'Lava', neon: 'Neon' }
 /** a day as a count of days, so "the last fortnight" can be worked out */
 const seedFor = (size: number, wrap: boolean) =>
@@ -58,7 +52,7 @@ function Pipe({ t }: { t: number }) {
 }
 
 export function PipesDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(PIPES_KEY, readSaved)
   const [seed, setSeed] = useState(() => seedFor(saved.size, saved.wrap))
   const daily = seed === seedFor(saved.size, saved.wrap)
   const fresh = useMemo(() => make(seed, saved.size, saved.wrap), [seed, saved.size, saved.wrap])
@@ -73,13 +67,6 @@ export function PipesDemo() {
   const [done, setDone] = useState<number | null>(null)
   const [cursor, setCursor] = useState(0)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    try {
-      localStorage.setItem(PIPES_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   // a new board whenever the seed, size or wrapping changes
   useEffect(() => {
     setBoard(fresh)
