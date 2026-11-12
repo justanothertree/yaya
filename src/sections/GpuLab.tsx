@@ -138,6 +138,7 @@ import { YachtDemo } from '../gpu/YachtDemo'
 import { FoxDemo } from '../gpu/FoxDemo'
 import { TentsDemo } from '../gpu/TentsDemo'
 import { RocksDemo } from '../gpu/RocksDemo'
+import { ShutDemo } from '../gpu/ShutDemo'
 import { PrintshopDemo } from '../gpu/PrintshopDemo'
 import { StudioDemo } from '../gpu/StudioDemo'
 import { SwarmDemo } from '../gpu/SwarmDemo'
@@ -977,6 +978,12 @@ const DEMOS: readonly {
     name: 'Rocks',
     line: 'Rocks — fly a little ship through drifting rocks that wrap round the edges: break the big ones into smaller ones, clear the field, and survive the next, bigger wave. Three paces, a best score for each.',
     Demo: RocksDemo,
+  },
+  {
+    id: 'shut',
+    name: 'Shut the box',
+    line: 'Shut the box — roll the dice and shut tiles that add up to the roll, until a roll cannot be made; lowest total left wins. Against a computer that has worked out every position, or alone for a best score.',
+    Demo: ShutDemo,
   },
 ]
 
