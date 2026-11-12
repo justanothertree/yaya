@@ -70,7 +70,6 @@ export const PAINTS: Paint[] = [
     ),
   },
 ]
-export const PAINT_IDS = PAINTS.map((p) => p.id)
 
 const ks = (r: number) => ((1 - r) * (1 - r)) / (2 * r)
 const fromKs = (k: number) => 1 + k - Math.sqrt(k * k + 2 * k)

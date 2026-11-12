@@ -28,7 +28,6 @@ export const MAX_ANGLE = (62 * Math.PI) / 180
 const MIN_RISE = 0.3
 
 export type Power = 'wide' | 'multi' | 'slow' | 'life'
-export const POWERS: Power[] = ['wide', 'multi', 'slow', 'life']
 export type Brick = { hp: number; max: number; gold: boolean; drop: Power | null }
 export type Ball = { x: number; y: number; vx: number; vy: number; stuck: boolean }
 export type Drop = { x: number; y: number; kind: Power }

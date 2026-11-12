@@ -30,7 +30,6 @@ export type Board = {
   coins: [number, number][]
 }
 
-export const MAX_COINS = 6
 export const MAX_SIDE = 14
 
 /** a board from rows of text: '#' wall, '.' ice, ',' snow, 'G' goal, 'S' start, '*' a coin (on ice) */

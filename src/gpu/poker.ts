@@ -53,7 +53,6 @@ const SINGLE = [
   'king',
   'ace',
 ]
-export const cardName = (c: Card) => `${RANK_NAMES[rankOf(c)]}${SUITS[suitOf(c)]}`
 /** "As" style, for tests */
 export const card = (s: string): Card => RANKS.indexOf(s[0]) * 4 + 'shdc'.indexOf(s[1])
 
