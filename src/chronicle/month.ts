@@ -1,4 +1,5 @@
 import { windowOf } from './goal'
+import { localISO } from '../circuit/dates'
 import { coveredMs, coveredPct, dayBounds, type Span } from './record'
 
 /**
@@ -38,11 +39,6 @@ export type Cell = {
   mins: number
 }
 
-const iso = (d: Date): string => {
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
 /**
  * Every day the calendar shows for the month `on` falls in — always whole weeks, so the length is
  * 28, 35 or 42 and never anything else.
@@ -63,7 +59,7 @@ export function monthOf(on: string): Array<{ on: string; day: number; inMonth: b
   const out: Array<{ on: string; day: number; inMonth: boolean }> = []
   const d = new Date(start)
   while (d <= end) {
-    out.push({ on: iso(d), day: d.getDate(), inMonth: d.getMonth() === first.getMonth() })
+    out.push({ on: localISO(d), day: d.getDate(), inMonth: d.getMonth() === first.getMonth() })
     d.setDate(d.getDate() + 1)
   }
   return out

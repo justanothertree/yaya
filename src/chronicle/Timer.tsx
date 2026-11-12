@@ -67,6 +67,7 @@ import {
   straddles,
   countText,
   spanText,
+  writeLocal,
   type Activity,
   type Entry,
 } from './record'
@@ -109,8 +110,7 @@ const STEP_MINUTES = 1
 const dayStep = (iso: string, by: number): string => {
   const d = localMidnight(iso)
   d.setDate(d.getDate() + by)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return localISO(d)
 }
 
 const niceDay = (iso: string) =>
@@ -1249,11 +1249,7 @@ export function Timer({
   }
 
   /** what a datetime-local input wants: local time, no zone, to the minute */
-  const forInput = (iso: string): string => {
-    const d = new Date(iso)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
-  }
+  const forInput = (iso: string): string => writeLocal(new Date(iso))
 
   /**
    * ⚠️ IT ASKS ABOUT THE WHOLE SESSION, BECAUSE THAT IS WHAT IT DELETES. The day list shows a
