@@ -756,16 +756,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     if (!days && saveScope === 'day' && every && (wdays & (1 << weekday(on))) === 0) {
       setKept((k) => (k.includes(r.id) ? k : [...k, r.id]))
     }
-    setTitle('')
-    setTarget('')
-    setUnit('')
-    setEvery(false)
-    setWdays(EVERY_DAY)
-    setSrc('')
-    setWhy('')
-    setCountWhat('minutes')
-    setEst('')
-    setPri(0)
+    fillGoalForm(null)
     setFixing(null)
     setAdding(false)
     await load()
@@ -838,25 +829,37 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   }
 
   /**
+   * Fill the goal form: from a goal being changed, or empty for a new one, with an optional first
+   * draft of its title (see `ideaTitle`).
+   *
+   * ⚠️ ONE COPY FOR THE THREE PLACES THAT SET ALL TEN FIELDS — a row's ✎, `openAdd`, and the reset
+   * after a save. Ten setters written out three times is how one of them comes to miss a field, and
+   * a missed field here is not a blank: it is the previous goal's value, saved onto the next one.
+   */
+  const fillGoalForm = (g: Goal | null, draft = '') => {
+    setTitle(g ? g.title : draft)
+    setTarget(g?.target == null ? '' : String(g.target))
+    setUnit(g?.unit ?? '')
+    setEvery(g ? repeats(g) : false)
+    setWdays(g ? maskOn(g.days ?? [], todayISO()) : EVERY_DAY)
+    setSrc(g?.activity ? 'a:' + g.activity : g?.cat ? 'c:' + g.cat : '')
+    setCountWhat(g ? g.counts : 'minutes')
+    setEst(g?.est == null ? '' : String(g.est))
+    setPri(g ? g.priority : 0)
+    setWhy(g?.note ?? '')
+  }
+
+  /**
    * Open the add form empty, or with a title already in it.
    *
    * ⚠️ CLEARED ON THE WAY IN, or opening Add straight after a Cancel would show the goal you were
    * editing and quietly save over it — which is why this is one function for both doors: the
-   * ＋ button and a journal entry handed over by `onIdea`. A second copy of these ten lines is
-   * where one field would quietly stop being cleared.
+   * ＋ button and a journal entry handed over by `onIdea`. The ten fields themselves are filled by
+   * `fillGoalForm`, for the same reason.
    */
   const openAdd = (draft: string) => {
     setFixing(null)
-    setTitle(draft)
-    setTarget('')
-    setUnit('')
-    setEvery(false)
-    setWdays(EVERY_DAY)
-    setSrc('')
-    setWhy('')
-    setCountWhat('minutes')
-    setEst('')
-    setPri(0)
+    fillGoalForm(null, draft)
     setAdding(true)
   }
 
@@ -1490,16 +1493,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 onClick={() => {
                                   setFixing(g.id)
                                   setAdding(true)
-                                  setTitle(g.title)
-                                  setTarget(g.target == null ? '' : String(g.target))
-                                  setUnit(g.unit ?? '')
-                                  setEvery(repeats(g))
-                                  setWdays(maskOn(g.days ?? [], todayISO()))
-                                  setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
-                                  setCountWhat(g.counts)
-                                  setEst(g.est == null ? '' : String(g.est))
-                                  setPri(g.priority)
-                                  setWhy(g.note ?? '')
+                                  fillGoalForm(g)
                                 }}
                                 aria-label={`Change ${g.title}`}
                                 title={`Change ${g.title}`}
