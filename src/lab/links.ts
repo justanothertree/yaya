@@ -22,3 +22,13 @@ export function toyHash(hash: string, id: string): string | null {
   if (hashParam('demo', hash) === id) return null
   return `#lab?${new URLSearchParams({ demo: id })}`
 }
+
+/**
+ * Fired on window when the Lab names a different toy. The address is replaced rather than pushed
+ * (see GpuLab's pick), which fires no hashchange, so whoever needs to know listens for this.
+ */
+export const TOY_EVENT = 'lab:toy'
+
+/** the toy the address names, on the Lab's own page; null anywhere else */
+export const currentToy = (hash = location.hash): string | null =>
+  /^#lab(\?|$)/.test(hash) ? hashParam('demo', hash) : null

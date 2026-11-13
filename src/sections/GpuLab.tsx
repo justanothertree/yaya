@@ -17,7 +17,7 @@ import { LabFeedback, type Viewer } from '../lab/LabFeedback'
 import '../lab/lab-catalog.css'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
-import { hashParam, toyHash } from '../lab/links'
+import { TOY_EVENT, hashParam, toyHash } from '../lab/links'
 
 /**
  * The Lab: experiments with WebGPU, one at a time.
@@ -109,6 +109,15 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
+  /* arriving on a plain #lab, the address names the toy on screen too — otherwise a call would
+     learn which toy you are on only once you picked another */
+  useEffect(() => {
+    if (hashParam('demo')) return
+    const next = toyHash(location.hash, demo)
+    if (!next) return
+    history.replaceState(history.state, '', next)
+    window.dispatchEvent(new Event(TOY_EVENT))
+  }, [demo])
   const [report, setReport] = useState<Report | null>(null)
   /* ⚠️ STILL UNTIL ASKED, under reduced motion. Every demo here is motion, so none can simply
      paint once and stop the way the backdrop does — the picture would be all there is. Each draws
@@ -198,7 +207,10 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
        ⚠️ REPLACED, NOT PUSHED: trying ten toys is not ten pages, and Back still leaves the Lab
        the way it always did. replaceState fires no hashchange, so nothing re-routes. */
     const next = toyHash(location.hash, id)
-    if (next) history.replaceState(history.state, '', next)
+    if (next) {
+      history.replaceState(history.state, '', next)
+      window.dispatchEvent(new Event(TOY_EVENT))
+    }
   }
   const patchFlags = (id: string, patch: Partial<Flags>) =>
     setFlags((was) => {

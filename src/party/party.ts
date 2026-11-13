@@ -1,6 +1,9 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import { together } from './together'
 import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/cursorSkin'
+import { labSocial } from '../lab/social/social'
+import { isToyId } from '../lab/social/gate'
+import { TOY_EVENT, currentToy } from '../lab/links'
 
 /**
  * Seeing each other move around the site.
@@ -20,9 +23,9 @@ import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/c
  * it goes to friends rather than an ad network does not change what it is — it changes who has
  * it. Everything below exists because of that.
  *
- *   OFF BY DEFAULT, and off again every time you load the page. Not persisted, deliberately.
- *   A setting you turned on once in March must not still be broadcasting in July because you
- *   forgot it existed. You turn it on for a session, and the session ends when the tab does.
+ *   OFF BY DEFAULT, and off again when the call ends (Evan, 13 Nov). Not persisted,
+ *   deliberately. A setting you turned on once in March must not still be broadcasting in July
+ *   because you forgot it existed. You turn it on for a call, and the call ends when you leave.
  *
  *   RECIPROCAL, and not negotiable. If you are not sharing your pointer you do not receive
  *   anyone else's — `peers` stays empty and nothing renders. There is no watch-without-being-
@@ -146,6 +149,12 @@ export type PartyHere = {
    * the moment somebody picks a different one. Missing simply means the plain arrow.
    */
   skin?: CursorSkin
+  /**
+   * The Lab toy they are on, when their route is `lab` and their Lab allowed it — only in a call
+   * where everyone present is their friend (src/lab/social/gate.ts). Checked for shape on
+   * arrival (isToyId); the Lab draws it only if it names a toy it has.
+   */
+  sub?: string
   at: number
 }
 
@@ -257,10 +266,16 @@ function announceHere() {
      so taking their accent too would turn a room into one colour. The shape is theirs; the hue
      stays the room's. */
   const { id } = myCursor()
-  sendParty(
-    'where',
-    id === 'system' ? { route: currentRoute() } : { route: currentRoute(), skin: id },
-  )
+  const route = currentRoute()
+  /* ⚠️ THE TOY ONLY WHEN THE LAB'S GATE SAYS SO: everyone else in the call is a friend. The page
+     itself has always gone out to the whole call; which toy you are on is the new, finer fact,
+     and it goes to friends or to nobody. */
+  const toy = route === 'lab' && labSocial.allowed() ? currentToy() : null
+  sendParty('where', {
+    route,
+    ...(id === 'system' ? {} : { skin: id }),
+    ...(toy ? { sub: toy } : {}),
+  })
 }
 
 /** One shape from either message that proves presence, so the two paths cannot disagree. */
@@ -268,6 +283,7 @@ function whereFrom(
   m: { from: string; name?: unknown },
   route: string,
   skin?: CursorSkin,
+  sub?: string | null,
 ): PartyHere {
   return {
     id: m.from,
@@ -278,6 +294,14 @@ function whereFrom(
        second — rebuilt without this the skin would be wiped by the very next sample and the
        cursor would flicker back to the default arrow almost immediately. */
     skin: skin ?? state.here[m.from]?.skin,
+    /* a `where` says which toy outright (null: none); a pointer sample keeps the one known, the
+       same reason as the skin above — and a page that is not the Lab has no toy at all */
+    sub:
+      route !== 'lab'
+        ? undefined
+        : sub === undefined
+          ? state.here[m.from]?.sub
+          : (sub ?? undefined),
     at: performance.now(),
   }
 }
@@ -323,13 +347,14 @@ export const party = {
         return
       }
       if (m.kind === 'where') {
-        const b = m.body as { route?: unknown; skin?: unknown }
+        const b = m.body as { route?: unknown; skin?: unknown; sub?: unknown }
         // somebody else's string, on its way into a lookup and a title attribute
         if (typeof b?.route !== 'string' || b.route.length > 64) return
         /* checked against the real list rather than taken as given: it decides which picture
            gets drawn, and the client that sent it is one anybody can rewrite */
         const skin = isCursorSkin(b.skin) && b.skin !== 'system' ? b.skin : undefined
-        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin) } })
+        const sub = isToyId(b.sub) ? b.sub : null
+        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin, sub) } })
         return
       }
       if (m.kind !== 'ptr') return
@@ -379,6 +404,10 @@ export const party = {
       wasPrivate = now
     }
     window.addEventListener('hashchange', onHash)
+    // a different Lab toy replaces the address without a hashchange (GpuLab's pick)
+    window.addEventListener(TOY_EVENT, announceHere)
+    // and the Lab's gate opening or closing changes what `where` may say, so say it again
+    const offLab = labSocial.subscribe(announceHere)
 
     const beat = window.setInterval(announceHere, HERE_MS)
 
@@ -412,20 +441,20 @@ export const party = {
      * ⚠️ Subscribed FROM HERE, like every other room, because together.ts holds a preference
      * and must not know what any of this means — see the note at the top of that file.
      *
-     * ⚠️ One consequence worth saying: the switch is remembered across visits and this now
-     * follows it, so the pointer no longer goes quiet on reload. It is still only ever sent to
-     * people you are in a call with, and PRIVATE_ROUTES still withdraws you regardless.
+     * ⚠️ The switch lasts one call (Evan, 13 Nov). It used to be remembered across visits, so it
+     * came back on by itself in every new call — against the promise at the top of this file.
+     * Leaving the call now turns it off (below), and nothing is kept across a reload.
      */
     const offAll = together.subscribe(() => party.setSharing(together.getState().on))
     if (together.getState().on) party.setSharing(true)
 
-    // Leaving the call ends the party with it — there is no co-presence without a room.
+    // Leaving the call ends the party with it — there is no co-presence without a room — and
+    // ends the switch too, so the next call starts with nothing shared until you say so.
     const offVoice = voiceSession.subscribe(() => {
-      if (
-        !voiceSession.getState().inCall &&
-        (state.sharing || Object.keys(state.peers).length || Object.keys(state.here).length)
-      )
+      if (voiceSession.getState().inCall) return
+      if (state.sharing || Object.keys(state.peers).length || Object.keys(state.here).length)
         set({ sharing: false, peers: {}, here: {} })
+      if (together.getState().on) together.setOn(false)
     })
 
     detach = [
@@ -433,6 +462,8 @@ export const party = {
       offCursor,
       offVoice,
       offAll,
+      offLab,
+      () => window.removeEventListener(TOY_EVENT, announceHere),
       () => window.removeEventListener('pointermove', move),
       () => document.removeEventListener('visibilitychange', onHide),
       () => window.removeEventListener('hashchange', onHash),

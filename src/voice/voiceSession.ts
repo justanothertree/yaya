@@ -69,9 +69,17 @@ export type VoicePeer = {
  */
 type PeerOut = { src: MediaStreamAudioSourceNode; gain: GainNode; analyser: AnalyserNode }
 
+/**
+ * What kind of room a call belongs to. The call cannot ask the database (the channel says only
+ * `voice:<uuid>`), so whoever opens the call says, and a call joined without saying stays null —
+ * which the Lab reads as "do not share" (src/lab/social/gate.ts).
+ */
+export type RoomKind = 'circuit' | 'lounge' | 'dm' | 'profile'
+
 export type VoiceState = {
   roomId: string | null
   roomName: string
+  roomKind: RoomKind | null
   inCall: boolean
   /** true from pressing Call until the room accepts (or refuses) us — the button says so,
    *  and a second press while it's set is ignored rather than double-opening the mic */
@@ -393,6 +401,7 @@ type Signal =
 const IDLE: VoiceState = {
   roomId: null,
   roomName: '',
+  roomKind: null,
   inCall: false,
   joining: false,
   muted: false,
@@ -442,6 +451,8 @@ let speakTick = 0
 let chan: ReturnType<ReturnType<typeof getSupabaseClient>['channel']> | null = null
 let meId: string | null = null
 let myName = 'You'
+/** the teardown of a dev-only call (devCall below), which has no real channel to remove */
+let devLink: (() => void) | null = null
 const pcs = new Map<string, RTCPeerConnection>()
 const names = new Map<string, string>()
 /** our screen capture while sharing, kept so it can be stopped and re-added to new peers */
@@ -616,12 +627,79 @@ export function sendParty(kind: string, body: unknown) {
   })
 }
 
+/** Hand one incoming co-presence message to every listener, each isolated from the others. */
+function dispatchParty(payload: unknown) {
+  const m = payload as PartyEnvelope
+  if (!m || typeof m.from !== 'string' || m.from === meId) return
+  for (const fn of partyListeners) {
+    try {
+      fn(m)
+    } catch {
+      /* one bad listener is not the channel's problem */
+    }
+  }
+}
+
 /** Listen for co-presence messages from everyone else in the call. Returns an unsubscribe. */
 export function onParty(fn: (payload: PartyEnvelope) => void) {
   partyListeners.add(fn)
   return () => {
     partyListeners.delete(fn)
   }
+}
+
+/**
+ * ⚠️ DEV ONLY: a call between tabs of this browser, with no microphone and no Supabase.
+ *
+ * Everything the party and the Lab do rides a call's channel, and a real call needs two signed-in
+ * accounts, two microphones and production Realtime — so until this existed, two people on one toy
+ * could only be checked on the live site. This hands the party a stand-in channel (src/dev/
+ * labCall.ts carries it over a BroadcastChannel) and fills in exactly what a call would: who you
+ * are, which room kind, and who else is here. Signalling never starts: no peer connection, no
+ * audio. Only `party` messages travel.
+ *
+ * ⚠️ It refuses outside a dev build, and nothing in a production path calls it: its only caller is
+ * a dynamic import behind `import.meta.env.DEV`, which the build removes, so the export is
+ * unreferenced there and dropped.
+ */
+export function devCall(
+  me: { id: string; name: string },
+  roomKind: RoomKind,
+  link: {
+    send: (payload: PartyEnvelope) => void
+    listen: (fn: (payload: unknown) => void) => () => void
+    roster: (fn: (people: { id: string; name: string }[]) => void) => () => void
+  },
+): () => void {
+  if (!import.meta.env.DEV || state.inCall) return () => {}
+  meId = me.id
+  myName = me.name
+  chan = {
+    send: async (m: { event?: string; payload?: unknown }) => {
+      if (m.event === 'party') link.send(m.payload as PartyEnvelope)
+      return 'ok'
+    },
+  } as unknown as typeof chan
+  const offListen = link.listen(dispatchParty)
+  const offRoster = link.roster((people) =>
+    set({
+      peers: people.map((p) => ({
+        id: p.id,
+        name: p.name,
+        stream: null,
+        status: 'connected' as const,
+        speaking: false,
+        share: null,
+        relayed: false,
+      })),
+    }),
+  )
+  devLink = () => {
+    offListen()
+    offRoster()
+  }
+  set({ inCall: true, roomId: 'dev-call', roomName: 'Dev call', roomKind, muted: true, peers: [] })
+  return () => voiceSession.leave(true)
 }
 
 /**
@@ -1175,6 +1253,8 @@ export const voiceSession = {
     displayName: string,
     /** how many are already in that call, from voice presence. Unknown means don't guess. */
     occupancy?: number,
+    /** the kind of room, so a page can decide what it may share with this call */
+    roomKind?: RoomKind,
   ) {
     // Already here — nothing to do.
     if (state.inCall && state.roomId === roomId) return
@@ -1288,17 +1368,7 @@ export const voiceSession = {
      *
      * A listener that throws must not take the channel down with it, so each is isolated.
      */
-    ch.on('broadcast', { event: 'party' }, ({ payload }) => {
-      const m = payload as PartyEnvelope
-      if (!m || typeof m.from !== 'string' || m.from === meId) return
-      for (const fn of partyListeners) {
-        try {
-          fn(m)
-        } catch {
-          /* one bad listener is not the channel's problem */
-        }
-      }
-    })
+    ch.on('broadcast', { event: 'party' }, ({ payload }) => dispatchParty(payload))
 
     ch.on('broadcast', { event: 'voice' }, ({ payload }) => {
       const m = payload as Signal
@@ -1397,7 +1467,7 @@ export const voiceSession = {
     })
 
     resetDiag()
-    set({ inCall: true, roomId, roomName, muted: false, peers: [] })
+    set({ inCall: true, roomId, roomName, roomKind: roomKind ?? null, muted: false, peers: [] })
     // Sampled rather than summed at the end, so a call that crashes or a tab that closes still
     // accounts for the traffic it already used.
     clearInterval(usageTimer)
@@ -1471,7 +1541,9 @@ export const voiceSession = {
     rawMic?.getTracks().forEach((t) => t.stop())
     local = null
     rawMic = null
-    if (chan) void getSupabaseClient().removeChannel(chan)
+    if (chan && !devLink) void getSupabaseClient().removeChannel(chan)
+    devLink?.()
+    devLink = null
     chan = null
     meId = null
     // keep the settings, drop the call

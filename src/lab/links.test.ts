@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hashParam, toyHash } from './links'
+import { currentToy, hashParam, toyHash } from './links'
 
 describe('the toy in the address', () => {
   it('names the toy picked, on the Lab page', () => {
@@ -23,5 +23,13 @@ describe('the toy in the address', () => {
   it('round-trips through the reader the Lab opens with', () => {
     const h = toyHash('#lab', 'fourrow')!
     expect(hashParam('demo', h)).toBe('fourrow')
+  })
+})
+
+describe('which toy the address names', () => {
+  it('reads it only on the Lab page', () => {
+    expect(currentToy('#lab?demo=fourrow')).toBe('fourrow')
+    expect(currentToy('#lab')).toBeNull()
+    expect(currentToy('#paint?demo=fourrow')).toBeNull()
   })
 })
