@@ -18,6 +18,8 @@ import '../lab/lab-catalog.css'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 import { TOY_EVENT, hashParam, toyHash } from '../lab/links'
+import { useFriendsOnToys } from '../lab/social/where'
+import { hueFor } from '../party/party'
 
 /**
  * The Lab: experiments with WebGPU, one at a time.
@@ -232,6 +234,10 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   const current = shownDemos[at] ?? DEMOS[0]
   const currentFlags = flags.get(current.id)
 
+  /* friends in your call, by the toy they are on (src/lab/social/where.ts — friends only) */
+  const onToys = useFriendsOnToys()
+  const friendsOn = (id: string) => onToys.filter((p) => p.sub === id)
+
   const counts = useMemo(() => {
     const n = new Map<Category, number>()
     for (const d of shownDemos) {
@@ -264,6 +270,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
       <div className="lab-picker" role="group" aria-label="Which experiment">
         {shownDemos.map((d) => {
           const other = filter !== 'all' && META[d.id]?.category !== filter
+          const friends = friendsOn(d.id)
           return (
             <button
               key={d.id}
@@ -272,6 +279,29 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
               onClick={() => pick(d.id)}
             >
               {d.name}
+              {friends.length > 0 && (
+                <>
+                  {/* initials in each friend's own colour, the colour of their cursor and their
+                      ring on the nav — and the names in words, for a screen reader */}
+                  <span className="lab-friends" aria-hidden>
+                    {friends.slice(0, 3).map((p) => (
+                      <span
+                        key={p.id}
+                        className="lab-friend"
+                        style={{ ['--h' as string]: hueFor(p.id) }}
+                      >
+                        {p.name.trim().charAt(0).toUpperCase() || '?'}
+                      </span>
+                    ))}
+                    {friends.length > 3 && (
+                      <span className="lab-friend-more">+{friends.length - 3}</span>
+                    )}
+                  </span>
+                  <span className="sr-only">
+                    {`, ${friends.map((p) => p.name).join(', ')} ${friends.length === 1 ? 'is' : 'are'} here`}
+                  </span>
+                </>
+              )}
             </button>
           )
         })}

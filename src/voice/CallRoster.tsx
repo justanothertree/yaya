@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { useVoiceSession } from './useVoiceSession'
+import { useFriendsOnToys, useToyNames } from '../lab/social/where'
 
 /**
  * Who's in the call — the Discord-style member list.
@@ -16,6 +17,14 @@ type Resolved = { username: string | null }
 export function CallRoster({ onClose }: { onClose: () => void }) {
   const { peers } = useVoiceSession()
   const [names, setNames] = useState<Record<string, Resolved>>({})
+  /* which Lab toy each friend is on — friends only, see src/lab/social/gate.ts */
+  const onToys = useFriendsOnToys()
+  const toyNames = useToyNames(onToys.length > 0)
+  const toyOf = (id: string) => {
+    const sub = onToys.find((p) => p.id === id)?.sub
+    const name = sub && toyNames?.[sub]
+    return sub && name ? { sub, name } : null
+  }
 
   useEffect(() => {
     const ids = peers.map((p) => p.id)
@@ -84,6 +93,20 @@ export function CallRoster({ onClose }: { onClose: () => void }) {
               />
               <span className="callroster-name">{p.name}</span>
               {status && <span className="muted callroster-status">{status}</span>}
+              {(() => {
+                const toy = toyOf(p.id)
+                /* a link rather than a button: it is a place, and the address it opens is the
+                   same one a copied link to that toy would be */
+                return toy ? (
+                  <a
+                    className="btn callroster-lab"
+                    href={`#lab?demo=${encodeURIComponent(toy.sub)}`}
+                    aria-label={`Open ${toy.name}, where ${p.name} is`}
+                  >
+                    🧪 {toy.name}
+                  </a>
+                ) : null
+              })()}
               {username && (
                 <span className="callroster-actions">
                   <a
