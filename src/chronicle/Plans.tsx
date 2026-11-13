@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dropPlan, planDid, plansBetween, savePlan } from './cloud'
 import { against, dayAgainst, planOpens, type Plan, saySpan } from './plan'
-import { lane, nowAt, spanText, straddles, type Activity, type Entry } from './record'
+import { lane, nowAt, spanText, straddles, writeLocal, type Activity, type Entry } from './record'
 
 /**
  * Planned — what you mean a day to be, beside what it was.
@@ -119,11 +119,7 @@ export function Plans({
   }, [rows, whole.did])
 
   /** the local `datetime-local` spelling of an instant — the same conversion the entry editor uses */
-  const forInput = (ms: number): string => {
-    const d = new Date(ms)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
-  }
+  const forInput = (ms: number): string => writeLocal(new Date(ms))
 
   const startAdding = () => {
     const o = planOpens(rows ?? [], bounds.fromMs, bounds.toMs, Date.now())

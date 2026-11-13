@@ -6,7 +6,7 @@ import { peopleInGroup } from '../groupFilter'
 import { isImportedTotal, logPoints } from '../scoring'
 import { catColor } from '../catColors'
 import { GoalBar } from './GoalBar'
-import { todayISO as isoToday, localISO } from '../dates'
+import { dayOfMonth, todayISO as isoToday, localISO } from '../dates'
 import { useFeedSocial, KUDOS, type FeedSocial } from '../social'
 import type { DayLog, Person } from '../types'
 import { useSeenPicture } from '../../pictures/seen'
@@ -35,7 +35,7 @@ function monthCells(ym: string): (string | null)[] {
   const days = new Date(y, m, 0).getDate()
   const cells: (string | null)[] = []
   for (let i = 0; i < lead; i++) cells.push(null)
-  for (let d = 1; d <= days; d++) cells.push(`${ym}-${String(d).padStart(2, '0')}`)
+  for (let d = 1; d <= days; d++) cells.push(dayOfMonth(ym, d))
   while (cells.length % 7 !== 0) cells.push(null)
   return cells
 }
@@ -694,9 +694,8 @@ function DateNav({
   if (view === 'month') {
     const [y, m] = cur.split('-').map(Number)
     label = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    prev = `${new Date(y, m - 2, 1).getFullYear()}-${String(new Date(y, m - 2, 1).getMonth() + 1).padStart(2, '0')}-01`
-    const nx = new Date(y, m, 1)
-    next = `${nx.getFullYear()}-${String(nx.getMonth() + 1).padStart(2, '0')}-01`
+    prev = localISO(new Date(y, m - 2, 1))
+    next = localISO(new Date(y, m, 1))
     nextDisabled = cur.slice(0, 7) >= latest.slice(0, 7)
   } else if (view === 'week') {
     const sow = startOfWeek(cur)

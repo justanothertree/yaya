@@ -807,6 +807,16 @@ export function readLocal(value: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+/**
+ * Minutes typed into a box — a sitting's length, a goal's estimate, a routine step: a positive
+ * number rounded to the minute, or null. ⚠️ Blank and nonsense both mean "no opinion", never zero —
+ * see Activity.session and Goal.est.
+ */
+export const typedMinutes = (typed: string): number | null => {
+  const n = Number(typed)
+  return typed.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
+}
+
 /** write a moment back as `YYYY-MM-DDTHH:mm`, which is what a datetime-local input wants */
 export function writeLocal(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
