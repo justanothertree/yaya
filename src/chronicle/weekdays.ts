@@ -53,13 +53,6 @@ export function maskOf(days: readonly number[]): DayMask {
   return m
 }
 
-/** The weekday numbers a mask holds, Sunday first. */
-export function daysOf(mask: DayMask): number[] {
-  const out: number[] = []
-  for (let d = 0; d <= 6; d++) if (mask & (1 << d)) out.push(d)
-  return out
-}
-
 /**
  * Whether a mask is one a goal may be saved with.
  *

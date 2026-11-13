@@ -1,24 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   addEntry,
-  addNote,
-  archiveActivity,
   dayNotesBetween,
-  dropEntry,
-  editEntry,
-  editEntryDay,
-  editNote,
-  fixRunning,
-  fixRunningDay,
-  setsBetween,
   myExercises,
   linkExercise,
   addSet,
   dropSet,
   type MyExercise,
   setAmount,
-  setEntryPicture,
-  setQuality,
   entriesBetween,
   myActivities,
   myMoments,
@@ -32,41 +21,35 @@ import { Plans } from './Plans'
 import { WeekGrid } from './WeekGrid'
 import { weekOf } from './week'
 import { Routines } from './Routines'
-import { Modal } from '../circuit/ui/Modal'
-import { AddPicture } from '../pictures/AddPicture'
-import { HoldButton } from '../ui/HoldButton'
-import { seenPictures, type Kept } from '../pictures/cloud'
-import { useBigPicture } from '../pictures/useBigPicture'
 import { tilesFor } from './nowTiles'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
-import { countedIn, dayOfStart, moveNote, setName, type ChronSet } from './sets'
-import { fit, fitText, unitOf } from './units'
+import { dayOfStart } from './sets'
 import { LIMIT } from './limits'
+import { ActivitiesFold } from './ActivitiesFold'
+import { useActivityEditor } from './useActivityEditor'
+import { SittingDialog } from './SittingDialog'
+import { forInput, useSittingEditor } from './useSittingEditor'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
   CATS,
-  clockOfLocal,
   clockText,
   longRun,
-  COLOURS,
   dayBounds,
   gapSince,
   sitting,
   localMidnight,
   minutesByActivity,
-  minsBetweenLocal,
   minutesByCat,
   amountIn,
   metSession,
   moodWord,
-  nudgeLocal,
-  MOODS,
   overlapMs,
   straddles,
   countText,
   spanText,
+  typedMinutes,
   type Activity,
   type Entry,
 } from './record'
@@ -91,26 +74,12 @@ import {
  * the exact form underneath, and anything coarser than fifteen is faster by repeating a tap than
  * by having a third size on the row.
  */
-/**
- * ⚠️ TWO BUTTONS AT ONE MINUTE, WHERE THERE WERE FOUR AT FIVE AND FIFTEEN.
- *
- * The four were `[-15, -5, 5, 15]`, and they failed in both directions at once: you could not
- * reach an exact minute with them, and they were four of the controls on a row that was already
- * called "very control dense". "A plus and minus button to really adjust single increments that I
- * can easily press and hold to ramp faster" solves both — one minute is exact, and a hold crosses
- * an hour in about three seconds, so the coarse jumps have nothing left to do.
- *
- * The ramp itself lives in src/ui/hold.ts, where it can be asked how far a given hold moves
- * rather than felt for in a browser that never fires a frame.
- */
-const STEP_MINUTES = 1
 
 /** a day either side, by local calendar arithmetic rather than by adding hours */
 const dayStep = (iso: string, by: number): string => {
   const d = localMidnight(iso)
   d.setDate(d.getDate() + by)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return localISO(d)
 }
 
 const niceDay = (iso: string) =>
@@ -291,87 +260,16 @@ export function Timer({
    * needs a thing has to carry the control for it.
    */
   const [gapAct, setGapAct] = useState('')
-  /**
-   * Which activity and which span are being edited, if any.
-   *
-   * ⚠️ INLINE RATHER THAN IN A DIALOG, and the reason is what they are for. Both of these are
-   * repairs made while you are looking at the thing that is wrong — "that says Free Time and it
-   * should say Life", "that ran for four hours because I forgot to stop it" — so the fix belongs
-   * in the row rather than behind a button that covers it up.
-   */
-  const [fixAct, setFixAct] = useState<string | null>(null)
-  /** whether the Activities fold is open — see the note where it is drawn */
-  const [actsOpen, setActsOpen] = useState(false)
-  /** the activity editor's "also counts" box, so the door to it can land the cursor there */
-  const metricBox = useRef<HTMLInputElement>(null)
-  /* bumped by the door; the effect below acts once per bump, after the fold has rendered open */
-  const [toMetric, setToMetric] = useState(0)
-  useEffect(() => {
-    if (!toMetric) return
-    const el = metricBox.current
-    if (!el) return
-    el.scrollIntoView({ block: 'center' })
-    el.focus()
-  }, [toMetric])
-  const [actName, setActName] = useState('')
-  const [actCat, setActCat] = useState<Activity['cat']>('free')
-  /** what this activity counts besides time — "pages", "reps", blank for nothing */
-  const [actColour, setActColour] = useState<string | null>(null)
-  const [actMetric, setActMetric] = useState('')
-  /** how long a sitting of it ought to be, in minutes — blank for no opinion */
-  const [actSession, setActSession] = useState('')
-  const [actShared, setActShared] = useState(false)
   /* ⚠️ false, and it resets on every load rather than being remembered: the site's own minutes
      are a thing you look up, not a thing you read every day */
   const [seeSite, setSeeSite] = useState(false)
   /** what is in the box — see the note on the combobox for why it is not an id */
   const [typed, setTyped] = useState('')
   const actsListId = useId()
-  /**
-   * The sitting that has just ended, if its dialog is still open.
-   *
-   * ⚠️ IT IS A SEPARATE PIECE OF STATE FROM `fixEnt` THOUGH BOTH OPEN THE SAME EDITOR. Stopping
-   * something and going back to fix it are different moments — one is offered, the other is
-   * asked for — and a single flag would make "cancel" on a finish mean the same thing as
-   * abandoning an edit, which it does not: there is nothing to abandon, the sitting is already
-   * recorded.
-   */
-  const [justDid, setJustDid] = useState<string | null>(null)
-  /** the amount being typed against a span, keyed by entry id */
-  const [entAmount, setEntAmount] = useState('')
-  /** how the span being edited went, '' for unrated — see Entry.quality */
-  const [entMood, setEntMood] = useState('')
-  const [fixEnt, setFixEnt] = useState<string | null>(null)
   /* bumped by ✎ Note with nothing running, so the Journal's box takes the cursor */
   const [writeNow, setWriteNow] = useState(0)
   /* the day that box writes about — a past day's ✎ Note sends that day, today's sends nothing */
   const [writeDay, setWriteDay] = useState<string | undefined>(undefined)
-  const [entAct, setEntAct] = useState('')
-  const [entNote, setEntNote] = useState('')
-  /**
-   * What the session really held, to the second.
-   *
-   * ⚠️ A `datetime-local` INPUT IS MINUTE-RESOLUTION AND THE RECORD IS NOT. `forInput` drops the
-   * seconds to fill the box, so opening the editor on a 33-second sitting showed 3:43 PM in both
-   * ends and `0m` between them — while the row above it read `33s`. Pressing Save would then
-   * write both ends at :00 and destroy the 33 seconds, and every longer session loses up to 59
-   * of them the same way, quietly, on an edit that changed nothing else.
-   *
-   * ⚠️ SO AN UNTOUCHED END SENDS WHAT IT ALWAYS HELD. The input is compared against what it was
-   * seeded with; equal means nobody typed in it, and the original ISO goes back unchanged. Only
-   * an end somebody actually moved is re-read from the box, where minute resolution is what they
-   * chose and the truncation is theirs.
-   */
-  const entWas = useRef<{ from: string; to: string | null } | null>(null)
-  /**
-   * The sets counted during the sitting being edited — see sets.ts.
-   *
-   * ⚠️ READ SO THE EDITOR CAN SAY WHAT A MOVE DOES NOT DO, and so a start moved across midnight
-   * takes them with it. Empty for every sitting until the sets draft is applied, and then for
-   * every sitting nobody counted sets in — and an editor with no sets is exactly the editor there
-   * has always been.
-   */
-  const [entSets, setEntSets] = useState<ChronSet[]>([])
   /**
    * Every exercise on your own Circuit people, and what each is linked to — see units.ts.
    *
@@ -388,8 +286,6 @@ export function Timer({
    * taking one back is deleting THAT row; the tally only knows numbers.
    */
   const setStack = useRef<Array<{ id: string; value: number; name: string }>>([])
-  const [entFrom, setEntFrom] = useState('')
-  const [entTo, setEntTo] = useState('')
   /* a tick purely so the clock face moves — see the note above */
   const [, setBeat] = useState(0)
   const live = useRef(false)
@@ -590,26 +486,6 @@ export function Timer({
     }
   }, [beat])
 
-  const fixStart = fixEnt ? (log.find((e) => e.id === fixEnt)?.start ?? null) : null
-  useEffect(() => {
-    if (!fixEnt || !fixStart) {
-      setEntSets([])
-      return
-    }
-    let dead = false
-    /* the sets of a sitting are on the local day it starts — see dayOfStart */
-    const day = dayOfStart(fixStart)
-    const next = new Date(fixStart)
-    next.setDate(next.getDate() + 1)
-    void (async () => {
-      const got = await setsBetween(day, dayOfStart(next.toISOString()))
-      if (!dead) setEntSets(got.filter((x) => x.entry === fixEnt))
-    })()
-    return () => {
-      dead = true
-    }
-  }, [fixEnt, fixStart])
-
   const didMyself = useMemo(() => log.filter((e) => !byId.get(e.activity)?.auto), [log, byId])
   const onSite = useMemo(() => log.filter((e) => byId.get(e.activity)?.auto), [log, byId])
   /**
@@ -694,35 +570,18 @@ export function Timer({
     onChange?.()
   }
 
+  /** the Activities fold's editor — see useActivityEditor */
+  const actEd = useActivityEditor({ acts, busy, setBusy, moan, after })
+  /** the sitting editor — see useSittingEditor */
+  const sed = useSittingEditor({ log, byId, bounds, busy, setBusy, moan, after, setSeeing })
+  const { fixEnt, setFixEnt, setJustDid, seedSitting, openSitting } = sed
+
   /**
    * ⚠️ FLUSHED FROM `go` AND FROM `halt`, because a switch closes the sitting and a count still
    * sitting in React state when that happens is a count nobody logged. In `halt` it goes BEFORE
    * the stop: `after()` refetches the day and the local number would be overwritten by a row
    * that does not have it yet.
    */
-  /**
-   * ⚠️ THE DIALOG HAS TWO DOORS AND ONLY ONE OF THEM FILLED IT IN. ✎ seeds the fields in its own
-   * click handler; a Stop opens the same dialog with nothing behind it, so it showed `—` for
-   * both ends and "0m" in its own title. Seeding on the id covers both doors and cannot drift
-   * from either.
-   *
-   * ⚠️ AND THE BOX STARTS EMPTY WHATEVER THE SITTING HOLDS, because it adds a NEW journal entry
-   * rather than editing the last one — the existing ones are each editable in place above it.
-   */
-  useEffect(() => {
-    const id = fixEnt ?? justDid
-    if (!id) return
-    const e = log.find((x) => x.id === id)
-    if (!e) return
-    entWas.current = { from: e.start, to: e.end }
-    setEntAct(e.activity)
-    setEntFrom(forInput(e.start))
-    setEntTo(e.end ? forInput(e.end) : '')
-    setEntAmount(e.amount == null ? '' : String(e.amount))
-    setEntMood(e.quality == null ? '' : String(e.quality))
-    setEntNote('')
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [fixEnt, justDid])
 
   /**
    * An activity by the name you typed, matched the way the server matches one.
@@ -767,42 +626,6 @@ export function Timer({
     await go(made.id)
   }
 
-  /**
-   * The photograph on the sitting the dialog is showing, with a link that works now.
-   *
-   * ⚠️ FETCHED, NOT STORED. The row keeps an id; R2 is private and every link to it is signed
-   * for a short while, so a URL kept anywhere is a link that stops working with nothing to say
-   * it has. This asks for one when the dialog opens and forgets it when it closes.
-   */
-  const [shot, setShot] = useState<Kept | null>(null)
-  const bigPicture = useBigPicture()
-  useEffect(() => {
-    const id = fixEnt ?? justDid
-    const want = id ? (log.find((x) => x.id === id)?.picture ?? null) : null
-    if (!want) return setShot(null)
-    let dead = false
-    void (async () => {
-      const got = await seenPictures([want])
-      /* ⚠️ on `failed` the id is left ALONE rather than resolved to null: the row's 📷 badge
-         comes from `e.picture` and is still right, and a dropped request is not evidence that
-         the photograph has gone. Leaving `shot` as it was shows nothing new instead of
-         asserting absence. */
-      if (!dead && !got.failed) setShot(got.pictures.find((p) => p.id === want) ?? null)
-    })()
-    return () => {
-      dead = true
-    }
-  }, [fixEnt, justDid, log])
-
-  const hangPicture = async (entry: string, picture: string | null) => {
-    if (busy) return
-    setBusy(true)
-    const bad = await setEntryPicture(entry, picture)
-    setBusy(false)
-    if (bad) return moan(bad.why)
-    await after()
-  }
-
   const flushReps = async () => {
     if (!runId || reps === repsSaved.current) return
     const want = reps
@@ -814,22 +637,6 @@ export function Timer({
       setRepsFailed(true)
       moan('those reps did not save')
     }
-  }
-
-  /**
-   * ⚠️ IT CLEARS THE BOX BEFORE THE RELOAD, not after. `after()` refetches the day and the new
-   * entry arrives in the list; leaving the text in the box as well would show it twice for as
-   * long as the fetch took, which reads as having added it twice.
-   */
-  const addJournal = async (entry: string) => {
-    const body = entNote.trim()
-    if (!body || busy) return
-    setBusy(true)
-    const bad = await addNote(entry, body)
-    setBusy(false)
-    if (bad) return moan(bad.why)
-    setEntNote('')
-    await after()
   }
 
   const go = async (id: string) => {
@@ -853,12 +660,6 @@ export function Timer({
     setBusy(false)
     if (bad) return moan(bad.why)
     await after()
-  }
-
-  /* ⚠️ blank and nonsense both mean "no opinion", never zero — see Activity.session */
-  const asMins = (typed: string): number | null => {
-    const n = Number(typed)
-    return typed.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
   }
 
   /**
@@ -1023,7 +824,7 @@ export function Timer({
     const n = newName.trim()
     if (!n || busy) return
     setBusy(true)
-    const r = await saveActivity(n, newCat, null, undefined, newMetric, asMins(newSession))
+    const r = await saveActivity(n, newCat, null, undefined, newMetric, typedMinutes(newSession))
     setBusy(false)
     if ('why' in r) return moan(r.why)
     setNewName('')
@@ -1061,207 +862,6 @@ export function Timer({
     await after()
   }
 
-  const saveAct = async () => {
-    const n = actName.trim()
-    if (!fixAct || !n || busy) return
-    /**
-     * ⚠️ RENAMING WHAT AN ACTIVITY COUNTS RELABELS EVERY NUMBER ALREADY RECORDED AGAINST IT, and
-     * it does it silently. An entry's `amount` is a bare number; the word beside it is the
-     * activity's metric, read live. Change "reps" to "pages" and a 45-minute gym session that
-     * said "60 reps" says "60 pages", and a goal counting it reads "FROM GYM · PAGES · 180 /
-     * 20000 reps" — the chip and the meter disagreeing in one row.
-     *
-     * ⚠️ SO IT ASKS, RATHER THAN REPAIRING. Putting those numbers right means deleting
-     * quantities out of sessions somebody recorded, which is not a thing to do on their behalf —
-     * see the design doc, where it is left open deliberately. What IS right is to say what this
-     * will do at the moment somebody is choosing, which is the same lesson as the delete
-     * confirmation that used to understate what it removed.
-     *
-     * ⚠️ ONLY WORD → DIFFERENT WORD. Naming a metric for the first time cannot relabel anything
-     * that was recorded without one, and clearing a metric hides the numbers rather than
-     * reinterpreting them — measured, both. The one that rewrites meaning is the swap.
-     */
-    const was = (acts ?? []).find((a) => a.id === fixAct)?.metric?.trim() || ''
-    const now = actMetric.trim()
-    if (
-      was &&
-      now &&
-      was !== now &&
-      !window.confirm(
-        `Anything already recorded against ${n} was counted in ${was}. Changing this to ${now} makes every one of those numbers read as ${now} instead. Change it?`,
-      )
-    )
-      return
-    setBusy(true)
-    /* ⚠️ the same function that creates one, given an id — chronicle_activity_save has taken an
-       id since step 2 and nothing had ever passed one, which is why a category was permanent */
-    /* ⚠️ '' rather than null when there is no colour: null means "leave it alone" on the way in —
-       see chronicle_activity_save — so clearing one has to be asked for. */
-    const r = await saveActivity(
-      n,
-      actCat,
-      actColour ?? '',
-      fixAct,
-      actMetric,
-      asMins(actSession),
-      actShared,
-    )
-    setBusy(false)
-    if ('why' in r) return moan(r.why)
-    setFixAct(null)
-    await after()
-  }
-
-  /**
-   * ⚠️ LOCAL TIME IN, ISO OUT. A `datetime-local` input gives "2026-10-12T21:30" with no zone,
-   * which `new Date()` reads as LOCAL — correct here, and the one case where parsing a date string
-   * is right rather than the UTC trap, because the string genuinely has no zone in it.
-   */
-  const saveEnt = async (metric?: string | null) => {
-    if (!fixEnt || !entFrom || busy) return
-    /**
-     * ⚠️ THE ONE STILL GOING TAKES A DIFFERENT CALL, because it has no end to send and nothing
-     * should give it one — that is what Stop is for. Everything else on the row is set after a
-     * session finishes, so the running editor offers exactly the two things you notice while you
-     * are working: what it is, and when it began. See chronicle_running_fix.
-     */
-    const running = log.find((e) => e.id === fixEnt)?.end == null
-    if (running) {
-      setBusy(true)
-      const w = entWas.current
-      const kept = w != null && forInput(w.from) === entFrom
-      const from = kept ? w!.from : new Date(entFrom).toISOString()
-      /* ⚠️ A SITTING WITH SETS MOVES THEM WITH ITS START, in the same call — §15c */
-      const no = entSets.length
-        ? await fixRunningDay(from, entAct || null, dayOfStart(from))
-        : await fixRunning(from, entAct || null)
-      setBusy(false)
-      if (no) return moan(no.why)
-      setFixEnt(null)
-      await after()
-      return
-    }
-    if (!entTo) return
-    /**
-     * ⚠️ REFUSED HERE, NOT ONLY GREYED. The Save button is disabled while the span is backwards,
-     * which is the part a person sees — but a disabled button is a hint rather than a rule, and
-     * this is the only place that knows the rule. `chronicle_entry_edit` would take the row and
-     * the day would then hold a session that ends before it starts: `overlapMs` clamps it to
-     * zero, so it would sit in the log reading "0m" and contribute nothing to any total, which
-     * is a corrupt row that looks like an empty one.
-     */
-    const mins = minsBetweenLocal(entFrom, entTo)
-    if (mins !== null && mins < 0) return moan('that ends before it starts')
-    /* see `entWas`: an end nobody moved keeps its seconds */
-    const was = entWas.current
-    const sameFrom = was != null && forInput(was.from) === entFrom
-    const sameTo = was?.to != null && forInput(was.to) === entTo
-    setBusy(true)
-    const fromISO = sameFrom ? was!.from : new Date(entFrom).toISOString()
-    const toISO = sameTo ? was!.to! : new Date(entTo).toISOString()
-    /**
-     * ⚠️ A SITTING WITH SETS GOES THROUGH THE DAY EDITOR, which edits the span and moves the sets to
-     * the local day it now starts on IN ONE CALL (§15c) — two calls would leave a moment, or a
-     * failure, in which the Circuit grid and the sitting disagree about which day the reps were.
-     * The note is not sent at all on that path, and the server leaves it alone.
-     */
-    const bad = entSets.length
-      ? await editEntryDay(fixEnt, fromISO, toISO, entAct || null, dayOfStart(fromISO))
-      : await editEntry(
-          fixEnt,
-          fromISO,
-          toISO,
-          /* ⚠️ THE NOTE IT ALREADY HAS, not null. This argument was hard-coded null, and the server
-         read null as "clear it" — so opening a session's editor and pressing Save, changing
-         nothing, destroyed whatever you had written about it. The server now reads null as "leave
-         it alone" so no caller can lose one by forgetting; this sends the box, so you can change
-         one or empty it on purpose. */
-          /**
-           * ⚠️ NULL, WHICH THE SERVER READS AS "LEAVE IT ALONE". `entNote` is the add-a-journal-entry
-           * box now, not this session's note — sending it here would copy whatever is half-typed in
-           * that box into the legacy `note` column on every Save. The journal is the one home for
-           * what you write about a sitting; the column is frozen where it stood.
-           */
-          null,
-          /* ⚠️ which activity it WAS, because pressing Start on the wrong one is the likeliest
-         mistake this room allows and the only remedy used to be deleting the session and typing
-         it in again — losing the amount, the rating and the day it was recorded. */
-          entAct || null,
-        )
-    /**
-     * ⚠️ THE AMOUNT IS A SECOND CALL, and only when the activity has something to count. It is a
-     * separate function on the server for a reason the migration records — three signatures would
-     * have had to change otherwise — so the UI pays one extra round trip on an edit rather than
-     * the whole write path paying for a field most sessions do not have.
-     */
-    /**
-     * ⚠️ THE SECOND AND THIRD CALLS CAN FAIL ON THEIR OWN, and this editor is the one place where
-     * that is not self-evident. `setAmount` and `setQuality` answer true or false, and both
-     * answers were dropped — so a span that saved while its amount did not closed the editor,
-     * which is a success signal, and the row came back carrying the old number. Everywhere else
-     * in this room a failed write leaves the thing visibly unchanged and says nothing, which at
-     * least does not claim to have worked.
-     *
-     * It is still a generic sentence, because a boolean carries no reason. Saying WHICH part did
-     * not take is the useful half: the span is saved either way, so nobody needs to type the
-     * timestamps again.
-     */
-    let partly: string | null = null
-    if (!bad) {
-      const had = log.find((e) => e.id === fixEnt)?.amount ?? null
-      if (metric) {
-        const n = Number(entAmount)
-        const ok = await setAmount(
-          fixEnt,
-          entAmount.trim() === '' || !Number.isFinite(n) || n < 0 ? null : n,
-        )
-        if (!ok) partly = 'Saved — but the amount did not change.'
-      } else if (had != null) {
-        /**
-         * ⚠️ AND A SESSION MOVED ONTO SOMETHING THAT COUNTS NOTHING LOSES ITS NUMBER, rather
-         * than keeping one nothing can show. The box is gone by then, so skipping the write left
-         * the old amount in the row — invisible, and waiting: moving the session back onto an
-         * activity with a metric brought "60 reps" out again. Hidden state that reappears is
-         * worse than a cleared field, because nobody chose it and nobody can see it to undo it.
-         *
-         * ⚠️ ONLY WHEN THERE IS ONE TO CLEAR, so the ordinary edit of an activity that counts
-         * nothing still costs two round trips rather than three — the economy the note above is
-         * about.
-         */
-        if (!(await setAmount(fixEnt, null))) partly = 'Saved — but the amount did not change.'
-      }
-    }
-    /* ⚠️ a third call on an edit, for the same reason the amount is a second one — see setQuality.
-       Only when it CHANGED, so the common case of nudging a timestamp stays two round trips. */
-    if (!bad) {
-      const was = log.find((e) => e.id === fixEnt)?.quality ?? null
-      const now = entMood === '' ? null : Number(entMood)
-      if (was !== now && !(await setQuality(fixEnt, now))) {
-        partly = 'Saved — but the rating did not change.'
-      }
-    }
-    setBusy(false)
-    if (bad) return moan(bad.why)
-    setFixEnt(null)
-    await after()
-    /* after the reload, so the row beside the message already shows what did save */
-    if (partly) moan(partly)
-  }
-
-  /** what a datetime-local input wants: local time, no zone, to the minute */
-  const forInput = (iso: string): string => {
-    const d = new Date(iso)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
-  }
-
-  /**
-   * ⚠️ IT ASKS ABOUT THE WHOLE SESSION, BECAUSE THAT IS WHAT IT DELETES. The day list shows a
-   * straddling session's OVERLAP with the day you are looking at, so this read "Delete the 30m of
-   * Writing?" for a session that was 1h 30m and then removed all of it, including the hour sitting
-   * on yesterday's screen. A confirmation that understates what it does is worse than none: it is
-   * the one moment somebody is deciding, and it was answering a different question.
-   */
   /**
    * Where the gap form starts, so nobody types four fields on a phone.
    *
@@ -1307,66 +907,6 @@ export function Timer({
       from: forInput(new Date(safe).toISOString()),
       to: forInput(new Date(to).toISOString()),
     }
-  }
-
-  /**
-   * Open a sitting's editor on the day it happened — from the week grid, or from the journal.
-   *
-   * ⚠️ ONE FUNCTION FOR BOTH, lifted out of the week grid's handler rather than written again.
-   * The editor's fields are seeded from the sitting here, and a second copy of these six lines
-   * is where one of them would quietly stop seeding a field the other does — the amount, say,
-   * which the week grid's version already had to remember.
-   */
-  /**
-   * Open an activity's editor, seeded with what it holds now.
-   *
-   * ⚠️ ONE FUNCTION FOR THE ROW'S NAME BUTTON AND FOR THE "NAME WHAT THIS COUNTS" DOOR, for the
-   * reason `openSitting` below is one: a second copy of these seven lines is where a field stops
-   * being seeded, and an unseeded field here is not a blank — it is the PREVIOUS activity's value,
-   * saved onto this one by the next Save.
-   */
-  const editActivity = (a: Activity) => {
-    setFixAct(a.id)
-    setActName(a.name)
-    setActCat(a.cat)
-    setActColour(a.colour)
-    setActMetric(a.metric ?? '')
-    setActSession(a.session == null ? '' : String(a.session))
-    setActShared(a.shared)
-  }
-
-  const openSitting = (day: string, e: Entry) => {
-    setSeeing(day)
-    setFixEnt(e.id)
-    entWas.current = { from: e.start, to: e.end }
-    setEntAct(e.activity)
-    setEntFrom(forInput(e.start))
-    setEntTo(e.end ? forInput(e.end) : '')
-    setEntAmount(e.amount == null ? '' : String(e.amount))
-    setEntMood(e.quality == null ? '' : String(e.quality))
-  }
-
-  const forget = async (e: Entry) => {
-    const name = byId.get(e.activity)?.name ?? 'that'
-    const here = overlapMs(e, bounds.fromMs, bounds.toMs, Date.now())
-    /* an unbounded window, so the whole span comes back — and a running one still measures to
-       the clock, and a backwards or unreadable one still comes back as zero, for free */
-    const all = overlapMs(e, -Infinity, Infinity, Date.now())
-    /* ⚠️ a minute of slack rather than `!==`: a session can poke a few seconds past midnight and
-       "1h 30m of which 1h 30m is on this day" is a sentence about nothing */
-    const spans = all - here > 60_000
-    if (
-      !window.confirm(
-        spans
-          ? `Delete the whole ${spanText(all)} of ${name}? It runs past this day — only ${spanText(here)} of it is here.`
-          : `Delete the ${spanText(here)} of ${name}?`,
-      )
-    )
-      return
-    setBusy(true)
-    await dropEntry(e.id)
-    setBusy(false)
-    await after()
   }
 
   if (acts === null) {
@@ -2348,12 +1888,7 @@ export function Timer({
                     className="btn btn-ghost chron-x"
                     onClick={() => {
                       setFixEnt(fixEnt === e.id ? null : e.id)
-                      setEntAct(e.activity)
-                      entWas.current = { from: e.start, to: e.end }
-                      setEntFrom(forInput(e.start))
-                      setEntTo(e.end ? forInput(e.end) : '')
-                      setEntAmount(e.amount == null ? '' : String(e.amount))
-                      setEntMood(e.quality == null ? '' : String(e.quality))
+                      seedSitting(e)
                     }}
                     aria-label="Change this session"
                     title="Change this session"
@@ -2389,427 +1924,19 @@ export function Timer({
        * circuit/ui/Modal.tsx about what that last one cost to get right; a second implementation
        * here would have been a second place for all of it to be wrong.
        */}
-      {(() => {
-        const showing = fixEnt ?? justDid
-        const e = log.find((x) => x.id === showing)
-        if (!e) return null
-        /* ⚠️ what it SAYS differs though what it shows does not: one is an offer, one is a repair */
-        const finishing = fixEnt == null
-        const a = byId.get(e.activity)
-        const metric = byId.get(entAct)?.metric
-        /**
-         * What the sitting's counted sets hold, which its count may not go below — unless this
-         * save moves it to an activity in another unit, which takes them back out on the server.
-         */
-        const unitMoves = unitOf(a?.metric) !== unitOf(metric)
-        const floor = unitMoves ? 0 : countedIn(entSets, e.id)
-        const asked = entAmount.trim() === '' ? 0 : Number(entAmount)
-        const below = !!e.end && floor > 0 && Number.isFinite(asked) && asked < floor
-        const len = minsBetweenLocal(entFrom, entTo)
-        const was = entWas.current
-        const untouched =
-          was?.to != null && forInput(was.from) === entFrom && forInput(was.to) === entTo
-        const ms = untouched ? Date.parse(was.to!) - Date.parse(was.from) : (len ?? 0) * 60_000
-        const when = (
-          label: string,
-          value: string,
-          set: React.Dispatch<React.SetStateAction<string>>,
-        ) => (
-          <div className="chron-field">
-            <label>{label}</label>
-            <div className="chron-when-row">
-              <strong className="chron-when-at">{clockOfLocal(value)}</strong>
-              <span className="chron-nudges">
-                {/**
-                 * ⚠️ THE UPDATER FORM, NOT `set(nudgeLocal(value, …))`, AND AT 40ms IT MATTERS.
-                 * `value` is read from the render that drew the button. A repeat that fires
-                 * before React has committed the previous one would compute from the OLD time
-                 * and write the same minute again — a hold that visibly stalls and then jumps,
-                 * from steps that were counted and thrown away. Asking the setter for its own
-                 * current value has no such window.
-                 */}
-                <HoldButton
-                  className="btn btn-ghost chron-nudge"
-                  label={`${label} one minute earlier (hold to go faster)`}
-                  onStep={() => set((cur) => nudgeLocal(cur, -STEP_MINUTES))}
-                >
-                  −
-                </HoldButton>
-                <HoldButton
-                  className="btn btn-ghost chron-nudge"
-                  label={`${label} one minute later (hold to go faster)`}
-                  onStep={() => set((cur) => nudgeLocal(cur, STEP_MINUTES))}
-                >
-                  +
-                </HoldButton>
-              </span>
-            </div>
-          </div>
-        )
-        /**
-         * ⚠️ A JOURNAL, NOT A FIELD. This was one `note` column, so a sitting you wanted to
-         * say three things about got one, and saying the third meant rewriting the first two.
-         * Each entry keeps the moment it was written, which is the half that makes it a
-         * journal rather than a longer box — "instead of just a single note id want to be
-         * able to journal multiple things into an activity".
-         *
-         * ⚠️ AND CLEARING ONE DELETES IT, which is `chronicle_note_edit`'s own rule and the
-         * one place in this room where empty means remove: a journal entry you have cleared
-         * is one you did not mean to write, and a blank row is a thing to tidy up later.
-         */
-        /**
-         * ⚠️ LIFTED OUT SO IT CAN BE DRAWN IN TWO PLACES, AND IT LEADS WHILE THE SITTING IS OPEN.
-         * The dialog is ordered for a session you have finished — what it was, when it ran, how
-         * long, how much, how it went — and the journal is last because it is the longest thing
-         * on it. Opened on the sitting you are IN, that order is wrong: there is no end, no
-         * length and nothing yet to rate, and the one reason to open it mid-session is to say
-         * what you are doing. So ✎ Note on the running header lands on the box instead of above
-         * four fields it has to be scrolled past, and nothing has to steal focus from the Modal
-         * to manage it — see the note above about what getting that right cost once already.
-         */
-        const journal = (
-          <div className="chron-field">
-            <label>Journal</label>
-            {e.notes.length > 0 && (
-              <ul className="chron-journal">
-                {e.notes.map((n) => (
-                  <li key={n.id}>
-                    <time dateTime={n.at}>
-                      {new Date(n.at).toLocaleTimeString(undefined, {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })}
-                    </time>
-                    <textarea
-                      rows={1}
-                      defaultValue={n.body}
-                      aria-label={`Written at ${new Date(n.at).toLocaleTimeString()}`}
-                      onBlur={(ev) => {
-                        if (ev.target.value.trim() === n.body) return
-                        void (async () => {
-                          const bad = await editNote(n.id, ev.target.value)
-                          if (bad) moan(bad.why)
-                          await after()
-                        })()
-                      }}
-                    />
-                    {onIdea && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost chron-idea"
-                        aria-label="Make this a goal for today"
-                        onClick={(ev) => {
-                          /* ⚠️ THE BOX'S TEXT, NOT `n.body`. The box is edited in place and saves
-                             on blur, so a line changed and then sent straight here would
-                             otherwise arrive as the version from before the change. */
-                          const box = ev.currentTarget.parentElement?.querySelector('textarea')
-                          const text = box?.value ?? n.body
-                          setFixEnt(null)
-                          setJustDid(null)
-                          onIdea(text)
-                        }}
-                      >
-                        ＋ Goal
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="chron-journal-add">
-              <textarea
-                rows={1}
-                value={entNote}
-                placeholder={e.notes.length ? 'and another thing…' : 'write something down'}
-                onChange={(ev) => setEntNote(ev.target.value)}
-              />
-              <button
-                className="btn btn-ghost"
-                disabled={busy || !entNote.trim()}
-                onClick={() => void addJournal(e.id)}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        )
-        return (
-          <Modal
-            title={
-              finishing
-                ? `${spanText(ms)} of ${a?.name ?? 'that'} — how did it go?`
-                : `Edit ${a?.name ?? 'this session'}`
-            }
-            onClose={() => {
-              setFixEnt(null)
-              setJustDid(null)
-            }}
-            footer={
-              <div className="chron-modal-do">
-                {/* ⚠️ DELETE LIVES HERE, AWAY FROM SAVE — the arrangement the HTML version uses,
-                    and the reason a log row no longer needs a ✕ of its own beside its ✎ */}
-                <button className="btn btn-ghost chron-danger" onClick={() => void forget(e)}>
-                  🗑 Delete
-                </button>
-                <span className="chron-modal-right">
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      setFixEnt(null)
-                      setJustDid(null)
-                    }}
-                  >
-                    {/* ⚠️ "Done" when finishing, because there is nothing to cancel — the
-                        sitting is already recorded and this dialog only ever adds to it */}
-                    {finishing ? 'Done' : 'Cancel'}
-                  </button>
-                  <button
-                    className="btn"
-                    disabled={busy || (len ?? 0) < 0 || below}
-                    onClick={() => void saveEnt(metric)}
-                  >
-                    Save
-                  </button>
-                </span>
-              </div>
-            }
-          >
-            {e.end == null ? journal : null}
-
-            <div className="chron-field">
-              <label htmlFor="ent-act">What it was</label>
-              <select
-                id="ent-act"
-                value={entAct}
-                onChange={(ev) => {
-                  /* ⚠️ a quantity belongs to a metric, and moving a session changes the metric
-                     under it — sixty reps is not sixty pages, so the number goes when the unit
-                     does, visibly, while somebody is looking at it */
-                  const before = byId.get(entAct)?.metric ?? null
-                  const after = byId.get(ev.target.value)?.metric ?? null
-                  if (before !== after) setEntAmount('')
-                  setEntAct(ev.target.value)
-                }}
-              >
-                {[...open, ...(a && a.archived ? [a] : [])].map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
-                ))}
-              </select>
-              {/* ⚠️ SAID AT THE MOMENT IT HAPPENS (§15c): a move takes the time to the new
-                  activity and leaves every set the exercise it was. Correct, and it looks like a
-                  bug — a goal's number moves and the Circuit's does not. */}
-              {entAct !== e.activity && moveNote(entSets, e.id) ? (
-                <p className="muted chron-move-note">{moveNote(entSets, e.id)}</p>
-              ) : null}
-            </div>
-
-            <div className="chron-frow">
-              {when('From', entFrom, setEntFrom)}
-              {e.end ? when('To', entTo, setEntTo) : null}
-            </div>
-
-            {e.end && len !== null ? (
-              len < 0 ? (
-                <p className="chron-when-len is-wrong">That ends before it starts.</p>
-              ) : (
-                <p className="chron-when-len">{spanText(ms)}</p>
-              )
-            ) : null}
-
-            {e.end && (
-              <details className="chron-exact">
-                <summary>exact times</summary>
-                <div className="chron-frow">
-                  <div className="chron-field">
-                    <label htmlFor="ent-xf">Start</label>
-                    <input
-                      id="ent-xf"
-                      type="datetime-local"
-                      value={entFrom}
-                      onChange={(ev) => setEntFrom(ev.target.value)}
-                    />
-                  </div>
-                  <div className="chron-field">
-                    <label htmlFor="ent-xt">End</label>
-                    <input
-                      id="ent-xt"
-                      type="datetime-local"
-                      value={entTo}
-                      onChange={(ev) => setEntTo(ev.target.value)}
-                    />
-                  </div>
-                </div>
-              </details>
-            )}
-
-            {e.end && metric && (
-              <div className="chron-field">
-                <label htmlFor="ent-amt">How many {metric}</label>
-                <input
-                  id="ent-amt"
-                  value={entAmount}
-                  inputMode="decimal"
-                  placeholder={metric}
-                  onChange={(ev) => setEntAmount(ev.target.value)}
-                />
-              </div>
-            )}
-
-            {/**
-             * ⚠️ THE SETS THIS SITTING COUNTED, AND THE WAY TO TAKE ONE BACK. Its count holds the
-             * counted ones, so it cannot be lowered below them here — the server refuses that too —
-             * and the line under the field says so and says where the fix is: ✕ on a set takes back
-             * exactly what it added. A set that is not counted is shown as such, so the two numbers
-             * on this dialog never look like they disagree for no reason.
-             */}
-            {entSets.some((x) => x.entry === e.id) ? (
-              <div className="chron-sets">
-                <span className="muted">Sets</span>
-                <ul>
-                  {entSets
-                    .filter((x) => x.entry === e.id)
-                    .map((x) => (
-                      <li key={x.id}>
-                        {countText(x.value)} {setName(x)}
-                        {x.counted ? null : <span className="muted"> · not in the count</span>}
-                        <button
-                          type="button"
-                          className="btn btn-ghost chron-set-x"
-                          disabled={busy}
-                          aria-label={`Take back ${countText(x.value)} ${setName(x)}`}
-                          onClick={async () => {
-                            setBusy(true)
-                            const bad = await dropSet(x.id)
-                            setBusy(false)
-                            if (bad) return moan(bad.why)
-                            setEntSets((all) => all.filter((y) => y.id !== x.id))
-                            if (x.counted && entAmount.trim() !== '') {
-                              const n = Number(entAmount)
-                              if (Number.isFinite(n)) setEntAmount(String(Math.max(0, n - x.value)))
-                            }
-                            await after()
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </li>
-                    ))}
-                </ul>
-                {below ? (
-                  <p className="chron-sets-floor" role="alert">
-                    Its sets count {countText(floor)} {metric}. Take one back above to go lower.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {/**
-             * ⚠️ THE DOOR TO THE COUNTER, FOR AN ACTIVITY THAT HAS NONE. The `+1 / +5 / +10` row on
-             * the clock appears only once an activity has been told what it counts — and that is
-             * said in the Activities fold at the foot of the Day half, closed, under a box whose
-             * only label is a placeholder reading "pages?". So somebody timing Gym had a rep
-             * counter one setting away and nothing on any screen saying so. This is where they
-             * already are when the question occurs to them: looking at the session they just did.
-             *
-             * ⚠️ IT OPENS THE ACTIVITY EDITOR, NOT A SECOND ONE. The metric is a property of the
-             * activity, saved through `chronicle_activity_save` with every other field it has; a
-             * box here that saved just the metric would be the second write path to a row whose
-             * every OTHER column it would then have to pass through untouched.
-             */}
-            {(() => {
-              const act = byId.get(entAct)
-              if (metric || !act || act.auto || act.archived) return null
-              return (
-                <p className="muted chron-count-door">
-                  Counted reps, laps or pages?{' '}
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      setFixEnt(null)
-                      setJustDid(null)
-                      setActsOpen(true)
-                      editActivity(act)
-                      setToMetric((n) => n + 1)
-                      onShow?.('day')
-                    }}
-                  >
-                    Name what {act.name} counts
-                  </button>
-                </p>
-              )
-            })()}
-
-            {/**
-             * ⚠️ BUTTONS RATHER THAN A SELECT, which is the other thing the HTML version has
-             * always done — 👍 Great / 😐 OK / 👎 Rough, one tap rather than opening a list. The
-             * scale here is five and stays five, because that is what every rating already
-             * stored means; what changes is only how you choose one.
-             *
-             * ⚠️ AND TAPPING THE CHOSEN ONE CLEARS IT, so "not rated" needs no sixth button. The
-             * state it returns to is the one it started in, which is the only thing an undo here
-             * could sensibly mean.
-             */}
-            {/**
-             * ⚠️ THE PICKER IS THE ONE FROM THE PICTURES ROOM, which is the whole reason it was
-             * lifted out of it. Choose, squeeze, keep — and what comes back is an id, which is
-             * all this sitting stores. A signed link is fetched when something is about to be
-             * drawn, because every link into a private bucket expires.
-             */}
-            <div className="chron-field">
-              <label>Photograph</label>
-              {shot ? (
-                <div className="chron-shot">
-                  {/* same as the rating editor: a thumbnail that enlarges is a control */}
-                  <button
-                    type="button"
-                    className="btn btn-ghost pics-zoom"
-                    aria-label="See this photo full size"
-                    onClick={() => bigPicture.open(shot.url, shot.alt)}
-                  >
-                    <img src={shot.thumbUrl} alt={shot.alt ?? ''} />
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    disabled={busy}
-                    onClick={() => void hangPicture(e.id, null)}
-                  >
-                    Take it off
-                  </button>
-                  {/* portaled, so where it sits in the tree does not matter */}
-                  {bigPicture.viewer}
-                </div>
-              ) : (
-                <AddPicture label="+ Add a photo" onKept={(k) => hangPicture(e.id, k.id)} />
-              )}
-            </div>
-
-            {e.end && (
-              <div className="chron-field">
-                <label>How did it go? (optional)</label>
-                <div className="chron-pickmoods">
-                  {MOODS.map(([n, word]) => (
-                    <button
-                      key={n}
-                      className={
-                        'chron-pickmood is-' + word + (entMood === String(n) ? ' is-on' : '')
-                      }
-                      aria-pressed={entMood === String(n)}
-                      onClick={() => setEntMood(entMood === String(n) ? '' : String(n))}
-                    >
-                      {word}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {e.end == null ? null : journal}
-          </Modal>
-        )
-      })()}
+      <SittingDialog
+        ed={sed}
+        log={log}
+        byId={byId}
+        busy={busy}
+        setBusy={setBusy}
+        moan={moan}
+        actEd={actEd}
+        open={open}
+        after={after}
+        onIdea={onIdea}
+        onShow={onShow}
+      />
 
       {!log.length && <p className="muted">Nothing recorded for this day yet.</p>}
 
@@ -2901,269 +2028,16 @@ export function Timer({
       {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
       {show === 'day' && open.length > 0 && (
-        /* ⚠️ CONTROLLED, because something besides its own summary now opens it — the "name what
-           this counts" door in a sitting's editor. `onToggle` keeps the state honest when a person
-           opens or closes it by hand, so the two never disagree about whether it is open. */
-        <details
-          className="chron-tidy"
-          open={actsOpen}
-          onToggle={(ev) => setActsOpen(ev.currentTarget.open)}
-        >
-          <summary>Activities</summary>
-          <ul className="chron-acts">
-            {(acts ?? []).map((a) =>
-              fixAct === a.id ? (
-                <li key={a.id} className="chron-fix">
-                  <label>
-                    <span className="sr-only">Name</span>
-                    <input
-                      value={actName}
-                      maxLength={LIMIT.name}
-                      onChange={(e) => setActName(e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span className="sr-only">Which kind</span>
-                    <select
-                      value={actCat}
-                      onChange={(e) => setActCat(e.target.value as Activity['cat'])}
-                    >
-                      {CATS.map(([c, label]) => (
-                        <option key={c} value={c}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {/**
-                   * ⚠️ A COLOUR IS DECORATION BESIDE A NAME, never the only thing carrying it.
-                   * The dot sits next to the word everywhere it is drawn, so somebody who cannot
-                   * tell the colours apart loses nothing — which is the only reason a row of
-                   * swatches is allowed to be the control.
-                   */}
-                  <span className="chron-swatches" role="group" aria-label="A colour for this">
-                    {COLOURS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={'chron-swatch' + (actColour === c ? ' is-on' : '')}
-                        style={{ background: c }}
-                        aria-pressed={actColour === c}
-                        aria-label={`Colour ${COLOURS.indexOf(c) + 1} of ${COLOURS.length}`}
-                        onClick={() => setActColour(c)}
-                      />
-                    ))}
-                    <button
-                      type="button"
-                      className={'chron-swatch is-none' + (actColour == null ? ' is-on' : '')}
-                      aria-pressed={actColour == null}
-                      aria-label="No colour"
-                      onClick={() => setActColour(null)}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                  <label className="chron-qty">
-                    <span className="sr-only">Also counts (optional)</span>
-                    <input
-                      ref={metricBox}
-                      value={actMetric}
-                      maxLength={LIMIT.unit}
-                      placeholder="pages?"
-                      onChange={(e) => setActMetric(e.target.value)}
-                    />
-                  </label>
-                  <label className="chron-qty">
-                    <span className="sr-only">How long should one sitting be, in minutes</span>
-                    <input
-                      value={actSession}
-                      inputMode="numeric"
-                      placeholder="30m a sitting?"
-                      onChange={(e) => setActSession(e.target.value)}
-                    />
-                  </label>
-                  {/**
-                   * ⚠️ THE ONE CONTROL IN THIS ROOM THAT SHOWS SOMETHING TO SOMEBODY ELSE, so it
-                   * says who rather than just "share". "Shared" alone would be answered with
-                   * "with whom?" and the answer is not guessable: friends, never members, never
-                   * the web — see docs/2026-10-23-chronicle-friends-timeline.sql for why a
-                   * sitting-by-sitting record does not inherit the wider tiers the profile card
-                   * may be set to.
-                   *
-                   * ⚠️ AND IT IS PER ACTIVITY BECAUSE THAT IS THE DECISION PEOPLE ACTUALLY MAKE.
-                   * Nobody wants to rule on each sitting; everybody can say whether Gym is
-                   * anybody's business. The line under it is drawn from `shared` itself rather
-                   * than written once, so it cannot drift from what the tick does.
-                   */}
-                  {/**
-                   * ⚠️ AND A TICK CANNOT SAY `certain`, SO IT STANDS ASIDE RATHER THAN LYING.
-                   * `chronicle_activities_tier_agrees` pins `shared` to friends-or-wider, so an
-                   * activity shared with three chosen friends has `shared = false` — this box
-                   * would show empty above sittings those three can see, and ticking it would
-                   * widen the activity to every friend and strip the list on the way out. The
-                   * three-level picker lives in Sharing, which has room for the list; this is
-                   * the quick switch for the two states it can express, and it defers when the
-                   * value is the third.
-                   */}
-                  {/**
-                   * ⚠️ FROM THE CIRCUIT: WHICH EXERCISES COUNT TOWARD THIS, decided by units and
-                   * never by names (§19g). Three kinds of row — ones that fit, as toggles; ones in a
-                   * different unit, said plainly; and ones whose unit nobody can compare, listed as
-                   * needing a decision rather than linked by a guess. It reads the SAVED metric,
-                   * because that is what the server compares.
-                   */}
-                  {(() => {
-                    const act = byId.get(fixAct ?? '')
-                    if (!act || !exercises?.length) return null
-                    const rows = exercises.map((x) => ({ x, f: fit(x.unit, act.metric) }))
-                    const can = rows.filter((r) => r.f.ok).map((r) => r.x)
-                    const other = rows.filter((r) => !r.f.ok && r.f.why === 'different')
-                    const unsure = rows.filter((r) => !r.f.ok && r.f.why === 'unknown')
-                    if (!act.metric?.trim()) {
-                      return (
-                        <p className="muted chron-links-note">
-                          Give this a count (reps, minutes, miles…) to link Circuit exercises to it.
-                        </p>
-                      )
-                    }
-                    return (
-                      <div
-                        className="chron-links"
-                        role="group"
-                        aria-label="Circuit exercises this counts"
-                      >
-                        <span className="muted">From the Circuit, in {act.metric}</span>
-                        {can.map((x) => {
-                          const mine = x.activity === act.id
-                          const elsewhere =
-                            x.activity && x.activity !== act.id ? byId.get(x.activity)?.name : null
-                          return (
-                            <button
-                              key={`${x.person}/${x.exercise}`}
-                              type="button"
-                              className={'btn btn-ghost chron-link' + (mine ? ' is-on' : '')}
-                              aria-pressed={mine}
-                              disabled={busy}
-                              onClick={() => void toggleLink(x, mine ? null : act.id)}
-                            >
-                              {x.name}
-                              {elsewhere ? (
-                                <span className="muted"> · counts as {elsewhere}</span>
-                              ) : null}
-                            </button>
-                          )
-                        })}
-                        {can.length === 0 ? (
-                          <span className="muted">none in {act.metric}</span>
-                        ) : null}
-                        {other.length ? (
-                          <p className="muted chron-links-note">
-                            Not here: {other.map((r) => `${r.x.name} (${r.x.unit})`).join(', ')}.
-                          </p>
-                        ) : null}
-                        {unsure.length ? (
-                          <p className="muted chron-links-note">
-                            Needs a decision — these units cannot be compared with anything:{' '}
-                            {unsure.map((r) => `${r.x.name} (${r.x.unit || 'none'})`).join(', ')}.
-                          </p>
-                        ) : null}
-                        {exercises.some((x) => x.activity === act.id && x.ok === false) ? (
-                          <p className="muted chron-links-note">
-                            A link here no longer agrees on units, so it counts nothing until it
-                            does:{' '}
-                            {exercises
-                              .filter((x) => x.activity === act.id && x.ok === false)
-                              .map((x) => `${x.name} (${fitText(fit(x.unit, act.metric))})`)
-                              .join(', ')}
-                            .
-                          </p>
-                        ) : null}
-                      </div>
-                    )
-                  })()}
-                  {byId.get(fixAct ?? '')?.visibility === 'certain' ? (
-                    <p className="muted chron-share-note">
-                      Shared with the friends you chose. Change who in <strong>Sharing</strong>.
-                    </p>
-                  ) : (
-                    <label className="chron-share">
-                      <input
-                        type="checkbox"
-                        checked={actShared}
-                        onChange={(e) => setActShared(e.target.checked)}
-                      />
-                      <span>Friends can see this</span>
-                    </label>
-                  )}
-                  <button
-                    className="btn"
-                    disabled={!actName.trim() || busy}
-                    onClick={() => void saveAct()}
-                  >
-                    Save
-                  </button>
-                  <button className="btn btn-ghost" onClick={() => setFixAct(null)}>
-                    Cancel
-                  </button>
-                </li>
-              ) : (
-                <li key={a.id}>
-                  {/**
-                   * ⚠️ THE NAME IS THE BUTTON, like the instrument's layer rows: the row already
-                   * names the thing and says what kind it is, so it may as well be the control
-                   * for changing both. A separate pencil would be a sixth small target in a row.
-                   *
-                   * ⚠️ AND THE SITE-WRITTEN ONES ARE EDITABLE TOO, which is the point of making
-                   * them ordinary activities. They arrive as Free Time because that is the only
-                   * honest guess, and reading a week back showed exactly why it matters: time in
-                   * the Instrument sitting in the same bucket as actual free time.
-                   */}
-                  <button
-                    className="btn btn-ghost chron-act-name"
-                    onClick={() => editActivity(a)}
-                    title={`Rename ${a.name}, or change what kind it is`}
-                  >
-                    {a.colour ? (
-                      <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-                    ) : null}
-                    {a.name}
-                    <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
-                    {/**
-                     * ⚠️ THE TWO OPTIONAL FACTS ARE MARKED, so a phone can drop them. The row
-                     * carries a name, a category, a metric, a sitting length, today's minutes and
-                     * an Archive button; at 375 the name button gets about 178px of that and was
-                     * wrapping to three ragged lines with "· 30m a sitting" spilling past its own
-                     * rounded background. Same answer as `.chron-plan-note` and `.chron-ent-when`:
-                     * the first things to go when a row will not fit a thumb are the ones the
-                     * editor shows anyway — and this button IS the editor's door.
-                     */}
-                    {a.metric ? <span className="muted chron-act-extra">· {a.metric}</span> : null}
-                    {a.session ? (
-                      <span className="muted chron-act-extra">
-                        · {spanText(a.session * 60_000)} a sitting
-                      </span>
-                    ) : null}
-                    {a.auto ? <span className="chron-chip">on the site</span> : null}
-                  </button>
-                  {mins[a.id] ? (
-                    <span className="chron-ent-span">{spanText(mins[a.id] * 60_000)}</span>
-                  ) : null}
-                  <button
-                    className="btn btn-ghost"
-                    onClick={async () => {
-                      await archiveActivity(a.id, !a.archived)
-                      /* ⚠️ `after` for the same reason as makeActivity: archiving the last
-                         activity leaves the goals half still offering it as a source */
-                      await after()
-                    }}
-                  >
-                    {a.archived ? 'Bring back' : 'Archive'}
-                  </button>
-                </li>
-              ),
-            )}
-          </ul>
-        </details>
+        <ActivitiesFold
+          ed={actEd}
+          acts={acts}
+          byId={byId}
+          exercises={exercises}
+          mins={mins}
+          busy={busy}
+          after={after}
+          toggleLink={toggleLink}
+        />
       )}
 
       {say && <p className="chron-say">{say}</p>}
