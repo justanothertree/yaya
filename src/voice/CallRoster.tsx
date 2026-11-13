@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getSupabaseClient } from '../finance/client'
 import { useVoiceSession } from './useVoiceSession'
 import { useFriendsOnToys, useToyNames } from '../lab/social/where'
+import { partyMeter } from './voiceSession'
 
 /**
  * Who's in the call — the Discord-style member list.
@@ -14,7 +15,48 @@ import { useFriendsOnToys, useToyNames } from '../lab/social/where'
 
 type Resolved = { username: string | null }
 
-export function CallRoster({ onClose }: { onClose: () => void }) {
+/**
+ * The admin's meter: this call's Realtime messages as seen from here (src/party/meter.ts). It is
+ * the measurement the social Lab plan asked for before cursors launch, read off a real call
+ * rather than estimated. Read every two seconds while the roster is open, and only then.
+ */
+function MeterLine() {
+  const [r, setR] = useState(() => partyMeter())
+  useEffect(() => {
+    const t = window.setInterval(() => setR(partyMeter()), 2000)
+    return () => window.clearInterval(t)
+  }, [])
+  if (!r) return null
+  const n = (x: number) => x.toLocaleString()
+  const top = Object.entries(r.byKind)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k, v]) => `${k} ${n(v)}`)
+    .join(' · ')
+  return (
+    <p className="muted callroster-meter">
+      Realtime from here: {n(r.sent)} sent, {n(r.received)} received
+      {r.perMinute !== null && <> · {n(r.perMinute)} a minute</>}
+      {top && (
+        <>
+          <br />
+          {top}
+        </>
+      )}
+      <br />
+      The call&rsquo;s total is roughly everyone&rsquo;s added up.
+    </p>
+  )
+}
+
+export function CallRoster({
+  onClose,
+  showMeter = false,
+}: {
+  onClose: () => void
+  /** the admin's Realtime meter */
+  showMeter?: boolean
+}) {
   const { peers } = useVoiceSession()
   const [names, setNames] = useState<Record<string, Resolved>>({})
   /* which Lab toy each friend is on — friends only, see src/lab/social/gate.ts */
@@ -126,6 +168,7 @@ export function CallRoster({ onClose }: { onClose: () => void }) {
         })}
         {!peers.length && <li className="muted callroster-empty">Nobody else here yet.</li>}
       </ul>
+      {showMeter && <MeterLine />}
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { devFriends } from '../lab/social/friends'
  * Open each tab at `#dev-call?name=Ann` (then `name=Bo`, …). Options:
  *   kind=dm|circuit|profile|lounge   the room kind the call claims (default dm)
  *   stranger=1                       this tab is NOT a friend of the others
+ *   meter=1                          show the admin's Realtime meter in the roster (👥)
  * The tab remembers its identity in sessionStorage and goes on to the Lab; a reload keeps it.
  * Close the tab, or open `#dev-call?off=1`, to leave.
  *
@@ -18,7 +19,7 @@ import { devFriends } from '../lab/social/friends'
  *
  * Only ever loaded by a dynamic import behind `import.meta.env.DEV` in main.tsx.
  */
-type Cfg = { id: string; name: string; kind: RoomKind; stranger: boolean }
+type Cfg = { id: string; name: string; kind: RoomKind; stranger: boolean; meter: boolean }
 type Msg =
   | { t: 'here'; id: string; name: string; stranger: boolean }
   | { t: 'bye'; id: string }
@@ -42,6 +43,7 @@ function readCfg(asked: string): Cfg | null {
       name: (q.get('name') ?? 'Tab').slice(0, 20),
       kind: KINDS.includes(kind) ? kind : 'dm',
       stranger: q.get('stranger') === '1',
+      meter: q.get('meter') === '1',
     }
     sessionStorage.setItem(KEY, JSON.stringify(cfg))
     location.hash = '#lab'

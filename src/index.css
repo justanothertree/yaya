@@ -6915,6 +6915,12 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 .callroster-actions .btn {
   padding: 0.15rem 0.4rem;
 }
+/* the admin's Realtime meter under the roster (src/party/meter.ts) */
+.callroster-meter {
+  margin: 0.4rem 0.5rem 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
 /* the Lab toy a friend is on — a link to it (src/lab/social/where.ts) */
 .callroster-lab {
   flex-shrink: 1;

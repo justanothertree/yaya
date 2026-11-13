@@ -13,6 +13,7 @@ import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppresso
 import rnnoiseWorkletPath from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url'
 import rnnoiseWasmPath from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url'
 import rnnoiseWasmSimdPath from '@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url'
+import { countMessage, newMeter, readMeter, type MeterReading } from '../party/meter'
 
 /**
  * The live call, owned by the module rather than by a component.
@@ -453,6 +454,19 @@ let meId: string | null = null
 let myName = 'You'
 /** the teardown of a dev-only call (devCall below), which has no real channel to remove */
 let devLink: (() => void) | null = null
+/** Realtime messages in and out of this call, for the admin's meter (src/party/meter.ts) */
+let meter = newMeter(0)
+const sizeOf = (x: unknown) => {
+  try {
+    return JSON.stringify(x).length
+  } catch {
+    return 0
+  }
+}
+/** this call's Realtime traffic as seen from here, or null outside a call */
+export function partyMeter(): MeterReading | null {
+  return state.inCall ? readMeter(meter, performance.now()) : null
+}
 const pcs = new Map<string, RTCPeerConnection>()
 const names = new Map<string, string>()
 /** our screen capture while sharing, kept so it can be stopped and re-added to new peers */
@@ -580,6 +594,7 @@ function send(msg: Signal) {
   if (msg.kind === 'offer') diag.offersSent++
   else if (msg.kind === 'answer') diag.answersSent++
   else if (msg.kind === 'ice') diag.iceSent++
+  if (chan) countMessage(meter, 'sent', `voice:${msg.kind}`, sizeOf(msg))
   void chan?.send({ type: 'broadcast', event: 'voice', payload: msg })
 }
 
@@ -620,17 +635,21 @@ export function myPeerId(): string | null {
 
 export function sendParty(kind: string, body: unknown) {
   if (!chan || !meId) return
-  void chan.send({
-    type: 'broadcast',
-    event: 'party',
-    payload: { from: meId, name: myName, kind, body } satisfies PartyEnvelope,
-  })
+  const payload = { from: meId, name: myName, kind, body } satisfies PartyEnvelope
+  countMessage(meter, 'sent', `party:${kind}`, sizeOf(payload))
+  void chan.send({ type: 'broadcast', event: 'party', payload })
 }
 
 /** Hand one incoming co-presence message to every listener, each isolated from the others. */
 function dispatchParty(payload: unknown) {
   const m = payload as PartyEnvelope
   if (!m || typeof m.from !== 'string' || m.from === meId) return
+  countMessage(
+    meter,
+    'received',
+    `party:${typeof m.kind === 'string' ? m.kind.slice(0, 24) : '?'}`,
+    sizeOf(m),
+  )
   for (const fn of partyListeners) {
     try {
       fn(m)
@@ -698,6 +717,7 @@ export function devCall(
     offListen()
     offRoster()
   }
+  meter = newMeter(performance.now())
   set({ inCall: true, roomId: 'dev-call', roomName: 'Dev call', roomKind, muted: true, peers: [] })
   return () => voiceSession.leave(true)
 }
@@ -1373,6 +1393,7 @@ export const voiceSession = {
     ch.on('broadcast', { event: 'voice' }, ({ payload }) => {
       const m = payload as Signal
       if (!meId || m.from === meId) return
+      countMessage(meter, 'received', `voice:${m.kind}`, sizeOf(m))
       if (m.kind === 'offer') diag.offersRecv++
       else if (m.kind === 'answer') diag.answersRecv++
       else if (m.kind === 'ice') diag.iceRecv++
@@ -1467,6 +1488,7 @@ export const voiceSession = {
     })
 
     resetDiag()
+    meter = newMeter(performance.now())
     set({ inCall: true, roomId, roomName, roomKind: roomKind ?? null, muted: false, peers: [] })
     // Sampled rather than summed at the end, so a call that crashes or a tab that closes still
     // accounts for the traffic it already used.
