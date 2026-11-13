@@ -29,7 +29,6 @@ import {
   ideaTitle,
   profileGlyph,
   tallyAsks,
-  unitFor,
   weight,
   share,
   startFor,
@@ -45,8 +44,6 @@ import {
   marksFor,
   myActivities,
   myGoals,
-  saveGoal,
-  setDays,
   setMark,
   setProgress,
   shareGoal,
@@ -63,16 +60,7 @@ import {
   type MarkAt,
 } from '../chronicle/marks'
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
-import {
-  EVERY_DAY,
-  dayLetter,
-  dayName,
-  daysText,
-  maskOn,
-  validMask,
-  weekday,
-  type DayMask,
-} from '../chronicle/weekdays'
+import { daysText, maskOn } from '../chronicle/weekdays'
 import { Timer } from '../chronicle/Timer'
 import { dayAsked } from '../chronicle/dayLink'
 import { Friends } from '../chronicle/Friends'
@@ -81,6 +69,8 @@ import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
 import { Lifetime } from '../chronicle/Lifetime'
+import { GoalForm } from '../chronicle/GoalForm'
+import { useGoalForm } from '../chronicle/useGoalForm'
 import { Toast } from '../circuit/ui/Toast'
 import { showToast } from '../circuit/toast'
 
@@ -316,27 +306,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
-  const [adding, setAdding] = useState(false)
-  /**
-   * The goal the form is editing, or null when it is adding a new one.
-   *
-   * ⚠️ THE SAME FORM FOR BOTH, because they take the same six answers and two forms would be two
-   * places for the source picker's rules to drift apart. `chronicle_goal_save` has taken an id
-   * since step 1 and nothing had ever passed one — which is why a typo in a goal's name was
-   * permanent, and why one of the first real goals in the database has its unit spelled "p0ints".
-   */
-  const [fixing, setFixing] = useState<string | null>(null)
-  const [title, setTitle] = useState('')
-  const [target, setTarget] = useState('')
-  const [unit, setUnit] = useState('')
-  const [every, setEvery] = useState(false)
-  /**
-   * Which weekdays a repeating daily goal is for, as the form holds it — see weekdays.ts.
-   *
-   * ⚠️ SAVED FROM TODAY, NEVER FROM THE DAY THE GOAL WAS MADE. Evan's rule: an edit reaches today
-   * and the days after it, and every earlier day keeps the schedule it was judged under.
-   */
-  const [wdays, setWdays] = useState<DayMask>(EVERY_DAY)
   const [say, setSay] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   /**
@@ -374,60 +343,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
      that could change them — starting, stopping, filling a gap, an edit, a plan — already ends in
      the same `load()` the goals half uses. One number to watch beats five places to remember. */
   const [beat, setBeat] = useState(0)
-  const [src, setSrc] = useState('')
-  /**
-   * Whether a derived goal counts minutes or the activity's own metric.
-   *
-   * ⚠️ IT IS ONLY A REAL CHOICE FOR ONE ACTIVITY WITH A METRIC. A category's activities have
-   * different metrics, so adding pages to reps gives a number with no unit — the table refuses
-   * that pairing and the save function corrects it, and the picker below simply does not offer it.
-   */
-  const [countWhat, setCountWhat] = useState<'minutes' | 'amount'>('minutes')
-  /** the activity a goal is counted from, resolved once — null for a category or for neither */
-  const srcAct = useMemo(
-    () => (src.startsWith('a:') ? (acts.find((a) => a.id === src.slice(2)) ?? null) : null),
-    [src, acts],
-  )
-  /**
-   * ⚠️ WHAT THE GOAL ACTUALLY COUNTS, DERIVED RATHER THAN REMEMBERED — and this is the fix for a
-   * goal that could never move. The chooser above appears only when the source is one activity
-   * that names a metric, but it is a SEPARATE control from the source and it kept its answer when
-   * the source moved beneath it. Pick Gym, choose "count the reps", then change the source to
-   * Dishes: the chooser vanishes, `countWhat` stays on 'amount', and the save sent it.
-   *
-   * What that made was a goal counting a quantity its source never records. Driven in the room:
-   * "Read ten books · FROM DISHES · 0 / 10 done", two inches from "Wash up every evening · FROM
-   * DISHES · 12 / 10 minutes" — same activity, same twelve minutes, one of them stuck at zero for
-   * ever. The same shape as every other goal that read 0 with the minutes in the totals above it.
-   *
-   * Derived, the remembered answer is harmless: it only reaches a save when the source can
-   * actually produce one. chronicle_goal_save corrects it too, because a rule the client alone
-   * keeps is a rule that lasts until the next caller.
-   */
-  const goalCounts: 'minutes' | 'amount' = srcAct?.metric ? countWhat : 'minutes'
-  /**
-   * What the room would suggest for the unit box as things stand — the word the placeholder shows.
-   *
-   * ⚠️ IT EXISTS TO TELL THE ROOM'S WORD FROM THE PERSON'S. `unitFor` says a typed word always
-   * wins, and it must: somebody counting an activity's minutes who calls them "pomodoros" means
-   * pomodoros. But the box is also FILLED from this suggestion on save, so a goal saved against
-   * Gym comes back with "reps" in it — and that word is the room's, not theirs. Moving such a goal
-   * to an activity counting pages left the row disagreeing with itself in one line:
-   * "FROM WRITING · PAGES … 0 / 60 reps".
-   *
-   * So when the source changes, a box still holding the OLD suggestion is emptied and refills from
-   * the new one, and a box holding anything else is left exactly alone.
-   */
-  const suggestedUnit = unitFor('', {
-    counts: goalCounts,
-    activity: srcAct,
-    cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
-  })
-  /** how long this is guessed to take, as typed — minutes, blank for "no idea" */
-  const [why, setWhy] = useState('')
-  const [est, setEst] = useState('')
-  /** 0 normal, 1 important, 2 urgent — see Goal.priority, which is the list's order */
-  const [pri, setPri] = useState<0 | 1 | 2>(0)
 
   /**
    * Late goals you have ticked while looking at this view, kept on screen.
@@ -583,25 +498,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const v = shown.find((x) => x.id === view) ?? shown[0] ?? VIEWS[0]
   const on = v.when()
   const win = windowOf(v.scope, on)
-  /**
-   * The goal being changed, when one is.
-   *
-   * ⚠️ A GOAL'S SCOPE IS ITS OWN, NOT THE VIEW'S. The save sent `scope: v.scope`, which is right
-   * for a new goal — the ＋ button says "Add to today" because you are looking at today — and
-   * silently wrong for an edit, because the two are not always the same list. A quarter goal is
-   * shown under the YEAR, by `homeFor`, so opening its editor in the only place it appears and
-   * pressing Save — changing nothing — rewrote it into a year goal. Measured: "Read ten books
-   * THIS QUARTER · 3 / 10 books" came back as "Read ten books · 3 / 10 books", and ten books a
-   * quarter had quietly become ten books a year.
-   *
-   * ⚠️ AND THAT IS A CONSEQUENCE OF MAKING QUARTER GOALS VISIBLE. Before `homeFor` they were in
-   * no list at all, so no editor could be opened on one and `v.scope` was always the goal's own
-   * scope. Fixing a thing into view gives it neighbours it never had.
-   */
-  const beingFixed = useMemo(
-    () => (fixing ? ((goals ?? []).find((g) => g.id === fixing) ?? null) : null),
-    [fixing, goals],
-  )
+  /** the goal form — see useGoalForm */
+  const goalForm = useGoalForm({ goals, acts, v, on, busy, setBusy, setSay, setKept, load })
+  const { setAdding, setFixing, fillGoalForm, openAdd } = goalForm
 
   /**
    * Every goal as it stands in the window on screen — see `asOf`. A one-off comes through as it
@@ -681,98 +580,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     [mine, overdue, settled, view, on],
   )
 
-  const add = async () => {
-    const t = title.trim()
-    if (!t || busy) return
-    setBusy(true)
-    const n = Number(target)
-    const hasTarget = target.trim() !== '' && Number.isFinite(n) && n > 0
-    /* a new goal belongs to the list you are looking at; an existing one keeps what it is */
-    const saveScope = beingFixed?.scope ?? v.scope
-    const r = await saveGoal({
-      id: fixing ?? undefined,
-      title: t,
-      scope: saveScope,
-      /* ⚠️ a repeat has no anchor and a one-off must have one — the check constraint enforces
-         exactly this pair, so the form cannot send a shape the table would refuse
-         ⚠️ AND AN EDIT KEEPS THE ANCHOR IT HAD. Taking `win.from` would move a one-off goal onto
-         whatever window is on screen, which for a quarter goal under the year is a different
-         window entirely. The fallback is only for the case that has no anchor to keep: a
-         repeating goal whose repeat has just been turned off, which needs one in its OWN scope. */
-      anchor:
-        saveScope === 'life' || every
-          ? null
-          : (beingFixed?.anchor ?? windowOf(saveScope, on)?.from ?? null),
-      every: saveScope === 'life' ? null : every ? 1 : null,
-      target: hasTarget ? n : null,
-      /* ⚠️ sent on every save, which is what makes the server's "null leaves it alone" something
-         to rely on rather than depend on — see docs/2026-10-13-chronicle-silent-erasures.sql. An
-         empty box clears it, deliberately. */
-      note: why.trim(),
-      /* ⚠️ a source needs a target to count towards, which the table also insists on — a derived
-         tick-box would tick itself the moment you did a minute of anything */
-      activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
-      cat: hasTarget && src.startsWith('c:') ? (src.slice(2) as Activity['cat']) : null,
-      counts: hasTarget ? goalCounts : 'minutes',
-      /* ⚠️ a blank or unreadable guess is null, not zero: "no idea" is a real answer and zero
-         minutes of work is not — see Goal.est, and `weight`, which has to count the difference */
-      est: (() => {
-        const n = Number(est)
-        return est.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
-      })(),
-      priority: pri,
-      /** see `unitFor` — a target always carries a unit, and the room usually knows which */
-      unit: hasTarget
-        ? unitFor(unit, {
-            counts: goalCounts,
-            activity: srcAct,
-            cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
-          })
-        : null,
-    })
-    /**
-     * ⚠️ THE SCHEDULE IS ITS OWN WRITE, AFTER THE GOAL, and only when it CHANGED. Writing it on
-     * every save would add a row per edit for nothing, and a goal saved as "every day" with no
-     * rows is already every day. A one-off has none to write; a goal that stops repeating keeps
-     * the rows it had — they are history, and the server keeps them for if it repeats again.
-     */
-    const was = beingFixed ? maskOn(beingFixed.days ?? [], todayISO()) : EVERY_DAY
-    const days =
-      !('why' in r) && saveScope === 'day' && every && wdays !== was
-        ? await setDays(r.id, wdays, todayISO())
-        : null
-    setBusy(false)
-    if ('why' in r) {
-      setSay(r.why)
-      window.setTimeout(() => setSay(null), 6000)
-      return
-    }
-    /* the goal saved and its days did not: said, and the form closes on what DID save */
-    if (days) {
-      setSay(`Saved, but not the days: ${days.why}`)
-      window.setTimeout(() => setSay(null), 6000)
-    }
-    /* ⚠️ A GOAL SAVED FOR DAYS THAT LEAVE THIS ONE OUT STAYS ON SCREEN FOR THE VISIT, saying
-       "not due today". Without this, adding "floss, not Sundays" on a Sunday made the row vanish
-       the moment Save was pressed — which reads as the save having failed. */
-    if (!days && saveScope === 'day' && every && (wdays & (1 << weekday(on))) === 0) {
-      setKept((k) => (k.includes(r.id) ? k : [...k, r.id]))
-    }
-    setTitle('')
-    setTarget('')
-    setUnit('')
-    setEvery(false)
-    setWdays(EVERY_DAY)
-    setSrc('')
-    setWhy('')
-    setCountWhat('minutes')
-    setEst('')
-    setPri(0)
-    setFixing(null)
-    setAdding(false)
-    await load()
-  }
-
   /**
    * Write one window of a repeating goal, and show it at once.
    *
@@ -837,29 +644,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     /* the stopwatch is the Timer's, and `beat` is how this room tells it the record moved */
     setBeat((n) => n + 1)
     await load()
-  }
-
-  /**
-   * Open the add form empty, or with a title already in it.
-   *
-   * ⚠️ CLEARED ON THE WAY IN, or opening Add straight after a Cancel would show the goal you were
-   * editing and quietly save over it — which is why this is one function for both doors: the
-   * ＋ button and a journal entry handed over by `onIdea`. A second copy of these ten lines is
-   * where one field would quietly stop being cleared.
-   */
-  const openAdd = (draft: string) => {
-    setFixing(null)
-    setTitle(draft)
-    setTarget('')
-    setUnit('')
-    setEvery(false)
-    setWdays(EVERY_DAY)
-    setSrc('')
-    setWhy('')
-    setCountWhat('minutes')
-    setEst('')
-    setPri(0)
-    setAdding(true)
   }
 
   const tick = async (g: Goal) => {
@@ -1492,16 +1276,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                                 onClick={() => {
                                   setFixing(g.id)
                                   setAdding(true)
-                                  setTitle(g.title)
-                                  setTarget(g.target == null ? '' : String(g.target))
-                                  setUnit(g.unit ?? '')
-                                  setEvery(repeats(g))
-                                  setWdays(maskOn(g.days ?? [], todayISO()))
-                                  setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
-                                  setCountWhat(g.counts)
-                                  setEst(g.est == null ? '' : String(g.est))
-                                  setPri(g.priority)
-                                  setWhy(g.note ?? '')
+                                  fillGoalForm(g)
                                 }}
                                 aria-label={`Change ${g.title}`}
                                 title={`Change ${g.title}`}
@@ -1652,238 +1427,7 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
 
                 {!mine.length && !overdue.length && <p className="muted">Nothing here yet.</p>}
 
-                {adding ? (
-                  <div className="chron-add">
-                    <label>
-                      <span className="sr-only">What is the goal?</span>
-                      <input
-                        autoFocus
-                        value={title}
-                        placeholder={v.scope === 'life' ? 'Learn to animate' : 'What needs doing?'}
-                        onChange={(e) => setTitle(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && void add()}
-                      />
-                    </label>
-                    <label className="chron-qty">
-                      <span className="sr-only">A number to reach, if there is one</span>
-                      <input
-                        value={target}
-                        inputMode="decimal"
-                        placeholder="100"
-                        onChange={(e) => setTarget(e.target.value)}
-                      />
-                    </label>
-                    {/**
-                     * ⚠️ MINUTES, SAID IN THE PLACEHOLDER, because a bare number box next to another
-                     * bare number box is two fields nobody can tell apart. "20m?" says both the unit and
-                     * that it is optional.
-                     */}
-                    <label className="chron-qty">
-                      <span className="sr-only">How long will it take? In minutes</span>
-                      <input
-                        value={est}
-                        inputMode="numeric"
-                        placeholder="20m?"
-                        onChange={(e) => setEst(e.target.value)}
-                      />
-                    </label>
-                    {/**
-                     * ⚠️ "WHY" RATHER THAN "NOTE", because the field is only worth a box if it asks a
-                     * question somebody wants to answer. A goal's title says what; the one thing that
-                     * goes stale about a goal is the reason you set it, which is exactly what you want
-                     * back in March about something written in January.
-                     *
-                     * ⚠️ AND IT WRAPS TO ITS OWN LINE in the row, because it is the only part of this
-                     * form that can be a sentence — the same reason the goal row shows it under the
-                     * title rather than among the chips.
-                     */}
-                    <label className="chron-whyfor">
-                      <span className="sr-only">Why does this matter? Optional</span>
-                      <input
-                        value={why}
-                        placeholder="why, if it helps"
-                        onChange={(e) => setWhy(e.target.value)}
-                      />
-                    </label>
-                    <label className="chron-choice">
-                      <span className="sr-only">How much does it matter?</span>
-                      <select
-                        value={String(pri)}
-                        onChange={(e) => setPri(Number(e.target.value) as 0 | 1 | 2)}
-                      >
-                        <option value="0">ordinary</option>
-                        <option value="1">important</option>
-                        <option value="2">urgent</option>
-                      </select>
-                    </label>
-                    <label className="chron-qty">
-                      <span className="sr-only">What the number counts</span>
-                      {/**
-                       * ⚠️ THE HINT IS WHAT LEAVING IT BLANK ACTUALLY GIVES YOU, which "points" was not.
-                       * The box is optional and `unitFor` fills it from what the room already knows —
-                       * minutes for a goal counting an activity's time, that activity's own metric for
-                       * one counting an amount, "done" only where nothing can be known. A placeholder
-                       * naming a fourth word nobody will get is a guess the reader has to un-learn, and
-                       * it changes as the source does, so the preview is live.
-                       */}
-                      <input
-                        value={unit}
-                        placeholder={unitFor('', {
-                          counts: goalCounts,
-                          activity: srcAct,
-                          cat: src.startsWith('c:')
-                            ? (src.slice(2) as 'locked' | 'free' | 'life')
-                            : null,
-                        })}
-                        onChange={(e) => setUnit(e.target.value)}
-                      />
-                    </label>
-                    {/**
-                     * ⚠️ ONLY WHEN THERE IS A NUMBER TO COUNT, and only when the window can be added up.
-                     * A source on a tick-box has nothing to count towards, and a source on a lifetime
-                     * goal has no window to count over — both are refused one layer down, so offering
-                     * them here would be offering a thing that cannot be saved.
-                     */}
-                    {target.trim() !== '' && v.scope !== 'life' && acts.length > 0 && (
-                      <label className="chron-choice">
-                        <span className="sr-only">Counted from what?</span>
-                        <select
-                          value={src}
-                          onChange={(e) => {
-                            /* ours to update, theirs to keep — see `suggestedUnit` */
-                            if (unit.trim() === suggestedUnit) setUnit('')
-                            setSrc(e.target.value)
-                          }}
-                        >
-                          <option value="">I will count it myself</option>
-                          {/**
-                           * ⚠️ AN ARCHIVED ACTIVITY STAYS IN THE LIST WHILE IT IS THE ONE SELECTED, the
-                           * same rule the plan form already uses. Without it the picker had no option
-                           * matching the goal's source, so it rendered blank — which reads as "I will
-                           * count it myself" — on a goal whose own row two inches away said FROM DRAWING.
-                           * A control that shows a different current value from the thing it edits is a
-                           * lie about state, and the one somebody acts on.
-                           *
-                           * ⚠️ THE DATA WAS NEVER AT RISK, which is worth saying because the shape looks
-                           * exactly like §8's silent erasure. `src` is React state set when the editor
-                           * opens; a `<select>` whose value matches no option displays empty without
-                           * changing it, so pressing Save kept `activity=pv-draw`. Measured before
-                           * fixing: before and after both `activity=pv-draw counts=minutes`.
-                           */}
-                          <optgroup label="count my time on…">
-                            {acts
-                              .filter((a) => !a.archived || src === 'a:' + a.id)
-                              .map((a) => (
-                                <option key={a.id} value={'a:' + a.id}>
-                                  {a.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                          <optgroup label="count all my time that is…">
-                            {CATS.map(([c, label]) => (
-                              <option key={c} value={'c:' + c}>
-                                {label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                      </label>
-                    )}
-                    {/**
-                     * ⚠️ ONLY WHEN THE SOURCE IS ONE ACTIVITY THAT COUNTS SOMETHING. Without a metric
-                     * there is nothing to choose between, and for a category the choice is meaningless —
-                     * so the control appears exactly when it is a real question and never as a dropdown
-                     * with one answer.
-                     */}
-                    {(() => {
-                      const picked = srcAct
-                      return picked?.metric ? (
-                        <label className="chron-choice">
-                          <span className="sr-only">Count what?</span>
-                          <select
-                            value={countWhat}
-                            onChange={(e) => {
-                              /* the same question: "count the reps" instead of the time changes the
-                           word the room would suggest, so its own word follows and yours does not */
-                              if (unit.trim() === suggestedUnit) setUnit('')
-                              setCountWhat(e.target.value as 'minutes' | 'amount')
-                            }}
-                          >
-                            <option value="minutes">count the time</option>
-                            <option value="amount">count the {picked.metric}</option>
-                          </select>
-                        </label>
-                      ) : null
-                    })()}
-                    {v.scope !== 'life' && (
-                      <label className="chron-rep">
-                        <input
-                          type="checkbox"
-                          checked={every}
-                          onChange={(e) => setEvery(e.target.checked)}
-                        />
-                        <span>every {v.scope}</span>
-                      </label>
-                    )}
-                    {/**
-                     * ⚠️ ONLY FOR A REPEATING DAILY GOAL, the one shape a weekday means anything for.
-                     * Seven toggles rather than a list of ticks, because the choice is a pattern and
-                     * a row of letters shows the whole week at once. Each says its day in words, for
-                     * a screen reader and for the two Ts and two Ss; the last day left cannot be
-                     * unpressed, because a goal for no days is one the server refuses.
-                     */}
-                    {(beingFixed?.scope ?? v.scope) === 'day' && every && (
-                      <div className="chron-wdays" role="group" aria-label="On these days">
-                        {[1, 2, 3, 4, 5, 6, 0].map((d) => {
-                          const picked = (wdays & (1 << d)) !== 0
-                          return (
-                            <button
-                              key={d}
-                              type="button"
-                              className={'chron-wday' + (picked ? ' is-on' : '')}
-                              aria-pressed={picked}
-                              aria-label={dayName(d)}
-                              onClick={() => {
-                                const next = wdays ^ (1 << d)
-                                if (validMask(next)) setWdays(next)
-                              }}
-                            >
-                              {dayLetter(d)}
-                            </button>
-                          )
-                        })}
-                        {/* ⚠️ THE RULE, SAID WHERE IT APPLIES. An edit that changes the days and
-                            does not say from when would leave somebody wondering whether last
-                            week's misses just became something else. */}
-                        {beingFixed && wdays !== maskOn(beingFixed.days ?? [], todayISO()) ? (
-                          <span className="muted chron-wdays-note">
-                            From today. Earlier days keep the old days.
-                          </span>
-                        ) : null}
-                      </div>
-                    )}
-                    <button
-                      className="btn"
-                      disabled={!title.trim() || busy}
-                      onClick={() => void add()}
-                    >
-                      {fixing ? 'Save' : 'Add'}
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setAdding(false)
-                        setFixing(null)
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button className="btn" onClick={() => openAdd('')}>
-                    ＋ Add to {v.label.toLowerCase()}
-                  </button>
-                )}
+                <GoalForm form={goalForm} v={v} acts={acts} busy={busy} />
 
                 {/**
                  * ⚠️ LOOKING BACK, FOR THE WINDOWS WHERE IT IS THE ONLY WAY TO SEE ANYTHING. Today and

@@ -1,4 +1,5 @@
 import type { BassStyle, ChordStyle } from './chordPatterns'
+import type { InstrumentId } from './synth'
 
 /**
  * One press, a whole backing: a beat, chords played in a style, a bassline under them, and a
@@ -35,6 +36,18 @@ export type Starter = {
   chords: string
   chordStyle: ChordStyle
   bass: BassStyle
+  /**
+   * The bass VOICE, only where one clearly belongs to the style — Evan, 10 Nov 2026: "an 808 for
+   * Hip hop makes sense, so let styles pick a bass voice where it clearly fits". Absent means the
+   * plain Bass. Seven styles have one, because those seven are what each voice is FOR: the 808 is
+   * hip hop's bass, slap is funk's, a walking line and bossa nova are an upright's, house is synth
+   * bass, rock's driving eighths are played with a pick, and dub reggae is a deep sub.
+   *
+   * ⚠️ AND A STYLE PLAYS THE PRESET THAT SHARES ITS NAME — see bassPresets.ts. The Bass row's
+   * Preset menu reads what is loaded, so Bossa laying its line on a plain Bass beside a preset
+   * called Bossa on an upright made the menu say "Your own" about a bass nobody had touched.
+   */
+  bassVoice?: InstrumentId
 }
 
 export const STARTERS: Starter[] = [
@@ -67,6 +80,7 @@ export const STARTERS: Starter[] = [
     chords: 'simple',
     chordStyle: 'stabs',
     bass: 'pulse',
+    bassVoice: 'pick',
   },
   {
     id: 'hiphop',
@@ -77,6 +91,7 @@ export const STARTERS: Starter[] = [
     chords: 'sad',
     chordStyle: 'pad',
     bass: 'roots',
+    bassVoice: '808',
   },
   {
     id: 'house',
@@ -86,7 +101,8 @@ export const STARTERS: Starter[] = [
     beat: 'house-classic',
     chords: 'vamp',
     chordStyle: 'stabs',
-    bass: 'pulse',
+    bass: 'offbeat',
+    bassVoice: 'synthbass',
   },
   {
     id: 'funk',
@@ -96,7 +112,8 @@ export const STARTERS: Starter[] = [
     beat: 'funk-syncopated',
     chords: 'vamp',
     chordStyle: 'offbeat',
-    bass: 'pulse',
+    bass: 'funk',
+    bassVoice: 'slap',
   },
   {
     id: 'reggae',
@@ -106,7 +123,8 @@ export const STARTERS: Starter[] = [
     beat: 'reggae-onedrop',
     chords: 'simple',
     chordStyle: 'offbeat',
-    bass: 'roots',
+    bass: 'dub',
+    bassVoice: 'sub',
   },
   {
     id: 'jazz',
@@ -117,6 +135,7 @@ export const STARTERS: Starter[] = [
     chords: 'circle',
     chordStyle: 'pad',
     bass: 'walk',
+    bassVoice: 'upright',
   },
   {
     id: 'bossa',
@@ -126,7 +145,8 @@ export const STARTERS: Starter[] = [
     beat: 'latin-bossa',
     chords: 'turnaround',
     chordStyle: 'pulse',
-    bass: 'rootfifth',
+    bass: 'bossa',
+    bassVoice: 'upright',
   },
   {
     id: 'country',
@@ -156,4 +176,24 @@ export function starterNow(parts: {
         s.bass === parts.bass,
     ) ?? null
   )
+}
+
+/**
+ * The bass voice a style should leave the bass on — or null to leave it alone.
+ *
+ * ⚠️ A STYLE NEVER OVERRULES A VOICE YOU CHOSE, the rule `layChords` already keeps for the chords'
+ * sound. So the voice changes only when the bass is on what the room or the last style put there:
+ * there was no bass yet, or it is still on that style's voice (plain Bass when it had none). Pick
+ * Finger bass yourself, then press Hip hop, and you keep Finger bass.
+ *
+ * @param was the bass layer's voice before the press, or null when there was no bass
+ * @param prev the style the backing was before the press, or null when it was not one
+ */
+export function styleBassVoice(
+  was: InstrumentId | null,
+  prev: Starter | null,
+  next: Starter,
+): InstrumentId | null {
+  if (was !== null && was !== (prev?.bassVoice ?? 'bass')) return null
+  return next.bassVoice ?? 'bass'
 }

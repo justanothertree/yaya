@@ -1,3 +1,4 @@
+import { localISO } from '../circuit/dates'
 import { coveredPct, dayBounds, lane, nowAt, type Block, type Span } from './record'
 import { windowOf } from './goal'
 
@@ -48,9 +49,7 @@ export function weekOf(on: string): string[] {
   const out: string[] = []
   const start = new Date(win.from + 'T12:00:00')
   for (let i = 0; i < 7; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, 12)
-    const p = (n: number) => String(n).padStart(2, '0')
-    out.push(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`)
+    out.push(localISO(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, 12)))
   }
   return out
 }

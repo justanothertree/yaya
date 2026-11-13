@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dropRoutine, myRoutines, saveRoutine, type Routine } from './cloud'
-import { spanText, type Activity } from './record'
+import { spanText, typedMinutes, type Activity } from './record'
 import { readRoutine } from './routine'
+import { LIMIT } from './limits'
 
 /**
  * Routines — an ordered list of things you do together.
@@ -196,6 +197,7 @@ export function Routines({
               <input
                 autoFocus
                 value={draftName}
+                maxLength={LIMIT.name}
                 placeholder="Morning"
                 onChange={(e) => setDraftName(e.target.value)}
               />
@@ -273,6 +275,7 @@ export function Routines({
               <span className="sr-only">How long, roughly</span>
               <input
                 value={stepMins}
+                maxLength={LIMIT.stepMinsDigits}
                 inputMode="numeric"
                 placeholder="mins"
                 onChange={(e) => setStepMins(e.target.value)}
@@ -287,11 +290,7 @@ export function Routines({
                   : undefined
               }
               onClick={() => {
-                const n = Number(stepMins)
-                setDraftSteps((d) => [
-                  ...d,
-                  { activity: pick, mins: Number.isFinite(n) && n > 0 ? Math.round(n) : null },
-                ])
+                setDraftSteps((d) => [...d, { activity: pick, mins: typedMinutes(stepMins) }])
                 setPick('')
                 setStepMins('')
               }}

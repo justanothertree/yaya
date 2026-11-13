@@ -28,7 +28,7 @@ import {
 import { CHORDS, chordNotes, usesScale, type ChordId } from '../audio/chords'
 import { STRUMS, strumDelays, type StrumId } from '../audio/strum'
 import { ARPS, arpRunner, type ArpId, type ArpRunner } from '../audio/arp'
-import { keySpeller, nameChord, noteLabel } from '../audio/chordName'
+import { keyName, keySpeller, nameChord, noteLabel } from '../audio/chordName'
 import { pedalBook, type PedalBook } from '../audio/pedal'
 import { MAJOR_DEGREES, SCALES, degreesOf } from '../audio/scales'
 import { soundingBook, type SoundingBook } from '../audio/sounding'
@@ -65,7 +65,13 @@ import {
 } from '../audio/audioHealth'
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
-import { DRUM_FILL, DRUM_PATTERNS, drumGenres, patternEvents } from '../audio/drumPatterns'
+import {
+  DRUM_FILL,
+  DRUM_PATTERNS,
+  drumGenres,
+  genreShown,
+  patternEvents,
+} from '../audio/drumPatterns'
 import {
   CHORD_PATTERNS,
   basslineEvents,
@@ -180,9 +186,11 @@ import {
   type Layer,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
+import { SingPanel } from '../audio/SingPanel'
 import { historyNow, redo, startHistory, subscribeHistory, undo } from '../audio/history'
 import { FAMILIES, familyOf, familyVoices } from '../audio/families'
-import { STARTERS, starterNow, type Starter } from '../audio/starters'
+import { STARTERS, starterNow, styleBassVoice, type Starter } from '../audio/starters'
+import { BASS_PRESETS, presetOf } from '../audio/bassPresets'
 
 /**
  * Somewhere to play.
@@ -873,6 +881,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const [bassStylePick, setBassStylePick] = useState<BassStyle>('rootfifth')
   /* the voice the next bassline is laid on — see the Bass row's Sound picker */
   const [bassSoundPick, setBassSoundPick] = useState<InstrumentId>('bass')
+  /* the genre the Beat row is browsing, and which beat was loaded when it was picked — genreShown */
+  const [beatGenrePick, setBeatGenrePick] = useState<{
+    forBeat: string | null
+    genre: string
+  } | null>(null)
   /** whether the pedal currently down was put there by Shift rather than by the button */
   const shiftPedal = useRef(false)
   /* ⚠️ ONLY THE ARPEGGIO SWINGS, so unlike the Arpeggio picker this one genuinely has no
@@ -1470,13 +1483,28 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     const p = CHORD_PATTERNS.find((x) => x.id === s.chords)
     const d = DRUM_PATTERNS.find((x) => x.id === s.beat)
     if (!p || !d) return
+    /* what the bass is on and which style the backing is, BEFORE this press — see styleBassVoice */
+    const before = loopState().layers
+    const bassWas = before.find((l) => bassPatternOf(l) !== null) ?? null
+    const chordWas = before.find((l) => chordPatternOf(l) !== null) ?? null
+    const prev = starterNow({
+      beat: before.map((l) => beatPatternOf(l)).find((x) => x) ?? null,
+      chords: chordWas ? chordPatternOf(chordWas) : null,
+      chordStyle: chordWas ? styleOfChord(chordWas) : null,
+      bass: bassWas ? styleOfBass(bassWas) : null,
+    })
     if (!ownParts(loopState().layers)) setBpm(s.bpm)
     const beat = patternEvents(d, loopState().bpm)
     if (!addPatternLayer(beat.events, beat.len, d.id)) return
     setChordStylePick(s.chordStyle)
     setBassStylePick(s.bass)
     if (!layChords(p, leadBack, s.chordStyle)) return
-    layBass(p, leadBack, s.bass)
+    const bassId = layBass(p, leadBack, s.bass)
+    const voice = styleBassVoice(bassWas?.instrument ?? null, prev, s)
+    if (bassId && voice) {
+      setLayerInstrument(bassId, voice)
+      setBassSoundPick(voice)
+    }
     if (!loopState().playing) startLoop()
   }
 
@@ -2276,9 +2304,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                 e.target.blur()
               }}
             >
+              {/* named in the scale's own convention — see keyName */}
               {NAMES.map((nm, i) => (
                 <option key={nm} value={i}>
-                  {nm}
+                  {keyName(degrees, i)}
                 </option>
               ))}
             </select>
@@ -3234,7 +3263,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             })()}
           </div>
           {/**
-           * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the beat rows below have
+           * ⚠️ HOW THE CHORDS ARE PLAYED, BESIDE WHICH ONES — the choice the Beat row below has
            * always offered and the backing never did. Picking one re-lays what is loaded in that
            * style; with nothing loaded it is remembered for the next progression you pick.
            */}
@@ -3278,8 +3307,46 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               const chords = loop.layers.find((l) => chordPatternOf(l) !== null) ?? null
               const full = loop.layers.length >= MAX_LAYERS && !bass
               const shown = bass ? styleOfBass(bass) : null
+              /**
+               * ⚠️ A PRESET IS THE LINE AND THE VOICE TOGETHER — Evan, 10 Nov 2026: "bass presets".
+               * It sets the two controls beside it rather than being a third thing, so what it
+               * picks stays editable right here, and it READS them: a bass whose line and voice
+               * match a preset shows that preset, and changing either one shows "No preset". With no
+               * bass loaded it shows the pair that will be laid next, the way Sound does.
+               */
+              const presetNow = bass
+                ? presetOf(styleOfBass(bass), bass.instrument)
+                : presetOf(bassStylePick, bassSoundPick)
               return (
                 <>
+                  <label className="inst-pick">
+                    <span className="muted">Preset</span>
+                    <select
+                      value={presetNow?.id ?? ''}
+                      disabled={full}
+                      onChange={(e) => {
+                        const pr = BASS_PRESETS.find((x) => x.id === e.target.value)
+                        e.target.blur()
+                        if (!pr) return
+                        setBassStylePick(pr.style)
+                        setBassSoundPick(pr.voice)
+                        if (!p) return
+                        const lead = chords ? leadsBack(chords.events, p, chords.len) : leadBack
+                        const id = layBass(p, lead, pr.style)
+                        if (!id) return
+                        /* a new row is laid on the voice picked BEFORE this press — set it now */
+                        setLayerInstrument(id, pr.voice)
+                        if (!loop.playing) startLoop()
+                      }}
+                    >
+                      <option value="">{bass ? 'No preset' : 'Choose one'}</option>
+                      {BASS_PRESETS.map((pr) => (
+                        <option key={pr.id} value={pr.id} title={pr.hint}>
+                          {`${pr.name} · ${INSTRUMENTS.find(([x]) => x === pr.voice)?.[2] ?? pr.voice}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   {BASS_STYLES.map((st) => (
                     <button
                       key={st.id}
@@ -3309,8 +3376,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
                   {/**
                    * ⚠️ THE BASS'S VOICE, IN THE BASS ROW — Evan, 10 Nov 2026: "several distinct
                    * bass voices … usable from the backing". The layer's own sound menu could
-                   * always change it, among forty instruments; this offers the seven that are
-                   * basses, where a bassline is chosen. It changes the loaded bass at once, and
+                   * always change it, among every instrument; this offers only the basses
+                   * (BASS_VOICES — ten since Pick, Fretless and Acid), where a bassline is chosen. It changes the loaded bass at once, and
                    * with none loaded it is remembered for the next one — the same rule the
                    * Played as row has. A sound the layer was given that is not a bass is shown
                    * rather than silently relabelled.
@@ -3350,6 +3417,62 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               )
             })()}
           </div>
+          {/**
+           * ⚠️ ONE BEAT ROW, NOT ONE PER GENRE — Evan, 10 Nov 2026: "an easier, cleaner UI for all
+           * the controls". There were ten rows here, Rock to Metal, and every one of them drove
+           * the SAME slot: a beat from any row swaps the beat from every other. So ten labels and
+           * nineteen buttons, the longest stretch of the panel, said less than one row does — a
+           * genre to browse and that genre's beats. It shows the genre of the beat you are hearing,
+           * so opening the panel still lands on it. See genreShown.
+           */}
+          {(() => {
+            const loadedBeat = loop.layers.map((l) => beatPatternOf(l)).find((x) => x) ?? null
+            const genre = genreShown(loadedBeat, beatGenrePick)
+            return (
+              <div className="inst-beats-row">
+                <span className="muted inst-beats-genre">Beat</span>
+                <label className="inst-pick">
+                  <span className="muted">Genre</span>
+                  <select
+                    value={genre}
+                    onChange={(e) => {
+                      setBeatGenrePick({ forBeat: loadedBeat, genre: e.target.value })
+                      e.target.blur()
+                    }}
+                  >
+                    {drumGenres().map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {DRUM_PATTERNS.filter((p) => p.genre === genre).map((p) => (
+                  <button
+                    key={p.id}
+                    className={
+                      'btn' +
+                      (loop.layers.some((l) => beatPatternOf(l) === p.id) ? '' : ' btn-ghost')
+                    }
+                    aria-pressed={loop.layers.some((l) => beatPatternOf(l) === p.id)}
+                    onClick={() => {
+                      const { events, len } = patternEvents(p, loop.bpm)
+                      if (!addPatternLayer(events, len, p.id)) return
+                      if (!loop.playing) startLoop()
+                    }}
+                    disabled={
+                      loop.layers.length >= MAX_LAYERS &&
+                      !loop.layers.some((l) => beatPatternOf(l) !== null)
+                    }
+                    title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+                <MutedRow layer={loop.layers.find((l) => beatPatternOf(l) !== null)} />
+              </div>
+            )
+          })()}
           {/**
            * ⚠️ A LAYER ARRANGED ONTO THE LAST BAR, NOT A CHANGE TO THE BEAT. Making the beat's
            * own last bar different was the other design and it is worse: `patternEvents`
@@ -3422,37 +3545,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             Picking one swaps that row rather than adding a second — every row plays at once. Change
             any of it afterwards.
           </p>
-          {drumGenres().map((genre) => (
-            <div key={genre} className="inst-beats-row">
-              <span className="muted inst-beats-genre">{genre}</span>
-              {DRUM_PATTERNS.filter((p) => p.genre === genre).map((p) => (
-                <button
-                  key={p.id}
-                  className={
-                    'btn' + (loop.layers.some((l) => beatPatternOf(l) === p.id) ? '' : ' btn-ghost')
-                  }
-                  aria-pressed={loop.layers.some((l) => beatPatternOf(l) === p.id)}
-                  onClick={() => {
-                    const { events, len } = patternEvents(p, loop.bpm)
-                    if (!addPatternLayer(events, len, p.id)) return
-                    if (!loop.playing) startLoop()
-                  }}
-                  disabled={
-                    loop.layers.length >= MAX_LAYERS &&
-                    !loop.layers.some((l) => beatPatternOf(l) !== null)
-                  }
-                  title={`${p.name} — ${Object.keys(p.grid).join(', ')}`}
-                >
-                  {p.name}
-                </button>
-              ))}
-              <MutedRow
-                layer={loop.layers.find((l) =>
-                  DRUM_PATTERNS.some((p) => p.genre === genre && p.id === beatPatternOf(l)),
-                )}
-              />
-            </div>
-          ))}
         </div>
       )}
       {loop.layers.length > 0 && (
@@ -3831,6 +3923,13 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       {/* ⚠️ RECORDING SITS WITH THE SONG IT IS RECORDED INTO. 🎤 Record a take was below the
           sound knobs, the octave row and the scale row — 1,600px down at 1440×900 — while
           everything it is placed into (the transport, the layers) was 500px above it. */}
+      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, on a draft for
+          Evan to hear. Beside the takes because it, too, is a voice over the song. */}
+      <SingPanel
+        layers={loop.layers}
+        degrees={scale === 'chromatic' ? MAJOR_DEGREES : degrees}
+        root={scale === 'chromatic' ? 0 : root}
+      />
       <TakesPanel />
 
       {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
