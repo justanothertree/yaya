@@ -335,7 +335,13 @@ export function LayerList({
                     'Click to copy the effects you have set now onto it.'
                   }
                 >
-                  Copy FX
+                  {/* ⚠️ "FX" ON A NARROW SCREEN — Evan, 12 Nov 2026. "Copy FX" is 32px wider than the
+                      "dry" it replaced, which pushed a drum row that also has Split onto a third
+                      line at 375 (113 → 144px). The full words stay in the name and the title. */}
+                  <span className="inst-fx-long">Copy FX</span>
+                  <span className="inst-fx-short" aria-hidden>
+                    FX
+                  </span>
                 </button>
 
                 {/* The third way to fix a take, after undo and re-voice: play it again over the
