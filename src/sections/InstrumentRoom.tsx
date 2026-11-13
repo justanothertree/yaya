@@ -101,6 +101,7 @@ import { BackingPanel } from '../instrument/BackingPanel'
 import { SongControls } from '../instrument/SongControls'
 import { PHONE_MENU, SoundPanel } from '../instrument/SoundPanel'
 import { openEditor } from '../instrument/openEditor'
+import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
 /**
  * Somewhere to play.
@@ -401,10 +402,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      pipelines drawing the same sound, and the floating one is the one they asked for */
   const vizFloating = useVizFloating()
   const [showViz, setShowViz] = useState(() => {
+    const phone = window.matchMedia(PHONE_KEYBOARD).matches
     try {
-      return localStorage.getItem(SHOW_VIZ_KEY) !== '0'
+      return vizStartsOpen(localStorage.getItem(SHOW_VIZ_KEY), phone)
     } catch {
-      return true
+      return vizStartsOpen(null, phone)
     }
   })
   const call = useVoiceSession()
