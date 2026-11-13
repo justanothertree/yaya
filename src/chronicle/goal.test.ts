@@ -18,7 +18,6 @@ import {
   reached,
   repeats,
   share,
-  SCOPES,
   startFor,
   streakAsks,
   streakKey,
@@ -38,6 +37,9 @@ import {
   type Goal,
   type Scope,
 } from './goal'
+
+/** every scope, smallest first — the list the "one shown list" tests below walk */
+const SCOPES: readonly Scope[] = ['day', 'week', 'month', 'quarter', 'year', 'life']
 import { localMidnight, type Activity } from './record'
 
 const goal = (over: Partial<Goal> = {}): Goal => ({
