@@ -11,6 +11,7 @@ import {
 } from '../audio/looper'
 import { SnapPicker } from '../audio/SnapPicker'
 import { isBlack } from '../audio/keyboardSpan'
+import { hits, isSame, roomAfter } from '../audio/rollNotes'
 import { noteOff, noteOn } from '../audio/synth'
 
 /**
@@ -38,9 +39,6 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const nameOf = (m: number) => `${NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`
 
 const ROW_H = 18
-/** Two notes never share a pitch and a start, so this identifies one exactly. */
-const isSame = (n: Note, sel: { midi: number; t: number } | null) =>
-  !!sel && n.midi === sel.midi && Math.abs(n.t - sel.t) < 1e-6
 /**
  * Grab within this fraction of a note's right edge and you are resizing, not moving.
  *
@@ -92,25 +90,6 @@ type Drag =
   | { kind: 'move'; i: number; dx: number; dy: number; from: Note[]; col: number; row: number }
   | { kind: 'resize'; i: number; from: Note[]; col: number }
   | null
-
-/** Does this note run into another of the same pitch? */
-function hits(list: Note[], self: number, n: Note): boolean {
-  return list.some(
-    (o, i) =>
-      i !== self && o.midi === n.midi && n.t < o.t + o.dur - 1e-6 && n.t + n.dur > o.t + 1e-6,
-  )
-}
-
-/** How long this note may be before it would touch the next one of the same pitch. */
-function roomAfter(list: Note[], self: number, n: Note): number {
-  let limit = Infinity
-  for (let i = 0; i < list.length; i++) {
-    const o = list[i]
-    if (i === self || o.midi !== n.midi || o.t <= n.t) continue
-    limit = Math.min(limit, o.t - n.t)
-  }
-  return limit
-}
 
 export function PianoRoll({
   layer,

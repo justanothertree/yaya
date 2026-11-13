@@ -3325,6 +3325,22 @@ section[id] {
   opacity: 0.75;
   min-width: 4.5rem;
 }
+/* the short face of Copy FX, where the full one would push a drum row onto a third line — see
+   LayerList; the button's name keeps every word either way */
+.inst-fx-short {
+  display: none;
+}
+@media (max-width: 700px) {
+  .inst-fx-long {
+    display: none;
+  }
+  .inst-fx-short {
+    display: inline;
+  }
+  .inst-layer-fx {
+    min-width: 0;
+  }
+}
 .inst-jam {
   align-items: center;
   gap: 0.5rem;

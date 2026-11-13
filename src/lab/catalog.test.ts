@@ -48,6 +48,44 @@ describe('the registry, the catalog and the database agree', () => {
   it('every kind has something in it', () => {
     for (const c of CATEGORIES) expect(DEMO_IDS.some((id) => META[id].category === c.id)).toBe(true)
   })
+
+  // ⚠️ A KIND THAT HOLDS NEARLY HALF THE LAB NARROWS NOTHING, which is why games and puzzles were
+  // split at 20 of 61 and why games split again at 61 of 133. The bar is a third: past it, choosing
+  // the kind still leaves a wall of toys to scroll
+  it('no kind holds a third of the Lab', () => {
+    for (const c of CATEGORIES)
+      expect(DEMO_IDS.filter((id) => META[id].category === c.id).length).toBeLessThan(
+        DEMO_IDS.length / 3,
+      )
+  })
+  it('puts the games where the difference is: thinking turn by turn, or aim and timing', () => {
+    const board = [
+      'chess',
+      'go',
+      'hearts',
+      'cribbage',
+      'backgammon',
+      'yacht',
+      'shut',
+      'rps',
+      'cube',
+      'fox',
+    ]
+    const arcade = [
+      'rocks',
+      'popper',
+      'bricks',
+      'darts',
+      'bowling',
+      'putt',
+      'pool',
+      'lander',
+      'towers',
+      'echo',
+    ]
+    for (const id of board) expect([id, META[id].category]).toEqual([id, 'board'])
+    for (const id of arcade) expect([id, META[id].category]).toEqual([id, 'arcade'])
+  })
 })
 
 describe('reading what the server sends', () => {
@@ -115,6 +153,9 @@ describe('who sees which', () => {
 })
 
 describe('the picker’s filter, kept in this browser', () => {
+  it('reads a filter kept from before games were split as all, rather than guessing which half', () => {
+    expect(readFilter('games')).toBe('all')
+  })
   it('reads back a kind it knows, and anything else as all', () => {
     for (const c of CATEGORIES) expect(readFilter(c.id)).toBe(c.id)
     expect(readFilter('all')).toBe('all')
