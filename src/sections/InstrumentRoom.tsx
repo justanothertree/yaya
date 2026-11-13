@@ -390,9 +390,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * events stored are produced by the same call.
    */
   /**
-   * Jamming rides the call, so the control only exists while you are in one. Rendering a
-   * disabled "Jam" button to someone playing alone would advertise a feature whose entry point
-   * is somewhere else entirely — the call button, on another page.
+   * Jamming rides the call, so the Jam together switch only exists while you are in one. Outside
+   * a call the song row carries a 🎶 Jam LINK to Chat instead (12 Nov 2026, see SongControls) —
+   * a way in that says where calls start, rather than a disabled switch that would advertise a
+   * feature without saying how to reach it.
    */
   /* remembered, because whether you want the kaleidoscope up while playing is a preference and
      not a per-visit decision */
@@ -1673,7 +1674,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           hush,
         }}
       />
-      {call.inCall && (
+      {call.inCall ? (
         <div className="inst-row inst-jam">
           <button
             className={'btn' + (jamming.on ? ' is-on' : '')}
@@ -1706,7 +1707,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               </span>
             ))}
         </div>
-      )}
+      ) : null}
 
       <SongControls
         loop={loop}
@@ -1720,6 +1721,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         capMsg={capMsg}
         setCapMsg={setCapMsg}
         keep={keep}
+        inCall={call.inCall}
       />
       {beatsOpen && (
         <BackingPanel loop={loop} scale={scale} root={root} degrees={degrees} backing={backing} />
