@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import registry from '../sections/GpuLab.tsx?raw'
+import registry from '../sections/labDemos.tsx?raw'
 import draft from '../../supabase/migrations/20261109030613_lab_catalog_and_feedback.sql?raw'
 import { CATEGORIES, META, entries, listed, readFilter, readFlags, type Flags } from './catalog'
 

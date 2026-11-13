@@ -185,12 +185,4 @@ export function readSaved(text: string | null): Saved {
 }
 
 /** a seeded random source, for the tests */
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { rng as seeded } from './bricks'

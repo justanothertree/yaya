@@ -12,7 +12,7 @@ import {
 import type { MyExercise, NewGoal, Putback, Routine, Total } from '../chronicle/cloud'
 import type { DayNote } from '../chronicle/journal'
 import type { Plan } from '../chronicle/plan'
-import type { ChronSet } from '../chronicle/sets'
+import { asNumeric, type ChronSet } from '../chronicle/sets'
 import { fit, fitText, unitOf } from '../chronicle/units'
 import { pvPictures } from './picturePreview'
 
@@ -1015,7 +1015,7 @@ export const pvTotals = (fromISO: string, toISO: string): Total[] => {
     row.mins += ms / 60_000
     const began = Date.parse(e.start)
     if (row.metric && e.amount != null && began >= from && began < to)
-      row.amount = (row.amount ?? 0) + e.amount
+      row.amount = asNumeric((row.amount ?? 0) + e.amount)
   }
   /* chronicle_totals' own order: the most time first, and a tie — every activity at nothing, to
      begin with — by name */
@@ -1553,7 +1553,7 @@ const uncountIfUnitChanged = (entry: string, wasUnit: string | null) => {
   const now = unitOf(db().acts.find((a) => a.id === e?.activity)?.metric)
   if (!e || now === wasUnit) return
   const back = countedOf(entry)
-  e.amount = Math.max(0, (e.amount ?? 0) - back) || null
+  e.amount = asNumeric(Math.max(0, (e.amount ?? 0) - back)) || null
   for (const x of db().sets) if (x.entry === entry && x.counted) x.counted = false
 }
 
@@ -1607,19 +1607,8 @@ export const pvSetAdd = (
     updated: now,
     counted,
   })
-  if (counted && sit) sit.amount = Math.min((sit.amount ?? 0) + value, 1e9)
+  if (counted && sit) sit.amount = asNumeric(Math.min((sit.amount ?? 0) + value, 1e9))
   return { id }
-}
-
-/** `chronicle_set_change`: one number, and what it added to its sitting moves with it */
-export const pvSetChange = (id: string, value: number): { why: string } | null => {
-  if (!(value > 0) || value > 1e9) return { why: 'that is not a number of anything' }
-  const x = db().sets.find((y) => y.id === id)
-  if (!x) return { why: 'no such set' }
-  const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
-  if (sit) sit.amount = Math.max(0, Math.min((sit.amount ?? 0) + (value - x.value), 1e9)) || null
-  Object.assign(x, { value, updated: Date.now() })
-  return null
 }
 
 /** `chronicle_set_drop`: gone, and exactly what it added to its sitting with it */
@@ -1627,7 +1616,7 @@ export const pvSetDrop = (id: string): { why: string } | null => {
   const x = db().sets.find((y) => y.id === id)
   if (!x) return { why: 'no such set' }
   const sit = x.counted ? db().ents.find((e) => e.id === x.entry) : undefined
-  if (sit) sit.amount = Math.max(0, (sit.amount ?? 0) - x.value) || null
+  if (sit) sit.amount = asNumeric(Math.max(0, (sit.amount ?? 0) - x.value)) || null
   db().sets = db().sets.filter((y) => y.id !== id)
   return null
 }

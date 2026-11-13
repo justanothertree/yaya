@@ -375,7 +375,7 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
           )}
           {mode === 'play' && (
             <button className="btn btn-ghost" onClick={() => newBall()}>
-              🔄 New game
+              ↻ New game
             </button>
           )}
           <button

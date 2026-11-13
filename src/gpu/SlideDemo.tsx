@@ -16,10 +16,10 @@ import {
   type Board,
   type Difficulty,
   type Dir,
-  type Saved,
   type State,
 } from './slide'
 import { createSlide, type SlideView } from './slideEngine'
+import { loadKept, useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -42,21 +42,14 @@ const KEYS: Record<string, Dir> = {
   d: 'right',
 }
 
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(SLIDE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
 const newSeed = () => 1 + Math.floor(Math.random() * 99999)
 
 export function SlideDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(SLIDE_KEY, readSaved)
   const [mode, setMode] = useState<'levels' | 'endless'>('levels')
   const [level, setLevel] = useState(() => {
-    const s = load()
+    const s = loadKept(SLIDE_KEY, readSaved)
     return Math.max(
       0,
       LEVELS.findIndex((l) => s.best[l.name] === undefined),
@@ -85,13 +78,6 @@ export function SlideDemo({ running, setRunning, onAdapter }: Props) {
   const press = useRef<[number, number] | null>(null)
   const timers = useRef<number[]>([])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(SLIDE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(
     () => () => {
       for (const t of timers.current) window.clearTimeout(t)

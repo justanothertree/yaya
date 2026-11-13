@@ -249,6 +249,25 @@ export function drumGenres(): string[] {
   return seen
 }
 
+/** The genre a beat belongs to, or null for one this bundle does not have (or no beat at all). */
+export function genreOf(beat: string | null): string | null {
+  return DRUM_PATTERNS.find((p) => p.id === beat)?.genre ?? null
+}
+
+/**
+ * Which genre the Beat row shows: the one you have just picked, if you picked it while this beat
+ * was loaded; otherwise the loaded beat's own; otherwise the last one you picked; otherwise the
+ * first. The same rule the instrument menu's families keep — browsing another genre lasts until
+ * the beat changes, so laying one from it (or from a Style) lands the row on the beat you hear.
+ */
+export function genreShown(
+  loaded: string | null,
+  pick: { forBeat: string | null; genre: string } | null,
+): string {
+  if (pick && pick.forBeat === loaded) return pick.genre
+  return genreOf(loaded) ?? pick?.genre ?? drumGenres()[0]
+}
+
 /**
  * ⚠️ MIDDLE C AND UP, because the drum map repeats every octave (see DRUMS) — so the only thing
  * this choice decides is where the pattern SHOWS in the note editor, not what it sounds like.

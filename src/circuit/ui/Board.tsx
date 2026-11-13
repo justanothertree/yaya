@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useCircuit } from '../store'
 import { currentStreak, monthDaily, monthLabel, monthTotal } from '../scoring'
-import { todayISO, todayMonth } from '../dates'
+import { dayOfMonth, localISO, todayISO, todayMonth } from '../dates'
 import { peopleInGroup } from '../groupFilter'
 import { CircuitPersonProfile } from './CircuitPersonProfile'
 import type { Person } from '../types'
@@ -60,7 +60,7 @@ export function Board({
   const days = new Date(yNum, mNum, 0).getDate()
   const shiftMonth = (d: number) => {
     const dt = new Date(yNum, mNum - 1 + d, 1)
-    setPicked(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`)
+    setPicked(localISO(dt).slice(0, 7))
   }
 
   const rows = useMemo(
@@ -68,7 +68,7 @@ export function Board({
       visiblePeople
         .map((p) => {
           const now = new Date()
-          const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+          const curYm = todayMonth()
           const elapsedDays = ym === curYm ? now.getDate() : days
           const daily = monthDaily(p, state.logs, ym, days)
           const daysLogged = daily.filter((d) => d > 0).length
@@ -414,7 +414,7 @@ export function Board({
                   const hit = pts >= r.goal
                   const some = pts > 0 && !hit
                   const isToday = di + 1 === todayDay
-                  const dStr = `${ym}-${String(di + 1).padStart(2, '0')}`
+                  const dStr = dayOfMonth(ym, di + 1)
                   return (
                     <span
                       key={di}

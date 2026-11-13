@@ -85,7 +85,7 @@ export function PrintshopDemo({ running, setRunning, onAdapter }: Props) {
   const stepsNow = useRef(steps)
   /** the cut being drawn */
   const cutting = useRef<Cut | null>(null)
-  /** the work as it was before 🔄 New block, so Undo can bring it back */
+  /** the work as it was before ↻ New block, so Undo can bring it back */
   const cleared = useRef<Step[] | null>(null)
 
   const setSteps = (next: Step[]) => {
@@ -265,7 +265,7 @@ export function PrintshopDemo({ running, setRunning, onAdapter }: Props) {
             ↶ Undo
           </button>
           <button className="btn btn-ghost" onClick={fresh} disabled={!steps.length}>
-            🔄 New block
+            ↻ New block
           </button>
         </div>
       )}

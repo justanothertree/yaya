@@ -5448,6 +5448,9 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .also-together-x {
   margin-left: auto;
+  /* ⚠️ 24px with a mouse — it was 15.5x20.3 (WCAG 2.5.8; see the note above .inst-oct's floor) */
+  min-width: 24px;
+  min-height: 24px;
   appearance: none;
   border: 0;
   background: none;
@@ -15932,6 +15935,38 @@ a.cz-msg-author:focus-visible {
   }
   .viz-wrap .viz-swatch {
     height: 36px;
+  }
+}
+
+/**
+ * ⚠️ 24px WITH A MOUSE TOO — WCAG 2.5.8 IS NOT A TOUCH RULE. The block below sizes these for a
+ * thumb, and on a desktop they were left at whatever their padding made them: octave − and +
+ * 25.7x18.6, the Snap row 17-19px tall, a layer's "dry" and Split 19.6, Clear all 19.6, the
+ * layer buttons 23.6 — each in a row of neighbours, so the spacing exception does not save them.
+ * Measured at 1440 in the instrument room, 10 Nov 2026. (The tip's ✕, 15.5x20.3, is floored in its
+ * own rule, because its touch size is set in a block EARLIER than this one.)
+ *
+ * ⚠️ NOT THE BAR CELLS OR THE RULER. Those are 12px on a desktop on purpose — see the note on
+ * .inst-bar-cell, "widening every cell made the row longer and harder to take in" — and that is
+ * a decision to put to Evan, not one to overturn in a sizing pass.
+ *
+ * ⚠️ ONLY FOR A FINE POINTER, so it cannot touch a phone at all. Unconditional, it would be a
+ * plain min-height at the same specificity as the touch sizes and could undo any of them that
+ * happens to be written earlier in this file — the tip's 32px was one, and was caught measuring.
+ * The note editor's note-length row (Grid, 1/16 … 1) joins it: 20px with a mouse, same room.
+ */
+@media (pointer: fine) {
+  .inst-oct .btn,
+  .snap-pick .btn,
+  .roll-len .btn,
+  .inst-layers li .btn,
+  .inst-layers-all .btn {
+    min-height: 24px;
+  }
+  /* a one-character face is narrow as well as short: − + and the note length "1" */
+  .inst-oct .btn,
+  .roll-len .btn {
+    min-width: 24px;
   }
 }
 

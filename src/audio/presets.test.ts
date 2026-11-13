@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { BASS_VOICES, INSTRUMENTS, SHAPES, type InstrumentId } from './synth'
+import { FAMILIES } from './families'
+import {
+  BASS_VOICES,
+  INSTRUMENTS,
+  SHAPES,
+  driveCurve,
+  filterSweeps,
+  type InstrumentId,
+} from './synth'
 import { packSong, readSong } from './songFile'
 
 /**
@@ -237,20 +245,23 @@ describe('the three voices added alongside this file', () => {
  * how dark the filter closes, or a pitch that falls into place. Whether they sound like their
  * NAMES is a listening question and is Evan's; the room measurement is in the PR.
  */
-describe('the basses', () => {
-  const shape = (id: InstrumentId) => (SHAPES as Record<string, Shape>)[id]
-  const ratio = (a: number, b: number) => Math.max(a, b) / Math.max(1e-6, Math.min(a, b))
-  const parts = (a: Shape, b: Shape) => {
-    const why: string[] = []
-    if (a.wave !== b.wave) why.push('wave')
-    if (Math.abs(a.s - b.s) >= 0.15) why.push('held')
-    if (ratio(a.d, b.d) >= 1.5) why.push('decay')
-    if (ratio(a.filter?.to ?? 20000, b.filter?.to ?? 20000) >= 1.5) why.push('filter')
-    if (!!a.pitch !== !!b.pitch) why.push('pitch')
-    if (a.partials.length !== b.partials.length) why.push('partials')
-    return why
-  }
+const shape = (id: InstrumentId) => (SHAPES as Record<string, Shape>)[id]
+const ratio = (a: number, b: number) => Math.max(a, b) / Math.max(1e-6, Math.min(a, b))
+/** what a listener could hear differ between two voices — see the note on 'the basses' */
+const parts = (a: Shape, b: Shape) => {
+  const why: string[] = []
+  if (a.wave !== b.wave) why.push('wave')
+  if (Math.abs(a.s - b.s) >= 0.15) why.push('held')
+  if (ratio(a.d, b.d) >= 1.5) why.push('decay')
+  if (ratio(a.filter?.to ?? 20000, b.filter?.to ?? 20000) >= 1.5) why.push('filter')
+  if (!!a.pitch !== !!b.pitch) why.push('pitch')
+  if (a.partials.length !== b.partials.length) why.push('partials')
+  /* clean against driven is the first thing anybody hears about a guitar or a bass */
+  if (!!a.drive !== !!b.drive) why.push('drive')
+  return why
+}
 
+describe('the basses', () => {
   it('offers at least six, every one on the picker with a preset', () => {
     expect(BASS_VOICES.length).toBeGreaterThanOrEqual(6)
     const offered = new Set(INSTRUMENTS.map(([id]) => id))
@@ -305,6 +316,9 @@ describe('the new voices travel', () => {
     'upright',
     'synthbass',
     '808',
+    'pick',
+    'fretless',
+    'acid',
     'supersaw',
     'chip',
     'harpsichord',
@@ -315,6 +329,184 @@ describe('the new voices travel', () => {
      know as Keys — so a voice that is not on that list arrives as the wrong instrument */
   it('through a song file and the jam, as themselves', () => {
     for (const instrument of added) {
+      const back = readSong(
+        packSong({
+          v: 1,
+          name: 'x',
+          bpm: 96,
+          bars: 2,
+          layers: [
+            {
+              instrument,
+              muted: false,
+              len: 5,
+              events: [
+                { t: 0, midi: 40, on: true },
+                { t: 1, midi: 40, on: false },
+              ],
+              fx: { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 },
+            },
+          ],
+        }),
+      )
+      expect(back?.layers[0].instrument, instrument).toBe(instrument)
+    }
+  })
+})
+
+/**
+ * ⚠️ A FILTER SWEEP IS THE SOUND OF SEVERAL OF THESE VOICES, and from 8 Sep to 10 Nov 2026 it was
+ * switched off wherever the note's highest partial RATIO sat under the filter — which a saw's own
+ * harmonics make untrue. Each case below is something a listener can name, at a pitch it is
+ * actually played at.
+ */
+describe('a filter moves where the wave can hear it', () => {
+  const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
+
+  it('Slap snaps on the E a bass line plays, not only from A2 up', () => {
+    expect(filterSweeps(SHAPES.slap, hz(40))).toBe(true)
+    expect(filterSweeps(SHAPES.slap, hz(36))).toBe(true)
+  })
+
+  /* a filter that moves less than an octave is not a sweep anybody hears — Fuzz's barely moves,
+     on purpose, and sitting still above its own buzz is the rule working, not failing */
+  it('every saw or square bass whose filter falls an octave sweeps across a bass line', () => {
+    const flat: string[] = []
+    for (const id of BASS_VOICES) {
+      const sh = SHAPES[id as Exclude<InstrumentId, 'drums'>]
+      if (!sh.filter || (sh.wave !== 'sawtooth' && sh.wave !== 'square')) continue
+      if (sh.filter.from / sh.filter.to < 2) continue
+      for (let m = 36; m <= 59; m++) if (!filterSweeps(sh, hz(m))) flat.push(`${id}@${m}`)
+    }
+    expect(flat).toEqual([])
+  })
+
+  it('Brass swells into middle C and the C above, which is the brass', () => {
+    expect(filterSweeps(SHAPES.brass, hz(60))).toBe(true)
+    expect(filterSweeps(SHAPES.brass, hz(72))).toBe(true)
+  })
+
+  it('near-sines keep the crackle fix as it was measured: whistle at C5, Keys at middle C', () => {
+    expect(filterSweeps(SHAPES.whistle, hz(72))).toBe(false)
+    expect(filterSweeps(SHAPES.keys, hz(60))).toBe(false)
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026, from the loop: "more bass voices". Spot checks on what makes each of the three
+ * added that day itself, so a later tidy-up cannot flatten one into a neighbour — the pairwise
+ * "no two built the same way" test above is what keeps them apart from each other.
+ */
+describe('Pick, Fretless and Acid', () => {
+  const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
+
+  it('Pick is struck harder and brighter than Finger: a saw, not a triangle, opening wider', () => {
+    expect(SHAPES.pick.wave).toBe('sawtooth')
+    expect(SHAPES.finger.wave).toBe('triangle')
+    expect(SHAPES.pick.filter!.from).toBeGreaterThan(SHAPES.finger.filter!.from)
+  })
+
+  it('Fretless slides UP into its note, where Slap and the 808 fall into theirs', () => {
+    expect(SHAPES.fretless.pitch!.mult).toBeLessThan(1)
+    expect(SHAPES.slap.pitch!.mult).toBeGreaterThan(1)
+    expect(SHAPES['808'].pitch!.mult).toBeGreaterThan(1)
+  })
+
+  it('Acid is one saw through a resonant filter that snaps shut on every note it plays', () => {
+    expect(SHAPES.acid.partials).toHaveLength(1)
+    expect(SHAPES.acid.filter!.q).toBeGreaterThanOrEqual(10)
+    expect(SHAPES.acid.filter!.from / SHAPES.acid.filter!.to).toBeGreaterThan(8)
+    for (let m = 36; m <= 59; m++) expect(filterSweeps(SHAPES.acid, hz(m)), `${m}`).toBe(true)
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: "more instruments". The Strings family had a harp, a koto, a sitar and a
+ * banjo and no guitar — the instrument most people would look for there first.
+ */
+describe('the electric guitar', () => {
+  const plucked = ['harp', 'koto', 'banjo', 'pluck'] as const
+
+  it('holds a part of its note, where every other plucked string dies to nothing', () => {
+    for (const id of plucked) expect(SHAPES[id].s, id).toBe(0)
+    expect(SHAPES.guitar.s).toBeGreaterThanOrEqual(0.15)
+  })
+
+  it('is built differently from everything else in the Strings family', () => {
+    const family = FAMILIES.find((f) => f.id === 'strings')!.members
+    expect(family).toContain('guitar')
+    const alike = family
+      .filter((id) => id !== 'guitar')
+      .filter((id) => parts(shape('guitar'), shape(id as InstrumentId)).length < 2)
+    expect(alike).toEqual([])
+  })
+
+  it('travels through a song file as itself', () => {
+    const back = readSong(
+      packSong({
+        v: 1,
+        name: 'x',
+        bpm: 96,
+        bars: 2,
+        layers: [
+          {
+            instrument: 'guitar',
+            muted: false,
+            len: 5,
+            events: [
+              { t: 0, midi: 52, on: true },
+              { t: 1, midi: 52, on: false },
+            ],
+            fx: { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 },
+          },
+        ],
+      }),
+    )
+    expect(back?.layers[0].instrument).toBe('guitar')
+  })
+})
+
+/**
+ * Evan, 10 Nov 2026: "more instruments". A soft clipper per voice is what makes a guitar sound
+ * driven and a bass sound fuzzed — the synth had no distortion at all, so neither could exist.
+ */
+describe('drive', () => {
+  /* the way a WaveShaperNode reads its curve: x in -1..1 lands between two points, interpolated */
+  const at = (curve: Float32Array, x: number) => {
+    const v = ((x + 1) / 2) * (curve.length - 1)
+    const i = Math.min(curve.length - 2, Math.floor(v))
+    return curve[i] + (curve[i + 1] - curve[i]) * (v - i)
+  }
+
+  it('keeps the edges where they are, so the envelope after it still decides the peak', () => {
+    for (const d of [0.1, 0.5, 0.9]) {
+      const c = driveCurve(d)
+      expect(at(c, 1)).toBeCloseTo(1, 5)
+      expect(at(c, -1)).toBeCloseTo(-1, 5)
+      expect(at(c, 0)).toBeCloseTo(0, 2)
+    }
+  })
+
+  it('is odd and never folds back: no lopsided wave, no note turned inside out', () => {
+    const c = driveCurve(0.7)
+    for (let i = 0; i < c.length; i++) expect(c[i]).toBeCloseTo(-c[c.length - 1 - i], 5)
+    for (let i = 1; i < c.length; i++) expect(c[i]).toBeGreaterThanOrEqual(c[i - 1])
+  })
+
+  it('pushes the quiet half of the wave up harder the more it is driven — that is the grit', () => {
+    expect(at(driveCurve(0.2), 0.3)).toBeGreaterThan(0.3)
+    expect(at(driveCurve(0.9), 0.3)).toBeGreaterThan(at(driveCurve(0.2), 0.3))
+  })
+
+  it('Overdrive and Fuzz are driven; the clean guitar and every other bass are not', () => {
+    expect(SHAPES.overdrive.drive).toBeGreaterThan(0)
+    expect(SHAPES.fuzz.drive).toBeGreaterThan(0)
+    expect(SHAPES.guitar.drive).toBeUndefined()
+    for (const id of BASS_VOICES) if (id !== 'fuzz') expect(shape(id).drive, id).toBeUndefined()
+  })
+
+  it('and both travel through a song file as themselves', () => {
+    for (const instrument of ['overdrive', 'fuzz'] as const) {
       const back = readSong(
         packSong({
           v: 1,

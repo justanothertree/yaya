@@ -10,7 +10,7 @@ import { STACK_KEY } from '../gpu/stack'
 import { RPS_KEY } from '../gpu/rps'
 import { DICE_KEY } from '../gpu/dice'
 import { POKER_KEY } from '../gpu/poker'
-import registry from '../sections/GpuLab.tsx?raw'
+import registry from '../sections/labDemos.tsx?raw'
 
 const store = (o: Record<string, string>) => (k: string) => o[k] ?? null
 
