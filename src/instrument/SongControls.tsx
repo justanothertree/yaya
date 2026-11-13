@@ -25,6 +25,7 @@ import {
 } from '../audio/looper'
 import { historyNow, redo, subscribeHistory, undo } from '../audio/history'
 import { NumField, Why } from './rowParts'
+import { TakesPanel } from '../audio/TakesPanel'
 
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 
@@ -66,6 +67,7 @@ export function SongControls({
   capMsg,
   setCapMsg,
   keep,
+  inCall,
 }: {
   loop: ReturnType<typeof loopState>
   live: MutableRefObject<{ inst: InstrumentId }>
@@ -78,6 +80,8 @@ export function SongControls({
   capMsg: string | null
   setCapMsg: Dispatch<SetStateAction<string | null>>
   keep: (kind: 'song' | 'loop', layerId?: string) => void
+  /** whether a call is on — outside one, the song row carries the way into a jam */
+  inCall: boolean
 }) {
   const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
@@ -306,6 +310,15 @@ export function SongControls({
        * used to be one row in the order they were added, so Record sat on the second line under
        * Library and ▶ Play's nearest neighbour was ✎ New part. Nothing was hidden or renamed.
        */}
+      {/* ⚠️ THE MIC TAKE BESIDE ⏺ RECORD — Evan, 12 Nov 2026. Record, Capture and the mic take are
+          three ways to keep something, and the third sat 703px below the other two at 1440, under
+          the layers and the Sing prototype. It is the whole takes panel — its list and effects
+          come with it — because a take you just recorded belongs next to the button that made it. */}
+      {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
+          library is where it belongs — but the library row collapses, and a recording you can
+          only reach by opening a panel is one nobody finds. It is not in the layer list either,
+          on purpose: a take is not a Layer. See TakesPanel. */}
+      <TakesPanel />
       <div className="inst-row inst-transport">
         {/* ⚠️ HERE TOO, not only in the start row. The start row disappears the moment you have
           a layer — and so, with it, did the only way to reach the beats, so adding a drum part
@@ -355,6 +368,26 @@ export function SongControls({
         >
           ✎ New part
         </button>
+        {/* ⚠️ A WAY IN WHEN THERE IS NO CALL YET — Evan, 12 Nov 2026 (flow map item 3). The Jam
+            switch only existed inside a call, so the one door to playing together was a
+            dismissible tip at the very bottom of the room; once dismissed, nothing here said a jam
+            existed. A call starts in Chat, so this is a link there that says so. In this row
+            rather than a row of its own, which measured 76px down the page at 1440 for every
+            visit. Inside a call the room's own Jam together switch takes over. */}
+        {!inCall && (
+          <a
+            className="btn btn-ghost"
+            href="#chat"
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.hash = 'chat'
+            }}
+            title="Playing together happens in a call: start one in Chat, then press Jam together here"
+          >
+            🎶 Jam
+            <Why>start a call in Chat</Why>
+          </a>
+        )}
       </div>
 
       {/* ⚠️ BELOW THE BUTTON THAT OPENS IT, WHICH IT WAS NOT. This rendered a hundred and
