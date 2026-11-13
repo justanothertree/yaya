@@ -77,7 +77,6 @@ import { together } from '../party/together'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
-import { TakesPanel } from '../audio/TakesPanel'
 import {
   capture,
   loopOrigin,
@@ -1734,17 +1733,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         onKeep={(id) => keep('loop', id)}
       />
 
-      {/* ⚠️ RECORDING SITS WITH THE SONG IT IS RECORDED INTO. 🎤 Record a take was below the
-          sound knobs, the octave row and the scale row — 1,600px down at 1440×900 — while
-          everything it is placed into (the transport, the layers) was 500px above it. */}
-      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, on a draft for
-          Evan to hear. Beside the takes because it, too, is a voice over the song. */}
+      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, parked for
+          Evan to hear. It sat beside the takes until 12 Nov 2026, when 🎤 Record a take moved up
+          beside ⏺ Record (see SongControls); a prototype stays where it is until it is decided. */}
       <SingPanel
         layers={loop.layers}
         degrees={scale === 'chromatic' ? MAJOR_DEGREES : degrees}
         root={scale === 'chromatic' ? 0 : root}
       />
-      <TakesPanel />
 
       {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
           "a little fractured and almost more difficult to smoothly work on making a song", and
@@ -1780,11 +1776,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           siblings has never decided where it draws — see .inst-wrap.has-visuals. Below the
           breakpoint the wrap is a plain flex column, and there it was 593px of visuals
           standing between the picker and ▶ Play. */}
-
-      {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
-          library is where it belongs — but the library row collapses, and a recording you can
-          only reach by opening a panel is one nobody finds. It is not in the layer list either,
-          on purpose: a take is not a Layer. See TakesPanel. */}
 
       <p className="muted inst-note">
         {/* ⚠️ A TOUCH SCREEN HAS NO Z, NO SHIFT AND NO MOUSE — item 5 of the 11 Nov 2026 flow
