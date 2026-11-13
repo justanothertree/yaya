@@ -36,20 +36,31 @@ export function LampsDemo() {
   const daily = seed === seedFor(n, pattern)
   const fresh = useMemo(() => make(n, pattern, seed), [n, pattern, seed])
   const par = useMemo(() => solve(fresh, n, pattern)!.length, [fresh, n, pattern])
-  const [lit, setLit] = useState<boolean[]>(fresh)
+  /**
+   * The lamps, kept with the board they belong to. A new size renders once before the effect below
+   * can reset anything, and that render drew the old lamps on the new grid — 25 lamps in four
+   * columns after 4×4 was pressed on a 5×5 board. Cages crashed the Lab from the same shape (12 Nov);
+   * here it was one wrong frame, so the same fix: a render whose board is not the one the lamps were
+   * lit on reads the new board
+   */
+  const [play, setPlay] = useState(() => ({ fresh, lit: fresh }))
+  const lit = play.fresh === fresh ? play.lit : fresh
+  const setLit = (next: boolean[]) => setPlay({ fresh, lit: next })
   const [history, setHistory] = useState<boolean[][]>([])
   const [presses, setPresses] = useState(0)
   const [hints, setHints] = useState(0)
   const [hint, setHint] = useState<number | null>(null)
   const [done, setDone] = useState(false)
-  const [cursor, setCursor] = useState(0)
+  const [kept, setCursor] = useState(0)
+  // the same for the keyboard's place: on the last lamp of 7×7, 4×4 had no lamp to Tab to for a render
+  const cursor = kept < n * n ? kept : 0
   const [line, setLine] = useState(
     'Press a lamp and it switches, and so do the ones beside it. Switch them all off.',
   )
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   // a fresh board whenever the size, pattern or seed changes
   useEffect(() => {
-    setLit(fresh)
+    setPlay({ fresh, lit: fresh })
     setHistory([])
     setPresses(0)
     setHints(0)
