@@ -77,7 +77,6 @@ import { together } from '../party/together'
 import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
-import { TakesPanel } from '../audio/TakesPanel'
 import {
   capture,
   loopOrigin,
@@ -102,6 +101,7 @@ import { BackingPanel } from '../instrument/BackingPanel'
 import { SongControls } from '../instrument/SongControls'
 import { PHONE_MENU, SoundPanel } from '../instrument/SoundPanel'
 import { openEditor } from '../instrument/openEditor'
+import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
 /**
  * Somewhere to play.
@@ -391,9 +391,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * events stored are produced by the same call.
    */
   /**
-   * Jamming rides the call, so the control only exists while you are in one. Rendering a
-   * disabled "Jam" button to someone playing alone would advertise a feature whose entry point
-   * is somewhere else entirely — the call button, on another page.
+   * Jamming rides the call, so the Jam together switch only exists while you are in one. Outside
+   * a call the song row carries a 🎶 Jam LINK to Chat instead (12 Nov 2026, see SongControls) —
+   * a way in that says where calls start, rather than a disabled switch that would advertise a
+   * feature without saying how to reach it.
    */
   /* remembered, because whether you want the kaleidoscope up while playing is a preference and
      not a per-visit decision */
@@ -401,10 +402,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      pipelines drawing the same sound, and the floating one is the one they asked for */
   const vizFloating = useVizFloating()
   const [showViz, setShowViz] = useState(() => {
+    const phone = window.matchMedia(PHONE_KEYBOARD).matches
     try {
-      return localStorage.getItem(SHOW_VIZ_KEY) !== '0'
+      return vizStartsOpen(localStorage.getItem(SHOW_VIZ_KEY), phone)
     } catch {
-      return true
+      return vizStartsOpen(null, phone)
     }
   })
   const call = useVoiceSession()
@@ -1674,7 +1676,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           hush,
         }}
       />
-      {call.inCall && (
+      {call.inCall ? (
         <div className="inst-row inst-jam">
           <button
             className={'btn' + (jamming.on ? ' is-on' : '')}
@@ -1707,7 +1709,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               </span>
             ))}
         </div>
-      )}
+      ) : null}
 
       <SongControls
         loop={loop}
@@ -1721,6 +1723,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         capMsg={capMsg}
         setCapMsg={setCapMsg}
         keep={keep}
+        inCall={call.inCall}
       />
       {beatsOpen && (
         <BackingPanel loop={loop} scale={scale} root={root} degrees={degrees} backing={backing} />
@@ -1734,17 +1737,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         onKeep={(id) => keep('loop', id)}
       />
 
-      {/* ⚠️ RECORDING SITS WITH THE SONG IT IS RECORDED INTO. 🎤 Record a take was below the
-          sound knobs, the octave row and the scale row — 1,600px down at 1440×900 — while
-          everything it is placed into (the transport, the layers) was 500px above it. */}
-      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, on a draft for
-          Evan to hear. Beside the takes because it, too, is a voice over the song. */}
+      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, parked for
+          Evan to hear. It sat beside the takes until 12 Nov 2026, when 🎤 Record a take moved up
+          beside ⏺ Record (see SongControls); a prototype stays where it is until it is decided. */}
       <SingPanel
         layers={loop.layers}
         degrees={scale === 'chromatic' ? MAJOR_DEGREES : degrees}
         root={scale === 'chromatic' ? 0 : root}
       />
-      <TakesPanel />
 
       {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
           "a little fractured and almost more difficult to smoothly work on making a song", and
@@ -1780,11 +1780,6 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           siblings has never decided where it draws — see .inst-wrap.has-visuals. Below the
           breakpoint the wrap is a plain flex column, and there it was 593px of visuals
           standing between the picker and ▶ Play. */}
-
-      {/* ⚠️ OUTSIDE THE LIBRARY TOGGLE, not inside it. A take is a thing you kept, so the
-          library is where it belongs — but the library row collapses, and a recording you can
-          only reach by opening a panel is one nobody finds. It is not in the layer list either,
-          on purpose: a take is not a Layer. See TakesPanel. */}
 
       <p className="muted inst-note">
         {/* ⚠️ A TOUCH SCREEN HAS NO Z, NO SHIFT AND NO MOUSE — item 5 of the 11 Nov 2026 flow
