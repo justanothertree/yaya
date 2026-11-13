@@ -6,3 +6,19 @@ export function hashParam(name: string, hash = location.hash): string | null {
   const m = /^#lab\?(.*)$/.exec(hash)
   return m ? new URLSearchParams(m[1]).get(name) : null
 }
+
+/**
+ * The address to show once `id` is picked, or null to leave the address as it is.
+ *
+ * ⚠️ ONLY ON THE LAB'S OWN PAGE. The Lab also opens inside a canvas window over some other page,
+ * and that page's address is not the Lab's to change.
+ *
+ * ⚠️ AND IT NAMES THE TOY ALONE. Whatever else the address held — a "beat my run" seed, a putt
+ * hole — belonged to the toy that was showing, and means nothing to the next one. Picking the
+ * toy that is already named changes nothing, so its own settings stay.
+ */
+export function toyHash(hash: string, id: string): string | null {
+  if (!/^#lab(\?|$)/.test(hash)) return null
+  if (hashParam('demo', hash) === id) return null
+  return `#lab?${new URLSearchParams({ demo: id })}`
+}

@@ -17,7 +17,7 @@ import { LabFeedback, type Viewer } from '../lab/LabFeedback'
 import '../lab/lab-catalog.css'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
-import { hashParam } from '../lab/links'
+import { hashParam, toyHash } from '../lab/links'
 
 /**
  * The Lab: experiments with WebGPU, one at a time.
@@ -194,6 +194,11 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
     } catch {
       /* private mode: it applies for this visit */
     }
+    /* the address names the toy, so it can be copied, reloaded, and read by a call (party.ts).
+       ⚠️ REPLACED, NOT PUSHED: trying ten toys is not ten pages, and Back still leaves the Lab
+       the way it always did. replaceState fires no hashchange, so nothing re-routes. */
+    const next = toyHash(location.hash, id)
+    if (next) history.replaceState(history.state, '', next)
   }
   const patchFlags = (id: string, patch: Partial<Flags>) =>
     setFlags((was) => {
