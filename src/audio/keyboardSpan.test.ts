@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isBlack,
   FULL_SPAN,
   OCTAVE_HIGH,
   OCTAVE_LOW,
@@ -153,5 +154,19 @@ describe('moving the octave', () => {
 
   it('agrees with the range the buttons and the number input use', () => {
     expect([OCTAVE_LOW, OCTAVE_HIGH]).toEqual([1, 6])
+  })
+})
+
+/** The one isBlack, shared by the keyboard and the note editor since 11 Nov 2026 (it was two). */
+describe('which keys are black', () => {
+  it('C♯ D♯ F♯ G♯ A♯ in every octave, and nothing else', () => {
+    const black = Array.from({ length: 12 }, (_, pc) => pc).filter((pc) => isBlack(60 + pc))
+    expect(black).toEqual([1, 3, 6, 8, 10])
+    expect(isBlack(61)).toBe(isBlack(61 - 48))
+  })
+
+  it('below MIDI 0 as well, which a transpose can reach', () => {
+    expect(isBlack(-11)).toBe(true) // the C♯ below C-1
+    expect(isBlack(-12)).toBe(false)
   })
 })
