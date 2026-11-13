@@ -14,6 +14,35 @@ _It builds on, and partly replaces, `2026-11-09-lab-online-play-proposal.md` and
 `2026-11-10-lab-online-play-design.md` (#109). The section "Why not the relay" explains where it
 departs from them._
 
+## Decisions — Evan, 13 Nov
+
+1. **The public-access probe:** run it read-only and report. **It could not run from the cloud
+   session.** Realtime joins need a WebSocket, and that session's proxy does not carry WebSocket
+   upgrades (it says so, and says to report rather than work around it). The answer is still
+   unknown. The simplest way to ask is in a browser console on evancook.dev, signed out:
+
+   ```js
+   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+   const sb = createClient(
+     'https://lcpyatpktpkiybocyoij.supabase.co',
+     '<the anon key the site already ships>',
+   )
+   const ch = sb.channel('voice:' + crypto.randomUUID(), { config: { private: false } })
+   ch.subscribe((status) => console.log(status)) // SUBSCRIBED = still open; CHANNEL_ERROR = closed
+   ```
+
+   It joins a random room nobody is in, sends nothing and writes nothing.
+
+2. **Friends:** only calls where everyone present is an accepted friend. Circuit groups don't count
+   unless they're also friends.
+3. **Real-time toys** get a card clearly marked **"Recorded"**, not checked.
+4. **Cursor sharing resets each call.** The "share everything" switch is no longer remembered from
+   one call to the next.
+5. **Comments with a score card are friends-only.** That's part of the step 9 SQL.
+
+Steps 1–8 are being built as small drafts, with Four in a row and Swarm as the pilots. Steps 9–11
+wait on the answer to 1 and on your SQL.
+
 ---
 
 ## The short version
@@ -106,17 +135,20 @@ departs from them._
 
 - **Seats:** the first two people in the room take seats. Everyone else watches, and a watcher can
   take a seat that frees up.
-  - The **host** is the seated person with the lowest user id. The choice is deterministic, so no
-    election messages are needed.
+  - The **host** is whoever on that toy has the lowest user id, seated or not. The choice is
+    deterministic, so no election messages are needed.
   - If the host leaves, the next one takes over from the last state.
-- **Messages:** a new party event, `lab`, carrying `{sub, seq, kind, body}`:
-  - `kind` is `sit`, `stand`, `move`, `state?` or `state`;
-  - `move` carries **only the move**: for Four in a row, `{col}`. It's a few dozen bytes.
+- **Messages:** a new party event, `lab`, carrying `{sub, t, …}`:
+  - anyone may send `hello`, `sit`, `stand`, `move` or `new`. These are requests, and only the host
+    acts on them;
+  - only the host sends `state`, the whole room: seats, a `seq` number and the game. For Four in a
+    row that's under a kilobyte, one message per move.
+  - A full snapshot rather than a move is what makes a lost or duplicated message harmless: the
+    next snapshot replaces it, and an older `seq` is ignored.
 - **Rules stay in the pure modules.** Each client applies a move through the same `drop()` /
   `play()` that local play uses, and refuses any move its own copy finds illegal.
-- **Catching up:** a late joiner asks `state?` and the host answers with the full state once. This
-  is the pattern `draw.ts` uses for its catch-up.
-- **Code:** the protocol is one pure module, `src/lab/room.ts`, tested with an in-memory transport.
+- **Catching up:** a late joiner sends `hello` and the host answers with `state`.
+- **Code:** the protocol is one pure module, `src/lab/social/room.ts`, tested with an in-memory transport.
   A toy opts in by giving three functions: `encode(state)`, `decode(body)` and `apply(state, move)`.
 - **Order:** the 14 turn-based toys come first. Their state is plain data (Int8Array and Set
   fields need encoding). Real-time toys (Stackfall, Gust, Crossing) are a later, separate decision.
@@ -287,10 +319,10 @@ lab_comments
 - **A two-player game when someone drops:**
   - after 10 s without the other seat, the game **pauses** and shows "Waiting for Sam…";
   - after 60 s it offers **"Keep playing against the computer"** from the same position;
-  - when they come back, `state?` brings them up to date;
+  - when they come back, `hello` brings them up to date;
   - nothing is lost, because each client keeps its own copy.
-- **Moves arrive out of order or twice:** `seq` numbers. A duplicate is ignored; a gap asks for
-  `state?`.
+- **Messages arrive out of order or twice:** every `state` carries a `seq`, and one older than the
+  last applied is ignored. A lost one is replaced by the next, because each is the whole room.
 - **Attaching a result while offline:** the replay stays in localStorage. The button says "Attach
   when you're back online", and the comment can be posted without it.
 - **The edge function is down or refuses:** the comment still posts without a card. The card is
@@ -336,7 +368,7 @@ Real-time versus play (Stackfall) and dealt cards remain relay work, as #109 say
 | 3   | **Who's where**                | Picker dots, the call-dock line, and press-to-follow.                                                                                                                                  | none                      | 375 / 820 / 1440, keyboard, two tabs                        |
 | 4   | **Message meter**              | Counts party messages per call, sent and received, admin only.                                                                                                                         | none                      | A unit test; a reading from a real call                     |
 | 5   | **Toy-relative cursors**       | A layer in `.lab-stage`, `tx,ty`, 8 Hz, tap pings on touch. Swarm first.                                                                                                               | none                      | Frame rate with and without cursors; `mobileAudit`          |
-| 6   | **Room protocol**              | `src/lab/room.ts`: seats, host, `seq`, `state?`, pause and forfeit. In-memory transport.                                                                                               | none                      | Pure tests (dropouts, duplicates, gaps, host leaving)       |
+| 6   | **Room protocol**              | `src/lab/social/room.ts`: seats, host, `seq`, `hello`, pause and forfeit. In-memory transport.                                                                                         | none                      | Pure tests (dropouts, duplicates, gaps, host leaving)       |
 | 7   | **Four in a row online**       | `encode` / `decode` / `apply`, and the seat check at the input gate.                                                                                                                   | none                      | Two tabs over a local channel stand-in, plus your real call |
 | 8   | **Lamps replay**               | Keep the replay on solve; move `seedFor` into `lamps.ts`; `verifyLamps(replay)` pure, with tests.                                                                                      | none                      | Tests incl. a tampered replay going red                     |
 | 9   | **Results SQL draft**          | `docs/…-lab-results.sql` plus `supabase/tests/lab-results.sql` on the local stack.                                                                                                     | **drafted, not applied**  | Local stack; RLS / grant queries from `rpc-inventory.md`    |
