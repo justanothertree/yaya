@@ -25,7 +25,8 @@ export const CATEGORIES: { id: Category; label: string }[] = [
 
 /**
  * Each experiment's kind, and the day it was added — the author date of the commit that first put
- * its id in the DEMOS list (`git log --format=%as -S "'id'" -- src/sections/GpuLab.tsx`). A new
+ * its id in the DEMOS list (`git log --format=%as -S "'id'" -- src/sections/labDemos.tsx
+ * src/sections/GpuLab.tsx` — the list moved to labDemos.tsx on 12 Nov 2026). A new
  * experiment needs a line here: catalog.test.ts fails until every DEMOS id has one.
  */
 export const META: Record<string, { category: Category; added: string }> = {
@@ -106,6 +107,62 @@ export const META: Record<string, { category: Category; added: string }> = {
   levels: { category: 'puzzles', added: '2026-11-10' },
   type: { category: 'make', added: '2026-11-10' },
   bonsai: { category: 'make', added: '2026-11-10' },
+  mancala: { category: 'games', added: '2026-11-10' },
+  hockey: { category: 'games', added: '2026-11-10' },
+  dots: { category: 'games', added: '2026-11-10' },
+  reversi: { category: 'games', added: '2026-11-10' },
+  seabattle: { category: 'games', added: '2026-11-10' },
+  trails: { category: 'games', added: '2026-11-10' },
+  codebreaker: { category: 'puzzles', added: '2026-11-10' },
+  hex: { category: 'games', added: '2026-11-10' },
+  fourrow: { category: 'games', added: '2026-11-10' },
+  archery: { category: 'games', added: '2026-11-10' },
+  ultimate: { category: 'games', added: '2026-11-10' },
+  twentyone: { category: 'games', added: '2026-11-10' },
+  morris: { category: 'games', added: '2026-11-10' },
+  draughts: { category: 'games', added: '2026-11-10' },
+  bricks: { category: 'games', added: '2026-11-10' },
+  golf: { category: 'puzzles', added: '2026-11-10' },
+  mines: { category: 'puzzles', added: '2026-11-10' },
+  timetrial: { category: 'games', added: '2026-11-10' },
+  backgammon: { category: 'games', added: '2026-11-10' },
+  pool: { category: 'games', added: '2026-11-10' },
+  chess: { category: 'games', added: '2026-11-10' },
+  hearts: { category: 'games', added: '2026-11-10' },
+  tiles: { category: 'puzzles', added: '2026-11-10' },
+  towers: { category: 'games', added: '2026-11-10' },
+  go: { category: 'games', added: '2026-11-10' },
+  sudoku: { category: 'puzzles', added: '2026-11-10' },
+  dominoes: { category: 'games', added: '2026-11-10' },
+  gin: { category: 'games', added: '2026-11-10' },
+  fences: { category: 'games', added: '2026-11-10' },
+  putt: { category: 'games', added: '2026-11-10' },
+  cribbage: { category: 'games', added: '2026-11-10' },
+  lander: { category: 'games', added: '2026-11-10' },
+  darts: { category: 'games', added: '2026-11-10' },
+  liars: { category: 'games', added: '2026-11-10' },
+  bowling: { category: 'games', added: '2026-11-10' },
+  pipes: { category: 'puzzles', added: '2026-11-10' },
+  artillery: { category: 'games', added: '2026-11-11' },
+  curling: { category: 'games', added: '2026-11-11' },
+  breakthrough: { category: 'games', added: '2026-11-11' },
+  keepy: { category: 'games', added: '2026-11-11' },
+  pegs: { category: 'puzzles', added: '2026-11-11' },
+  cages: { category: 'puzzles', added: '2026-11-11' },
+  echo: { category: 'games', added: '2026-11-11' },
+  spades: { category: 'games', added: '2026-11-11' },
+  halma: { category: 'games', added: '2026-11-11' },
+  lamps: { category: 'puzzles', added: '2026-11-11' },
+  eights: { category: 'games', added: '2026-11-11' },
+  gomoku: { category: 'games', added: '2026-11-11' },
+  cube: { category: 'games', added: '2026-11-11' },
+  bridges: { category: 'puzzles', added: '2026-11-11' },
+  popper: { category: 'games', added: '2026-11-11' },
+  yacht: { category: 'games', added: '2026-11-12' },
+  fox: { category: 'games', added: '2026-11-12' },
+  tents: { category: 'puzzles', added: '2026-11-12' },
+  rocks: { category: 'games', added: '2026-11-12' },
+  shut: { category: 'games', added: '2026-11-12' },
 }
 
 /** what the server says about one experiment; every field optional, and only what it may say */

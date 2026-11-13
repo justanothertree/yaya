@@ -26,16 +26,8 @@ import {
   slotX,
   type Drop,
   type Risk,
-  type Saved,
 } from './pegdrop'
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(PEGDROP_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
+import { useKept } from './kept'
 
 /** more balls than this in the air and Drop waits — a held key should not bury the board */
 const MAX_IN_AIR = 24
@@ -56,7 +48,7 @@ const odd = (p: number) => {
 }
 
 export function PegDropDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(PEGDROP_KEY, readSaved)
   const [last, setLast] = useState<string | null>(null)
   const [sound, setSound] = useState(true)
   const [inAir, setInAir] = useState(0)
@@ -66,13 +58,6 @@ export function PegDropDemo() {
   const now = useRef({ risk: saved.risk, sound })
   now.current = { risk: saved.risk, sound }
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(PEGDROP_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
   useEffect(
     () => () => {
       for (let i = 0; i < 8; i++) noteOff(`pegdrop-${i}`)

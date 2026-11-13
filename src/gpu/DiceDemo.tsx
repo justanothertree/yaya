@@ -10,33 +10,16 @@ import {
   scoreOf,
   setAside,
   wantsBank,
-  type Saved,
   type Turn,
 } from './dice'
 import { BeatShare } from '../lab/BeatShare'
 import { useChallenge } from '../lab/useChallenge'
 import { beatsDice, dealRand, newSeed, type Beat } from '../lab/beat'
+import { DieFace } from './DieFace'
+import { useKept } from './kept'
 
 /** against the computer, two at one screen, or alone against the turn count on a numbered deal */
 type Mode = 'bot' | 'two' | 'race'
-
-const load = (): Saved => {
-  try {
-    return readSaved(localStorage.getItem(DICE_KEY))
-  } catch {
-    return readSaved(null)
-  }
-}
-
-/** which of the nine places on a die's face hold a pip, for 1 to 6 */
-const PIPS: Record<number, number[]> = {
-  1: [4],
-  2: [0, 8],
-  3: [0, 4, 8],
-  4: [0, 2, 6, 8],
-  5: [0, 2, 4, 6, 8],
-  6: [0, 2, 3, 5, 6, 8],
-}
 
 function Die({
   face,
@@ -49,13 +32,7 @@ function Die({
   onClick?: () => void
   still?: boolean
 }) {
-  const pips = (
-    <span className="die-face" aria-hidden>
-      {Array.from({ length: 9 }, (_, i) => (
-        <span key={i} className={PIPS[face].includes(i) ? 'pip' : undefined} />
-      ))}
-    </span>
-  )
+  const pips = <DieFace face={face} />
   if (still)
     return (
       <span className="die is-kept" role="img" aria-label={`${face}`}>
@@ -77,7 +54,7 @@ function Die({
 const pct = (p: number) => `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`
 
 export function DiceDemo() {
-  const [saved, setSaved] = useState<Saved>(load)
+  const [saved, setSaved] = useKept(DICE_KEY, readSaved)
   /** a friend's race to beat, from the address: it opens on their deal */
   const [challenge, leaveChallenge] = useChallenge('dice')
   const [mode, setMode] = useState<Mode>(() => (challenge ? 'race' : 'bot'))
@@ -97,13 +74,6 @@ export function DiceDemo() {
   const turns = useRef([0, 0])
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(DICE_KEY, JSON.stringify(saved))
-    } catch {
-      /* private mode: kept for this visit */
-    }
-  }, [saved])
 
   const names =
     mode === 'bot' ? ['You', 'Computer'] : mode === 'race' ? ['You'] : ['Player 1', 'Player 2']
