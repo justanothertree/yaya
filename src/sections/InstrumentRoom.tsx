@@ -1673,7 +1673,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           hush,
         }}
       />
-      {call.inCall && (
+      {call.inCall ? (
         <div className="inst-row inst-jam">
           <button
             className={'btn' + (jamming.on ? ' is-on' : '')}
@@ -1706,7 +1706,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               </span>
             ))}
         </div>
-      )}
+      ) : null}
 
       <SongControls
         loop={loop}
@@ -1720,6 +1720,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         capMsg={capMsg}
         setCapMsg={setCapMsg}
         keep={keep}
+        inCall={call.inCall}
       />
       {beatsOpen && (
         <BackingPanel loop={loop} scale={scale} root={root} degrees={degrees} backing={backing} />

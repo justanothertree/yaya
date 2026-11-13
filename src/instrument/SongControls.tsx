@@ -67,6 +67,7 @@ export function SongControls({
   capMsg,
   setCapMsg,
   keep,
+  inCall,
 }: {
   loop: ReturnType<typeof loopState>
   live: MutableRefObject<{ inst: InstrumentId }>
@@ -79,6 +80,8 @@ export function SongControls({
   capMsg: string | null
   setCapMsg: Dispatch<SetStateAction<string | null>>
   keep: (kind: 'song' | 'loop', layerId?: string) => void
+  /** whether a call is on — outside one, the song row carries the way into a jam */
+  inCall: boolean
 }) {
   const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
@@ -365,6 +368,26 @@ export function SongControls({
         >
           ✎ New part
         </button>
+        {/* ⚠️ A WAY IN WHEN THERE IS NO CALL YET — Evan, 12 Nov 2026 (flow map item 3). The Jam
+            switch only existed inside a call, so the one door to playing together was a
+            dismissible tip at the very bottom of the room; once dismissed, nothing here said a jam
+            existed. A call starts in Chat, so this is a link there that says so. In this row
+            rather than a row of its own, which measured 76px down the page at 1440 for every
+            visit. Inside a call the room's own Jam together switch takes over. */}
+        {!inCall && (
+          <a
+            className="btn btn-ghost"
+            href="#chat"
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.hash = 'chat'
+            }}
+            title="Playing together happens in a call: start one in Chat, then press Jam together here"
+          >
+            🎶 Jam
+            <Why>start a call in Chat</Why>
+          </a>
+        )}
       </div>
 
       {/* ⚠️ BELOW THE BUTTON THAT OPENS IT, WHICH IT WAS NOT. This rendered a hundred and
