@@ -130,3 +130,21 @@ is its own draft PR, cross-linked.
 
 Step 1 (browsing hidden from the Feed and the Friends tab) is built as draft SQL in #304, not
 applied. The table above still marks the timed sittings as "ask"; answer 1 makes them a keep.
+
+## Progress, 14 Nov 2026
+
+Every step is a draft PR: nothing applied, nothing merged.
+
+| Step | PR   | What it does                                                                                                          |
+| ---- | ---- | --------------------------------------------------------------------------------------------------------------------- |
+| 1    | #304 | browsing leaves the Feed and friends' Chronicle Friends tab                                                           |
+| 2    | #312 | browsing leaves a profile's Chronicle card for everyone but its owner, and leaves the Sharing panel                   |
+| 3    | #317 | the Feed shows things made (a song, drawing, pet or look put on your page) and comments, with an 80-character preview |
+
+All three were applied together on a throwaway copy of production's schema and tested as three
+seeded members. Still to come: Snake bests only (answer 3), profile edits once a day (answer 7),
+and Lab results after the score-share work (answer 6).
+
+Answer 4 shaped step 3. The one place a member explicitly publishes something they made is their
+profile page, so "made" is the first time a song, drawing, pet or look reaches a page above Only
+me. #317 lists that and three other judgement calls for Evan to change.
