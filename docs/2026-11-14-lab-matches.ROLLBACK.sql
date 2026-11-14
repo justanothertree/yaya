@@ -25,6 +25,7 @@ drop function if exists public.lab_match_challenge(uuid, text, text, jsonb, uuid
 drop function if exists public.lab_match_record(public.lab_matches);
 drop function if exists public.lab_match_mine(uuid);
 drop function if exists public.lab_match_json(public.lab_matches, uuid, boolean);
+drop function if exists public.lab_match_suspended(uuid);
 drop function if exists public.lab_pair_friends(uuid, uuid);
 drop function if exists public.lab_match_timeout();
 drop function if exists public.lab_match_playable(text);

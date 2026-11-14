@@ -43,6 +43,7 @@ declare
   t text;
   n int;
   mid uuid;   -- the reversi match
+  mid2 uuid;  -- a match with the suspended friend, never begun
   cid uuid;   -- the chess match
   st text;
 begin
@@ -81,7 +82,7 @@ begin
     and (p.proname like 'lab\_match%' or p.proname in ('lab_my_turns', 'lab_pair_friends'));
   -- the service role keeps execute on everything, as it does throughout this schema; what matters
   -- is that a member can reach only the seven member functions, and never the three that write games
-  if t is distinct from 'lab_match_begin: lab_match_challenge:+auth lab_match_claim:+auth lab_match_commit: lab_match_decline:+auth lab_match_get:+auth lab_match_json: lab_match_list:+auth lab_match_load: lab_match_mine: lab_match_playable: lab_match_record: lab_match_resign:+auth lab_match_timeout: lab_my_turns:+auth lab_pair_friends:' then
+  if t is distinct from 'lab_match_begin: lab_match_challenge:+auth lab_match_claim:+auth lab_match_commit: lab_match_decline:+auth lab_match_get:+auth lab_match_json: lab_match_list:+auth lab_match_load: lab_match_mine: lab_match_playable: lab_match_record: lab_match_resign:+auth lab_match_suspended: lab_match_timeout: lab_my_turns:+auth lab_pair_friends:' then
     fails := array_append(fails, '2: callable match functions are ' || coalesce(t, 'none'));
   end if;
   asked := asked + 1;
@@ -379,6 +380,34 @@ begin
   if jsonb_array_length(public.lab_match_list()) < 1 then
     fails := array_append(fails, '12: a suspended member cannot see their own matches');
   end if;
+  -- ⚠️ AND THROUGH THE EDGE FUNCTION'S DOOR, where there is no caller: is_suspended answers NULL
+  -- under the service key, which is how a suspended pair once accepted and moved (14 Nov). A match
+  -- with x (suspended) cannot be begun, and a going match cannot be moved by y once suspended.
+  perform set_config('role', 'postgres', true);
+  insert into public.lab_matches (demo_id, mode, player_a, player_b, settings)
+    values ('chess', 'versus', o, x, '{}') returning id into mid2;
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  perform set_config('role', 'service_role', true);
+  asked := asked + 1;
+  begin
+    perform public.lab_match_begin(mid2, x, '{"moves":[]}', 0::smallint);
+    fails := array_append(fails, '12: a match with a suspended player was begun by the service');
+  exception when sqlstate '22023' then null;
+  end;
+  perform set_config('role', 'postgres', true);
+  update public.profiles set suspended = false where user_id = y;
+  perform set_config('role', 'service_role', true);
+  -- y to move, because o has spent the minute's sixty moves in case 11 and would be refused for that
+  perform public.lab_match_begin(mid, y, '{"moves":[]}', 1::smallint);
+  perform set_config('role', 'postgres', true);
+  update public.profiles set suspended = true where user_id = y;
+  perform set_config('role', 'service_role', true);
+  asked := asked + 1;
+  begin
+    perform public.lab_match_commit(mid, 0, y, '{"m":"e2e4"}', '{"moves":["e2e4"]}', 0::smallint);
+    fails := array_append(fails, '12: a suspended player moved through the service');
+  exception when sqlstate '42501' then null;
+  end;
   perform set_config('role', 'postgres', true);
   update public.profiles set suspended = false where user_id = y;
 
