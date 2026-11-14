@@ -88,9 +88,14 @@ export function rng(seed: number) {
   }
 }
 /** a number for a day, the same in every browser that day */
-export function daySeed(d: Date) {
+export const daySeed = (d: Date) => daySeedOf(d.getFullYear(), d.getMonth() + 1, d.getDate())
+/**
+ * The same number from a calendar date — year, month 1–12, day — so something that is told a date
+ * rather than standing in it (a check of somebody's solve, lamps.ts) builds the same board.
+ */
+export function daySeedOf(y: number, m: number, d: number) {
   let h = 2166136261
-  for (const ch of `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`) {
+  for (const ch of `${y}-${m}-${d}`) {
     h ^= ch.charCodeAt(0)
     h = Math.imul(h, 16777619)
   }

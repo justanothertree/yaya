@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { daySeed } from './bricks'
 import {
   LAMPS_KEY,
   LOOKS,
@@ -11,6 +10,7 @@ import {
   press,
   readSaved,
   reach,
+  seedFor as daySeedFor,
   solve,
   type Pattern,
   type Saved,
@@ -25,8 +25,8 @@ const LOOK_NAMES: Record<Saved['look'], string> = {
   neon: 'Neon',
 }
 const PATTERN_NAMES: Record<Pattern, string> = { plus: '✚ Beside', cross: '✖ Corners' }
-const seedFor = (size: number, pattern: Pattern) =>
-  (daySeed(new Date()) ^ (size * 7919) ^ (pattern === 'cross' ? 0x2545f491 : 0)) >>> 0
+/* today's board — one function with whatever checks a solve later (lamps.ts seedFor) */
+const seedFor = (size: number, pattern: Pattern) => daySeedFor(dayNumber(), size, pattern)
 
 export function LampsDemo() {
   const [saved, setSaved] = useKept(LAMPS_KEY, readSaved)
@@ -47,6 +47,11 @@ export function LampsDemo() {
   const lit = play.fresh === fresh ? play.lit : fresh
   const setLit = (next: boolean[]) => setPlay({ fresh, lit: next })
   const [history, setHistory] = useState<boolean[][]>([])
+  /**
+   * Every press on this board, and -1 for each undo — the run, kept with the day's best so the
+   * finish can be checked by replaying it (verifyLamps). A ref: nothing on screen reads it.
+   */
+  const actions = useRef<number[]>([])
   const [presses, setPresses] = useState(0)
   const [hints, setHints] = useState(0)
   const [hint, setHint] = useState<number | null>(null)
@@ -62,6 +67,7 @@ export function LampsDemo() {
   useEffect(() => {
     setPlay({ fresh, lit: fresh })
     setHistory([])
+    actions.current = []
     setPresses(0)
     setHints(0)
     setHint(null)
@@ -77,6 +83,7 @@ export function LampsDemo() {
     if (done) return
     const next = press(lit, n, i, pattern)
     setHistory((h) => [...h.slice(-300), lit])
+    actions.current = [...actions.current, i]
     setLit(next)
     setHint(null)
     const count = presses + 1
@@ -87,7 +94,11 @@ export function LampsDemo() {
         ...s,
         solvedCount: s.solvedCount + 1,
         bests: daily
-          ? keepBest(s.bests, { day: today, size: n, pattern, presses: count, par }, today)
+          ? keepBest(
+              s.bests,
+              { day: today, size: n, pattern, presses: count, par, actions: actions.current },
+              today,
+            )
           : s.bests,
       }))
       setLine(
@@ -100,6 +111,7 @@ export function LampsDemo() {
     if (!last || done) return
     setLit(last)
     setHistory((h) => h.slice(0, -1))
+    actions.current = [...actions.current, -1]
     setPresses((p) => p + 1)
     setHint(null)
     setLine('Taken back — it still counts as a press.')
@@ -118,6 +130,7 @@ export function LampsDemo() {
   const restart = () => {
     setLit(fresh)
     setHistory([])
+    actions.current = []
     setPresses(0)
     setHints(0)
     setHint(null)
