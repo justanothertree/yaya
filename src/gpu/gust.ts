@@ -11,6 +11,8 @@
  * breath, the kickoff, the score, and the computer opponent's idea of where to stand.
  */
 
+import { whole } from './kept'
+
 export type V2 = [number, number]
 
 /** the rink, in fluid cells */
@@ -271,3 +273,57 @@ export function packRink(
   u[RINK.pause / 4] = p.pause ? 1 : 0
   return into
 }
+
+/** how quick the computer's fan is, as a share of a player's — easiest first */
+export const LEVELS = ['gentle', 'keen', 'sharp'] as const
+export type Level = (typeof LEVELS)[number]
+export const LEVEL_SPEED: Record<Level, number> = { gentle: 0.55, keen: 0.8, sharp: 1 }
+
+/**
+ * What gust keeps between visits: the level, and a record per level of matches against the
+ * computer. A match counts at the EASIEST level it was played at, so turning the computer up at 4–0
+ * does not make a Gentle win a Sharp one. A shutout is a win the computer scored nothing in.
+ */
+export const GUST_KEY = 'lab_gust_v1'
+export type Tally = { won: number; lost: number; shutouts: number }
+export type Saved = { level: Level; record: Record<Level, Tally> }
+const NONE: Tally = { won: 0, lost: 0, shutouts: 0 }
+export const NOTHING: Saved = { level: 'keen', record: { gentle: NONE, keen: NONE, sharp: NONE } }
+
+export function readSaved(text: string | null): Saved {
+  let v: unknown
+  try {
+    v = JSON.parse(text ?? 'null')
+  } catch {
+    return NOTHING
+  }
+  if (typeof v !== 'object' || !v || Array.isArray(v)) return NOTHING
+  const o = v as Record<string, unknown>
+  const rec = (typeof o.record === 'object' && o.record ? o.record : {}) as Record<string, unknown>
+  const record = {} as Record<Level, Tally>
+  for (const l of LEVELS) {
+    const x = (typeof rec[l] === 'object' && rec[l] ? rec[l] : {}) as Record<string, unknown>
+    const won = whole(x.won)
+    record[l] = { won, lost: whole(x.lost), shutouts: Math.min(won, whole(x.shutouts)) }
+  }
+  return { level: LEVELS.includes(o.level as Level) ? (o.level as Level) : NOTHING.level, record }
+}
+
+/** the record after a match against the computer ends: `easiest` is the level it counts at */
+export function scored(s: Saved, easiest: Level, score: [number, number]): Saved {
+  const t = s.record[easiest]
+  const won = score[0] > score[1]
+  return {
+    ...s,
+    record: {
+      ...s.record,
+      [easiest]: {
+        won: t.won + (won ? 1 : 0),
+        lost: t.lost + (won ? 0 : 1),
+        shutouts: t.shutouts + (won && score[1] === 0 ? 1 : 0),
+      },
+    },
+  }
+}
+/** the easier of two levels */
+export const easier = (a: Level, b: Level) => (LEVELS.indexOf(a) <= LEVELS.indexOf(b) ? a : b)

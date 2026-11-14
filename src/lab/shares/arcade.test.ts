@@ -20,6 +20,10 @@ import { TRAILS_KEY } from '../../gpu/trails'
 import { MOBIUS_KEY, HOLES, SPACES } from '../../gpu/mobius'
 import { PINBALL_KEY } from '../../gpu/pinball'
 import { CROSSING_KEY, COURSES } from '../../gpu/crossing'
+import { GUST_KEY } from '../../gpu/gust'
+import { TUNNEL_KEY } from '../../gpu/tunnel'
+import { STRUT_BEST_KEY } from '../../gpu/strut'
+import { QUIZ_KEY } from '../../gpu/wallpaper'
 import registry from '../../sections/labDemos.tsx?raw'
 
 /** what the toy itself would have written under its own key, and nothing else */
@@ -286,5 +290,44 @@ describe('arcade share readers', () => {
       `2 of ${COURSES.length} courses crossed, up to ${COURSES[2].name} in 63.4 s`,
     )
     expect(line('crossing', CROSSING_KEY, { course: 1, best: {} })).toBeNull()
+  })
+
+  /* the four that keep a result only since this draft (keptResults.test.ts pins the keeping) */
+  it('gust: matches won at the hardest level with a win, and its shutouts', () => {
+    const record = {
+      gentle: { won: 9, lost: 1, shutouts: 6 },
+      keen: { won: 3, lost: 2, shutouts: 2 },
+      sharp: { won: 0, lost: 4, shutouts: 0 },
+    }
+    expect(line('gust', GUST_KEY, { level: 'sharp', record })).toBe(
+      'won 3 of 5 matches against the Keen computer, 2 times without letting one in',
+    )
+    const lost = {
+      ...record,
+      gentle: { won: 0, lost: 1, shutouts: 0 },
+      keen: { won: 0, lost: 2, shutouts: 0 },
+    }
+    expect(line('gust', GUST_KEY, { level: 'keen', record: lost })).toBeNull()
+  })
+  it('tunnel: the longest streak at each speed that has one, slowest first', () => {
+    expect(line('tunnel', TUNNEL_KEY, { best: { warp: 7, cruise: 31, fast: 0 } })).toBe(
+      'longest streak without a miss: 31 orbs at Cruise, 7 orbs at Warp',
+    )
+    expect(line('tunnel', TUNNEL_KEY, { best: { warp: 0, cruise: 0, fast: 0 } })).toBeNull()
+  })
+  it('strut: the fewest bars to the flag', () => {
+    expect(ARCADE.strut((k) => (k === STRUT_BEST_KEY ? '3.25' : null))).toBe(
+      'walked a creature to the flag in 3.3 bars',
+    )
+    expect(ARCADE.strut((k) => (k === STRUT_BEST_KEY ? '-1' : null))).toBeNull()
+  })
+  it('wallpaper: patterns named right of those asked, and the best run', () => {
+    expect(line('wallpaper', QUIZ_KEY, { right: 14, asked: 20, bestRun: 6 })).toBe(
+      'named 14 of 20 wallpaper patterns right, best run 6 in a row',
+    )
+    expect(line('wallpaper', QUIZ_KEY, { right: 1, asked: 4, bestRun: 1 })).toBe(
+      'named 1 of 4 wallpaper patterns right',
+    )
+    expect(line('wallpaper', QUIZ_KEY, { right: 0, asked: 5, bestRun: 0 })).toBeNull()
   })
 })

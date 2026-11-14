@@ -7,13 +7,16 @@ import {
   MAX_KEPT,
   MAX_POINTS,
   MAX_STROKES,
+  QUIZ_KEY,
   SWATCHES,
   WALLPAPER_KEY,
+  answered,
   difference,
   paintCell,
   touched,
   question,
   readKept,
+  readQuiz,
   rgb,
   toKept,
   toPlaneFromStage,
@@ -22,6 +25,7 @@ import {
   type Stroke,
   type V2,
 } from './wallpaper'
+import { useKept } from './kept'
 import { CELL, createWallpaper, encodePng, type WallpaperView } from './wallpaperEngine'
 
 type Props = {
@@ -66,7 +70,8 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
   const [note, setNote] = useState<string | null>(null)
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e9))
   const [answer, setAnswer] = useState<{ guess: string; right: boolean } | null>(null)
-  const [score, setScore] = useState({ right: 0, asked: 0 })
+  const [score, setScore] = useState({ right: 0, asked: 0, run: 0 })
+  const [quizKept, setQuizKept] = useKept(QUIZ_KEY, readQuiz)
   const quiz = useMemo(() => question(seed), [seed])
   const shown = mode === 'quiz' ? quiz : drawing
   const g = byId(shown.group)
@@ -165,7 +170,9 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
     if (answer) return
     const right = id === quiz.group
     setAnswer({ guess: id, right })
-    setScore((s) => ({ right: s.right + (right ? 1 : 0), asked: s.asked + 1 }))
+    const run = right ? score.run + 1 : 0
+    setScore((s) => ({ right: s.right + (right ? 1 : 0), asked: s.asked + 1, run }))
+    setQuizKept((q) => answered(q, right, run))
   }
   const next = () => {
     setSeed(Math.floor(Math.random() * 1e9))
@@ -402,6 +409,9 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
             </strong>
           )}
           {mode === 'quiz' && score.asked > 0 && `${score.right} of ${score.asked} right. `}
+          {mode === 'quiz' &&
+            quizKept.asked > score.asked &&
+            `${quizKept.right} of ${quizKept.asked} in all${quizKept.bestRun > 1 ? `, best run ${quizKept.bestRun} in a row` : ''}. `}
           {note && <strong>{note} </strong>}
           {mode === 'draw'
             ? 'Draw anywhere: every stroke repeats across the wall by the group’s turns, mirrors and glides. Change the group and the same drawing becomes a different wallpaper. There are exactly seventeen ways a flat pattern can repeat — here are all of them.'

@@ -30,13 +30,16 @@ import { readSaved as readTrails, TRAILS_KEY, LEVELS as TRAILS_LEVELS } from '..
 import { readSaved as readMobius, MOBIUS_KEY, HOLES, SPACES } from '../../gpu/mobius'
 import { readSaved as readPinball, PINBALL_KEY } from '../../gpu/pinball'
 import { readSaved as readCrossing, CROSSING_KEY, COURSES } from '../../gpu/crossing'
+import { readSaved as readGust, GUST_KEY, LEVELS as GUST_LEVELS } from '../../gpu/gust'
+import { readSaved as readTunnel, TUNNEL_KEY, SPEEDS, SPEED_IDS } from '../../gpu/tunnel'
+import { readBest as readStrut, STRUT_BEST_KEY } from '../../gpu/strut'
+import { readQuiz, QUIZ_KEY } from '../../gpu/wallpaper'
 import type { Reader } from './words'
 
 /*
- * Left out, because nothing a finish writes can be read through the toy's own reader:
- * gust, marbles and tunnel keep nothing at all; strut keeps the creature being built, not a
- * result; mobius, pinball and crossing do keep a best, but parse it inside their Demo component
- * with no exported reader — and a second parser here is exactly what bests.ts forbids.
+ * Left out: marbles, the marble maze, is a sandbox with a counter and no finish. Gust, tunnel, strut
+ * and the wallpaper quiz kept nothing a finish wrote until they were given a result of their own
+ * to keep, under their own keys, so a reader here has something real to read.
  */
 
 const n = (x: number) => x.toLocaleString('en')
@@ -221,6 +224,35 @@ export const ARCADE: Record<string, Reader> = {
     return join([
       `best landing ${n(best)}`,
       l && `beat the ${title(l)} autopilot ${times(r[l].beat)}`,
+    ])
+  },
+  gust: (read) => {
+    const r = readGust(read(GUST_KEY)).record
+    const l = hardest(GUST_LEVELS, (x) => r[x].won > 0)
+    if (!l) return null
+    const t = r[l]
+    return join([
+      beaten(GUST_LEVELS, r, 'matches'),
+      t.shutouts > 0 && `${times(t.shutouts)} without letting one in`,
+    ])
+  },
+  tunnel: (read) => {
+    const s = readTunnel(read(TUNNEL_KEY))
+    const at = SPEED_IDS.filter((v) => s.best[v] > 0)
+    return at.length
+      ? `longest streak without a miss: ${at.map((v) => `${s.best[v]} orbs at ${SPEEDS[v][0]}`).join(', ')}`
+      : null
+  },
+  strut: (read) => {
+    const b = readStrut(read(STRUT_BEST_KEY))
+    return b === null ? null : `walked a creature to the flag in ${b.toFixed(1)} bars`
+  },
+  wallpaper: (read) => {
+    const q = readQuiz(read(QUIZ_KEY))
+    if (!q.right) return null
+    return join([
+      `named ${q.right} of ${q.asked} wallpaper patterns right`,
+      q.bestRun > 1 && `best run ${q.bestRun} in a row`,
     ])
   },
   pool: (read) => beaten(POOL_LEVELS, readPool(read(POOL_KEY)).record, 'games'),
