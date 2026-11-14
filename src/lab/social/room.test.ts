@@ -164,6 +164,9 @@ describe('a room for two players, with anyone else watching', () => {
       t: 'state' as const,
       seq: 1,
       seats: ['ann', null] as [string, null],
+      mode: 'versus' as const,
+      level: 0,
+      next: 0 as const,
       game: { total: 0, turn: 0 },
     }
     n.do('bo', { t: 'sit', seat: 1 })
@@ -250,6 +253,9 @@ describe('two hosts for a moment', () => {
       t: 'state' as const,
       seq: n.get('dee').seq,
       seats: ['bo', null] as [string, null],
+      mode: 'versus' as const,
+      level: 0,
+      next: 0 as const,
       game: { total: 0, turn: 0 as const },
     }
     n.wire.push({ from: 'cy', body: late })
@@ -273,11 +279,11 @@ describe('when somebody goes', () => {
   it('a missing player pauses the game, and coming back carries on', () => {
     const n = seated()
     n.see(['ann', 'bo']) // cy's tab is gone
-    expect(waitingFor(n.get('bo'))).toBe('cy')
+    expect(waitingFor(n.get('bo'), race)).toBe('cy')
     expect(myTurn(race, n.get('bo'))).toBe(false)
     n.see(['ann', 'bo', 'cy'])
     n.flush()
-    expect(waitingFor(n.get('bo'))).toBeNull()
+    expect(waitingFor(n.get('bo'), race)).toBeNull()
     n.do('cy', { t: 'move', move: 2 })
     n.flush()
     expect(n.get('ann').game.total).toBe(3)
