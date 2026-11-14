@@ -22,13 +22,13 @@
 \ir ../../docs/2026-11-13-feed-hides-browsing.DRAFT.sql
 \echo === applying step 2, card-hides-browsing (#312)
 \ir ../../docs/2026-11-14-card-hides-browsing.DRAFT.sql
-\echo === applying step 3, feed-made-and-comments
-\ir ../../docs/2026-11-14-feed-made-and-comments.DRAFT.sql
-\echo === the step 1 test
+\echo === the step 1 test, before step 3 changes feed_recent again
 \ir feed-hides-browsing.sql
 \echo === the step 2 test
 \ir card-hides-browsing.sql
-\echo === the step 3 test
+\echo === applying step 3 on top, feed-made-and-comments
+\ir ../../docs/2026-11-14-feed-made-and-comments.DRAFT.sql
+\echo === the step 3 test, with steps 1 and 2 applied
 \ir feed-made-and-comments.sql
 \echo === the standing visibility guards, with all three drafts applied
 
