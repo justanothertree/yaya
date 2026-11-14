@@ -309,6 +309,31 @@ describe('the basses', () => {
   })
 })
 
+describe('the tuba, the bass marimba and the FM bass are what their names say', () => {
+  const basses = BASS_VOICES.map((id) => [id, shape(id)] as const)
+
+  it('the tuba swells: the only bass whose filter opens, and it opens at the bottom of the bass', () => {
+    const opening = basses.filter(([, sh]) => sh.filter && sh.filter.to > sh.filter.from)
+    expect(opening.map(([id]) => id)).toEqual(['tuba'])
+    /* E1, the lowest note of a four-string bass: a filter the wave cannot reach sits still */
+    expect(filterSweeps(shape('tuba'), 41.2)).toBe(true)
+  })
+
+  it('the bass marimba is struck: it never sustains, and its overtone is two octaves up', () => {
+    const sh = shape('bassmarimba')
+    expect(sh.s).toBe(0)
+    expect(sh.partials.map((p) => p.ratio)).toContain(4)
+  })
+
+  it('the FM bass has the metallic partial: the only bass with one between two harmonics', () => {
+    const between = basses.filter(([, sh]) =>
+      sh.partials.some((p) => p.ratio > 1 && !Number.isInteger(p.ratio)),
+    )
+    expect(between.map(([id]) => id)).toEqual(['fmbass'])
+    expect(shape('fmbass').wave).toBe('sine')
+  })
+})
+
 describe('the new voices travel', () => {
   const added: InstrumentId[] = [
     'finger',
@@ -323,6 +348,9 @@ describe('the new voices travel', () => {
     'chip',
     'harpsichord',
     'sitar',
+    'tuba',
+    'bassmarimba',
+    'fmbass',
   ]
 
   /* a song, and the jam (which sends a layer as a packed song), read an instrument they do not
