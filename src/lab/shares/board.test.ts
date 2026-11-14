@@ -28,6 +28,7 @@ import * as spades from '../../gpu/spades'
 import * as twentyone from '../../gpu/twentyone'
 import * as ultimate from '../../gpu/ultimate'
 import * as yacht from '../../gpu/yacht'
+import { ONLINE_KEY } from '../social/online'
 import registry from '../../sections/labDemos.tsx?raw'
 
 /* a toy's value as the toy writes it — JSON, under its own key — typed by the toy's own Saved */
@@ -44,6 +45,15 @@ const nothing = () => null
  * that shares them without a win shows too).
  */
 type Case = { id: string; full: Kept; line: string; none: Kept }
+
+const reversiFull = kept<reversi.Saved>(reversi.REVERSI_KEY, {
+  ...reversi.EMPTY,
+  record: {
+    easy: { won: 9, lost: 0, drawn: 0, best: 40 },
+    fair: { won: 4, lost: 1, drawn: 1, best: 22 },
+    hard: { won: 2, lost: 2, drawn: 1, best: 18 },
+  },
+})
 
 const cases: Case[] = [
   {
@@ -627,6 +637,21 @@ describe('board and card toys share their record', () => {
       record: { ...dots.EMPTY.record, hard: { won: 1, lost: 0, drawn: 0, best: 1 } },
     })
     expect(BOARD.dots(at(one))).toBe('won 1 of 1 game against the Hard computer, widest win 1 box')
+  })
+
+  it('reversi adds games won in a call, and shares them even with no win against the computer', () => {
+    const online = JSON.stringify({
+      reversi: { versus: { won: 2, lost: 1, drawn: 0 }, together: { won: 1, lost: 0, drawn: 1 } },
+      chess: { versus: { won: 5, lost: 0, drawn: 0 } },
+    })
+    const both = (k: string) =>
+      k === ONLINE_KEY ? online : k === reversi.REVERSI_KEY ? reversiFull.json : null
+    expect(BOARD.reversi(both)).toBe(
+      'won 2 of 5 games against the Hard computer (1 drawn), widest win 18 discs, beat friends in 2 of 3 online games, won 1 of 2 online games together against the computer (1 drawn)',
+    )
+    expect(BOARD.reversi((k) => (k === ONLINE_KEY ? online : null))).toBe(
+      'beat friends in 2 of 3 online games, won 1 of 2 online games together against the computer (1 drawn)',
+    )
   })
 
   it('shut the box shares a lowest score alone even with no win against the computer', () => {

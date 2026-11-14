@@ -59,6 +59,7 @@ import {
   ULTIMATE_KEY,
 } from '../../gpu/ultimate'
 import { readSaved as readYacht, LEVELS as YACHT_LEVELS, YACHT_KEY } from '../../gpu/yacht'
+import { onlineLine } from '../social/online'
 import type { Reader } from './words'
 
 /** what every toy's tally has in common: wins, and either losses (and draws) or games played */
@@ -178,7 +179,12 @@ export const BOARD: Record<string, Reader> = {
     versus(MANCALA_LEVELS, readMancala(read(MANCALA_KEY)).record, (t) => [widest(t.best, 'seed')]),
   morris: (read) => versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record),
   reversi: (read) =>
-    versus(REVERSI_LEVELS, readReversi(read(REVERSI_KEY)).record, (t) => [widest(t.best, 'disc')]),
+    join(
+      versus(REVERSI_LEVELS, readReversi(read(REVERSI_KEY)).record, (t) => [
+        widest(t.best, 'disc'),
+      ]),
+      onlineLine(read, 'reversi'),
+    ),
   seabattle: (read) =>
     versus(SEA_LEVELS, readSea(read(SEA_KEY)).record, (t) => [quickest(t.fewest, 'shots')]),
   shut: (read) => {
