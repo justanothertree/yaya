@@ -3,11 +3,17 @@ import { myPeerId, onParty, sendParty, voiceSession } from '../../voice/voiceSes
 import { party } from '../../party/party'
 import { usePartyHere } from '../../party/whereEveryone'
 import { labSocial } from './social'
+import { keepOnline } from './online'
 import {
   act,
+  computerTurn,
+  isHost,
   openRoom,
+  outcomeFor,
+  playComputer,
   present,
   receive,
+  waitingFor,
   type Action,
   type Room,
   type Rules,
@@ -25,6 +31,10 @@ import {
  * ⚠️ IT KEEPS THE LAST ROOM WHEN THE CALL GOES, as `last`. Realtime dropping, the gate closing (a
  * stranger joining), or leaving the call all end the room at once, and the toy offers to carry on
  * against the computer from that board rather than throwing the game away.
+ *
+ * Two things every toy gets from here rather than writing its own: the HOST'S BROWSER PLAYS THE
+ * COMPUTER in a together game, after a pause long enough to see whose move it was, and A FINISHED
+ * GAME IS KEPT (online.ts) for each seated player — once, on the move that finished it.
  */
 export type LabRoom<G, M> = {
   live: boolean
@@ -71,11 +81,22 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
   rulesRef.current = rules
   const roomRef = useRef<Room<G> | null>(null)
   const [room, setRoom] = useState<Room<G> | null>(null)
-  const take = useCallback((next: Room<G>, out: Wire[]) => {
-    roomRef.current = next
-    setRoom(next)
-    for (const body of out) sendParty('lab', body)
-  }, [])
+  const take = useCallback(
+    (next: Room<G>, out: Wire[]) => {
+      const prev = roomRef.current
+      roomRef.current = next
+      setRoom(next)
+      for (const body of out) sendParty('lab', body)
+      /* ⚠️ KEPT ON THE MOVE THAT FINISHED IT, NEVER ON SEEING A FINISHED BOARD. Somebody arriving
+         (or coming back) is handed the room as it is, finished game and all; only a state one seq
+         on from a game still going is the end of a game this browser was in. */
+      if (prev && next.seq === prev.seq + 1 && rulesRef.current.turn(prev.game) !== null) {
+        const how = outcomeFor(rulesRef.current, next)
+        if (how) keepOnline(sub, next.mode, how)
+      }
+    },
+    [sub],
+  )
 
   // open a room when it becomes live, listen while it is
   useEffect(() => {
@@ -103,6 +124,21 @@ export function useLabRoom<G, M>(sub: string, rules: Rules<G, M>): LabRoom<G, M>
     const t = window.setInterval(tell, 5000)
     return () => window.clearInterval(t)
   }, [live, ids, take])
+
+  // the host plays the computer, a moment after its turn comes round
+  const due =
+    live && !!room && isHost(room) && computerTurn(rules, room) && !waitingFor(room, rules)
+  const dueAt = due && room ? room.seq : -1
+  useEffect(() => {
+    if (dueAt < 0) return
+    const t = window.setTimeout(() => {
+      const r = roomRef.current
+      if (!r || r.seq !== dueAt) return
+      const s = playComputer(rulesRef.current, r)
+      if (s.room !== r) take(s.room, s.out)
+    }, 700)
+    return () => window.clearTimeout(t)
+  }, [dueAt, take])
 
   const doAct = useCallback(
     (a: Action<M>) => {
