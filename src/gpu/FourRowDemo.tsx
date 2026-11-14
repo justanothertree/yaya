@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   DISC_SETS,
@@ -22,8 +22,12 @@ import {
 } from './fourrow'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { fourRowRules } from './fourrowRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { myTurn, seatOf, waitingFor } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SIZE_NAMES: Record<Size, string> = {
@@ -170,12 +174,46 @@ export function FourRowDemo() {
   savedRef.current = saved
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── the call's room. The host's own size starts each game; the board then travels whole. */
+  const roomRules = useMemo(() => fourRowRules(saved.size, saved.need), [saved.size, saved.need])
+  const lab = useLabRoom('fourrow', roomRules)
+  const room = mode === 'call' ? lab.room : null
+  const mySeat = room ? seatOf(room) : null
+  const waiting = room && lab.live ? waitingFor(room) : null
+  const who = (id: string | null) =>
+    id === null ? 'Empty seat' : room && id === room.me ? 'You' : (lab.names[id] ?? 'A friend')
+  // the board on screen is the room's, whenever it changes
+  useEffect(() => {
+    if (mode !== 'call' || !room) return
+    window.clearTimeout(timer.current)
+    game.current = {
+      ...game.current,
+      g: room.game.g,
+      turn: room.game.turn,
+      you: mySeat === 1 ? 2 : 1,
+      moves: room.game.moves,
+      line: room.game.line,
+      falling: null,
+    }
+    setTick((t) => t + 1)
+  }, [mode, room, mySeat])
+
   const g = game.current
   const nameOf = (w: Who) =>
-    mode === 'bot' ? (w === g.you ? 'You' : 'The computer') : w === 1 ? 'Player 1' : 'Player 2'
+    mode === 'call' && room
+      ? who(room.seats[w - 1])
+      : mode === 'bot'
+        ? w === g.you
+          ? 'You'
+          : 'The computer'
+        : w === 1
+          ? 'Player 1'
+          : 'Player 2'
   const computerTurn = mode === 'bot' && g.turn !== null && g.turn !== g.you && !g.falling
 
   const dropIn = (col: number) => {
+    // in the call the host decides: this asks it, and the board arrives back with everybody's
+    if (mode === 'call') return lab.act({ t: 'move', move: col })
     const gm = game.current
     const who = gm.turn
     if (!who || gm.falling || gm.g.heights[col] >= gm.g.rows) return
@@ -274,8 +312,60 @@ export function FourRowDemo() {
     if (g.moves === 0 || g.turn === null) fresh(mode, s)
   }
   const yours = () => {
+    if (mode === 'call') return lab.live && !!room && myTurn(roomRules, room)
     const gm = game.current
     return gm.turn !== null && !gm.falling && (mode === 'two' || gm.turn === gm.you)
+  }
+  /**
+   * ⚠️ THE GAME IS NEVER LOST TO THE NETWORK. Somebody gone, a stranger joining (the room closes),
+   * Realtime dropping or the call ending: the board you were looking at becomes a game against
+   * the computer, you keeping your colour — or simply a new one if that game was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.turn === null) return fresh('bot')
+    window.clearTimeout(timer.current)
+    game.current = {
+      g: r.game.g,
+      turn: r.game.turn,
+      you: seatOf(r) === 1 ? 2 : 1,
+      level: saved.level,
+      moves: r.game.moves,
+      yourMoves: 0,
+      line: null,
+      falling: null,
+    }
+    setMode('bot')
+    setLine(game.current.turn === game.current.you ? 'Your turn.' : 'The computer is thinking…')
+    bump()
+  }
+  /**
+   * ⚠️ ONLY A PLAYER LEFT ALONE IS OFFERED IT (Evan, 14 Nov): seated, the game still going, and
+   * either the other player gone or the call's game stopped. Somebody who was watching has no game
+   * of theirs to carry on — the opponents above are still there for them to choose.
+   */
+  const leftAlone =
+    !!room &&
+    mySeat !== null &&
+    room.game.turn !== null &&
+    (!lab.live || (waiting !== null && waiting !== room.me))
+  /** what the line under the board says in the call, from the room alone */
+  const callLine = (): string => {
+    if (!room) return 'Joining the call’s game…'
+    if (!lab.live)
+      return leftAlone
+        ? 'The call’s game has stopped — carry on against the computer from here.'
+        : 'The call’s game has stopped.'
+    if (waiting) return `Waiting for ${who(waiting)}…`
+    if (room.seats.includes(null))
+      return mySeat === null
+        ? 'Take a seat to play; anyone else in the call watches.'
+        : 'Waiting for somebody to take the other seat.'
+    if (room.game.turn === null)
+      return room.game.winner
+        ? `🏆 ${who(room.seats[room.game.winner - 1])} ${room.seats[room.game.winner - 1] === room.me ? 'win' : 'wins'}!`
+        : 'The grid is full — a draw.'
+    return myTurn(roomRules, room) ? 'Your turn.' : `${who(room.seats[room.game.turn - 1])}’s turn.`
   }
   const colAt = (e: PointerEvent<HTMLCanvasElement>) => {
     const v = view.current
@@ -314,6 +404,7 @@ export function FourRowDemo() {
   const record = saved.record[saved.level]
   const ink = INK[saved.discs]
   const pending =
+    mode !== 'call' &&
     g.moves > 0 &&
     g.turn !== null &&
     (g.g.cols !== SIZES[saved.size][0] ||
@@ -338,7 +429,39 @@ export function FourRowDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
+        {mode === 'call' && room && lab.live && (
+          <div className="lab-group" role="group" aria-label="Seats">
+            {([0, 1] as const).map((seat) =>
+              room.seats[seat] === null && mySeat === null ? (
+                <button
+                  key={seat}
+                  className="btn btn-ghost"
+                  onClick={() => lab.act({ t: 'sit', seat })}
+                >
+                  <span className="rv-discs">
+                    <span aria-hidden style={{ background: INK[saved.discs][seat] }} />
+                    Sit {seat === 0 ? 'first' : 'second'}
+                  </span>
+                </button>
+              ) : null,
+            )}
+            {mySeat !== null && (
+              <button className="btn btn-ghost" onClick={() => lab.act({ t: 'stand' })}>
+                Stand up
+              </button>
+            )}
+          </div>
+        )}
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
             {LEVELS.map((l) => (
@@ -353,9 +476,24 @@ export function FourRowDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' ? (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        ) : (
+          <>
+            {lab.live && mySeat !== null && (
+              <button className="btn btn-ghost" onClick={() => lab.act({ t: 'new' })}>
+                ↻ New game
+              </button>
+            )}
+            {leftAlone && (
+              <button className="btn" onClick={carryOn}>
+                Carry on against the computer
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       <div className="dice-scores">
@@ -425,7 +563,7 @@ export function FourRowDemo() {
         />
       </div>
       <p className="mc-line" aria-live="polite">
-        {line}
+        {mode === 'call' ? callLine() : line}
       </p>
       {mode === 'bot' && (
         <p className="sun-reading">

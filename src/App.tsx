@@ -1943,7 +1943,7 @@ export default function App() {
       {/* Being here is a property of the person, not of the page — see PresenceBeacon, and the
           call dock directly below for the same argument about a call. Renders nothing. */}
       <PresenceBeacon />
-      <CallDock />
+      <CallDock isAdmin={isAdmin} />
       {/* Over everything, drawing nothing until you turn pointer sharing on — see party.ts for
           why that toggle is off by default and why it does not persist. */}
       <PartyCursors />

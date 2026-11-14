@@ -3,6 +3,7 @@ import { useVoiceSession } from './useVoiceSession'
 import { callWord, callHelp, peerWord, speakingNames } from './callWords'
 import { MicMeter } from './MicMeter'
 import { soundsEnabled, setSoundsEnabled } from './callSounds'
+import type { RoomKind } from './voiceSession'
 
 /**
  * The call strip inside a conversation.
@@ -24,6 +25,7 @@ export function VoiceBar({
   meId,
   myName,
   occupancy,
+  roomKind,
 }: {
   roomId: string
   roomName: string
@@ -31,6 +33,8 @@ export function VoiceBar({
   myName: string
   /** how many are already in this room's call, from voice presence */
   occupancy?: number
+  /** circuit, lounge or dm — said here because the call itself cannot know */
+  roomKind?: RoomKind
 }) {
   const v = useVoiceSession()
   const [showAudio, setShowAudio] = useState(false)
@@ -56,7 +60,7 @@ export function VoiceBar({
         <button
           className="btn"
           disabled={v.joining}
-          onClick={() => void v.join(roomId, roomName, meId, myName, occupancy)}
+          onClick={() => void v.join(roomId, roomName, meId, myName, occupancy, roomKind)}
           title={
             v.inCall
               ? `Leave ${v.roomName} and join this call instead`
