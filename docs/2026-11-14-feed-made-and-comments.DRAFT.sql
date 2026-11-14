@@ -57,8 +57,11 @@
 -- front of its final `return`, and the migration raises, changing nothing, unless that anchor is
 -- found exactly once in a function with one definition.
 --
--- AFTER APPLYING: the trigger has to be added to supabase/baseline/02-triggers.sql, because a
--- regenerated dump does not carry triggers (supabase/baseline/README.md).
+-- AFTER APPLYING: NOT into supabase/baseline/02-triggers.sql yet, though a trigger normally goes
+-- there. CI builds from the 4 Nov dump and then that file (config.toml's sql_paths), and the dump
+-- has neither profile_showcase nor profile_showcase_note(), so the line would fail CI's build. The
+-- trigger lives in this migration's record until the dump is regenerated, and step 3 of
+-- supabase/baseline/README.md (re-run the query in 02-triggers.sql's header) picks it up then.
 --
 -- ROLLBACK: docs/2026-11-14-feed-made-and-comments.ROLLBACK.sql.
 -- TEST:     supabase/tests/feed-made-and-comments.sql, on CI's throwaway database (it rolls back),
