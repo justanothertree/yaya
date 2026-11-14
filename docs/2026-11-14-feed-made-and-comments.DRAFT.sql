@@ -3,8 +3,15 @@
 -- Step 3 of docs/2026-11-13-feed-meaningful-moments.md, as Evan answered it on 13 Nov 2026:
 --   4) "Made" = things the person explicitly publishes; nothing auto.
 --   5) Comments anywhere, with a short text preview.
--- Steps 1 and 2 (#304, #312) are separate drafts. This touches feed_recent on lines step 1 does
--- not, so the two apply in either order; checks.sql knows all four states of that function.
+-- Steps 1 and 2 (#304, #312) went to production on 14 Nov 2026 as feed_hides_browsing and
+-- card_hides_browsing. This touches feed_recent on lines step 1 does not, so it lands on the
+-- function as step 1 left it; checks.sql expects '#304 only' before and both after.
+--
+-- ONE ROW A DAY. Evan's cap of 14 Nov, at most one "made" per person, per kind, per day, is NOT
+-- here: it is oneMadePerDay in src/feed/event.ts. The day has to be the reader's, because the Feed
+-- is drawn under the reader's own days and this function knows no timezone. It is a cap on rows,
+-- not on what may be seen, so the client is the right place for it. This sends each thing still
+-- on a page, so editing one block replaces its row rather than adding one.
 --
 -- WHAT COUNTS AS MADE. The one place a member publishes something they made is their profile
 -- page: a song, a drawing, a pet or a look put on it as a block, at a level above Only me. Keeping

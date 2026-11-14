@@ -37,12 +37,12 @@ export const COMMENT_PLACES: ReadonlySet<string> = new Set<CommentPlace>([
   'guestbook',
 ])
 
-/** What can be made and put on a page: the block types `profile_showcase` accepts. */
-const MADE: Readonly<Record<string, string>> = {
-  song: 'a song',
-  art: 'a drawing',
-  pet: 'a pet',
-  looks: 'a look',
+/** What can be made and put on a page: the block types `profile_showcase` accepts, one and many. */
+const MADE: Readonly<Record<string, readonly [string, string]>> = {
+  song: ['a song', 'songs'],
+  art: ['a drawing', 'drawings'],
+  pet: ['a pet', 'pets'],
+  looks: ['a look', 'looks'],
 }
 export const MADE_KINDS: ReadonlySet<string> = new Set(Object.keys(MADE))
 
@@ -108,6 +108,11 @@ export type FeedEvent = {
   aboutWho?: string | null
   /** whether the workout or the guestbook is yours, so the line can say "your" */
   aboutMine?: boolean
+  /**
+   * Things made only: how many of this kind this person put up that day. The row stands for all
+   * of them — see `oneMadePerDay`, which is the only thing that sets it.
+   */
+  count?: number
   /**
    * Yours.
    *
@@ -177,6 +182,47 @@ export function dayKeyOf(iso: string): string {
 }
 
 /**
+ * At most one "made" row per person, per kind of thing, per day: the newest, carrying how many it
+ * stands for. Every other kind passes through untouched and in the order it came.
+ *
+ * ⚠️ HERE AND NOT IN `feed_recent`, BECAUSE THE DAY IS THE READER'S. The Feed is drawn under the
+ * reader's own calendar days (`dayKeyOf`), and the server knows no timezone: a cap on the
+ * server's day would leave two "Put a drawing" rows under one "Today" for anybody whose midnight
+ * is not the server's. It is a cap on rows, not on what may be seen — every row it folds is one
+ * the server already decided this reader may see.
+ *
+ * ⚠️ WHAT IT IS FOR is several blocks of one kind going up the same day. Editing ONE block is
+ * already a single row: the server shows a version only while it is still on the page, so each
+ * edit replaces the last (supabase/tests/feed-made-and-comments.sql, section E2).
+ */
+export function oneMadePerDay(events: readonly FeedEvent[]): FeedEvent[] {
+  const slot = (e: FeedEvent) => `${e.who}\u0000${e.detail ?? ''}\u0000${dayKeyOf(e.at)}`
+  const newest = new Map<string, FeedEvent>()
+  const many = new Map<string, number>()
+  for (const e of events) {
+    if (e.kind !== 'made') continue
+    const k = slot(e)
+    many.set(k, (many.get(k) ?? 0) + 1)
+    const was = newest.get(k)
+    if (!was) {
+      newest.set(k, e)
+      continue
+    }
+    /* ties go to the smaller key, as mergeEvents orders them, so the row kept is the row that
+       would have been drawn first */
+    const d = Date.parse(e.at) - Date.parse(was.at)
+    if (d > 0 || (d === 0 && eventKey(e) < eventKey(was))) newest.set(k, e)
+  }
+  return events.flatMap((e) => {
+    if (e.kind !== 'made') return [e]
+    const k = slot(e)
+    if (newest.get(k) !== e) return []
+    const n = many.get(k) ?? 1
+    return [n > 1 ? { ...e, count: n } : e]
+  })
+}
+
+/**
  * The feed in day buckets, newest day first, each day's events still newest first.
  *
  * Returns pairs rather than an object: insertion order on an object with date-like string keys
@@ -225,8 +271,12 @@ export function commentParts(e: FeedEvent): { verb: string; noun: string } {
   return { verb: 'Wrote', noun: 'something' }
 }
 
-/** "a song", "a drawing" — what a made thing is called in a sentence */
-export const madeNoun = (detail: string | null): string => MADE[detail ?? ''] ?? 'something'
+/** "a song", "3 drawings" — what a made thing is called in a sentence */
+export function madeNoun(detail: string | null, count = 1): string {
+  const names = MADE[detail ?? '']
+  if (!names) return 'something'
+  return count > 1 ? `${count} ${names[1]}` : names[0]
+}
 
 /**
  * One line for any event in the feed.
@@ -242,7 +292,8 @@ export function feedSentence(e: FeedEvent): string {
     const { verb, noun } = commentParts(e)
     return e.detail ? `${verb} ${noun}: “${e.detail}”` : `${verb} ${noun}`
   }
-  if (e.kind === 'made') return `Put ${madeNoun(e.detail)} on ${e.mine ? 'your' : 'their'} page`
+  if (e.kind === 'made')
+    return `Put ${madeNoun(e.detail, e.count)} on ${e.mine ? 'your' : 'their'} page`
   return activityLine({
     kind: e.kind,
     at: e.at,

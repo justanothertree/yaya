@@ -9,7 +9,9 @@
 -- and it rolls back. NEVER against production: it writes a page, notes, comments and suspensions.
 --
 -- ⚠️ AND THE PROBE MUST REPLAY THE MIGRATIONS APPLIED SINCE THE DUMP FIRST: the Lab's tables
--- (20261109030613_lab_catalog_and_feedback) are newer than the dump CI builds from.
+-- (20261109030613_lab_catalog_and_feedback) are newer than the dump CI builds from, and so are
+-- steps 1 and 2 (20261114121907_feed_hides_browsing, 20261114121930_card_hides_browsing), which
+-- leave feed_recent in the state production has.
 --
 -- WHAT IT ASKS, section by section:
 --   0  the draft is applied: feed_recent carries the new block and is one of the two md5s
@@ -29,6 +31,10 @@
 --   E  publishing: a re-save of the same page announces nothing new; the drawing going to friends
 --      is a new moment; the song going to Only me leaves both Feeds; a block already on a page
 --      before the Feed kept track (first_shown_at null) is never announced
+--   E2 an edit and a second of a kind: editing the drawing replaces its row rather than adding
+--      one, because only a version still on the page is shown; a second drawing on the same page
+--      is its own row, which the server sends and the client folds into one line a day
+--      (oneMadePerDay in src/feed/event.ts, Evan's cap of 14 Nov)
 --   F  a suspended viewer reads no workout comments, as the table's own policy has it
 --   G  the rollback, applied in here and rolled back with everything else: feed_recent returns to
 --      its md5 from before, the new kinds leave the Feed, and the table is gone
@@ -289,6 +295,48 @@ insert into fails select 'publishing: ' || x.what, ''
      pg_temp.has(pg_temp.got('owner_after'), '{"kind": "made", "detail": "song"}')),
     ('a pet from before the Feed kept track was announced',
      pg_temp.has(pg_temp.got('friend_after'), '{"kind": "made", "detail": "pet"}'))
+  ) x(what, bad)
+ where x.bad;
+
+-- ── E2. an edit, and a second of a kind ───────────────────────────────────────────────────────
+/* the drawing as it went up in E, by the md5 the trigger keys it on */
+insert into seen select 'drawing_first', to_jsonb(s.id::text)
+  from public.profile_showcase s
+ where s.owner = (select owner from who) and s.block_type = 'art'
+   and s.config_md5 = md5('{"probe": "a drawing"}'::jsonb::text);
+
+select set_config('request.jwt.claims',
+  json_build_object('sub', (select owner::text from who), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+begin
+  perform public.save_my_profile_blocks('[
+    {"block_type": "guestbook", "size": "medium", "config": {}, "visibility": "friends"},
+    {"block_type": "art", "size": "medium", "config": {"probe": "a drawing, edited"}, "visibility": "friends"},
+    {"block_type": "art", "size": "medium", "config": {"probe": "another drawing"}, "visibility": "friends"},
+    {"block_type": "pet", "size": "small", "config": {"probe": "an old pet"}, "visibility": "friends"}
+  ]'::jsonb);
+exception when others then
+  insert into fails values ('FIXTURE: editing the drawing and adding another raised', sqlerrm);
+end $$;
+reset role;
+select set_config('request.jwt.claims',
+  json_build_object('sub', (select friend::text from who), 'role', 'authenticated')::text, true);
+set local role authenticated;
+insert into seen values
+  ('friend_edited', public.feed_recent(clock_timestamp() - interval '1 day', null, 40, 'you_and_friends'));
+reset role;
+
+insert into fails select 'an edit and a second of a kind: ' || x.what, ''
+  from (values
+    ('the drawing from section E was not found to compare against',
+     pg_temp.got('drawing_first') is null),
+    ('the drawing as it was before the edit still reaches the friend',
+     pg_temp.has(pg_temp.got('friend_edited'),
+                 jsonb_build_object('kind', 'made', 'id', pg_temp.got('drawing_first')))),
+    ('the friend does not get exactly the two drawings now on the page',
+     (select count(*) from jsonb_array_elements(pg_temp.got('friend_edited')) e
+       where e @> '{"kind": "made", "detail": "art"}') <> 2)
   ) x(what, bad)
  where x.bad;
 

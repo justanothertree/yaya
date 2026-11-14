@@ -214,13 +214,32 @@ export function previewFeed(scope: FeedScope = 'all_members'): FeedEvent[] {
       about: 'fluid',
       mine: true,
     },
-    /* made: somebody else's, and yours */
+    /* made: three of somebody else's drawings in one sitting, which the room folds into one row
+       (oneMadePerDay), and one of yours */
     {
       kind: 'made',
       id: 'pv-f-10',
       who: 'quill',
       name: 'Quill',
       at: ago(300),
+      detail: 'art',
+      score: null,
+    },
+    {
+      kind: 'made',
+      id: 'pv-f-12',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(305),
+      detail: 'art',
+      score: null,
+    },
+    {
+      kind: 'made',
+      id: 'pv-f-13',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(320),
       detail: 'art',
       score: null,
     },

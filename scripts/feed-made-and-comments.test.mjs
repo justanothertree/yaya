@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { bodyOf } from './migration-md5.mjs'
 
 /**
  * The feed-made-and-comments draft, asked of the text it will meet, with no database.
@@ -126,6 +127,32 @@ describe('the feed-made-and-comments draft', () => {
     expect(code(DRAFT)).toMatch(
       /insert into public\.profile_showcase \(owner, block_type, config_md5, first_shown_at\)\s+select b\.user_id, b\.block_type, md5\(b\.config::text\), null/,
     )
+  })
+})
+
+describe('the migrations applied since the dump', () => {
+  /**
+   * ⚠️ PRODUCTION IS NOT THE DUMP. Step 1 went live on 14 Nov and rewrote a line of feed_recent, so
+   * the text this draft meets there is the dump plus that record. The probe applies it for real;
+   * this asks the cheaper question every run: that step 1 is still the only migration since the
+   * dump to touch feed_recent, and that it does not touch the lines this draft anchors on. A second
+   * one is a change nobody has checked this draft against, and should turn this red.
+   * 20261105023835 is the first file the dump does not carry (card-hides-browsing.test.mjs proves it).
+   */
+  const FIRST_AFTER = '20261105023835'
+  const files = readdirSync('supabase/migrations').filter(
+    (f) => /^\d{14}_.*\.sql$/.test(f) && f.slice(0, 14) >= FIRST_AFTER,
+  )
+  /* the body, not the file: a note above an applied migration is prose, not a change */
+  const ran = (f) => bodyOf(readFileSync(`supabase/migrations/${f}`, 'utf8'))
+
+  it('changed feed_recent once, in step 1, away from the lines this draft anchors on', () => {
+    const touching = files.filter((f) => ran(f).includes('feed_recent'))
+    expect(touching).toEqual(['20261114121907_feed_hides_browsing.sql'])
+    const lines = OLD.split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+    for (const l of lines) expect(ran(touching[0]).includes(l), l).toBe(false)
   })
 })
 

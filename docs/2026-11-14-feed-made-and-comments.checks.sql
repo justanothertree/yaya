@@ -4,21 +4,30 @@
 -- it cannot write. Run the whole file in the Supabase SQL editor, or with psql. Each block says
 -- what it expects; if any answer differs, stop and do not apply the draft.
 --
--- feed_recent is also changed by step 1 (docs/2026-11-13-feed-hides-browsing.DRAFT.sql, #304), on
--- different lines, so it can be in four states. The md5 is of its body as stored (`prosrc`),
--- computed from the 4 Nov dump CI builds from (no migration since has touched it) and asserted
--- inside CI's own database by supabase/tests/feed-made-and-comments.sql:
+-- feed_recent is also changed by step 1 (#304), on different lines, so it can be in four states.
+-- STEP 1 IS LIVE: production applied it on 14 Nov 2026 as
+-- supabase/migrations/20261114121907_feed_hides_browsing.sql, and #304's own check A read
+-- 'the draft is already applied' straight after. So the state to expect now is '#304 only', and
+-- 'as before the draft' means step 1 has been rolled back since: stop and ask before anything.
+-- The md5 is of the body as stored (`prosrc`): 'neither' is the 4 Nov dump CI builds from, '#304
+-- only' is that dump with the recorded migration's substitution, and the last two add this draft's.
+-- CI's own database asserts them by supabase/tests/feed-made-and-comments.sql, after replaying
+-- every migration since the dump, those two records included:
 --
 --   neither draft          d89d80e09622db1b406ec17168fbaeff
---   step 1 (#304) only     f2841a1db68556e37e984a90721570cb
+--   step 1 (#304) only     f2841a1db68556e37e984a90721570cb   <- production since 14 Nov
 --   this draft only        b38af65c0778b022aaad41b33211a910
---   both                   b919de6d50d05ec301289bf2377419d8
+--   both                   b919de6d50d05ec301289bf2377419d8   <- production after this draft
+--
+-- Evan's cap on things made (one per person, per kind, per day, 14 Nov) is NOT in this SQL and
+-- nothing here checks it. It is the client's, oneMadePerDay in src/feed/event.ts, because the day
+-- is the reader's and the server knows no timezone; the server sends each version still on a page.
 
 begin transaction read only;
 
 -- ── A. Before applying: feed_recent is a state the draft expects, and nothing it adds exists ──
--- Expect one row: definitions = 1, anchor_found = 1, and state 'as before the draft' or
--- '#304 only'. Then expect the second query to return no rows at all.
+-- Expect one row: definitions = 1, anchor_found = 1, and state '#304 only'. Then expect the
+-- second query to return no rows at all.
 select p.proname,
        count(*) over () as definitions,
        (length(p.prosrc) - length(replace(p.prosrc, E'\n  return coalesce((\n    select jsonb_agg(q.e order by (q.e->>''at'')::timestamptz desc)\n', '')))
@@ -77,8 +86,8 @@ select 'guestbook', count(*), count(distinct n.author_user_id)
  where n.created_at > clock_timestamp() - interval '14 days';
 
 -- ── C. After applying (or after the rollback) ─────────────────────────────────────────────────
--- Run block A again. After the draft: state 'the draft is already applied' (or '... and #304'),
--- and the second query lists four objects. After the rollback: as before, and none.
+-- Run block A again. After the draft: state 'the draft and #304 are applied', and the second
+-- query lists four objects. After the rollback: '#304 only', and none.
 -- Then: nothing new is reachable by anon or authenticated. Expect every column false.
 select 'profile_showcase' as object,
        has_table_privilege('anon', to_regclass('public.profile_showcase')::oid,

@@ -11,7 +11,7 @@
 -- "before the Feed kept track".
 --
 -- Afterwards, check A of docs/2026-11-14-feed-made-and-comments.checks.sql should read
--- 'as before the draft' (or '#304 only', if step 1 is applied) and show no new objects.
+-- '#304 only' (step 1 has been live since 14 Nov) and show no new objects.
 
 do $rollback$
 declare

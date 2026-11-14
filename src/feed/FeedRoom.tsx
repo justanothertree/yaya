@@ -6,6 +6,7 @@ import {
   groupByDay,
   madeNoun,
   mergeEvents,
+  oneMadePerDay,
   FEED_SCOPES,
   type FeedEvent,
   type FeedKind,
@@ -122,7 +123,7 @@ function What({ e }: { e: FeedEvent }) {
     return (
       <span className="feed-what">
         <span className="muted feed-verb">Put</span>
-        <span className="feed-noun">{madeNoun(e.detail)}</span>
+        <span className="feed-noun">{madeNoun(e.detail, e.count)}</span>
         {/* the thing is on their page, so "their page" is the way to it */}
         <a className="muted feed-sub" href={pageOf(e.who)}>
           on {e.mine ? 'your' : 'their'} page
@@ -178,8 +179,9 @@ export function FeedRoom({ authed }: { authed: boolean }) {
       const rows = await fetchFeed(from.toISOString(), to.toISOString(), 40, scope)
       if (run !== live.current) return
       /* merged even though the server already ordered them: the client is what holds the
-         previous window, and a refresh that overlaps is the normal case rather than a fault */
-      setEvents(mergeEvents(rows))
+         previous window, and a refresh that overlaps is the normal case rather than a fault.
+         Then one "made" row per person, kind and day, on the reader's own days. */
+      setEvents(oneMadePerDay(mergeEvents(rows)))
       setFailed(false)
     } catch {
       if (run !== live.current) return

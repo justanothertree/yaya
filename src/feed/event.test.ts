@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   dayKeyOf,
   eventKey,
   feedSentence,
   groupByDay,
   mergeEvents,
+  oneMadePerDay,
   FEED_SCOPES,
   type FeedEvent,
   type FeedKind,
@@ -276,5 +277,100 @@ describe('a comment and a thing made, in words', () => {
     expect(made('song', true)).toBe('Put a song on your page')
     expect(made('pet')).toBe('Put a pet on their page')
     expect(made('looks')).toBe('Put a look on their page')
+  })
+})
+
+/**
+ * One "made" row per person, per kind, per day: Evan's cap of 14 Nov 2026 on step 3.
+ *
+ * ⚠️ WRITTEN FROM WHAT HAPPENED, NOT FROM THE FUNCTION'S SUM: three drawings went up, so the row
+ * says three, and it is the last of them, because that is the one somebody would find on the
+ * page. Each expectation is a sentence a reader would see, or the id of the row they would see.
+ */
+describe('one thing made per person, kind and day', () => {
+  const made = (id: string, at: string, p: Partial<FeedEvent> = {}) =>
+    ev({ kind: 'made', id, at, detail: 'art', ...p })
+
+  it('folds three drawings put up on one day into the newest, which says three', () => {
+    const rows = oneMadePerDay(
+      mergeEvents([
+        made('m1', local(2026, 11, 14, 9, 0)),
+        made('m2', local(2026, 11, 14, 13, 0)),
+        made('m3', local(2026, 11, 14, 21, 30)),
+      ]),
+    )
+    expect(rows.map((e) => e.id)).toEqual(['m3'])
+    expect(feedSentence(rows[0])).toBe('Put 3 drawings on their page')
+  })
+
+  it('says one thing in the singular, and counts nothing', () => {
+    const rows = oneMadePerDay([made('m1', local(2026, 11, 14, 9, 0))])
+    expect(rows[0].count).toBeUndefined()
+    expect(feedSentence(rows[0])).toBe('Put a drawing on their page')
+  })
+
+  it('keeps a row for each kind of thing and for each person', () => {
+    const at = local(2026, 11, 14, 9, 0)
+    const rows = oneMadePerDay([
+      made('a', at),
+      made('b', at, { detail: 'song' }),
+      made('c', at, { who: 'quill', name: 'Quill' }),
+    ])
+    expect(rows.map((e) => [e.id, feedSentence(e)])).toEqual([
+      ['a', 'Put a drawing on their page'],
+      ['b', 'Put a song on their page'],
+      ['c', 'Put a drawing on their page'],
+    ])
+  })
+
+  it('starts again after midnight', () => {
+    const rows = oneMadePerDay(
+      mergeEvents([
+        made('late', local(2026, 11, 14, 23, 50)),
+        made('early', local(2026, 11, 15, 0, 10)),
+      ]),
+    )
+    expect(rows.map((e) => e.id)).toEqual(['early', 'late'])
+  })
+
+  /**
+   * ⚠️ THE DAY IS THE READER'S, which is the reason this lives in the client at all. On a UTC
+   * runner local and UTC days agree and this could not fail, so it is asked in New York: 6pm and
+   * 9pm on the 14th there are the 14th and the 15th in UTC. The premise is checked with a string
+   * slice, which shares no arithmetic with `dayKeyOf`.
+   */
+  it("counts the reader's own day, not the server's", () => {
+    vi.stubEnv('TZ', 'America/New_York')
+    try {
+      const evening = local(2026, 11, 14, 18, 0)
+      const night = local(2026, 11, 14, 21, 0)
+      expect(evening.slice(0, 10)).not.toBe(night.slice(0, 10))
+      const rows = oneMadePerDay(mergeEvents([made('a', evening), made('b', night)]))
+      expect(rows.map((e) => [e.id, e.count])).toEqual([['b', 2]])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('leaves every other kind where it was', () => {
+    const rows = oneMadePerDay(
+      mergeEvents([
+        made('m1', local(2026, 11, 14, 9, 0)),
+        ev({ kind: 'comment', id: 'c1', at: local(2026, 11, 14, 10, 0), on: 'lab' }),
+        made('m2', local(2026, 11, 14, 11, 0)),
+        ev({ kind: 'rating', id: 'r1', at: local(2026, 11, 14, 12, 0) }),
+      ]),
+    )
+    expect(rows.map((e) => e.id)).toEqual(['r1', 'm2', 'c1'])
+  })
+
+  it('names every kind in the plural', () => {
+    const at = local(2026, 11, 14, 9, 0)
+    const many = (detail: string, mine = false) =>
+      feedSentence(ev({ kind: 'made', id: 'm', at, detail, mine, count: 2 }))
+    expect(many('song', true)).toBe('Put 2 songs on your page')
+    expect(many('art')).toBe('Put 2 drawings on their page')
+    expect(many('pet')).toBe('Put 2 pets on their page')
+    expect(many('looks')).toBe('Put 2 looks on their page')
   })
 })
