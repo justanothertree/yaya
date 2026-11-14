@@ -1356,6 +1356,15 @@ The release record's line that CI "built a database from main's migrations" was 
 way. It is corrected on draft #112, and the release's conclusion stands, because its "same as
 production" checks were measured against production itself.
 
+✅ **21a AND 21b ANSWERED BY EVAN, 10 Nov 2026:** _"For 21a and 21b, write a short production fix
+plan (exact SQL, checks, rollback) on a draft and stop for my approval; apply nothing."_ The plan is
+`docs/2026-11-10-chronicle-21ab-fix-plan.md`, proven in CI on the dump plus the release. **Nothing is
+applied** until Evan approves it. 21c is not answered.
+
+**Combined, 10 Nov 2026:** Evan asked for the production plans to be held and approved once, so
+21a and 21b go with the three refusal plans into `docs/2026-11-10-chronicle-server-batch-plan.md`,
+one apply order with one check before and one after. Still nothing applied.
+
 ## 22. What the overnight layout sweep left for a decision (10 Nov 2026)
 
 The sweep covered every Chronicle and Circuit screen it could reach through the preview stand-ins:
@@ -1378,3 +1387,7 @@ the sweep could not reach them:
 | 22a | With a mouse, the Circuit's edit controls are under the 24px target floor (WCAG 2.5.8): an exercise's ✎ is 23×17, a column's 🗑 18×16, the Board's log-today ＋ 19×20, and the column-rename box 14px tall. They are small on purpose, so the sheet stays quiet. Touch screens are covered by #127. Raise them to 24 on desktop? | Yes, to 24 and no further: the smallest change that meets the floor, and the sheet stays compact                                                                                                                                                 | nothing |
 | 22b | `.sr-only` loses to any container rule that sizes inputs, because a class plus an element beats a class alone. That is how two hidden photo pickers made a dialog scroll sideways (#117 fixes that one place). Make `.sr-only` win everywhere with `!important`?                                                                 | Yes: a visually hidden element has no business being sized by anything. It is a global utility, so it touches the Lab and the Instrument too, which is why it is asked and not done                                                              | nothing |
 | 22c | Give the feed's comments and reactions, and the Circuits panel's list, a preview stand-in, the way `circuitPreview.ts` covers the board, so the pane can reach them?                                                                                                                                                             | Yes for comments and reactions: two tables, each read, added to and deleted from, plus the user id, and #128 shipped on a seeded copy only because there was none. The Circuits panel is nine server functions, so later, and only if it changes | nothing |
+
+✅ **ANSWERED BY EVAN, 10 Nov 2026:** _"22a yes, raise them to 24px on a new draft. 22b no. 22c no,
+I test live."_ 22a is built on its own draft. 22b and 22c are closed: `.sr-only` stays as it is, and
+no stand-in is built for the feed's comments and reactions or the Circuits panel's list.
