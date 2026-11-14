@@ -31,7 +31,7 @@ type Props<G, M> = {
   levelNames?: Record<string, string>
   /** what "together" means on this toy, for the button and the line */
   together?: string
-  /** the toy's own words for a finished game: "34 to 30" */
+  /** the toy's own words after a finished game's result, punctuation and all: ", 34 to 30" */
   score?: (g: G) => string | null
   /** what the line says while either seat may move at any time */
   anyTime?: string
@@ -68,7 +68,7 @@ export function CallTable<G, M>(p: Props<G, M>) {
     if (rules.turn(room.game) === null) {
       const r = rules.result?.(room.game) ?? null
       const score = p.score?.(room.game)
-      const tail = score ? `, ${score}` : ''
+      const tail = score ?? ''
       if (r === 'draw') return `A draw${tail}.`
       if (r === null) return 'Game over.'
       if (room.mode === 'together') {

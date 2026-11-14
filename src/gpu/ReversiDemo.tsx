@@ -499,7 +499,7 @@ export function ReversiDemo() {
           levelNames={LEVEL_NAMES}
           score={(gm) => {
             const [dd, ll] = count(gm.b)
-            return `${Math.max(dd, ll)} to ${Math.min(dd, ll)}`
+            return `, ${Math.max(dd, ll)} to ${Math.min(dd, ll)}`
           }}
           onCarryOn={carryOn}
         />
