@@ -6,19 +6,27 @@ import {
   FIRST_TO,
   H,
   W,
+  GUST_KEY,
+  LEVELS,
+  LEVEL_SPEED,
   brain,
   breathe,
+  easier,
   goal,
   kickoff,
   newMatch,
+  readSaved,
   rinkFit,
+  scored,
   steer,
   type Fan,
+  type Level,
   type Match,
   type Puck,
   type V2,
 } from './gust'
 import { DT, createGust, type GustView } from './gustEngine'
+import { useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -27,10 +35,8 @@ type Props = {
 }
 
 type Mode = 'computer' | 'friend'
-/** how fast the computer's fan moves, as a share of a player's */
-const LEVELS = { gentle: 0.55, keen: 0.8, sharp: 1 } as const
-type Level = keyof typeof LEVELS
 const NAMES = ['Blue', 'Orange'] as const
+const title = (l: string) => l[0].toUpperCase() + l.slice(1)
 
 /** the keys each player holds: a direction each, and a blow */
 const KEYS: Record<string, [number, 'up' | 'down' | 'left' | 'right' | 'blow']> = {
@@ -61,7 +67,14 @@ const toRink = (e: PointerEvent<HTMLCanvasElement>): V2 => {
 export function GustDemo({ running, setRunning, onAdapter }: Props) {
   const [live, setLive] = useState(false)
   const [mode, setMode] = useState<Mode>('computer')
-  const [level, setLevel] = useState<Level>('keen')
+  const [saved, setSaved] = useKept(GUST_KEY, readSaved)
+  const level = saved.level
+  /** the easiest level this match has been played at: what a finish against the computer counts at */
+  const playedAt = useRef<Level>(level)
+  const setLevel = (l: Level) => {
+    setSaved((s) => ({ ...s, level: l }))
+    playedAt.current = easier(playedAt.current, l)
+  }
   const [sound, setSound] = useState(true)
   const [score, setScore] = useState<{ s: [number, number]; winner: number; kick: boolean }>({
     s: [0, 0],
@@ -108,6 +121,7 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
 
   const fresh = () => {
     match.current = newMatch()
+    playedAt.current = now.current.level
     fans.current = startFans()
     puck.current = kickoff(-1)
     engine.current?.calm()
@@ -136,6 +150,7 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
   const sideOf = (at: V2) => (now.current.mode === 'computer' ? 0 : at[0] < W / 2 ? 0 : 1)
 
   const s = score.s
+  const record = saved.record[level]
   return (
     <div
       className="lab-keys"
@@ -178,7 +193,7 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
                   let blow = false
                   if (side === 1 && md === 'computer') {
                     const want = brain(puck.current, fan)
-                    steer(fan, 1, want.at, dt, FAN_SPEED * LEVELS[lv])
+                    steer(fan, 1, want.at, dt, FAN_SPEED * LEVEL_SPEED[lv])
                     breathe(fan, want.blow && m.winner < 0, dt)
                     continue
                   }
@@ -213,6 +228,11 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
                 setScore({ s: [...mm.score], winner: mm.winner, kick: true })
                 const scorer = n.into === 0 ? 1 : 0
                 const root = scorer === 0 ? 72 : 67
+                if (mm.winner >= 0 && now.current.mode === 'computer') {
+                  const at = playedAt.current
+                  const final: [number, number] = [mm.score[0], mm.score[1]]
+                  setSaved((x) => scored(x, at, final))
+                }
                 if (mm.winner >= 0) [0, 4, 7, 12].forEach((k, i) => play(root + k, 500, i * 120))
                 else [0, 7].forEach((k, i) => play(root + k, 300, i * 90))
               })
@@ -291,14 +311,14 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
           </div>
           {mode === 'computer' && (
             <div className="lab-group" role="group" aria-label="How quick the computer is">
-              {(Object.keys(LEVELS) as Level[]).map((l) => (
+              {LEVELS.map((l) => (
                 <button
                   key={l}
                   className="btn btn-ghost"
                   aria-pressed={level === l}
                   onClick={() => setLevel(l)}
                 >
-                  {l[0].toUpperCase() + l.slice(1)}
+                  {title(l)}
                 </button>
               ))}
             </div>
@@ -311,6 +331,14 @@ export function GustDemo({ running, setRunning, onAdapter }: Props) {
             {sound ? '🔔 Sound' : '🔕 Muted'}
           </button>
         </div>
+      )}
+      {live && mode === 'computer' && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {title(level)}: won {record.won}, lost {record.lost}
+            {record.shutouts > 0 && <> · {record.shutouts} without letting one in</>}
+          </span>
+        </p>
       )}
       {live && (
         <p className="lab-hint muted">

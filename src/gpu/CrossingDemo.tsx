@@ -3,6 +3,8 @@ import { noteOff, noteOn } from '../audio/synth'
 import { Holds, keySource } from './holds'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
+  type Best,
   COURSES,
   CROSSING_KEY,
   HULL,
@@ -31,28 +33,12 @@ const SPAN = 18
 const SWING = 1.8
 const WIDEN = 0.8
 
-type Best = Record<string, number>
-const load = (): { course: number; best: Best } => {
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const v = JSON.parse(localStorage.getItem(CROSSING_KEY) ?? 'null') as {
-      course?: unknown
-      best?: Record<string, unknown>
-    } | null
-    const course =
-      typeof v?.course === 'number' &&
-      Number.isInteger(v.course) &&
-      v.course >= 0 &&
-      v.course < COURSES.length
-        ? v.course
-        : 0
-    const best: Best = {}
-    for (const c of COURSES) {
-      const t = v?.best?.[c.name]
-      if (typeof t === 'number' && Number.isFinite(t) && t > 0) best[c.name] = t
-    }
-    return { course, best }
+    return readSaved(localStorage.getItem(CROSSING_KEY))
   } catch {
-    return { course: 0, best: {} }
+    return readSaved(null)
   }
 }
 

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { noteOff, noteOn } from '../audio/synth'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
+  type Best,
   ACES,
   BALL_R,
   HOLES,
@@ -26,31 +28,14 @@ type Props = {
   onAdapter: (adapter: GPUAdapter, format: GPUTextureFormat) => void
 }
 
-type Best = Record<string, { strokes: number; space: SpaceId }>
 type Phase = 'aim' | 'rolling' | 'in'
 
-const load = (): { hole: number; best: Best } => {
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const v = JSON.parse(localStorage.getItem(MOBIUS_KEY) ?? 'null') as {
-      hole?: unknown
-      best?: Record<string, { strokes?: unknown; space?: unknown }>
-    } | null
-    const hole =
-      typeof v?.hole === 'number' &&
-      Number.isInteger(v.hole) &&
-      v.hole >= 0 &&
-      v.hole < HOLES.length
-        ? v.hole
-        : 0
-    const best: Best = {}
-    for (const h of HOLES) {
-      const b = v?.best?.[h.name]
-      if (b && Number.isInteger(b.strokes) && typeof b.space === 'string' && b.space in SPACES)
-        best[h.name] = { strokes: b.strokes as number, space: b.space as SpaceId }
-    }
-    return { hole, best }
+    return readSaved(localStorage.getItem(MOBIUS_KEY))
   } catch {
-    return { hole: 0, best: {} }
+    return readSaved(null)
   }
 }
 

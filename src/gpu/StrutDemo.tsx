@@ -19,12 +19,15 @@ import {
   MAX_MUSCLES,
   STEPS,
   STRUTS,
+  STRUT_BEST_KEY,
   STRUT_KEY,
   VOICES,
   drums,
+  fewestBars,
   hueOf,
   middleOf,
   notes,
+  readBest,
   readStrut,
   splatsFor,
   trailFor,
@@ -37,6 +40,7 @@ import {
   type Voice,
 } from './strut'
 import { createStrut, type StrutView } from './strutEngine'
+import { useKept } from './kept'
 
 type Props = {
   running: boolean
@@ -101,6 +105,7 @@ export function StrutDemo({ running, setRunning, onAdapter }: Props) {
   const [step, setStep] = useState(0)
   const [walked, setWalked] = useState(0)
   const [finished, setFinished] = useState<number | null>(null)
+  const [best, setBest] = useKept(STRUT_BEST_KEY, readBest)
   const [note, setNote] = useState<string | null>(null)
   const now = useRef({ body, pattern, editing, sound, running })
   now.current = { body, pattern, editing, sound, running }
@@ -112,6 +117,11 @@ export function StrutDemo({ running, setRunning, onAdapter }: Props) {
   const why =
     problem(body) ??
     (muscles(body) > MAX_MUSCLES ? `This toy plays ${MAX_MUSCLES} muscles at most.` : null)
+
+  /* a walk that reaches the flag is a result: the fewest bars is kept */
+  useEffect(() => {
+    if (finished !== null) setBest((b) => fewestBars(b, finished))
+  }, [finished, setBest])
 
   /* the creation is kept in this browser as it changes */
   useEffect(() => {
@@ -325,6 +335,7 @@ export function StrutDemo({ running, setRunning, onAdapter }: Props) {
             {finished !== null
               ? `🏁 the flag in ${finished.toFixed(1)} bars`
               : `${Math.max(0, walked).toFixed(1)} / ${FINISH} m`}
+            {best !== null && ` · best ${best.toFixed(1)} bars`}
           </span>
           <button
             className="btn btn-ghost"
