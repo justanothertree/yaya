@@ -133,17 +133,19 @@ applied. The table above still marks the timed sittings as "ask"; answer 1 makes
 
 ## Progress, 14 Nov 2026
 
-Every step is a draft PR: nothing applied, nothing merged.
+Steps 1 and 2 are live. Step 3 is a draft PR, and nothing of it has run against production.
 
-| Step | PR   | What it does                                                                                                          |
-| ---- | ---- | --------------------------------------------------------------------------------------------------------------------- |
-| 1    | #304 | browsing leaves the Feed and friends' Chronicle Friends tab                                                           |
-| 2    | #312 | browsing leaves a profile's Chronicle card for everyone but its owner, and leaves the Sharing panel                   |
-| 3    | #317 | the Feed shows things made (a song, drawing, pet or look put on your page) and comments, with an 80-character preview |
+| Step | PR   | State                                    | What it does                                                                                                          |
+| ---- | ---- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 1    | #304 | applied as `feed_hides_browsing`, merged | browsing leaves the Feed and friends' Chronicle Friends tab                                                           |
+| 2    | #312 | applied as `card_hides_browsing`, merged | browsing leaves a profile's Chronicle card for everyone but its owner, and leaves the Sharing panel                   |
+| 3    | #317 | draft                                    | the Feed shows things made (a song, drawing, pet or look put on your page) and comments, with an 80-character preview |
 
 All three were applied together on a throwaway copy of production's schema and tested as three
-seeded members. Still to come: Snake bests only (answer 3), profile edits once a day (answer 7),
-and Lab results after the score-share work (answer 6).
+seeded members. Steps 1 and 2 then went to production on 14 Nov, one after the other; their records
+are `supabase/migrations/20261114121907_feed_hides_browsing.sql` and
+`20261114121930_card_hides_browsing.sql`. Still to come: Snake bests only (answer 3), profile edits
+once a day (answer 7), and Lab results (answer 6), now that the score-share work has landed in #309.
 
 Answer 4 shaped step 3. The one place a member explicitly publishes something they made is their
 profile page, so "made" is the first time a song, drawing, pet or look reaches a page above Only
