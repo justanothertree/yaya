@@ -3,6 +3,10 @@
 **A proposal. Nothing in the app has changed.** The mockups are a static page beside the app. No code
 changes until Evan approves.
 
+**Decided 14 Nov 2026:** Evan answered the five questions (see [Decisions](#decisions)). The mockups
+already show all five answers, so none of the screenshots changed. The layout as a whole waits for
+him to look at them.
+
 The brief, from Evan: group the keyboard, sound, volume, song and vocal controls into fewer, clearer
 panels, with advanced options tucked away. Lose no function. Count the controls visible on each
 screen before and after.
@@ -105,6 +109,11 @@ Opening a panel, on a phone with the song loaded:
 
 ### 3. Four tools under the song, one open at a time
 
+A closed tool stays mounted, only hidden. A take being recorded and a line being sung both stop
+when their panel unmounts (`useTakes` and `SingPanel` each clean up on unmount, on purpose), so
+switching from 🎤 Voice to 🎚 Mix would end them. Hidden rather than unmounted, one-at-a-time
+loses nothing: you can open Mix while a take records or the voice sings.
+
 11. **🥁 Beats** is today's 🥁 Beats & chords panel, unchanged.
 12. **🎚 Mix** puts every volume in one place: your keys, then each part's volume and mute (and each
     take's, when there are takes). Today they are in three places: the bar, each part's row and the
@@ -172,13 +181,22 @@ is room, and the whole song fits on one 1440×900 screen.
 | <img src="2026-11-14-instrument-layout/before-desktop.jpg" width="400" alt="Desktop today">           | <img src="2026-11-14-instrument-layout/after-desktop.jpg" width="400" alt="Desktop mockup">           |
 | <img src="2026-11-14-instrument-layout/before-desktop-song.jpg" width="400" alt="Desktop song today"> | <img src="2026-11-14-instrument-layout/after-desktop-song.jpg" width="400" alt="Desktop song mockup"> |
 
-## Questions for Evan
+## Decisions
 
-1. **Drop Octave − and + from the bar,** now that the strip under the keys sets the same octave?
-2. **One tool open at a time** (Beats, Mix, Voice, Songs), or several open at once as today?
-3. **Speed, length and snap behind one button** that shows all three, or BPM always in view?
-4. **⬇ Keep song inside 📁 Songs,** one more tap to save, or still on screen by itself?
-5. **A part's volume only in Mix and its ⋯ on a phone,** with the slider on the row on a desktop?
+Evan decided 1 and 4. For 2, 3 and 5 he took the recommendation, on the condition that none of them
+loses a function. Each was checked against the room's code for that.
+
+1. **Octave − and + leave the bar.** Yes, Evan's call. Nothing is lost: the strip under the keys
+   sets the same octave, "Octave 4" is printed beside it, and − and = still move it on a computer.
+2. **One tool open at a time:** yes, on the condition above that a closed tool stays mounted.
+   Unmounting would stop a take mid-recording and a line mid-song, which would be a lost function.
+3. **Speed, length and snap behind one button:** yes. The button's face reads all three
+   ("104 BPM · 2 bars · snap off ▾"), so BPM is still in view, and the sheet holds every control
+   the toolbar has today (BPM, Bars, and Snap Off, 1/4, 1/8, 1/16).
+4. **⬇ Keep song inside 📁 Songs.** Yes, Evan's call. One more tap to save, beside the songs it
+   joins.
+5. **A part's volume in 🎚 Mix and its ⋯ on a phone,** and on its row on a desktop: yes. Every
+   part's volume and mute is in Mix together, so nothing is lost; on a phone it is one tap further.
 
 ## What building it would take
 
