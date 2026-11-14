@@ -98,9 +98,17 @@ export function useSittingEditor({
   const [entFrom, setEntFrom] = useState('')
   const [entTo, setEntTo] = useState('')
 
-  const fixStart = fixEnt ? (log.find((e) => e.id === fixEnt)?.start ?? null) : null
+  /**
+   * ⚠️ THE SITTING ON SCREEN, BY EITHER DOOR. These used to read `fixEnt` alone, which is the ✎
+   * door — so the dialog a Stop opens loaded no sets, and its Save returned at its first line and
+   * did nothing at all: a rating picked after Stop and saved was a rating never written. Measured
+   * in the pane before #298's build: "good", Save, and the dialog sat there; Done closed it and the
+   * row came back unrated.
+   */
+  const showing = fixEnt ?? justDid
+  const fixStart = showing ? (log.find((e) => e.id === showing)?.start ?? null) : null
   useEffect(() => {
-    if (!fixEnt || !fixStart) {
+    if (!showing || !fixStart) {
       setEntSets([])
       return
     }
@@ -111,12 +119,12 @@ export function useSittingEditor({
     next.setDate(next.getDate() + 1)
     void (async () => {
       const got = await setsBetween(day, dayOfStart(next.toISOString()))
-      if (!dead) setEntSets(got.filter((x) => x.entry === fixEnt))
+      if (!dead) setEntSets(got.filter((x) => x.entry === showing))
     })()
     return () => {
       dead = true
     }
-  }, [fixEnt, fixStart])
+  }, [showing, fixStart])
 
   /**
    * ⚠️ THE DIALOG HAS TWO DOORS AND ONLY ONE OF THEM FILLED IT IN. ✎ seeds the fields in its own
@@ -178,15 +186,21 @@ export function useSittingEditor({
    * entry arrives in the list; leaving the text in the box as well would show it twice for as
    * long as the fetch took, which reads as having added it twice.
    */
-  const addJournal = async (entry: string) => {
+  /* ⚠️ it answers whether the words were kept, so the one Done after a Stop can refuse to close
+     over a note the server refused — see `done` in SittingDialog */
+  const addJournal = async (entry: string): Promise<boolean> => {
     const body = entNote.trim()
-    if (!body || busy) return
+    if (!body || busy) return false
     setBusy(true)
     const bad = await addNote(entry, body)
     setBusy(false)
-    if (bad) return moan(bad.why)
+    if (bad) {
+      moan(bad.why)
+      return false
+    }
     setEntNote('')
     await after()
+    return true
   }
 
   /**
@@ -195,6 +209,8 @@ export function useSittingEditor({
    * is right rather than the UTC trap, because the string genuinely has no zone in it.
    */
   const saveEnt = async (metric?: string | null) => {
+    /* ⚠️ either door — see `showing` above, which is the bug this line used to be */
+    const fixEnt = showing
     if (!fixEnt || !entFrom || busy) return
     /**
      * ⚠️ THE ONE STILL GOING TAKES A DIFFERENT CALL, because it has no end to send and nothing
@@ -215,6 +231,7 @@ export function useSittingEditor({
       setBusy(false)
       if (no) return moan(no.why)
       setFixEnt(null)
+      setJustDid(null)
       await after()
       return
     }
@@ -320,6 +337,7 @@ export function useSittingEditor({
     setBusy(false)
     if (bad) return moan(bad.why)
     setFixEnt(null)
+    setJustDid(null)
     await after()
     /* after the reload, so the row beside the message already shows what did save */
     if (partly) moan(partly)
