@@ -347,7 +347,7 @@ export function fitSyllables(
       const s = syls[k]
       if (!s.hold) {
         last = s.text
-        sung.push({ ...n, text: s.text, hold: false })
+        sung.push({ ...n, text: s.text, hold: false, whole: s.whole })
         return
       }
     }

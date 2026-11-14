@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { VOWELS, assignSyllables, splitLyrics } from './lyrics'
+import { GLIDES, VOWELS, assignSyllables, splitLyrics } from './lyrics'
 import {
   PRESETS,
   chopGates,
-  consonantLength,
+  onsetLength,
   crushCurve,
   doublePhrase,
   hz,
   planLine,
   planPhrases,
+  type Burst,
   type Phrase,
   type SingOpts,
   type Step,
@@ -70,7 +71,7 @@ describe('words land on the beat', () => {
     const ev = planLine(sung('one sky two three'), 10, opts())
     const sky = ev[1]
     expect(sky.vowelAt).toBeCloseTo(10.5)
-    expect(sky.from).toBeCloseTo(10.5 - consonantLength(sky.phones.onset))
+    expect(sky.from).toBeCloseTo(10.5 - onsetLength(sky.phones.onsets))
     expect(sky.from).toBeLessThan(sky.vowelAt)
   })
 
@@ -82,7 +83,7 @@ describe('words land on the beat', () => {
   it('with time in hand before the line, its first consonant comes before the downbeat', () => {
     const ev = planLine(sung('sky one two three'), 10, opts({ lead: 0.5 }))
     expect(ev[0].vowelAt).toBe(10)
-    expect(ev[0].from).toBeCloseTo(10 - consonantLength(ev[0].phones.onset), 9)
+    expect(ev[0].from).toBeCloseTo(10 - onsetLength(ev[0].phones.onsets), 9)
     /* and only as far as the time there is */
     expect(planLine(sung('sky'), 10, opts({ lead: 0.02 }))[0].from).toBeCloseTo(9.98, 9)
   })
@@ -302,14 +303,16 @@ describe('consonants', () => {
     const p = one('see')
     const [h] = p.bursts
     expect(h.through).toBe('band')
-    expect(h.at).toBeCloseTo(1 - consonantLength({ kind: 'hiss', hz: 6500 }), 5)
+    expect(h.at).toBeCloseTo(1 - onsetLength([{ kind: 'hiss', place: 'ridge' }]), 5)
     expect(h.at + h.len).toBeGreaterThanOrEqual(1)
     expect(valueAt(p.voicing, 0.96)).toBe(0)
     expect(valueAt(p.voicing, 1 + PRESETS.clean.attack + 0.01)).toBeCloseTo(1, 5)
   })
 
-  it('z keeps the voice humming under its hiss', () => {
-    expect(valueAt(one('zee').voicing, 0.96)).toBeCloseTo(0.3, 5)
+  it('z keeps the voice humming under its hiss, well under a vowel', () => {
+    const z = valueAt(one('zee').voicing, 0.96)
+    expect(z).toBeGreaterThan(0.1)
+    expect(z).toBeLessThan(0.5)
   })
 
   it('t: closure, a short burst, then breath, then the voice', () => {
@@ -331,6 +334,198 @@ describe('consonants', () => {
 
   it('h is breath through the coming vowel, not a hiss of its own', () => {
     expect(one('he').bursts[0].through).toBe('vowel')
+  })
+})
+
+describe('words you can make out', () => {
+  /* one syllable, on its own note after a rest: A4, most of a second long */
+  const one = (lyric: string) =>
+    plan(lyric, [{ t: 1, dur: 0.8, midi: 69 }], exact(PRESETS.clean))[0] as Phrase
+  /* a vowel, then the syllable straight after it — the way a stop is heard inside a line */
+  const after = (lyric: string) =>
+    plan(
+      `o ${lyric}`,
+      [
+        { t: 0.6, dur: 0.38, midi: 69 },
+        { t: 1, dur: 0.8, midi: 69 },
+      ],
+      exact(PRESETS.clean),
+    )[0] as Phrase
+  const clicks = (p: Phrase) => p.bursts.filter((b) => b.through === 'band' && b.rise <= 0.001)
+  const hisses = (p: Phrase) => p.bursts.filter((b) => b.through === 'band' && b.rise > 0.001)
+  const f = (p: Phrase, k: number, t: number) => valueAt(p.formants[k], t)
+
+  it('a stop inside a line is a real silence before its burst', () => {
+    for (const word of ['pa', 'ta', 'ka']) {
+      const p = after(word)
+      const [burst] = clicks(p)
+      /* 30ms of nothing — the gap is half of what makes a stop a stop */
+      for (let t = burst.at - 0.03; t < burst.at; t += 0.002) expect(valueAt(p.voicing, t)).toBe(0)
+      expect(valueAt(p.voicing, 0.85)).toBeGreaterThan(0.5)
+    }
+  })
+
+  it('even squeezed onto fast notes, a stop keeps a silence', () => {
+    const step = 60 / 140 / 4
+    const fast = [0, 1, 2, 3].map((i) => ({ t: 0.5 + i * step, dur: step * 0.95, midi: 72 }))
+    const [p] = plan('o to to to', fast, exact(PRESETS.clean))
+    const bursts = clicks(p)
+    expect(bursts).toHaveLength(3)
+    for (const burst of bursts) {
+      expect(valueAt(p.voicing, burst.at - 0.012)).toBe(0)
+      expect(valueAt(p.voicing, burst.at - 0.002)).toBe(0)
+    }
+  })
+
+  it('a stop after silence spends the time it has on its burst and breath, not on more silence', () => {
+    /* a line starting at 1s on a t, with 60ms in hand before it: what a t needs once its
+       closure is free */
+    const ev = planLine(sung('to', [{ t: 0, dur: 0.6, midi: 69 }]), 1, opts({ lead: 0.06 }))
+    const [p] = planPhrases(ev, exact(PRESETS.clean), 0.5, 1)
+    expect(ev[0].from).toBeCloseTo(0.94, 9)
+    const breath = p.bursts.find((b) => b.through === 'vowel')!
+    expect(breath.len).toBeGreaterThanOrEqual(0.035)
+  })
+
+  it('a line that starts on its consonant with no time for it still reaches the vowel', () => {
+    /* a line starting at 1s, its first note on its first beat and nothing in hand before it */
+    for (const word of ['la', 'wa', 'sa', 'the', 'ma']) {
+      const ev = planLine(sung(word, [{ t: 0, dur: 0.6, midi: 69 }]), 1, opts())
+      const [p] = planPhrases(ev, exact(PRESETS.clean), 0.5, 1)
+      const want = word === 'the' ? VOWELS.uh[1] : VOWELS.ah[1]
+      expect(ev[0].from, word).toBe(1)
+      expect(f(p, 1, 1.3) / want, word).toBeCloseTo(1, 1)
+    }
+  })
+
+  it('a burst is there at once and short; a hiss swells in', () => {
+    for (const b of clicks(one('ta'))) expect(b.len).toBeLessThanOrEqual(0.02)
+    const [s] = hisses(one('sa'))
+    expect(s.rise).toBeGreaterThanOrEqual(0.005)
+  })
+
+  it('where the mouth closes moves the vowel: F2 starts low after a b, high after a d, and meets F3 after a g', () => {
+    const at = (word: string) => {
+      const p = one(word)
+      const t = clicks(p)[0].at
+      return { p, f1: f(p, 0, t), f2: f(p, 1, t), f3: f(p, 2, t) }
+    }
+    const b = at('ba')
+    const d = at('da')
+    const g = at('ga')
+    expect(d.f2 - b.f2).toBeGreaterThan(300)
+    expect(g.f2).toBeGreaterThan(b.f2)
+    expect(g.f2).toBeLessThan(d.f2)
+    /* the velar pinch: F2 and F3 far closer at the release than in the vowel */
+    expect(g.f3 - g.f2).toBeLessThan(0.6 * (f(g.p, 2, 1.5) - f(g.p, 1, 1.5)))
+    /* any closure starts the first formant low, and the vowel opens it */
+    for (const x of [b, d, g]) expect(x.f1).toBeLessThan(0.7 * f(x.p, 0, 1.5))
+    /* and then it is the vowel, whatever came first */
+    for (const x of [d, g]) expect(f(x.p, 1, 1.25) / f(b.p, 1, 1.25)).toBeCloseTo(1, 1)
+  })
+
+  it('m and n are different sounds: their murmurs differ, and so does the vowel leaving them', () => {
+    const m = one('ma')
+    const n = one('na')
+    expect(f(n, 1, 0.97) - f(m, 1, 0.97)).toBeGreaterThan(250)
+    expect(valueAt(n.muffle, 0.97)).toBeGreaterThan(valueAt(m.muffle, 0.97))
+    expect(f(n, 1, 1.01) - f(m, 1, 1.01)).toBeGreaterThan(250)
+  })
+
+  it('a hum and a voice bar are heard through a nearly closed mouth, a vowel through an open one', () => {
+    const m = one('ma')
+    expect(valueAt(m.muffle, 0.97)).toBeLessThan(2000)
+    expect(valueAt(m.muffle, 1.3)).toBeGreaterThan(10000)
+    const b = after('ba')
+    const [burst] = clicks(b)
+    expect(valueAt(b.muffle, burst.at - 0.01)).toBeLessThan(1000)
+    expect(valueAt(b.voicing, burst.at - 0.01)).toBeGreaterThan(0)
+    expect(valueAt(b.voicing, burst.at - 0.01)).toBeLessThan(0.2)
+  })
+
+  it('a k is a different click before "ee" than before "oo": its burst sits on the vowel coming', () => {
+    const k = (word: string) => clicks(one(word))[0].hz
+    expect(k('kee') - k('koo')).toBeGreaterThan(500)
+  })
+
+  it('a closing consonant run straight into the same one opening the next word is sung once', () => {
+    const ns = [
+      { t: 1, dur: 0.48, midi: 69 },
+      { t: 1.5, dur: 0.5, midi: 69 },
+    ]
+    const [p] = plan('eat tea', ns, exact(PRESETS.clean))
+    expect(clicks(p).filter((b) => b.at > 1.2 && b.at < 1.6)).toHaveLength(1)
+  })
+
+  it('each hiss by its place: s high, sh lower and louder, f and th quiet and wide', () => {
+    const band = (word: string): Burst => hisses(one(word))[0]
+    const s = band('sa')
+    const sh = band('sha')
+    const fh = band('fa')
+    const th = band('tha')
+    expect(s.hz).toBeGreaterThan(5000)
+    expect(sh.hz).toBeLessThan(4000)
+    expect(sh.level).toBeGreaterThan(s.level)
+    for (const weak of [fh, th]) {
+      expect(weak.level).toBeLessThan(s.level / 2)
+      expect(weak.q).toBeLessThan(0.6)
+    }
+  })
+
+  it('w, y, l and r each have their own shape: l keeps F3 high, r pulls it down', () => {
+    const start = (word: string) => {
+      const p = one(word)
+      return [0, 1, 2].map((k) => f(p, k, 0.96))
+    }
+    const l = start('la')
+    const r = start('ra')
+    const w = start('wa')
+    expect(l[2] - r[2]).toBeGreaterThan(700)
+    expect(r[2]).toBeLessThan(2100)
+    expect(w[1]).toBeLessThan(l[1])
+    expect(l[2]).toBeGreaterThan(2750)
+    expect(start('ya')[1]).toBeGreaterThan(2400)
+    expect(GLIDES.r[2]).toBeLessThan(GLIDES.l[2])
+  })
+
+  it('every consonant of a cluster is sung, in order, before the vowel', () => {
+    const p = one('street')
+    const before = p.bursts.filter((b) => b.at < 1).sort((a, b) => a.at - b.at)
+    /* s, then the t's burst, both before the vowel */
+    expect(before[0].hz).toBeGreaterThan(5000)
+    expect(before[0].rise).toBeGreaterThan(0.001)
+    const t = before.find((b) => b.rise <= 0.001)!
+    expect(t.at).toBeGreaterThan(before[0].at + 0.03)
+    expect(t.at).toBeLessThan(1)
+    /* and the r: F3 pulled down just before the vowel, which then opens it */
+    expect(f(p, 2, 0.985)).toBeLessThan(f(p, 2, 1.3) - 300)
+  })
+
+  it('a word ends on its own consonants: "fish" on a sh, "six" on a k and an s', () => {
+    const fish = one('fish')
+    const end = fish.bursts.filter((b) => b.at > 1.3)
+    expect(end).toHaveLength(1)
+    expect(end[0].through).toBe('band')
+    expect(end[0].hz).toBeLessThan(4000)
+    const six = one('six')
+    const tail = six.bursts
+      .filter((b) => b.at > 1.3 && b.through === 'band')
+      .sort((a, b) => a.at - b.at)
+    expect(tail[0].rise).toBeLessThanOrEqual(0.001)
+    expect(tail[tail.length - 1].hz).toBeGreaterThan(5000)
+    expect(tail[tail.length - 1].rise).toBeGreaterThan(0.001)
+  })
+
+  it('the vowel heads for a closing consonant before the mouth closes on it', () => {
+    const p = one('bead')
+    const [close] = clicks(p).filter((b) => b.at > 1.3)
+    expect(f(p, 1, 1.4)).toBeGreaterThan(VOWELS.ee[1] * 0.95)
+    expect(f(p, 1, close.at)).toBeLessThan(f(p, 1, 1.4) - 250)
+  })
+
+  it('a word on its own is sung as a word: "my" is "mai", "we" is "wee"', () => {
+    expect(planLine(sung('my', notes.slice(0, 1)), 0, opts())[0].phones.to).toBe('ee')
+    expect(planLine(sung('we', notes.slice(0, 1)), 0, opts())[0].phones.vowel).toBe('ee')
   })
 })
 
@@ -376,7 +571,7 @@ describe('every preset, every kind of consonant: a timeline Web Audio will accep
   for (const id of Object.keys(PRESETS) as (keyof typeof PRESETS)[])
     it(`${PRESETS[id].name}: ordered, finite, in range, inside its phrase`, () => {
       for (const p of plan(lyric, ns, PRESETS[id], 3, { harmony: (m) => m + 3, preset: id })) {
-        const lists = [p.pitch, p.vibrato, p.voicing, p.gate, ...p.formants]
+        const lists = [p.pitch, p.vibrato, p.voicing, p.muffle, p.gate, ...p.formants]
         for (const l of lists)
           l.forEach((s, i) => {
             expect(Number.isFinite(s.v)).toBe(true)
@@ -388,8 +583,12 @@ describe('every preset, every kind of consonant: a timeline Web Audio will accep
         for (const s of p.voicing) expect(s.v).toBeGreaterThanOrEqual(0)
         for (const s of p.voicing) expect(s.v).toBeLessThanOrEqual(1.2)
         for (const f of p.formants) for (const s of f) expect(s.v).toBeGreaterThan(100)
+        for (const s of p.muffle) expect(s.v).toBeGreaterThan(100)
         for (const b of p.bursts) {
           expect(b.len).toBeGreaterThan(0)
+          expect(b.rise).toBeGreaterThan(0)
+          expect(b.rise).toBeLessThanOrEqual(b.len)
+          expect(b.level).toBeGreaterThan(0)
           expect(b.at).toBeGreaterThanOrEqual(p.from - 1e-9)
           expect(b.at + b.len).toBeLessThanOrEqual(p.to)
         }

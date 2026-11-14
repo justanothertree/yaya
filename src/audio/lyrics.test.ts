@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { VOWELS, assignSyllables, autoSplit, harmonyAbove, phonesOf, splitLyrics } from './lyrics'
+import {
+  VOWELS,
+  assignSyllables,
+  autoSplit,
+  harmonyAbove,
+  phonesOf,
+  splitLyrics,
+  type Consonant,
+} from './lyrics'
 import { degreesOf } from './scales'
 
 /**
@@ -55,6 +63,11 @@ describe('syllables land on notes', () => {
     expect(spare).toBe(2)
   })
 
+  it('a word on its own is marked as one, and a piece of a longer word is not', () => {
+    const { sung } = assignSyllables(notes.slice(0, 4), splitLyrics('my sky to-night'))
+    expect(sung.map((s) => s.whole)).toEqual([true, true, false, false])
+  })
+
   it('a hold with no word before it sings "oo"', () => {
     const { sung } = assignSyllables(notes.slice(0, 1), splitLyrics('_'))
     expect(sung[0].text).toBe('oo')
@@ -85,13 +98,71 @@ describe('spelling becomes the sound a voice makes', () => {
   })
 
   it('and the consonants around them', () => {
-    expect(phonesOf('sky').onset).toEqual({ kind: 'hiss', hz: 6500 })
-    expect(phonesOf('dark').onset?.kind).toBe('click')
-    expect(phonesOf('dark').coda?.kind).toBe('click')
-    expect(phonesOf('moon').onset?.kind).toBe('hum')
-    expect(phonesOf('moon').coda?.kind).toBe('hum')
-    expect(phonesOf('love').onset).toEqual({ kind: 'glide', from: 'ou' })
-    expect(phonesOf('she').onset).toEqual({ kind: 'hiss', hz: 3200 })
+    expect(phonesOf('sky').onsets[0]).toEqual({ kind: 'hiss', place: 'ridge' })
+    expect(phonesOf('dark').onsets[0].kind).toBe('click')
+    expect(phonesOf('dark').codas[0].kind).toBe('click')
+    expect(phonesOf('moon').onsets[0].kind).toBe('hum')
+    expect(phonesOf('moon').codas[0].kind).toBe('hum')
+    expect(phonesOf('love').onsets[0]).toEqual({ kind: 'glide', shape: 'l' })
+    expect(phonesOf('she').onsets[0]).toEqual({ kind: 'hiss', place: 'palate' })
+  })
+
+  /* each sound by how and where it is made, written out rather than looked up */
+  const S: Consonant = { kind: 'hiss', place: 'ridge' }
+  const Z: Consonant = { kind: 'hiss', place: 'ridge', voiced: true }
+  const SH: Consonant = { kind: 'hiss', place: 'palate' }
+  const F: Consonant = { kind: 'hiss', place: 'lips' }
+  const V: Consonant = { kind: 'hiss', place: 'lips', voiced: true }
+  const DH: Consonant = { kind: 'hiss', place: 'teeth', voiced: true }
+  const P: Consonant = { kind: 'click', place: 'lips' }
+  const T: Consonant = { kind: 'click', place: 'ridge' }
+  const D: Consonant = { kind: 'click', place: 'ridge', voiced: true }
+  const K: Consonant = { kind: 'click', place: 'velum' }
+  const CH: Consonant = { kind: 'click', place: 'palate' }
+  const M: Consonant = { kind: 'hum', place: 'lips' }
+  const N: Consonant = { kind: 'hum', place: 'ridge' }
+  const L: Consonant = { kind: 'glide', shape: 'l' }
+  const R: Consonant = { kind: 'glide', shape: 'r' }
+  const W: Consonant = { kind: 'glide', shape: 'w' }
+  const Y: Consonant = { kind: 'glide', shape: 'y' }
+
+  it('every consonant of a cluster is sung: sky, play, street, queen', () => {
+    expect(phonesOf('sky').onsets).toEqual([S, K])
+    expect(phonesOf('play').onsets).toEqual([P, L])
+    expect(phonesOf('street').onsets).toEqual([S, T, R])
+    expect(phonesOf('queen')).toEqual({ onsets: [K, W], vowel: 'ee', to: null, codas: [N] })
+  })
+
+  it('a word ends on its sounds, not its last letter: fish, each, six, and, drums', () => {
+    expect(phonesOf('fish').codas).toEqual([SH])
+    expect(phonesOf('each').codas).toEqual([CH])
+    expect(phonesOf('six').codas).toEqual([K, S])
+    expect(phonesOf('and').codas).toEqual([N, D])
+    /* a plural after a voiced sound is a z, and a soft c is still an s */
+    expect(phonesOf('drums').codas).toEqual([M, Z])
+    expect(phonesOf('dance').codas).toEqual([N, S])
+    /* a closing l is the dark one */
+    expect(phonesOf('will').codas).toEqual([{ kind: 'glide', shape: 'dl' }])
+  })
+
+  it('c before e, i and y is an s, and ph is an f', () => {
+    expect(phonesOf('nice').codas).toEqual([S])
+    expect(v('nice')).toBe('ah>ee')
+    expect(phonesOf('city').onsets).toEqual([S])
+    expect(phonesOf('phone').onsets).toEqual([F])
+  })
+
+  it('a word on its own says its vowel the way the word does: we, go, hi, the, I, you, love', () => {
+    expect(v('we', true)).toBe('ee')
+    expect(v('go', true)).toBe('uh>oo')
+    expect(v('hi', true)).toBe('ah>ee')
+    expect(phonesOf('the', true)).toEqual({ onsets: [DH], vowel: 'uh', to: null, codas: [] })
+    expect(v('i', true)).toBe('ah>ee')
+    expect(phonesOf('you', true)).toEqual({ onsets: [Y], vowel: 'oo', to: null, codas: [] })
+    expect(v('to', true)).toBe('oo')
+    expect(phonesOf('love', true)).toEqual({ onsets: [L], vowel: 'uh', to: null, codas: [V] })
+    /* and a piece of a longer word is left to the rules: the "to" of to-night */
+    expect(v('to')).toBe('ah')
   })
 
   /* the published values, and the order every vowel chart has them in */
