@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columns, hours, weekOf } from './week'
+import { columns, coveredLine, coveredSoFar, hours, weekOf } from './week'
 import { localMidnight } from './record'
 
 /**
@@ -175,5 +175,32 @@ describe('the hour lines', () => {
   it('marks the quarter-day hours strong and the rest not', () => {
     const strong = hours().filter((x) => x.strong)
     expect(strong.map((x) => x.hour)).toEqual([0, 6, 12, 18])
+  })
+})
+
+/**
+ * The week's figure, now printed in two places — under the grid and on the fold that hides it.
+ *
+ * ⚠️ WRITTEN FROM THE DAYS, NOT FROM THE SUM. Each column is built here by hand with a covered
+ * share chosen so the average is obvious on paper, and the days that have not begun carry a share
+ * that would move the answer if they were counted — which is the mistake the rule is for.
+ */
+describe('how much of the week so far is written down', () => {
+  const NOW = Date.parse('2026-11-11T15:00:00Z')
+  const DAY = 86_400_000
+  const col = (fromMs: number, covered: number) => ({ fromMs, covered })
+
+  it('averages the days that have begun and ignores the rest', () => {
+    const cols = [col(NOW - 2 * DAY, 50), col(NOW - DAY, 0), col(NOW + DAY, 100)]
+    expect(coveredSoFar(cols, NOW)).toEqual({ pct: 25, days: 2 })
+  })
+
+  it('says nothing at all before the week has begun', () => {
+    expect(coveredSoFar([col(NOW + DAY, 80)], NOW)).toBeNull()
+  })
+
+  it('calls a single day today, and several by their count', () => {
+    expect(coveredLine({ pct: 7, days: 1 })).toBe('7% of today is written down')
+    expect(coveredLine({ pct: 7, days: 6 })).toBe('7% of these 6 days is written down')
   })
 })

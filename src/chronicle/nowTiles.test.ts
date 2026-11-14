@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { tilesFor, type Sat } from './nowTiles'
+import { recentFirst, tilesFor, type Sat } from './nowTiles'
 import { dayBounds, type Activity } from './record'
 /* the project's own local-date formatter, rather than a fourth copy of the same three lines */
 import { localISO } from '../circuit/dates'
@@ -251,5 +251,49 @@ describe('the buttons the switch row offers', () => {
       'd',
       'l',
     ])
+  })
+})
+
+/**
+ * The chips under ▶ Start something: what you started last, then everything else by name.
+ *
+ * ⚠️ THE FIXTURE STARTS THE BUSIEST ONE FIRST AND A SHORT ONE LAST, so "recent" and "most minutes"
+ * give different answers — a fixture where they agreed would pass with `tilesFor` in its place.
+ *
+ * ⚠️ AND NEITHER ANSWER IS ALPHABETICAL. The first version expected Art, Bass, Cooking — the
+ * names' own order — so with the recency sort deleted outright, two of these stayed green. Found by
+ * making them fail before believing them (CLAUDE.md §2); the last-started is never the first name.
+ */
+describe('the most recently started first', () => {
+  const acts = [
+    act({ id: 'a', name: 'Art' }),
+    act({ id: 'b', name: 'Bass' }),
+    act({ id: 'c', name: 'Cooking' }),
+    act({ id: 'd', name: 'Drift', auto: true }),
+    act({ id: 'e', name: 'Embroidery', archived: true }),
+  ]
+
+  it('puts the last thing started first, even when something else ran longer', () => {
+    /* Bass ran two hours this morning; Cooking ran five minutes just now */
+    const log = [sat('b', 300, 180), sat('c', 10, 5)]
+    expect(tilesFor(acts, log, DAY.fromMs, DAY.toMs, NOW)[0].id).toBe('b')
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('reads a sitting by when it started, and the latest start of each wins', () => {
+    /* Bass started first AND last; Cooking in between */
+    const log = [sat('b', 200, 190), sat('c', 100, 90), sat('b', 50, null)]
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('falls back to the names when nothing has run, and never offers auto or archived', () => {
+    expect(recentFirst(acts, []).map((a) => a.id)).toEqual(['a', 'b', 'c'])
+    const log = [sat('d', 5, 1), sat('e', 4, 2)]
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('ignores a start it cannot read rather than sorting it to the front', () => {
+    const log: Sat[] = [{ activity: 'c', start: 'not a date', end: null }, sat('b', 30, 20)]
+    expect(recentFirst(acts, log).map((a) => a.id)).toEqual(['b', 'a', 'c'])
   })
 })

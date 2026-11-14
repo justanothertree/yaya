@@ -27,6 +27,7 @@ export function Plans({
   bounds,
   onChange,
   busy,
+  onSum,
 }: {
   acts: Activity[]
   /** the day's entries, for the comparison — the same list the log above is drawn from */
@@ -37,6 +38,16 @@ export function Plans({
   bounds: { fromMs: number; toMs: number }
   onChange: () => Promise<void> | void
   busy: boolean
+  /**
+   * The day's planned and done minutes, told to the room — and whether this fold wants to be open.
+   *
+   * ⚠️ BECAUSE THE FOLD NOW SITS INSIDE ANOTHER ONE. On a phone Planned, Routines and Activities
+   * share one row (#298), so this summary's figures would otherwise vanish behind a second tap,
+   * and the moment below where the fold opens itself would open a fold inside a closed one: a
+   * thing that happens where nobody can see it. The room puts the figures on its row and opens
+   * the row when this would open. Must be stable — it is an effect dependency.
+   */
+  onSum?: (sum: { planned: number; did: number; wants: boolean }) => void
 }) {
   const [rows, setRows] = useState<Plan[] | null>(null)
   const [adding, setAdding] = useState(false)
@@ -117,6 +128,14 @@ export function Plans({
   useEffect(() => {
     if (rows && rows.length > 0 && whole.did === 0) setOpen(true)
   }, [rows, whole.did])
+  /* the same rule, said upward — see `onSum` */
+  useEffect(() => {
+    onSum?.({
+      planned: whole.planned,
+      did: whole.did,
+      wants: !!rows && rows.length > 0 && whole.did === 0,
+    })
+  }, [rows, whole.planned, whole.did, onSum])
 
   /** the local `datetime-local` spelling of an instant — the same conversion the entry editor uses */
   const forInput = (ms: number): string => writeLocal(new Date(ms))
@@ -404,7 +423,7 @@ export function Plans({
                   (CLAUDE.md §6), so the reason has to be in the sentence. */}
               {acts.length
                 ? 'Nothing planned for this day. A plan is where in a day something goes — the horizon tabs below say what you are aiming at, this says when.'
-                : 'Name an activity with ＋ Activity first — a plan is a stretch of a day set aside for one of them.'}
+                : 'Name an activity with ＋ New activity first — a plan is a stretch of a day set aside for one of them.'}
             </p>
           )}
 
