@@ -20114,6 +20114,12 @@ a.cz-msg-author:focus-visible {
 .feed-row.is-snake_trophy {
   border-left-color: #60a5fa;
 }
+.feed-row.is-comment {
+  border-left-color: #f472b6;
+}
+.feed-row.is-made {
+  border-left-color: #fb923c;
+}
 .feed-glyph {
   font-size: 0.95em;
   line-height: 1;
@@ -20137,6 +20143,17 @@ a.cz-msg-author:focus-visible {
   gap: 0.1rem 0.4rem;
   min-width: 0;
 }
+/* a door inside the line -- a guestbook, a page -- looks like the name at the start of the row,
+   not like a button in the accent colour */
+.feed-what a {
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  /* a thumb-sized target (24px, WCAG 2.5.8) around a 17px line, without making the row taller */
+  padding-block: 4px;
+  margin-block: -4px;
+}
+.feed-what a:not(.muted) {
+  color: inherit;
+}
 .feed-noun {
   min-width: 0;
   overflow: hidden;
@@ -20147,6 +20164,13 @@ a.cz-msg-author:focus-visible {
 }
 .feed-sub {
   font-size: 0.82em;
+}
+/* a comment's preview: the server cut it to 80 characters on one line, so it may wrap but never
+   needs cutting again -- and a long word must not push the row past its card */
+.feed-quote {
+  font-size: 0.86em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .feed-score {
   font-weight: 600;

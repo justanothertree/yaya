@@ -16,6 +16,7 @@ import {
   type Flight,
 } from './orbit'
 import { createOrbit, type OrbitView } from './orbitEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -57,7 +58,7 @@ export function OrbitDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(ORBIT_KEY, JSON.stringify(bests))
+      writeKept(ORBIT_KEY, JSON.stringify(bests))
     } catch {
       /* private mode: kept for this visit */
     }

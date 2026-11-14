@@ -40,7 +40,7 @@ import {
   type Voice,
 } from './strut'
 import { createStrut, type StrutView } from './strutEngine'
-import { useKept } from './kept'
+import { useKept, writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -126,7 +126,7 @@ export function StrutDemo({ running, setRunning, onAdapter }: Props) {
   /* the creation is kept in this browser as it changes */
   useEffect(() => {
     try {
-      localStorage.setItem(STRUT_KEY, JSON.stringify({ body, pattern }))
+      writeKept(STRUT_KEY, JSON.stringify({ body, pattern }))
     } catch {
       /* private mode */
     }

@@ -32,6 +32,7 @@ import {
   type Saved,
 } from './gates'
 import { createGates, type GatesView } from './gatesEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -83,7 +84,7 @@ export function GatesDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(GATES_KEY, JSON.stringify(saved))
+      writeKept(GATES_KEY, JSON.stringify(saved))
     } catch {
       /* private mode: kept for this visit */
     }

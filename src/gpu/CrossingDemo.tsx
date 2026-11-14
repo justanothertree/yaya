@@ -20,6 +20,7 @@ import {
   type Voyage,
 } from './crossing'
 import { createCrossing, type CrossingView } from './crossingEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -96,7 +97,7 @@ export function CrossingDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(CROSSING_KEY, JSON.stringify({ course: courseIx, best }))
+      writeKept(CROSSING_KEY, JSON.stringify({ course: courseIx, best }))
     } catch {
       /* private mode: kept for this visit */
     }

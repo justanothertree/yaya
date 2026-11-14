@@ -14,14 +14,37 @@
  */
 import { activityLine, type ActivityItem } from '../sections/activityLine'
 import { countText, spanText } from '../chronicle/record'
+import { TOY_NAMES } from '../lab/names'
 
 /**
  * ⚠️ THE FOUR OLD KINDS KEEP THEIR OWN NAMES, exactly as `activityLine` spells them. A second
  * vocabulary for one event is how two catalogues drift apart — that warning is written on
  * `activityLine` itself, about `review` vs `rating`, and it applies with more force here because
  * this module is the thing that would create the second catalogue.
+ *
+ * ⚠️ `comment` AND `made` ARE THE FEED'S OWN, and never `activityLine`'s, on purpose. That module
+ * draws the Activity block on a profile page, which a public page shows to signed-out visitors;
+ * these two come only from `feed_recent`, which refuses them. See
+ * docs/2026-11-14-feed-made-and-comments.DRAFT.sql.
  */
-export type FeedKind = ActivityItem['kind'] | 'sitting'
+export type FeedKind = ActivityItem['kind'] | 'sitting' | 'comment' | 'made'
+
+/** Where a comment was left. Each is a different table read by its own room's rule. */
+export type CommentPlace = 'workout' | 'lab' | 'guestbook'
+export const COMMENT_PLACES: ReadonlySet<string> = new Set<CommentPlace>([
+  'workout',
+  'lab',
+  'guestbook',
+])
+
+/** What can be made and put on a page: the block types `profile_showcase` accepts, one and many. */
+const MADE: Readonly<Record<string, readonly [string, string]>> = {
+  song: ['a song', 'songs'],
+  art: ['a drawing', 'drawings'],
+  pet: ['a pet', 'pets'],
+  looks: ['a look', 'looks'],
+}
+export const MADE_KINDS: ReadonlySet<string> = new Set(Object.keys(MADE))
 
 /**
  * Whose activity the feed is asking about.
@@ -73,6 +96,23 @@ export type FeedEvent = {
   metric?: string | null
   /** circuit logs only: what was actually done, resolved against their own exercise list */
   items?: ActivityItem['items']
+  /**
+   * Comments only: where it was left, and on whose or what. For a comment `detail` is the
+   * preview — at most 80 characters, on one line, cut by the server, so the whole of somebody's
+   * words never travels to everybody's Feed.
+   */
+  on?: CommentPlace | null
+  /** a workout's person, a guestbook's owner by first name, or a Lab toy's id */
+  about?: string | null
+  /** a guestbook's owner by username, so their name can be a door to their page */
+  aboutWho?: string | null
+  /** whether the workout or the guestbook is yours, so the line can say "your" */
+  aboutMine?: boolean
+  /**
+   * Things made only: how many of this kind this person put up that day. The row stands for all
+   * of them — see `oneMadePerDay`, which is the only thing that sets it.
+   */
+  count?: number
   /**
    * Yours.
    *
@@ -142,6 +182,47 @@ export function dayKeyOf(iso: string): string {
 }
 
 /**
+ * At most one "made" row per person, per kind of thing, per day: the newest, carrying how many it
+ * stands for. Every other kind passes through untouched and in the order it came.
+ *
+ * ⚠️ HERE AND NOT IN `feed_recent`, BECAUSE THE DAY IS THE READER'S. The Feed is drawn under the
+ * reader's own calendar days (`dayKeyOf`), and the server knows no timezone: a cap on the
+ * server's day would leave two "Put a drawing" rows under one "Today" for anybody whose midnight
+ * is not the server's. It is a cap on rows, not on what may be seen — every row it folds is one
+ * the server already decided this reader may see.
+ *
+ * ⚠️ WHAT IT IS FOR is several blocks of one kind going up the same day. Editing ONE block is
+ * already a single row: the server shows a version only while it is still on the page, so each
+ * edit replaces the last (supabase/tests/feed-made-and-comments.sql, section E2).
+ */
+export function oneMadePerDay(events: readonly FeedEvent[]): FeedEvent[] {
+  const slot = (e: FeedEvent) => `${e.who}\u0000${e.detail ?? ''}\u0000${dayKeyOf(e.at)}`
+  const newest = new Map<string, FeedEvent>()
+  const many = new Map<string, number>()
+  for (const e of events) {
+    if (e.kind !== 'made') continue
+    const k = slot(e)
+    many.set(k, (many.get(k) ?? 0) + 1)
+    const was = newest.get(k)
+    if (!was) {
+      newest.set(k, e)
+      continue
+    }
+    /* ties go to the smaller key, as mergeEvents orders them, so the row kept is the row that
+       would have been drawn first */
+    const d = Date.parse(e.at) - Date.parse(was.at)
+    if (d > 0 || (d === 0 && eventKey(e) < eventKey(was))) newest.set(k, e)
+  }
+  return events.flatMap((e) => {
+    if (e.kind !== 'made') return [e]
+    const k = slot(e)
+    if (newest.get(k) !== e) return []
+    const n = many.get(k) ?? 1
+    return [n > 1 ? { ...e, count: n } : e]
+  })
+}
+
+/**
  * The feed in day buckets, newest day first, each day's events still newest first.
  *
  * Returns pairs rather than an object: insertion order on an object with date-like string keys
@@ -175,6 +256,29 @@ function sittingSentence(e: FeedEvent): string {
 }
 
 /**
+ * The two halves of a comment's line: what was done, and to what.
+ *
+ * ⚠️ SHARED BY THE SENTENCE AND THE ROOM, so the words in the feed and the words a test reads are
+ * the same words. A Lab toy is named from the Lab's own list; one it does not know (a toy newer
+ * than this bundle) is named by its id rather than dropped.
+ */
+export function commentParts(e: FeedEvent): { verb: string; noun: string } {
+  const whose = e.aboutMine ? 'your' : `${e.about ?? 'somebody'}'s`
+  if (e.on === 'workout') return { verb: 'Commented on', noun: `${whose} workout` }
+  if (e.on === 'guestbook') return { verb: 'Signed', noun: `${whose} guestbook` }
+  if (e.on === 'lab')
+    return { verb: 'Left a note on', noun: TOY_NAMES[e.about ?? ''] ?? e.about ?? 'a Lab toy' }
+  return { verb: 'Wrote', noun: 'something' }
+}
+
+/** "a song", "3 drawings" — what a made thing is called in a sentence */
+export function madeNoun(detail: string | null, count = 1): string {
+  const names = MADE[detail ?? '']
+  if (!names) return 'something'
+  return count > 1 ? `${count} ${names[1]}` : names[0]
+}
+
+/**
  * One line for any event in the feed.
  *
  * ⚠️ EVERY KIND GETS A SENTENCE, and the test that says so is the reason this is a function
@@ -184,6 +288,12 @@ function sittingSentence(e: FeedEvent): string {
  */
 export function feedSentence(e: FeedEvent): string {
   if (e.kind === 'sitting') return sittingSentence(e)
+  if (e.kind === 'comment') {
+    const { verb, noun } = commentParts(e)
+    return e.detail ? `${verb} ${noun}: “${e.detail}”` : `${verb} ${noun}`
+  }
+  if (e.kind === 'made')
+    return `Put ${madeNoun(e.detail, e.count)} on ${e.mine ? 'your' : 'their'} page`
   return activityLine({
     kind: e.kind,
     at: e.at,

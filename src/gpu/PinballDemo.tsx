@@ -24,6 +24,7 @@ import {
   type V2,
 } from './pinball'
 import { createPinball, type PinballView } from './pinballEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -92,7 +93,7 @@ export function PinballDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PINBALL_KEY, JSON.stringify({ table, best }))
+      writeKept(PINBALL_KEY, JSON.stringify({ table, best }))
     } catch {
       /* private mode: kept for this visit */
     }

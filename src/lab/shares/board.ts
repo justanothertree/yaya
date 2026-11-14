@@ -135,8 +135,15 @@ export const BOARD: Record<string, Reader> = {
   cube: (read) => versus(CUBE_LEVELS, readCube(read(CUBE_KEY)).record),
   dominoes: (read) => versus(DOMINOES_LEVELS, readDominoes(read(DOMINOES_KEY)).record),
   dots: (read) =>
-    versus(DOTS_LEVELS, readDots(read(DOTS_KEY)).record, (t) => [widest(t.best, 'box', 'boxes')]),
-  draughts: (read) => versus(DRAUGHTS_LEVELS, readDraughts(read(DRAUGHTS_KEY)).record),
+    join(
+      versus(DOTS_LEVELS, readDots(read(DOTS_KEY)).record, (t) => [widest(t.best, 'box', 'boxes')]),
+      onlineLine(read, 'dots'),
+    ),
+  draughts: (read) =>
+    join(
+      versus(DRAUGHTS_LEVELS, readDraughts(read(DRAUGHTS_KEY)).record),
+      onlineLine(read, 'draughts'),
+    ),
   eights: (read) => versus(EIGHTS_LEVELS, readEights(read(EIGHTS_KEY)).record, undefined, true),
   fences: (read) =>
     versus(FENCES_LEVELS, readFences(read(FENCES_KEY)).record, (t) => [quickest(t.best)]),
@@ -155,7 +162,8 @@ export const BOARD: Record<string, Reader> = {
       t.gins > 0 && `went gin ${times(t.gins)}`,
     ]),
   go: (read) => versus(GO_LEVELS, readGo(read(GO_KEY)).record),
-  gomoku: (read) => versus(GOMOKU_LEVELS, readGomoku(read(GOMOKU_KEY)).record),
+  gomoku: (read) =>
+    join(versus(GOMOKU_LEVELS, readGomoku(read(GOMOKU_KEY)).record), onlineLine(read, 'gomoku')),
   halma: (read) =>
     versus(HALMA_LEVELS, readHalma(read(HALMA_KEY)).record, (t) => [quickest(t.fewest)]),
   hearts: (read) =>

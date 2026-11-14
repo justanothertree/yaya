@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Flags } from './catalog'
 import { resultCard, fromStorage } from './bests'
 import { attach, scrub, split, type Card } from './recorded'
+import { watchResult } from './resultWatch'
 import {
   COMMENT_KIND,
   NOTE_MAX,
@@ -653,31 +654,23 @@ function ResultCard({ card, onRemove }: { card: Card; onRemove?: () => void }) {
 }
 
 /**
- * The result this toy keeps in this browser, as a card, kept current while the page is open.
- *
- * ⚠️ READ AGAIN EVERY SECOND AND A HALF, not on an event. Toys keep their results three ways —
- * useKept, a hand-written localStorage call, a bests module — and none of them announces a
- * write in the same tab (the storage event is for OTHER tabs). One read of one key, parsed by the
- * toy's own reader, is cheap enough to do on a timer; and it is what lets the button appear at the
- * moment a game finishes, which is the moment somebody wants to share it.
+ * The result this toy keeps in this browser, as a card, kept current while the page is open —
+ * on the write itself, not on a timer (resultWatch.ts): a game that finishes here announces its
+ * write in this tab, and one finished in another tab arrives as the storage event.
  *
  * `fresh` is true once the result has changed during this visit — a game just finished.
  */
 function useKeptResult(demo: string, name: string): { kept: Card | null; fresh: boolean } {
-  const read = () => resultCard(demo, name, fromStorage)
-  const [kept, setKept] = useState<Card | null>(read)
+  const [kept, setKept] = useState<Card | null>(() => resultCard(demo, name, fromStorage))
   const [fresh, setFresh] = useState(false)
-  const first = useRef(kept?.line ?? null)
   useEffect(() => {
-    first.current = resultCard(demo, name, fromStorage)?.line ?? null
-    setKept(resultCard(demo, name, fromStorage))
+    const read = () => resultCard(demo, name, fromStorage)
+    setKept(read())
     setFresh(false)
-    const t = window.setInterval(() => {
-      const now = resultCard(demo, name, fromStorage)
-      setKept((was) => (was?.line === now?.line ? was : now))
-      if (now && now.line !== first.current) setFresh(true)
-    }, 1500)
-    return () => window.clearInterval(t)
+    return watchResult(read, (card, isNew) => {
+      setKept(card)
+      if (isNew) setFresh(true)
+    })
   }, [demo, name])
   return { kept, fresh }
 }

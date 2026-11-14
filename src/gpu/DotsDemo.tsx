@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   COLOURS,
@@ -7,6 +7,7 @@ import {
   LEVELS,
   SIZES,
   choose,
+  copy,
   ends,
   lineCount,
   newGame,
@@ -21,8 +22,14 @@ import {
 } from './dots'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { dotsRules } from './dotsRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { useCallWords } from '../lab/social/callWords'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const FILL_NAMES: Record<Saved['fill'], string> = {
@@ -192,8 +199,34 @@ export function DotsDemo() {
   modeRef.current = mode
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── the call's room: the host's size starts each game, which then travels as its lines */
+  const roomRules = useMemo(() => dotsRules(saved.size), [saved.size])
+  const lab = useLabRoom('dots', roomRules)
+  const words = useCallWords(lab, roomRules)
+  const room = mode === 'call' ? lab.room : null
+  // the board on screen is the room's whenever it changes, its newest line growing in
+  useEffect(() => {
+    if (mode !== 'call' || !room) return
+    window.clearTimeout(timer.current)
+    const was = game.current.moves
+    game.current = copy(room.game.g)
+    const l = room.game.lines[room.game.lines.length - 1] ?? null
+    if (room.game.lines.length !== was) last.current = { l, at: performance.now() }
+    bump()
+  }, [mode, room])
+
+  // the draw loop is set up once, so it reads this through a ref: the computer's boxes get 🤖
+  const togetherRef = useRef(false)
+  togetherRef.current = room?.mode === 'together'
+
   const g = game.current
-  const names = mode === 'bot' ? ['You', 'The computer'] : ['Player 1', 'Player 2']
+  const names = room
+    ? room.mode === 'together'
+      ? ['Together', 'The computer']
+      : [words.who(room.seats[0]), words.who(room.seats[1])]
+    : mode === 'bot'
+      ? ['You', 'The computer']
+      : ['Player 1', 'Player 2']
   const computerTurn = mode === 'bot' && g.turn === 1 && !over(g)
 
   const finish = () => {
@@ -215,6 +248,8 @@ export function DotsDemo() {
   }
 
   const draw1 = (l: number) => {
+    // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (modeRef.current === 'call') return lab.act({ t: 'move', move: l })
     const gm = game.current
     if (gm.drawn[l] || over(gm)) return
     const who = gm.turn
@@ -296,7 +331,25 @@ export function DotsDemo() {
     }
     return best
   }
-  const yours = () => !over(game.current) && !(modeRef.current === 'bot' && game.current.turn === 1)
+  const yours = () =>
+    modeRef.current === 'call'
+      ? lab.live && !!room && myTurn(roomRules, room)
+      : !over(game.current) && !(modeRef.current === 'bot' && game.current.turn === 1)
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer. Against it you are always the
+   * first player, so the board on screen comes with you when you were first; otherwise a new game.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const first = r && (r.mode === 'together' || words.mySeat === 0)
+    if (!r || over(r.game.g) || !first) return fresh('bot')
+    window.clearTimeout(timer.current)
+    game.current = copy(r.game.g)
+    meta.current = { level: saved.level, first: 0, recorded: false }
+    setMode('bot')
+    setLine(game.current.turn === 0 ? 'Your turn.' : 'The computer is thinking…')
+    bump()
+  }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const dirs: Record<string, [number, number]> = {
@@ -360,6 +413,15 @@ export function DotsDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -375,28 +437,46 @@ export function DotsDemo() {
             ))}
           </div>
         )}
-        <div className="lab-group" role="group" aria-label="Board size">
-          {SIZES.map((n) => (
-            <button
-              key={n}
-              className="btn btn-ghost"
-              aria-pressed={saved.size === n}
-              aria-label={`${n} by ${n} boxes`}
-              onClick={() => change({ size: n })}
-            >
-              {n}×{n}
-            </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <div className="lab-group" role="group" aria-label="Board size">
+            {SIZES.map((n) => (
+              <button
+                key={n}
+                className="btn btn-ghost"
+                aria-pressed={saved.size === n}
+                aria-label={`${n} by ${n} boxes`}
+                onClick={() => change({ size: n })}
+              >
+                {n}×{n}
+              </button>
+            ))}
+          </div>
+        )}
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          lab={lab}
+          rules={roomRules}
+          sides={['Player 1', 'Player 2']}
+          ink={[COLOURS[saved.mine], COLOURS[saved.theirs]]}
+          levelNames={LEVEL_NAMES}
+          score={(d) => {
+            const [a, b] = d.g.score
+            return `, ${Math.max(a, b)} boxes to ${Math.min(a, b)}`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="dice-scores">
         {names.map((nm, i) => (
           <div
-            key={nm}
+            key={i}
             className={`dice-score${g.turn === i && !over(g) ? ' is-up' : ''}`}
             style={{ borderLeft: `6px solid ${COLOURS[i === 0 ? saved.mine : saved.theirs]}` }}
           >
@@ -444,13 +524,16 @@ export function DotsDemo() {
                 const grow = reduced()
                   ? 1
                   : Math.min(1, (performance.now() - last.current.at) / 180)
-                const k = `${c.width}x${c.height}|${gm.moves}|${ghost.current}|${s.mine}${s.theirs}${s.fill}${s.initial}${s.initial2}|${modeRef.current}|${grow}`
+                const k = `${c.width}x${c.height}|${gm.moves}|${ghost.current}|${s.mine}${s.theirs}${s.fill}${s.initial}${s.initial2}|${modeRef.current}${togetherRef.current}|${grow}`
                 if (k === key) return
                 key = k
                 view.current = draw(ctx, c.width, c.height, {
                   g: gm,
                   colours: [COLOURS[s.mine], COLOURS[s.theirs]],
-                  letters: [s.initial, modeRef.current === 'bot' ? '🤖' : s.initial2],
+                  letters: [
+                    s.initial,
+                    modeRef.current === 'bot' || togetherRef.current ? '🤖' : s.initial2,
+                  ],
                   fill: s.fill,
                   ghost: ghost.current,
                   last: last.current.l,
@@ -461,9 +544,11 @@ export function DotsDemo() {
           }}
         />
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
       {mode === 'bot' && (
         <p className="sun-reading">
           <span className="muted">
@@ -474,6 +559,7 @@ export function DotsDemo() {
         </p>
       )}
       {started &&
+        mode !== 'call' &&
         !over(g) &&
         (g.b.rows !== saved.size || (mode === 'bot' && meta.current.level !== saved.level)) && (
           <p className="muted mc-note">Your changes start with the next game.</p>

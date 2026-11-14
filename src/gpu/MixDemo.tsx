@@ -22,6 +22,7 @@ import {
 } from './mix'
 import { createMix, type MixView } from './mixEngine'
 import type { Rgb } from './palette'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -74,7 +75,7 @@ export function MixDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(MIX_KEY, JSON.stringify(saved))
+      writeKept(MIX_KEY, JSON.stringify(saved))
     } catch {
       /* private mode: kept for this visit */
     }

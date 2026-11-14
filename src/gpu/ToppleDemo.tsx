@@ -23,6 +23,7 @@ import {
   type V2,
 } from './topple'
 import { createTopple, type ToppleView } from './toppleEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -114,7 +115,7 @@ export function ToppleDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(
+      writeKept(
         TOPPLE_KEY,
         JSON.stringify({ puzzle, best, free: { dominoes: free.dominoes, bells: free.bells } }),
       )
