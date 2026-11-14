@@ -115,3 +115,18 @@ is its own draft PR, cross-linked.
 6. **Lab results:** which toys first? None of them sends a result to the server yet.
 7. **Profile edits:** one per person per day, or every save?
 8. **Browsing in friends' Chronicle Friends tab:** keep it out of there too? The plan assumes yes.
+
+## Evan's answers, 13 Nov 2026
+
+1. **Sittings you timed, on a shared activity:** keep them in the Feed.
+2. **Circuit workout days:** keep.
+3. **Snake:** personal bests and trophies only.
+4. **"Made":** only things the person explicitly publishes. Nothing gets in automatically.
+5. **Comments:** from anywhere, with a short preview of the text.
+6. **Lab results:** later, after the Lab score-share work. Start with the toys that already have a
+   moment where a game finishes.
+7. **Profile edits:** at most once per day.
+8. **Browsing:** keep it out of friends' Chronicle too.
+
+Step 1 (browsing hidden from the Feed and the Friends tab) is built as draft SQL in #304, not
+applied. The table above still marks the timed sittings as "ask"; answer 1 makes them a keep.
