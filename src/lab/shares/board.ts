@@ -136,7 +136,11 @@ export const BOARD: Record<string, Reader> = {
   dominoes: (read) => versus(DOMINOES_LEVELS, readDominoes(read(DOMINOES_KEY)).record),
   dots: (read) =>
     versus(DOTS_LEVELS, readDots(read(DOTS_KEY)).record, (t) => [widest(t.best, 'box', 'boxes')]),
-  draughts: (read) => versus(DRAUGHTS_LEVELS, readDraughts(read(DRAUGHTS_KEY)).record),
+  draughts: (read) =>
+    join(
+      versus(DRAUGHTS_LEVELS, readDraughts(read(DRAUGHTS_KEY)).record),
+      onlineLine(read, 'draughts'),
+    ),
   eights: (read) => versus(EIGHTS_LEVELS, readEights(read(EIGHTS_KEY)).record, undefined, true),
   fences: (read) =>
     versus(FENCES_LEVELS, readFences(read(FENCES_KEY)).record, (t) => [quickest(t.best)]),
