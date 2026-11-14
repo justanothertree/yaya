@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   GOMOKU_KEY,
   LEVELS,
@@ -16,8 +16,14 @@ import {
   type Size,
 } from './gomoku'
 import { useKept } from './kept'
+import { gomokuRules } from './gomokuRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { useCallWords } from '../lab/social/callWords'
+import { myTurn, teamSide } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', paper: 'Paper', night: 'Night' }
 const COLOUR = ['', 'Black', 'White']
@@ -38,12 +44,36 @@ export function GomokuDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
-  const n = game.n
+  /* ── the call's room: the host's size starts each game, which then travels as its moves */
+  const roomRules = useMemo(() => gomokuRules(saved.size), [saved.size])
+  const lab = useLabRoom('gomoku', roomRules)
+  const words = useCallWords(lab, roomRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the side I place for: my seat's in versus, the team's (black) together */
+  const mySide: Side =
+    room?.mode === 'together' ? ((teamSide(roomRules) + 1) as Side) : words.mySeat === 1 ? 2 : 1
+  /** the board on screen: the call's in a call, else this one */
+  const shown = room ? room.game : game
+
+  const n = shown.n
   const computerTurn = mode === 'bot' && !game.over && game.turn !== you
-  const yours = !game.over && (mode === 'two' || game.turn === you)
-  const nameOf = (s: Side) => (mode === 'bot' ? (s === you ? 'You' : 'The computer') : COLOUR[s])
-  const lastMove = game.moves[game.moves.length - 1]
-  const winning = new Set(game.line)
+  const yours = room
+    ? lab.live && myTurn(roomRules, room)
+    : mode !== 'call' && !game.over && (mode === 'two' || game.turn === you)
+  const nameOf = (s: Side) =>
+    room
+      ? room.mode === 'together'
+        ? s === mySide
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[s - 1])
+      : mode === 'bot'
+        ? s === you
+          ? 'You'
+          : 'The computer'
+        : COLOUR[s]
+  const lastMove = shown.moves[shown.moves.length - 1]
+  const winning = new Set(shown.line)
 
   const settle = (g: Game) => {
     setGame(g)
@@ -101,8 +131,23 @@ export function GomokuDemo() {
     )
   }
   const tap = (i: number) => {
-    if (!yours || game.cells[i]) return
+    if (!yours || shown.cells[i]) return
+    if (room) return lab.act({ t: 'move', move: i })
     settle(place(game, i))
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their colour — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.over) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setYou(mySide)
+    setGame(r.game)
+    setLine(r.game.turn === mySide ? 'Your move.' : 'The computer is thinking…')
   }
   const takeBack = () => {
     if (!game.moves.length) return
@@ -113,15 +158,17 @@ export function GomokuDemo() {
     setGame(g)
     setLine('Taken back.')
   }
+  // the call's board may be another size than this one: the keyboard's place stays on it
+  const at = cursor < n * n ? cursor : Math.floor((n * n) / 2)
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const r = Math.floor(cursor / n)
-    const c = cursor % n
+    const r = Math.floor(at / n)
+    const c = at % n
     let next = -1
     if (e.key === 'ArrowLeft') next = r * n + Math.max(0, c - 1)
     else if (e.key === 'ArrowRight') next = r * n + Math.min(n - 1, c + 1)
     else if (e.key === 'ArrowUp') next = Math.max(0, r - 1) * n + c
     else if (e.key === 'ArrowDown') next = Math.min(n - 1, r + 1) * n + c
-    else if (e.key === 'u' || e.key === 'U') takeBack()
+    else if (!room && (e.key === 'u' || e.key === 'U')) takeBack()
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -150,6 +197,15 @@ export function GomokuDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -168,49 +224,66 @@ export function GomokuDemo() {
             ))}
           </div>
         )}
-        <div className="lab-group" role="group" aria-label="Board size">
-          {SIZES.map((s) => (
-            <button
-              key={s}
-              className="btn btn-ghost"
-              aria-pressed={saved.size === s}
-              onClick={() => {
-                setSaved((x) => ({ ...x, size: s }))
-                fresh(mode, saved.level, s)
-              }}
-            >
-              {s}×{s}
-            </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <div className="lab-group" role="group" aria-label="Board size">
+            {SIZES.map((s) => (
+              <button
+                key={s}
+                className="btn btn-ghost"
+                aria-pressed={saved.size === s}
+                onClick={() => {
+                  setSaved((x) => ({ ...x, size: s }))
+                  fresh(mode, saved.level, s)
+                }}
+              >
+                {s}×{s}
+              </button>
+            ))}
+          </div>
+        )}
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          lab={lab}
+          rules={roomRules}
+          sides={['Black', 'White']}
+          ink={['#17191e', '#f4f3ee']}
+          levelNames={LEVEL_NAMES}
+          score={(g) => (g.winner ? ` in ${Math.ceil(g.moves.length / 2)} moves` : null)}
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([1, 2] as Side[]).map((s) => (
-          <div key={s} className={`dice-score${game.turn === s && !game.over ? ' is-up' : ''}`}>
+          <div key={s} className={`dice-score${shown.turn === s && !shown.over ? ' is-up' : ''}`}>
             <span>
               {nameOf(s)} · {COLOUR[s].toLowerCase()}
             </span>
-            <strong>{game.cells.filter((x) => x === s).length}</strong>
+            <strong>{shown.cells.filter((x) => x === s).length}</strong>
             <span className="muted">stones</span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="gm-board"
         style={{ ['--gm-n' as string]: n }}
         role="group"
-        aria-label={`The board, ${n} by ${n}. Arrow keys move, Enter places a stone, U takes back.`}
+        aria-label={`The board, ${n} by ${n}. Arrow keys move, Enter places a stone${room ? '' : ', U takes back'}.`}
         onKeyDown={onKey}
       >
         {Array.from({ length: n * n }, (_, i) => {
-          const v = game.cells[i]
+          const v = shown.cells[i]
           return (
             <button
               key={i}
@@ -229,7 +302,7 @@ export function GomokuDemo() {
               ]
                 .filter(Boolean)
                 .join(' ')}
-              tabIndex={i === cursor ? 0 : -1}
+              tabIndex={i === at ? 0 : -1}
               aria-label={`${pointName(n, i)}: ${v ? `${COLOUR[v].toLowerCase()} stone` : 'empty'}${i === lastMove ? ', last move' : ''}${winning.has(i) ? ', in the five' : ''}`}
               onFocus={() => setCursor(i)}
               onClick={() => {
@@ -242,15 +315,17 @@ export function GomokuDemo() {
           )
         })}
       </div>
-      <div className="lab-controls">
-        <button
-          className="btn btn-ghost"
-          onClick={takeBack}
-          disabled={!game.moves.length || computerTurn}
-        >
-          ↶ Take back
-        </button>
-      </div>
+      {mode !== 'call' && (
+        <div className="lab-controls">
+          <button
+            className="btn btn-ghost"
+            onClick={takeBack}
+            disabled={!game.moves.length || computerTurn}
+          >
+            ↶ Take back
+          </button>
+        </div>
+      )}
       {mode === 'bot' && (
         <p className="sun-reading">
           <span className="muted">
