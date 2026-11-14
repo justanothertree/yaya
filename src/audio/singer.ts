@@ -1,8 +1,10 @@
 import {
+  GLIDES,
   VOWELS,
   phonesOf,
   type Consonant,
   type Phones,
+  type Place,
   type SungNote,
   type VowelId,
 } from './lyrics'
@@ -54,6 +56,8 @@ export type Voice = {
   /** a broad lift around 3kHz, in dB — the "singer's formant" that makes a pop voice bright and
    *  its front vowels clear */
   bright: number
+  /** the consonants' noise — bursts, hiss, breath — against the voice: 1 is the clearest */
+  diction: number
   /** seconds for the voice to reach full level at a vowel */
   attack: number
   stutter: boolean
@@ -74,13 +78,14 @@ export const PRESETS: Record<PresetId, Voice> = {
     h1: 1,
     breath: 0.06,
     air: 0.08,
-    width: 1,
+    width: 0.85,
     formant: 1,
     glide: 0.07,
     scoop: 0.4,
     vibrato: { delay: 0.32, rise: 0.35, rate: 5.6, cents: 28 },
     humanize: { cents: 5, ms: 6, db: 1, drift: 4 },
     bright: 6,
+    diction: 1,
     attack: 0.03,
     stutter: false,
     crush: null,
@@ -94,13 +99,14 @@ export const PRESETS: Record<PresetId, Voice> = {
     h1: 1.8,
     breath: 0.45,
     air: 0.45,
-    width: 1.35,
+    width: 1.15,
     formant: 1,
     glide: 0.11,
     scoop: 0.9,
     vibrato: { delay: 0.38, rise: 0.45, rate: 5.1, cents: 38 },
     humanize: { cents: 7, ms: 8, db: 1.5, drift: 5 },
     bright: 3,
+    diction: 0.8,
     attack: 0.06,
     stutter: false,
     crush: null,
@@ -114,13 +120,14 @@ export const PRESETS: Record<PresetId, Voice> = {
     h1: 1,
     breath: 0.12,
     air: 0.05,
-    width: 0.85,
+    width: 0.75,
     formant: 1.12,
     glide: 0,
     scoop: 0,
     vibrato: { delay: 0, rise: 0, rate: 5.5, cents: 0 },
     humanize: { cents: 0, ms: 0, db: 0.5, drift: 0 },
     bright: 8,
+    diction: 0.9,
     attack: 0.008,
     stutter: true,
     /* ⚠️ SOFTENED 14 Nov 2026 — Evan: "a bit harsh". It was 5 levels on the signal as it left the
@@ -169,13 +176,6 @@ export type Event = {
   stutter: number[]
 }
 
-/** how long a consonant takes before its vowel, in seconds */
-export function consonantLength(c: Consonant | null): number {
-  if (!c) return 0
-  if (c.kind === 'hiss') return c.breath ? 0.06 : 0.085
-  return c.kind === 'click' ? 0.045 : 0.06
-}
-
 /**
  * A line of sung notes into the events that will play it — pure, so the timing can be asked.
  *
@@ -208,9 +208,9 @@ export function planLine(sung: readonly SungNote[], start: number, opts: SingOpt
         lastAt = at
         continue
       }
-      const phones = phonesOf(n.text)
+      const phones = phonesOf(n.text, n.whole)
       const onBar = Math.abs(n.t / bar - Math.round(n.t / bar)) < 1e-3
-      const early = Math.min(consonantLength(phones.onset), 0.45 * (at - lastAt))
+      const early = Math.min(onsetLength(phones.onsets), 0.45 * (at - lastAt))
       lastAt = at
       cur = {
         part: p.part,
@@ -265,6 +265,8 @@ export type Burst = {
   q: number
   level: number
   through: 'band' | 'vowel'
+  /** seconds to full level: a click's burst is there at once and dies away, a hiss swells in */
+  rise: number
 }
 
 export type Phrase = {
@@ -279,6 +281,8 @@ export type Phrase = {
   formants: [Step[], Step[], Step[], Step[]]
   /** how much voice goes into the formants, 0..1 (the breath rides on it) */
   voicing: Step[]
+  /** the lowpass after the formants, Hz: open, or closed for a nasal murmur or a voice bar */
+  muffle: Step[]
   bursts: Burst[]
   /** the chop's gate, 0 or 1; empty when there is no chop */
   gate: Step[]
@@ -291,8 +295,183 @@ export const REST = 0.35
 
 export const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
 
-/** the nasal murmur of m and n: a low resonance and the upper ones damped back */
-const NASAL = [270, 1700, 2600, 4000] as const
+/**
+ * The lowpass after the throat, wide open. It closes for the nasal murmur of m and n and for the
+ * voice bar of b, d and g, which are the voice heard through closed lips or a closed nose — low,
+ * dull, and nothing like a quiet vowel, which is what both used to be.
+ */
+const OPEN = 16000
+/** closed for a voice bar: only the buzz's lowest harmonics get through */
+const BAR = 450
+/** half-closed for the voice under z, v and the voiced th, which is buzz and hiss at once */
+const BUZZ = 900
+/** the voice bar's level, against the vowel */
+const VOICE_BAR = 0.1
+/** and the voice under a z or a v */
+const VOICED_HISS = 0.18
+/** a click's burst is at full level within half a millisecond: abruptness is what a release is */
+const CLICK = 0.0005
+/** the breath after p, t and k, through the coming vowel's shape */
+const ASPIRATION = 0.7
+
+/** natural lengths, in seconds, when there is time for them */
+const T = {
+  /** the silence before a stop's burst — half of what makes it a stop at all */
+  closure: 0.05,
+  burst: 0.015,
+  /** the breath between a p, t or k and the voice */
+  aspiration: 0.04,
+  /** and the little there is after a b, d or g */
+  vot: 0.008,
+}
+
+/** a noise, through a band-pass */
+type Band = { hz: number; q: number; level: number }
+
+/**
+ * Each hiss by where it is made. s is a high, wide band; sh is lower and the loudest of them; f
+ * and th are flat, quiet and nearly alike — told apart, as they are in speech, mostly by how the
+ * vowel moves away from them.
+ *
+ * ⚠️ THEY USED TO BE NARROW AND QUIET. s was a band at Q 2.5 and sat 26dB under its vowel; f and
+ * th averaged 39dB under, which is not a consonant, it is a pause. Measured against the vowel's
+ * own level in docs/2026-11-14-singer-diction.md.
+ */
+const HISS: Record<Place, Band> = {
+  ridge: { hz: 6500, q: 1.1, level: 0.75 },
+  palate: { hz: 3000, q: 1.4, level: 1.4 },
+  lips: { hz: 4500, q: 0.35, level: 0.26 },
+  teeth: { hz: 6500, q: 0.4, level: 0.24 },
+  /* English has no hiss at the velum; a sh is the nearest */
+  velum: { hz: 3000, q: 1.4, level: 0.8 },
+  /* h never reaches this table: it is breath through the vowel */
+  glottis: { hz: 1800, q: 0.7, level: 0.55 },
+}
+
+/**
+ * A stop's burst by where it is made: lips give a low, spread-out puff; the ridge a high one; the
+ * velum a compact peak that sits on the coming vowel's F2, which is why a k before "ee" and a k
+ * before "oo" are different clicks. Voiced stops burst at half the level.
+ */
+function burstOf(c: Consonant & { kind: 'click' }, vowel: readonly number[]): Band {
+  const b: Band =
+    c.place === 'lips'
+      ? { hz: 900, q: 0.5, level: 1.6 }
+      : c.place === 'velum'
+        ? { hz: Math.min(3200, Math.max(1400, vowel[1] * 1.1)), q: 2.5, level: 3.2 }
+        : c.place === 'palate'
+          ? { hz: 3200, q: 1, level: 2.2 }
+          : { hz: 4200, q: 0.9, level: 2.8 }
+  return c.voiced ? { ...b, level: b.level / 2 } : b
+}
+
+/**
+ * A nasal murmur: one low resonance, and the rest heard through a lowpass — m duller than n,
+ * because closed lips cancel more of the sound above 1kHz than a tongue on the ridge does.
+ */
+const MURMUR = {
+  lips: { f: [260, 1100, 2300, 3300], muffle: 800 },
+  ridge: { f: [260, 1500, 2600, 3500], muffle: 1300 },
+  velum: { f: [260, 1900, 2700, 3600], muffle: 1700 },
+} as const
+const murmurAt = (p: Place): keyof typeof MURMUR =>
+  p === 'lips' ? 'lips' : p === 'velum' ? 'velum' : 'ridge'
+
+/** how much of a stop's closure is not needed when the voice was already silent before it */
+const spare = (c: Consonant) => (c.kind !== 'click' ? 0 : c.voiced ? T.closure - 0.03 : T.closure)
+const closureOf = (c: Consonant) => (c.kind === 'click' ? T.closure : 0)
+
+/**
+ * How long one consonant takes before a vowel when there is time, in seconds. A stop is its
+ * closure, its burst and what follows the burst — breath after p, t and k (less after an s, as in
+ * "st", and less before another consonant, as in "pl"), almost nothing after b, d and g, and a sh
+ * after ch and j.
+ */
+function lengthIn(cs: readonly Consonant[], j: number): number {
+  const c = cs[j]
+  if (c.kind === 'click') {
+    const after =
+      c.place === 'palate'
+        ? c.voiced
+          ? 0.04
+          : 0.05
+        : c.voiced
+          ? T.vot
+          : cs[j - 1]?.kind === 'hiss'
+            ? 0.012
+            : j < cs.length - 1
+              ? 0.02
+              : T.aspiration
+    return T.closure + T.burst + after
+  }
+  if (c.kind === 'hiss') {
+    if (c.place === 'glottis') return 0.07
+    const loud = c.place === 'ridge' || c.place === 'palate'
+    return c.voiced ? (loud ? 0.08 : 0.07) : loud ? 0.1 : 0.085
+  }
+  return c.kind === 'hum' ? 0.07 : 0.075
+}
+
+/** how long all of a syllable's opening consonants take, together */
+export const onsetLength = (cs: readonly Consonant[]) =>
+  cs.reduce((s, _, j) => s + lengthIn(cs, j), 0)
+
+/** how long a closing consonant takes at the end of its note */
+function codaLength(c: Consonant): number {
+  if (c.kind === 'click')
+    return 0.045 + T.burst + (c.place === 'palate' ? 0.05 : c.voiced ? 0.012 : 0.02)
+  if (c.kind === 'hiss')
+    return c.voiced ? 0.075 : c.place === 'ridge' || c.place === 'palate' ? 0.1 : 0.085
+  return 0.08
+}
+
+/** two consonants that are the same sound */
+const same = (a: Consonant, b: Consonant) =>
+  a.kind === b.kind &&
+  (a.kind === 'glide'
+    ? b.kind === 'glide' && a.shape === b.shape
+    : 'place' in b && a.place === b.place)
+
+/**
+ * The formants a vowel starts from after a consonant made at `place`, or heads for before one —
+ * the movement a listener hears the consonant by.
+ *
+ * ⚠️ THIS IS WHAT TELLS b FROM d FROM g, AND m FROM n. A burst lasts 10ms; the vowel's first 50ms
+ * moving out of the consonant is five times as long and is louder. Without it the voice moved
+ * straight from vowel to vowel and every stop sounded alike — measured, "ma" and "na" rendered
+ * identically, and so did the first 80ms of "pa", "ta" and "ka".
+ *
+ * F2 follows the locus equations phoneticians fit to real speech (F2 at the release against F2 in
+ * the vowel is close to a straight line, with a slope and intercept that depend on the place):
+ * lips pull F2 down, the ridge pulls it toward ~1.8kHz, and the velum brings F2 and F3 together
+ * (the "velar pinch"). F1 always starts low, because any closure lowers it.
+ */
+function locus(place: Place, vowel: readonly number[], scale = 1): number[] {
+  const [f1, f2, f3, f4] = vowel
+  if (place === 'glottis') return [...vowel]
+  const c1 = Math.min(f1, Math.max(250 * scale, 0.5 * f1))
+  let c2: number
+  let c3: number
+  if (place === 'lips') {
+    c2 = 0.7 * f2 + 250 * scale
+    c3 = f3 - 200 * scale
+  } else if (place === 'teeth') {
+    c2 = 0.5 * f2 + 900 * scale
+    c3 = f3
+  } else if (place === 'ridge') {
+    c2 = 0.4 * f2 + 1150 * scale
+    c3 = Math.max(f3, 2700 * scale)
+  } else if (place === 'palate') {
+    c2 = 0.3 * f2 + 1700 * scale
+    c3 = Math.max(f3, c2 + 400 * scale)
+  } else {
+    c2 = 0.9 * f2 + 300 * scale
+    c3 = f3 - 0.5 * (f3 - (c2 + 250 * scale))
+  }
+  c2 = Math.max(c2, c1 + 250)
+  c3 = Math.max(c3, c2 + 250)
+  return [c1, c2, c3, Math.max(f4, c3 + 300)]
+}
 
 /**
  * A vowel's four formants for this voice and this note.
@@ -303,7 +482,12 @@ const NASAL = [270, 1700, 2600, 4000] as const
  * the most open vowel's own.
  */
 export function vowelFormants(vowel: VowelId, f0: number, scale: number): number[] {
-  const [a, b, c] = VOWELS[vowel]
+  return formantsOf(VOWELS[vowel], f0, scale)
+}
+
+/** any shape of the mouth — a vowel's, a glide's — as four formants for this voice and note */
+function formantsOf(shape: readonly number[], f0: number, scale: number): number[] {
+  const [a, b, c] = shape
   const f1 = Math.min(Math.max(a * scale, f0 * 1.15), Math.max(a * scale, 1150))
   const f2 = Math.max(b * scale, f1 + 250)
   const f3 = Math.max(c * scale, f2 + 250)
@@ -372,15 +556,20 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
   const vibrato: Step[] = [{ t: from, v: 0, how: 'set' }]
   const formants: [Step[], Step[], Step[], Step[]] = [[], [], [], []]
   const voicing: Step[] = [{ t: from, v: 0, how: 'set' }]
+  const muffle: Step[] = [{ t: from, v: OPEN, how: 'set' }]
   const bursts: Burst[] = []
   const gate: Step[] = v.chop ? [{ t: from, v: 0, how: 'set' }] : []
-  const allTo = (fs: number[], t: number, how: 'set' | 'target', tc = 0.02) =>
+  const allTo = (fs: readonly number[], t: number, how: 'set' | 'target', tc = 0.02) =>
     fs.forEach((f, k) => formants[k].push(how === 'set' ? { t, v: f, how } : { t, v: f, how, tc }))
+  const muffleTo = (hzTo: number, t: number, tc: number) =>
+    muffle.push({ t, v: hzTo, how: 'target', tc })
   let level = 0
   const say = (t: number, to: number, how: 'set' | 'ramp' = 'ramp') => {
     voicing.push({ t, v: to, how })
     level = to
   }
+  const noise = (b: Omit<Burst, 'level'> & { level: number }) =>
+    bursts.push({ ...b, level: b.level * v.diction })
   let prevHz = 0
   let lastEnd = from
 
@@ -396,25 +585,32 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
     const f0 = hz(e.pitches[0].midi)
     const shape = (vw: VowelId) => vowelFormants(vw, f0, v.formant)
     const vt = shape(e.phones.vowel)
-    const on = e.phones.onset
+    /* the mouth's shape at a consonant: a glide's own, a nasal's murmur, or where the tongue or
+       lips close — which is the shape the vowel beside it moves from, or heads for */
+    const at = (c: Consonant): number[] =>
+      c.kind === 'glide'
+        ? formantsOf(GLIDES[c.shape], f0, v.formant)
+        : c.kind === 'hum'
+          ? MURMUR[murmurAt(c.place)].f.map((f) => f * v.formant)
+          : locus(c.place, vt, v.formant)
 
     /* ── pitch: scoop into a phrase, glide (or snap) between notes ── */
     e.pitches.forEach((p, k) => {
-      const at = k === 0 ? vowelAt : p.at
+      const t = k === 0 ? vowelAt : p.at
       const target = hz(p.midi) * 2 ** (cents[i] / 1200)
       if (!prevHz) {
         const low = target * 2 ** (-v.scoop / 12)
         pitch.push({ t: from, v: low, how: 'set' })
         if (v.scoop > 0) {
-          pitch.push({ t: Math.max(from, at - 0.01), v: low, how: 'set' })
-          pitch.push({ t: at + 0.09, v: target, how: 'exp' })
+          pitch.push({ t: Math.max(from, t - 0.01), v: low, how: 'set' })
+          pitch.push({ t: t + 0.09, v: target, how: 'exp' })
         } else pitch.push({ t: from, v: target, how: 'set' })
       } else if (v.glide <= 0) {
         /* hard tune: the jump hides in the consonant when there is one, and is the sound when not */
-        pitch.push({ t: k === 0 ? cFrom : at, v: target, how: 'set' })
+        pitch.push({ t: k === 0 ? cFrom : t, v: target, how: 'set' })
       } else {
         const last = pitch[pitch.length - 1].t
-        let arrive = at + v.glide * 0.35
+        let arrive = t + v.glide * 0.35
         const leave = Math.max(last, arrive - v.glide)
         if (arrive <= leave) arrive = leave + 0.01
         pitch.push({ t: leave, v: prevHz, how: 'set' })
@@ -423,31 +619,23 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
       prevHz = target
       /* vibrato only on what is held long enough to settle first */
       const segEnd = k + 1 < e.pitches.length ? e.pitches[k + 1].at : hold
-      lateVibrato(vibrato, at, segEnd, v)
+      lateVibrato(vibrato, t, segEnd, v)
     })
 
-    /* ── the mouth: into the onset's shape, then the vowel, then a diphthong's second half ── */
-    const nasal = NASAL.map((f) => f * v.formant)
-    if (i === 0)
-      allTo(on?.kind === 'glide' ? shape(on.from) : on?.kind === 'hum' ? nasal : vt, from, 'set')
-    if (on?.kind === 'glide') {
-      allTo(shape(on.from), cFrom, 'target', 0.012)
-      allTo(vt, vowelAt - 0.02, 'target', 0.03)
-    } else if (on?.kind === 'hum') {
-      allTo(nasal, cFrom, 'target', 0.012)
-      allTo(vt, vowelAt, 'target', 0.02)
-    } else allTo(vt, cFrom, 'target', 0.022)
-    if (e.phones.to) allTo(shape(e.phones.to), vowelAt + (hold - vowelAt) * 0.55, 'target', 0.07)
-
-    /* ── the voice's level: what the onset does to it, then the vowel ── */
-    const atk = v.attack
+    /* ── the onset: each consonant in turn, then the vowel ── */
+    const ons = e.phones.onsets
+    if (i === 0) allTo(ons.length ? at(ons[0]) : vt, from, 'set')
+    muffleTo(OPEN, cFrom, 0.004)
     if (!legatoIn) say(cFrom, 0, 'set')
     else say(cFrom, level, 'set')
+    const atk = v.attack
     const rise = (t: number, to = L) => {
       if (e.stutter.length) return
       say(t, to)
     }
-    if (!on) {
+
+    if (!ons.length) {
+      allTo(vt, cFrom, 'target', 0.022)
       if (legatoIn) {
         /* a vowel straight after a vowel: a small dip so the new syllable is heard to start */
         say(Math.max(cFrom, vowelAt - 0.03), level, 'set')
@@ -457,53 +645,136 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
         say(Math.max(cFrom, vowelAt - 0.002), 0, 'set')
         rise(vowelAt + atk)
       }
-    } else if (on.kind === 'hiss') {
-      say(cFrom + 0.02, on.voiced ? 0.3 * L : 0)
-      say(vowelAt - 0.005, level, 'set')
-      rise(vowelAt + atk)
-      bursts.push(
-        on.breath
-          ? { at: cFrom, len: vowelAt + 0.02 - cFrom, hz: 0, q: 0, level: 0.55, through: 'vowel' }
-          : {
-              at: cFrom,
-              len: vowelAt + 0.01 - cFrom,
-              hz: on.hz * v.formant,
-              q: on.hz > 4500 ? 2.5 : 1.6,
-              level: on.weak ? 0.1 : on.voiced ? 0.22 : 0.32,
-              through: 'band',
-            },
-      )
-    } else if (on.kind === 'click') {
-      /* closure, burst, then — for p, t and k — a breath of aspiration before the voice comes in */
-      say(cFrom + 0.012, on.voiced ? 0.12 : 0)
-      say(vowelAt - 0.003, on.voiced ? 0.12 : 0, 'set')
-      rise(vowelAt + atk * 0.6)
-      const burst = vowelAt - (on.voiced ? 0.012 : 0.03)
-      bursts.push({
-        at: burst,
-        len: 0.012,
-        hz: on.hz,
-        q: 1.2,
-        level: on.voiced ? 0.3 : 0.5,
-        through: 'band',
-      })
-      if (!on.voiced)
-        bursts.push({
-          at: burst + 0.012,
-          len: vowelAt + 0.012 - (burst + 0.012),
-          hz: 0,
-          q: 0,
-          level: 0.35,
-          through: 'vowel',
-        })
-    } else if (on.kind === 'hum') {
-      say(cFrom + 0.025, 0.5 * L)
-      say(vowelAt - 0.005, 0.5 * L, 'set')
-      rise(vowelAt + 0.035)
     } else {
-      say(cFrom + 0.02, 0.75 * L)
-      rise(vowelAt + 0.035)
+      /* ⚠️ A STOP NEEDS ITS SILENCE. Each consonant takes its natural length when there is time
+         and all of them shrink together when there is not; a stop's closure is free when the
+         voice was already silent, because the silence is there anyway. */
+      const lens = ons.map((c, j) => lengthIn(ons, j) - (j === 0 && !legatoIn ? spare(c) : 0))
+      const natural = lens.reduce((s, x) => s + x, 0)
+      const k = Math.min(1, (vowelAt - cFrom) / natural)
+      let a = vowelAt - k * natural
+      /* ⚠️ NOTHING A CONSONANT DOES MAY BE STAMPED BEFORE IT STARTS. With no time to spare a
+         consonant is a few milliseconds long, and "move into the vowel 35ms before the end"
+         lands before "take the glide's shape" — sorted, the shape wins and the whole vowel is
+         sung in it: a line starting on "wa" with nothing in hand sang its "a" at the w's F2. */
+      const after = (t: number) => Math.max(a, t)
+      if (legatoIn) say(a, level, 'set')
+      ons.forEach((c, j) => {
+        const b = a + k * lens[j]
+        const last = j === ons.length - 1
+        const then = last ? vt : at(ons[j + 1])
+        if (c.kind === 'click') {
+          const voiced = !!c.voiced
+          const cl = k * (closureOf(c) - (j === 0 && !legatoIn ? spare(c) : 0))
+          const blen = Math.max(0.004, k * T.burst)
+          const release = a + cl
+          allTo(locus(c.place, vt, v.formant), a, 'target', 0.012)
+          say(a, level, 'set')
+          if (voiced) {
+            /* the voice bar: the throat still buzzing behind closed lips, heard as a low murmur */
+            say(a + 0.008, VOICE_BAR * L)
+            muffleTo(BAR, a, 0.004)
+            muffleTo(OPEN, release, 0.002)
+          } else say(a + 0.008, 0)
+          noise({ at: release, len: blen, ...burstOf(c, vt), through: 'band', rise: CLICK })
+          if (c.place === 'palate') {
+            /* ch and j: a stop released into a sh */
+            const sh = HISS.palate
+            noise({
+              at: release + blen / 2,
+              len: b - release + 0.01,
+              hz: sh.hz * v.formant,
+              q: sh.q,
+              level: sh.level * (voiced ? 0.5 : 0.8),
+              through: 'band',
+              rise: 0.004,
+            })
+          } else if (!voiced)
+            noise({
+              at: release + blen,
+              len: Math.max(0.004, b - release - blen + 0.008),
+              hz: 0,
+              q: 0,
+              level: ASPIRATION,
+              through: 'vowel',
+              rise: 0.003,
+            })
+          allTo(then, voiced ? release : Math.max(release + blen, b - 0.01), 'target', 0.025)
+          if (last) {
+            say(voiced ? release + blen : b - 0.003, voiced ? VOICE_BAR * L : 0, 'set')
+            rise(b + atk * 0.6)
+          }
+        } else if (c.kind === 'hiss' && c.place === 'glottis') {
+          /* h is breath through the shape of what follows, not a hiss of its own */
+          allTo(then, a, 'target', 0.015)
+          say(a, level, 'set')
+          say(a + 0.02, 0)
+          noise({
+            at: a,
+            len: b - a + 0.02,
+            hz: 0,
+            q: 0,
+            level: 0.55,
+            through: 'vowel',
+            rise: 0.01,
+          })
+          if (last) {
+            say(b - 0.005, level, 'set')
+            rise(b + atk)
+          }
+        } else if (c.kind === 'hiss') {
+          const band = HISS[c.place]
+          allTo(locus(c.place, vt, v.formant), a, 'target', 0.015)
+          say(a, level, 'set')
+          if (c.voiced) {
+            say(a + 0.015, VOICED_HISS * L)
+            muffleTo(BUZZ, a, 0.006)
+            muffleTo(OPEN, after(b - 0.004), 0.003)
+          } else say(a + 0.015, 0)
+          noise({
+            at: a,
+            len: b - a + 0.01,
+            hz: band.hz * v.formant,
+            q: band.q,
+            level: band.level * (c.voiced ? 0.6 : 1),
+            through: 'band',
+            /* a swell, never a switch — even when there is no time for the consonant at all */
+            rise: Math.max(0.002, Math.min(0.015, (b - a) / 3)),
+          })
+          allTo(then, after(b - 0.01), 'target', 0.02)
+          if (last) {
+            say(b - 0.005, level, 'set')
+            rise(b + atk)
+          }
+        } else if (c.kind === 'hum') {
+          /* m, n: a murmur through the nose, then the mouth opens all at once */
+          const m = MURMUR[murmurAt(c.place)]
+          allTo(at(c), a, 'target', 0.01)
+          muffleTo(m.muffle, a, 0.005)
+          say(a, level, 'set')
+          say(a + 0.02, 0.55 * L)
+          muffleTo(OPEN, after(b - 0.004), 0.003)
+          allTo(locus(c.place, vt, v.formant), after(b - 0.004), 'target', 0.004)
+          allTo(then, b + 0.004, 'target', 0.016)
+          if (last) {
+            say(b - 0.002, level, 'set')
+            rise(b + 0.02)
+          }
+        } else {
+          /* w, y, l, r: the glide's own shape, then a move into the vowel — slow for w, y and r,
+             quick for l, whose tongue lets go of the ridge */
+          const quick = c.shape === 'l' || c.shape === 'dl'
+          allTo(at(c), a, 'target', 0.012)
+          say(a, level, 'set')
+          say(a + 0.02, 0.45 * L)
+          allTo(then, after(quick ? b - 0.015 : b - 0.035), 'target', quick ? 0.01 : 0.028)
+          if (last) rise(b + 0.035)
+        }
+        a = b
+      })
     }
+    const glideAt = vowelAt + (hold - vowelAt) * 0.55
+    if (e.phones.to) allTo(shape(e.phones.to), glideAt, 'target', 0.07)
 
     /* the stutter: the syllable's start repeated on 32nds before it holds — each sliver faded in
        and out over a few milliseconds and a little louder than the last, so it leads into the
@@ -526,42 +797,98 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
       say(last + 0.008, L)
     }
 
-    /* ── the end of the vowel: the coda, then a release unless the next syllable follows on ── */
-    const coda = e.phones.coda
-    const merged = legato && coda && next?.phones.onset?.kind === coda.kind && coda.kind !== 'hum'
+    /* ── the end of the vowel: the codas, then a release unless the next syllable follows on ── */
+    let codas = e.phones.codas
+    /* "night time": a closing t into an opening t is one t */
+    const into = next?.phones.onsets[0]
+    const end = codas[codas.length - 1]
+    if (legato && end && into && same(end, into) && end.kind !== 'hum') codas = codas.slice(0, -1)
     /* a coda needs the end of the note to itself: never inside a stutter, never before the vowel */
     const busy = voicing[voicing.length - 1].t
-    if (coda && !merged && hold - 0.11 > busy) {
-      const room = hold - vowelAt
-      if (coda.kind === 'hiss' && room > 0.15) {
-        say(hold - 0.1, L, 'set')
-        say(hold - 0.06, coda.voiced ? 0.3 * L : 0)
-        bursts.push({
-          at: hold - 0.09,
-          len: 0.09,
-          hz: coda.hz * v.formant,
-          q: coda.hz > 4500 ? 2.5 : 1.6,
-          level: (coda.weak ? 0.1 : coda.breath ? 0.2 : 0.3) * 0.8,
-          through: coda.breath ? 'vowel' : 'band',
-        })
-      } else if (coda.kind === 'click' && room > 0.1) {
-        say(hold - 0.06, L, 'set')
-        say(hold - 0.045, coda.voiced ? 0.12 : 0)
-        bursts.push({
-          at: hold - 0.025,
-          len: 0.012,
-          hz: coda.hz,
-          q: 1.2,
-          level: 0.3,
-          through: 'band',
-        })
-      } else if (coda.kind === 'hum' && room > 0.15) {
-        allTo(nasal, hold - 0.1, 'target', 0.02)
-        say(hold - 0.11, L, 'set')
-        say(hold - 0.07, 0.5 * L)
-      } else if (coda.kind === 'glide' && room > 0.15) {
-        allTo(shape(coda.from), hold - 0.09, 'target', 0.03)
-      }
+    const room = hold - Math.max(busy + 0.02, vowelAt + 0.08)
+    const natural = codas.reduce((s, c) => s + codaLength(c), 0)
+    if (codas.length && room > 0.04) {
+      const k = Math.min(1, room / natural)
+      let a = hold - k * natural
+      /* the vowel moves toward the first closing consonant before it closes: "ca-t" is heard in
+         the last of the "a" as much as in the t */
+      allTo(
+        at(codas[0]),
+        Math.max(busy, a - 0.04, e.phones.to ? glideAt + 0.01 : 0),
+        'target',
+        0.02,
+      )
+      codas.forEach((c) => {
+        const b = a + k * codaLength(c)
+        say(a, level, 'set')
+        if (c.kind === 'click') {
+          const voiced = !!c.voiced
+          const release = a + k * 0.045
+          const blen = Math.max(0.004, k * T.burst)
+          if (voiced) {
+            say(a + 0.008, VOICE_BAR * L)
+            muffleTo(BAR, a, 0.004)
+            muffleTo(OPEN, release, 0.002)
+          } else say(a + 0.008, 0)
+          const band = burstOf(c, vt)
+          noise({
+            at: release,
+            len: blen,
+            ...band,
+            level: band.level * 0.7,
+            through: 'band',
+            rise: CLICK,
+          })
+          if (c.place === 'palate') {
+            const sh = HISS.palate
+            noise({
+              at: release + blen / 2,
+              len: Math.max(0.004, b - release),
+              hz: sh.hz * v.formant,
+              q: sh.q,
+              level: sh.level * (voiced ? 0.5 : 0.8),
+              through: 'band',
+              rise: 0.004,
+            })
+          } else if (!voiced)
+            noise({
+              at: release + blen,
+              len: Math.max(0.004, Math.min(0.02, b - release - blen)),
+              hz: 0,
+              q: 0,
+              level: ASPIRATION * 0.6,
+              through: 'vowel',
+              rise: 0.003,
+            })
+          if (voiced) {
+            say(release, level, 'set')
+            say(release + 0.012, 0)
+          }
+        } else if (c.kind === 'hiss') {
+          const band = HISS[c.place]
+          if (c.voiced) {
+            say(a + 0.02, VOICED_HISS * L)
+            muffleTo(BUZZ, a, 0.006)
+          } else say(a + 0.02, 0)
+          noise({
+            at: a,
+            len: b - a,
+            hz: band.hz * v.formant,
+            q: band.q,
+            level: band.level * (c.voiced ? 0.6 : 1) * 0.85,
+            through: 'band',
+            rise: 0.01,
+          })
+        } else if (c.kind === 'hum') {
+          allTo(at(c), a, 'target', 0.012)
+          muffleTo(MURMUR[murmurAt(c.place)].muffle, a, 0.006)
+          say(a + 0.03, 0.55 * L)
+        } else {
+          allTo(at(c), a - 0.01, 'target', 0.03)
+          say(a + 0.03, 0.6 * L)
+        }
+        a = b
+      })
     }
     if (!legato) {
       const last = voicing[voicing.length - 1].t
@@ -581,7 +908,11 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
      the phrase's own start, and a noise is cut short rather than moved */
   const clamp = (s: Step[]) => s.map((x) => (x.t < from ? { ...x, t: from } : x))
   const inside = bursts
-    .map((b) => (b.at < from ? { ...b, at: from, len: b.len - (from - b.at) } : b))
+    .map((b) => {
+      if (b.at >= from) return b
+      const len = b.len - (from - b.at)
+      return { ...b, at: from, len, rise: Math.min(b.rise, len) }
+    })
     .filter((b) => b.len > 0.002)
   const byTime = (s: Step[]) =>
     clamp(s)
@@ -596,6 +927,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
     vibrato: byTime(vibrato),
     formants: formants.map(byTime) as Phrase['formants'],
     voicing: byTime(voicing),
+    muffle: byTime(muffle),
     bursts: part === 'harmony' ? [] : inside,
     gate: byTime(gate),
   }
@@ -631,6 +963,7 @@ export function doublePhrase(p: Phrase, late: number, formant: number): Phrase {
       shift(f).map((x) => ({ ...x, v: x.v * formant })),
     ) as Phrase['formants'],
     voicing: shift(p.voicing),
+    muffle: shift(p.muffle),
     bursts: p.bursts.map((b) => ({ ...b, at: b.at + late })),
     gate: shift(p.gate),
   }
@@ -731,12 +1064,18 @@ function build(c: BaseAudioContext, dest: AudioNode, ph: Phrase, v: Voice, o: Bu
   })
   voicing.connect(fs[0])
   for (let k = 0; k < 3; k++) fs[k].connect(fs[k + 1])
+  const muffle = add(c.createBiquadFilter())
+  muffle.type = 'lowpass'
+  muffle.Q.value = 0
+  muffle.frequency.value = OPEN
+  apply(muffle.frequency, ph.muffle)
+  fs[3].connect(muffle)
   const presence = add(c.createBiquadFilter())
   presence.type = 'peaking'
   presence.frequency.value = 3000
   presence.Q.value = 0.7
   presence.gain.value = v.bright
-  fs[3].connect(presence)
+  muffle.connect(presence)
   const level = add(c.createGain())
   level.gain.value = v.out * o.gain
   presence.connect(level)
@@ -835,11 +1174,17 @@ function build(c: BaseAudioContext, dest: AudioNode, ph: Phrase, v: Voice, o: Bu
         f.frequency.value = 400
       }
       const env = add(c.createGain())
-      const rise = Math.min(0.008, b.len / 3)
       env.gain.setValueAtTime(0, b.at)
-      env.gain.linearRampToValueAtTime(b.level, b.at + rise)
-      env.gain.setValueAtTime(b.level, Math.max(b.at + rise, b.at + b.len - rise))
-      env.gain.linearRampToValueAtTime(0, b.at + b.len)
+      env.gain.linearRampToValueAtTime(b.level, b.at + b.rise)
+      if (b.rise <= CLICK) {
+        /* a click: there at once, and 26dB down by the end of its few milliseconds */
+        env.gain.exponentialRampToValueAtTime(b.level * 0.05, b.at + b.len)
+        env.gain.setValueAtTime(0, b.at + b.len)
+      } else {
+        const fall = Math.min(0.012, b.len / 3)
+        env.gain.setValueAtTime(b.level, Math.max(b.at + b.rise, b.at + b.len - fall))
+        env.gain.linearRampToValueAtTime(0, b.at + b.len)
+      }
       n.connect(f)
       f.connect(env)
       /* a hiss is its own sound and skips the vowel; breath is shaped by it */

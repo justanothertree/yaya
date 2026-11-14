@@ -27,7 +27,8 @@ sawtooth is every harmonic at full strength, which is what made it sound like a 
   phrase has started.
 - **F1 rises on high notes,** as a soprano's does: a resonance below the pitch has no harmonic to
   shape, so "ee" at C5 would lose its body exactly where a high melody sits.
-- **Consonants.** s/sh/f/th are band-filtered noise before the beat with the voice silent; z/v/j
+- **Consonants** (⚠️ rebuilt on 14 Nov for intelligibility; see `2026-11-14-singer-diction.md`, which
+  replaces this description). s/sh/f/th are band-filtered noise before the beat with the voice silent; z/v/j
   keep the voice humming under the hiss; p/t/k are a closure, a short burst, then a breath of
   aspiration through the coming vowel; b/d/g a shorter burst with a voice bar; m/n a nasal murmur;
   l/r/w/y start from their own shape and move into the vowel; h is breath through the vowel.
