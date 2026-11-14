@@ -27,6 +27,7 @@ import { readSaved as readFold, FOLD_KEY, PUZZLES as FOLDS } from '../../gpu/fol
 import { readSaved as readSeedling, SEEDLING_KEY, LEVELS as GARDENS } from '../../gpu/seedling'
 import { readSaved as readShadowbox, SHADOWBOX_KEY, PUZZLES as BOXES } from '../../gpu/shadowbox'
 import { readSaved as readTopple, TOPPLE_KEY, PUZZLES as TOPPLES } from '../../gpu/topple'
+import { onlineLine } from '../social/online'
 import { clock, type Reader } from './words'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -122,7 +123,10 @@ export const PUZZLES: Record<string, Reader> = {
       (b: LampsBest) => `${square(b)} ${LAMP_PATTERN[b.pattern]}`,
       (b) => `${count(b.presses, 'press', 'presses')} (par ${b.par})`,
     )
-    return daily(newest, s.solvedCount, 'board')
+    return join([
+      daily(newest, s.solvedCount, 'board'),
+      onlineLine(read, 'lamps', 'on the day’s board'),
+    ])
   },
   codebreaker: (read) => {
     const s = readCode(read(CODE_KEY))

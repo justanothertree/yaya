@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   BOARDS,
@@ -23,8 +23,14 @@ import {
 } from './reversi'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { reversiRules, toWho } from './reversiRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { useCallWords } from '../lab/social/callWords'
+import { myTurn, teamSide } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { felt: 'Felt', wood: 'Wood', slate: 'Slate' }
@@ -181,18 +187,61 @@ export function ReversiDemo() {
   modeRef.current = mode
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── the call's room. The host's own size starts each game; the board then travels whole. */
+  const roomRules = useMemo(() => reversiRules(saved.size), [saved.size])
+  const lab = useLabRoom('reversi', roomRules)
+  const words = useCallWords(lab, roomRules)
+  const room = mode === 'call' ? lab.room : null
+  const mySeat = room ? words.mySeat : null
+  // the side I place for: my seat's in versus, the team's together (dark)
+  const mySide: Who = room?.mode === 'together' ? toWho(teamSide(roomRules)) : mySeat === 1 ? 2 : 1
+  // the board on screen is the room's, whenever it changes — and what turned over, turns over
+  useEffect(() => {
+    if (mode !== 'call' || !room) return
+    window.clearTimeout(timer.current)
+    const was = game.current.b
+    const b = room.game.b
+    let placed: number | null = null
+    if (was.n === b.n && !reduced()) {
+      const now = performance.now()
+      let j = 0
+      for (let i = 0; i < b.cells.length; i++)
+        if (was.cells[i] === 0 && b.cells[i] !== 0) placed = i
+        else if (was.cells[i] !== 0 && was.cells[i] !== b.cells[i])
+          turning.current.set(i, now + j++ * 40)
+    }
+    game.current = {
+      ...game.current,
+      b,
+      turn: room.game.turn,
+      you: mySide,
+      moves: b.cells.filter((c) => c !== 0).length - 4,
+      last: placed ?? (was.n === b.n ? game.current.last : null),
+      recorded: true,
+    }
+    bump()
+  }, [mode, room, mySide])
+
   const g = game.current
   const nameOf = (w: Who) =>
-    modeRef.current === 'bot'
-      ? w === game.current.you
-        ? 'You'
-        : 'The computer'
-      : w === 1
-        ? 'Dark'
-        : 'Light'
+    modeRef.current === 'call' && room
+      ? room.mode === 'together'
+        ? w === mySide
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[w - 1])
+      : modeRef.current === 'bot'
+        ? w === game.current.you
+          ? 'You'
+          : 'The computer'
+        : w === 1
+          ? 'Dark'
+          : 'Light'
   const computerTurn = mode === 'bot' && g.turn !== null && g.turn !== g.you
 
   const playAt = (i: number) => {
+    // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (modeRef.current === 'call') return lab.act({ t: 'move', move: i })
     const gm = game.current
     const who = gm.turn
     if (!who || !flips(gm.b, i, who).length) return
@@ -279,8 +328,31 @@ export function ReversiDemo() {
       fresh(mode, p.size ?? saved.size, p.level ?? saved.level, p.side ?? saved.side)
   }
   const yours = () => {
+    if (modeRef.current === 'call') return lab.live && !!room && myTurn(roomRules, room)
     const gm = game.current
     return gm.turn !== null && (modeRef.current === 'two' || gm.turn === gm.you)
+  }
+  /**
+   * ⚠️ THE GAME IS NEVER LOST TO THE NETWORK. A seated player left alone takes the board on
+   * screen into a game against the computer, keeping the side they played — or a new game if
+   * that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.turn === null) return fresh('bot')
+    window.clearTimeout(timer.current)
+    game.current = {
+      b: r.game.b,
+      turn: r.game.turn,
+      level: saved.level,
+      you: mySide,
+      moves: 1,
+      recorded: false,
+      last: null,
+    }
+    setMode('bot')
+    setLine(game.current.turn === game.current.you ? 'Your turn.' : 'The computer is thinking…')
+    bump()
   }
 
   const cellAt = (e: PointerEvent<HTMLCanvasElement>): number | null => {
@@ -323,6 +395,10 @@ export function ReversiDemo() {
     }
   }
 
+  // what the board's frame loop asks: may a click here place a disc now (in the call, too)
+  const yoursRef = useRef(false)
+  yoursRef.current = yours()
+
   const [d, l] = count(g.b)
   const record = saved.record[saved.level]
   const hints = saved.hints && yours() ? moves(g.b, g.turn ?? 1) : []
@@ -340,11 +416,13 @@ export function ReversiDemo() {
                 : 'empty'
         }`
   const scoreNames: [string, string] =
-    mode === 'bot'
-      ? g.you === 1
-        ? ['You · dark', 'Computer · light']
-        : ['Computer · dark', 'You · light']
-      : ['Dark', 'Light']
+    mode === 'call'
+      ? [`${nameOf(1)} · dark`, `${nameOf(2)} · light`]
+      : mode === 'bot'
+        ? g.you === 1
+          ? ['You · dark', 'Computer · light']
+          : ['Computer · dark', 'You · light']
+        : ['Dark', 'Light']
 
   return (
     <div className="lab-keys rv-room">
@@ -364,6 +442,15 @@ export function ReversiDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <>
@@ -397,10 +484,26 @@ export function ReversiDemo() {
             </div>
           </>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          lab={lab}
+          rules={roomRules}
+          sides={['Dark', 'Light']}
+          ink={INK[saved.discs]}
+          levelNames={LEVEL_NAMES}
+          score={(gm) => {
+            const [dd, ll] = count(gm.b)
+            return `, ${Math.max(dd, ll)} to ${Math.min(dd, ll)}`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="dice-scores">
         {([1, 2] as Who[]).map((w, i) => (
@@ -456,7 +559,7 @@ export function ReversiDemo() {
                   if (now - t0 >= FLIP * 1000) turning.current.delete(i)
                   else moving = true
                 }
-                const ours = gm.turn !== null && (modeRef.current === 'two' || gm.turn === gm.you)
+                const ours = yoursRef.current
                 const k = `${c.width}x${c.height}|${gm.moves}|${ghost.current}|${cursor.current}|${s.board}${s.discs}${s.hints}|${ours}`
                 if (!moving && k === key) return
                 key = moving ? '' : k
@@ -477,10 +580,14 @@ export function ReversiDemo() {
           }}
         />
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-        {hints.length > 0 && <span className="muted"> · {hints.length} possible moves</span>}
-      </p>
+      {mode !== 'call' ? (
+        <p className="mc-line" aria-live="polite">
+          {line}
+          {hints.length > 0 && <span className="muted"> · {hints.length} possible moves</span>}
+        </p>
+      ) : (
+        hints.length > 0 && <p className="muted mc-note">{hints.length} possible moves</p>
+      )}
       {mode === 'bot' && (
         <p className="sun-reading">
           <span className="muted">
