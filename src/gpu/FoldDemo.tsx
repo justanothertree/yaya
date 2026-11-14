@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
+  type Best,
   COLOURS,
   FILE_LIMIT,
   FOLD_KEY,
@@ -29,28 +31,16 @@ type Props = {
 }
 
 type Mode = 'puzzle' | 'free'
-type Best = Record<string, number>
 /** the table: the sheet's middle at the middle, room round it for flaps folded outward */
 const VIEW: [number, number] = [0.5, 0.5]
 const SPAN = 2.2
 
-const load = (): { puzzle: number; best: Best; colour: number } => {
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const v = JSON.parse(localStorage.getItem(FOLD_KEY) ?? 'null') as {
-      puzzle?: unknown
-      best?: Record<string, unknown>
-      colour?: unknown
-    } | null
-    const int = (n: unknown, hi: number) =>
-      typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < hi ? n : 0
-    const best: Best = {}
-    for (const p of PUZZLES) {
-      const n = v?.best?.[p.name]
-      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
-    }
-    return { puzzle: int(v?.puzzle, PUZZLES.length), best, colour: int(v?.colour, COLOURS.length) }
+    return readSaved(localStorage.getItem(FOLD_KEY))
   } catch {
-    return { puzzle: 0, best: {}, colour: 0 }
+    return readSaved(null)
   }
 }
 const download = (blob: Blob, name: string) => {

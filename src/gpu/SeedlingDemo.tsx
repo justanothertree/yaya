@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
+  type Best,
   CELLS,
   COLS,
   ROWS,
@@ -47,28 +49,13 @@ const TOOLS: Record<Tool, string> = {
 }
 /** −1 is the garden you made */
 type Pick = number
-type Best = Record<string, { seeds: number; gen: number }>
-type Saved = { made: Level; best: Best; level: Pick }
 
-const load = (): Saved => {
-  const fresh: Saved = { made: blankLevel(), best: {}, level: 0 }
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const raw = localStorage.getItem(SEEDLING_KEY)
-    if (!raw || raw.length > FILE_LIMIT * 2) return fresh
-    const v = JSON.parse(raw) as Partial<Saved>
-    const made = readLevel(JSON.stringify(v.made))
-    const best: Best = {}
-    if (v.best && typeof v.best === 'object')
-      for (const [k, b] of Object.entries(v.best).slice(0, 50))
-        if (b && Number.isInteger(b.seeds) && Number.isInteger(b.gen))
-          best[k.slice(0, 40)] = { seeds: b.seeds, gen: b.gen }
-    const level =
-      Number.isInteger(v.level) && (v.level as number) >= -1 && (v.level as number) < LEVELS.length
-        ? (v.level as number)
-        : 0
-    return { made: typeof made === 'string' ? fresh.made : made, best, level }
+    return readSaved(localStorage.getItem(SEEDLING_KEY))
   } catch {
-    return fresh
+    return readSaved(null)
   }
 }
 const download = (blob: Blob, name: string) => {
