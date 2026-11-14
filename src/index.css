@@ -719,6 +719,25 @@
   }
 }
 
+/* ⚠️ AND WITH A MOUSE, 24px: the WCAG 2.5.8 floor and no further (OPEN-DECISIONS 22a), so the
+   sheet stays quiet. Measured 10 Nov at 1440: an exercise's ✎ 23x17, a column's 🗑 18x16, the
+   column-rename box 14 tall. This block is the exact complement of the one above, so neither undoes
+   the other: a plain `.cz-slot-btn { min-width }` further down would have beaten the 34px there,
+   being the same specificity and later in the file. The board's log-today ＋ is sized in Board.tsx,
+   because .cz-tap is on controls in other rooms too. */
+@media (min-width: 641px) and (pointer: fine) {
+  .cz-slot-btn {
+    min-width: 24px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cz-col-rename {
+    min-height: 24px;
+  }
+}
+
 /* ⚠️ EVERY FIELD ON THE SITE, AND A THUMB IS NOT A WIDTH — the same correction the slider and
    visualiser blocks at the end of this file already carry, and the rule it was most expensive to
    miss, because this one selector is every input, select and textarea in every room. Gated on
@@ -18269,6 +18288,14 @@ a.cz-msg-author:focus-visible {
 .chron-week-day.is-on {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
+}
+/* ⚠️ AND THE CHOSEN DAY STILL SHOWS FOCUS. The selection is drawn as an outline, and the rule
+   above outranks the site's plain `:focus-visible`, so tabbing onto the selected day changed
+   nothing on screen: measured on 10 Nov, the only one of 143 controls across Chronicle and the
+   Circuit whose focus could not be seen. This puts the site's own ring back for that case. */
+.chron-week-day.is-on:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .chron-week-lane {

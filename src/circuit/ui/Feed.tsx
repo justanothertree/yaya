@@ -188,22 +188,32 @@ function LogPhoto({
 }) {
   const pic = useSeenPicture(id)
   if (!pic) return null
+  /* ⚠️ THE PICTURE IS INSIDE A BUTTON, so a keyboard can open it: a bare <img> with a click was
+     out of the tab order, and opening the photo was mouse-only */
   return (
-    <img
-      src={pic.thumbUrl}
-      alt={pic.alt ?? 'workout'}
+    <button
+      type="button"
+      aria-label={`Open the photo${pic.alt ? `: ${pic.alt}` : ''}`}
       onClick={(e) => {
         e.stopPropagation()
         onPhoto(pic.url, pic.alt)
       }}
       style={{
         marginTop: 6,
-        maxHeight: 96,
+        padding: 0,
+        border: 'none',
+        background: 'none',
         borderRadius: 8,
         cursor: 'zoom-in',
         display: 'block',
       }}
-    />
+    >
+      <img
+        src={pic.thumbUrl}
+        alt={pic.alt ?? 'workout'}
+        style={{ maxHeight: 96, borderRadius: 8, display: 'block' }}
+      />
+    </button>
   )
 }
 
