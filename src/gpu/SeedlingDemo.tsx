@@ -32,6 +32,7 @@ import {
   type V2,
 } from './seedling'
 import { createSeedling, type SeedlingView } from './seedlingEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -128,7 +129,7 @@ export function SeedlingDemo({ running, setRunning, onAdapter }: Props) {
   /* what is kept: the garden you made, your best for each, and which you were on */
   useEffect(() => {
     try {
-      localStorage.setItem(SEEDLING_KEY, JSON.stringify({ made, best, level: pick }))
+      writeKept(SEEDLING_KEY, JSON.stringify({ made, best, level: pick }))
     } catch {
       /* private mode: kept for this visit */
     }

@@ -23,6 +23,7 @@ import {
   type Stock,
 } from './beams'
 import { createBeams, type BeamsView } from './beamsEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -80,7 +81,7 @@ export function BeamsDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(BEAMS_KEY, JSON.stringify({ best, level, placed }))
+      writeKept(BEAMS_KEY, JSON.stringify({ best, level, placed }))
     } catch {
       /* private mode: it stays for this visit */
     }

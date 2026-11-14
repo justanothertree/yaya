@@ -19,6 +19,7 @@ import {
   type V2,
 } from './printshop'
 import { createShop, type Shop } from './printshopEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -99,7 +100,7 @@ export function PrintshopDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PRINTSHOP_KEY, JSON.stringify({ steps, gouge, ink, pressure }))
+      writeKept(PRINTSHOP_KEY, JSON.stringify({ steps, gouge, ink, pressure }))
     } catch {
       setNote('This browser would not keep the print — ⬇ Save it to a file to be sure of it.')
     }

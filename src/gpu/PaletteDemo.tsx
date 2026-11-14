@@ -23,6 +23,7 @@ import {
   type Lab,
 } from './palette'
 import { createPalette, type PaletteView } from './paletteEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -75,7 +76,7 @@ export function PaletteDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PALETTES_KEY, JSON.stringify(kept))
+      writeKept(PALETTES_KEY, JSON.stringify(kept))
     } catch {
       /* private mode: kept for this visit */
     }

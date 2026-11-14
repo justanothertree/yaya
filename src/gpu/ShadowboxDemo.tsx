@@ -21,6 +21,7 @@ import {
   type Show,
 } from './shadowbox'
 import { createShadowbox, type ShadowboxView } from './shadowboxEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -92,7 +93,7 @@ export function ShadowboxDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(SHADOWBOX_KEY, JSON.stringify({ puzzle, best }))
+      writeKept(SHADOWBOX_KEY, JSON.stringify({ puzzle, best }))
     } catch {
       /* private mode: kept for this visit */
     }
