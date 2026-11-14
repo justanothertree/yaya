@@ -16642,7 +16642,8 @@ a.cz-msg-author:focus-visible {
  * three-pixel column. Measured at 320: "what you are aiming at" ellipses, both labels whole.
  */
 /* ⚠️ FOUR SINCE THE JOURNAL, AND STILL ONE ROW. Measured at 375 before settling on it: each
-   button is ~77px, "Journal" and "Friends" fit their labels, and "Aims" keeps room for its count.
+   button is ~77px and "Journal" and "Friends" fit their labels. "Aims" with its count did NOT,
+   whenever another half was the chosen one — see the side padding in the narrow block below.
    The hints already drop below 34rem (see below), which is what made a fourth affordable. */
 .chron-halves {
   display: grid;
@@ -16730,9 +16731,19 @@ a.cz-msg-author:focus-visible {
   .chron-halves .btn {
     align-items: center;
     text-align: center;
+    /* ⚠️ AND THE SIDES GIVE UP THEIR PADDING, or "Aims" reads "Ai…". The word, the gap and its
+       count need 57px, and an unchosen button at 375 had 55.7 inside 9.6px of padding a side, so
+       the word was cut whenever another half was chosen. With the labels centred, side padding
+       only ever sat between the word and the edge. Measured with 0.2rem: every label whole at 375
+       and 360 with a one- or two-digit count, chosen or not; at 320 with one digit, while a
+       two-digit count still clips the word there, which is the rule above doing its job. */
+    padding-inline: 0.2rem;
   }
   .chron-halves .btn small {
     display: none;
+  }
+  .chron-half-top {
+    gap: 0.2rem;
   }
 }
 
