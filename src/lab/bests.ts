@@ -35,23 +35,17 @@ import { readBest as readTrials, BEST_KEY as TRIALS_KEY } from '../gpu/trials'
 import { readSolved as readWaterworks, LEVELS as WATER_LEVELS, SOLVED_KEY } from '../gpu/waterworks'
 
 import type { Card } from './recorded'
+import type { Read, Reader } from './shares/words'
+export type { Read, Reader }
 
-export type Read = (key: string) => string | null
-export type Reader = (read: Read) => string | null
+import { BOARD } from './shares/board'
+import { ARCADE } from './shares/arcade'
+import { PUZZLES } from './shares/puzzles'
+import { clock, solved } from './shares/words'
+export { clock }
 
-/** seconds as m:ss, or h:mm:ss past the hour */
-export function clock(s: number): string {
-  const t = Math.round(s)
-  const [h, m, sec] = [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60]
-  const ss = String(sec).padStart(2, '0')
-  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
-}
-
-/** "3 of 10 levels solved", or null when none are */
-const solved = (n: number, of: number, what = 'levels') =>
-  n > 0 ? `${n} of ${of} ${what} solved` : null
-
-const READERS: Record<string, Reader> = {
+/** the first twenty, from before the share button became a card */
+const OWN: Record<string, Reader> = {
   skip: (read) => {
     const s = readSkip(read(SKIP_KEY))
     if (!s.best) return null
@@ -150,6 +144,12 @@ const READERS: Record<string, Reader> = {
     return `${name}, ${pieces} pieces in ${clock(s)}`
   },
 }
+
+/**
+ * Every toy that can share a result. A group's readers live in shares/<group>.ts and each is
+ * that toy's own readSaved, worded — never a second parser (see the top of this file).
+ */
+const READERS: Record<string, Reader> = { ...OWN, ...BOARD, ...ARCADE, ...PUZZLES }
 
 /** which toys can share a best at all */
 export const SHARES = new Set(Object.keys(READERS))
