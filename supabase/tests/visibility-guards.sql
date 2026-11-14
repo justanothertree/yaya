@@ -1,3 +1,37 @@
+-- ⛔ SCRATCH BRANCH probe/feed-steps-1-to-3 ONLY — never to be merged.
+\echo === replaying the nine migrations applied since the dump, so this database matches production
+\echo --- 20261105023835_one_unique_index_on_the_snake_registry.sql
+\ir ../migrations/20261105023835_one_unique_index_on_the_snake_registry.sql
+\echo --- 20261109030613_lab_catalog_and_feedback.sql
+\ir ../migrations/20261109030613_lab_catalog_and_feedback.sql
+\echo --- 20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\echo --- 20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\echo --- 20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\echo --- 20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\echo --- 20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\echo --- 20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\echo --- 20261110030419_chronicle_repeat_marks_profile.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\echo === applying step 1, feed-hides-browsing (#304)
+\ir ../../docs/2026-11-13-feed-hides-browsing.DRAFT.sql
+\echo === applying step 2, card-hides-browsing (#312)
+\ir ../../docs/2026-11-14-card-hides-browsing.DRAFT.sql
+\echo === applying step 3, feed-made-and-comments
+\ir ../../docs/2026-11-14-feed-made-and-comments.DRAFT.sql
+\echo === the step 1 test
+\ir feed-hides-browsing.sql
+\echo === the step 2 test
+\ir card-hides-browsing.sql
+\echo === the step 3 test
+\ir feed-made-and-comments.sql
+\echo === the standing visibility guards, with all three drafts applied
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
