@@ -226,7 +226,17 @@ export function ActivitiesFold({
                   </div>
                 )
               })()}
-              {byId.get(fixAct ?? '')?.visibility === 'certain' ? (
+              {/**
+               * ⚠️ AND THE SITE'S OWN ACTIVITIES HAVE NO TICK AT ALL, because nothing reads their
+               * level: the Feed, the Friends tab and the profile card all leave an `auto` activity
+               * out for anybody but its owner (docs/2026-11-13-feed-hides-browsing.DRAFT.sql and
+               * docs/2026-11-14-card-hides-browsing.DRAFT.sql). A tick there would be a control
+               * that changes nothing. The level already stored is left alone — saving passes
+               * `actShared` back as it was seeded — and Sharing no longer lists these either.
+               */}
+              {byId.get(fixAct ?? '')?.auto ? (
+                <p className="muted chron-share-note">Only you see time on the site.</p>
+              ) : byId.get(fixAct ?? '')?.visibility === 'certain' ? (
                 <p className="muted chron-share-note">
                   Shared with the friends you chose. Change who in <strong>Sharing</strong>.
                 </p>
