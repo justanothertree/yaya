@@ -167,18 +167,23 @@ against the old voice, from the consonants and the respelling.
 
 ## The A/B page
 
-`singer-ab.html` is dev-only, like `singer-preview.html`, and a bundled copy is a private claude.ai
-page for listening on a phone. It plays four fixed lines with A (today's voice, frozen in
-`src/singerPreview/before/`) and B (the new one):
+✅ **Heard and released, 14 Nov 2026.** Evan listened on his PC and B was clearer than A, so #325
+shipped and, as planned, the page, its script (`src/singerPreview/ab.ts`) and the frozen copy in
+`src/singerPreview/before/` were deleted in the same release. They are in the history at
+162922ef if the comparison is ever wanted again.
+
+`singer-ab.html` was dev-only, like `singer-preview.html`, and a bundled copy is a private claude.ai
+page for listening on a phone. It played four fixed lines with A (the voice before this change,
+frozen in `src/singerPreview/before/`) and B (the new one):
 
 - the cat sat on the mat
 - sixty six fish
 - we will meet at night
 - play the drums and dance
 
-Both use the same notes, the same seed and the same small room. Clean sings alone and Breathy and
-Glitchy are doubled, as in the room. "Sung" is a tune and "Spoken" a quick falling line, one
-syllable each. Delete the page and `before/` once the comparison is done.
+Both used the same notes, the same seed and the same small room. Clean sang alone and Breathy and
+Glitchy were doubled, as in the room. "Sung" was a tune and "Spoken" a quick falling line, one
+syllable each.
 
 ## Not done
 
