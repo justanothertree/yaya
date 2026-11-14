@@ -7,7 +7,7 @@
  * pentatonic scale, so any tune the dice make is one worth humming.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const PAD_COUNTS = [4, 6] as const
 export type PadCount = (typeof PAD_COUNTS)[number]

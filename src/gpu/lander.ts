@@ -7,7 +7,7 @@
  * wide and wraps at the sides; heights are measured up from the bottom; time is in seconds.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const WORLD_H = 0.75
 export const G = 0.035

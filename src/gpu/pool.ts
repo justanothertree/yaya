@@ -7,7 +7,7 @@
  * cue ball, 1–7 the solids, 8 the black and 9–15 the stripes.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const TW = 2.24
 export const TH = 1.12

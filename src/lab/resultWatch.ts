@@ -1,11 +1,11 @@
-import { RESULT_EVENT } from '../gpu/kept'
+import { RESULT_EVENT } from '../gpu/stored'
 import type { Card } from './recorded'
 
 type Target = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>
 
 /**
  * Keep a toy's result card current while the page is open, on events and nothing else: this tab's
- * own writes announce themselves as `lab:result` (writeKept in gpu/kept.ts), and another tab's
+ * own writes announce themselves as `lab:result` (writeKept in gpu/stored.ts), and another tab's
  * arrive as the browser's `storage` event. Either one re-reads through the toy's own reader, and
  * `onChange` hears only a card that is different from the last.
  *

@@ -8,7 +8,7 @@
  * 1.4 tall, heights measured up from the ground; time in seconds.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const W = 1
 export const H = 1.4

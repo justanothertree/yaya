@@ -8,7 +8,7 @@
  * PNBRQK for white, pnbrqk for black, '' for empty.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Side = 'w' | 'b'
 export type Pos = {

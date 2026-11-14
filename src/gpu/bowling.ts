@@ -8,7 +8,7 @@
  * across the lane (right positive, as you face the pins), y down it from the foul line.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const LANE_HALF = 0.527
 export const HEAD_PIN = 18.29
