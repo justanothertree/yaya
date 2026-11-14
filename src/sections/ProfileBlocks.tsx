@@ -1416,8 +1416,10 @@ function SongPicker({
   if (!items.length && !picked.length)
     return (
       <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-        Nothing in your library yet. Make something in the Instrument room and press{' '}
-        <strong>Keep song</strong>, then come back.
+        {/* ⚠️ THE BUTTON'S OWN WORDS, and where it is — ⬇ Keep song became ⬇ Keep this song
+            inside 📁 Songs with the #311 layout, and this sentence named the old one */}
+        Nothing in your library yet. Make something in the Instrument room, press{' '}
+        <strong>📁 Songs</strong> and then <strong>⬇ Keep this song</strong>, then come back.
       </p>
     )
   return (

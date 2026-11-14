@@ -3223,15 +3223,6 @@ section[id] {
   min-width: 160px;
   font-size: 0.76rem;
 }
-.inst-oct {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-}
-.inst-oct .btn {
-  padding: 0.1rem 0.5rem;
-}
 
 /* The keyboard.
    ⚠️ touch-action: none is load-bearing — without it a drag across the keys on a phone is
@@ -3355,22 +3346,6 @@ section[id] {
   font-size: 0.68rem;
   opacity: 0.75;
   min-width: 4.5rem;
-}
-/* the short face of Copy FX, where the full one would push a drum row onto a third line — see
-   LayerList; the button's name keeps every word either way */
-.inst-fx-short {
-  display: none;
-}
-@media (max-width: 700px) {
-  .inst-fx-long {
-    display: none;
-  }
-  .inst-fx-short {
-    display: inline;
-  }
-  .inst-layer-fx {
-    min-width: 0;
-  }
 }
 .inst-jam {
   align-items: center;
@@ -3813,16 +3788,6 @@ section[id] {
   outline-offset: 3px;
   border-radius: 4px;
 }
-.inst-layer-inst {
-  font: inherit;
-  font-size: 0.78rem;
-  padding: 0.05rem 0.2rem;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  max-width: 6.5rem;
-}
 /* ⚠️ IT DOES NOT GROW, IT ONLY SHRINKS. `flex: 1` made the name eat every spare pixel in the
    row, so on a wide screen "3. 14 notes" sat in a button forty characters long and shoved the
    instrument picker — the control that belongs to that very layer — to the far edge of the
@@ -3839,9 +3804,6 @@ section[id] {
 .inst-layers li .btn {
   padding: 0.1rem 0.4rem;
   font-size: 0.8rem;
-}
-.inst-layers-all {
-  justify-content: flex-end;
 }
 .inst-note {
   margin: 0;
@@ -5259,19 +5221,6 @@ select {
   min-width: 6rem;
   accent-color: var(--accent);
 }
-/* the play row's volume shares a line with the octave rather than taking one of its own; a
-   pixel floor because rem is fluid here (see CLAUDE.md §6) */
-.inst-playbar .appearance-slider {
-  flex: 1 1 10rem;
-  min-width: 150px;
-}
-/* ⚠️ and the slider gives way inside it, with a floor in pixels: the shared rule's 6rem minimum
-   pushed the "70%" 29px past the edge of a 375 screen — measured, the first time this row was
-   given a narrower label. Zero would let the slider vanish, so 60px. */
-.inst-playbar .appearance-slider input[type='range'] {
-  flex: 1 1 4rem;
-  min-width: 60px;
-}
 .appearance-slider-val {
   min-width: 2.6rem;
   text-align: right;
@@ -5495,7 +5444,7 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .also-together-x {
   margin-left: auto;
-  /* ⚠️ 24px with a mouse — it was 15.5x20.3 (WCAG 2.5.8; see the note above .inst-oct's floor) */
+  /* ⚠️ 24px with a mouse — it was 15.5x20.3 (WCAG 2.5.8; see the note above .snap-pick's floor) */
   min-width: 24px;
   min-height: 24px;
   appearance: none;
@@ -8164,8 +8113,7 @@ a.cz-msg-author:focus-visible {
   .inst-scale-say {
     order: -2;
   }
-  .inst-bar,
-  .inst-more {
+  .inst-bar {
     order: -1;
   }
   /* the typing light explains a hardware keyboard, which a phone has not got — and on this row
@@ -8895,18 +8843,7 @@ a.cz-msg-author:focus-visible {
   padding: 0.3rem 0.7rem;
   font-size: 0.8rem;
 }
-/* the rest of the sound — arpeggio, effects, rigs — tucked behind ⚙ More sound */
-@media (max-width: 40rem) {
-  .inst-more-word {
-    display: none;
-  }
-  /* ⚠️ MEASURED AT 375: Chord, Panic and More came to 357px on a 351px line at the row's
-     usual gap, which pushed More onto a fifth line of its own. A narrower gap between the
-     controls fits them; at 360 it may still wrap, which is a taller bar rather than a broken one. */
-  .inst-playbar {
-    column-gap: 0.45rem;
-  }
-}
+/* the rest of the sound — arpeggio, effects, rigs — in the ⚙ Sound sheet */
 .inst-more {
   display: flex;
   flex-direction: column;
@@ -16021,15 +15958,12 @@ a.cz-msg-author:focus-visible {
  * The note editor's note-length row (Grid, 1/16 … 1) joins it: 20px with a mouse, same room.
  */
 @media (pointer: fine) {
-  .inst-oct .btn,
   .snap-pick .btn,
   .roll-len .btn,
-  .inst-layers li .btn,
-  .inst-layers-all .btn {
+  .inst-layers li .btn {
     min-height: 24px;
   }
-  /* a one-character face is narrow as well as short: − + and the note length "1" */
-  .inst-oct .btn,
+  /* a one-character face is narrow as well as short: the note length "1" */
   .roll-len .btn {
     min-width: 24px;
   }
@@ -16067,15 +16001,8 @@ a.cz-msg-author:focus-visible {
   .appearance-slider input[type='range'] {
     min-height: 36px;
   }
-  .inst-oct .btn,
   .snap-pick .btn {
     min-height: 36px;
-  }
-  /* ⚠️ WIDE ENOUGH TOO, not only tall. A minus and a plus are one character each, so a
-     height rule alone left them 24px across — a target that is easy to hit downwards and easy
-     to miss sideways, which is the half of the problem a min-height quietly does not fix. */
-  .inst-oct .btn {
-    min-width: 36px;
   }
   /* ⚠️ THE TWO SLIDERS THAT ARE NOT WRAPPED IN .appearance-slider, and this said "the one"
      until the second turned up. The keyboard range sits straight in the instrument; the map
@@ -16602,8 +16529,7 @@ a.cz-msg-author:focus-visible {
  * for another.
  */
 @media (hover: none) and (pointer: coarse) {
-  .inst-layers li .btn,
-  .inst-layer-inst {
+  .inst-layers li .btn {
     min-height: 24px;
   }
   .inst-layer-vol input[type='range'] {
@@ -20423,4 +20349,426 @@ a.cz-msg-author:focus-visible {
 .take-edit-wave:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ── the instrument, regrouped — the #311 layout, 14 Nov 2026 ─────────────────────────────
+   Four places: PLAY (the keys and two rows under them), THE SONG (transport, the parts one line
+   each), four TOOLS under the song, and below that what was always there. The figures it was
+   built against — 34 → 26 controls on a phone's first screen, ▶ Play from 763px to about 600px —
+   are in docs/2026-11-14-instrument-layout.md, measured on the mockups, and re-measured on the
+   real room in the PR that built it. */
+
+/* the octave, said at the end of the chord line now its − and + have gone */
+.inst-chord-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.inst-oct-say {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* PLAY: two groups that share a line where there is room and stack where there is not */
+.inst-playbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.2rem;
+  min-width: 0;
+}
+.inst-playbar-hands,
+.inst-playbar-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+/* ⚠️ A PHONE'S FIRST ROW IS THE WHOLE WIDTH, so ⚙ Sound can stand at its far end, apart from the
+   three you press while playing — and the same width query the room's phone order uses, so the two
+   cannot disagree about which screen this is */
+@media (max-width: 780px), (orientation: landscape) and (max-height: 560px) {
+  .inst-playbar-hands {
+    flex: 1 1 100%;
+  }
+  .inst-sound-open {
+    margin-left: auto;
+  }
+  /* ⚠️ FOUR ON ONE LINE AT 375 TAKES BOTH OF THESE. Measured: Keys 105, Hold 102 with its line
+     under it, Panic 43 and Sound 90 came to 361px on a 327px row, so ⚙ Sound went down a line of
+     its own. Hold's "lets notes ring" stays on a desktop, where the row has room for it; on a
+     phone the pedal is the one control here whose name already says what it does. */
+  .inst-playbar-hands .btn {
+    padding-inline: 0.6rem;
+  }
+  .inst-playbar-hands .btn-why {
+    display: none;
+  }
+}
+
+/* a control whose face is one glyph, named in its aria-label: Panic, mute, ⋯, undo, redo.
+   ⚠️ TWO CLASSES, because `.inst-layers .btn` sets a 24px floor on a touch screen at two classes'
+   weight and was winning — a part's mute measured 31×24 and its ⋯ 26×24 at 375. */
+.btn.inst-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  min-height: 2.2rem;
+  padding: 0 0.35rem;
+}
+.inst-layers li .btn.inst-icon {
+  min-height: 2.2rem;
+  padding: 0 0.35rem;
+  font-size: 0.9rem;
+}
+/* ⚠️ PIXELS AS WELL, because the root is fluid and 2.2rem is 30px at its smallest (CLAUDE.md §6):
+   a glyph-only button is all target, so it gets the floor the touch rules give the rest */
+@media (hover: none) and (pointer: coarse) {
+  .btn.inst-icon,
+  .inst-layers li .btn.inst-icon {
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+/* THE SONG: one band under the play bar, ruled off from it */
+.inst-song {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+/* ⚠️ THE BUTTON READS ALL THREE VALUES, so on a phone it takes the rest of the row and its words
+   may wrap rather than push the row off the edge — a basis, not a width, so 🎯 Click keeps its own */
+.inst-tempo-open {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  white-space: normal;
+  text-align: left;
+}
+@media (min-width: 701px) {
+  .inst-tempo-open {
+    flex: 0 1 auto;
+  }
+}
+/* the first-visit steps sit under the transport now, not inside its row */
+.inst-song .inst-start {
+  margin-bottom: 0;
+}
+
+/* THE PARTS: one line each — name, bars, mute, ⋯ (and the volume on a desktop) */
+.inst-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  /* ⚠️ ONE WIDTH FOR THE NAME, shared by every row and by the ruler's label above them. It is
+     what lines the bars up into columns — bar 3 of one part over bar 3 of the next — which the
+     strip got from having a line of its own before. */
+  --part-name: 7.2rem;
+}
+@media (min-width: 701px) {
+  .inst-parts {
+    --part-name: 11rem;
+  }
+}
+.inst-parts-head {
+  display: grid;
+  grid-template-columns: var(--part-name) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.3rem;
+  /* the rows' own padding and border, so the ruler's cells start where the rows' cells start */
+  padding-inline: calc(var(--layer-pad) + var(--layer-line));
+}
+.inst-parts-head .inst-layers-count {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-parts-head .inst-ruler {
+  margin: 0;
+  padding-left: 0;
+  min-width: 0;
+}
+.inst-layers li.inst-part {
+  display: grid;
+  grid-template-columns: var(--part-name) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.3rem;
+  padding-block: 0.3rem;
+}
+.inst-part .inst-layer-name {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.2rem 0.4rem;
+  white-space: normal;
+}
+.inst-part-line {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.inst-part-detail {
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+.inst-part-detail .inst-layer-who {
+  margin: 0 0.3rem 0 0;
+}
+.inst-part .inst-arrange {
+  align-self: center;
+}
+/* a part's volume is on its row only on a desktop; on a phone it is in 🎚 Mix and the ⋯ */
+.inst-part-vol {
+  display: none;
+}
+@media (min-width: 701px) {
+  .inst-layers li.inst-part {
+    grid-template-columns: var(--part-name) minmax(0, 1fr) auto auto auto;
+  }
+  .inst-part-vol {
+    display: inline-flex;
+    margin-left: 0;
+  }
+  .inst-part-vol input[type='range'] {
+    width: 7rem;
+  }
+}
+.inst-parts-foot {
+  gap: 0.6rem;
+}
+
+/* THE TOOLS: four doors in a row, and whichever one is open under them */
+.inst-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.inst-tool-open {
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 0.2rem;
+  white-space: nowrap;
+}
+.inst-tool-busy {
+  margin-left: 0.25rem;
+  color: var(--accent-2);
+  font-size: 0.7rem;
+}
+.inst-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg, rgba(255, 255, 255, 0.03));
+}
+/* ⚠️ HIDDEN MEANS HIDDEN — the rule above sets `display`, which beats the UA's own [hidden] at the
+   same specificity, so a closed tool would stay on screen. Two classes' worth wins it back. */
+.inst-tool[hidden] {
+  display: none;
+}
+/* the beats panel brings its own card */
+.inst-tool.inst-tool-beats {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.inst-tool .inst-beats {
+  margin: 0;
+}
+.inst-tool-head {
+  margin: 0.3rem 0 0;
+  font-size: 0.95rem;
+}
+.inst-sing.is-inline {
+  padding: 0;
+}
+
+/* 🎚 Mix: a name, a slider, the figure and a mute, in columns so the sliders line up */
+.inst-mix {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.inst-mix-row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--mix-name, 7.6rem)) minmax(60px, 1fr) 2.8rem 2.2rem;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+@media (min-width: 701px) {
+  .inst-mix-row {
+    --mix-name: 11rem;
+  }
+}
+.inst-mix-row input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  min-height: 2rem;
+  accent-color: var(--accent);
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .inst-mix-row input[type='range'] {
+    min-height: 36px;
+  }
+}
+.inst-mix-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-mix-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+.inst-mix-as {
+  grid-column: 2 / 4;
+  font-size: 0.8rem;
+}
+.inst-mix-row.is-muted .inst-mix-name {
+  opacity: 0.55;
+}
+
+/* 📁 Songs */
+.inst-songs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+/* ── the instrument's sheets: ⚙ Sound, speed and length, a part's ⋯ ───────────────────────
+   ⚠️ FROM THE FLOOR ON A PHONE, A CARD WIDER UP, and over the nav bar the way the settings sheet
+   is — a modal sheet covering the navigation is what a phone does anyway, and the backdrop already
+   says the page is out of play. Portalled to the body (see Sheet), so fixed means the viewport. */
+.inst-sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+.inst-sheet {
+  width: 100%;
+  max-height: min(82vh, 40rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 0.9rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  color: var(--text);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+}
+@media (min-width: 701px) {
+  .inst-sheet-back {
+    align-items: center;
+    padding: 1rem;
+  }
+  .inst-sheet {
+    width: min(30rem, 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+}
+/* the same fade the settings sheet uses, for its reason: a stuck fade is still a usable sheet */
+@media (prefers-reduced-motion: no-preference) {
+  .inst-sheet {
+    animation: nav-sheet-in 0.18s ease-out;
+  }
+}
+.inst-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.inst-sheet-head h3 {
+  margin: 0;
+  min-width: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.inst-sheet-x {
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  flex: none;
+}
+.inst-sheet-body,
+.inst-sheet .inst-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0;
+}
+.inst-sheet-row {
+  gap: 0.8rem;
+}
+/* one knob a line, so a phone's sliders are the width of the sheet rather than two-up and short */
+.inst-sheet .inst-knobs {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.inst-sheet .inst-knob {
+  display: grid;
+  grid-template-columns: 5.4rem minmax(60px, 1fr) 2.6rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+.inst-sheet .inst-knob input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+/* ⚠️ 24px WITH A MOUSE — the audit measured the ⋯ sheet's Volume at 343×16 at 1440 (WCAG 2.5.8).
+   Only for a fine pointer: on a touch screen the site's slider rule already makes these 36px, and
+   an unconditional rule written later in this file would quietly take that back down to 24. */
+@media (pointer: fine) {
+  .inst-sheet input[type='range'],
+  .inst-part-vol input[type='range'] {
+    min-height: 24px;
+  }
+}
+.inst-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.inst-sheet-list .btn {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 2.4rem;
+  text-align: left;
+}
+/* the call note's way into a jam, once the note itself is put away */
+.inst-jam-door a {
+  font-weight: 600;
 }
