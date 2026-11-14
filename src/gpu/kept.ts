@@ -16,10 +16,29 @@ export function loadKept<T>(key: string, read: (text: string | null) => T): T {
     return read(null)
   }
 }
+/**
+ * The event a Lab write announces in its own tab. The browser's `storage` event tells OTHER tabs
+ * that something changed and never the tab that wrote it, so whatever shows a toy's result while
+ * the toy is open (the Share your score box) would otherwise have to keep asking. Every Lab write
+ * goes through writeKept, which says so here; kept.test.ts fails on a write that does not.
+ */
+export const RESULT_EVENT = 'lab:result'
+
+/**
+ * Write a toy's stored text and announce it in this tab. Throws as localStorage does (private
+ * mode, a full store), so a caller's own catch still decides what a refusal means; the event goes
+ * out only for a write that happened.
+ */
+export function writeKept(key: string, text: string) {
+  localStorage.setItem(key, text)
+  if (typeof window !== 'undefined')
+    window.dispatchEvent(new CustomEvent(RESULT_EVENT, { detail: { key } }))
+}
+
 /** keep it; a store that refuses — private mode — keeps it for this visit only */
 export function storeKept(key: string, value: unknown) {
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    writeKept(key, JSON.stringify(value))
   } catch {
     /* private mode: kept for this visit */
   }

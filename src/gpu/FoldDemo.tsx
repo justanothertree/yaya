@@ -23,6 +23,7 @@ import {
   type V2,
 } from './fold'
 import { createFold, type FoldView } from './foldEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -83,7 +84,7 @@ export function FoldDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(FOLD_KEY, JSON.stringify({ puzzle, best, colour }))
+      writeKept(FOLD_KEY, JSON.stringify({ puzzle, best, colour }))
     } catch {
       /* private mode: kept for this visit */
     }

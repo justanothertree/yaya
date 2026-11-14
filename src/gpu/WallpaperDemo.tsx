@@ -25,7 +25,7 @@ import {
   type Stroke,
   type V2,
 } from './wallpaper'
-import { useKept } from './kept'
+import { useKept, writeKept } from './kept'
 import { CELL, createWallpaper, encodePng, type WallpaperView } from './wallpaperEngine'
 
 type Props = {
@@ -87,7 +87,7 @@ export function WallpaperDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(WALLPAPER_KEY, JSON.stringify(kept))
+      writeKept(WALLPAPER_KEY, JSON.stringify(kept))
     } catch {
       /* private mode: kept for this visit */
     }

@@ -21,6 +21,7 @@ import {
   type V2,
 } from './mobius'
 import { createMobius, type MobiusView } from './mobiusEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -70,7 +71,7 @@ export function MobiusDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(MOBIUS_KEY, JSON.stringify({ hole: holeIx, best }))
+      writeKept(MOBIUS_KEY, JSON.stringify({ hole: holeIx, best }))
     } catch {
       /* private mode: kept for this visit */
     }

@@ -26,6 +26,7 @@ import {
   type V2,
 } from './bridge'
 import { createBridge, type BridgeView } from './bridgeEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -91,7 +92,7 @@ export function BridgeDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(BRIDGE_KEY, JSON.stringify({ level, designs, best }))
+      writeKept(BRIDGE_KEY, JSON.stringify({ level, designs, best }))
     } catch {
       /* private mode: it stays for this visit */
     }

@@ -1,4 +1,4 @@
-import { whole } from '../../gpu/kept'
+import { whole, writeKept } from '../../gpu/kept'
 import { isToyId } from './gate'
 import type { Mode } from './room'
 
@@ -56,7 +56,7 @@ export function recordOnline(
 export function keepOnline(toy: string, mode: Mode, how: 'won' | 'lost' | 'drawn') {
   try {
     const next = recordOnline(readOnline(localStorage.getItem(ONLINE_KEY)), toy, mode, how)
-    localStorage.setItem(ONLINE_KEY, JSON.stringify(next))
+    writeKept(ONLINE_KEY, JSON.stringify(next))
   } catch {
     /* private mode: the game was played, and is simply not kept */
   }

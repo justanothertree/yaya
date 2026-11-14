@@ -15,6 +15,7 @@ import {
   type Run,
 } from './trials'
 import { createTrials, type TrialsView } from './trialsEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -112,7 +113,7 @@ export function TrialsDemo({ running, setRunning, onAdapter }: Props) {
       setBest(frames)
       setRecord(true)
       try {
-        localStorage.setItem(BEST_KEY, String(frames))
+        writeKept(BEST_KEY, String(frames))
       } catch {
         /* private mode: it is the best for this visit */
       }

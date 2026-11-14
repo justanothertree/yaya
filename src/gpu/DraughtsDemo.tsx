@@ -22,8 +22,14 @@ import {
   type Who,
 } from './draughts'
 import { useKept } from './kept'
+import { draughtsRules } from './draughtsRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { useCallWords } from '../lab/social/callWords'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { classic: 'Classic', wood: 'Wood', ice: 'Ice' }
 /** each set of pieces names its two sides */
@@ -51,13 +57,36 @@ export function DraughtsDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
+  /* ── the call's room: the game travels as the paths its pieces took */
+  const lab = useLabRoom('draughts', draughtsRules)
+  const words = useCallWords(lab, draughtsRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the side I move for: the bottom in seat 0 and together, the top in seat 1 */
+  const mySide: Who = room && room.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+  /** the board on screen: the call's in a call, else this one */
+  const shown = room ? room.game.g : game
+  const shownLast = room ? room.game.last : last
+
   const sides = SIDES[saved.pieces]
-  const all = moves(game)
-  const yours = !game.winner && (mode === 'two' || game.turn === you)
+  const all = moves(shown)
+  const yours = room
+    ? lab.live && myTurn(draughtsRules, room)
+    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
   const computerTurn = mode === 'bot' && !game.winner && game.turn !== you
   // the board turns round so the side you play is always at the bottom
-  const flip = mode === 'bot' ? you === 2 : false
-  const nameOf = (w: Who) => (mode === 'bot' ? (w === you ? 'You' : 'The computer') : sides[w - 1])
+  const flip = room ? mySide === 2 : mode === 'bot' ? you === 2 : false
+  const nameOf = (w: Who) =>
+    room
+      ? room.mode === 'together'
+        ? w === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[w - 1])
+      : mode === 'bot'
+        ? w === you
+          ? 'You'
+          : 'The computer'
+        : sides[w - 1]
   const verb = (w: Who, plain: string, s: string) => (nameOf(w) === 'You' ? plain : s)
 
   const candidates = prefix.length
@@ -114,8 +143,28 @@ export function DraughtsDemo() {
     if (!lit.has(i)) return
     const next = [...prefix, i]
     const done = all.find((m) => same(m.path, next))
-    if (done) apply(done)
+    if (done && room) {
+      // in the call the host decides: this asks it, and the board comes back with everybody's
+      setPrefix([])
+      lab.act({ t: 'move', move: done.path })
+    } else if (done) apply(done)
     else setPrefix(next)
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their side — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.g.winner) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setYou(mySide)
+    setGame(r.game.g)
+    setLast(r.game.last)
+    setPrefix([])
+    setLine(r.game.g.turn === mySide ? 'Your move.' : 'The computer is thinking…')
   }
 
   useEffect(() => {
@@ -164,7 +213,7 @@ export function DraughtsDemo() {
   }
 
   const describe = (i: number) => {
-    const p = game.board[i]
+    const p = shown.board[i]
     const o = owner(p)
     const what = o ? `${sides[o - 1]} ${isKing(p) ? 'king' : 'man'}` : 'empty'
     const extra = [
@@ -177,7 +226,7 @@ export function DraughtsDemo() {
   }
 
   const record = saved.record[saved.level]
-  const marks = new Set(last ? [...last.path, ...last.taken] : [])
+  const marks = new Set(shownLast ? [...shownLast.path, ...shownLast.taken] : [])
   return (
     <div className={`lab-keys dr-room is-${saved.board} pieces-${saved.pieces}`}>
       <div className="lab-controls">
@@ -196,6 +245,18 @@ export function DraughtsDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                setMode('call')
+                setPrefix([])
+              }}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -214,28 +275,48 @@ export function DraughtsDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          lab={lab}
+          rules={draughtsRules}
+          sides={sides}
+          levelNames={LEVEL_NAMES}
+          score={(d) =>
+            d.g.winner === 1 || d.g.winner === 2
+              ? count(d.g, d.g.winner === 1 ? 2 : 1)
+                ? ' — no move left for the other side'
+                : ' — every piece taken'
+              : null
+          }
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="dice-scores">
         {([1, 2] as Who[]).map((w) => (
-          <div key={w} className={`dice-score${game.turn === w && !game.winner ? ' is-up' : ''}`}>
+          <div key={w} className={`dice-score${shown.turn === w && !shown.winner ? ' is-up' : ''}`}>
             <span>
               {nameOf(w)} · {sides[w - 1].toLowerCase()}
             </span>
-            <strong>{count(game, w)}</strong>
+            <strong>{count(shown, w)}</strong>
             <span className="muted">
-              {game.board.filter((p) => owner(p) === w && isKing(p)).length || 'no'} king
-              {game.board.filter((p) => owner(p) === w && isKing(p)).length === 1 ? '' : 's'}
+              {shown.board.filter((p) => owner(p) === w && isKing(p)).length || 'no'} king
+              {shown.board.filter((p) => owner(p) === w && isKing(p)).length === 1 ? '' : 's'}
             </span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="dr-board"
@@ -248,7 +329,7 @@ export function DraughtsDemo() {
           const c = k & 7
           const i = fromView(r, c)
           if (i < 0) return <div key={k} className="dr-light" aria-hidden />
-          const p = game.board[i]
+          const p = shown.board[i]
           const o = owner(p)
           return (
             <button
