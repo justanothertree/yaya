@@ -1,7 +1,7 @@
-# Sung lyrics, glitchpop style — the plan — 10 Nov 2026
+# Sung lyrics — the plan — 10 Nov 2026
 
-Evan's idea for today: **type lyrics and have a couple of female voices sing them, glitchpop
-style.** He asked for a plan before anything is built, covering:
+Evan's idea for today: **type lyrics and have a couple of female voices sing them.** He asked for
+a plan before anything is built, covering:
 
 1. how syllables land on notes
 2. an honest comparison of a voice made in the browser against outside singing-AI services, with a
@@ -39,7 +39,7 @@ and copying a note takes its syllable with it.
 
 |                    | **Browser formant voice** (recommended)                                                                       | **Outside singing AI**                                                                                                                                                                                  |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sound              | Robotic, vowel-shaped: closer to early vocoder pop or a talk box than to a person. Fits glitchpop on purpose. | Can sound like a real singer.                                                                                                                                                                           |
+| Sound              | Robotic, vowel-shaped: closer to early vocoder pop or a talk box than to a person.                            | Can sound like a real singer.                                                                                                                                                                           |
 | Note-level control | Total. It is the same note events as every other instrument, so timing, pitch, harmony and effects are exact. | Varies. Full-song generators can't follow your notes at all. Desktop singing synths can, but have no web API.                                                                                           |
 | Cost               | Nothing                                                                                                       | Per render or per month, plus hosting. Open-source singing models (SoulX-Singer, released February 2026, and DiffSinger) need a GPU server.                                                             |
 | Licensing          | Ours                                                                                                          | Per voice. Synthesizer V's own voices are licensed to one person, and third-party voices each have their own terms. Hosted services' terms for generated vocals vary and would need reading one by one. |
@@ -48,8 +48,8 @@ and copying a note takes its syllable with it.
 | Jam                | Free: each browser sings the notes it receives, like every other instrument.                                  | Each render would be an audio file to send around.                                                                                                                                                      |
 
 **Recommendation: the browser formant voice.** It is the only option that does what the room is
-built on: notes in, sound out, the same on every machine, live. Its weakness, sounding robotic, is
-the style being asked for. An outside service becomes worth a separate conversation only if realism
+built on: notes in, sound out, the same on every machine, live. Its weakness is that it sounds
+robotic. An outside service becomes worth a separate conversation only if realism
 turns out to matter more than playing live. If so, it would be an "export a sung take" feature
 rather than an instrument.
 

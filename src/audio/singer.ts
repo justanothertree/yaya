@@ -57,7 +57,9 @@ export type Voice = {
   /** seconds for the voice to reach full level at a vowel */
   attack: number
   stutter: boolean
-  crush: boolean
+  /** grit: the voice driven into a stepped shaper with `steps` levels a side and blended in at
+   *  `mix` — null for none */
+  crush: { steps: number; drive: number; mix: number } | null
   chop: boolean
   /** the second voice of a doubled part: detuned, a little late, a slightly different throat */
   double: { cents: number; ms: number; pan: number; formant: number }
@@ -81,7 +83,7 @@ export const PRESETS: Record<PresetId, Voice> = {
     bright: 6,
     attack: 0.03,
     stutter: false,
-    crush: false,
+    crush: null,
     chop: false,
     double: { cents: 8, ms: 16, pan: 0.3, formant: 1.015 },
     out: 0.095,
@@ -101,7 +103,7 @@ export const PRESETS: Record<PresetId, Voice> = {
     bright: 3,
     attack: 0.06,
     stutter: false,
-    crush: false,
+    crush: null,
     chop: false,
     double: { cents: 10, ms: 22, pan: 0.4, formant: 1.02 },
     out: 0.105,
@@ -121,7 +123,11 @@ export const PRESETS: Record<PresetId, Voice> = {
     bright: 8,
     attack: 0.008,
     stutter: true,
-    crush: true,
+    /* ⚠️ SOFTENED 14 Nov 2026 — Evan: "a bit harsh". It was 5 levels on the signal as it left the
+       level stage, where the voice is only ~0.1–0.3 high, so it landed on two or three of them:
+       closer to a square wave than to grit. Driven to fill the shaper and blended under the dry
+       voice instead; measured in docs/2026-11-13-formant-singer.md. */
+    crush: { steps: 8, drive: 3, mix: 0.5 },
     chop: false,
     double: { cents: 16, ms: 11, pan: 0.5, formant: 1.03 },
     out: 0.102,
@@ -278,7 +284,7 @@ const NASAL = [270, 1700, 2600, 4000] as const
  *
  * ⚠️ F1 RISES WITH A HIGH NOTE, as a soprano's does. A resonance below the pitch has no harmonic to
  * shape — "ee" has F1 at 310Hz and a C5 is 523Hz — so the vowel loses its body exactly where
- * glitchpop sings. Singers open the jaw to keep F1 just above the pitch, and so does this, up to
+ * a high melody sits. Singers open the jaw to keep F1 just above the pitch, and so does this, up to
  * the most open vowel's own.
  */
 export function vowelFormants(vowel: VowelId, f0: number, scale: number): number[] {
@@ -484,14 +490,25 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
       rise(vowelAt + 0.035)
     }
 
-    /* the stutter: the syllable's start cut on and off on 32nds before it holds */
+    /* the stutter: the syllable's start repeated on 32nds before it holds — each sliver faded in
+       and out over a few milliseconds and a little louder than the last, so it leads into the
+       syllable rather than clicking at it (softened 14 Nov 2026; it used to switch hard on and off
+       at full level) */
     if (e.stutter.length) {
       const shift = vowelAt - e.vowelAt
-      for (const s of e.stutter) {
-        say(s + shift, L, 'set')
-        say(s + shift + beat / 16, 0, 'set')
-      }
-      say(e.stutter[e.stutter.length - 1] + shift + beat / 8, L, 'set')
+      const n = e.stutter.length
+      const sliver = beat / 16
+      e.stutter.forEach((s0, k) => {
+        const s = s0 + shift
+        const lv = L * (0.45 + (0.35 * k) / n)
+        say(s, 0, 'set')
+        say(s + 0.004, lv)
+        say(s + sliver - 0.006, lv, 'set')
+        say(s + sliver, 0)
+      })
+      const last = e.stutter[n - 1] + shift + beat / 8
+      say(last, 0, 'set')
+      say(last + 0.008, L)
     }
 
     /* ── the end of the vowel: the coda, then a release unless the next syllable follows on ── */
@@ -721,10 +738,23 @@ function build(c: BaseAudioContext, dest: AudioNode, ph: Phrase, v: Voice, o: Bu
   }
   let tail: AudioNode = level
   if (v.crush) {
+    const { steps, drive, mix } = v.crush
+    const sum = add(c.createGain())
+    const dry = add(c.createGain())
+    dry.gain.value = 1 - mix
+    const pre = add(c.createGain())
+    pre.gain.value = drive
     const sh = add(c.createWaveShaper())
-    sh.curve = crushCurve(5)
-    tail.connect(sh)
-    tail = sh
+    sh.curve = crushCurve(steps)
+    const wet = add(c.createGain())
+    wet.gain.value = mix / drive
+    level.connect(dry)
+    dry.connect(sum)
+    level.connect(pre)
+    pre.connect(sh)
+    sh.connect(wet)
+    wet.connect(sum)
+    tail = sum
   }
   const gate = add(c.createGain())
   if (ph.gate.length) apply(gate.gain, ph.gate)

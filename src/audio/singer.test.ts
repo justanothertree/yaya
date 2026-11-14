@@ -112,12 +112,26 @@ describe('the glitches', () => {
     expect(ev[1].stutter).toEqual([])
   })
 
-  it('the stutter really cuts the voice: off between its 32nds, on after', () => {
+  it('the stutter repeats the start quietly, silent between, each sliver louder, then the voice', () => {
     const [p] = plan('o two three four', notes, PRESETS.glitchy, 1, { preset: 'glitchy' })
-    expect(valueAt(p.voicing, 0.01)).toBeGreaterThan(0.8)
+    const first = valueAt(p.voicing, 0.015)
+    const third = valueAt(p.voicing, 0.14)
+    expect(first).toBeGreaterThan(0.3)
+    expect(first).toBeLessThan(0.7)
     expect(valueAt(p.voicing, 0.045)).toBe(0)
-    expect(valueAt(p.voicing, 0.07)).toBeGreaterThan(0.8)
-    expect(valueAt(p.voicing, 0.2)).toBeGreaterThan(0.8)
+    expect(third).toBeGreaterThan(first)
+    expect(valueAt(p.voicing, 0.2)).toBeGreaterThan(0.85)
+  })
+
+  it('the stutter fades its slivers in and out instead of switching them — no clicks', () => {
+    const [p] = plan('o two three four', notes, PRESETS.glitchy, 1, { preset: 'glitchy' })
+    let last = valueAt(p.voicing, 0)
+    for (let t = 0.0005; t < 0.21; t += 0.0005) {
+      const v = valueAt(p.voicing, t)
+      /* half a millisecond may move it by a little, never by a step */
+      expect(Math.abs(v - last)).toBeLessThan(0.1)
+      last = v
+    }
   })
 
   it('the chop gates every sixteenth, on for 60% of it', () => {

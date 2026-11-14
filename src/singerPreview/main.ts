@@ -210,7 +210,7 @@ async function sing() {
 const ABOUT: Record<PresetId, string> = {
   clean: 'A plain voice with a light vibrato on long notes.',
   breathy: 'Soft and airy, with a slower, wider vibrato.',
-  glitchy: 'Hard tune, stutter and crush.',
+  glitchy: 'Hard tune, a light stutter and a little grit.',
 }
 
 function render() {

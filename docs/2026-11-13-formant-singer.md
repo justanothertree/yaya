@@ -26,7 +26,7 @@ sawtooth is every harmonic at full strength, which is what made it sound like a 
 - **Smooth transitions.** Formants ease toward each target (`setTargetAtTime`), never jump, once a
   phrase has started.
 - **F1 rises on high notes,** as a soprano's does: a resonance below the pitch has no harmonic to
-  shape, so "ee" at C5 would lose its body exactly where glitchpop sings.
+  shape, so "ee" at C5 would lose its body exactly where a high melody sits.
 - **Consonants.** s/sh/f/th are band-filtered noise before the beat with the voice silent; z/v/j
   keep the voice humming under the hiss; p/t/k are a closure, a short burst, then a breath of
   aspiration through the coming vowel; b/d/g a shorter burst with a voice bar; m/n a nasal murmur;
@@ -58,10 +58,11 @@ whatever context it is given — the room's part bus, the preview page, or an Of
 | Pitch   | 70ms glide, small scoop       | 110ms glide, wider scoop       | hard tune                                  |
 | Vibrato | after 0.32s, 5.6Hz, ±28 cents | after 0.38s, 5.1Hz, ±38 cents  | none                                       |
 | Throat  | as measured                   | wider bandwidths, softer       | formants ×1.12 — a smaller, brighter voice |
-| Extras  | —                             | doubled by default             | stutter, crush, doubled by default         |
+| Extras  | —                             | doubled by default             | light stutter, a little grit, doubled      |
 
 The room's Stutter / Crush / Chop and Robot / Natural / High buttons were folded into these: the
-glitchy preset is hard tune with stutter and crush, and Double and Harmony are the two toggles.
+glitchy preset is hard tune with a light stutter and a little grit, and Double and Harmony are the
+two toggles.
 
 ## Measured, not heard
 
@@ -75,8 +76,10 @@ Rendered offline with the same code and read back:
 - **In tune.** A 14-note line read note by note: every note within ±15 cents by autocorrelation,
   13 of 14 within ±8 by a harmonic-sum estimate (the fourteenth is a 59ms window closing into an
   "n", which autocorrelation reads as −3).
-- **Level.** In the room, through the same output tap as Keys on the same C5: clean +0.9dB,
-  breathy +1.0dB, glitchy +1.3dB; breathy doubled with harmony +2.8dB. Peaks under Keys' own.
+- **Level.** In the room, through the same output tap as Keys on the same C5, re-measured on
+  14 Nov after the glitchy voice was softened: clean +0.5dB, breathy +0.7dB, glitchy +0.1dB;
+  breathy doubled with harmony +3.0dB. Peaks under Keys' own. (The 13 Nov run read +0.9 / +1.0 /
+  +1.3 — the same settings for clean and breathy, so about ±0.4dB is run-to-run.)
 - **No leaks.** A counter of built-and-not-released voices returns to 0 after a line ends, after
   ■ Stop mid-line, and after leaving the room mid-line.
 - **No freezes.** Scheduling a full line — breathy, doubled, with harmony, six voices — takes
@@ -100,3 +103,27 @@ claude.ai page for listening on a phone.
 - **How it sounds.** For Evan's ears.
 - **Firefox and Safari**, and a real phone: the pane is desktop Chromium. Web Audio automation is
   standard, but Safari's handling of many simultaneous `setTargetAtTime` events is worth a listen.
+
+## Glitchy, softened — 14 Nov 2026
+
+Evan liked all three presets and found Glitchy "a bit harsh". The hard-tune snap stays; two things
+changed.
+
+- **The crush.** It was a 5-level shaper on the signal leaving the level stage, where the voice is
+  only ~0.1–0.3 high — so it landed on two or three levels, nearer a square wave than grit. It is
+  now driven ×3 into an 8-level shaper and blended 50/50 under the dry voice.
+- **The stutter.** Its three slivers switched hard on and off at full level. Each now fades in over
+  4ms and out over 6ms, and they grow from 45% to 80% of the voice before the syllable comes in.
+
+Measured on a held glitchy "ah" at C5, rendered with and without the crush in one offline context
+(same noise, same start — the difference is the crush alone):
+
+|                                                | before   | after    |
+| ---------------------------------------------- | -------- | -------- |
+| crush distortion, against the dry voice        | −12.9 dB | −25.9 dB |
+| high-frequency share of the held vowel         | −10.7 dB | −16.8 dB |
+| high-frequency energy in the stutter, vs vowel | −2.6 dB  | −8.9 dB  |
+
+"High frequency" is a first difference — a highpass sharing nothing with the voice's own filters.
+A test reads the stutter's timeline every half millisecond and fails on any step; putting the
+hard switching back turns it red.
