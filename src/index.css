@@ -1426,6 +1426,9 @@
 }
 .call-vol input[type='range'] {
   width: 56px;
+  /* a range input defaults to about 16px tall, under the 24px a control needs to be pressed */
+  height: 24px;
+  margin: 0;
   accent-color: var(--accent, #7c6af7);
 }
 .call-dock-who strong {
@@ -1445,6 +1448,34 @@
   padding: 0.15rem 0.55rem;
   min-height: 32px;
   flex: 0 0 auto;
+}
+/**
+ * ⚠️ ON A PHONE THE DOCK IS TWO ROWS. In one, every control kept its size (`flex-shrink: 0`,
+ * above) and the call's name took what was left — measured with five buttons and the volume, that
+ * was 2px at 390 wide and nothing at all at 320, where the row also ran past the dock's edge. So
+ * the name and the volume share the first row and the buttons wrap to the second. The basis
+ * reserves the dot, the volume and their gaps in PIXELS — the root size is fluid, so rem is not a
+ * length here — and nothing else fits beside them, which is what makes the buttons wrap.
+ */
+@media (max-width: 640px) {
+  .call-dock {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 0.35rem;
+    border-radius: 18px;
+    /* a fixed box sizes to its content, and wrapped content asks for very little: without a
+       width the dock shrank until the buttons took three rows */
+    width: min(92vw, 26rem);
+  }
+  .call-dock .call-dock-who {
+    flex: 1 1 calc(100% - 120px);
+  }
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .call-vol input[type='range'] {
+    width: 64px;
+    height: 32px;
+  }
 }
 
 /* "someone is in this call" on a conversation row — green rather than the accent used for
