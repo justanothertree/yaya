@@ -1,3 +1,20 @@
+-- ⛔ SCRATCH BRANCH probe/feed-step3-perturbed ONLY — never to be merged. EXPECTED TO FAIL.
+\echo === replaying the nine migrations applied since the dump
+\ir ../migrations/20261105023835_one_unique_index_on_the_snake_registry.sql
+\ir ../migrations/20261109030613_lab_catalog_and_feedback.sql
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\echo === applying step 3, then stripping five of its rules
+\ir ../../docs/2026-11-14-feed-made-and-comments.DRAFT.sql
+\ir probe-perturb-step3.sql
+\echo === the step 3 test, which should now name each stripped rule
+\ir feed-made-and-comments.perturbed.sql
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
