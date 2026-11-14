@@ -422,7 +422,15 @@ export const party = {
            gets drawn, and the client that sent it is one anybody can rewrite */
         const skin = isCursorSkin(b.skin) && b.skin !== 'system' ? b.skin : undefined
         const sub = isToyId(b.sub) ? b.sub : null
+        const isNew = !state.here[m.from]
         set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin, sub) } })
+        /* ⚠️ SOMEBODY HEARD FOR THE FIRST TIME IS ANSWERED AT ONCE. They may have just switched
+           sharing on, and everything said before that went past them unheard (reciprocity, above)
+           — so without a reply they learn where you are only at your next heartbeat, up to five
+           seconds on. A two-player room found it the hard way: the other side saw your seat as
+           empty-handed and quietly refused your move. One message per newcomer, and it cannot
+           loop: they already know you, so your reply is not news to them. */
+        if (isNew) announceHere()
         return
       }
       if (m.kind === 'tap') {
