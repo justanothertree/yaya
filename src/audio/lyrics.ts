@@ -11,8 +11,20 @@ import type { Note } from './noteEdit'
  * See docs/2026-11-10-sung-lyrics-plan.md. This is phase 0 — nothing is saved.
  */
 
-/** One syllable as typed. `hold` carries the last syllable's vowel across this note. */
-export type Syllable = { text: string; hold: boolean; whole: boolean }
+/**
+ * One syllable as typed. `hold` carries the last syllable's vowel across this note.
+ *
+ * `start` and `end` say where it sits in its word, and `stress` how much it wants a strong beat —
+ * what fitSyllables (pocket.ts) needs to put "night" on the beat and "the" between them.
+ */
+export type Syllable = {
+  text: string
+  hold: boolean
+  whole: boolean
+  start: boolean
+  end: boolean
+  stress: number
+}
 
 /**
  * Typed lyrics into syllables.
@@ -27,13 +39,45 @@ export function splitLyrics(text: string): Syllable[] {
   for (const word of text.trim().split(/\s+/)) {
     if (!word) continue
     if (/^_+$/.test(word)) {
-      for (let i = 0; i < word.length; i++) out.push({ text: '', hold: true, whole: false })
+      for (let i = 0; i < word.length; i++)
+        out.push({ text: '', hold: true, whole: false, start: false, end: true, stress: 0 })
       continue
     }
     const parts = word.includes('-') ? word.split('-').filter(Boolean) : autoSplit(word)
-    for (const p of parts) out.push({ text: p, hold: false, whole: parts.length === 1 })
+    parts.forEach((p, i) =>
+      out.push({
+        text: p,
+        hold: false,
+        whole: parts.length === 1,
+        start: i === 0,
+        end: i === parts.length - 1,
+        stress: stressOf(parts, i),
+      }),
+    )
   }
   return out
+}
+
+/**
+ * Words a line passes through rather than lands on: articles, short prepositions, conjunctions and
+ * the verb "to be". Sung on a weak beat they sound natural; on the downbeat they sound like a
+ * mistake ("THE dark").
+ */
+const LIGHT = new Set(
+  'a an the and or but nor of to in on at by for from with as is am are was were be been it its if so than that'.split(
+    ' ',
+  ),
+)
+
+/**
+ * Which syllable of a word takes the stress. English mostly stresses the first (GLIT-ter, BA-by,
+ * TWIN-kle); a short unstressed prefix moves it to the second (to-NIGHT, a-WAY, be-FORE, re-TURN).
+ * ⚠️ A GUESS, like autoSplit — it only decides which note a syllable prefers, never what is sung.
+ */
+function stressOf(parts: readonly string[], i: number): number {
+  if (parts.length === 1) return LIGHT.has(parts[0].toLowerCase().replace(/[^a-z]/g, '')) ? 0.4 : 1
+  const stressed = /^(a|be|to|re|de|un|for|ex)$/i.test(parts[0]) ? 1 : 0
+  return i === stressed ? 1 : 0.5
 }
 
 const VOWEL = /[aeiouy]/i

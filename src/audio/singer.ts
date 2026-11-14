@@ -146,6 +146,12 @@ export type SingOpts = {
   beat: number
   /** the humanising is random but repeatable: the same seed sings the same line the same way */
   seed?: number
+  /**
+   * How long before `start` the first consonant may begin. When a line is scheduled for the next
+   * time round the loop there is time in hand, and "sky" can hiss before the downbeat rather than
+   * be clipped to it; 0 when the line starts now.
+   */
+  lead?: number
 }
 
 /** one part singing one syllable — and the held notes after it */
@@ -174,8 +180,13 @@ export function consonantLength(c: Consonant | null): number {
  * A line of sung notes into the events that will play it — pure, so the timing can be asked.
  *
  * ⚠️ THE VOWEL IS ON THE BEAT, THE CONSONANT BEFORE IT, which is how singers place words: "sky"
- * starts its hiss early so the "ai" lands where the note is. Clamped to `start`, so the first word
- * of a line does not reach back before the line begins.
+ * starts its hiss early so the "ai" lands where the note is. Clamped to `start - lead`, so the first
+ * word of a line reaches back only as far as there is time for.
+ *
+ * ⚠️ AND THE CONSONANT BORROWS FROM THE NOTE BEFORE, NEVER MORE THAN 45% OF IT. An s is 85ms; at
+ * 140 bpm a sixteenth is 107ms, so a run of "so so so" on sixteenths used to leave each vowel a
+ * fifth of its note, and the line read as hiss. Shortened, the consonant still comes first and the
+ * vowel still lands on the beat.
  *
  * ⚠️ A HOLD IS NOT A NEW EVENT: it extends the syllable before it to its own end and adds its pitch,
  * so the vowel carries straight across with no consonant and no gap.
@@ -188,19 +199,23 @@ export function planLine(sung: readonly SungNote[], start: number, opts: SingOpt
   if (opts.harmony) parts.push({ part: 'harmony', pitch: opts.harmony })
   for (const p of parts) {
     let cur: Event | null = null
+    let lastAt = -Infinity
     for (const n of sung) {
       const at = start + n.t
       if (n.hold && cur) {
         cur.end = at + n.dur
         cur.pitches.push({ at, midi: p.pitch(n.midi) })
+        lastAt = at
         continue
       }
       const phones = phonesOf(n.text)
       const onBar = Math.abs(n.t / bar - Math.round(n.t / bar)) < 1e-3
+      const early = Math.min(consonantLength(phones.onset), 0.45 * (at - lastAt))
+      lastAt = at
       cur = {
         part: p.part,
         phones,
-        from: Math.max(start, at - consonantLength(phones.onset)),
+        from: Math.max(start - (opts.lead ?? 0), at - early),
         vowelAt: at,
         end: at + n.dur,
         pitches: [{ at, midi: p.pitch(n.midi) }],

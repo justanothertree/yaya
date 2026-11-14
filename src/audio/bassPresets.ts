@@ -47,6 +47,27 @@ export const BASS_PRESETS: readonly BassPreset[] = [
   },
   { id: 'disco', name: 'Disco', style: 'octaves', voice: 'finger', hint: 'Finger bass, octaves' },
   { id: 'acid', name: 'Acid house', style: 'funk', voice: 'acid', hint: 'Acid bass, sixteenths' },
+  {
+    id: 'eighties',
+    name: '80s pop',
+    style: 'pulse',
+    voice: 'fmbass',
+    hint: 'FM bass, driving eighths',
+  },
+  {
+    id: 'mallets',
+    name: 'Mallets',
+    style: 'walk',
+    voice: 'bassmarimba',
+    hint: 'Bass marimba, every beat',
+  },
+  {
+    id: 'oompah',
+    name: 'Oom-pah',
+    style: 'rootfifth',
+    voice: 'tuba',
+    hint: 'Tuba, root and fifth',
+  },
 ]
 
 /** The preset a bass on this line and voice matches, or null for a pairing of your own. */
