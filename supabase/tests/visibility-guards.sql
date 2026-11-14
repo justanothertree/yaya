@@ -1,3 +1,11 @@
+-- ⛔ SCRATCH BRANCH probe/feed-hides-browsing ONLY — never to be merged.
+-- RUN F1: apply the feed-hides-browsing draft, run its test (which also applies and rolls back the
+-- rollback), then every standing guard below with the draft in place.
+\echo === applying the feed-hides-browsing draft
+\ir ../../docs/2026-11-13-feed-hides-browsing.DRAFT.sql
+\echo === the feed-hides-browsing test
+\ir feed-hides-browsing.sql
+\echo === the standing visibility guards, with the draft applied
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
