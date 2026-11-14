@@ -149,4 +149,15 @@ once a day (answer 7), and Lab results (answer 6), now that the score-share work
 
 Answer 4 shaped step 3. The one place a member explicitly publishes something they made is their
 profile page, so "made" is the first time a song, drawing, pet or look reaches a page above Only
-me. #317 lists that and three other judgement calls for Evan to change.
+me. #317 listed that and three other judgement calls for Evan to change.
+
+## Evan's decisions on step 3, 14 Nov 2026
+
+- **"Made" is capped at one row per person, per kind, per day.** Three drawings put up in one day
+  read "Put 3 drawings on their page". The cap is in the client (`oneMadePerDay`), not the SQL,
+  because the day is the reader's and `feed_recent` knows no timezone. Editing one block was
+  already a single row: the Feed shows a version only while it is still on the page.
+- **The other three stay as built:** what counts as made, nothing already on a page is announced,
+  and comments by anyone you can see, in the tab you're on.
+- **No change for a non-friend's comment on your own public workout.** On You + friends it stays
+  out of the Feed; the notification bell has it.
