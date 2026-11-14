@@ -3,7 +3,9 @@
  * which toy a friend is on) without loading the Lab: labDemos.tsx imports all 133 toys.
  *
  * ⚠️ A SECOND COPY OF THE NAMES IN labDemos.tsx, KEPT EQUAL BY names.test.ts. Loaded with a
- * dynamic import, only when somebody in a call is on a toy.
+ * dynamic import, only when somebody in a call is on a toy — and by the Feed, which names the toy
+ * a note was left on (src/feed/event.ts). The Feed is its own lazy chunk, so neither puts this in
+ * the first load.
  */
 export const TOY_NAMES: Readonly<Record<string, string>> = {
   swarm: 'Swarm',
