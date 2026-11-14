@@ -339,10 +339,23 @@ export function FourRowDemo() {
     setLine(game.current.turn === game.current.you ? 'Your turn.' : 'The computer is thinking…')
     bump()
   }
+  /**
+   * ⚠️ ONLY A PLAYER LEFT ALONE IS OFFERED IT (Evan, 14 Nov): seated, the game still going, and
+   * either the other player gone or the call's game stopped. Somebody who was watching has no game
+   * of theirs to carry on — the opponents above are still there for them to choose.
+   */
+  const leftAlone =
+    !!room &&
+    mySeat !== null &&
+    room.game.turn !== null &&
+    (!lab.live || (waiting !== null && waiting !== room.me))
   /** what the line under the board says in the call, from the room alone */
   const callLine = (): string => {
     if (!room) return 'Joining the call’s game…'
-    if (!lab.live) return 'The call’s game has stopped — carry on against the computer from here.'
+    if (!lab.live)
+      return leftAlone
+        ? 'The call’s game has stopped — carry on against the computer from here.'
+        : 'The call’s game has stopped.'
     if (waiting) return `Waiting for ${who(waiting)}…`
     if (room.seats.includes(null))
       return mySeat === null
@@ -474,7 +487,7 @@ export function FourRowDemo() {
                 ↻ New game
               </button>
             )}
-            {(!lab.live || waiting) && (
+            {leftAlone && (
               <button className="btn" onClick={carryOn}>
                 Carry on against the computer
               </button>
