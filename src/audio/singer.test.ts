@@ -79,6 +79,27 @@ describe('words land on the beat', () => {
     expect(ev[0].from).toBe(10)
   })
 
+  it('with time in hand before the line, its first consonant comes before the downbeat', () => {
+    const ev = planLine(sung('sky one two three'), 10, opts({ lead: 0.5 }))
+    expect(ev[0].vowelAt).toBe(10)
+    expect(ev[0].from).toBeCloseTo(10 - consonantLength(ev[0].phones.onset), 9)
+    /* and only as far as the time there is */
+    expect(planLine(sung('sky'), 10, opts({ lead: 0.02 }))[0].from).toBeCloseTo(9.98, 9)
+  })
+
+  it('on fast notes the consonant leaves the vowel before it more than half its note', () => {
+    /* sixteenths at 140 bpm: 107ms apart, against an 85ms s */
+    const step = 60 / 140 / 4
+    const fast = [0, 1, 2, 3].map((i) => ({ t: i * step, dur: step * 0.9, midi: 72 }))
+    const ev = planLine(sung('so so so so', fast), 0, opts())
+    for (let i = 1; i < ev.length; i++) {
+      const gap = ev[i].vowelAt - ev[i - 1].vowelAt
+      expect(ev[i].vowelAt).toBeCloseTo(i * step, 9)
+      expect(ev[i].from).toBeLessThan(ev[i].vowelAt)
+      expect(ev[i].from - ev[i - 1].vowelAt).toBeGreaterThan(gap / 2)
+    }
+  })
+
   it('a hold carries the syllable across: one event, its pitches, its end', () => {
     const ev = planLine(sung('glow _ _ on'), 0, opts())
     expect(ev).toHaveLength(2)

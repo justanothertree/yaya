@@ -64,6 +64,9 @@ export type InstrumentId =
   | 'pick'
   | 'fretless'
   | 'acid'
+  | 'tuba'
+  | 'bassmarimba'
+  | 'fmbass'
   | 'supersaw'
   | 'chip'
   | 'harpsichord'
@@ -98,6 +101,9 @@ export const INSTRUMENTS: Array<[InstrumentId, string, string]> = [
   ['acid', '🧪', 'Acid bass'],
   ['808', '💥', '808'],
   ['sub', '🔊', 'Sub'],
+  ['fmbass', '📡', 'FM bass'],
+  ['bassmarimba', '🎋', 'Bass marimba'],
+  ['tuba', '📯', 'Tuba'],
   ['organ', '🎼', 'Organ'],
   ['brass', '🎺', 'Brass'],
   ['reed', '🎷', 'Reed'],
@@ -143,6 +149,9 @@ export const BASS_VOICES: InstrumentId[] = [
   'acid',
   '808',
   'sub',
+  'fmbass',
+  'bassmarimba',
+  'tuba',
 ]
 
 /** Attack, decay, sustain level, release — in seconds except sustain, which is a fraction. */
@@ -1065,6 +1074,77 @@ export const SHAPES: Record<Exclude<InstrumentId, 'drums'>, Shape> = {
     partials: [{ ratio: 1, detune: 0, gain: 1 }],
     filter: { from: 3600, to: 260, q: 10 },
     level: 0.4,
+  },
+  /**
+   * Tuba: a bass you blow. Every other bass here closes its filter after the attack; a brass note
+   * OPENS it — the lips start buzzing dark and the bell brightens as the air arrives, the "bwah".
+   * So the filter sweeps UP, from 160 to 650Hz over the swell, and the note scoops into pitch from
+   * a little under it, as a lip does. A second saw 5 cents away is the bell's slow shimmer.
+   *
+   * ⚠️ 650Hz IS THE TOP OF THE SWEEP ON PURPOSE: filterSweeps only sweeps when the target is in
+   * reach of the wave's own harmonics, and at the bottom of the bass (E1, 41Hz) a saw's reach is
+   * 656Hz. Any higher and the lowest notes would sit at a static, open filter with no swell.
+   */
+  tuba: {
+    a: 0.05,
+    d: 0.4,
+    s: 0.8,
+    r: 0.15,
+    wave: 'sawtooth',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 1, detune: 5, gain: 0.3 },
+    ],
+    filter: { from: 160, to: 650, q: 1.4 },
+    pitch: { mult: 0.985, time: 0.05 },
+    level: 0.5,
+  },
+  /**
+   * Bass marimba: a wooden bar struck with a soft mallet. A marimba bar is carved so its first
+   * overtone sits exactly two octaves up (4x) rather than at the inharmonic place a plain bar puts
+   * it, and that overtone over a pure fundamental IS the hollow, woody sound. Struck, so it never
+   * sustains: the note dies away under the mallet whatever you hold. No filter, nothing driven.
+   *
+   * ⚠️ A LONG RING AND A HIGH LEVEL, BOTH MEASURED (14 Nov 2026, a held C2 and C3 through the
+   * synth's tap, against Keys on the same notes). At d 0.9 and level 0.62 its RMS read 15dB under
+   * Keys, where every other bass read between -9 and +7: a struck note that has died by the next
+   * beat is a quiet bass however hard it is hit. A low bar on a real bass marimba rings for over a
+   * second, which is what d 1.6 gives; at 0.72 it read -5 to -6dB, with its peak level with the
+   * upright's.
+   */
+  bassmarimba: {
+    a: 0.002,
+    d: 1.6,
+    s: 0,
+    r: 0.3,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 4, detune: 0, gain: 0.35 },
+    ],
+    level: 0.72,
+  },
+  /**
+   * FM bass: the glassy, knocking electric bass of 80s pop, which a DX7 made with frequency
+   * modulation. ⚠️ THIS IS NOT FM — the synth has no modulator — it is the SOUND of one built from
+   * what this file has: clean sine partials (no saw buzz), one of them at 3.5x, between the third
+   * and fourth harmonic, which is the metallic "tink" in the attack, and a filter that closes fast
+   * so the knock is gone in a tenth of a second and leaves a round, steady body.
+   */
+  fmbass: {
+    a: 0.001,
+    d: 0.3,
+    s: 0.45,
+    r: 0.1,
+    wave: 'sine',
+    partials: [
+      { ratio: 1, detune: 0, gain: 1 },
+      { ratio: 2, detune: 0, gain: 0.6 },
+      { ratio: 3, detune: 0, gain: 0.35 },
+      { ratio: 3.5, detune: 0, gain: 0.2 },
+    ],
+    filter: { from: 5000, to: 260, q: 1.2 },
+    level: 0.6,
   },
   /**
    * Supersaw: five saws spread around the note — the wall of sound under trance and big pop
