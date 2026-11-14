@@ -31,9 +31,6 @@ const SAMPLE = 'glit-ter in the dark _ to-night'
 const SAMPLE_STEPS = [0, 2, 4, 4, 5, 4, 2, 0]
 /* the voice brings its own vibrato, glide and breath, so its part bus adds only a little room */
 const DRY: Fx = { echo: 0, echoTime: 0.26, space: 0.25, vibrato: 0, glide: 0, tone: 0.5 }
-/* ⚠️ AND A VOICE WITH A ROOM OF ITS OWN GETS NONE FROM THE BUS (the vibe pass, 14 Nov 2026): a
-   preset with a `space` brings its own plate and echo, and two reverbs on one voice is a wash */
-const busFx = (id: PresetId): Fx => (PRESETS[id].space ? { ...DRY, space: 0 } : DRY)
 const PRESET_IDS = Object.keys(PRESETS) as PresetId[]
 /* a doubled voice is part of what makes the breathy and glitchy sounds; clean starts single */
 const DOUBLED: Record<PresetId, boolean> = { clean: false, breathy: true, glitchy: true }
@@ -93,7 +90,7 @@ export function SingPanel({
     /* the next top of the loop — or this one, if the loop has only just been started */
     const soon = c.currentTime + 0.1
     const start = !was ? origin : origin + Math.max(0, Math.ceil((soon - origin) / lap)) * lap
-    stop.current = singInto(c, partInput('sing', busFx(preset), 0.9), sung, start, {
+    stop.current = singInto(c, partInput('sing', DRY, 0.9), sung, start, {
       preset,
       double,
       harmony: harmony ? (m) => harmonyAbove(m, degrees, root) : null,

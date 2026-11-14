@@ -1,93 +1,103 @@
-# The singer, more vibe: a plan and a prototype
+# The singer, more vibe: two rounds of A/B
 
 Evan, 14 Nov 2026, after hearing #325 and releasing it: make the singer "more vibey", in the
 manner of Vocaloid-style pop vocals. Still code only — oscillators, noise and filters; no samples,
 no models, no service — and aimed at the performance and the production rather than at new sounds.
-#325's diction stays: nothing here touches a consonant, a formant or a burst.
+#325's diction stays.
 
-**A draft, not for merging.** The prototype is in the voice itself, the way #325's was, so the A/B
-page can play the real thing: `singer-vibe.html` puts today's voice (A, frozen in
-`src/singerPreview/before/` at the #325 release, fdd3fba) beside the prototype (B).
+**A draft, not for merging.** `singer-vibe.html` plays today's voice (A, frozen in
+`src/singerPreview/before/` at the #325 release, fdd3fba) beside B.
 
-## The plan
+## Round one: Evan preferred A
 
-Everything on Evan's list, in the order it matters:
+The first B changed everything at once:
 
-1. **The pitch, performed.** ✅ prototype
-2. **A room of its own, per voice.** ✅ prototype
-3. **Breaths between phrases.** ✅ prototype
-4. **A tight tune, as an option.** ✅ prototype, a switch on the A/B page
-5. **Harmony stacks and doubles.** Today a harmony is one voice a third above, and only the lead
-   can be doubled. Next: a stack (a third and a fifth, or a third and a quiet octave) and a double
-   on the harmony too, each slightly detuned and spread wider than the lead.
-6. **Tuning the presets by ear**, once Evan has heard B: how deep the dips are, how long the falls,
-   how wet the room.
-7. **The room's own switch for a tight tune** in the Sing panel, and the echo ducking under the voice
-   while it sings.
+- dips into every note, overshoot on leaps and falls off the ends of phrases;
+- a plate, an echo and a sheen of its own on every voice;
+- breaths before phrases;
+- an optional tight tune.
 
-## What B does now
+Evan's verdict:
 
-**The pitch, performed** (`bend` on each voice). A tuned pop vocal does not sit on its notes the way
-a keyboard does.
+- **A is better than B.**
+- **Tight tune:** he prefers natural. Leave it off, and do not add it to the Sing panel.
+- **Breaths:** too much, and they do not sound like real breaths. Out.
+- **Harmony:** undecided, so it goes on the A/B page as a choice rather than being decided here.
 
-- Every new syllable dips under its note and rises onto it — 0.45 semitones over 90ms on Clean.
-  On a repeated note that dip is the only movement there is, and it is what makes each syllable
-  start. A step down drops a little past its note and recovers.
-- A leap of three semitones or more carries past its note by 0.3 semitones and settles back.
-- A phrase's last note, when it is held and open ("go", "sky"), falls away by about a semitone as it
-  ends, and fades with it. A word ending on a consonant closes in silence, so it does not fall.
-- A held vowel carries straight on to its next pitch, with no dip in the middle of the word.
-- The delayed vibrato on long notes is unchanged.
+### Why B lost, measured
 
-**A tight tune** (`tight`, the A/B page's switch). Every note is reached within 20ms of its beat and
-held dead level: no dips, no overshoot, no random cents, no drift. Vibrato comes later and
-shallower. The fall at a phrase's end stays, because it is a performance and not a tuning error.
+Same four lines, same notes, A in the part bus's room as on the site:
 
-**A room of its own** (`space` on each voice). This is most of what makes a pop vocal sound produced
-rather than recorded.
+| Measure                                                                     | Clean A | Clean B | Breathy A | Breathy B |
+| --------------------------------------------------------------------------- | ------- | ------- | --------- | --------- |
+| Singing time within 10 cents of its note                                    | 90.5%   | 82.1%   | 87.5%     | 76.3%     |
+| How far the gaps between syllables fall below them (P90−P10 of 10ms levels) | 24.9dB  | 17.9dB  | 22.9dB    | 14.9dB    |
 
-- A lift above 8kHz: the sheen.
-- A plate, made from noise like everything else here, that falls 60dB over its decay and darkens as
-  it falls.
-- An echo in time with the song, alternating left and right: a dotted eighth on Clean and Breathy,
-  an eighth on Glitchy.
-- Both sends are high-passed, so the low end stays the voice's own.
-- The Sing panel's part bus adds no reverb to a voice that brings its own; two reverbs on one voice
-  is a wash.
+- **The dips and falls took B off its notes** for another 8 to 11 points of the time it was singing.
+  On a voice this exact, that reads as out of tune rather than expressive.
+- **The plate and the echo filled in the silences** that make #325's consonants audible, by 7 to
+  8dB. Those silences are most of what "clean" means for this voice.
+- **The sheen made it a little brighter** as well (up to 1.4dB on the top-end measure).
 
-**Breaths** (`inhale`). A breath in before every lead phrase that follows a rest, and before the
-first phrase when the line has time in hand. The lead only, once: a doubled lead is one singer, and
-a harmony breathing too would be a crowd.
+Glitchy had no dips and lost only to the room: 25.4 against 21.3dB.
 
-## Measured
+## Round two: today's voice plus one switch at a time
 
-- **Level-matched.** B was 0.8–1.3dB louder than A, all of it the plate and the echo, and louder
-  wins any A/B. Each B's `out` is brought down by that much. Over the page's four lines, against A
-  in the part bus's room, B now reads within 0.3dB RMS on every voice, tight or not.
-- **Breaths**, through a line's own render: the loudest stretch sits 19dB under a held vowel on
-  Clean, 17dB on Breathy and 24dB on Glitchy. At a third of those levels they could not be heard
-  under the echo of the phrase before.
-- **Nothing left behind.** Every voice, breath and room is let go when the last echo is 60dB down,
-  and at once when stopped. For every voice, natural and tight, a line built 5–7 of them and 0 remained
-  after the tail and 0 after a stop.
-- **Tests:** 70 in `singer.test.ts`, 18 of them new. Each new behaviour was broken once to see its
-  test fail. Two did not at first:
-  - The hold test compared against the first note's pitch, which a dip into the next note never
-    reaches.
-  - The lead-only breath rule was hidden by the harmony resting where the lead rests.
+B is today's voice again: the round-one changes are gone from the code, and the Sing panel is
+untouched. On top of it are three switches, each off by default, to be heard one at a time.
 
-  Both now ask the right question.
+**With every switch off, B is A.** Measured:
+
+- B's plan is A's, step for step, on all 12 line and voice pairs.
+- Their loudness differs by at most 0.22dB, which is the noise between two renders.
+
+The cost to clarity of each switch is measured as above: the change in how far the gaps fall below
+the syllables, on Clean.
+
+| Switch                                                                                                                                                                                        | Gaps, against A |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Vibrato: Late** — only long notes waver: it waits 0.5s, grows over 0.55s, at 5.1Hz and about two thirds of today's depth (18 cents on Clean, against 28). Glitchy, which has none, gets 12. | +0.1dB          |
+| **Room: Light room** — in place of today's room, which is 22dB under the voice for 2.2s: one 25dB under for 0.9s, answering 20ms late, fed only the voice's middle (400Hz–5kHz).              | +10.1dB         |
+| **Room: Soft echo** — today's room, plus one echo half a beat later at 20dB under, alternating sides; the second repeat is faint.                                                             | −1.1dB          |
+| **Harmony: Third** — today's harmony option: a voice a third above in the scale, at half the lead's level.                                                                                    | −1.6dB          |
+| **Harmony: Third + octave** — that, plus a copy of the tune an octave below, at a third of the lead's level and 9ms late, with no consonant noise of its own so it cannot smear the lead's.   | −1.3dB          |
+
+Round one's B cost 7dB. The light room gains because its short tail is gone before the next phrase,
+where today's room is still ringing.
+
+**Loudness.** Before each play, B is measured against A with the same voice and switches, over all
+four lines. The measure uses roughly the curve LUFS uses. B is then turned up or down by the
+difference, because a harmony or an echo adds level, and the louder side wins an A/B whatever else
+it does.
+
+The match holds to about 0.4dB, which is as close as two renders of A come to each other: a doubled
+voice wanders at a random rate. Measured on one line rather than four, it was off by up to 0.6dB.
+
+**The first room levels were wrong, and only an exact measurement showed it.** Subtracting two
+ordinary renders could not see a reverb this quiet. Two renders with the same random numbers, one
+with the send at 0, subtracted sample by sample, could. The values tried first read 18dB and 13dB
+under the voice: a "light" room wetter than today's.
+
+**Nothing left behind.** With every switch, on Clean and on doubled Breathy, every voice, room and
+echo was let go after its tail and at once on Stop: 0 remaining in all 12 cases.
+
+**Tests.** 59 in `singer.test.ts`, 7 of them new. The code was broken nine ways, once each, and
+every break turned its own test red. The breaks were:
+
+- vibrato early, at full depth, or silent on Glitchy;
+- the octave not an octave down, carrying consonants, under the harmony too, or on time;
+- the room let go before its echo had died;
+- a plate that never darkens.
 
 ## Not checked
 
-- **How it sounds.** I cannot listen. The numbers say B is no louder than A and the shapes are where
-  they are meant to be; whether it is more vibe is for ears.
-- **The instrument room in real time.** The room's only change is the bus's reverb being turned off
-  for these voices.
-- Firefox, Safari and a real phone. A line now carries one convolver; that is cheap on a desktop and
-  unmeasured on a phone.
+- **How it sounds.** That is for ears.
+- Firefox, Safari and a real phone. A line with a room or an echo carries one more convolver or two
+  delays.
+- **The instrument room.** None of this is wired into it yet. The switches are options on the singer,
+  off unless something asks for them.
 
 ## Afterwards
 
 Delete `singer-vibe.html`, `src/singerPreview/vibe.ts` and `src/singerPreview/before/` once the
-comparison is done, as #325 did with its own.
+comparison is done.

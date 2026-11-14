@@ -48,14 +48,6 @@ export type Voice = {
   glide: number
   /** semitones a phrase's first note scoops up from */
   scoop: number
-  /**
-   * How the pitch moves into, across and off every other note — the vibe pass, 14 Nov 2026. A
-   * tuned pop vocal does not sit on its notes the way a keyboard does: it dips into each new
-   * syllable and rises onto it (`scoop` semitones over `time` seconds), overshoots a leap of three
-   * semitones or more by `overshoot` and settles, and lets a phrase's last open vowel fall away by
-   * `fall` semitones as it ends.
-   */
-  bend: { scoop: number; time: number; overshoot: number; fall: number }
   /** vibrato waits `delay` into a held note, then grows over `rise` */
   vibrato: { delay: number; rise: number; rate: number; cents: number }
   /** the small unevenness of a person: per-note pitch (cents), timing (ms) and level (dB), plus a
@@ -77,30 +69,6 @@ export type Voice = {
   double: { cents: number; ms: number; pan: number; formant: number }
   /** output level, measured against Keys — see docs/2026-11-13-formant-singer.md */
   out: number
-  /**
-   * A breath taken before a phrase that follows a rest: 0 for none, 1 for noise at the voice's own
-   * `out`. Measured through a line's own render on 14 Nov 2026, the breath's last 40% against a
-   * held vowel: Clean's 1.4 sits 19dB under the voice, Breathy's 1.8 17dB, Glitchy's 0.8 24dB. At a
-   * third of those it was felt as nothing under the echo of the phrase before.
-   */
-  inhale: number
-  /**
-   * The production around the voice, which is most of what makes a pop vocal sound produced
-   * rather than recorded: a lift above 8kHz (`sheen`, dB), a plate (`verb`, a send level; `decay`,
-   * seconds to fall 60dB; `pre`, seconds before it answers) and an echo in time with the song
-   * (`delay`, a send level; `beats` long; `feedback` per repeat, alternating sides). Both sends
-   * are high-passed at `hp` Hz so the low end stays the voice's own. Null for a dry voice.
-   */
-  space: {
-    sheen: number
-    verb: number
-    decay: number
-    pre: number
-    delay: number
-    beats: number
-    feedback: number
-    hp: number
-  } | null
 }
 
 export const PRESETS: Record<PresetId, Voice> = {
@@ -123,21 +91,7 @@ export const PRESETS: Record<PresetId, Voice> = {
     crush: null,
     chop: false,
     double: { cents: 8, ms: 16, pan: 0.3, formant: 1.015 },
-    /* 0.8dB under today's 0.095: the plate and the echo add that much, measured over the A/B
-       page's four lines against today's voice in the part bus's room, so B is not just louder */
-    out: 0.087,
-    bend: { scoop: 0.45, time: 0.09, overshoot: 0.3, fall: 0.9 },
-    inhale: 1.4,
-    space: {
-      sheen: 3,
-      verb: 0.3,
-      decay: 1.8,
-      pre: 0.025,
-      delay: 0.14,
-      beats: 0.75,
-      feedback: 0.3,
-      hp: 300,
-    },
+    out: 0.095,
   },
   breathy: {
     name: 'Breathy',
@@ -158,21 +112,7 @@ export const PRESETS: Record<PresetId, Voice> = {
     crush: null,
     chop: false,
     double: { cents: 10, ms: 22, pan: 0.4, formant: 1.02 },
-    /* 1.1dB under today's 0.105: the plate and the echo add that much, measured over the A/B
-       page's four lines against today's voice in the part bus's room, so B is not just louder */
-    out: 0.092,
-    bend: { scoop: 0.6, time: 0.11, overshoot: 0.2, fall: 1.2 },
-    inhale: 1.8,
-    space: {
-      sheen: 4,
-      verb: 0.4,
-      decay: 2.6,
-      pre: 0.035,
-      delay: 0.18,
-      beats: 0.75,
-      feedback: 0.36,
-      hp: 320,
-    },
+    out: 0.105,
   },
   glitchy: {
     name: 'Glitchy',
@@ -197,22 +137,7 @@ export const PRESETS: Record<PresetId, Voice> = {
     crush: { steps: 8, drive: 3, mix: 0.5 },
     chop: false,
     double: { cents: 16, ms: 11, pan: 0.5, formant: 1.03 },
-    /* 1.3dB under today's 0.102: the plate and the echo add that much, measured over the A/B
-       page's four lines against today's voice in the part bus's room, so B is not just louder */
-    out: 0.088,
-    /* hard tune already: every note is snapped, so nothing bends into it or falls off it */
-    bend: { scoop: 0, time: 0.05, overshoot: 0, fall: 0 },
-    inhale: 0.8,
-    space: {
-      sheen: 2,
-      verb: 0.2,
-      decay: 1.2,
-      pre: 0.015,
-      delay: 0.2,
-      beats: 0.5,
-      feedback: 0.3,
-      hp: 360,
-    },
+    out: 0.102,
   },
 }
 
@@ -228,8 +153,20 @@ export type SingOpts = {
   beat: number
   /** the humanising is random but repeatable: the same seed sings the same line the same way */
   seed?: number
-  /** a tight tune: every note snapped on within a few milliseconds and held dead level — see `tight` */
-  snap?: boolean
+  /**
+   * ⚠️ THE THREE SWITCHES OF THE SECOND VIBE PROTOTYPE, 14 Nov 2026 — each off by default, and with
+   * all three off the voice is exactly today's. Evan heard the first prototype and preferred today's
+   * voice: its dips, falls and plate had cost the line its clean character (measured in
+   * docs/2026-11-14-singer-vibe.md). So each change is one switch, to be heard on its own.
+   *
+   * `vibrato: 'late'` — only long notes waver, later, slower and shallower: see `lateVibratoOf`.
+   */
+  vibrato?: 'late'
+  /** `'room'`: a short, light room of the voice's own, in place of the part bus's reverb (the
+   *  caller turns that off). `'echo'`: one soft echo in time with the song, on top of it. */
+  space?: 'room' | 'echo'
+  /** a quiet double of the lead an octave below it — the stack's second voice, with `harmony` */
+  octave?: boolean
   /**
    * How long before `start` the first consonant may begin. When a line is scheduled for the next
    * time round the loop there is time in hand, and "sky" can hiss before the downbeat rather than
@@ -369,23 +306,6 @@ export type Phrase = {
 export const LEGATO = 0.12
 /** a gap this long ends a phrase */
 export const REST = 0.35
-/** how long a phrase's voice runs on after its last sound, for the release to finish */
-const TAIL = 0.15
-/** a jump this many semitones up is a leap, which overshoots, rather than a step, which dips in */
-const LEAP = 3
-/** the time constant of an overshoot settling back onto its note */
-const SETTLE = 0.04
-/** seconds a phrase's last note takes to fall away */
-const FALL = 0.16
-/** the shortest held note that falls off at the end of a phrase */
-const FALLS_FROM = 0.3
-/** the gap between a breath and the phrase it is for */
-const BREATH_GAP = 0.04
-/** a breath shorter than this is not worth taking, and one longer is a sigh */
-const BREATH_MIN = 0.15
-const BREATH_MAX = 0.32
-/** a tight tune's whole slide from one note to the next */
-const TIGHT = 0.018
 
 export const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
 
@@ -704,44 +624,16 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
         pitch.push({ t: k === 0 ? cFrom : t, v: target, how: 'set' })
       } else {
         const last = pitch[pitch.length - 1].t
-        const leap = 12 * Math.log2(target / prevHz)
-        /* ⚠️ A NEW SYLLABLE ONLY. A hold carries the vowel straight on to its next pitch, and a
-           dip there would be a hiccup in the middle of a word rather than the start of one. */
-        const fresh = k === 0
-        if (fresh && v.bend.scoop > 0 && leap < LEAP) {
-          /* the dip: down to just under the note as the syllable starts, then up onto it. On a
-             repeated note it is the only movement there is, and what makes each syllable start;
-             a step down falls a little past the note and recovers, the way a voice drops into it */
-          const bottom = target * 2 ** (-v.bend.scoop / 12)
-          let low = t - v.bend.time * 0.25
-          const leave = Math.max(last, low - v.glide)
-          if (low <= leave) low = leave + 0.005
-          const reach = Math.max(low + 0.01, t + v.bend.time * 0.75)
-          pitch.push({ t: leave, v: prevHz, how: 'set' })
-          pitch.push({ t: low, v: bottom, how: 'exp' })
-          pitch.push({ t: reach, v: target, how: 'exp' })
-        } else {
-          let arrive = t + v.glide * 0.35
-          const leave = Math.max(last, arrive - v.glide)
-          if (arrive <= leave) arrive = leave + 0.01
-          pitch.push({ t: leave, v: prevHz, how: 'set' })
-          if (fresh && v.bend.overshoot > 0 && leap >= LEAP) {
-            /* a leap up carries a little past the note and settles back onto it */
-            pitch.push({ t: arrive, v: target * 2 ** (v.bend.overshoot / 12), how: 'exp' })
-            pitch.push({ t: arrive, v: target, how: 'target', tc: SETTLE })
-          } else pitch.push({ t: arrive, v: target, how: 'exp' })
-        }
+        let arrive = t + v.glide * 0.35
+        const leave = Math.max(last, arrive - v.glide)
+        if (arrive <= leave) arrive = leave + 0.01
+        pitch.push({ t: leave, v: prevHz, how: 'set' })
+        pitch.push({ t: arrive, v: target, how: 'exp' })
       }
       prevHz = target
       /* vibrato only on what is held long enough to settle first */
       const segEnd = k + 1 < e.pitches.length ? e.pitches[k + 1].at : hold
       lateVibrato(vibrato, t, segEnd, v)
-      /* a phrase's last note, held and open, falls away as it ends */
-      if (!next && k === e.pitches.length - 1 && fallsOff(e, v, segEnd - t)) {
-        const off = Math.max(pitch[pitch.length - 1].t, segEnd - FALL)
-        pitch.push({ t: off, v: target, how: 'set' })
-        pitch.push({ t: segEnd, v: target * 2 ** (-v.bend.fall / 12), how: 'exp' })
-      }
     })
 
     /* ── the onset: each consonant in turn, then the vowel ── */
@@ -1014,9 +906,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
     }
     if (!legato) {
       const last = voicing[voicing.length - 1].t
-      /* a note that falls off fades with it, so the fall is heard going rather than cut */
-      const fade = !next && fallsOff(e, v, hold - vowelAt) ? FALL * 0.75 : 0.04
-      const fall = Math.max(last, hold - fade)
+      const fall = Math.max(last, hold - 0.04)
       say(fall, level, 'set')
       say(Math.max(fall + 0.01, hold), 0)
     }
@@ -1046,7 +936,7 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
   return {
     part,
     from,
-    to: lastEnd + TAIL,
+    to: lastEnd + 0.15,
     pitch: byTime(pitch),
     vibrato: byTime(vibrato),
     formants: formants.map(byTime) as Phrase['formants'],
@@ -1071,78 +961,101 @@ function lateVibrato(list: Step[], a: number, b: number, v: Voice) {
   list.push({ t: b, v: 0, how: 'ramp' })
 }
 
-/**
- * Whether a phrase's last note falls away: held long enough to hear it, and OPEN — "go", "me",
- * "sky". A word ending on a consonant closes on it before the note ends, so a fall there would
- * happen in silence.
- */
-function fallsOff(e: Event, v: Voice, held: number): boolean {
-  return v.bend.fall > 0 && !e.phones.codas.length && held >= FALLS_FROM
-}
+/** the late vibrato's wait into a note, the time it takes to grow, and its speed */
+const LATE = { delay: 0.5, rise: 0.55, rate: 5.1 }
 
 /**
- * A tight tune: the crisp, tuned sound of a pop vocal pitch-corrected hard. Every note is reached
- * in under 20ms and held dead level — no scoops, no overshoot, no wander, no random cents — and
- * vibrato comes later and shallower, so a long note is level first and only then moves. The fall at
- * a phrase's end stays: that is a performance, not a tuning error.
+ * The late vibrato: today's waits about a third of a second into anything held half a second and
+ * then grows quickly; this waits half a second, so only a long note wavers at all, grows over
+ * another half, and is slower and about two thirds as deep. A Voice in, a Voice out, so the planner
+ * sees one ordinary voice.
  *
- * A Voice in, a Voice out, so the whole planner and every test sees one ordinary voice.
+ * ⚠️ GLITCHY GETS ONE TOO, at the floor of 12 cents. Its hard tune has none today, and a switch that
+ * did nothing on one voice in three would read as broken.
  */
-export function tight(v: Voice): Voice {
+export function lateVibratoOf(v: Voice): Voice {
   return {
     ...v,
-    glide: v.glide > 0 ? Math.min(v.glide, TIGHT) : 0,
-    scoop: 0,
-    bend: { ...v.bend, scoop: 0, overshoot: 0 },
-    vibrato: { ...v.vibrato, delay: v.vibrato.delay * 1.4, cents: v.vibrato.cents * 0.6 },
-    humanize: { ...v.humanize, cents: 0, drift: 0 },
+    vibrato: { ...LATE, cents: Math.max(12, Math.round(v.vibrato.cents * 0.65)) },
   }
 }
 
-export type Inhale = { at: number; len: number; level: number }
+/** one voice to build for a line: which phrase, where, how loud, how detuned, and with or without
+ *  its consonants' noise */
+export type Spec = { ph: Phrase; pan: number; gain: number; cents: number; bursts: boolean }
 
 /**
- * The breaths: one before every lead phrase that has a rest in front of it, ending just before the
- * phrase's first sound — and before the first phrase too, when the line has time in hand before it
- * (`earliest`). Pure, so where they fall can be asked.
+ * The voices a line is sung with — pure, so the stack can be asked. The lead (doubled either side
+ * of the middle when asked), the harmony when there is one, and the octave double under the lead.
  *
- * ⚠️ THE LEAD ONLY, ONCE. A doubled lead is one singer heard twice, and a harmony is a backing
- * part: three breaths at every gap would be a crowd gasping.
+ * ⚠️ THE OCTAVE IS QUIET AND CARRIES NO CONSONANTS. It is the lead's own timeline a little late and
+ * twelve hundred cents down, so it can only thicken the vowels; its own hiss and bursts would land
+ * a few milliseconds after the lead's and smear exactly what #325 sharpened. It doubles the lead
+ * once, never the doubled voice or the harmony.
  */
-export function inhales(phrases: readonly Phrase[], v: Voice, earliest: number): Inhale[] {
-  if (v.inhale <= 0) return []
-  const out: Inhale[] = []
-  let free = earliest
-  const leads = phrases.filter((p) => p.part === 'lead').sort((a, b) => a.from - b.from)
-  for (const p of leads) {
-    const room = p.from - BREATH_GAP - free
-    if (room >= BREATH_MIN) {
-      const len = Math.min(BREATH_MAX, room)
-      out.push({ at: p.from - BREATH_GAP - len, len, level: v.inhale })
+export function voicesFor(phrases: readonly Phrase[], v: Voice, opts: SingOpts): Spec[] {
+  const out: Spec[] = []
+  for (const ph of phrases) {
+    if (ph.part === 'harmony') {
+      out.push({ ph, pan: 0, gain: HARMONY, cents: 0, bursts: false })
+      continue
     }
-    /* the next breath waits for this phrase's last sound to finish */
-    free = p.to - TAIL + BREATH_GAP
+    if (opts.double) {
+      const d = v.double
+      out.push({ ph, pan: -d.pan, gain: 1, cents: 0, bursts: true })
+      out.push({
+        ph: doublePhrase(ph, d.ms / 1000, d.formant),
+        pan: d.pan,
+        gain: DOUBLE,
+        cents: d.cents,
+        bursts: true,
+      })
+    } else out.push({ ph, pan: 0, gain: 1, cents: 0, bursts: true })
+    if (opts.octave)
+      out.push({
+        ph: doublePhrase(ph, OCTAVE.ms / 1000, OCTAVE.formant),
+        pan: 0,
+        gain: OCTAVE.gain,
+        cents: -1200 + OCTAVE.cents,
+        bursts: false,
+      })
   }
   return out
 }
 
+/** how quiet the octave double is against the lead, how late, how detuned, and a slightly bigger
+ *  throat, as a lower voice has */
+const OCTAVE = { gain: 0.32, ms: 9, cents: 4, formant: 0.97 }
+
 /**
- * The echo's numbers, from the voice's space and the song's beat: how long a repeat is, how much of
- * each repeat comes back (capped well under 1, or it never dies), and how long until both the plate
- * and the echo are 60dB down — which is how long the room's nodes must be kept after the last note.
+ * A light room: short, answering a moment late; and a soft echo, one clear repeat and a faint second.
+ * Both are fed from the voice's middle only, so its consonants stay dry.
+ *
+ * Measured on 14 Nov 2026 as the wet signal's own energy against the dry voice, over the A/B page's
+ * four lines — two renders with the same random numbers, one with the send at 0, subtracted sample
+ * by sample, because two ordinary renders differ by more than a quiet reverb does. The part bus's
+ * room, today: 22dB under the voice, for 2.2s. This room: 25dB under, for 0.9s. The echo: 20dB under,
+ * on top of today's room. The first values tried, 0.45 and 0.16, read 18dB and 13dB: a "light" room
+ * wetter than today's, which only the exact measurement showed.
  */
-export function spaceOf(sp: NonNullable<Voice['space']>, beat: number) {
-  const delay = Math.max(0.03, Math.min(1.5, sp.beats * beat))
-  const feedback = Math.max(0, Math.min(0.6, sp.feedback))
-  const repeats = feedback > 0 ? Math.ceil(Math.log(0.001) / Math.log(feedback)) : 1
-  const tail = Math.min(6, Math.max(sp.pre + sp.decay, delay * repeats))
-  return { delay, feedback, tail }
+export const LIGHT = {
+  room: { decay: 0.9, pre: 0.02, wet: 0.21 },
+  echo: { beats: 0.5, feedback: 0.18, wet: 0.07 },
+  send: { hp: 400, lp: 5000 },
+}
+
+/** how long the echo's repeats are, and how long the room must outlast the last note — until the
+ *  plate and the last repeat are both 60dB down */
+export function lightTail(beat: number) {
+  const delay = LIGHT.echo.beats * beat
+  const repeats = Math.ceil(Math.log(0.001) / Math.log(LIGHT.echo.feedback))
+  return { delay, tail: Math.max(LIGHT.room.pre + LIGHT.room.decay, delay * repeats) }
 }
 
 /**
  * A plate's impulse, made from noise like every other sound here: two decorrelated channels falling
- * 60dB over `decay` seconds, and darkening as they fall — a real plate's top end dies first, and
- * a tail that stays as bright as its start sounds like hiss. `rand` makes it repeatable for a test.
+ * 60dB over `decay` seconds, and darkening as they fall — a real plate's top end dies first, and a
+ * tail that stays as bright as its start sounds like hiss. `rand` makes it repeatable for a test.
  */
 export function plate(
   rate: number,
@@ -1457,75 +1370,61 @@ function plateFor(c: BaseAudioContext, decay: number): AudioBuffer {
 }
 
 /**
- * The voice's own room for one line: the sheen on the voice, then a plate and an echo that
- * alternates sides, both fed through a high-pass so only the voice's body and top go into them.
+ * The light room or the soft echo, for one line: the voice straight through, and a send — high-
+ * and low-passed, so neither the low end nor the consonants' hiss goes in — to a short plate or to
+ * an echo that alternates sides.
  *
- * ⚠️ IT OUTLIVES THE LAST NOTE BY ITS TAIL, and is let go then — by a silent source timed to stop
- * when the plate and the last echo are 60dB down, because its `ended` fires in a live context and
- * an offline one alike, where a timer would not. Stopping the line lets it go at once, tail and all,
- * which is what stop has always meant here.
+ * ⚠️ IT OUTLIVES THE LAST NOTE BY ITS TAIL, and is let go then, by a silent source timed to stop
+ * when the last of it is 60dB down: its `ended` fires in a live context and an offline one alike,
+ * where a timer would not. Stopping the line lets it go at once, tail and all.
  */
-function spaceFor(
-  c: BaseAudioContext,
-  dest: AudioNode,
-  sp: NonNullable<Voice['space']>,
-  beat: number,
-) {
+function lightFor(c: BaseAudioContext, dest: AudioNode, kind: 'room' | 'echo', beat: number) {
   live++
-  const { delay, feedback, tail } = spaceOf(sp, beat)
+  const { delay, tail } = lightTail(beat)
   const nodes: AudioNode[] = []
   const add = <T extends AudioNode>(n: T): T => {
     nodes.push(n)
     return n
   }
   const input = add(c.createGain())
-  const sheen = add(c.createBiquadFilter())
-  sheen.type = 'highshelf'
-  sheen.frequency.value = 8000
-  sheen.gain.value = sp.sheen
-  input.connect(sheen)
-  sheen.connect(dest)
-
-  const send = add(c.createBiquadFilter())
-  send.type = 'highpass'
-  send.frequency.value = sp.hp
-  sheen.connect(send)
-
-  const pre = add(c.createDelay(0.2))
-  pre.delayTime.value = sp.pre
-  const verb = add(c.createConvolver())
-  verb.buffer = plateFor(c, sp.decay)
-  const verbOut = add(c.createGain())
-  verbOut.gain.value = sp.verb
-  send.connect(pre)
-  pre.connect(verb)
-  verb.connect(verbOut)
-  verbOut.connect(dest)
-
-  /* the echo: left, then right, then left — each repeat a little darker and quieter */
-  const echoIn = add(c.createGain())
-  echoIn.gain.value = sp.delay
-  send.connect(echoIn)
-  const sides = [-0.7, 0.7].map((side) => {
-    const d = add(c.createDelay(2))
-    d.delayTime.value = delay
-    const dark = add(c.createBiquadFilter())
-    dark.type = 'lowpass'
-    dark.frequency.value = 3500
-    const back = add(c.createGain())
-    back.gain.value = feedback
-    const pan = add(c.createStereoPanner())
-    pan.pan.value = side
-    d.connect(dark)
-    dark.connect(pan)
-    pan.connect(dest)
-    dark.connect(back)
-    return { d, back }
-  })
-  echoIn.connect(sides[0].d)
-  sides[0].back.connect(sides[1].d)
-  sides[1].back.connect(sides[0].d)
-
+  input.connect(dest)
+  const hp = add(c.createBiquadFilter())
+  hp.type = 'highpass'
+  hp.frequency.value = LIGHT.send.hp
+  const lp = add(c.createBiquadFilter())
+  lp.type = 'lowpass'
+  lp.frequency.value = LIGHT.send.lp
+  input.connect(hp)
+  hp.connect(lp)
+  const wet = add(c.createGain())
+  wet.connect(dest)
+  if (kind === 'room') {
+    const pre = add(c.createDelay(0.2))
+    pre.delayTime.value = LIGHT.room.pre
+    const verb = add(c.createConvolver())
+    verb.buffer = plateFor(c, LIGHT.room.decay)
+    wet.gain.value = LIGHT.room.wet
+    lp.connect(pre)
+    pre.connect(verb)
+    verb.connect(wet)
+  } else {
+    wet.gain.value = LIGHT.echo.wet
+    const sides = [-0.6, 0.6].map((side) => {
+      const d = add(c.createDelay(2))
+      d.delayTime.value = delay
+      const back = add(c.createGain())
+      back.gain.value = LIGHT.echo.feedback
+      const pan = add(c.createStereoPanner())
+      pan.pan.value = side
+      d.connect(pan)
+      pan.connect(wet)
+      d.connect(back)
+      return { d, back }
+    })
+    lp.connect(sides[0].d)
+    sides[0].back.connect(sides[1].d)
+    sides[1].back.connect(sides[0].d)
+  }
   let done = false
   let clock: ConstantSourceNode | null = null
   const release = () => {
@@ -1537,7 +1436,7 @@ function spaceFor(
   }
   return {
     input,
-    /** keep the room until `end`, the last voice's end, plus its tail */
+    /** keep it until `end`, the last voice's end, plus its tail */
     until(end: number) {
       clock = c.createConstantSource()
       clock.offset.value = 0
@@ -1547,51 +1446,6 @@ function spaceFor(
       clock.stop(end + tail)
     },
     stop: release,
-  }
-}
-
-/** a breath in: noise through a soft band, swelling and then cut just before the phrase */
-function breathe(c: BaseAudioContext, dest: AudioNode, b: Inhale, v: Voice) {
-  live++
-  const n = c.createBufferSource()
-  n.buffer = noiseFor(c)
-  n.loop = true
-  const band = c.createBiquadFilter()
-  band.type = 'bandpass'
-  band.frequency.value = 1500 * v.formant
-  band.Q.value = 0.6
-  const hp = c.createBiquadFilter()
-  hp.type = 'highpass'
-  hp.frequency.value = 450
-  const env = c.createGain()
-  const peak = b.level * v.out
-  env.gain.setValueAtTime(0, b.at)
-  env.gain.linearRampToValueAtTime(peak, b.at + b.len * 0.7)
-  env.gain.linearRampToValueAtTime(0, b.at + b.len)
-  n.connect(band)
-  band.connect(hp)
-  hp.connect(env)
-  env.connect(dest)
-  let done = false
-  const release = () => {
-    if (done) return
-    done = true
-    live--
-    for (const x of [n, band, hp, env]) x.disconnect()
-  }
-  n.onended = release
-  n.start(b.at)
-  n.stop(b.at + b.len + 0.01)
-  return {
-    stop() {
-      if (done) return
-      try {
-        n.stop(c.currentTime)
-      } catch {
-        /* already stopped */
-      }
-      release()
-    },
   }
 }
 
@@ -1607,30 +1461,15 @@ export function singInto(
   start: number,
   opts: SingOpts,
 ): () => void {
-  const v = opts.snap ? tight(PRESETS[opts.preset]) : PRESETS[opts.preset]
+  const v = opts.vibrato === 'late' ? lateVibratoOf(PRESETS[opts.preset]) : PRESETS[opts.preset]
   const phrases = planPhrases(planLine(sung, start, opts), v, opts.beat, opts.seed ?? 1)
-  const room = v.space ? spaceFor(c, dest, v.space, opts.beat) : null
+  const room = opts.space ? lightFor(c, dest, opts.space, opts.beat) : null
   const into = room ? room.input : dest
-  const voices: { stop(): void }[] = []
-  for (const ph of phrases) {
-    if (ph.part === 'harmony') {
-      voices.push(build(c, into, ph, v, { pan: 0, gain: HARMONY, cents: 0, bursts: false }))
-    } else if (opts.double) {
-      const d = v.double
-      voices.push(build(c, into, ph, v, { pan: -d.pan, gain: 1, cents: 0, bursts: true }))
-      voices.push(
-        build(c, into, doublePhrase(ph, d.ms / 1000, d.formant), v, {
-          pan: d.pan,
-          gain: DOUBLE,
-          cents: d.cents,
-          bursts: true,
-        }),
-      )
-    } else voices.push(build(c, into, ph, v, { pan: 0, gain: 1, cents: 0, bursts: true }))
+  const voices = voicesFor(phrases, v, opts).map(({ ph, ...o }) => build(c, into, ph, v, o))
+  if (room) {
+    const late = Math.max(0, ...voicesFor(phrases, v, opts).map((x) => x.ph.to))
+    room.until(Math.max(start, late))
   }
-  for (const b of inhales(phrases, v, start - (opts.lead ?? 0))) voices.push(breathe(c, into, b, v))
-  const late = opts.double ? v.double.ms / 1000 : 0
-  room?.until(Math.max(start, ...phrases.map((p) => p.to)) + late)
   let stopped = false
   return () => {
     if (stopped) return

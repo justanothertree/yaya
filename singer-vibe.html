@@ -159,10 +159,11 @@
   <body>
     <main>
       <div class="group">
-        <h1>Singer A/B: the vibe pass</h1>
+        <h1>Singer A/B: the vibe pass, round two</h1>
         <p class="dim">
-          A is the voice on the site now. B bends into its notes, breathes between phrases, and has
-          its own reverb and echo. Same lines, same notes.
+          A is the voice on the site now. B is the same voice plus whatever you switch on below, and
+          with everything off it is A. Try one switch at a time. B is matched to A's loudness before
+          each play.
         </p>
       </div>
       <button id="all" type="button">▶ All lines, A then B</button>
@@ -176,12 +177,38 @@
         </div>
       </div>
       <div class="group">
-        <span class="label">B's tuning</span>
+        <span class="label">B: vibrato</span>
         <div class="row">
-          <button class="pill" type="button" data-snap="off">Natural</button>
-          <button class="pill" type="button" data-snap="on">Tight</button>
+          <button class="pill" type="button" data-sw="vibrato" data-val="off">Today's</button>
+          <button class="pill" type="button" data-sw="vibrato" data-val="late">Late</button>
         </div>
-        <p class="dim">Tight snaps every note in place and holds it level.</p>
+        <p class="dim">Late: only long notes waver, starting later, slower and gentler.</p>
+      </div>
+      <div class="group">
+        <span class="label">B: room</span>
+        <div class="row">
+          <button class="pill" type="button" data-sw="space" data-val="off">Today's</button>
+          <button class="pill" type="button" data-sw="space" data-val="room">Light room</button>
+          <button class="pill" type="button" data-sw="space" data-val="echo">Soft echo</button>
+        </div>
+        <p class="dim">
+          Light room: a shorter, cleaner room instead of today's. Soft echo: today's room plus one
+          quiet echo in time.
+        </p>
+      </div>
+      <div class="group">
+        <span class="label">B: harmony</span>
+        <div class="row">
+          <button class="pill" type="button" data-sw="harmony" data-val="off">None</button>
+          <button class="pill" type="button" data-sw="harmony" data-val="third">Third</button>
+          <button class="pill" type="button" data-sw="harmony" data-val="octave">
+            Third + octave
+          </button>
+        </div>
+        <p class="dim">
+          Third: a second voice a third above. Third + octave: that, plus a quiet copy of the tune
+          an octave below.
+        </p>
       </div>
       <ol id="lines" class="lines"></ol>
     </main>

@@ -1,28 +1,38 @@
 import * as nowLyrics from './before/lyrics'
 import * as now from './before/singer'
+import { harmonyAbove } from '../audio/lyrics'
 import * as vibeLyrics from '../audio/lyrics'
 import * as vibe from '../audio/singer'
-import type { PresetId } from '../audio/singer'
+import type { PresetId, SingOpts } from '../audio/singer'
 
 /**
- * The vibe pass's A/B page (singer-vibe.html): fixed lines sung by today's voice (A, frozen in
- * ./before at the #325 release) and the vibe prototype (B), on the same notes and the same seed.
+ * The vibe pass's A/B page (singer-vibe.html), second round: today's voice (A, frozen in ./before at
+ * the #325 release) against the same voice with whichever of three switches are on (B). With every
+ * switch off, B is A.
  *
- * ⚠️ EACH SIDE HEARS THE ROOM IT WOULD GET IN THE INSTRUMENT. A goes through a copy of the part
- * bus's reverb at the singer's setting (space 0.25 on the shared 2.2s impulse), which is what it has
- * on the site today; B brings its own plate and echo and gets none from the bus, which is what
- * SingPanel now does for a voice with a `space`. Giving both the same room would hide half of B.
+ * ⚠️ EACH SIDE HEARS THE ROOM IT WOULD GET IN THE INSTRUMENT: A, and B unless its room switch says
+ * otherwise, go through a copy of the part bus's reverb at the singer's setting. B's "Light room"
+ * replaces it, the way the Sing panel would turn the bus's off for it.
+ *
+ * ⚠️ LEVEL-MATCHED BEFORE IT PLAYS. B is measured against A with the same voice and switches, over
+ * all four lines — rendered offline through roughly the curve LUFS uses (+4dB above 1.5kHz, nothing
+ * below 38Hz) — and turned up or down by the difference. A harmony or an echo adds level, and the
+ * louder side wins an A/B whatever else it does.
  *
  * ⚠️ DEV-ONLY, like singer-preview.html: not a build input, nothing saved. Delete it and ./before
  * once the comparison is done.
  */
 
 type Which = 'a' | 'b'
+type Switches = {
+  vibrato: 'off' | 'late'
+  space: 'off' | 'room' | 'echo'
+  harmony: 'off' | 'third' | 'octave'
+}
 
 /** the lines, and a tune for each in beats: [start, length, midi] — one note per syllable or hold */
 const LINES: { text: string; tune: [number, number, number][] }[] = [
   {
-    /* two phrases with a rest between: a breath, a dip down onto "me", a long "go" that falls */
     text: 'hold me close let me go',
     tune: [
       [0, 0.5, 67],
@@ -34,7 +44,6 @@ const LINES: { text: string; tune: [number, number, number][] }[] = [
     ],
   },
   {
-    /* a repeated note, a leap of a fourth onto "sky" that overshoots, then "night" closing on a t */
     text: 'light up the sky to-night',
     tune: [
       [0, 0.5, 64],
@@ -46,7 +55,6 @@ const LINES: { text: string; tune: [number, number, number][] }[] = [
     ],
   },
   {
-    /* one held syllable carried up two steps, then a long open note */
     text: 'la la la _ love',
     tune: [
       [0, 0.5, 72],
@@ -57,7 +65,6 @@ const LINES: { text: string; tune: [number, number, number][] }[] = [
     ],
   },
   {
-    /* from the diction A/B, so the words can be checked as well as the feel */
     text: 'we will meet at night',
     tune: [
       [0, 0.5, 64],
@@ -70,17 +77,18 @@ const LINES: { text: string; tune: [number, number, number][] }[] = [
 ]
 const BPM = 96
 const SPB = 60 / BPM
-/** time in hand before each line, so its first breath and first consonant fit before the beat */
-const LEAD = 0.45
+const LEAD = 0.2
+/* every line is in C major, so the harmony's third is the scale's */
+const C_MAJOR = [0, 2, 4, 5, 7, 9, 11]
 /* what the room does: clean sings alone, the other two are doubled */
 const DOUBLED: Record<PresetId, boolean> = { clean: false, breathy: true, glitchy: true }
-const LABEL: Record<Which, string> = { a: 'A, now', b: 'B, vibe' }
+const OFF: Switches = { vibrato: 'off', space: 'off', harmony: 'off' }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
 let preset: PresetId = 'clean'
-let snap = false
-let ctx: { c: AudioContext; a: AudioNode; b: AudioNode } | null = null
+let sw: Switches = { ...OFF }
+let ctx: { c: AudioContext; master: AudioNode; bus: AudioNode } | null = null
 let playing: { stops: (() => void)[]; timers: number[] } | null = null
 
 /**
@@ -106,6 +114,102 @@ export function busRoom(c: BaseAudioContext, dest: AudioNode): AudioNode {
   return input
 }
 
+export function notesOf(line: number) {
+  return LINES[line].tune.map(([t, d, m]) => ({ t: t * SPB, dur: d * SPB * 0.95, midi: m }))
+}
+
+export const LINE_COUNT = LINES.length
+
+export function lineLength(line: number) {
+  const last = notesOf(line).at(-1)!
+  return last.t + last.dur
+}
+
+/** does B go through the bus's reverb? Every time but the light room, which replaces it */
+export const viaBus = (which: Which, s: Switches) => which === 'a' || s.space !== 'room'
+
+/** sing one line on one side into `dest` at `t`: the same notes, seed and lead for both */
+export function singLine(
+  c: BaseAudioContext,
+  dest: AudioNode,
+  which: Which,
+  line: number,
+  t: number,
+  p: PresetId,
+  s: Switches,
+) {
+  const notes = notesOf(line)
+  const text = LINES[line].text
+  const base = {
+    preset: p,
+    double: DOUBLED[p],
+    harmony: null,
+    beat: SPB,
+    seed: 7 + line,
+    lead: LEAD,
+  }
+  if (which === 'a') {
+    const sung = nowLyrics.assignSyllables(notes, nowLyrics.splitLyrics(text)).sung
+    return now.singInto(c, dest, sung, t, base)
+  }
+  const opts: SingOpts = {
+    ...base,
+    vibrato: s.vibrato === 'late' ? 'late' : undefined,
+    space: s.space === 'off' ? undefined : s.space,
+    harmony: s.harmony === 'off' ? null : (m) => harmonyAbove(m, C_MAJOR, 0),
+    octave: s.harmony === 'octave',
+  }
+  const sung = vibeLyrics.assignSyllables(notes, vibeLyrics.splitLyrics(text)).sung
+  return vibe.singInto(c, dest, sung, t, opts)
+}
+
+/**
+ * How loud one side is, in dB, through roughly the curve LUFS uses: every line rendered offline with
+ * the room it would play in, then the mean square of both channels across all of them, tails and all.
+ *
+ * ⚠️ ALL FOUR LINES, NOT THE ONE ABOUT TO PLAY. A doubled voice wanders at a random rate and beats
+ * against its twin, so one short line measured twice disagreed with itself by up to 0.6dB — as much as
+ * the switches being judged. Across the four the beating averages out.
+ */
+export async function loudness(which: Which, p: PresetId, s: Switches) {
+  const rate = 32000
+  let sum = 0
+  let n = 0
+  for (let line = 0; line < LINES.length; line++) {
+    const c = new OfflineAudioContext(2, Math.ceil(rate * (lineLength(line) + LEAD + 4)), rate)
+    const shelf = c.createBiquadFilter()
+    shelf.type = 'highshelf'
+    shelf.frequency.value = 1500
+    shelf.gain.value = 4
+    const hp = c.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 38
+    hp.Q.value = 0.5
+    shelf.connect(hp).connect(c.destination)
+    singLine(c, viaBus(which, s) ? busRoom(c, shelf) : shelf, which, line, LEAD, p, s)
+    const buf = await c.startRendering()
+    for (let ch = 0; ch < buf.numberOfChannels; ch++)
+      for (const x of buf.getChannelData(ch)) {
+        sum += x * x
+        n++
+      }
+  }
+  return 10 * Math.log10(sum / n + 1e-20)
+}
+
+/** B's trim against A, in gain — measured once per voice and set of switches */
+const trims = new Map<string, number>()
+async function trimFor(p: PresetId, s: Switches) {
+  const key = `${p}|${s.vibrato}|${s.space}|${s.harmony}`
+  let g = trims.get(key)
+  if (g === undefined) {
+    const [a, b] = await Promise.all([loudness('a', p, s), loudness('b', p, s)])
+    g = 10 ** ((a - b) / 20)
+    trims.set(key, g)
+  }
+  return g
+}
+
 function audio() {
   if (ctx) return ctx
   const c = new AudioContext()
@@ -117,48 +221,9 @@ function audio() {
   const master = c.createGain()
   master.gain.value = 1.4
   master.connect(limiter)
-  ctx = { c, a: busRoom(c, master), b: master }
+  ctx = { c, master, bus: busRoom(c, master) }
   return ctx
 }
-
-export function notesOf(line: number) {
-  return LINES[line].tune.map(([t, d, m]) => ({ t: t * SPB, dur: d * SPB * 0.95, midi: m }))
-}
-
-/** sing one line on one side into `c` at `t`: the same notes, seed and lead for both */
-export function singLine(
-  c: BaseAudioContext,
-  dest: AudioNode,
-  which: Which,
-  line: number,
-  t: number,
-  opt: { preset: PresetId; snap: boolean },
-) {
-  const notes = notesOf(line)
-  const text = LINES[line].text
-  const opts = {
-    preset: opt.preset,
-    double: DOUBLED[opt.preset],
-    harmony: null,
-    beat: SPB,
-    seed: 7 + line,
-    lead: LEAD,
-  }
-  if (which === 'a') {
-    const sung = nowLyrics.assignSyllables(notes, nowLyrics.splitLyrics(text)).sung
-    return now.singInto(c, dest, sung, t, opts)
-  }
-  const sung = vibeLyrics.assignSyllables(notes, vibeLyrics.splitLyrics(text)).sung
-  return vibe.singInto(c, dest, sung, t, { ...opts, snap: opt.snap })
-}
-
-/** how long a line takes, start to last note, in seconds */
-export function lineLength(line: number) {
-  const last = notesOf(line).at(-1)!
-  return last.t + last.dur
-}
-
-export const LINE_COUNT = LINES.length
 
 function stop() {
   if (!playing) return
@@ -168,26 +233,48 @@ function stop() {
   show(null)
 }
 
+/** what B has on, in words, for the line that is playing */
+function says(s: Switches) {
+  const on = [
+    s.vibrato === 'late' ? 'late vibrato' : '',
+    s.space === 'room' ? 'light room' : s.space === 'echo' ? 'soft echo' : '',
+    s.harmony === 'third' ? 'third above' : s.harmony === 'octave' ? 'third and octave' : '',
+  ].filter(Boolean)
+  return on.length ? `B, ${on.join(' + ')}` : 'B, nothing on (same as A)'
+}
+
 async function play(items: { line: number; which: Which }[]) {
   stop()
-  const { c, a, b } = audio()
+  const { c, master, bus } = audio()
   await c.resume()
+  const s = { ...sw }
+  const p = preset
+  $('now').textContent = 'Matching levels…'
+  const trim = await trimFor(p, s)
+  const gains = items.map((it) => (it.which === 'a' ? 1 : trim))
   const stops: (() => void)[] = []
   const timers: number[] = []
   let t = c.currentTime + 0.2 + LEAD
-  for (const it of items) {
-    stops.push(singLine(c, it.which === 'a' ? a : b, it.which, it.line, t, { preset, snap }))
-    timers.push(window.setTimeout(() => show(it), (t - LEAD - c.currentTime) * 1000))
-    /* room for the echo to die away and the next line's breath before it */
-    t += lineLength(it.line) + 1.1 + LEAD
-  }
+  items.forEach((it, i) => {
+    const trim = c.createGain()
+    trim.gain.value = gains[i]
+    trim.connect(viaBus(it.which, s) ? bus : master)
+    const sing = singLine(c, trim, it.which, it.line, t, p, s)
+    stops.push(() => {
+      sing()
+      trim.disconnect()
+    })
+    const label = it.which === 'a' ? 'A, today' : says(s)
+    timers.push(window.setTimeout(() => show(it, label), (t - LEAD - c.currentTime) * 1000))
+    t += lineLength(it.line) + 1.2 + LEAD
+  })
   timers.push(window.setTimeout(stop, (t - LEAD - c.currentTime) * 1000))
   playing = { stops, timers }
   render()
 }
 
-function show(it: { line: number; which: Which } | null) {
-  $('now').textContent = it ? `${LABEL[it.which]}: ${LINES[it.line].text}` : ' '
+function show(it: { line: number; which: Which } | null, label = '') {
+  $('now').textContent = it ? `${label}: ${LINES[it.line].text.replace(' _', '…')}` : ' '
   document.querySelectorAll<HTMLElement>('#lines li').forEach((li, i) => {
     if (it && it.line === i) li.dataset.on = ''
     else delete li.dataset.on
@@ -198,8 +285,8 @@ function show(it: { line: number; which: Which } | null) {
 function render() {
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-preset]'))
     el.setAttribute('aria-pressed', String(el.dataset.preset === preset))
-  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-snap]'))
-    el.setAttribute('aria-pressed', String((el.dataset.snap === 'on') === snap))
+  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-sw]'))
+    el.setAttribute('aria-pressed', String(sw[el.dataset.sw as keyof Switches] === el.dataset.val))
   $('all').textContent = playing ? '■ Stop' : '▶ All lines, A then B'
 }
 
@@ -220,8 +307,8 @@ if (typeof document !== 'undefined' && document.getElementById('lines')) {
       el.addEventListener('click', () => void play(items))
       row.append(el)
     }
-    button(LABEL.a, [{ line: i, which: 'a' }])
-    button(LABEL.b, [{ line: i, which: 'b' }])
+    button('A, today', [{ line: i, which: 'a' }])
+    button('B', [{ line: i, which: 'b' }])
     button('A then B', [
       { line: i, which: 'a' },
       { line: i, which: 'b' },
@@ -244,9 +331,9 @@ if (typeof document !== 'undefined' && document.getElementById('lines')) {
       preset = el.dataset.preset as PresetId
       render()
     })
-  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-snap]'))
+  for (const el of document.querySelectorAll<HTMLButtonElement>('[data-sw]'))
     el.addEventListener('click', () => {
-      snap = el.dataset.snap === 'on'
+      sw = { ...sw, [el.dataset.sw as keyof Switches]: el.dataset.val } as Switches
       render()
     })
   render()
