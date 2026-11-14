@@ -179,7 +179,7 @@ export function FourRowDemo() {
   const lab = useLabRoom('fourrow', roomRules)
   const room = mode === 'call' ? lab.room : null
   const mySeat = room ? seatOf(room) : null
-  const waiting = room && lab.live ? waitingFor(room) : null
+  const waiting = room && lab.live ? waitingFor(room, roomRules) : null
   const who = (id: string | null) =>
     id === null ? 'Empty seat' : room && id === room.me ? 'You' : (lab.names[id] ?? 'A friend')
   // the board on screen is the room's, whenever it changes
