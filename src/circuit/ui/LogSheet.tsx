@@ -287,8 +287,14 @@ export function LogSheet({ log, person }: { log: LogState; person: Person }) {
                 style={{
                   /* 24px tall to a finger or a pointer, the floor everywhere else on this sheet,
                      with the 5px added each side taken back out of the margins: as a button the
-                     heading counts as a control, it was 14px, and the cards below must not move */
+                     heading counts as a control, it was 14px, and the cards below must not move.
+                     ⚠️ AND A MINIMUM, because padding alone left the height to the font: the
+                     text's line is `normal`, so 10px type measured 14 in one pane run and 12.8 in
+                     another, and the heading came out at 22.8. Where a font's line is shorter
+                     than 14px, the cards sit that much lower, never more than a pixel or two. */
                   padding: '5px 0',
+                  minHeight: 24,
+                  boxSizing: 'border-box',
                   margin: '-5px 0 calc(0.4rem - 5px)',
                   cursor: 'text',
                   display: 'inline-block',
