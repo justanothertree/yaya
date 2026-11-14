@@ -5,8 +5,9 @@ import { LIMIT } from './limits'
 import type { GoalFormState } from './useGoalForm'
 
 /**
- * The goal form under a view's list, or the ＋ button that opens it. Its state lives in useGoalForm,
- * which the room owns.
+ * The goal form, at the top of a view's list while it is open. Its state lives in useGoalForm, which
+ * the room owns — and so does the ＋ Add that opens it, which sits beside the window's own line
+ * rather than under the list (#298), so this draws nothing while the form is shut.
  */
 export function GoalForm({
   form,
@@ -50,9 +51,9 @@ export function GoalForm({
     setPri,
     beingFixed,
     add,
-    openAdd,
   } = form
-  return adding ? (
+  if (!adding) return null
+  return (
     <div className="chron-add">
       <label>
         <span className="sr-only">What is the goal?</span>
@@ -269,9 +270,5 @@ export function GoalForm({
         Cancel
       </button>
     </div>
-  ) : (
-    <button className="btn" onClick={() => openAdd('')}>
-      ＋ Add to {v.label.toLowerCase()}
-    </button>
   )
 }

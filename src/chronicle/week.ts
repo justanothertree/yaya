@@ -81,6 +81,33 @@ export function columns(
 }
 
 /**
+ * How much of the week's days so far is written down — the line under the grid, and now the line
+ * on its fold as well.
+ *
+ * ⚠️ ONE SUM FOR TWO PLACES. The grid has always printed this under itself; folding the grid on a
+ * phone put the same figure on the row that opens it, and two copies of an average are two
+ * chances to round or count the days differently. Both read this.
+ *
+ * ⚠️ ONLY THE DAYS THAT HAVE BEGUN, which is what the grid's own note has always said: a Tuesday
+ * afternoon measured against seven days is 29% at best and reads as failure. Null before any has.
+ */
+export function coveredSoFar(
+  cols: ReadonlyArray<Pick<Column, 'fromMs' | 'covered'>>,
+  nowMs: number,
+): { pct: number; days: number } | null {
+  const started = cols.filter((c) => c.fromMs <= nowMs)
+  if (!started.length) return null
+  return {
+    pct: Math.round(started.reduce((n, c) => n + c.covered, 0) / started.length),
+    days: started.length,
+  }
+}
+
+/** that figure as the sentence both places print */
+export const coveredLine = (c: { pct: number; days: number }): string =>
+  `${c.pct}% of ${c.days === 1 ? 'today' : `these ${c.days} days`} is written down`
+
+/**
  * The hour lines a column is drawn against.
  *
  * ⚠️ EVERY HOUR HAS A LINE AND ONLY SOME HAVE A LABEL. Twenty-four labels down a phone is a column

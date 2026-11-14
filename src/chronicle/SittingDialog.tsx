@@ -230,49 +230,8 @@ export function SittingDialog({
       </div>
     </div>
   )
-  return (
-    <Modal
-      title={
-        finishing
-          ? `${spanText(ms)} of ${a?.name ?? 'that'} — how did it go?`
-          : `Edit ${a?.name ?? 'this session'}`
-      }
-      onClose={() => {
-        setFixEnt(null)
-        setJustDid(null)
-      }}
-      footer={
-        <div className="chron-modal-do">
-          {/* ⚠️ DELETE LIVES HERE, AWAY FROM SAVE — the arrangement the HTML version uses,
-              and the reason a log row no longer needs a ✕ of its own beside its ✎ */}
-          <button className="btn btn-ghost chron-danger" onClick={() => void forget(e)}>
-            🗑 Delete
-          </button>
-          <span className="chron-modal-right">
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                setFixEnt(null)
-                setJustDid(null)
-              }}
-            >
-              {/* ⚠️ "Done" when finishing, because there is nothing to cancel — the
-                  sitting is already recorded and this dialog only ever adds to it */}
-              {finishing ? 'Done' : 'Cancel'}
-            </button>
-            <button
-              className="btn"
-              disabled={busy || (len ?? 0) < 0 || below}
-              onClick={() => void saveEnt(metric)}
-            >
-              Save
-            </button>
-          </span>
-        </div>
-      }
-    >
-      {e.end == null ? journal : null}
-
+  const what = (
+    <>
       <div className="chron-field">
         <label htmlFor="ent-act">What it was</label>
         <select
@@ -280,8 +239,8 @@ export function SittingDialog({
           value={entAct}
           onChange={(ev) => {
             /* ⚠️ a quantity belongs to a metric, and moving a session changes the metric
-               under it — sixty reps is not sixty pages, so the number goes when the unit
-               does, visibly, while somebody is looking at it */
+                 under it — sixty reps is not sixty pages, so the number goes when the unit
+                 does, visibly, while somebody is looking at it */
             const before = byId.get(entAct)?.metric ?? null
             const after = byId.get(ev.target.value)?.metric ?? null
             if (before !== after) setEntAmount('')
@@ -295,13 +254,16 @@ export function SittingDialog({
           ))}
         </select>
         {/* ⚠️ SAID AT THE MOMENT IT HAPPENS (§15c): a move takes the time to the new
-            activity and leaves every set the exercise it was. Correct, and it looks like a
-            bug — a goal's number moves and the Circuit's does not. */}
+              activity and leaves every set the exercise it was. Correct, and it looks like a
+              bug — a goal's number moves and the Circuit's does not. */}
         {entAct !== e.activity && moveNote(entSets, e.id) ? (
           <p className="muted chron-move-note">{moveNote(entSets, e.id)}</p>
         ) : null}
       </div>
-
+    </>
+  )
+  const times = (
+    <>
       <div className="chron-frow">
         {when('From', entFrom, setEntFrom)}
         {e.end ? when('To', entTo, setEntTo) : null}
@@ -340,7 +302,10 @@ export function SittingDialog({
           </div>
         </details>
       )}
-
+    </>
+  )
+  const amount = (
+    <>
       {e.end && metric && (
         <div className="chron-field">
           <label htmlFor="ent-amt">How many {metric}</label>
@@ -353,7 +318,10 @@ export function SittingDialog({
           />
         </div>
       )}
-
+    </>
+  )
+  const sets = (
+    <>
       {/**
        * ⚠️ THE SETS THIS SITTING COUNTED, AND THE WAY TO TAKE ONE BACK. Its count holds the
        * counted ones, so it cannot be lowered below them here — the server refuses that too —
@@ -401,7 +369,10 @@ export function SittingDialog({
           ) : null}
         </div>
       ) : null}
-
+    </>
+  )
+  const door = (
+    <>
       {/**
        * ⚠️ THE DOOR TO THE COUNTER, FOR AN ACTIVITY THAT HAS NONE. The `+1 / +5 / +10` row on
        * the clock appears only once an activity has been told what it counts — and that is
@@ -438,17 +409,10 @@ export function SittingDialog({
           </p>
         )
       })()}
-
-      {/**
-       * ⚠️ BUTTONS RATHER THAN A SELECT, which is the other thing the HTML version has
-       * always done — 👍 Great / 😐 OK / 👎 Rough, one tap rather than opening a list. The
-       * scale here is five and stays five, because that is what every rating already
-       * stored means; what changes is only how you choose one.
-       *
-       * ⚠️ AND TAPPING THE CHOSEN ONE CLEARS IT, so "not rated" needs no sixth button. The
-       * state it returns to is the one it started in, which is the only thing an undo here
-       * could sensibly mean.
-       */}
+    </>
+  )
+  const photo = (
+    <>
       {/**
        * ⚠️ THE PICKER IS THE ONE FROM THE PICTURES ROOM, which is the whole reason it was
        * lifted out of it. Choose, squeeze, keep — and what comes back is an id, which is
@@ -482,7 +446,20 @@ export function SittingDialog({
           <AddPicture label="+ Add a photo" onKept={(k) => hangPicture(e.id, k.id)} />
         )}
       </div>
-
+    </>
+  )
+  const moods = (
+    <>
+      {/**
+       * ⚠️ BUTTONS RATHER THAN A SELECT, which is the other thing the HTML version has
+       * always done — 👍 Great / 😐 OK / 👎 Rough, one tap rather than opening a list. The
+       * scale here is five and stays five, because that is what every rating already
+       * stored means; what changes is only how you choose one.
+       *
+       * ⚠️ AND TAPPING THE CHOSEN ONE CLEARS IT, so "not rated" needs no sixth button. The
+       * state it returns to is the one it started in, which is the only thing an undo here
+       * could sensibly mean.
+       */}
       {e.end && (
         <div className="chron-field">
           <label>How did it go? (optional)</label>
@@ -500,7 +477,136 @@ export function SittingDialog({
           </div>
         </div>
       )}
+    </>
+  )
 
+  if (finishing) {
+    /**
+     * Whether anything on the dialog differs from the sitting it opened on.
+     *
+     * ⚠️ COMPARED IN THE BOXES' OWN TERMS — the same `forInput` they were seeded with, the same
+     * strings for the count and the rating — so a dialog opened and closed with nothing touched
+     * reads as unchanged and Done simply closes, which is what it always did.
+     */
+    const changed =
+      entAct !== e.activity ||
+      forInput(e.start) !== entFrom ||
+      (e.end != null && forInput(e.end) !== entTo) ||
+      entAmount !== (e.amount == null ? '' : String(e.amount)) ||
+      entMood !== (e.quality == null ? '' : String(e.quality))
+    /**
+     * ⚠️ ONE DONE, AND IT KEEPS WHAT YOU DID HERE — #298's fifth answer. There were two buttons,
+     * Done and Save, on a dialog whose whole question is "how did it go?" — and Done closed without
+     * saving, so a rating tapped and then Done was a rating thrown away. (Save was no better: from
+     * this door it did nothing at all until the same change — see `showing` in the editor.) Now a
+     * rating, a changed time or count, and words left in the journal box are all kept by the one
+     * button anybody presses; ✕ and Escape still close without keeping, as they always did.
+     *
+     * ⚠️ THE NOTE FIRST, AND NOTHING CLOSES IF IT DID NOT SAVE. Words are the one thing here that
+     * cannot be got back, so a refused note leaves the dialog open with them still in the box.
+     */
+    const done = async () => {
+      if (entNote.trim() && !(await addJournal(e.id))) return
+      if (changed) return void (await saveEnt(metric))
+      setFixEnt(null)
+      setJustDid(null)
+    }
+    return (
+      <Modal
+        title={`${spanText(ms)} of ${a?.name ?? 'that'} — how did it go?`}
+        onClose={() => {
+          setFixEnt(null)
+          setJustDid(null)
+        }}
+        footer={
+          <button
+            className="btn chron-done"
+            disabled={busy || (changed && ((len ?? 0) < 0 || below))}
+            onClick={() => void done()}
+          >
+            Done
+          </button>
+        }
+      >
+        {/* ⚠️ "HOW DID IT GO?" COMES FIRST, because it is the question the title asks — it was the
+            ninth thing on this dialog, under the activity, both ends, the count and the photo */}
+        {moods}
+        {journal}
+        {/**
+         * ⚠️ EVERYTHING ELSE IS ONE TAP AWAY, NOT GONE. What it was, when it ran, the count, its
+         * sets, a photo and Delete are the repairs — what you need when Stop was pressed on the
+         * wrong thing or at the wrong time — and they were 12 of the 20 controls on the first
+         * thing anybody sees after stopping. Delete is here too, away from Done.
+         */}
+        <details className="chron-fold chron-more-fold">
+          <summary>
+            <span className="chron-fold-name">
+              More
+              <small>what it was, the times, the count, a photo, delete</small>
+            </span>
+          </summary>
+          {what}
+          {times}
+          {amount}
+          {sets}
+          {door}
+          {photo}
+          <button className="btn btn-ghost chron-danger" onClick={() => void forget(e)}>
+            🗑 Delete
+          </button>
+        </details>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal
+      title={
+        finishing
+          ? `${spanText(ms)} of ${a?.name ?? 'that'} — how did it go?`
+          : `Edit ${a?.name ?? 'this session'}`
+      }
+      onClose={() => {
+        setFixEnt(null)
+        setJustDid(null)
+      }}
+      footer={
+        <div className="chron-modal-do">
+          {/* ⚠️ DELETE LIVES HERE, AWAY FROM SAVE — the arrangement the HTML version uses,
+              and the reason a log row no longer needs a ✕ of its own beside its ✎ */}
+          <button className="btn btn-ghost chron-danger" onClick={() => void forget(e)}>
+            🗑 Delete
+          </button>
+          <span className="chron-modal-right">
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setFixEnt(null)
+                setJustDid(null)
+              }}
+            >
+              {/* only ever the ✎ door now: the Stop door has its own one Done, below */}
+              Cancel
+            </button>
+            <button
+              className="btn"
+              disabled={busy || (len ?? 0) < 0 || below}
+              onClick={() => void saveEnt(metric)}
+            >
+              Save
+            </button>
+          </span>
+        </div>
+      }
+    >
+      {e.end == null ? journal : null}
+      {what}
+      {times}
+      {amount}
+      {sets}
+      {door}
+      {photo}
+      {moods}
       {e.end == null ? null : journal}
     </Modal>
   )

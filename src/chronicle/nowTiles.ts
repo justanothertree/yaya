@@ -80,3 +80,34 @@ export function tilesFor(
     (x, y) => (mins.get(y.id) ?? 0) - (mins.get(x.id) ?? 0) || x.name.localeCompare(y.name),
   )
 }
+
+/**
+ * Your activities, the most recently started first — the chips under ▶ Start something.
+ *
+ * ⚠️ RECENT, NOT BUSIEST, which is the answer #298's third question was given ("the three most
+ * recent activities, or ones you pin?"). `tilesFor` ranks by minutes TODAY, which is right for a
+ * list you are switching around in and wrong for the first screen of a morning: before anything
+ * has run every activity has zero minutes, and the row is alphabetical. "What did I start last" is
+ * the question somebody opening an idle Day is asking.
+ *
+ * ⚠️ AND THE REST FOLLOW, BY NAME, rather than the list stopping short. The room hands in a week,
+ * so the first morning of a week has nothing recent in it — and no chips there would be the one
+ * screen where a shortcut is most wanted and least present. Auto and archived activities are never
+ * offered, for the reason `tilesFor` gives.
+ */
+export function recentFirst(acts: readonly Activity[], log: readonly Sat[]): Activity[] {
+  const last = new Map<string, number>()
+  for (const e of log) {
+    const t = Date.parse(e.start)
+    if (Number.isFinite(t) && t > (last.get(e.activity) ?? -Infinity)) last.set(e.activity, t)
+  }
+  /* ⚠️ `-Infinity - -Infinity` is NaN, which is falsy, so two never-started ones fall through to
+     the name — the same tie-break `tilesFor` uses */
+  return acts
+    .filter((a) => !a.archived && !a.auto)
+    .sort(
+      (x, y) =>
+        (last.get(y.id) ?? -Infinity) - (last.get(x.id) ?? -Infinity) ||
+        x.name.localeCompare(y.name),
+    )
+}
