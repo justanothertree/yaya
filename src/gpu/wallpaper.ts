@@ -10,6 +10,8 @@
  * exactly that way: move a point by any operation of its group and the answer must not change.
  */
 
+import { whole } from './kept'
+
 export type V2 = [number, number]
 /** x' = a·x + b·y + e, y' = c·x + d·y + f, on fractional coordinates of the lattice */
 export type Op = [number, number, number, number, number, number]
@@ -376,6 +378,33 @@ export const toKept = (d: Drawing): Drawing => ({
 })
 
 /* ---------------------------------------------------------------- which group is this? -------- */
+
+/**
+ * What the quiz keeps between visits, apart from the drawings: patterns named right of those asked,
+ * and the longest run of right answers in a row. The run itself is this visit's.
+ */
+export const QUIZ_KEY = 'lab_wallpaper_quiz_v1'
+export type Quiz = { right: number; asked: number; bestRun: number }
+export const NO_QUIZ: Quiz = { right: 0, asked: 0, bestRun: 0 }
+export function readQuiz(text: string | null): Quiz {
+  let v: unknown
+  try {
+    v = JSON.parse(text ?? 'null')
+  } catch {
+    return NO_QUIZ
+  }
+  if (typeof v !== 'object' || !v || Array.isArray(v)) return NO_QUIZ
+  const o = v as Record<string, unknown>
+  const asked = whole(o.asked)
+  const right = Math.min(asked, whole(o.right))
+  return { right, asked, bestRun: Math.min(right, whole(o.bestRun)) }
+}
+/** the kept quiz after one answer, `run` being the run of right answers this answer ends on */
+export const answered = (q: Quiz, right: boolean, run: number): Quiz => ({
+  right: q.right + (right ? 1 : 0),
+  asked: q.asked + 1,
+  bestRun: Math.max(q.bestRun, run),
+})
 
 /** a seeded generator, so a quiz question can be asked again */
 export function rng(seed: number) {
