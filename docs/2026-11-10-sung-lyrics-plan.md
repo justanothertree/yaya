@@ -135,3 +135,9 @@ after a silence reading of 0.0055.
 - Which voice, and how strong the crush and stutter should be.
 - Whether the words are clear enough. A high note can't sound a vowel's lowest formant, so "ee" and
   "oo" lean on their second.
+
+## Phase 0, rebuilt — 13 Nov 2026
+
+The voice described above (Airy / Bright, a sawtooth through three band-passes, and the separate
+glitch buttons) was replaced by a pure-synthesis singer with Clean / Breathy / Glitchy presets,
+Double and Harmony. See `docs/2026-11-13-formant-singer.md`. Still nothing saved.
