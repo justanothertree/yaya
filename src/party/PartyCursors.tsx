@@ -1,5 +1,15 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { party, currentRoute, hueFor, type PartyPeer } from './party'
+import {
+  party,
+  currentRoute,
+  hueFor,
+  labStage,
+  TAP_MS,
+  type PartyPeer,
+  type PartyTap,
+} from './party'
+import { currentToy } from '../lab/links'
+import { motionReduced } from '../ui/motion'
 import { shared } from './shared'
 import { cursorHot, cursorMark } from '../ui/cursorSkin'
 import { hslToHex } from '../theme/customTheme'
@@ -24,8 +34,11 @@ const MARK = 22
 export function PartyCursors() {
   const state = useSyncExternalStore(party.subscribe, party.getState, party.getState)
   const nodes = useRef(new Map<string, HTMLDivElement>())
+  const tapNodes = useRef(new Map<number, HTMLDivElement>())
   const peersRef = useRef<Record<string, PartyPeer>>({})
   peersRef.current = state.peers
+  const tapsRef = useRef<PartyTap[]>([])
+  tapsRef.current = state.taps
 
   useEffect(() => party.start(), [])
   /**
@@ -49,7 +62,7 @@ export function PartyCursors() {
    * and rebuilt every time somebody moves their mouse — `state.peers` is a new object on every
    * update at 15Hz per peer.
    */
-  const anyone = !!state.sharing && Object.keys(state.peers).length > 0
+  const anyone = !!state.sharing && (Object.keys(state.peers).length > 0 || state.taps.length > 0)
 
   useEffect(() => {
     /**
@@ -60,6 +73,8 @@ export function PartyCursors() {
      */
     if (!anyone) return
     let raf = 0
+    /** where each cursor is drawn now, eased toward where it was last reported */
+    const shown = new Map<string, { x: number; y: number }>()
     const tick = () => {
       raf = requestAnimationFrame(tick)
       const box = document.getElementById('content')
@@ -67,9 +82,49 @@ export function PartyCursors() {
       const r = box.getBoundingClientRect()
       const here = currentRoute()
       const sy = window.scrollY
+      /* ⚠️ A LAB POSITION IS ON THE TOY'S OWN STAGE, wherever that stage sits on this screen —
+         the reason it is sent as a fraction of the stage rather than of the page. Somebody on a
+         different toy is not drawn: their pointer is over a picture you do not have. */
+      const toy = here === 'lab' ? currentToy() : null
+      const stage = toy ? labStage() : null
+      const sr = stage?.getBoundingClientRect()
+      const still = motionReduced()
+      for (const [key, el] of tapNodes.current) {
+        const t = tapsRef.current.find((x) => x.key === key)
+        if (!t || !sr || t.sub !== toy || performance.now() - t.at > TAP_MS) {
+          el.style.visibility = 'hidden'
+          continue
+        }
+        el.style.visibility = 'visible'
+        el.style.transform = `translate3d(${(sr.left + t.tx * sr.width).toFixed(1)}px, ${(sr.top + t.ty * sr.height).toFixed(1)}px, 0)`
+      }
       for (const [id, el] of nodes.current) {
         const p = peersRef.current[id]
         if (!p) continue
+        if (p.sub !== undefined && p.tx !== undefined && p.ty !== undefined && toy) {
+          if (p.sub !== toy) {
+            el.style.visibility = 'hidden'
+            shown.delete(id)
+            continue
+          }
+          if (sr) {
+            const tx = sr.left + p.tx * sr.width
+            const ty = sr.top + p.ty * sr.height
+            /* eased toward the last report, because eight samples a second drawn as they come
+               are eight jumps; snapped instead under reduced motion, or after a long way */
+            const was = shown.get(id)
+            const far = !was || Math.hypot(tx - was.x, ty - was.y) > 400
+            const at =
+              still || far
+                ? { x: tx, y: ty }
+                : { x: was.x + (tx - was.x) * 0.45, y: was.y + (ty - was.y) * 0.45 }
+            shown.set(id, at)
+            el.style.visibility = 'visible'
+            el.style.transform = `translate3d(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px, 0)`
+            continue
+          }
+        }
+        shown.delete(id)
         /**
          * Someone on another page is not drawn at all, rather than drawn at the edge or faded.
          * A cursor floating over content it is not actually pointing at is worse than no cursor:
@@ -93,6 +148,8 @@ export function PartyCursors() {
   }, [anyone])
 
   const list = Object.values(state.peers)
+  /* only the taps still worth drawing; the sweep in party.ts clears the rest */
+  const taps = state.taps
   /* ⚠️ the same answer as `anyone` above, and they must stay the same answer: the loop moves
      these elements, so a render that shows them without the loop running would pin every cursor
      wherever it first appeared. */
@@ -143,6 +200,17 @@ export function PartyCursors() {
 
   return (
     <div className="party-cursors" aria-hidden>
+      {taps.map((t) => (
+        <div
+          key={t.key}
+          className="party-tap"
+          style={{ ['--party-hue' as string]: hueFor(t.id) }}
+          ref={(el) => {
+            if (el) tapNodes.current.set(t.key, el)
+            else tapNodes.current.delete(t.key)
+          }}
+        />
+      ))}
       {list.map((p) => (
         <div
           key={p.id}

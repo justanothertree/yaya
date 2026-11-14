@@ -1,6 +1,9 @@
 import { onParty, sendParty, voiceSession } from '../voice/voiceSession'
 import { together } from './together'
 import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/cursorSkin'
+import { labSocial } from '../lab/social/social'
+import { isToyId } from '../lab/social/gate'
+import { TOY_EVENT, currentToy } from '../lab/links'
 
 /**
  * Seeing each other move around the site.
@@ -20,9 +23,9 @@ import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/c
  * it goes to friends rather than an ad network does not change what it is — it changes who has
  * it. Everything below exists because of that.
  *
- *   OFF BY DEFAULT, and off again every time you load the page. Not persisted, deliberately.
- *   A setting you turned on once in March must not still be broadcasting in July because you
- *   forgot it existed. You turn it on for a session, and the session ends when the tab does.
+ *   OFF BY DEFAULT, and off again when the call ends (Evan, 13 Nov). Not persisted,
+ *   deliberately. A setting you turned on once in March must not still be broadcasting in July
+ *   because you forgot it existed. You turn it on for a call, and the call ends when you leave.
  *
  *   RECIPROCAL, and not negotiable. If you are not sharing your pointer you do not receive
  *   anyone else's — `peers` stays empty and nothing renders. There is no watch-without-being-
@@ -53,6 +56,14 @@ import { isCursorSkin, myCursor, onCursorChange, type CursorSkin } from '../ui/c
 /** How often a pointer may go out, at most. */
 const SEND_HZ = 15
 const SEND_MS = 1000 / SEND_HZ
+/**
+ * ⚠️ AND ABOUT HALF THAT OVER A LAB TOY (8 Hz). Measured by the admin's meter (meter.ts): a
+ * pointer that never stops is ~13 messages a second at 15 Hz, and Supabase meters every one per
+ * person it reaches — the plan's cost section (docs/2026-11-13-lab-social-plan.md) found four
+ * people over the free plan's 100 a second. The receiver smooths between samples, so 8 reads as
+ * movement rather than steps.
+ */
+const LAB_SEND_MS = 1000 / 8
 /** Movement smaller than this (in px) is not worth a message. */
 const MIN_MOVE = 3
 /** A pointer with nothing new behind it for this long is treated as gone. */
@@ -116,9 +127,20 @@ export type PartyPeer = {
   x: number
   /** pixels down the document */
   y: number
+  /**
+   * Over a Lab toy, where on it: fractions of the toy's own stage, so two screens of different
+   * sizes agree on the spot (a page position would not — the stage is a different size on each).
+   * Only sent while the Lab's friends-only gate is open (src/lab/social/gate.ts).
+   */
+  sub?: string
+  tx?: number
+  ty?: number
   /** performance.now() of the last update, for the staleness sweep */
   at: number
 }
+
+/** A finger touching a Lab toy: a ring that fades where it landed, since a phone has no hover. */
+export type PartyTap = { key: number; id: string; sub: string; tx: number; ty: number; at: number }
 
 /**
  * Someone in the call, and the room they are standing in.
@@ -146,6 +168,12 @@ export type PartyHere = {
    * the moment somebody picks a different one. Missing simply means the plain arrow.
    */
   skin?: CursorSkin
+  /**
+   * The Lab toy they are on, when their route is `lab` and their Lab allowed it — only in a call
+   * where everyone present is their friend (src/lab/social/gate.ts). Checked for shape on
+   * arrival (isToyId); the Lab draws it only if it names a toy it has.
+   */
+  sub?: string
   at: number
 }
 
@@ -156,15 +184,24 @@ export type PartyState = {
   peers: Record<string, PartyPeer>
   /** who is in which room, keyed by user id — outlives their pointer, see PartyHere */
   here: Record<string, PartyHere>
+  /** recent taps on Lab toys, newest last; each lives TAP_MS */
+  taps: PartyTap[]
 }
 
-let state: PartyState = { sharing: false, peers: {}, here: {} }
+/** how long a tap's ring stays */
+export const TAP_MS = 700
+
+let state: PartyState = { sharing: false, peers: {}, here: {}, taps: [] }
 const listeners = new Set<() => void>()
 
 function set(patch: Partial<PartyState>) {
   state = { ...state, ...patch }
   listeners.forEach((l) => l())
 }
+
+/** a position as a fraction of a box, with a little room for an edge */
+const isFraction = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= -0.05 && v <= 1.05
 
 /** The page you are on, from the hash — the same source the router itself reads. */
 export function currentRoute(): string {
@@ -192,18 +229,44 @@ function column(): HTMLElement | null {
   return document.getElementById('content')
 }
 
+/** the stage of the Lab toy on screen, if there is one: the box Lab positions are measured in */
+export function labStage(): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  return document.querySelector<HTMLElement>('.lab-toy .lab-stage')
+}
+
+/**
+ * Where on a Lab toy a point is, when it may be said: on the Lab page, the friends-only gate
+ * open, a toy named, and the point over that toy's stage. Null otherwise — and then the pointer
+ * goes out exactly as it always has, as a page position.
+ */
+function labSpot(clientX: number, clientY: number) {
+  if (currentRoute() !== 'lab' || !labSocial.allowed()) return null
+  const sub = currentToy()
+  const stage = labStage()
+  if (!sub || !stage) return null
+  const r = stage.getBoundingClientRect()
+  if (r.width < 1 || r.height < 1) return null
+  const tx = (clientX - r.left) / r.width
+  const ty = (clientY - r.top) / r.height
+  if (tx < 0 || tx > 1 || ty < 0 || ty > 1) return null
+  return { sub, tx: Number(tx.toFixed(4)), ty: Number(ty.toFixed(4)) }
+}
+
 let raf = 0
 let lastSent = 0
 let lastX = -1
 let lastY = -1
 let pending: { x: number; y: number } | null = null
+let tapKey = 0
 let detach: Array<() => void> = []
 
 function flush() {
   raf = 0
   if (!pending || !state.sharing) return
   const now = performance.now()
-  if (now - lastSent < SEND_MS) {
+  const spot = labSpot(pending.x, pending.y)
+  if (now - lastSent < (spot ? LAB_SEND_MS : SEND_MS)) {
     // too soon — come back on a later frame rather than dropping the sample
     raf = requestAnimationFrame(flush)
     return
@@ -219,15 +282,29 @@ function flush() {
   lastY = pending.y
   lastSent = now
   pending = null
-  sendParty('ptr', { route: currentRoute(), x: Number(x.toFixed(4)), y: Math.round(y) })
+  // the page position always rides along, so a client that predates Lab positions still draws
+  // something sensible
+  sendParty('ptr', { route: currentRoute(), x: Number(x.toFixed(4)), y: Math.round(y), ...spot })
 }
 
 function onMove(e: PointerEvent) {
   if (!state.sharing) return
   if (document.visibilityState !== 'visible') return
   if (routeIsPrivate()) return
+  /* ⚠️ A FINGER ON A LAB TOY SENDS TAPS, NOT A TRAIL (onTap below). A drag across a toy's
+     stage is playing it, and as a stream it would be the most expensive and least readable
+     thing the party could send; the tap says where, which is what a watcher wants. */
+  if (e.pointerType !== 'mouse' && labSpot(e.clientX, e.clientY)) return
   pending = { x: e.clientX, y: e.clientY }
   if (!raf) raf = requestAnimationFrame(flush)
+}
+
+/** a touch (or pen) on a Lab toy: one message, drawn as a fading ring where it landed */
+function onTap(e: PointerEvent) {
+  if (!state.sharing || e.pointerType === 'mouse') return
+  if (document.visibilityState !== 'visible') return
+  const spot = labSpot(e.clientX, e.clientY)
+  if (spot) sendParty('tap', { route: 'lab', ...spot })
 }
 
 /**
@@ -257,10 +334,16 @@ function announceHere() {
      so taking their accent too would turn a room into one colour. The shape is theirs; the hue
      stays the room's. */
   const { id } = myCursor()
-  sendParty(
-    'where',
-    id === 'system' ? { route: currentRoute() } : { route: currentRoute(), skin: id },
-  )
+  const route = currentRoute()
+  /* ⚠️ THE TOY ONLY WHEN THE LAB'S GATE SAYS SO: everyone else in the call is a friend. The page
+     itself has always gone out to the whole call; which toy you are on is the new, finer fact,
+     and it goes to friends or to nobody. */
+  const toy = route === 'lab' && labSocial.allowed() ? currentToy() : null
+  sendParty('where', {
+    route,
+    ...(id === 'system' ? {} : { skin: id }),
+    ...(toy ? { sub: toy } : {}),
+  })
 }
 
 /** One shape from either message that proves presence, so the two paths cannot disagree. */
@@ -268,6 +351,7 @@ function whereFrom(
   m: { from: string; name?: unknown },
   route: string,
   skin?: CursorSkin,
+  sub?: string | null,
 ): PartyHere {
   return {
     id: m.from,
@@ -278,6 +362,14 @@ function whereFrom(
        second — rebuilt without this the skin would be wiped by the very next sample and the
        cursor would flicker back to the default arrow almost immediately. */
     skin: skin ?? state.here[m.from]?.skin,
+    /* a `where` says which toy outright (null: none); a pointer sample keeps the one known, the
+       same reason as the skin above — and a page that is not the Lab has no toy at all */
+    sub:
+      route !== 'lab'
+        ? undefined
+        : sub === undefined
+          ? state.here[m.from]?.sub
+          : (sub ?? undefined),
     at: performance.now(),
   }
 }
@@ -297,7 +389,7 @@ export const party = {
     if (on === state.sharing) return
     if (!on) {
       announceGone()
-      set({ sharing: false, peers: {}, here: {} })
+      set({ sharing: false, peers: {}, here: {}, taps: [] })
       return
     }
     set({ sharing: true })
@@ -323,17 +415,45 @@ export const party = {
         return
       }
       if (m.kind === 'where') {
-        const b = m.body as { route?: unknown; skin?: unknown }
+        const b = m.body as { route?: unknown; skin?: unknown; sub?: unknown }
         // somebody else's string, on its way into a lookup and a title attribute
         if (typeof b?.route !== 'string' || b.route.length > 64) return
         /* checked against the real list rather than taken as given: it decides which picture
            gets drawn, and the client that sent it is one anybody can rewrite */
         const skin = isCursorSkin(b.skin) && b.skin !== 'system' ? b.skin : undefined
-        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin) } })
+        const sub = isToyId(b.sub) ? b.sub : null
+        const isNew = !state.here[m.from]
+        set({ here: { ...state.here, [m.from]: whereFrom(m, b.route, skin, sub) } })
+        /* ⚠️ SOMEBODY HEARD FOR THE FIRST TIME IS ANSWERED AT ONCE. They may have just switched
+           sharing on, and everything said before that went past them unheard (reciprocity, above)
+           — so without a reply they learn where you are only at your next heartbeat, up to five
+           seconds on. A two-player room found it the hard way: the other side saw your seat as
+           empty-handed and quietly refused your move. One message per newcomer, and it cannot
+           loop: they already know you, so your reply is not news to them. */
+        if (isNew) announceHere()
+        return
+      }
+      if (m.kind === 'tap') {
+        const b = m.body as { sub?: unknown; tx?: unknown; ty?: unknown }
+        if (!isToyId(b?.sub) || !isFraction(b.tx) || !isFraction(b.ty)) return
+        const now = performance.now()
+        set({
+          taps: [
+            ...state.taps.filter((t) => now - t.at < TAP_MS).slice(-11),
+            { key: ++tapKey, id: m.from, sub: b.sub, tx: b.tx, ty: b.ty, at: now },
+          ],
+        })
         return
       }
       if (m.kind !== 'ptr') return
-      const b = m.body as { route?: unknown; x?: unknown; y?: unknown }
+      const b = m.body as {
+        route?: unknown
+        x?: unknown
+        y?: unknown
+        sub?: unknown
+        tx?: unknown
+        ty?: unknown
+      }
       // Everything off the wire is somebody else's data. A peer running a patched client can
       // send whatever it likes, so nothing here is trusted into a style property unchecked.
       if (typeof b?.route !== 'string' || b.route.length > 64) return
@@ -348,6 +468,10 @@ export const party = {
             route: b.route,
             x: Math.max(-0.5, Math.min(1.5, b.x)),
             y: Math.max(0, Math.min(200000, b.y)),
+            // a Lab position only whole: a toy and both fractions, or none of it
+            ...(isToyId(b.sub) && isFraction(b.tx) && isFraction(b.ty)
+              ? { sub: b.sub, tx: b.tx, ty: b.ty }
+              : {}),
             at: performance.now(),
           },
         },
@@ -358,6 +482,8 @@ export const party = {
 
     const move = (e: PointerEvent) => onMove(e)
     window.addEventListener('pointermove', move, { passive: true })
+    const tap = (e: PointerEvent) => onTap(e)
+    window.addEventListener('pointerdown', tap, { passive: true })
 
     const onHide = () => {
       if (!state.sharing) return
@@ -379,6 +505,10 @@ export const party = {
       wasPrivate = now
     }
     window.addEventListener('hashchange', onHash)
+    // a different Lab toy replaces the address without a hashchange (GpuLab's pick)
+    window.addEventListener(TOY_EVENT, announceHere)
+    // and the Lab's gate opening or closing changes what `where` may say, so say it again
+    const offLab = labSocial.subscribe(announceHere)
 
     const beat = window.setInterval(announceHere, HERE_MS)
 
@@ -397,7 +527,9 @@ export const party = {
         patch.peers = Object.fromEntries(live.map((p) => [p.id, p]))
       if (lively.length !== Object.keys(state.here).length)
         patch.here = Object.fromEntries(lively.map((p) => [p.id, p]))
-      if (patch.peers || patch.here) set(patch)
+      if (state.taps.some((t) => now - t.at >= TAP_MS))
+        patch.taps = state.taps.filter((t) => now - t.at < TAP_MS)
+      if (patch.peers || patch.here || patch.taps) set(patch)
     }, 2000)
 
     /**
@@ -412,20 +544,20 @@ export const party = {
      * ⚠️ Subscribed FROM HERE, like every other room, because together.ts holds a preference
      * and must not know what any of this means — see the note at the top of that file.
      *
-     * ⚠️ One consequence worth saying: the switch is remembered across visits and this now
-     * follows it, so the pointer no longer goes quiet on reload. It is still only ever sent to
-     * people you are in a call with, and PRIVATE_ROUTES still withdraws you regardless.
+     * ⚠️ The switch lasts one call (Evan, 13 Nov). It used to be remembered across visits, so it
+     * came back on by itself in every new call — against the promise at the top of this file.
+     * Leaving the call now turns it off (below), and nothing is kept across a reload.
      */
     const offAll = together.subscribe(() => party.setSharing(together.getState().on))
     if (together.getState().on) party.setSharing(true)
 
-    // Leaving the call ends the party with it — there is no co-presence without a room.
+    // Leaving the call ends the party with it — there is no co-presence without a room — and
+    // ends the switch too, so the next call starts with nothing shared until you say so.
     const offVoice = voiceSession.subscribe(() => {
-      if (
-        !voiceSession.getState().inCall &&
-        (state.sharing || Object.keys(state.peers).length || Object.keys(state.here).length)
-      )
-        set({ sharing: false, peers: {}, here: {} })
+      if (voiceSession.getState().inCall) return
+      if (state.sharing || Object.keys(state.peers).length || Object.keys(state.here).length)
+        set({ sharing: false, peers: {}, here: {}, taps: [] })
+      if (together.getState().on) together.setOn(false)
     })
 
     detach = [
@@ -433,7 +565,10 @@ export const party = {
       offCursor,
       offVoice,
       offAll,
+      offLab,
+      () => window.removeEventListener(TOY_EVENT, announceHere),
       () => window.removeEventListener('pointermove', move),
+      () => window.removeEventListener('pointerdown', tap),
       () => document.removeEventListener('visibilitychange', onHide),
       () => window.removeEventListener('hashchange', onHash),
       () => window.clearInterval(beat),

@@ -169,6 +169,8 @@ export function ProfileCall({
                   isMe ? 'Your call' : `${displayName}'s call`,
                   myId,
                   myName,
+                  undefined,
+                  'profile',
                 )
               }
             >

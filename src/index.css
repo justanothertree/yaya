@@ -6747,6 +6747,7 @@ button.appearance-slider-val:not(:disabled):focus-visible {
      toolbar and the mobile nav. */
   .sharestage-controls .btn,
   .callroster-actions .btn,
+  .callroster-row .callroster-lab,
   .profile-editrow-actions .btn {
     min-width: 40px;
     min-height: 40px;
@@ -6913,6 +6914,23 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .callroster-actions .btn {
   padding: 0.15rem 0.4rem;
+}
+/* the admin's Realtime meter under the roster (src/party/meter.ts) */
+.callroster-meter {
+  margin: 0.4rem 0.5rem 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+/* the Lab toy a friend is on — a link to it (src/lab/social/where.ts) */
+.callroster-lab {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 11rem;
+  padding: 0.15rem 0.45rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .callroster-empty {
   padding: 0.6rem;
