@@ -27,15 +27,15 @@ export const FAMILIES: readonly Family[] = [
   {
     id: 'bass',
     name: 'Bass',
-    members: ['bass', 'finger', 'pick', 'fuzz', 'slap', 'fretless', 'upright'],
+    members: ['bass', 'finger', 'pick', 'fuzz', 'slap', 'fretless', 'upright', 'bassmarimba'],
   },
-  { id: 'synth-bass', name: 'Synth bass', members: ['synthbass', 'acid', '808', 'sub'] },
+  { id: 'synth-bass', name: 'Synth bass', members: ['synthbass', 'acid', '808', 'sub', 'fmbass'] },
   {
     id: 'strings',
     name: 'Strings',
     members: ['strings', 'cello', 'guitar', 'overdrive', 'harp', 'koto', 'sitar', 'banjo'],
   },
-  { id: 'winds', name: 'Winds', members: ['flute', 'whistle', 'reed', 'brass', 'choir'] },
+  { id: 'winds', name: 'Winds', members: ['flute', 'whistle', 'reed', 'brass', 'tuba', 'choir'] },
   /* ⚠️ PLUCK MOVED HERE FROM STRINGS when the guitars arrived, 10 Nov 2026: it is a saw through a
      resonant filter that slams shut — a synth pluck, not a string — and Strings needed the room
      to stay one row of eight with two guitars in it. */
