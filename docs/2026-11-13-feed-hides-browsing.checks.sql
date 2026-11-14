@@ -6,7 +6,9 @@
 --
 -- The md5 values are of each function's body as stored (`prosrc`). They were computed from the
 -- 4 Nov schema dump that CI builds from, and supabase/tests/feed-hides-browsing.sql asserts the
--- same values inside CI's own database.
+-- same values inside CI's own database. All four matched there on 13 Nov 2026 (db guards run
+-- 43547730480, on the scratch branch probe/feed-hides-browsing): the draft produced the "after"
+-- values and the rollback brought back the "before" ones.
 --
 --   function                before the draft                  after the draft
 --   chronicle_friends_log   1b3354fb5be0bdd7c4ab8c79c459286e   377de6b6bdea3c6ed6cf15bf3a86a46a
