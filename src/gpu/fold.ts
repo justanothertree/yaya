@@ -426,3 +426,30 @@ export function toTable(size: [number, number], view: [number, number], span: nu
   const k = span / Math.min(size[0], size[1])
   return [view[0] + (p[0] - size[0] / 2) * k, view[1] - (p[1] - size[1] / 2) * k]
 }
+
+/** fewest folds kept per puzzle, by name */
+export type Best = Record<string, number>
+/**
+ * What Fold keeps: the puzzle it was on, the paper colour, and the fewest folds per puzzle — read
+ * defensively, a bad field costing only itself. Moved here unchanged from FoldDemo so the Lab's
+ * share card (src/lab/shares/puzzles.ts) reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { puzzle: number; best: Best; colour: number } {
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      puzzle?: unknown
+      best?: Record<string, unknown>
+      colour?: unknown
+    } | null
+    const int = (n: unknown, hi: number) =>
+      typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < hi ? n : 0
+    const best: Best = {}
+    for (const p of PUZZLES) {
+      const n = v?.best?.[p.name]
+      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
+    }
+    return { puzzle: int(v?.puzzle, PUZZLES.length), best, colour: int(v?.colour, COLOURS.length) }
+  } catch {
+    return { puzzle: 0, best: {}, colour: 0 }
+  }
+}
