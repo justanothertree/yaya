@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en" data-theme="dark" style="--ui-scale: 1; --mnav-h: 60px">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Instrument layout — mockups (not the app)</title>
+    <!--
+      MOCKUPS FOR A PROPOSAL, NOT PART OF THE APP. Nothing imports this file and the build does not
+      include it. It borrows the site's own stylesheet so the screens look like the room: the
+      keyboard, buttons, selects, sliders and bar cells are the room's own classes. The panels and
+      sheets the proposal invents are the mk-* classes below.
+
+      Open it through the dev server, at a phone width:
+        npm run dev, then http://localhost:5173/docs/2026-11-14-instrument-layout/mockups.html#song
+      Screens: #first #song #sound #tempo #layer #mix #voice #songs
+      Every control is inert. The song is the Funk starter: drums, two chords and a slap bass.
+    -->
+    <link rel="stylesheet" href="/src/index.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0 !important;
+      }
+      .mk-octave {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: -0.4rem;
+        font-size: 0.8rem;
+      }
+      @media (max-width: 780px) {
+        .mk-octave {
+          order: -3;
+        }
+      }
+      .mock-tag {
+        position: fixed;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 900200;
+        font:
+          700 10px/1 ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #0b0b12;
+        background: #f5c060;
+        padding: 3px 7px;
+        border-radius: 999px;
+        pointer-events: none;
+      }
+
+      /* the site's chrome, as blocks of the same height, so a screen holds what a phone shows */
+      .mk-top {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        padding: 0 1.2rem;
+        font-weight: 800;
+        background: #07080c;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .mk-nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 60px;
+        z-index: 60;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        background: #07080c;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 12px;
+        color: var(--muted, #8a8fa3);
+      }
+      @media (min-width: 701px) {
+        .mk-nav {
+          display: none;
+        }
+      }
+      .mk-main {
+        padding: 0.9rem 0.9rem calc(60px + 1rem);
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      /* PLAY: two rows under the keys, no sub-labels */
+      .mk-play {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .mk-rowline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.45rem;
+      }
+      .mk-play .btn {
+        padding-inline: 0.6rem;
+      }
+      .mk-play .mk-icon {
+        padding-inline: 0.4rem;
+      }
+      .inst-chord-name.mk-say {
+        display: flex;
+        justify-content: space-between;
+      }
+      .mk-oct {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .mk-oct strong {
+        min-width: 1ch;
+        text-align: center;
+      }
+      .mk-sel {
+        min-height: 2.4rem;
+        max-width: 9.5rem;
+      }
+      .mk-grow {
+        margin-left: auto;
+      }
+      @media (min-width: 701px) {
+        .mk-play {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.45rem 1.2rem;
+        }
+      }
+
+      /* SONG: one card, transport first */
+      .mk-song {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding-top: 0.8rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .mk-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin: 0;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .mk-tempo {
+        flex: 1 1 auto;
+        min-width: 0;
+        justify-content: space-between;
+        text-align: left;
+      }
+      @media (min-width: 701px) {
+        .mk-tempo {
+          flex: 0 1 auto;
+          gap: 0.6rem;
+        }
+      }
+      .mk-ruler {
+        display: grid;
+        grid-template-columns: 7.2rem repeat(2, 2.4rem) 1fr;
+        gap: 0.3rem;
+        align-items: center;
+        font-size: 0.75rem;
+        padding-inline: calc(0.3rem + 1px);
+        margin-bottom: 0.35rem;
+      }
+      .mk-none {
+        grid-column: 1 / 4;
+      }
+      .mk-undo {
+        display: flex;
+        gap: 0.3rem;
+        justify-self: end;
+      }
+      .mk-ruler .mk-undo button {
+        min-height: 2.4rem;
+        padding: 0 0.4rem;
+      }
+      .mk-ruler button {
+        min-height: 1.8rem;
+        padding: 0;
+      }
+      .mk-layers {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .mk-layer {
+        display: grid;
+        grid-template-columns: 7.2rem auto 1fr auto auto;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.3rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.6rem;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .mk-layer .inst-layer-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: left;
+        min-height: 2.4rem;
+      }
+      .mk-layer .inst-layer-name small {
+        display: block;
+        font-size: 0.72rem;
+        opacity: 0.7;
+      }
+      .mk-layer > .mk-mute {
+        grid-column: 4;
+      }
+      .mk-layer > .mk-more {
+        grid-column: 5;
+      }
+      .mk-ruler > .btn {
+        min-width: 0 !important;
+        width: 100%;
+      }
+      .mk-cells {
+        display: flex;
+        gap: 0.3rem;
+      }
+      .mk-cells .inst-bar-cell {
+        width: 2.4rem !important;
+        min-width: 2.4rem;
+        height: 2.4rem;
+        flex: none;
+      }
+      .mk-vol {
+        display: none;
+      }
+      @media (min-width: 701px) {
+        .mk-vol {
+          display: block;
+          width: 100%;
+          max-width: 9rem;
+          justify-self: end;
+        }
+      }
+      .mk-icon {
+        min-width: 2.4rem;
+        min-height: 2.4rem;
+        padding: 0 0.4rem;
+      }
+      .mk-tools {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.35rem;
+      }
+      .mk-tools .btn {
+        padding: 0.5rem 0.2rem;
+        min-width: 0;
+        font-size: 0.85rem;
+      }
+      .mk-drawer {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        padding: 0.7rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.7rem;
+        background: rgba(255, 255, 255, 0.025);
+      }
+      .mk-drawer h3 {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+      .mk-mixrow {
+        display: grid;
+        grid-template-columns: 7.2rem 1fr 2.6rem auto;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.9rem;
+      }
+      .mk-mixrow input {
+        width: 100%;
+        min-width: 0;
+      }
+      .mk-mixrow .mk-pct {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        font-size: 0.8rem;
+      }
+      .mk-mixrow .mk-blank {
+        width: 2.4rem;
+      }
+      .mk-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-size: 0.92rem;
+      }
+      .mk-libitem {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .mk-libitem span {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mk-lyric {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 3.2rem;
+        font: inherit;
+        color: inherit;
+        padding: 0.5rem 0.6rem;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 0.5rem;
+      }
+      .mk-small {
+        font-size: 0.85rem;
+        margin: 0;
+      }
+
+      /* SHEETS: from the bottom on a phone, a centred card wider up */
+      .mk-scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 70;
+        background: rgba(0, 0, 0, 0.55);
+        display: none;
+      }
+      .mk-sheet {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 60px;
+        z-index: 80;
+        max-height: calc(100vh - 140px);
+        overflow-y: auto;
+        display: none;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding: 0.9rem 0.9rem 1.1rem;
+        background: #12131a;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 1rem 1rem 0 0;
+        box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+      }
+      @media (min-width: 701px) {
+        .mk-sheet {
+          left: 50%;
+          right: auto;
+          bottom: auto;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: min(30rem, 92vw);
+          border-radius: 1rem;
+        }
+      }
+      body.has-sheet .mk-scrim {
+        display: block;
+      }
+      .mk-sheet.is-open {
+        display: flex;
+      }
+      .mk-sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      .mk-sheet-head h3 {
+        margin: 0;
+        font-size: 1rem;
+      }
+      .mk-knob {
+        display: grid;
+        grid-template-columns: 5.4rem 1fr 2.2rem;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+      }
+      .mk-knob input,
+      .mk-mixrow input,
+      .mk-vol {
+        width: 100%;
+        min-width: 0;
+        min-height: 2rem;
+      }
+      .mk-knob span:last-child {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .mk-sheetrow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+      }
+      .mk-rig {
+        display: flex;
+        gap: 0.4rem;
+      }
+      .mk-rig input {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .mk-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .mk-list .btn {
+        justify-content: flex-start;
+        text-align: left;
+        width: 100%;
+      }
+      .mk-num {
+        width: 4.2rem;
+      }
+      [data-only]:not(.is-shown) {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mock-tag">Mockup · not the app</div>
+    <div class="mk-top">Evan Cook</div>
+
+    <main class="mk-main">
+      <section id="instrument" class="card">
+        <h2>🎹 Instrument</h2>
+        <p class="muted">
+          Play something with your keyboard or the mouse — and the visualiser can watch you do it.
+        </p>
+        <section class="inst-wrap">
+          <input
+            class="inst-keyslide"
+            type="range"
+            min="1"
+            max="6"
+            step="1"
+            value="4"
+            aria-label="Slide up and down the keyboard"
+          />
+          <div class="inst-keys" role="group" aria-label="Keyboard" id="mk-keys"></div>
+          <p class="muted inst-note inst-chord-name mk-say">
+            <span>&nbsp;</span><span>Octave 4</span>
+          </p>
+
+          <!-- PLAY: what your hands use, two rows. The octave is the strip above: it already sets the
+               same number the − and + did. -->
+          <div class="mk-play">
+            <div class="mk-rowline">
+              <button class="btn">🎹 Keys ▾</button>
+              <button class="btn btn-ghost">🦶 Hold</button>
+              <button class="btn mk-icon" aria-label="Silence everything">⏹</button>
+              <button class="btn btn-ghost mk-grow" data-sheet="sound">⚙ Sound</button>
+            </div>
+            <div class="mk-rowline">
+              <label class="inst-pick"
+                ><span class="muted">Scale</span
+                ><select>
+                  <option>Chromatic</option>
+                </select></label
+              >
+              <label class="inst-pick"
+                ><span class="muted">Chord</span
+                ><select>
+                  <option>One note</option>
+                </select></label
+              >
+            </div>
+          </div>
+
+          <!-- THE SONG: transport, the parts, and four tools -->
+          <div class="mk-song">
+            <div class="mk-rowline">
+              <button class="btn">▶ Play</button>
+              <button class="btn">⏺ Record</button>
+              <button class="btn">⧉ Capture</button>
+            </div>
+            <div class="mk-rowline">
+              <button class="btn btn-ghost">🎯 Click</button>
+              <button class="btn btn-ghost mk-tempo" data-sheet="tempo">
+                <span>104 BPM · 2 bars · snap off</span><span aria-hidden>▾</span>
+              </button>
+            </div>
+
+            <!-- first visit: the three steps the room already shows, in place of the parts -->
+            <div class="mk-steps" data-only="first">
+              <div class="mk-rowline">
+                <span class="muted">1. How fast?</span>
+                <button class="btn btn-ghost">Slow</button>
+                <button class="btn">Steady</button>
+                <button class="btn btn-ghost">Upbeat</button>
+                <button class="btn btn-ghost">Fast</button>
+              </div>
+              <div class="mk-rowline">
+                <span class="muted">2. Something to play over</span>
+                <button class="btn">🥁 Pick a style, a beat or some chords</button>
+              </div>
+              <p class="muted mk-small">
+                3. Liked what you played? Press ⧉ Capture — it keeps the last bit, no recording
+                needed.
+              </p>
+            </div>
+
+            <div>
+              <div class="mk-ruler" role="group" aria-label="Jump to a bar">
+                <span class="muted" data-only="layers">3 parts</span>
+                <button class="btn btn-ghost" data-only="layers" aria-label="Jump to bar 1">
+                  1
+                </button>
+                <button class="btn btn-ghost" data-only="layers" aria-label="Jump to bar 2">
+                  2
+                </button>
+                <span class="muted mk-none" data-only="first">No parts yet</span>
+                <span class="mk-undo"
+                  ><button class="btn mk-icon" aria-label="Undo">↶</button
+                  ><button class="btn mk-icon" aria-label="Redo">↷</button></span
+                >
+              </div>
+              <ul class="mk-layers" data-only="layers">
+                <li class="mk-layer">
+                  <button class="inst-layer-name">▸ 1. Beat<small>Funk · Drums</small></button>
+                  <span class="mk-cells"
+                    ><button class="inst-bar-cell is-on" aria-label="Bar 1"></button
+                    ><button class="inst-bar-cell is-on" aria-label="Bar 2"></button
+                  ></span>
+                  <input class="mk-vol" type="range" value="80" aria-label="Volume" />
+                  <button class="btn mk-icon mk-mute" aria-label="Mute">🔊</button>
+                  <button
+                    class="btn btn-ghost mk-icon mk-more"
+                    aria-label="More"
+                    data-sheet="layer"
+                  >
+                    ⋯
+                  </button>
+                </li>
+                <li class="mk-layer">
+                  <button class="inst-layer-name">
+                    ▸ 2. Chords<small>Two chords · Keys</small>
+                  </button>
+                  <span class="mk-cells"
+                    ><button class="inst-bar-cell is-on" aria-label="Bar 1"></button
+                    ><button class="inst-bar-cell is-on" aria-label="Bar 2"></button
+                  ></span>
+                  <input class="mk-vol" type="range" value="60" aria-label="Volume" />
+                  <button class="btn mk-icon mk-mute" aria-label="Mute">🔊</button>
+                  <button class="btn btn-ghost mk-icon mk-more" aria-label="More">⋯</button>
+                </li>
+                <li class="mk-layer">
+                  <button class="inst-layer-name">▸ 3. Bass<small>Funk · Slap bass</small></button>
+                  <span class="mk-cells"
+                    ><button class="inst-bar-cell is-on" aria-label="Bar 1"></button
+                    ><button class="inst-bar-cell is-on" aria-label="Bar 2"></button
+                  ></span>
+                  <input class="mk-vol" type="range" value="70" aria-label="Volume" />
+                  <button class="btn mk-icon mk-mute" aria-label="Mute">🔊</button>
+                  <button class="btn btn-ghost mk-icon mk-more" aria-label="More">⋯</button>
+                </li>
+              </ul>
+            </div>
+
+            <div class="mk-rowline" data-only="layers">
+              <button class="btn btn-ghost">✎ New part</button>
+            </div>
+
+            <div class="mk-tools" role="group" aria-label="Song tools">
+              <button class="btn btn-ghost">🥁 Beats</button>
+              <button class="btn btn-ghost" data-on="mix">🎚 Mix</button>
+              <button class="btn btn-ghost" data-on="voice">🎤 Voice</button>
+              <button class="btn btn-ghost" data-on="songs">📁 Songs</button>
+            </div>
+
+            <!-- MIX: every volume in the room, in one place -->
+            <div class="mk-drawer" data-only="mix">
+              <h3>🎚 Mix</h3>
+              <div class="mk-mixrow">
+                <span>Your keys</span><input type="range" value="70" aria-label="Your keys" /><span
+                  class="mk-pct muted"
+                  >70%</span
+                ><span class="mk-blank"></span>
+              </div>
+              <div class="mk-mixrow">
+                <span>1. Beat</span><input type="range" value="80" aria-label="1. Beat" /><span
+                  class="mk-pct muted"
+                  >80%</span
+                ><button class="btn mk-icon" aria-label="Mute 1. Beat">🔊</button>
+              </div>
+              <div class="mk-mixrow">
+                <span>2. Chords</span><input type="range" value="60" aria-label="2. Chords" /><span
+                  class="mk-pct muted"
+                  >60%</span
+                ><button class="btn mk-icon" aria-label="Mute 2. Chords">🔊</button>
+              </div>
+              <div class="mk-mixrow">
+                <span>3. Bass</span><input type="range" value="70" aria-label="3. Bass" /><span
+                  class="mk-pct muted"
+                  >70%</span
+                ><button class="btn mk-icon" aria-label="Mute 3. Bass">🔊</button>
+              </div>
+              <p class="muted mk-small">Takes join this list when there are some.</p>
+            </div>
+
+            <!-- VOICE: recording a take, and the singer -->
+            <div class="mk-drawer" data-only="voice">
+              <h3>🎤 Voice</h3>
+              <div class="mk-rowline">
+                <button class="btn">🎤 Record a take</button>
+                <button class="btn btn-ghost">📂 Open a file</button>
+              </div>
+              <p class="muted mk-small">
+                A take is a recording — a voice, a room, anything a note cannot be. It stays in this
+                browser.
+              </p>
+              <h3>Sing lyrics <span class="muted">· prototype</span></h3>
+              <div class="mk-rowline">
+                <label class="inst-pick"
+                  ><span class="muted">Notes of</span
+                  ><select>
+                    <option>3. Bass</option>
+                  </select></label
+                >
+                <button class="btn btn-ghost">✎ Try a sample line</button>
+              </div>
+              <textarea class="mk-lyric" aria-label="Lyrics">
+glit-ter in the dark _ to-night</textarea
+              >
+              <div class="mk-rowline">
+                <button class="btn">Clean</button>
+                <button class="btn btn-ghost">Breathy</button>
+                <button class="btn btn-ghost">Glitchy</button>
+              </div>
+              <div class="mk-rowline">
+                <button class="btn btn-ghost">Double</button>
+                <button class="btn btn-ghost">Harmony</button>
+                <button class="btn mk-grow">▶ Sing</button>
+              </div>
+            </div>
+
+            <!-- SONGS: keeping, opening and exporting, together -->
+            <div class="mk-drawer" data-only="songs">
+              <h3>📁 Songs</h3>
+              <div class="mk-rowline">
+                <button class="btn">⬇ Keep this song</button>
+                <button class="btn btn-ghost">⬇ Stems</button>
+              </div>
+              <div class="mk-libitem">
+                <span>Funk sketch · 3 parts</span><button class="btn">Open</button
+                ><button class="btn btn-ghost">Add</button
+                ><button class="btn btn-ghost mk-icon" aria-label="Delete">✕</button>
+              </div>
+              <div class="mk-libitem">
+                <span>Bass loop · 1 part</span><button class="btn">Open</button
+                ><button class="btn btn-ghost">Add</button
+                ><button class="btn btn-ghost mk-icon" aria-label="Delete">✕</button>
+              </div>
+              <div class="mk-rowline">
+                <button class="btn btn-ghost">Clear all parts</button>
+              </div>
+            </div>
+          </div>
+
+          <p class="muted inst-note">
+            Tap the keys, or drag across them to slide. Nothing is recorded or sent anywhere.
+          </p>
+          <section class="inst-theatre is-shut">
+            <div class="inst-theatre-head">
+              <button type="button" class="btn btn-ghost inst-theatre-toggle">▸ Visuals</button>
+            </div>
+          </section>
+          <p class="also-together muted">
+            👋 Everyone in a call hears what you play, on one shared metronome.
+            <button class="btn btn-ghost">Start a call</button>
+            <button class="btn btn-ghost mk-icon" aria-label="Got it">✕</button>
+          </p>
+        </section>
+      </section>
+    </main>
+
+    <nav class="mk-nav" aria-hidden="true">
+      <span>Home</span><span>Games</span><span>Sign in</span><span>Say hi</span><span>Menu</span>
+    </nav>
+
+    <div class="mk-scrim"></div>
+
+    <!-- ⚙ SOUND: the shaping you set once and leave -->
+    <div class="mk-sheet" id="sheet-sound" role="dialog" aria-label="Sound">
+      <div class="mk-sheet-head">
+        <h3>⚙ Sound · Keys</h3>
+        <button class="btn btn-ghost mk-icon" aria-label="Close">✕</button>
+      </div>
+      <div class="mk-sheetrow">
+        <label class="inst-pick"
+          ><span class="muted">Arpeggio</span
+          ><select>
+            <option>Held</option>
+          </select></label
+        >
+        <label class="inst-pick"
+          ><span class="muted">Arrives</span
+          ><select>
+            <option>Together</option>
+          </select></label
+        >
+      </div>
+      <label class="mk-knob"><span>Echo</span><input type="range" value="0" /><span>0</span></label>
+      <label class="mk-knob"
+        ><span>Echo time</span><input type="range" value="26" /><span>26</span></label
+      >
+      <label class="mk-knob"
+        ><span>Space</span><input type="range" value="18" /><span>18</span></label
+      >
+      <label class="mk-knob"
+        ><span>Vibrato</span><input type="range" value="0" /><span>0</span></label
+      >
+      <label class="mk-knob"
+        ><span>Glide</span><input type="range" value="0" /><span>0</span></label
+      >
+      <label class="mk-knob"
+        ><span>Tone</span><input type="range" value="50" /><span>50</span></label
+      >
+      <div class="mk-rig">
+        <input type="text" placeholder="Name this rig" aria-label="Name this rig" />
+        <button class="btn">Save</button>
+      </div>
+    </div>
+
+    <!-- the song's settings: speed, length and snap -->
+    <div class="mk-sheet" id="sheet-tempo" role="dialog" aria-label="Song settings">
+      <div class="mk-sheet-head">
+        <h3>Speed, length and snap</h3>
+        <button class="btn btn-ghost mk-icon" aria-label="Close">✕</button>
+      </div>
+      <div class="mk-sheetrow">
+        <label class="inst-pick"
+          ><span class="muted">BPM</span><input class="mk-num" type="number" value="104"
+        /></label>
+        <label class="inst-pick"
+          ><span class="muted">Bars</span><input class="mk-num" type="number" value="2"
+        /></label>
+      </div>
+      <div class="mk-sheetrow">
+        <span class="muted">Snap</span>
+        <button class="btn">Off</button>
+        <button class="btn btn-ghost">1/4</button>
+        <button class="btn btn-ghost">1/8</button>
+        <button class="btn btn-ghost">1/16</button>
+      </div>
+    </div>
+
+    <!-- a part's ⋯: everything a row carries today besides its bars and its mute -->
+    <div class="mk-sheet" id="sheet-layer" role="dialog" aria-label="1. Beat">
+      <div class="mk-sheet-head">
+        <h3>1. Beat · Funk</h3>
+        <button class="btn btn-ghost mk-icon" aria-label="Close">✕</button>
+      </div>
+      <label class="inst-pick"
+        ><span class="muted">Plays as</span
+        ><select>
+          <option>Drums</option>
+        </select></label
+      >
+      <label class="mk-knob"
+        ><span>Volume</span><input type="range" value="80" /><span>80</span></label
+      >
+      <div class="mk-list">
+        <button class="btn btn-ghost">✎ Show the notes</button>
+        <button class="btn btn-ghost">⏺ Record this part again</button>
+        <button class="btn btn-ghost">FX Copy your sound onto it</button>
+        <button class="btn btn-ghost">Split it into parts</button>
+        <button class="btn btn-ghost">⬇ Keep it as a loop</button>
+        <button class="btn btn-ghost">✕ Delete it</button>
+      </div>
+    </div>
+
+    <script>
+      /* the room's own key markup, as many as it draws at this width (keyboardSpan) */
+      const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
+      const n = innerWidth < 700 ? 13 : 25
+      const keys = document.getElementById('mk-keys')
+      for (let i = 0; i < n; i++) {
+        const name = NAMES[i % 12] + (4 + Math.floor(i / 12))
+        const b = document.createElement('button')
+        b.className = 'inst-key' + (NAMES[i % 12].includes('♯') ? ' is-black' : '')
+        b.setAttribute('aria-label', name)
+        b.innerHTML = '<span class="inst-key-name">' + name + '</span>'
+        keys.appendChild(b)
+      }
+
+      /* one screen per hash. A reload per screen for screenshots, as the pane draws a fixed sheet
+         wrong after a hash change; mkGo switches in place, for probes that walk every screen. */
+      const go = (screen) => {
+        document.querySelectorAll('.is-shown').forEach((e) => e.classList.remove('is-shown'))
+        document.querySelectorAll('.mk-sheet.is-open').forEach((e) => e.classList.remove('is-open'))
+        document
+          .querySelectorAll('[data-on].is-on')
+          .forEach((e) => e.classList.replace('is-on', 'btn-ghost'))
+        document.body.classList.remove('has-sheet')
+        const show = (k) =>
+          document
+            .querySelectorAll('[data-only="' + k + '"]')
+            .forEach((e) => e.classList.add('is-shown'))
+        show(screen === 'first' ? 'first' : 'layers')
+        const drawer = { mix: 'mix', voice: 'voice', songs: 'songs' }[screen]
+        if (drawer) {
+          show(drawer)
+          document
+            .querySelector('[data-on="' + drawer + '"]')
+            .classList.replace('btn-ghost', 'is-on')
+        }
+        const sheet = document.getElementById('sheet-' + screen)
+        if (sheet) {
+          sheet.classList.add('is-open')
+          document.body.classList.add('has-sheet')
+        }
+      }
+      window.mkGo = go
+      go((location.hash || '#song').slice(1))
+      addEventListener('hashchange', () => location.reload())
+    </script>
+  </body>
+</html>
