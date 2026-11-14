@@ -1,6 +1,7 @@
 /**
- * "Share my best": the line a comment can start with when somebody has done well at a toy — their
- * best run, read from what the toy itself keeps in this browser. Pure apart from the reader it is
+ * "Share your score": the result a comment can carry when somebody has finished a toy — their best
+ * or their record, read from what the toy itself keeps in this browser, and attached as a Recorded
+ * card (recorded.ts) rather than typed. Pure apart from the reader it is
  * handed, so bests.test.ts can ask it about any saved state without a page.
  *
  * ⚠️ EVERY TOY'S OWN READER, NEVER A SECOND ONE. Each toy already parses its storage defensively
@@ -33,21 +34,18 @@ import { readSaved as readSun, SUN_KEY } from '../gpu/sun'
 import { readBest as readTrials, BEST_KEY as TRIALS_KEY } from '../gpu/trials'
 import { readSolved as readWaterworks, LEVELS as WATER_LEVELS, SOLVED_KEY } from '../gpu/waterworks'
 
-type Read = (key: string) => string | null
+import type { Card } from './recorded'
+import type { Read, Reader } from './shares/words'
+export type { Read, Reader }
 
-/** seconds as m:ss, or h:mm:ss past the hour */
-export function clock(s: number): string {
-  const t = Math.round(s)
-  const [h, m, sec] = [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60]
-  const ss = String(sec).padStart(2, '0')
-  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
-}
+import { BOARD } from './shares/board'
+import { ARCADE } from './shares/arcade'
+import { PUZZLES } from './shares/puzzles'
+import { clock, solved } from './shares/words'
+export { clock }
 
-/** "3 of 10 levels solved", or null when none are */
-const solved = (n: number, of: number, what = 'levels') =>
-  n > 0 ? `${n} of ${of} ${what} solved` : null
-
-const READERS: Record<string, (read: Read) => string | null> = {
+/** the first twenty, from before the share button became a card */
+const OWN: Record<string, Reader> = {
   skip: (read) => {
     const s = readSkip(read(SKIP_KEY))
     if (!s.best) return null
@@ -147,11 +145,17 @@ const READERS: Record<string, (read: Read) => string | null> = {
   },
 }
 
+/**
+ * Every toy that can share a result. A group's readers live in shares/<group>.ts and each is
+ * that toy's own readSaved, worded — never a second parser (see the top of this file).
+ */
+const READERS: Record<string, Reader> = { ...OWN, ...BOARD, ...ARCADE, ...PUZZLES }
+
 /** which toys can share a best at all */
 export const SHARES = new Set(Object.keys(READERS))
 
-/** the comment a best becomes: "🏆 My best at Soaring: Final glide 13:00" — or null */
-export function bestLine(id: string, name: string, read: Read): string | null {
+/** the card a kept result becomes — "Soaring: Final glide 13:00" — or null when nothing is kept */
+export function resultCard(id: string, name: string, read: Read): Card | null {
   const r = READERS[id]
   if (!r) return null
   let line: string | null = null
@@ -160,7 +164,7 @@ export function bestLine(id: string, name: string, read: Read): string | null {
   } catch {
     return null
   }
-  return line ? `🏆 My best at ${name}: ${line}` : null
+  return line ? { toy: id, line: `${name}: ${line}` } : null
 }
 
 /** this browser's storage, read the way the toys read it — a private window may refuse */

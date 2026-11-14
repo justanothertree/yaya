@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Flags } from './catalog'
-import { SHARES, bestLine, fromStorage } from './bests'
+import { resultCard, fromStorage } from './bests'
+import { attach, scrub, split, type Card } from './recorded'
 import {
   COMMENT_KIND,
   NOTE_MAX,
@@ -220,6 +221,7 @@ function Notes({
                 <NoteRow
                   key={n.id}
                   api={api}
+                  demo={demo}
                   note={n}
                   viewer={viewer}
                   onChange={replace}
@@ -250,8 +252,9 @@ function Notes({
 /* ⚠️ A COMMENT, AND NOTHING TO CHOOSE (Evan, 9 Nov). A note was an idea, a request for more or a
    bug, picked from a list first; that was one decision too many before saying something. The
    server still files each under a kind, so every comment goes as COMMENT_KIND and nothing on
-   screen asks or shows it. What is left is the box, and — on a toy that keeps a best — a button
-   that starts the comment with that best, which the person can edit or delete before posting. */
+   screen asks or shows it. What is left is the box, and — once a toy has a result kept — a button
+   that attaches it as a Recorded card (recorded.ts): the words stay the person's own, and the
+   result is the game's, not typed. */
 function Compose({
   api,
   demo,
@@ -266,15 +269,20 @@ function Compose({
   const [body, setBody] = useState('')
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const wrong = body.trim() ? checkNote(body) : null
+  const [card, setCard] = useState<Card | null>(null)
+  const { kept, fresh } = useKeptResult(demo, name)
+  /* what will be sent: the words, with any card typed by hand defused, and the real card last */
+  const out = attach(scrub(body), card)
+  const wrong = body.trim() || card ? checkNote(out) : null
   const send = async () => {
     const why = checkNote(body)
     if (why) return setSaid(why)
     setBusy(true)
     try {
-      const n = await api.add(demo, COMMENT_KIND, body)
+      const n = await api.add(demo, COMMENT_KIND, out)
       if (n) onPosted(n)
       setBody('')
+      setCard(null)
       setSaid('Posted.')
     } catch (e) {
       setSaid(explain(e))
@@ -283,11 +291,11 @@ function Compose({
     }
   }
   const share = () => {
-    const line = bestLine(demo, name, fromStorage)
-    if (!line) return setSaid('No best kept in this browser yet — finish a run first.')
-    setBody((b) => (b.trim() ? `${line}\n${b}` : line))
+    if (!kept) return setSaid('No result kept in this browser yet — finish a game first.')
+    setCard(kept)
     setSaid(null)
   }
+  const attached = !!card && !!kept && card.line === kept.line
   return (
     <form
       className="lab-compose"
@@ -302,24 +310,29 @@ function Compose({
           value={body}
           rows={3}
           maxLength={NOTE_MAX + 50}
-          placeholder={`Say something about ${name}…`}
+          placeholder={card ? 'Say something about it (optional)…' : `Say something about ${name}…`}
           onChange={(e) => {
             setBody(e.target.value)
             setSaid(null)
           }}
         />
       </label>
+      {card && <ResultCard card={card} onRemove={() => setCard(null)} />}
       <div className="lab-controls">
-        <button className="btn" type="submit" disabled={busy || !body.trim() || !!wrong}>
+        <button className="btn" type="submit" disabled={busy || (!body.trim() && !card) || !!wrong}>
           Post
         </button>
-        {SHARES.has(demo) && (
+        {kept && !attached && (
           <button className="btn btn-ghost" type="button" onClick={share}>
-            🏆 Share my best
+            🏆 Share your score
           </button>
         )}
         <span className="muted lab-hint" aria-live="polite">
-          {said ?? wrong ?? `${body.trim().length}/${NOTE_MAX}`}
+          {said ??
+            wrong ??
+            (fresh && kept && !attached
+              ? 'A new result is ready to share.'
+              : `${out.length}/${NOTE_MAX}`)}
         </span>
       </div>
     </form>
@@ -328,19 +341,25 @@ function Compose({
 
 function NoteRow({
   api,
+  demo,
   note: n,
   viewer,
   onChange,
   onGone,
 }: {
   api: LabApi
+  /** the toy the note is about — a card is a card only on its own toy */
+  demo: string
   note: Note
   viewer: Viewer
   onChange: (n: Note) => void
   onGone: (id: string) => void
 }) {
   const [mode, setMode] = useState<'read' | 'edit' | 'delete' | 'report'>('read')
-  const [draft, setDraft] = useState(n.body)
+  /* the words and the card apart: editing changes the words, and the card goes back as it was */
+  const parts = split(n.body, demo)
+  const [draft, setDraft] = useState(parts.text)
+  const edited = attach(scrub(draft), parts.card)
   const [said, setSaid] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const act = async (fn: () => Promise<void>) => {
@@ -377,10 +396,10 @@ function NoteRow({
           <div className="lab-controls">
             <button
               className="btn"
-              disabled={busy || !!checkNote(draft)}
+              disabled={busy || !!checkNote(edited)}
               onClick={() =>
                 act(async () => {
-                  const e = await api.edit(n.id, draft, null)
+                  const e = await api.edit(n.id, edited, null)
                   if (e) onChange(e)
                   setMode('read')
                 })
@@ -392,12 +411,15 @@ function NoteRow({
               Cancel
             </button>
             <span className="muted lab-hint">
-              {checkNote(draft) ?? `${draft.trim().length}/${NOTE_MAX}`}
+              {checkNote(edited) ?? `${edited.length}/${NOTE_MAX}`}
             </span>
           </div>
         </>
       ) : (
-        <p className="lab-note-body">{n.body}</p>
+        <>
+          {parts.text && <p className="lab-note-body">{parts.text}</p>}
+          {parts.card && <ResultCard card={parts.card} />}
+        </>
       )}
       {mode === 'read' && (
         <div className="lab-controls lab-note-actions">
@@ -563,7 +585,7 @@ function Owner({
                         .map(([k, v]) => `${v} ${k}`)
                         .join(', ')}
                 </p>
-                <p className="lab-note-body">{r.body}</p>
+                <ReportBody body={r.body} demo={r.demo} />
                 <div className="lab-controls">
                   {(r.state === 'removed'
                     ? (['restore'] as const)
@@ -593,4 +615,69 @@ function Owner({
         ))}
     </details>
   )
+}
+
+/** a reported note, as its author posted it: words, and the card if there was one */
+function ReportBody({ body, demo }: { body: string; demo: string }) {
+  const { text, card } = split(body, demo)
+  return (
+    <>
+      {text && <p className="lab-note-body">{text}</p>}
+      {card && <ResultCard card={card} />}
+    </>
+  )
+}
+
+/**
+ * A result riding with a comment. "Recorded" in words on the card, because that is all it is: the
+ * game kept it in that person's browser. A checked result — the server replaying the run — is a
+ * later step and will say so differently.
+ */
+function ResultCard({ card, onRemove }: { card: Card; onRemove?: () => void }) {
+  return (
+    <div className="lab-card" role="group" aria-label="Recorded result">
+      <span className="lab-card-line">🏆 {card.line}</span>
+      <span className="lab-card-tag">Recorded by the game, not checked</span>
+      {onRemove && (
+        <button
+          type="button"
+          className="btn btn-ghost lab-card-x"
+          onClick={onRemove}
+          aria-label="Remove the result from this comment"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The result this toy keeps in this browser, as a card, kept current while the page is open.
+ *
+ * ⚠️ READ AGAIN EVERY SECOND AND A HALF, not on an event. Toys keep their results three ways —
+ * useKept, a hand-written localStorage call, a bests module — and none of them announces a
+ * write in the same tab (the storage event is for OTHER tabs). One read of one key, parsed by the
+ * toy's own reader, is cheap enough to do on a timer; and it is what lets the button appear at the
+ * moment a game finishes, which is the moment somebody wants to share it.
+ *
+ * `fresh` is true once the result has changed during this visit — a game just finished.
+ */
+function useKeptResult(demo: string, name: string): { kept: Card | null; fresh: boolean } {
+  const read = () => resultCard(demo, name, fromStorage)
+  const [kept, setKept] = useState<Card | null>(read)
+  const [fresh, setFresh] = useState(false)
+  const first = useRef(kept?.line ?? null)
+  useEffect(() => {
+    first.current = resultCard(demo, name, fromStorage)?.line ?? null
+    setKept(resultCard(demo, name, fromStorage))
+    setFresh(false)
+    const t = window.setInterval(() => {
+      const now = resultCard(demo, name, fromStorage)
+      setKept((was) => (was?.line === now?.line ? was : now))
+      if (now && now.line !== first.current) setFresh(true)
+    }, 1500)
+    return () => window.clearInterval(t)
+  }, [demo, name])
+  return { kept, fresh }
 }
