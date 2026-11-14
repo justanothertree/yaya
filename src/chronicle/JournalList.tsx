@@ -72,6 +72,8 @@ export function JournalList({
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [dayNotes, setDayNotes] = useState<DayNote[]>([])
   const [q, setQ] = useState('')
+  /* whether the search box is out — see the note over the list's heading */
+  const [looking, setLooking] = useState(false)
   /* this list's own writes, which `beat` does not hear about */
   const [mine, setMine] = useState(0)
   const [draft, setDraft] = useState('')
@@ -164,19 +166,6 @@ export function JournalList({
 
   return (
     <section className="chron-journal-list" aria-labelledby="chron-journal-h">
-      <div className="chron-journal-top">
-        <h3 id="chron-journal-h">What you wrote {span}</h3>
-        {rows.length > 0 && (
-          <input
-            type="search"
-            value={q}
-            onChange={(ev) => setQ(ev.target.value)}
-            placeholder="search, or an activity's name"
-            aria-label="Search what you wrote"
-          />
-        )}
-      </div>
-
       {/**
        * ⚠️ NO SESSION NEEDED, AND IT SAYS SO IN WORDS. "Writing a note must not require starting a
        * timer": until now every note hung off a session, so the only way to write something down
@@ -233,12 +222,46 @@ export function JournalList({
         )}
       </div>
 
+      {/**
+       * ⚠️ WRITING FIRST, AND SEARCH BEHIND 🔍 (#298). The search box came before the box you write
+       * in, so the first thing this tab offered was a way to find something rather than a way to say
+       * it — and most visits are to say it. Search is one tap away, and stays open while it holds a
+       * word, so a filtered list never hides the box that is filtering it.
+       */}
+      <div className="chron-journal-top">
+        <h3 id="chron-journal-h">What you wrote {span}</h3>
+        {rows.length > 0 && !looking && (
+          <button
+            type="button"
+            className="btn btn-ghost chron-journal-find"
+            aria-label="Search what you wrote"
+            onClick={() => setLooking(true)}
+          >
+            🔍
+          </button>
+        )}
+      </div>
+      {rows.length > 0 && looking && (
+        <input
+          type="search"
+          className="chron-journal-search"
+          value={q}
+          autoFocus
+          onChange={(ev) => setQ(ev.target.value)}
+          onBlur={() => {
+            if (!q.trim()) setLooking(false)
+          }}
+          placeholder="search, or an activity's name"
+          aria-label="Search what you wrote"
+        />
+      )}
+
       {entries === null ? (
         <p className="muted">Loading…</p>
       ) : rows.length === 0 ? (
         <p className="muted">
-          Nothing written {span}. Write something above, or use <strong>✎ Note</strong> beside Stop
-          to write about the session running now.
+          Nothing written {span}. Write something above, or use <strong>✎ Note</strong> under the ⋯
+          beside Stop to write about the session running now.
         </p>
       ) : shown.length === 0 ? (
         <p className="muted">
