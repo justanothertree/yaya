@@ -11,8 +11,8 @@ import {
   type LoopEvent,
 } from './looper'
 import { toNotes } from './noteEdit'
-import { VOICES, singLine, type Glitch, type VoiceId } from './singer'
-import { fxSnapshot } from './synth'
+import { PRESETS, singInto, type PresetId } from './singer'
+import { fxSnapshot, partInput, type Fx } from './synth'
 
 /**
  * 🎤 Sing — the prototype from docs/2026-11-10-sung-lyrics-plan.md, phase 0.
@@ -28,11 +28,16 @@ import { fxSnapshot } from './synth'
 const SAMPLE = 'glit-ter in the dark _ to-night'
 /* scale steps of the sample melody, one per syllable: up to the fifth and back down */
 const SAMPLE_STEPS = [0, 2, 4, 4, 5, 4, 2, 0]
-const FORMANTS: [string, number][] = [
-  ['Robot', 0.85],
-  ['Natural', 1],
-  ['High', 1.2],
-]
+/* the voice brings its own vibrato, glide and breath, so its part bus adds only a little room */
+const DRY: Fx = { echo: 0, echoTime: 0.26, space: 0.25, vibrato: 0, glide: 0, tone: 0.5 }
+const PRESET_IDS = Object.keys(PRESETS) as PresetId[]
+/* a doubled voice is part of what makes the breathy and glitchy sounds; clean starts single */
+const DOUBLED: Record<PresetId, boolean> = { clean: false, breathy: true, glitchy: true }
+const ABOUT: Record<PresetId, string> = {
+  clean: 'A plain voice with a light vibrato on long notes.',
+  breathy: 'Soft and airy, with a slower, wider vibrato.',
+  glitchy: 'Hard tune, a light stutter and a little grit.',
+}
 
 export function SingPanel({
   layers,
@@ -46,14 +51,9 @@ export function SingPanel({
   const [open, setOpen] = useState(false)
   const [lyric, setLyric] = useState(SAMPLE)
   const [layerId, setLayerId] = useState<string | null>(null)
-  const [lead, setLead] = useState<VoiceId>('bright')
-  const [harmony, setHarmony] = useState(true)
-  const [glitch, setGlitch] = useState<Glitch>({
-    stutter: true,
-    crush: false,
-    chop: false,
-    formant: 1,
-  })
+  const [preset, setPreset] = useState<PresetId>('clean')
+  const [double, setDouble] = useState(DOUBLED.clean)
+  const [harmony, setHarmony] = useState(false)
   const [singing, setSinging] = useState(false)
   const stop = useRef<(() => void) | null>(null)
   const timer = useRef<number | null>(null)
@@ -85,11 +85,12 @@ export function SingPanel({
     /* the next top of the loop — or this one, if the loop has only just been started */
     const soon = c.currentTime + 0.1
     const start = !was ? origin : origin + Math.max(0, Math.ceil((soon - origin) / lap)) * lap
-    stop.current = singLine(sung, start, {
-      lead,
+    stop.current = singInto(c, partInput('sing', DRY, 0.9), sung, start, {
+      preset,
+      double,
       harmony: harmony ? (m) => harmonyAbove(m, degrees, root) : null,
-      glitch,
       beat: 60 / loopState().bpm,
+      seed: Math.floor(Math.random() * 1e9),
     })
     setSinging(true)
     timer.current = window.setTimeout(
@@ -122,7 +123,10 @@ export function SingPanel({
     setLyric(SAMPLE)
   }
 
-  const toggle = (k: 'stutter' | 'crush' | 'chop') => setGlitch((g) => ({ ...g, [k]: !g[k] }))
+  const choose = (id: PresetId) => {
+    setPreset(id)
+    setDouble(DOUBLED[id])
+  }
 
   return (
     <div className="inst-sing card">
@@ -137,9 +141,9 @@ export function SingPanel({
       {open && (
         <>
           <p className="muted inst-note">
-            A robot voice sings your words on a layer&rsquo;s notes, one syllable per note. Split
-            words with <kbd>-</kbd>, hold a syllable across a note with <kbd>_</kbd>. Nothing is
-            saved yet.
+            A synthesised voice sings your words on a layer&rsquo;s notes, one syllable per note.
+            Split words with <kbd>-</kbd>, hold a syllable across a note with <kbd>_</kbd>. Nothing
+            is saved yet.
           </p>
           <div className="inst-row">
             <label className="inst-pick">
@@ -178,48 +182,39 @@ export function SingPanel({
           </p>
           <div className="inst-beats-row">
             <span className="muted inst-beats-genre">Voice</span>
-            {(Object.keys(VOICES) as VoiceId[]).map((id) => (
+            {PRESET_IDS.map((id) => (
               <button
                 key={id}
-                className={'btn' + (lead === id ? '' : ' btn-ghost')}
-                aria-pressed={lead === id}
-                onClick={() => setLead(id)}
+                className={'btn' + (preset === id ? '' : ' btn-ghost')}
+                aria-pressed={preset === id}
+                onClick={() => choose(id)}
               >
-                {VOICES[id].name}
+                {PRESETS[id].name}
               </button>
             ))}
+          </div>
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Add</span>
+            <button
+              className={'btn' + (double ? '' : ' btn-ghost')}
+              aria-pressed={double}
+              onClick={() => setDouble((v) => !v)}
+            >
+              Double
+            </button>
             <button
               className={'btn' + (harmony ? '' : ' btn-ghost')}
               aria-pressed={harmony}
               onClick={() => setHarmony((v) => !v)}
-              title="The other voice sings a third above, inside the scale"
             >
-              + Harmony
+              Harmony
             </button>
           </div>
-          <div className="inst-beats-row">
-            <span className="muted inst-beats-genre">Glitch</span>
-            {(['stutter', 'crush', 'chop'] as const).map((k) => (
-              <button
-                key={k}
-                className={'btn' + (glitch[k] ? '' : ' btn-ghost')}
-                aria-pressed={glitch[k]}
-                onClick={() => toggle(k)}
-              >
-                {k === 'stutter' ? 'Stutter' : k === 'crush' ? 'Crush' : 'Chop'}
-              </button>
-            ))}
-            {FORMANTS.map(([name, f]) => (
-              <button
-                key={name}
-                className={'btn' + (glitch.formant === f ? '' : ' btn-ghost')}
-                aria-pressed={glitch.formant === f}
-                onClick={() => setGlitch((g) => ({ ...g, formant: f }))}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
+          <p className="muted inst-note">
+            {ABOUT[preset]}
+            {double ? ' Double sings it twice, slightly apart.' : ''}
+            {harmony ? ' Harmony adds a third above.' : ''}
+          </p>
           <div className="inst-row">
             <button
               className={'btn' + (singing ? ' is-on' : '')}

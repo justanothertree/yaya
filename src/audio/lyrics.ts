@@ -134,10 +134,16 @@ export const VOWELS = {
 } as const
 export type VowelId = keyof typeof VOWELS
 
-/** How a consonant sounds: a hiss of filtered noise, a short click, a hum, or a glide. */
+/**
+ * How a consonant sounds: a hiss of filtered noise, a short click, a hum, or a glide.
+ *
+ * `voiced` keeps the voice sounding under the noise (z against s, b against p), `weak` is a quiet
+ * hiss (f and th are a fraction of an s), and `breath` is h — not a hiss of its own but breath
+ * through the shape of the vowel that follows.
+ */
 export type Consonant =
-  | { kind: 'hiss'; hz: number }
-  | { kind: 'click'; hz: number }
+  | { kind: 'hiss'; hz: number; voiced?: true; weak?: true; breath?: true }
+  | { kind: 'click'; hz: number; voiced?: true }
   | { kind: 'hum' }
   | { kind: 'glide'; from: VowelId }
 
@@ -152,21 +158,21 @@ export type Phones = {
 const CONSONANTS: [string, Consonant][] = [
   ['sh', { kind: 'hiss', hz: 3200 }],
   ['ch', { kind: 'hiss', hz: 3500 }],
-  ['th', { kind: 'hiss', hz: 6000 }],
+  ['th', { kind: 'hiss', hz: 6000, weak: true }],
   ['s', { kind: 'hiss', hz: 6500 }],
-  ['z', { kind: 'hiss', hz: 5500 }],
-  ['f', { kind: 'hiss', hz: 5000 }],
-  ['v', { kind: 'hiss', hz: 4000 }],
-  ['h', { kind: 'hiss', hz: 1800 }],
-  ['j', { kind: 'hiss', hz: 3000 }],
+  ['z', { kind: 'hiss', hz: 5500, voiced: true }],
+  ['f', { kind: 'hiss', hz: 5000, weak: true }],
+  ['v', { kind: 'hiss', hz: 4000, voiced: true, weak: true }],
+  ['h', { kind: 'hiss', hz: 1800, breath: true }],
+  ['j', { kind: 'hiss', hz: 3000, voiced: true }],
   ['p', { kind: 'click', hz: 800 }],
-  ['b', { kind: 'click', hz: 600 }],
+  ['b', { kind: 'click', hz: 600, voiced: true }],
   ['t', { kind: 'click', hz: 4000 }],
-  ['d', { kind: 'click', hz: 3000 }],
+  ['d', { kind: 'click', hz: 3000, voiced: true }],
   ['k', { kind: 'click', hz: 2000 }],
   ['c', { kind: 'click', hz: 2000 }],
   ['q', { kind: 'click', hz: 2000 }],
-  ['g', { kind: 'click', hz: 1800 }],
+  ['g', { kind: 'click', hz: 1800, voiced: true }],
   ['x', { kind: 'click', hz: 2500 }],
   ['m', { kind: 'hum' }],
   ['n', { kind: 'hum' }],

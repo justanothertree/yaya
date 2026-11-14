@@ -1,0 +1,184 @@
+<!doctype html>
+<!-- The singer on its own page — served by the dev server only, not a build input. See src/singerPreview. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Singer preview</title>
+    <style>
+      /* one narrow column of controls; the sing button is the one thing that stands out */
+      :root {
+        --paper: #f6f3f9;
+        --card: #ffffff;
+        --ink: #1c1724;
+        --dim: #5f5770;
+        --line: #ddd5e6;
+        --accent: #b8156f;
+        --on-accent: #ffffff;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --paper: #121017;
+          --card: #1c1824;
+          --ink: #eee9f5;
+          --dim: #a89fb8;
+          --line: #352d42;
+          --accent: #ff6cc6;
+          --on-accent: #1b0b15;
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme='dark'] {
+        --paper: #121017;
+        --card: #1c1824;
+        --ink: #eee9f5;
+        --dim: #a89fb8;
+        --line: #352d42;
+        --accent: #ff6cc6;
+        --on-accent: #1b0b15;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          17px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      main {
+        max-width: 34rem;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+        display: grid;
+        gap: 18px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        text-wrap: balance;
+      }
+      p {
+        margin: 0;
+      }
+      .dim {
+        color: var(--dim);
+      }
+      .group {
+        display: grid;
+        gap: 8px;
+      }
+      .label {
+        font-size: 0.85rem;
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      button,
+      select,
+      textarea {
+        font: inherit;
+        color: var(--ink);
+      }
+      .pill {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 16px;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      .pill[aria-pressed='true'] {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
+        font-weight: 600;
+      }
+      textarea,
+      select {
+        width: 100%;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        min-height: 44px;
+      }
+      #sing {
+        background: var(--accent);
+        color: var(--on-accent);
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 32px;
+        min-height: 52px;
+        font-weight: 700;
+        font-size: 1.1rem;
+        cursor: pointer;
+        justify-self: start;
+      }
+      button:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      #words {
+        font-size: 0.95rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="group">
+        <h1>Singer preview</h1>
+        <p class="dim">
+          The instrument room's sung-lyrics voice, made entirely in code: no recordings, no AI
+          model. It sings your words on a fixed melody. Nothing is saved.
+        </p>
+      </div>
+      <div class="group">
+        <label class="label" for="lyric">Lyrics</label>
+        <textarea id="lyric" rows="2">glit-ter in the dark _ _ hold me close to-night _ _</textarea>
+        <p id="words" class="dim" aria-live="polite"></p>
+        <p class="dim">A hyphen splits a word; <b>_</b> holds a syllable across the next note.</p>
+      </div>
+      <div class="group">
+        <span class="label">Voice</span>
+        <div class="row">
+          <button class="pill" type="button" data-preset="clean">Clean</button>
+          <button class="pill" type="button" data-preset="breathy">Breathy</button>
+          <button class="pill" type="button" data-preset="glitchy">Glitchy</button>
+        </div>
+        <p id="about" class="dim"></p>
+      </div>
+      <div class="group">
+        <span class="label">Add</span>
+        <div class="row">
+          <button class="pill" type="button" id="double">Double</button>
+          <button class="pill" type="button" id="harmony">Harmony</button>
+          <button class="pill" type="button" id="beat">Beat</button>
+        </div>
+      </div>
+      <div class="group">
+        <label class="label" for="bpm">Tempo</label>
+        <select id="bpm">
+          <option value="100">100 bpm</option>
+          <option value="120" selected>120 bpm</option>
+          <option value="140">140 bpm</option>
+        </select>
+      </div>
+      <button id="sing" type="button">▶ Sing</button>
+    </main>
+    <script type="module" src="/src/singerPreview/main.ts"></script>
+  </body>
+</html>
