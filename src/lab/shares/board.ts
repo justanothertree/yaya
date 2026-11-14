@@ -125,7 +125,8 @@ export const BOARD: Record<string, Reader> = {
     versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
       quickest(t.fastest),
     ]),
-  chess: (read) => versus(CHESS_LEVELS, readChess(read(CHESS_KEY)).record),
+  chess: (read) =>
+    join(versus(CHESS_LEVELS, readChess(read(CHESS_KEY)).record), onlineLine(read, 'chess')),
   cribbage: (read) =>
     versus(CRIBBAGE_LEVELS, readCribbage(read(CRIBBAGE_KEY)).record, (t) => [
       t.skunks > 0 && count(t.skunks, 'skunk'),
