@@ -16,7 +16,15 @@ import {
  * file is for — the feed does not crash on one, it draws an empty row, which reads as missing
  * data rather than missing code. The annotation makes the compiler object before the test can.
  */
-const KINDS: FeedKind[] = ['sitting', 'circuit_log', 'rating', 'snake_score', 'snake_trophy']
+const KINDS: FeedKind[] = [
+  'sitting',
+  'circuit_log',
+  'rating',
+  'snake_score',
+  'snake_trophy',
+  'comment',
+  'made',
+]
 
 /** a local instant, built from parts so the test never depends on the runner's timezone */
 const local = (y: number, mo: number, d: number, h: number, mi: number): string =>
@@ -224,5 +232,49 @@ describe('feed scopes', () => {
   it('has no duplicate ids, so a tab cannot shadow another', () => {
     const ids: FeedScope[] = FEED_SCOPES.map((s) => s.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+/**
+ * Comments and things made — docs/2026-11-14-feed-made-and-comments.DRAFT.sql, not applied yet.
+ * The server sends where a comment was left and on whose; the words are written here, once.
+ */
+describe('a comment and a thing made, in words', () => {
+  const at = local(2026, 11, 14, 9, 0)
+  const comment = (p: Partial<FeedEvent>) =>
+    feedSentence(ev({ kind: 'comment', id: 'c', at, detail: 'Nice one', ...p }))
+
+  it('says where a comment was left, on whose, and quotes the preview', () => {
+    expect(comment({ on: 'workout', about: 'Marlow' })).toBe(
+      "Commented on Marlow's workout: “Nice one”",
+    )
+    expect(comment({ on: 'guestbook', about: 'Quill', aboutWho: 'quill' })).toBe(
+      "Signed Quill's guestbook: “Nice one”",
+    )
+  })
+
+  it('says "your" when the workout or the guestbook is yours', () => {
+    expect(comment({ on: 'workout', about: 'You', aboutMine: true })).toBe(
+      'Commented on your workout: “Nice one”',
+    )
+    expect(comment({ on: 'guestbook', about: 'Sam', aboutMine: true })).toMatch(
+      /^Signed your guestbook/,
+    )
+  })
+
+  it("names a Lab toy from the Lab's own list, and by its id when the list is older", () => {
+    expect(comment({ on: 'lab', about: 'fluid' })).toBe('Left a note on Fluid: “Nice one”')
+    expect(comment({ on: 'lab', about: 'a-toy-from-next-week' })).toMatch(
+      /^Left a note on a-toy-from-next-week/,
+    )
+  })
+
+  it('says what was made and whose page it went on', () => {
+    const made = (detail: string, mine = false) =>
+      feedSentence(ev({ kind: 'made', id: 'm', at, detail, mine }))
+    expect(made('art')).toBe('Put a drawing on their page')
+    expect(made('song', true)).toBe('Put a song on your page')
+    expect(made('pet')).toBe('Put a pet on their page')
+    expect(made('looks')).toBe('Put a look on their page')
   })
 })

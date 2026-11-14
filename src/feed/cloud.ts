@@ -1,13 +1,20 @@
 import { getSupabaseClient } from '../finance/client'
 import { previewMember } from '../dev/previewMember'
-import type { FeedEvent, FeedKind, FeedScope } from './event'
+import {
+  COMMENT_PLACES,
+  MADE_KINDS,
+  type CommentPlace,
+  type FeedEvent,
+  type FeedKind,
+  type FeedScope,
+} from './event'
 
 /**
  * The feed, fetched.
  *
- * ⚠️ ONE ROUND TRIP FOR FIVE KINDS, which is the point of `feed_recent` existing at all. The
+ * ⚠️ ONE ROUND TRIP FOR EVERY KIND, which is the point of `feed_recent` existing at all. The
  * alternative — ask each room separately and stitch the answers here — puts the visibility rules
- * in the client, where they would be a second copy of five server-side decisions. The server
+ * in the client, where they would be a second copy of every server-side decision. The server
  * merges; this file only translates.
  */
 
@@ -17,6 +24,8 @@ const KINDS: ReadonlySet<string> = new Set<FeedKind>([
   'rating',
   'snake_score',
   'snake_trophy',
+  'comment',
+  'made',
 ])
 
 /**
@@ -34,6 +43,10 @@ function toEvent(r: Record<string, unknown>): FeedEvent | null {
   if (!at || Number.isNaN(Date.parse(at))) return null
   const id = String(r.id ?? '')
   if (!id) return null
+  /* the same honest failure one level down: a comment from a place, or a made thing of a type,
+     that this bundle has no words for is dropped rather than drawn as "Wrote something" */
+  if (kind === 'comment' && !COMMENT_PLACES.has(String(r.on ?? ''))) return null
+  if (kind === 'made' && !MADE_KINDS.has(String(r.detail ?? ''))) return null
   const num = (v: unknown) => (v == null || v === '' ? null : Number(v))
   return {
     kind: kind as FeedKind,
@@ -49,6 +62,10 @@ function toEvent(r: Record<string, unknown>): FeedEvent | null {
     metric: typeof r.metric === 'string' ? r.metric : null,
     items: Array.isArray(r.items) ? (r.items as FeedEvent['items']) : null,
     mine: r.mine === true,
+    on: kind === 'comment' ? (String(r.on) as CommentPlace) : null,
+    about: typeof r.about === 'string' ? r.about : null,
+    aboutWho: typeof r.about_who === 'string' ? r.about_who : null,
+    aboutMine: r.about_mine === true,
   }
 }
 
@@ -157,6 +174,64 @@ export function previewFeed(scope: FeedScope = 'all_members'): FeedEvent[] {
       at: ago(4_300),
       detail: 'Classic',
       score: 870,
+      mine: true,
+    },
+    /* the three places a comment is left, both sides of "your", and one preview the server cut
+       at 80 characters -- the longest a row ever has to hold */
+    {
+      kind: 'comment',
+      id: 'workout:pv-f-7',
+      who: 'marlow',
+      name: 'Marlow',
+      at: ago(150),
+      detail: 'Strong finish — that last kilometre looked like it hurt, and you kept the pace…',
+      score: null,
+      on: 'workout',
+      about: 'You',
+      aboutMine: true,
+    },
+    {
+      kind: 'comment',
+      id: 'guestbook:pv-f-8',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(600),
+      detail: 'Love the new banner!',
+      score: null,
+      on: 'guestbook',
+      about: 'Tolliver',
+      aboutWho: 'tolliver',
+    },
+    {
+      kind: 'comment',
+      id: 'lab:pv-f-9',
+      who: 'preview-you',
+      name: 'You',
+      at: ago(1_000),
+      detail: 'More colours, please',
+      score: null,
+      on: 'lab',
+      about: 'fluid',
+      mine: true,
+    },
+    /* made: somebody else's, and yours */
+    {
+      kind: 'made',
+      id: 'pv-f-10',
+      who: 'quill',
+      name: 'Quill',
+      at: ago(300),
+      detail: 'art',
+      score: null,
+    },
+    {
+      kind: 'made',
+      id: 'pv-f-11',
+      who: 'preview-you',
+      name: 'You',
+      at: ago(2_000),
+      detail: 'song',
+      score: null,
       mine: true,
     },
   ]

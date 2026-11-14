@@ -14,14 +14,37 @@
  */
 import { activityLine, type ActivityItem } from '../sections/activityLine'
 import { countText, spanText } from '../chronicle/record'
+import { TOY_NAMES } from '../lab/names'
 
 /**
  * ⚠️ THE FOUR OLD KINDS KEEP THEIR OWN NAMES, exactly as `activityLine` spells them. A second
  * vocabulary for one event is how two catalogues drift apart — that warning is written on
  * `activityLine` itself, about `review` vs `rating`, and it applies with more force here because
  * this module is the thing that would create the second catalogue.
+ *
+ * ⚠️ `comment` AND `made` ARE THE FEED'S OWN, and never `activityLine`'s, on purpose. That module
+ * draws the Activity block on a profile page, which a public page shows to signed-out visitors;
+ * these two come only from `feed_recent`, which refuses them. See
+ * docs/2026-11-14-feed-made-and-comments.DRAFT.sql.
  */
-export type FeedKind = ActivityItem['kind'] | 'sitting'
+export type FeedKind = ActivityItem['kind'] | 'sitting' | 'comment' | 'made'
+
+/** Where a comment was left. Each is a different table read by its own room's rule. */
+export type CommentPlace = 'workout' | 'lab' | 'guestbook'
+export const COMMENT_PLACES: ReadonlySet<string> = new Set<CommentPlace>([
+  'workout',
+  'lab',
+  'guestbook',
+])
+
+/** What can be made and put on a page: the block types `profile_showcase` accepts. */
+const MADE: Readonly<Record<string, string>> = {
+  song: 'a song',
+  art: 'a drawing',
+  pet: 'a pet',
+  looks: 'a look',
+}
+export const MADE_KINDS: ReadonlySet<string> = new Set(Object.keys(MADE))
 
 /**
  * Whose activity the feed is asking about.
@@ -73,6 +96,18 @@ export type FeedEvent = {
   metric?: string | null
   /** circuit logs only: what was actually done, resolved against their own exercise list */
   items?: ActivityItem['items']
+  /**
+   * Comments only: where it was left, and on whose or what. For a comment `detail` is the
+   * preview — at most 80 characters, on one line, cut by the server, so the whole of somebody's
+   * words never travels to everybody's Feed.
+   */
+  on?: CommentPlace | null
+  /** a workout's person, a guestbook's owner by first name, or a Lab toy's id */
+  about?: string | null
+  /** a guestbook's owner by username, so their name can be a door to their page */
+  aboutWho?: string | null
+  /** whether the workout or the guestbook is yours, so the line can say "your" */
+  aboutMine?: boolean
   /**
    * Yours.
    *
@@ -175,6 +210,25 @@ function sittingSentence(e: FeedEvent): string {
 }
 
 /**
+ * The two halves of a comment's line: what was done, and to what.
+ *
+ * ⚠️ SHARED BY THE SENTENCE AND THE ROOM, so the words in the feed and the words a test reads are
+ * the same words. A Lab toy is named from the Lab's own list; one it does not know (a toy newer
+ * than this bundle) is named by its id rather than dropped.
+ */
+export function commentParts(e: FeedEvent): { verb: string; noun: string } {
+  const whose = e.aboutMine ? 'your' : `${e.about ?? 'somebody'}'s`
+  if (e.on === 'workout') return { verb: 'Commented on', noun: `${whose} workout` }
+  if (e.on === 'guestbook') return { verb: 'Signed', noun: `${whose} guestbook` }
+  if (e.on === 'lab')
+    return { verb: 'Left a note on', noun: TOY_NAMES[e.about ?? ''] ?? e.about ?? 'a Lab toy' }
+  return { verb: 'Wrote', noun: 'something' }
+}
+
+/** "a song", "a drawing" — what a made thing is called in a sentence */
+export const madeNoun = (detail: string | null): string => MADE[detail ?? ''] ?? 'something'
+
+/**
  * One line for any event in the feed.
  *
  * ⚠️ EVERY KIND GETS A SENTENCE, and the test that says so is the reason this is a function
@@ -184,6 +238,11 @@ function sittingSentence(e: FeedEvent): string {
  */
 export function feedSentence(e: FeedEvent): string {
   if (e.kind === 'sitting') return sittingSentence(e)
+  if (e.kind === 'comment') {
+    const { verb, noun } = commentParts(e)
+    return e.detail ? `${verb} ${noun}: “${e.detail}”` : `${verb} ${noun}`
+  }
+  if (e.kind === 'made') return `Put ${madeNoun(e.detail)} on ${e.mine ? 'your' : 'their'} page`
   return activityLine({
     kind: e.kind,
     at: e.at,

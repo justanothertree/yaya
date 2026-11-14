@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { fetchFeed } from './cloud'
 import {
+  commentParts,
   dayKeyOf,
   groupByDay,
+  madeNoun,
   mergeEvents,
   FEED_SCOPES,
   type FeedEvent,
@@ -34,7 +36,12 @@ const GLYPH: Record<FeedKind, string> = {
   rating: '⭐',
   snake_score: '🐍',
   snake_trophy: '🏆',
+  comment: '💬',
+  made: '🎨',
 }
+
+/** a page on the site, by username — the same door the name at the start of each row is */
+const pageOf = (who: string) => '#profile?u=' + encodeURIComponent(who)
 
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -91,6 +98,35 @@ function What({ e }: { e: FeedEvent }) {
         <span className="muted feed-verb">Rated</span>
         <span className="feed-noun">{e.detail ?? 'something'}</span>
         {e.score != null ? <span className="feed-score">{e.score}</span> : null}
+      </span>
+    )
+  if (e.kind === 'comment') {
+    const { verb, noun } = commentParts(e)
+    return (
+      <span className="feed-what">
+        <span className="muted feed-verb">{verb}</span>
+        {/* a guestbook is somebody's page, so it is a door to it -- unless it is yours */}
+        {e.on === 'guestbook' && e.aboutWho && !e.aboutMine ? (
+          <a className="feed-noun" href={pageOf(e.aboutWho)}>
+            {noun}
+          </a>
+        ) : (
+          <span className="feed-noun">{noun}</span>
+        )}
+        {/* the server sent at most 80 characters on one line; this is all of what travels */}
+        {e.detail ? <q className="muted feed-quote">{e.detail}</q> : null}
+      </span>
+    )
+  }
+  if (e.kind === 'made')
+    return (
+      <span className="feed-what">
+        <span className="muted feed-verb">Put</span>
+        <span className="feed-noun">{madeNoun(e.detail)}</span>
+        {/* the thing is on their page, so "their page" is the way to it */}
+        <a className="muted feed-sub" href={pageOf(e.who)}>
+          on {e.mine ? 'your' : 'their'} page
+        </a>
       </span>
     )
   if (e.kind === 'snake_trophy')
@@ -247,11 +283,7 @@ export function FeedRoom({ authed }: { authed: boolean }) {
                         {GLYPH[e.kind]}
                       </span>
                       <span className="feed-who">
-                        {e.mine ? (
-                          'You'
-                        ) : (
-                          <a href={'#profile?u=' + encodeURIComponent(e.who)}>{e.name}</a>
-                        )}
+                        {e.mine ? 'You' : <a href={pageOf(e.who)}>{e.name}</a>}
                       </span>
                       <What e={e} />
                       <span className="muted feed-when">{clock(e.at)}</span>
