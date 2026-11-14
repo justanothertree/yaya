@@ -20660,6 +20660,45 @@ a.cz-msg-author:focus-visible {
   gap: 0.6rem;
   min-width: 0;
 }
+/* ⚠️ THE KEPT-SONGS LIST HAD NO STYLE AT ALL, from the day it was added (63833b09, 31 Aug) until
+   the #311 screenshots, 14 Nov 2026: a browser bullet, "Funk sketch3 parts" run together because
+   JSX drops the whitespace between two lines of elements, and Open, + Add and ✕ touching. Nothing
+   overflowed and nothing was under 24px, so mobileAudit passed it every time — a screenshot is what
+   saw it. The words take a line and the three verbs share the next on a phone; a desktop has room
+   for both on one. */
+.inst-lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.inst-lib-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+}
+.inst-lib-text {
+  flex: 1 1 13rem;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.6rem;
+}
+.inst-lib-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.inst-lib-meta {
+  font-size: 0.85rem;
+}
+.inst-lib-do {
+  display: flex;
+  gap: 0.45rem;
+}
 
 /* ── the instrument's sheets: ⚙ Sound, speed and length, a part's ⋯ ───────────────────────
    ⚠️ FROM THE FLOOR ON A PHONE, A CARD WIDER UP, and over the nav bar the way the settings sheet

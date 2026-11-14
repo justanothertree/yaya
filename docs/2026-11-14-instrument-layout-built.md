@@ -90,6 +90,27 @@ Copy this made untrue, and fixed: the health line said "pull a layer's volume do
 that is in 🎚 Mix now), and the Profile's song block told people to press "Keep song", which is
 "⬇ Keep this song" inside 📁 Songs.
 
+**The kept-songs list is styled for the first time.** It never had a rule, from the day it was
+added (63833b09, 31 Aug): a browser bullet, "Funk sketch3 parts" run together, and Open, + Add and ✕
+touching. Nothing overflowed and nothing was under 24px, so `mobileAudit` passed it; the Songs
+screenshot below is what showed it. The words take one line and the three buttons the next on a
+phone, and they share one line at 1440.
+
+## Screens
+
+Taken in the pane at 375 (touch) and 1440, with the Funk starter's three parts. The desktop capture
+is 800px wide because the pane scales a 1440 page down to fit.
+
+| The room's top                                                                                                                                                    | ⚙ Sound                                                                                                                                             | A part's ⋯                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <img src="2026-11-14-instrument-layout-built/phone-top.jpg" width="220" alt="Keys, the play bar in two rows, the transport, the speed button and the first part"> | <img src="2026-11-14-instrument-layout-built/phone-sound.jpg" width="220" alt="The Sound sheet from the bottom: arpeggio, six knobs and a rig name"> | <img src="2026-11-14-instrument-layout-built/phone-part-sheet.jpg" width="220" alt="The Bass part's sheet: Plays as, Volume, Show the notes, Record again, Copy FX, Keep as a loop, Delete"> |
+
+| 🎚 Mix                                                                                                                                             | 🎤 Voice                                                                                                                                 | 📁 Songs                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| <img src="2026-11-14-instrument-layout-built/phone-mix.jpg" width="220" alt="Mix open under the parts: your keys and each part's volume and mute"> | <img src="2026-11-14-instrument-layout-built/phone-voice.jpg" width="220" alt="Voice open: Record a take, Open a file, and Sing lyrics"> | <img src="2026-11-14-instrument-layout-built/phone-songs.jpg" width="220" alt="Songs open: Keep this song, Stems with three WAVs, one kept song, Clear all parts"> |
+
+<img src="2026-11-14-instrument-layout-built/desktop.jpg" width="800" alt="Desktop at 1440: the play bar on one row, the song with each part's volume on its row, the four tools, and Visuals beside it">
+
 ## How it was checked
 
 - **Every control was driven in the pane at 375 with touch:** both sheets' Escape, backdrop and

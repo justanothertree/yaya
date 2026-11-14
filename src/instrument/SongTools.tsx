@@ -327,44 +327,48 @@ function Songs({
         <ul className="inst-lib-list">
           {saved.map((it: LibraryItem) => (
             <li key={it.id}>
-              <span className="inst-lib-name">
-                {it.kind === 'loop' ? '🔁' : '🎵'} {it.name}
-              </span>
-              <span className="muted inst-lib-meta">
-                {it.song.layers.length} part{it.song.layers.length === 1 ? '' : 's'} ·{' '}
-                {songNotes(it.song)} notes · {it.song.bpm}bpm
+              <span className="inst-lib-text">
+                <span className="inst-lib-name">
+                  {it.kind === 'loop' ? '🔁' : '🎵'} {it.name}
+                </span>
+                <span className="muted inst-lib-meta">
+                  {it.song.layers.length} part{it.song.layers.length === 1 ? '' : 's'} ·{' '}
+                  {songNotes(it.song)} notes · {it.song.bpm}bpm
+                </span>
               </span>
               {/* Two different verbs, and the distinction is the whole point of the library.
                   Open REPLACES what you have; Add brings this part in alongside it. */}
-              <button
-                className="btn"
-                onClick={() => {
-                  loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
-                  setEditing(null)
-                  // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
-                  jam.offerSong(it.song)
-                }}
-                title="Open this, replacing what you have now"
-              >
-                Open
-              </button>
-              <button
-                className="btn"
-                onClick={() => addLayers(songToLayers(it.song))}
-                title="Add these parts to what you are working on"
-              >
-                + Add
-              </button>
-              <button
-                className="btn"
-                onClick={() => {
-                  if (window.confirm(`Delete “${it.name}”?`)) removeFromLibrary(it.id)
-                }}
-                aria-label={`Delete “${it.name}”`}
-                title="Delete this"
-              >
-                ✕
-              </button>
+              <span className="inst-lib-do">
+                <button
+                  className="btn"
+                  onClick={() => {
+                    loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
+                    setEditing(null)
+                    // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
+                    jam.offerSong(it.song)
+                  }}
+                  title="Open this, replacing what you have now"
+                >
+                  Open
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => addLayers(songToLayers(it.song))}
+                  title="Add these parts to what you are working on"
+                >
+                  + Add
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    if (window.confirm(`Delete “${it.name}”?`)) removeFromLibrary(it.id)
+                  }}
+                  aria-label={`Delete “${it.name}”`}
+                  title="Delete this"
+                >
+                  ✕
+                </button>
+              </span>
             </li>
           ))}
         </ul>
