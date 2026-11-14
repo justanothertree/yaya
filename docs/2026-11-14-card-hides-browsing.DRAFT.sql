@@ -1,3 +1,7 @@
+-- ✅ APPLIED to production 14 Nov 2026 as supabase/migrations/20261114121930_card_hides_browsing.sql.
+-- That file is the record of what ran. The lines below are this draft's history, true when they
+-- were written.
+--
 -- ⛔ DRAFT — NOT APPLIED. Nothing in this file has run against production.
 --
 -- Step 2 of docs/2026-11-13-feed-meaningful-moments.md: browsing stays private in its owner's own

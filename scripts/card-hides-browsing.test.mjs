@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { bodyOf } from './migration-md5.mjs'
 
 /**
  * The card-hides-browsing draft, asked of the text it will meet, with no database.
@@ -11,10 +12,10 @@ import { describe, expect, it } from 'vitest'
  * friend's card and the owner's Sharing panel return -- is asked of a real database by
  * supabase/tests/card-hides-browsing.sql.
  *
- * ⚠️ AND PRODUCTION IS NOT THE DUMP. Nine migrations have been applied since it was taken and CI
- * does not replay them (supabase/config.toml says why), and one of them rewrote part of
+ * ⚠️ AND PRODUCTION IS NOT THE DUMP. Ten migrations were applied between it and this draft, CI
+ * replays none of them (supabase/config.toml says why), and one of them rewrote part of
  * get_member_chronicle. So this asks a second question the dump cannot answer by itself: that
- * nothing since the dump has touched the lines the draft anchors on.
+ * nothing between the dump and the draft touched the lines the draft anchors on.
  *
  * It lives in scripts/ and is .mjs for the reason migration-md5.test.mjs does: it reads files, and
  * src's tsconfig has no node types.
@@ -134,9 +135,22 @@ describe('the migrations applied since the dump', () => {
    * below: this test then fails, which is the point.
    */
   const FIRST_AFTER = '20261105023835'
+  /**
+   * ⚠️ AND IT STOPS AT THIS DRAFT, which production applied as 20261114121930. The question is what
+   * changed these functions between the dump and the moment the draft met them; the draft's own
+   * record touches them by definition, and anything after it is a later change's business.
+   */
+  const THIS = '20261114121930'
   const files = readdirSync('supabase/migrations').filter(
-    (f) => /^\d{14}_.*\.sql$/.test(f) && f.slice(0, 14) >= FIRST_AFTER,
+    (f) => /^\d{14}_.*\.sql$/.test(f) && f.slice(0, 14) >= FIRST_AFTER && f.slice(0, 14) < THIS,
   )
+  /**
+   * ⚠️ THE BODY, NOT THE FILE. What ran is the body; the header is prose about it, and the md5
+   * rule lets a note be added above an applied migration at any time. A later note naming one of
+   * these functions is not a change to it, and should not turn this red. No header in range names
+   * either function today, so this guards the next note rather than one already written.
+   */
+  const ran = (f) => bodyOf(readFileSync(`supabase/migrations/${f}`, 'utf8'))
 
   it('start after the dump was taken', () => {
     const first = readFileSync(`supabase/migrations/${files[0]}`, 'utf8')
@@ -156,13 +170,18 @@ describe('the migrations applied since the dump', () => {
         ),
       ),
     ]
-    const touching = files.filter((f) =>
-      FNS.some((fn) => readFileSync(`supabase/migrations/${f}`, 'utf8').includes(fn)),
-    )
+    const touching = files.filter((f) => FNS.some((fn) => ran(f).includes(fn)))
     /* one file, and it is the one the checks name: the repeat marks reaching the card's goals */
     expect(touching).toEqual(['20261110030419_chronicle_repeat_marks_profile.sql'])
-    const body = readFileSync(`supabase/migrations/${touching[0]}`, 'utf8')
+    const body = ran(touching[0])
     for (const l of anchorLines) expect(body.includes(l), l).toBe(false)
+  })
+
+  /* the record production keeps is this draft's body, so the two cannot drift apart unnoticed */
+  it('is recorded as the draft that ran', () => {
+    const [record] = readdirSync('supabase/migrations').filter((f) => f.startsWith(`${THIS}_`))
+    expect(record).toBe(`${THIS}_card_hides_browsing.sql`)
+    expect(ran(record)).toBe(bodyOf(DRAFT))
   })
 })
 
