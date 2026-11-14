@@ -4,6 +4,23 @@ _14 Nov 2026. A plan only: no migration, no SQL run anywhere, no source change. 
 "draft" below is for Evan to apply. It builds on the live call play (#297, #319, #324) and the
 verified-result design (steps 9–11 of `2026-11-13-lab-social-plan.md`), and replaces neither._
 
+## Decisions — Evan, 14 Nov
+
+1. **Timeouts:** 7 days without a move, then the waiting player may **Claim the win**. Nothing ends a
+   match on its own.
+2. **The Feed:** a finished match names the opponent only to viewers who are friends with both
+   players; everybody else reads "beat a friend".
+3. **Telling you it's your move:** the bell, the badge and the Lab's Your games list only. No email
+   and no push for now.
+4. **`lab_results`:** drafted together with the match tables, as one SQL draft.
+5. **Order:** Reversi and Chess first, then Five in a row, Draughts, Dots and boxes and Four in a
+   row. Dice and card games later.
+
+The plan below already said each of these; it stands as written. The steps that need no SQL (0 and
+
+1. go ahead as their own drafts, and the SQL is prepared as `DRAFT.sql`, `ROLLBACK.sql` and a
+   read-only `checks.sql`, tested on a throwaway database and not applied.
+
 ## The short version
 
 - **A match is a game saved on the server between two friends.** You take your turn. Your friend
