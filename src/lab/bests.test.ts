@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SHARES, bestLine, clock } from './bests'
+import { SHARES, resultCard, clock, type Read } from './bests'
 import { GLIDE_KEY, TASKS } from '../gpu/glide'
 import { SKIP_KEY } from '../gpu/skip'
 import { SUN_KEY } from '../gpu/sun'
@@ -13,6 +13,12 @@ import { POKER_KEY } from '../gpu/poker'
 import registry from '../sections/labDemos.tsx?raw'
 
 const store = (o: Record<string, string>) => (k: string) => o[k] ?? null
+/* the sentence "Share my best" used to paste, built from the card that replaced it — so every
+   expectation below is the one it always was, and the card's line is held to it word for word */
+const bestLine = (id: string, name: string, read: Read) => {
+  const c = resultCard(id, name, read)
+  return c ? `🏆 My best at ${c.line}` : null
+}
 
 describe('sharing a best in a comment', () => {
   it('says nothing for a toy with nothing kept, or one that keeps no best', () => {
