@@ -15,10 +15,10 @@
 --
 --   is_suspended          83fa98307c05db59b0de942f2b19ed23   existing, relied on
 --   lab_demo_open         e040dd067dc50d0abcfa00b4f77dbbd9   existing, relied on
---   lab_match_begin       276d03dcca4fc470f18bc2fd4486a2d8
+--   lab_match_begin       0054a40b9168e220bbf00498f6f88381
 --   lab_match_challenge   5093108bb2ea69824dbc79fbe783503d
 --   lab_match_claim       bb9decd4b33a96600dba9c7bb55118de
---   lab_match_commit      7c25d6772492bf48bd7513fac976193d
+--   lab_match_commit      258b884035c174b8e37afcdc6f77c9cd
 --   lab_match_decline     62803e11d498b9b95b39665aa52e05b9
 --   lab_match_get         af1cdf458d4a88ec09c3d20f9a3d6f58
 --   lab_match_json        f7ca7a2fdab855f49e81d43593660694
@@ -28,6 +28,7 @@
 --   lab_match_playable    ac752f0a53e7d77b222f3e51c6d939f2
 --   lab_match_record      08573def9e2b957cc358e6d7466aea86
 --   lab_match_resign      5955ee32fbc0ec6bb6e36e5533dc111f
+--   lab_match_suspended   ce1f64c8e4c36346205bdee2b3860a05
 --   lab_match_timeout     c5f2c3f1ad917bb1ba78103721684c12
 --   lab_my_turns          d187315904bc34ff095c54cd138111b1
 --   lab_pair_friends      d361adadff621384cc8e21f67dec6f4c
@@ -71,14 +72,14 @@ select md5(string_agg(column_name || ':' || data_type || ':' || is_nullable, ','
 select id, hidden from public.lab_demos where id in ('reversi', 'chess') order by id;
 
 -- ── B. After applying ───────────────────────────────────────────────────────────────────────
--- B1. Expect 16 rows, every one 'as drafted' with definitions = 1.
+-- B1. Expect 17 rows, every one 'as drafted' with definitions = 1.
 select p.proname, count(*) over (partition by p.proname) as definitions,
        case md5(p.prosrc)
          when case p.proname
-                when 'lab_match_begin' then '276d03dcca4fc470f18bc2fd4486a2d8'
+                when 'lab_match_begin' then '0054a40b9168e220bbf00498f6f88381'
                 when 'lab_match_challenge' then '5093108bb2ea69824dbc79fbe783503d'
                 when 'lab_match_claim' then 'bb9decd4b33a96600dba9c7bb55118de'
-                when 'lab_match_commit' then '7c25d6772492bf48bd7513fac976193d'
+                when 'lab_match_commit' then '258b884035c174b8e37afcdc6f77c9cd'
                 when 'lab_match_decline' then '62803e11d498b9b95b39665aa52e05b9'
                 when 'lab_match_get' then 'af1cdf458d4a88ec09c3d20f9a3d6f58'
                 when 'lab_match_json' then 'f7ca7a2fdab855f49e81d43593660694'
@@ -88,6 +89,7 @@ select p.proname, count(*) over (partition by p.proname) as definitions,
                 when 'lab_match_playable' then 'ac752f0a53e7d77b222f3e51c6d939f2'
                 when 'lab_match_record' then '08573def9e2b957cc358e6d7466aea86'
                 when 'lab_match_resign' then '5955ee32fbc0ec6bb6e36e5533dc111f'
+                when 'lab_match_suspended' then 'ce1f64c8e4c36346205bdee2b3860a05'
                 when 'lab_match_timeout' then 'c5f2c3f1ad917bb1ba78103721684c12'
                 when 'lab_my_turns' then 'd187315904bc34ff095c54cd138111b1'
                 when 'lab_pair_friends' then 'd361adadff621384cc8e21f67dec6f4c'

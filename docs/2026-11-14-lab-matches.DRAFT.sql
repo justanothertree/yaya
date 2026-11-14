@@ -152,6 +152,20 @@ as $$
      where f.user_a = least(p_a, p_b) and f.user_b = greatest(p_a, p_b) and f.status = 'accepted')
 $$;
 
+-- Is this member suspended — asked of profiles, for any caller, for the same reason as above.
+-- ⚠️ NOT is_suspended: that answers NULL unless the caller is the member or an admin, and under the
+-- service key the caller is nobody. `x or null` is null, an IF on null does not raise, and so a
+-- suspended member's accept and moves went straight through the edge function. Measured on the
+-- throwaway stack on 14 Nov before this existed: begin and commit both succeeded for a suspended
+-- pair. The member RPCs keep is_suspended, where the caller is the member and it answers.
+create or replace function public.lab_match_suspended(p_user uuid)
+returns boolean
+language sql stable security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce((select p.suspended from public.profiles p where p.user_id = p_user), false)
+$$;
+
 -- One match as a player sees it: never `secret`, and the game only when asked for.
 create or replace function public.lab_match_json(m public.lab_matches, p_me uuid, p_with_state boolean)
 returns jsonb
@@ -461,7 +475,7 @@ begin
   if m.id is null or m.status <> 'invited' or p_by is distinct from m.player_b
      or m.created_at < now() - public.lab_match_timeout()
      or not public.lab_pair_friends(m.player_a, m.player_b)
-     or public.is_suspended(m.player_a) or public.is_suspended(m.player_b) then
+     or public.lab_match_suspended(m.player_a) or public.lab_match_suspended(m.player_b) then
     raise exception 'that invitation cannot be accepted' using errcode = '22023';
   end if;
   if p_state is null or p_turn is null or p_turn not in (0, 1) then
@@ -501,7 +515,7 @@ begin
   if seat is null or seat <> m.turn then
     raise exception 'it is not your turn' using errcode = '42501';
   end if;
-  if not public.lab_pair_friends(m.player_a, m.player_b) or public.is_suspended(p_by) then
+  if not public.lab_pair_friends(m.player_a, m.player_b) or public.lab_match_suspended(p_by) then
     raise exception 'that match cannot be played' using errcode = '42501';
   end if;
   if p_move is null or p_state is null then
@@ -548,7 +562,8 @@ $$;
 -- ⚠️ revoke … from public DOES NOT COVER anon in this project (CLAUDE.md §3): each is named.
 revoke all on function
   public.lab_match_playable(text), public.lab_match_timeout(),
-  public.lab_pair_friends(uuid, uuid), public.lab_match_json(public.lab_matches, uuid, boolean),
+  public.lab_pair_friends(uuid, uuid), public.lab_match_suspended(uuid),
+  public.lab_match_json(public.lab_matches, uuid, boolean),
   public.lab_match_mine(uuid), public.lab_match_record(public.lab_matches),
   public.lab_match_challenge(uuid, text, text, jsonb, uuid), public.lab_match_decline(uuid),
   public.lab_match_list(), public.lab_match_get(uuid), public.lab_match_resign(uuid),
