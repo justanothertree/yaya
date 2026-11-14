@@ -27,11 +27,25 @@ consonant before each vowel, as it already did.
 
 1. **One voice.** Notes that start within 30ms of each other are one sung note, the top one
    (`melodyOf`). That covers a chord and a strum.
-2. **On the grid.** Starts and ends snap to sixteenths at the loop's tempo (`snapToGrid`). Two notes
-   that round to the same sixteenth stay two, a step apart, and a note never runs into the next.
-3. **Too many syllables:** the longest note a beat or more long is split on the beat grid, until
-   every syllable has a note (`makeRoom`). "glit-ter" on a half note sings two quarter notes. What
-   still does not fit is counted, as before.
+2. **On the grid: the room's Snap, in the line's own feel** (`feelOf`, `snapToGrid`).
+   - The grid is the room's Snap: 1/4, 1/8 or 1/16, and sixteenths when Snap is Off.
+   - A swung or triplet line keeps its feel. Which grid the notes sit closest to (straight,
+     triplets, or a swing measured from the line itself) is asked at sixteenths, whatever the
+     Snap. The Snap then says how coarse a grid to draw in that feel. Straight wins any close call.
+   - A line played a steady few milliseconds late is moved onto the beat as a whole first (its
+     "lean", measured from the notes within a 32nd of a beat). A steady lean was enough to make a
+     clear swing read as straight.
+   - A coarse Snap has finer levels under it. A note whose point is already taken, or is closer to
+     the next note, takes the nearest point one level finer. So a line of eighths on Snap 1/4 stays
+     eighths instead of marching a beat later per note, while an off-beat whose beat is free moves
+     onto it.
+   - Two notes never share a point, a note never runs into the next, and nothing lands on the loop's
+     end, which is the next pass's downbeat.
+3. **Too many syllables:** the longest note a beat or more long is split, until every syllable has a
+   note (`makeRoom`). The cut is the strongest point of the line's grid inside the note, nearer the
+   middle on a close call, so the second syllable starts on a beat where there is one. It used to
+   be half the note's length in half-beats, which only lands on a beat when the note starts on one.
+   "glit-ter" on a half note sings two quarter notes. What still does not fit is counted, as before.
 4. **Too many notes:** the syllables are spread (`place`), the best of every in-order placement by
    dynamic programming. The notes between syllables are holds of the vowel. The scoring:
    - a stressed syllable earns the strength of its beat (downbeat, middle of the bar, beat, eighth,
@@ -63,13 +77,39 @@ On the bass, "dark" now lands on the second bar's downbeat and "night" on beat t
 the pickup before it; "the" sits on an off-beat. The chords are all on off-beats, so there the gain
 is one syllable per chord, spread across both bars.
 
+## Swing and triplets, swept
+
+Two-bar lines at 70, 90, 120 and 150 bpm, played up to ±J ms loose (uniform), half of them a
+steady 15ms late, four times each. A note counts as off target when it lands more than 0.03 beats
+from where it was meant. "Before" is the old fixed sixteenths; the swings run from 0.15 to 0.5 of a
+step late.
+
+| Line, Snap Off             | ±0ms     | ±10ms      | ±20ms      | ±30ms       |
+| -------------------------- | -------- | ---------- | ---------- | ----------- |
+| Straight (16ths, 8ths, 4s) | 0% → 0%  | 0% → 0%    | 0% → 0%    | 0% → 0.9%   |
+| Eighth-note triplets       | 58% → 0% | 58% → 0%   | 59% → 0.8% | 58% → 8.9%  |
+| Swung eighths              | 36% → 0% | 37% → 0%   | 37% → 6.1% | 38% → 14.2% |
+| Swung sixteenths           | 53% → 0% | 54% → 0.9% | 57% → 8.7% | 60% → 26.8% |
+
+On Snap 1/8, swung eighths go from 45% off target to 0% (±0ms), 0.3% (±10ms) and 7.0% (±20ms), and
+triplets to 0% up to ±20ms. A straight line pays 0.9% at ±30ms, and 2.1% at ±40ms against 0.9%
+before: very loose straight playing is occasionally read as a feel.
+
 ## How it was checked
 
-- **`pocket.test.ts`, 18 tests**, written from the song's shape: which beat a word lands on, whether
-  a breath splits a word, how long one vowel is held. Every scoring rule was removed once to watch
+- **`pocket.test.ts`, 26 tests**, written from the song's shape: which beat a word lands on, whether
+  a breath splits a word, how long one vowel is held, where a swung off-beat lands. Every scoring rule was removed once to watch
   a test fail. Three (the hold cost, the light-word dodge and the breath rules) passed when removed
   at first, so the tests that pin them were added; a fourth rule, a penalty for a word split by a
   rest, never decided anything once the other two breath rules existed, and was taken out.
+- **The Snap and the feel:** ten rules were each broken once (the Snap ignored, the finer levels,
+  the yield to a closer note, the lean, its window, the fit margin both ways, the swing floor, the
+  loop's end, the old cut) and each turned at least one test red. Two passed at first. The swing
+  floor turned out to be what stops 70:30 eighths reading as early sixteenths and losing their
+  swing on Snap 1/8, so the swing test now also feeds a line placed exactly, as the arpeggio
+  records it. Measuring the swing against the line's on-beats did nothing once the lean was out
+  first, and was taken out. A seeded sweep in the tests holds straight lines to 0 notes moved up
+  to ±20ms, and feels to under 2% moved up to ±10ms, against over 30% before.
 - **The breath length was found in the room.** Counting half a beat of silence as a breath sent the
   slap bass's stressed words to whichever note followed one of its short gaps; a full beat fixed it,
   and that case is now a test.
@@ -82,14 +122,17 @@ is one syllable per chord, spread across both bars.
   its level 0–20ms after the grid line in Clean and Glitchy (the attack), up to 36ms in Breathy,
   which attacks slowly on purpose. "night" in Glitchy read 46ms, because its n is already voiced.
 - **In the room:** ▶ Sing starts the voice, Stop and the end of the line leave zero voices, the panel
-  passes `mobileAudit` at 375, and the console has nothing new.
+  passes `mobileAudit` at 375, and the console has nothing new. After the Snap change: on the slap
+  bass the panel's preview words change between Off, 1/8 and 1/4 and Off matches 1/16, with all 14
+  notes kept, and singing at 1/4, 1/8 and Off leaves zero voices after Stop.
 
 ## Not done
 
 - **The part under the voice still plays as it was played.** The voice is on the grid and a loose
   part is not, so they can sit a few milliseconds apart.
-- **It snaps to sixteenths** whatever the room's Snap is set to. A swung or triplet part will be
-  straightened in the voice.
+- **The room's Snap has no triplet or swing setting.** The feel comes from the line, so a line
+  played straight is sung straight. A swing lighter than 55:45 is read as straight, and so is a
+  light sixteenth swing played as loosely as it swings.
 - **The stress guess is English-only and simple.** A hyphen fixes the split; nothing fixes the
   stress yet.
 - **How it sounds** is for Evan's ears, and Safari and Firefox are unchecked.

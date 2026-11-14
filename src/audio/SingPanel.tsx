@@ -73,7 +73,11 @@ export function SingPanel({
   const layer =
     candidates.find((l) => l.id === layerId) ?? candidates[candidates.length - 1] ?? null
   const notes = layer ? toNotes(layer.events, layer.len) : []
-  const { sung, spare } = fitSyllables(notes, splitLyrics(lyric), { beat: 60 / loopState().bpm })
+  const { sung, spare } = fitSyllables(notes, splitLyrics(lyric), {
+    beat: 60 / loopState().bpm,
+    snap: loopState().quantize,
+    len: layer?.len,
+  })
 
   const sing = () => {
     stopNow()

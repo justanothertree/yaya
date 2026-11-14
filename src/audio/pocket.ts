@@ -33,20 +33,220 @@ export function melodyOf(notes: readonly Note[]): Note[] {
 }
 
 /**
- * Each note's start onto the grid, and its end onto the grid where that leaves it a sensible length.
- *
- * ⚠️ TWO NOTES NEVER SHARE A STEP: the later one moves a step on, so nothing a person played is
- * lost to rounding. And a note never runs into the next one, which would hide the next consonant.
+ * A grid that repeats every beat: the points of one beat as fractions of it, from 0 and below 1.
+ * Every grid here has a point on the beat, so a downbeat is a downbeat whatever the feel.
  */
-export function snapToGrid(notes: readonly Note[], step: number): Note[] {
-  const out: Note[] = []
-  for (const n of [...notes].sort((a, b) => a.t - b.t)) {
-    const prev = out[out.length - 1]
-    let t = Math.round(n.t / step) * step
-    if (prev && t <= prev.t + 1e-9) t = prev.t + step
-    const end = Math.max(t + step / 2, Math.round((n.t + n.dur) / step) * step)
-    out.push({ t, dur: end - t, midi: n.midi })
+export type Lattice = { beat: number; at: readonly number[] }
+
+/** `perBeat` evenly spaced points: 1 is quarters, 2 eighths, 4 sixteenths, 3 and 6 triplets */
+export const evenly = (beat: number, perBeat: number): Lattice => ({
+  beat,
+  at: Array.from({ length: perBeat }, (_, i) => i / perBeat),
+})
+
+/** the point of `l` nearest `t`; halfway rounds up, as Math.round does */
+export function nearestOn(l: Lattice, t: number): number {
+  const k = Math.floor(t / l.beat)
+  const f = t / l.beat - k
+  let best = l.at[0]
+  for (const a of [...l.at, 1]) if (Math.abs(a - f) <= Math.abs(best - f) + 1e-12) best = a
+  return (k + best) * l.beat
+}
+
+/** the last point of `l` before `t` */
+function lastBefore(l: Lattice, t: number): number {
+  const k = Math.floor(t / l.beat - 1e-9)
+  for (let i = l.at.length - 1; i >= 0; i--)
+    if ((k + l.at[i]) * l.beat < t - 1e-9) return (k + l.at[i]) * l.beat
+  return (k - 1 + l.at[l.at.length - 1]) * l.beat
+}
+
+/** the first point of `l` after `t` */
+function nextOn(l: Lattice, t: number): number {
+  const k = Math.floor(t / l.beat + 1e-9)
+  for (const a of l.at) if ((k + a) * l.beat > t + 1e-9) return (k + a) * l.beat
+  return (k + 1) * l.beat
+}
+
+const median = (xs: readonly number[]) => {
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/**
+ * How far a line sits behind the beat (or ahead of it, below zero), in seconds: the median of its
+ * notes near a beat. Every grid here has the beat in it, so this is the one lean they share.
+ *
+ * ⚠️ A STEADY LEAN HIDES A FEEL. A player 15ms behind throughout is that far from every grid,
+ * which drowned the difference between them and read a clear swing as straight; it also moved a
+ * late swung off-beat nearer the next sixteenth than its own point. So the feel is read, and the
+ * line snapped, with the lean taken out.
+ */
+function leanOf(line: readonly Note[], beat: number): number {
+  const near = line
+    .map((n) => n.t - Math.round(n.t / beat) * beat)
+    /* a 32nd either side: wider, and a late swung sixteenth counts as an early beat */
+    .filter((d) => Math.abs(d) < beat / 16)
+  return near.length ? median(near) : 0
+}
+
+/** how far the notes' starts sit from the grid: the mean distance to the nearest point, in beats */
+function residual(line: readonly Note[], l: Lattice): number {
+  let sum = 0
+  for (const n of line) sum += Math.abs(n.t - nearestOn(l, n.t))
+  return sum / line.length / l.beat
+}
+
+/**
+ * A line's swing, measured: how late the second of each pair of `u`-beat steps comes, as a
+ * fraction of `u`. 1/3 is full swing, the arpeggio's, which lands on the triplet; 0 is straight.
+ * Null when the line has too few off-beats to say. The line's lean is already out (leanOf), so
+ * this is measured from the beat.
+ */
+function swingOf(line: readonly Note[], beat: number, u: number): number | null {
+  const off: number[] = []
+  for (const n of line) {
+    const pair = n.t / beat / (2 * u)
+    const phase = pair - Math.floor(pair)
+    if (phase >= 0.375 && phase < 0.8) off.push(phase - 0.5)
   }
+  if (off.length < 2) return null
+  /* a pair is two steps, so twice its phase is the fraction of a step */
+  return 2 * median(off)
+}
+
+/** the straight grid with every odd multiple of `u` beats moved `by` of a `u` later */
+function swung(beat: number, perBeat: number, u: number, by: number): Lattice {
+  const at = evenly(beat, perBeat).at.map((a) => {
+    const k = Math.round(a / u)
+    return Math.abs(a - k * u) < 1e-9 && k % 2 === 1 ? a + by * u : a
+  })
+  return { beat, at: [...new Set(at)].sort((a, b) => a - b) }
+}
+
+/**
+ * A swing lighter than this (55:45 eighths) reads as a loose straight line. It also refuses an
+ * EARLY swing, which is not a feel: swung eighths at 70:30 read, a pair of sixteenths down, as
+ * sixteenths played early, and on Snap 1/8 that drew a grid with no swung off-beat in it at all.
+ */
+const SWING_FLOOR = 0.1
+/** how much closer a feel's grid must fit than the straight one before the line is read in it */
+const FEEL_WINS = 0.6
+
+export type Feel = {
+  kind: 'straight' | 'triplet' | 'swing'
+  /** a swing's off-beats: how late they come, as a fraction of a step */
+  swing: number
+  /** where a note may land, coarsest first — see snapToGrid */
+  levels: Lattice[]
+  /** how far behind the beat the line was played, in seconds (leanOf) */
+  lean: number
+}
+
+/**
+ * The grid a line is sung on: the room's Snap, drawn in the line's own feel.
+ *
+ * - `snap` is the room's Snap, 4, 8 or 16; Off sings on sixteenths.
+ * - A swung or triplet line keeps its feel. Its off-beats land where it puts them, rather than on
+ *   the straight eighth that would undo the swing. Which grid the line's notes sit closest to —
+ *   straight, triplets, or a swing measured from the line itself — is asked at sixteenths whatever
+ *   the Snap: the feel belongs to the line, and the Snap only says how coarse a grid to draw in it.
+ * - Straight wins every tie and any close call. A loose straight line is far commoner than a
+ *   swing, and straightening a swing by mistake is the gentler error.
+ *
+ * ⚠️ A COARSE SNAP HAS FINER LEVELS UNDER IT. On quarters, a line of eighths put two notes on each
+ * beat and moved the later one a step on, then the next one, so the whole line marched later and
+ * later. A note that loses its point to a closer note falls to the next level down instead.
+ */
+export function feelOf(played: readonly Note[], beat: number, snap = 0): Feel {
+  const lean = leanOf(played, beat)
+  const line = played.map((n) => ({ ...n, t: n.t - lean }))
+  const room = snap === 4 ? 1 : snap === 8 ? 2 : 4
+  /* the Snap's level and each finer one down to sixteenths, every one drawn by `draw` */
+  const down = (draw: (perBeat: number) => Lattice) => {
+    const out: Lattice[] = []
+    for (let r = room; r <= 4; r *= 2) out.push(draw(r))
+    return out
+  }
+  const straight: Feel = { kind: 'straight', swing: 0, levels: down((r) => evenly(beat, r)), lean }
+  if (line.length < 3) return straight
+  const options: Array<{ feel: Feel; fit: number }> = []
+  /* quarters have only the beat, which every feel shares */
+  const triplets = (r: number) => evenly(beat, r === 1 ? 1 : (r * 3) / 2)
+  options.push({
+    feel: { kind: 'triplet', swing: 0, levels: down(triplets), lean },
+    fit: residual(line, triplets(4)),
+  })
+  for (const u of [1 / 4, 1 / 2]) {
+    const by = swingOf(line, beat, u)
+    if (by === null || by < SWING_FLOOR) continue
+    const swing = Math.min(by, 0.5)
+    /* a swing of sixteenths is drawn only where sixteenths are, and eighths only where eighths are */
+    const draw = (r: number) => (r * u >= 1 ? swung(beat, r, u, swing) : evenly(beat, r))
+    options.push({
+      feel: { kind: 'swing', swing, levels: down(draw), lean },
+      fit: residual(line, draw(4)),
+    })
+  }
+  let best = straight
+  let fit = residual(line, evenly(beat, 4)) * FEEL_WINS
+  for (const o of options)
+    if (o.fit < fit - 1e-9) {
+      best = o.feel
+      fit = o.fit
+    }
+  return best
+}
+
+/**
+ * Each note's start onto the grid, and its end onto the finest level where that leaves it a
+ * sensible length. `levels` runs coarsest first (feelOf): a note takes its nearest point on the
+ * first level where that point is free and no later note sits closer to it. `lean` is taken out
+ * first, so a line played a steady 15ms late lands on the beat rather than 15ms after it.
+ *
+ * ⚠️ NOTHING LANDS ON THE LOOP'S END. `len` is the next pass's downbeat, and on a coarse Snap the
+ * last off-beat of a line rounded straight onto it, so the voice sang it with the next pass.
+ *
+ * ⚠️ TWO NOTES NEVER SHARE A POINT: on the finest level the later one moves a point on, so nothing
+ * a person played is lost to rounding. And a note never runs into the next one, which would hide
+ * the next consonant.
+ */
+export function snapToGrid(
+  notes: readonly Note[],
+  levels: readonly Lattice[],
+  lean = 0,
+  len = Infinity,
+): Note[] {
+  const order = notes.map((n) => ({ ...n, t: n.t - lean })).sort((a, b) => a.t - b.t)
+  const fine = levels[levels.length - 1]
+  const shortest = fine.beat / fine.at.length / 2
+  const out: Note[] = []
+  order.forEach((n, i) => {
+    const prev = out[out.length - 1]
+    const next = order[i + 1]
+    let t = NaN
+    for (let j = 0; j < levels.length && Number.isNaN(t); j++) {
+      const p = nearestOn(levels[j], n.t)
+      if ((prev && p <= prev.t + 1e-9) || p >= len - 1e-9) continue
+      /* the next note is closer to this point: let it have it, and take one on a finer level */
+      const yields =
+        j < levels.length - 1 &&
+        next !== undefined &&
+        Math.abs(nearestOn(levels[j], next.t) - p) < 1e-9 &&
+        Math.abs(next.t - p) < Math.abs(n.t - p)
+      if (!yields) t = p
+    }
+    if (Number.isNaN(t)) {
+      /* its point is the loop's end, so the last one before it; or taken, so the next one free */
+      const p = nearestOn(fine, n.t)
+      t = p >= len - 1e-9 ? lastBefore(fine, len) : prev ? nextOn(fine, prev.t) : p
+      /* no point is left for it before the loop comes round: one of a crowd at the very end */
+      if ((prev && t <= prev.t + 1e-9) || t >= len - 1e-9) return
+    }
+    const end = Math.max(t + shortest, nearestOn(fine, n.t + n.dur))
+    out.push({ t, dur: end - t, midi: n.midi })
+  })
   for (let i = 0; i + 1 < out.length; i++)
     out[i].dur = Math.min(out[i].dur, out[i + 1].t - out[i].t)
   return out
@@ -67,12 +267,22 @@ export function strength(t: number, beat: number, perBar = 4): number {
 }
 
 /**
- * More syllables than notes: split the longest note on the beat grid, one at a time, until every
- * syllable has a note or no note is a beat long. "glit-ter" on one long note becomes two halves.
+ * More syllables than notes: split the longest note, one at a time, until every syllable has a
+ * note or no note is a beat long. "glit-ter" on one long note becomes two halves.
+ *
+ * The cut is the strongest point of the line's grid inside the note, nearer its middle on a close
+ * call, so the second syllable starts on a beat where there is one. It used to be half the note's
+ * length in half-beats, which only lands on the beat when the note starts on one: a long note on a
+ * swung off-beat was cut a half-beat later, between the grid's points.
  */
-export function makeRoom(notes: readonly Note[], want: number, beat: number): Note[] {
+export function makeRoom(
+  notes: readonly Note[],
+  want: number,
+  beat: number,
+  grid: Lattice = evenly(beat, 4),
+  perBar = 4,
+): Note[] {
   const out = notes.map((n) => ({ ...n }))
-  const half = beat / 2
   while (out.length < want) {
     let at = -1
     out.forEach((n, i) => {
@@ -80,8 +290,17 @@ export function makeRoom(notes: readonly Note[], want: number, beat: number): No
     })
     if (at < 0) break
     const n = out[at]
-    const cut = Math.max(half, Math.round(n.dur / 2 / half) * half)
-    out.splice(at, 1, { ...n, dur: cut }, { t: n.t + cut, dur: n.dur - cut, midi: n.midi })
+    const end = n.t + n.dur
+    let cut = n.t + n.dur / 2
+    let score = -Infinity
+    for (let p = nextOn(grid, n.t); p < end - 1e-9; p = nextOn(grid, p)) {
+      const s = strength(p, beat, perBar) - Math.abs(p - (n.t + n.dur / 2)) / n.dur
+      if (s > score + 1e-9) {
+        score = s
+        cut = p
+      }
+    }
+    out.splice(at, 1, { ...n, dur: cut - n.t }, { t: cut, dur: end - cut, midi: n.midi })
   }
   return out
 }
@@ -89,8 +308,10 @@ export function makeRoom(notes: readonly Note[], want: number, beat: number): No
 export type Grid = {
   /** seconds per beat */
   beat: number
-  /** the snap, in seconds; a sixteenth if left out */
-  step?: number
+  /** the room's Snap — 4, 8 or 16 for 1/4, 1/8, 1/16; 0 or left out is Off, sung on sixteenths */
+  snap?: number
+  /** the loop's length in seconds: the next pass's downbeat, which no note of this one may take */
+  len?: number
   perBar?: number
 }
 
@@ -99,9 +320,9 @@ export type Grid = {
  * panel's preview and the singer read it the same way.
  *
  * - One voice: a chord sings its top note (melodyOf).
- * - On the grid: starts and ends snapped to sixteenths (snapToGrid).
- * - Too many syllables: long notes split on the beat grid (makeRoom), and whatever still does not
- *   fit is counted, never dropped silently.
+ * - On the grid: the room's Snap, in the line's own feel (feelOf), starts and ends (snapToGrid).
+ * - Too many syllables: long notes split on the strongest beat inside them (makeRoom), and
+ *   whatever still does not fit is counted, never dropped silently.
  * - Too many notes: the syllables are SPREAD (place), and the notes between them are holds.
  */
 export function fitSyllables(
@@ -109,10 +330,14 @@ export function fitSyllables(
   syls: readonly Syllable[],
   grid: Grid,
 ): { sung: SungNote[]; spare: number } {
-  const step = grid.step ?? grid.beat / 4
-  const line = makeRoom(snapToGrid(melodyOf(notes), step), syls.length, grid.beat)
+  const melody = melodyOf(notes)
+  const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
+  const perBar = grid.perBar ?? 4
+  const fine = levels[levels.length - 1]
+  const snapped = snapToGrid(melody, levels, lean, grid.len)
+  const line = makeRoom(snapped, syls.length, grid.beat, fine, perBar)
   if (syls.length >= line.length || !syls.length) return assignSyllables(line, syls)
-  const at = place(line, syls, grid.beat, grid.perBar ?? 4)
+  const at = place(line, syls, grid.beat, perBar)
   const sung: SungNote[] = []
   let k = -1
   let last = 'oo'

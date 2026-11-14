@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { splitLyrics } from './lyrics'
-import { fitSyllables, makeRoom, melodyOf, snapToGrid, strength } from './pocket'
+import { evenly, feelOf, fitSyllables, makeRoom, melodyOf, snapToGrid, strength } from './pocket'
 
 /**
  * Lyrics in the pocket. Every expectation is about the song's shape — which beat a word lands on,
@@ -9,7 +9,7 @@ import { fitSyllables, makeRoom, melodyOf, snapToGrid, strength } from './pocket
  */
 
 const BEAT = 0.5 // 120 bpm
-const SIXTEENTH = BEAT / 4
+const SIXTEENTHS = evenly(BEAT, 4)
 const n = (t: number, dur = 0.2, midi = 60) => ({ t, dur, midi })
 /** the beat number a time falls on, or null if it falls between beats */
 const onBeat = (t: number) =>
@@ -40,16 +40,16 @@ describe('one voice, on the grid', () => {
 
   it('a note played a little early or late lands on the sixteenth it was meant for', () => {
     const played = [n(0.02), n(0.47), n(1.03), n(1.26)]
-    expect(snapToGrid(played, SIXTEENTH).map((x) => x.t)).toEqual([0, 0.5, 1, 1.25])
+    expect(snapToGrid(played, [SIXTEENTHS]).map((x) => x.t)).toEqual([0, 0.5, 1, 1.25])
   })
 
   it('two notes that round to the same sixteenth stay two notes', () => {
-    const t = snapToGrid([n(0.49, 0.05), n(0.53, 0.2)], SIXTEENTH).map((x) => x.t)
+    const t = snapToGrid([n(0.49, 0.05), n(0.53, 0.2)], [SIXTEENTHS]).map((x) => x.t)
     expect(t).toEqual([0.5, 0.625])
   })
 
   it('a note never runs over the start of the next one', () => {
-    const [a, b] = snapToGrid([n(0, 0.9), n(0.5, 0.4)], SIXTEENTH)
+    const [a, b] = snapToGrid([n(0, 0.9), n(0.5, 0.4)], [SIXTEENTHS])
     expect(a.t + a.dur).toBeLessThanOrEqual(b.t)
   })
 
@@ -59,6 +59,148 @@ describe('one voice, on the grid', () => {
     expect(new Set(s).size).toBe(5)
     /* the second bar's downbeat is as strong as the first's */
     expect(strength(4 * BEAT, BEAT)).toBe(strength(0, BEAT))
+  })
+})
+
+describe("the room's Snap, in the line's own feel", () => {
+  /** where each note of a line lands, in beats, on the room's Snap, in a loop of whole bars */
+  const lands = (beats: number[], snap?: number, late = 0) => {
+    const line = beats.map((b) => n(b * BEAT + late, 0.1))
+    const f = feelOf(line, BEAT, snap)
+    const bars = Math.ceil((Math.max(...beats) + 0.01) / 4)
+    return snapToGrid(line, f.levels, f.lean, bars * 4 * BEAT).map((x) => x.t / BEAT)
+  }
+  /** a fixed wobble of up to ±10ms, the same every run: somebody playing, not a sequencer */
+  const loose = (beats: number[]) => beats.map((b, i) => b + ((((i * 7) % 5) - 2) * 0.005) / BEAT)
+  /** a swung line: every beat, and the off-beat after it `by` of an eighth late */
+  const swingEighths = (by: number) =>
+    Array.from({ length: 8 }, (_, b) => [b, b + 0.5 + by / 2]).flat()
+  const near = (got: number[], want: number[], within: number) =>
+    got.every((g, i) => Math.abs(g - want[i]) <= within)
+
+  it('Snap 1/8 puts a sixteenth on the eighth; 1/16 and Off keep it on its sixteenth', () => {
+    const line = [0, 0.27, 1, 2, 3]
+    expect(lands(line, 8)).toEqual([0, 0.5, 1, 2, 3])
+    expect(lands(line, 16)).toEqual([0, 0.25, 1, 2, 3])
+    expect(lands(line, 0)).toEqual([0, 0.25, 1, 2, 3])
+    /* and it reaches the singer */
+    const sung = (snap?: number) =>
+      fitSyllables(
+        line.map((b) => n(b * BEAT, 0.1)),
+        splitLyrics('one two three four five'),
+        { beat: BEAT, snap },
+      ).sung.map((s) => s.t / BEAT)
+    expect(sung(8)[1]).toBe(0.5)
+    expect(sung()[1]).toBe(0.25)
+  })
+
+  it('on Snap 1/4 a line of eighths keeps its eighths instead of marching later', () => {
+    const eighths = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]
+    /* it used to give 0, 1, 2, … 7: every note a beat later than the last, off the end of the bar */
+    expect(lands(eighths, 4)).toEqual(eighths)
+    /* while an off-beat with its beat free does move onto it, and a loose beat lands on the beat */
+    expect(lands([0, 1.5, 3], 4)).toEqual([0, 2, 3])
+    expect(lands(loose([0, 1, 2, 3]), 4)).toEqual([0, 1, 2, 3])
+  })
+
+  it("nothing lands on the loop's end, which is the next pass's downbeat", () => {
+    /* the last eighth rounded onto beat 4 on Snap 1/4, and a late last note did on any Snap */
+    expect(lands([0, 1, 2, 3, 3.5], 4)).toEqual([0, 1, 2, 3, 3.5])
+    expect(lands([0, 1, 2, 3.95], 0)).toEqual([0, 1, 2, 3.75])
+    /* two notes crowded into the very end: the one with no point left is not sung */
+    expect(lands([0, 1, 2, 3.7, 3.9], 0)).toEqual([0, 1, 2, 3.75])
+  })
+
+  it("a swung line keeps its swing: the arpeggio's full swing, a lighter one and a heavier", () => {
+    for (const by of [1 / 3, 0.2, 0.4])
+      for (const snap of [0, 8, 4]) {
+        const meant = swingEighths(by)
+        /* played by a person, and placed exactly, as the arpeggio records it */
+        for (const played of [loose(meant), meant]) {
+          const got = lands(played, snap)
+          expect(near(got, meant, 0.025)).toBe(true)
+          /* not straightened: the off-beats are nowhere near the straight eighth */
+          for (let i = 1; i < got.length; i += 2) expect(got[i] % 1).toBeGreaterThan(0.55)
+        }
+      }
+  })
+
+  it('triplets stay triplets, even on Snap 1/4 when their beats are taken', () => {
+    const meant = Array.from({ length: 8 }, (_, b) => [b, b + 1 / 3, b + 2 / 3]).flat()
+    for (const snap of [0, 8, 4]) expect(near(lands(loose(meant), snap), meant, 1e-9)).toBe(true)
+  })
+
+  it('a loose straight line stays straight, and a steady lean is taken out', () => {
+    const eighths = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]
+    const line = loose(eighths).map((b) => n(b * BEAT + 0.015, 0.1))
+    expect(feelOf(line, BEAT).kind).toBe('straight')
+    /* fifteen milliseconds behind throughout, and every note still lands exactly on its eighth */
+    expect(lands(loose(eighths), 0, 0.015)).toEqual(eighths)
+    /* a swing played late is still read as a swing: the lean used to hide it */
+    expect(near(lands(swingEighths(0.4), 0, 0.015), swingEighths(0.4), 0.02)).toBe(true)
+  })
+
+  it('a long note on a swung off-beat is shared on the beat, not a half-beat after its start', () => {
+    const line = [
+      n(0, 0.6 * BEAT),
+      n((2 / 3) * BEAT, (4 / 3) * BEAT),
+      n(2 * BEAT, 0.6 * BEAT),
+      n((8 / 3) * BEAT, 0.3 * BEAT),
+    ]
+    const { sung, spare } = fitSyllables(line, splitLyrics('glit-ter in the dark'), { beat: BEAT })
+    expect(spare).toBe(0)
+    /* "in" takes the second half of the long note, from beat 1 — it was cut at 1⅙ */
+    expect(sung.map((s) => s.text)).toEqual(['glit', 'ter', 'in', 'the', 'dark'])
+    expect(onBeat(sung[2].t)).toBe(1)
+  })
+
+  it('swept over tempo, looseness and lean: straight lines stay put, and feels are kept', () => {
+    let seed = 7
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648
+    const straight = [
+      [0, 0.75, 1.5, 2, 2.5, 2.75, 3.5, 4, 4.75, 5.5, 6, 6.5, 6.75, 7.5],
+      [0, 0.5, 1, 1.25, 1.5, 2, 3, 3.5, 3.75, 4, 5, 5.5, 6, 6.25, 7],
+      [0, 1, 2, 3, 4, 5, 6, 7],
+    ]
+    const feels = [
+      Array.from({ length: 8 }, (_, b) => [b, b + 1 / 3, b + 2 / 3]).flat(),
+      ...[0.2, 0.25, 1 / 3, 0.4].map(swingEighths),
+      ...[0.25, 1 / 3, 0.4].map((by) =>
+        Array.from({ length: 8 }, (_, b) => [
+          b,
+          b + 0.25 + by / 4,
+          b + 0.5,
+          b + 0.75 + by / 4,
+        ]).flat(),
+      ),
+    ]
+    const missed = (meant: number[], jitter: number, late: number, bpm: number, fixed?: true) => {
+      const beat = 60 / bpm
+      const line = meant.map((b) => n(b * beat + late + (rnd() * 2 - 1) * jitter, 0.1))
+      const f = feelOf(line, beat)
+      const got = fixed ? snapToGrid(line, [evenly(beat, 4)]) : snapToGrid(line, f.levels, f.lean)
+      return got.filter((x, i) => Math.abs(x.t / beat - meant[i]) > 0.03).length
+    }
+    let straightMissed = 0
+    let feelMissed = 0
+    let feelBefore = 0
+    let feelNotes = 0
+    for (const bpm of [70, 100, 130, 160])
+      for (const late of [0, 0.015]) {
+        for (const jitter of [0, 0.01, 0.02])
+          for (const m of straight) straightMissed += missed(m, jitter, late, bpm)
+        for (const jitter of [0, 0.01])
+          for (const m of feels) {
+            feelMissed += missed(m, jitter, late, bpm)
+            feelBefore += missed(m, jitter, late, bpm, true)
+            feelNotes += m.length
+          }
+      }
+    /* up to ±20ms loose and 15ms late, no straight note leaves its sixteenth */
+    expect(straightMissed).toBe(0)
+    /* the old sixteenths moved a third of these notes or more; that is what makes this a test */
+    expect(feelBefore / feelNotes).toBeGreaterThan(0.3)
+    expect(feelMissed / feelNotes).toBeLessThan(0.02)
   })
 })
 

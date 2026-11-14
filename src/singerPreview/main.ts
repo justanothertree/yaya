@@ -166,7 +166,10 @@ function syllables() {
   const notes = MELODY.map(([t, d, m]) => ({ t: t * spb, dur: d * spb * 0.95, midi: m }))
   return {
     spb,
-    ...fitSyllables(notes, splitLyrics($<HTMLTextAreaElement>('lyric').value), { beat: spb }),
+    ...fitSyllables(notes, splitLyrics($<HTMLTextAreaElement>('lyric').value), {
+      beat: spb,
+      len: BARS * 4 * spb,
+    }),
   }
 }
 
