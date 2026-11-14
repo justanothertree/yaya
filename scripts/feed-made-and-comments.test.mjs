@@ -140,8 +140,14 @@ describe('the migrations applied since the dump', () => {
    * 20261105023835 is the first file the dump does not carry (card-hides-browsing.test.mjs proves it).
    */
   const FIRST_AFTER = '20261105023835'
+  /**
+   * ⚠️ AND IT STOPS AT THIS DRAFT, which production applied as 20261114161206. The question is
+   * what changed feed_recent between the dump and the moment the draft met it; the draft's own
+   * record touches it by definition, and anything after it is a later change's business.
+   */
+  const THIS = '20261114161206'
   const files = readdirSync('supabase/migrations').filter(
-    (f) => /^\d{14}_.*\.sql$/.test(f) && f.slice(0, 14) >= FIRST_AFTER,
+    (f) => /^\d{14}_.*\.sql$/.test(f) && f.slice(0, 14) >= FIRST_AFTER && f.slice(0, 14) < THIS,
   )
   /* the body, not the file: a note above an applied migration is prose, not a change */
   const ran = (f) => bodyOf(readFileSync(`supabase/migrations/${f}`, 'utf8'))
@@ -153,6 +159,13 @@ describe('the migrations applied since the dump', () => {
       .map((l) => l.trim())
       .filter(Boolean)
     for (const l of lines) expect(ran(touching[0]).includes(l), l).toBe(false)
+  })
+
+  /* the record production keeps is this draft's body, so the two cannot drift apart unnoticed */
+  it('is recorded as the draft that ran', () => {
+    const [record] = readdirSync('supabase/migrations').filter((f) => f.startsWith(`${THIS}_`))
+    expect(record).toBe(`${THIS}_feed_made_and_comments.sql`)
+    expect(ran(record)).toBe(bodyOf(DRAFT))
   })
 })
 

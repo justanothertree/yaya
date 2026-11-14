@@ -1,3 +1,7 @@
+-- ✅ APPLIED to production 14 Nov 2026 as supabase/migrations/20261114161206_feed_made_and_comments.sql.
+-- That file is the record of what ran. The lines below are this draft's history, true when they
+-- were written.
+--
 -- ⛔ DRAFT — NOT APPLIED. Nothing in this file has run against production.
 --
 -- Step 3 of docs/2026-11-13-feed-meaningful-moments.md, as Evan answered it on 13 Nov 2026:
