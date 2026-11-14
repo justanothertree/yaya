@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { LabStage } from './LabStage'
 import {
+  readSaved,
+  type Best,
   ALL,
   FILE_LIMIT,
   N,
@@ -29,29 +31,13 @@ type Props = {
 type Mode = 'puzzle' | 'pass'
 /** pass and play: one builds, the device is passed with the box behind a curtain, the other rebuilds */
 type Phase = 'build' | 'curtain' | 'guess' | 'reveal'
-type Best = Record<string, number>
 
-const load = (): { puzzle: number; best: Best } => {
+/* what the toy keeps, read by the toy's module (so the share card reads it the same way) */
+const load = () => {
   try {
-    const v = JSON.parse(localStorage.getItem(SHADOWBOX_KEY) ?? 'null') as {
-      puzzle?: unknown
-      best?: Record<string, unknown>
-    } | null
-    const puzzle =
-      typeof v?.puzzle === 'number' &&
-      Number.isInteger(v.puzzle) &&
-      v.puzzle >= 0 &&
-      v.puzzle < PUZZLES.length
-        ? v.puzzle
-        : 0
-    const best: Best = {}
-    for (const p of PUZZLES) {
-      const n = v?.best?.[p.name]
-      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
-    }
-    return { puzzle, best }
+    return readSaved(localStorage.getItem(SHADOWBOX_KEY))
   } catch {
-    return { puzzle: 0, best: {} }
+    return readSaved(null)
   }
 }
 const download = (blob: Blob, name: string) => {

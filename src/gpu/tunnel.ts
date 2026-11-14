@@ -7,6 +7,8 @@
  * World units: the tunnel is RADIUS across from its centreline, z runs forward, y is up.
  */
 
+import { whole } from './kept'
+
 /** Hand-packed to match `struct Tunnel` — tunnel.test.ts lays the struct out from the shader. */
 export const TUNNEL = {
   eye: 0,
@@ -228,3 +230,36 @@ export function tiltStick(
   const c = (v: number) => Math.max(-1, Math.min(1, v / FULL_TILT))
   return [c(x), c(y)]
 }
+
+/** how fast you fly, slowest first: the name on the button and the speed down the tunnel */
+export const SPEEDS = { cruise: ['Cruise', 5], fast: ['Fast', 9], warp: ['Warp', 15] } as const
+export type Speed = keyof typeof SPEEDS
+export const SPEED_IDS = Object.keys(SPEEDS) as Speed[]
+
+/**
+ * What the tunnel keeps between visits: the longest streak of orbs caught without a miss, at each
+ * speed. A flight's streak counts at the SLOWEST speed flown since it took off, so a run built at
+ * Cruise and finished at Warp is a Cruise run.
+ */
+export const TUNNEL_KEY = 'lab_tunnel_v1'
+export type Saved = { best: Record<Speed, number> }
+export const EMPTY: Saved = { best: { cruise: 0, fast: 0, warp: 0 } }
+
+export function readSaved(text: string | null): Saved {
+  let v: unknown
+  try {
+    v = JSON.parse(text ?? 'null')
+  } catch {
+    return EMPTY
+  }
+  if (typeof v !== 'object' || !v || Array.isArray(v)) return EMPTY
+  const b = (v as Record<string, unknown>).best
+  const o = (typeof b === 'object' && b ? b : {}) as Record<string, unknown>
+  return { best: { cruise: whole(o.cruise), fast: whole(o.fast), warp: whole(o.warp) } }
+}
+
+/** the kept bests after a flight's best streak reached `streak` at `slowest`: never lower */
+export const keptBest = (s: Saved, slowest: Speed, streak: number): Saved =>
+  streak > s.best[slowest] ? { best: { ...s.best, [slowest]: streak } } : s
+/** the slower of two speeds */
+export const slower = (a: Speed, b: Speed) => (SPEED_IDS.indexOf(a) <= SPEED_IDS.indexOf(b) ? a : b)
