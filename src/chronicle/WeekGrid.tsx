@@ -127,9 +127,10 @@ export function WeekGrid({
                  * this when it landed on nothing.
                  *
                  * ⚠️ AND IT IS NOT KEYBOARD-REACHABLE ON PURPOSE. A div you can click is a trap
-                 * if it is the ONLY way to do the thing — this is a shortcut to ⏱ Fill a gap,
-                 * which is a real button a few inches above with a real form behind it. The day
-                 * header is the keyboard route into a day and it always was.
+                 * if it is the ONLY way to do the thing — this is a shortcut to 🕘 Log a past
+                 * session, a real button in the Start sheet and the ⋯ beside it, with the same
+                 * form behind it. The day header is the keyboard route into a day and it always
+                 * was.
                  */
                 onClick={
                   onOpen || onEmpty

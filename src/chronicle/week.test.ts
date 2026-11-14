@@ -179,6 +179,31 @@ describe('the hour lines', () => {
 })
 
 /**
+ * Each hour's label against the blocks that start at that hour.
+ *
+ * ⚠️ TWO HALVES, BECAUSE THE BUG WAS IN THE ONE A UNIT TEST CANNOT SEE. A label sits at `hours()`'s
+ * percentage of the gutter, and a block at `lane`'s percentage of its own column. Those are two
+ * sums of one clock, and this holds them to it. But on 549bb15 both sums were right and every
+ * label was still in the wrong place: the gutter was `height: 240px` beside a 620px lane, so the
+ * same percentage meant two different heights, and 12p sat 185px above noon. Vitest has no layout
+ * (and hands a CSS import back empty), so `scripts/week-hours.test.mjs` asks the stylesheet the
+ * other half: does the gutter still have a size of its own, or is it the lanes' row? The pane
+ * measured the result at 1440, 820 and 375: every label within half a pixel of its line, and
+ * every on-the-hour block level with its label.
+ */
+describe('the hour labels against the lanes', () => {
+  /* the whole day is over, so nothing is clipped by the clock */
+  const after = localMidnight(DAY).getTime() + 30 * 3_600_000
+
+  it('puts each hour label exactly where a session starting at that hour begins', () => {
+    for (let h = 0; h < 24; h++) {
+      const [col] = columns([DAY], [span(DAY, h, h + 0.5)], after)
+      expect(col.blocks[0].left, `${h}:00`).toBeCloseTo(hours()[h].top, 9)
+    }
+  })
+})
+
+/**
  * The week's figure, now printed in two places — under the grid and on the fold that hides it.
  *
  * ⚠️ WRITTEN FROM THE DAYS, NOT FROM THE SUM. Each column is built here by hand with a covered
