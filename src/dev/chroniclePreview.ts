@@ -2634,9 +2634,19 @@ export const pvMemberChronicle = (
   const days = Math.min(Math.max(Math.round(askedDays) || 7, 1), 90)
   const to = Date.now()
   const from = to - days * 86_400_000
-  const catOf = new Map(db().acts.map((a) => [a.id, a]))
+  /* ⚠️ BROWSING IS LEFT OUT, as `(v_target = v_viewer or not a.auto)` leaves it out of each of the
+     server's three queries (docs/2026-11-14-card-hides-browsing.DRAFT.sql). The viewer here is a
+     friend — see `reachesAFriend` — so the owner's half of that rule never applies. A sitting
+     whose activity is not in this map is skipped here and in "now" below, before any figure is
+     made from it, as the server's join drops it. */
+  const catOf = new Map(
+    db()
+      .acts.filter((a) => !a.auto)
+      .map((a) => [a.id, a]),
+  )
   const mins = new Map<string, number>()
   for (const e of db().ents) {
+    if (!catOf.has(e.activity)) continue
     const s0 = Date.parse(e.start)
     const e0 = e.end == null ? to : Date.parse(e.end)
     /* the same overlap the SQL takes: clamped to the window, never negative */
@@ -2672,7 +2682,7 @@ export const pvMemberChronicle = (
     .slice(0, 5)
   /* ⚠️ the running sitting, and only when asked for — the double must refuse it the same way the
      SQL does, or the opt-in is untested where it is easiest to look at */
-  const open = live ? db().ents.find((e) => e.end == null) : undefined
+  const open = live ? db().ents.find((e) => e.end == null && catOf.has(e.activity)) : undefined
   const openAct = open ? catOf.get(open.activity) : undefined
   return {
     days,

@@ -2724,3 +2724,34 @@ describe('a minute is counted on the raw time, then rounded', () => {
     expect([card.time, card.top]).toEqual([{}, []])
   })
 })
+
+/**
+ * ⚠️ BROWSING STAYS ON ITS OWNER'S SIDE OF THE CARD — docs/2026-11-14-card-hides-browsing.DRAFT.sql,
+ * not applied yet. The workbench draws a friend's view, so the double leaves the site's own
+ * activities out of all three figures, as the server will for anybody but the owner.
+ */
+describe("a friend's view of the card leaves browsing out", () => {
+  const ago = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString()
+
+  it('from the totals and the top five, while the time somebody chose to record stays', () => {
+    pvAddEntry(gym, ago(120), ago(60), null)
+    pvVisit('Paint', 600)
+    expect(pvActivities().find((a) => a.name === 'Paint')?.auto).toBe(true)
+    const card = pvMemberChronicle(7, false, false)
+    /* Paint is Free Time like Gym, so a total that still counted it would read 70 */
+    expect(card.time).toEqual({ free: 60 })
+    expect(card.top.map((t) => t.name)).toEqual(['Gym'])
+  })
+
+  it('and from "now", which falls back to nothing rather than naming the room', () => {
+    const paint = (() => {
+      pvVisit('Paint', 120)
+      return pvActivities().find((a) => a.name === 'Paint')!.id
+    })()
+    expect(pvStart(gym)).toBe(null)
+    expect(pvMemberChronicle(7, true, false).now?.name).toBe('Gym')
+    /* starting the room's activity by hand closes Gym, as chronicle_start does */
+    expect(pvStart(paint)).toBe(null)
+    expect(pvMemberChronicle(7, true, false).now).toBe(null)
+  })
+})
