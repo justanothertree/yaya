@@ -1,4 +1,5 @@
-import { assignSyllables, harmonyAbove, splitLyrics } from '../audio/lyrics'
+import { harmonyAbove, splitLyrics } from '../audio/lyrics'
+import { fitSyllables } from '../audio/pocket'
 import { PRESETS, liveSingers, singInto, type PresetId } from '../audio/singer'
 
 /**
@@ -163,7 +164,10 @@ function backing(c: AudioContext, out: AudioNode, t0: number, spb: number): () =
 function syllables() {
   const spb = 60 / Number($<HTMLSelectElement>('bpm').value)
   const notes = MELODY.map(([t, d, m]) => ({ t: t * spb, dur: d * spb * 0.95, midi: m }))
-  return { spb, ...assignSyllables(notes, splitLyrics($<HTMLTextAreaElement>('lyric').value)) }
+  return {
+    spb,
+    ...fitSyllables(notes, splitLyrics($<HTMLTextAreaElement>('lyric').value), { beat: spb }),
+  }
 }
 
 function showWords() {
@@ -194,6 +198,7 @@ async function sing() {
     harmony: harmony ? (n) => harmonyAbove(n, MINOR, 9) : null,
     beat: spb,
     seed: Math.floor(Math.random() * 1e9),
+    lead: 0.12,
   })
   const stopBeat = beat ? backing(c, m, t0, spb) : () => undefined
   const span = BARS * 4 * spb

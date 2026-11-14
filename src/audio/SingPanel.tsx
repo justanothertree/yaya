@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { sharedCtx } from './context'
-import { assignSyllables, harmonyAbove, splitLyrics } from './lyrics'
+import { harmonyAbove, splitLyrics } from './lyrics'
 import {
   addLayers,
   loopLength,
@@ -11,14 +11,15 @@ import {
   type LoopEvent,
 } from './looper'
 import { toNotes } from './noteEdit'
+import { fitSyllables } from './pocket'
 import { PRESETS, singInto, type PresetId } from './singer'
 import { fxSnapshot, partInput, type Fx } from './synth'
 
 /**
  * 🎤 Sing — the prototype from docs/2026-11-10-sung-lyrics-plan.md, phase 0.
  *
- * ⚠️ TO BE HEARD, NOT KEPT. It sings typed lyrics over one layer's notes, one syllable per note,
- * with `_` holding the last one across the next — and nothing here is saved: the lyric lives in
+ * ⚠️ TO BE HEARD, NOT KEPT. It sings typed lyrics over one layer's notes, fitted to the beat by
+ * pocket.ts, with `_` holding the last one across the next — and nothing here is saved: the lyric lives in
  * this panel and goes when the page does. Whether this is the sound Evan means decides whether
  * phase 1 (lyrics stored on the notes themselves) gets built at all.
  *
@@ -72,7 +73,7 @@ export function SingPanel({
   const layer =
     candidates.find((l) => l.id === layerId) ?? candidates[candidates.length - 1] ?? null
   const notes = layer ? toNotes(layer.events, layer.len) : []
-  const { sung, spare } = assignSyllables(notes, splitLyrics(lyric))
+  const { sung, spare } = fitSyllables(notes, splitLyrics(lyric), { beat: 60 / loopState().bpm })
 
   const sing = () => {
     stopNow()
@@ -91,6 +92,8 @@ export function SingPanel({
       harmony: harmony ? (m) => harmonyAbove(m, degrees, root) : null,
       beat: 60 / loopState().bpm,
       seed: Math.floor(Math.random() * 1e9),
+      /* a line that waits for the top of the loop has time for its first consonant before it */
+      lead: Math.max(0, start - (c.currentTime + 0.03)),
     })
     setSinging(true)
     timer.current = window.setTimeout(
@@ -141,9 +144,9 @@ export function SingPanel({
       {open && (
         <>
           <p className="muted inst-note">
-            A synthesised voice sings your words on a layer&rsquo;s notes, one syllable per note.
-            Split words with <kbd>-</kbd>, hold a syllable across a note with <kbd>_</kbd>. Nothing
-            is saved yet.
+            A synthesised voice sings your words on a layer&rsquo;s notes, on the beat. Split words
+            with <kbd>-</kbd>, hold a syllable across a note with <kbd>_</kbd>. Nothing is saved
+            yet.
           </p>
           <div className="inst-row">
             <label className="inst-pick">
