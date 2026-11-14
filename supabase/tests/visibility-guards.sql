@@ -1,3 +1,37 @@
+-- ⛔ SCRATCH BRANCH probe/feed-step3-on-main ONLY — never to be merged.
+\echo === replaying the eleven migrations applied since the dump, steps 1 and 2 included, so this database matches production
+\echo --- 20261105023835_one_unique_index_on_the_snake_registry.sql
+\ir ../migrations/20261105023835_one_unique_index_on_the_snake_registry.sql
+\echo --- 20261109030613_lab_catalog_and_feedback.sql
+\ir ../migrations/20261109030613_lab_catalog_and_feedback.sql
+\echo --- 20261110025141_chronicle_sets.sql
+\ir ../migrations/20261110025141_chronicle_sets.sql
+\echo --- 20261110025303_chronicle_sets_links.sql
+\ir ../migrations/20261110025303_chronicle_sets_links.sql
+\echo --- 20261110025332_circuit_grid_sessions.sql
+\ir ../migrations/20261110025332_circuit_grid_sessions.sql
+\echo --- 20261110025407_chronicle_weekdays.sql
+\ir ../migrations/20261110025407_chronicle_weekdays.sql
+\echo --- 20261110025449_chronicle_repeat_marks.sql
+\ir ../migrations/20261110025449_chronicle_repeat_marks.sql
+\echo --- 20261110025520_chronicle_day_notes.sql
+\ir ../migrations/20261110025520_chronicle_day_notes.sql
+\echo --- 20261110030419_chronicle_repeat_marks_profile.sql
+\ir ../migrations/20261110030419_chronicle_repeat_marks_profile.sql
+\echo --- 20261114121907_feed_hides_browsing.sql
+\ir ../migrations/20261114121907_feed_hides_browsing.sql
+\echo --- 20261114121930_card_hides_browsing.sql
+\ir ../migrations/20261114121930_card_hides_browsing.sql
+\echo === the step 1 test, on its recorded migration
+\ir feed-hides-browsing.sql
+\echo === the step 2 test, on its recorded migration
+\ir card-hides-browsing.sql
+\echo === applying step 3 on top, feed-made-and-comments
+\ir ../../docs/2026-11-14-feed-made-and-comments.DRAFT.sql
+\echo === the step 3 test, with steps 1 and 2 live
+\ir feed-made-and-comments.sql
+\echo === the standing visibility guards, with step 3 applied
+
 -- Standing guard check for the visibility ladder. Run it after ANY change to grants, policies,
 -- SECURITY DEFINER functions, or the ceiling.
 --
