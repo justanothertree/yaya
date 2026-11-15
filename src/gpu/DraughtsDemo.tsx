@@ -25,7 +25,7 @@ import { useKept } from './kept'
 import { draughtsRules } from './draughtsRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
@@ -59,7 +59,7 @@ export function DraughtsDemo() {
 
   /* ── the call's room: the game travels as the paths its pieces took */
   const lab = useLabRoom('draughts', draughtsRules)
-  const words = useCallWords(lab, draughtsRules)
+  const words = tableSeats(lab, draughtsRules)
   const room = mode === 'call' ? lab.room : null
   /** the side I move for: the bottom in seat 0 and together, the top in seat 1 */
   const mySide: Who = room && room.mode === 'versus' && words.mySeat === 1 ? 2 : 1
@@ -283,7 +283,7 @@ export function DraughtsDemo() {
       </div>
       {mode === 'call' && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={draughtsRules}
           sides={sides}
           levelNames={LEVEL_NAMES}
