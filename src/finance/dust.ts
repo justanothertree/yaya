@@ -9,9 +9,13 @@
  *
  * ⚠️ WHY A WHOLE DOLLAR AND NOT A CENT. At 33 accounts, any buy under $33 is under $1 a head on
  * the day it settles — that is arithmetic, not a bug, and it is where most of these come from.
- * Measured on the live fund: 37 of 76 holdings per account are worth under $1, costing $33.86 and
- * now worth $15.69. A list that shows all 76 to a child is mostly noise, and a cent threshold
- * would fold almost none of it.
+ * A list that shows every holding to a child is mostly noise, and a cent threshold would fold
+ * almost none of it.
+ *
+ * Re-measured 14 Nov 2026: 37 of 82 holdings per account are worth under $1, $14.46 a head and
+ * $477.10 across the fund. It said “37 of 76 … now worth $15.69”, which was true when written —
+ * the denominator moved because imports added symbols, and the ratio the decision rests on did
+ * not. The shape is what matters here, not the figure: it is the DENOMINATOR that grows.
  *
  * ⚠️ AND THE UNITS THRESHOLD IS A DIFFERENT QUESTION. `DUST_UNITS` is about whether a POSITION is
  * closed — the residue left by a broker rounding quantities to four decimals. `DUST_USD` is about
