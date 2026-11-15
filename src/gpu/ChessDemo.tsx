@@ -27,7 +27,7 @@ import { useKept } from './kept'
 import { chessRules, uci } from './chessRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -75,7 +75,7 @@ export function ChessDemo() {
   /* ── the call's room (src/lab/social/useLabRoom.ts): the game travels as its moves */
   const [withCall, setWithCall] = useState(false)
   const lab = useLabRoom('chess', chessRules)
-  const words = useCallWords(lab, chessRules)
+  const words = tableSeats(lab, chessRules)
   const room = withCall ? lab.room : null
   // the side I move for: white in seat 0 or together, black in seat 1
   const callSide: Side = room && room.mode === 'versus' && words.mySeat === 1 ? 'b' : 'w'
@@ -319,7 +319,7 @@ export function ChessDemo() {
       )}
       {withCall && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={chessRules}
           sides={['White', 'Black']}
           levelNames={LEVEL_NAMES}

@@ -25,7 +25,7 @@ import { useKept } from './kept'
 import { dotsRules } from './dotsRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
@@ -202,7 +202,7 @@ export function DotsDemo() {
   /* ── the call's room: the host's size starts each game, which then travels as its lines */
   const roomRules = useMemo(() => dotsRules(saved.size), [saved.size])
   const lab = useLabRoom('dots', roomRules)
-  const words = useCallWords(lab, roomRules)
+  const words = tableSeats(lab, roomRules)
   const room = mode === 'call' ? lab.room : null
   // the board on screen is the room's whenever it changes, its newest line growing in
   useEffect(() => {
@@ -460,7 +460,7 @@ export function DotsDemo() {
       </div>
       {mode === 'call' && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={roomRules}
           sides={['Player 1', 'Player 2']}
           ink={[COLOURS[saved.mine], COLOURS[saved.theirs]]}
