@@ -17012,7 +17012,7 @@ a.cz-msg-author:focus-visible {
  *
  * ⚠️ AND THE KEYBOARD ROUTE IS ELSEWHERE, deliberately. A div you can click is a trap when it is
  * the only way in; this is a shortcut. The day header is a real button with the day and its
- * coverage in its label, and every session has a 44px ✎ in the log below. WCAG 2.5.8's
+ * coverage in its label, and every session's row in the log below is a button. WCAG 2.5.8's
  * equivalent-control exception is what this rests on, not an exemption.
  */
 .chron-week-lane.is-tappable {
@@ -18244,14 +18244,29 @@ a.cz-msg-author:focus-visible {
   display: grid;
   /* the hour gutter, then seven equal days — `minmax(0, 1fr)` so a long block cannot widen one */
   grid-template-columns: 2.1rem repeat(7, minmax(0, 1fr));
-  gap: 3px;
+  /* two rows, the day headings and then the lanes — no gap between them, as when each column
+     stacked its own */
+  grid-template-rows: auto auto;
+  gap: 0 3px;
 }
 
+/**
+ * ⚠️ THE GUTTER HAS NO HEIGHT OF ITS OWN, AND THAT IS THE FIX. It was `height: 240px` with
+ * `margin-top: 2.4rem` — a copy of the lane's height and a guess at the heading's — and on 23 Oct
+ * the lane grew to 420px on a phone and 620px past 700, and the copy did not. So the twenty-four
+ * labels were squeezed into the top 39% of the grid: measured at 1440 on 549bb15, 12p sat 185px
+ * above noon's line and 11p 359px above its own. The top was off as well, by 5px, because the
+ * heading is sized in px and the guess was in rem, and the root is fluid.
+ *
+ * Now it is the lanes' grid row, so it starts where they start and is as tall as they are,
+ * whatever height a rule gives them. The transparent border is the lane's 1px border, so the
+ * labels' percentages resolve against the same box as its hour lines.
+ */
 .chron-week-hours {
   position: relative;
-  /* the labels hang beside the lanes, so the gutter starts where the lanes do */
-  margin-top: 2.4rem;
-  height: 240px;
+  grid-column: 1;
+  grid-row: 2;
+  border-block: 1px solid transparent;
 }
 
 /**
@@ -18282,8 +18297,13 @@ a.cz-msg-author:focus-visible {
   opacity: 1;
 }
 
+/* each day spans both rows on the grid's own tracks, so every lane, and the gutter beside them,
+   starts on one line and shares one height */
 .chron-week-col {
   min-width: 0;
+  grid-row: 1 / span 2;
+  display: grid;
+  grid-template-rows: subgrid;
 }
 
 .chron-week-day {
@@ -18328,13 +18348,9 @@ a.cz-msg-author:focus-visible {
 
 .chron-week-lane {
   position: relative;
-  /**
-   * ⚠️ 240px FOR TWENTY-FOUR HOURS, which is ten pixels an hour. At 190 a half-hour sitting was a
-   * hairline — technically in the right place and not readable as anything. Ten pixels an hour is
-   * the point at which the commonest session in this room, half an hour to an hour, is a mark you
-   * can see without being so tall that the grid pushes the day's log off the screen.
-   */
-  height: 240px;
+  /* ⚠️ its height is the `min-height` rule beside the tap rules above, and only that: this said
+     `height: 240px`, which that rule had overruled since 23 Oct, and a second number for the same
+     height is how the hour gutter came to be left at 240 */
   border-radius: 6px;
   background: var(--panel);
   border: 1px solid var(--border);
