@@ -17,13 +17,21 @@ hold" total — the same arithmetic, read two ways, agreeing to the cent.
 | -------------------------- | -------------- | -------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Cash App — stocks          | $13,563.93     | $13,527.00     | **+36.93**  | Price source. Every Cash App stock is quoted at Friday's 16:12 ET close (today is Saturday — identical to Friday's capture, to the cent, on 13 of 14 symbols). Cash App shows its own last price, which includes Friday's extended-hours session. 0.27% — seven cents on BRCB alone covers it. |
 | Cash App — bitcoin         | $2,532.46      | $2,558.30      | **−25.84**  | Price timing. BTC cached at 64,301 (21:16 UTC); Evan's figure implies 64,958 — +1.0% over ~6 hours. Crypto trades round the clock and the sweep is once a day. Units agree: 0.039384.                                                                                                          |
-| Robinhood — stocks         | $6,281.88      | $7,259.00 ¹    | **−977.12** | **Seven positions imported after the day's last sweep have no price at all, so they are excluded.** $813.84 at cost, plus ~7 weeks of movement since late September. This is the real finding.                                                                                                 |
-| Robinhood — crypto         | $34.65         | $35.00         | −0.35       | Same-day crypto timing, and the app figure is rounded.                                                                                                                                                                                                                                         |
-| **Everything (portfolio)** | **$22,412.91** | **$23,379.30** | **−966.39** | Sum of the above; 98% of it is the Robinhood row.                                                                                                                                                                                                                                              |
+| Robinhood — stocks         | $6,281.87      | $7,259.00 ¹    | **−977.13** | **Seven positions imported after the day's last sweep have no price at all, so they are excluded.** $813.84 at cost, plus ~7 weeks of movement since late September. This is the real finding.                                                                                                 |
+| Robinhood — crypto         | $32.65         | $35.00         | −2.35       | Same-day crypto timing, and the app figure is rounded.                                                                                                                                                                                                                                         |
+| **Everything (portfolio)** | **$22,410.91** | **$23,379.30** | **−968.39** | Sum of the above; 98% of it is the Robinhood row.                                                                                                                                                                                                                                              |
 | Family fund (worth)        | $12,534.59     | —              | —           | Understated by the same cause: six of the seven unpriced positions are split across all 33 accounts.                                                                                                                                                                                           |
 
 ¹ Robinhood's "total value" may or may not include the $35 of crypto. Excluding it the gap is
-$977.12; including it, $942.12. Either reading is explained by the same seven positions.
+$977.13; including it, $944.48. Either reading is explained by the same seven positions.
+
+⚠️ **Two figures in this table were corrected on 15 Nov**, re-measured against an unchanged
+`price_cache` (its newest row is still 14 Nov 21:16 UTC, so nothing moved underneath them): Robinhood
+crypto is **$32.65**, not $34.65, and the portfolio total is therefore **$22,410.91**, not $22,412.91.
+The four coins are DOGE $16.1451, ZORA $14.0271, ETH $1.4988 and XRP $0.9777 — the original figure was
+an addition slip of exactly $2.00 on my part, carried straight into the total beneath it. Nothing else in
+the audit depended on it, and the Robinhood stock row — the finding — is unchanged. Recorded rather than
+quietly edited, because §2 is about my own numbers too.
 
 **The verdict: no number on the page is wrong. One number is incomplete, and says so.**
 
