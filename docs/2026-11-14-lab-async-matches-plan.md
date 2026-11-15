@@ -181,13 +181,17 @@ That isn't planned while turns cover them.
 - **Every toy keeps its own "Against the computer".** A match adds friends; it takes nothing away.
 - **Together by turns is two friends against the computer**, as Together is in a call today. The
   server plays the computer's move with the toy's own AI, in the same `lab-move` call as the
-  friend's move before it. It uses a seed kept in `secret`, so the move can be played again and
-  checked.
+  friend's move before it. Its reply is stored beside the move it answered, `{m, then}`, and is
+  in the game's own move list, so replaying the match checks it like any other move. Nothing about
+  the computer has to be reproducible for that.
 - **Computers fill empty seats** at the tables for three or four (Hearts, Spades, Crazy eights,
   Liar's dice, Hold'em, Light trails). A match never waits on a computer.
 - ⚠️ **A computer that thinks hard has to fit in one server call.** An edge function has a CPU
   limit per request. The search computers (Hex, Go, Ultimate noughts, Pool's planner, Spades and
-  Hearts on Hard) are measured in step 3's harness before Together by turns offers them. Any level
+  Hearts on Hard) are measured in step 3's harness before Together by turns offers them. The first
+  two are measured: over whole games on the throwaway stack, the slowest move with the hardest
+  computer replying took 193 ms round trip for Chess and 162 ms for Reversi 10×10, database
+  included. Any level
   that doesn't fit is left off by turns, and stays available against the computer and in calls.
 
 ## Starting a match
