@@ -1,26 +1,14 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type Dispatch,
-  type SetStateAction,
-} from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   MAX_LAYERS,
-  armRecord,
   clearLayerBars,
   layerHeard,
   layerLost,
   layerPlan,
   loopLength,
   moveLayerBar,
-  removeLayer,
   seekTo,
-  setLayerFx,
   setLayerGain,
-  setLayerInstrument,
-  splitDrumLayer,
   takeBars,
   toggleLayerSlot,
   toggleMute,
@@ -28,61 +16,63 @@ import {
   type loopState,
 } from '../audio/looper'
 import { historyNow, redo, subscribeHistory, undo } from '../audio/history'
-import { INSTRUMENTS, type InstrumentId } from '../audio/synth'
+import { hasLyrics, linesFor } from '../audio/lyricLines'
 import { useTouchOnly } from '../ui/pointerKind'
-import { fxWord } from './fxWord'
 import { partLines } from './partName'
-import { Sheet } from './Sheet'
+import type { PartTab } from './PartPanel'
+import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
 /** every strip of bars in the list, and the ruler over them — the things that scroll together */
 const BAR_STRIPS = '.inst-arrange, .inst-ruler'
-
-/** how many rows one kit take would become if it were split, one per piece */
-const piecesIn = (l: Layer) => new Set(l.events.map((e) => ((e.midi % 12) + 12) % 12)).size
 
 /**
  * The parts: one line each, with the bar ruler, undo and redo above them and ✎ New part under
  * them — moved out of InstrumentRoom.tsx unchanged on 11 Nov 2026, and made one line a part by the
  * #311 layout on 14 Nov 2026.
  *
- * ⚠️ A PART IS ITS NAME, ITS BARS, ITS MUTE AND ⋯. Everything else the row carried — the
- * instrument it plays as, its volume, show the notes, record it again, copy your sound onto it,
- * split, keep it as a loop and delete — is in the ⋯ sheet, and every part's volume and mute are in
- * 🎚 Mix as well. The row was 113px tall on a phone. On a desktop, where there is room, the volume
- * stays on the row too (Evan, 14 Nov 2026).
+ * ⚠️ A PART IS ITS NAME, ITS BARS, ITS MUTE AND ⋯. Its name and its ⋯ open the part's menu
+ * (PartPanel, 15 Nov 2026) — the name on its notes, the ⋯ on its sound — which holds everything
+ * else the row and the old ⋯ sheet carried, and every part's volume and mute are in 🎚 Mix as
+ * well. On a desktop, where there is room, the volume stays on the row too (Evan, 14 Nov 2026).
  *
- * ⚠️ WHAT STAYS IN THE ROOM: which layer's notes are open (`editing`), because the note editor
- * at the end of the room opens from here and from four other places, and the names of the people
- * in a jam, which the keyboard uses too. Picking a bar up (`lifted`) and which part's ⋯ is open
- * belong to this list alone.
+ * ⚠️ WHAT STAYS IN THE ROOM: which part's menu is open and on which tab (`open`), because it
+ * opens from here and from four other places, and the names of the people in a jam, which the
+ * keyboard uses too. Picking a bar up (`lifted`) belongs to this list alone.
+ *
+ * ⚠️ AND THE SONG'S WORDS HAVE A ROW HERE, under the part that sings them — the "Add lyrics" Evan
+ * could not find on a song he had already built (15 Nov 2026). They were inside 🎤 Voice, behind
+ * a fold, in a box that forgot them when the page went.
  */
 export function LayerList({
   loop,
-  editing,
-  setEditing,
+  open,
+  openPart,
+  closePart,
   jamNames,
-  onKeep,
   newPart,
+  showLyrics,
 }: {
   loop: ReturnType<typeof loopState>
-  editing: string | null
-  setEditing: Dispatch<SetStateAction<string | null>>
+  /** whose menu is open, and on which tab */
+  open: { id: string; tab: PartTab } | null
+  openPart: (id: string, tab: PartTab) => void
+  closePart: () => void
   jamNames: Record<string, string>
-  onKeep: (layerId: string) => void
   /** start an empty part and open its notes — the room knows which instrument is in your hands */
   newPart: () => void
+  /** open the lyrics box, at a bar when one was pressed */
+  showLyrics: (bar?: number) => void
 }) {
   const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
+  const singing = useSyncExternalStore(subscribeSinging, singingNow, singingNow)
   /** the bar picked up and waiting to be put down — the touch half of drag and drop */
   const [lifted, setLifted] = useState<{ id: string; bar: number } | null>(null)
-  /** whose ⋯ is open, by id — a part that has gone takes its sheet with it (see `sheetFor`) */
-  const [more, setMore] = useState<string | null>(null)
   /* a finger cannot start an HTML5 drag, so the tap-to-lift path is the real one on a phone */
   const touch = useTouchOnly()
   const full = loop.layers.length >= MAX_LAYERS
-  /* ⚠️ looked up, not held: a peer can delete the part whose sheet is open, and a sheet for a
-     part that is not there is not open — the same rule openEditor keeps for the notes */
-  const sheetFor = more === null ? null : (loop.layers.find((l) => l.id === more) ?? null)
+  /** the notes are open, which is when the editor has Ctrl+Z and these buttons stand down */
+  const editing = open?.tab === 'notes' ? open.id : null
+  const anyWords = loop.layers.some(hasLyrics)
   /** who recorded a part, when it was not you */
   const whoOf = (l: Layer) => (l.from ? (jamNames[l.from] ?? 'Someone') : null)
 
@@ -246,7 +236,7 @@ export function LayerList({
             const parts = takeBars(l)
             const said = partLines(l, i)
             const who = whoOf(l)
-            return (
+            return [
               <li
                 key={l.id}
                 className={
@@ -265,14 +255,17 @@ export function LayerList({
                  * own dropdown and is in its ⋯ now (see partName).
                  */}
                 <button
-                  className={'inst-layer-name' + (editing === l.id ? ' is-open' : '')}
-                  aria-expanded={editing === l.id}
-                  onClick={() => setEditing((e) => (e === l.id ? null : l.id))}
-                  title={editing === l.id ? 'Hide these notes' : 'Show these notes'}
+                  className={'inst-layer-name' + (open?.id === l.id ? ' is-open' : '')}
+                  aria-haspopup="dialog"
+                  aria-expanded={open?.id === l.id}
+                  onClick={() => (editing === l.id ? closePart() : openPart(l.id, 'notes'))}
+                  title={
+                    editing === l.id ? 'Close this part' : 'Its notes, its volume and its sound'
+                  }
                 >
                   <span className="inst-part-line">
                     <span className="inst-layer-caret" aria-hidden>
-                      {editing === l.id ? '▾' : '▸'}
+                      {open?.id === l.id ? '▾' : '▸'}
                     </span>{' '}
                     {said.name}
                   </span>
@@ -427,17 +420,29 @@ export function LayerList({
                   {l.muted ? '🔇' : '🔊'}
                 </button>
                 <button
-                  className={'btn btn-ghost inst-icon' + (more === l.id ? ' is-on' : '')}
+                  className={
+                    'btn btn-ghost inst-icon' +
+                    (open?.id === l.id && open.tab !== 'notes' ? ' is-on' : '')
+                  }
                   aria-haspopup="dialog"
-                  aria-expanded={more === l.id}
+                  aria-expanded={open?.id === l.id && open.tab !== 'notes'}
                   aria-label={`More for part ${i + 1}`}
-                  onClick={() => setMore(l.id)}
-                  title="Its sound, volume, notes and the rest"
+                  onClick={() => openPart(l.id, 'sound')}
+                  title="Its sound, its volume and the rest"
                 >
                   ⋯
                 </button>
-              </li>
-            )
+              </li>,
+              hasLyrics(l) && (
+                <LyricsRow
+                  key={`${l.id}-words`}
+                  l={l}
+                  bars={loop.bars}
+                  singing={singing}
+                  showLyrics={showLyrics}
+                />
+              ),
+            ]
           })}
         </ul>
       )}
@@ -458,6 +463,17 @@ export function LayerList({
         >
           ✎ New part
         </button>
+        {/* ⚠️ THE DOOR TO THE WORDS, on the song rather than inside 🎤 Voice — see the note at the
+            top. Once a part has words it gets its own row above, which is the door from then on. */}
+        {!anyWords && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => showLyrics()}
+            title="Write words for the song, a line for each bar, and hear them sung"
+          >
+            🎤 Add lyrics
+          </button>
+        )}
         {/* the ceiling, said where the button went dead rather than only in its tooltip */}
         {full && (
           <span className="muted inst-note">
@@ -465,196 +481,69 @@ export function LayerList({
           </span>
         )}
       </div>
-
-      {/**
-       * A part's ⋯: everything its row carried besides its bars and its mute.
-       *
-       * ⚠️ IT CLOSES ITSELF FOR THE ONES THAT TAKE YOU SOMEWHERE ELSE — the notes open at the end
-       * of the room, a re-take arms the transport, a kept loop asks for a name, a split or a
-       * delete changes the list under it. The sound, the volume and Copy FX leave it open,
-       * because those are the ones you change and then listen to.
-       */}
-      {sheetFor && (
-        <Sheet
-          title={partLines(sheetFor, loop.layers.indexOf(sheetFor)).name}
-          onClose={() => setMore(null)}
-        >
-          <PartSheet
-            l={sheetFor}
-            theirs={!!sheetFor.from}
-            name={sheetFor.from ? (jamNames[sheetFor.from] ?? null) : null}
-            rows={loop.layers.length}
-            notesOpen={editing === sheetFor.id}
-            close={() => setMore(null)}
-            showNotes={() => setEditing((e) => (e === sheetFor.id ? null : sheetFor.id))}
-            onKeep={onKeep}
-          />
-        </Sheet>
-      )}
     </div>
   )
 }
 
-/** What is in a part's ⋯ sheet — see the note where it opens. */
-function PartSheet({
+/**
+ * The words, as a row under the part that sings them: one cell per bar of the song, marked where
+ * there are words, and a ▶ that sings the song through.
+ *
+ * ⚠️ IT IS A ROW OF THE ARRANGEMENT, so its cells sit under the bars they belong to and scroll
+ * with them (`.inst-arrange` is one of the strips the list moves together). Pressing a cell opens
+ * the lyrics box at that bar.
+ */
+function LyricsRow({
   l,
-  theirs,
-  name,
-  rows,
-  notesOpen,
-  close,
-  showNotes,
-  onKeep,
+  bars,
+  singing,
+  showLyrics,
 }: {
   l: Layer
-  /** recorded by somebody else in the room */
-  theirs: boolean
-  /** their name, when the room knows it */
-  name: string | null
-  rows: number
-  notesOpen: boolean
-  close: () => void
-  showNotes: () => void
-  onKeep: (layerId: string) => void
+  bars: number
+  singing: boolean
+  showLyrics: (bar?: number) => void
 }) {
-  const pieces = piecesIn(l)
-  /* a split needs one row per piece, and the take's own row is freed by it */
-  const noRoom = rows - 1 + pieces > MAX_LAYERS
+  const lines = linesFor(l, bars)
+  const filled = lines.filter((w) => w.trim()).length
   return (
-    <div className="inst-sheet-body">
-      {/* Re-voice without replaying: the notes were right, the sound was not. Storing notes
-          rather than audio is what makes this a dropdown instead of a re-take. */}
-      <label className="inst-pick">
-        <span className="muted">Plays as</span>
-        <select
-          value={l.instrument}
-          onChange={(e) => setLayerInstrument(l.id, e.target.value as InstrumentId)}
-          title="Play this part on a different instrument"
-        >
-          {INSTRUMENTS.map(([id, , name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="appearance-slider inst-knob" title="How loud this part is">
-        <span className="muted">Volume</span>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.05}
-          value={l.gain ?? 1}
-          onChange={(e) => setLayerGain(l.id, Number(e.target.value))}
-        />
-        <span className="appearance-slider-val">{Math.round((l.gain ?? 1) * 100)}%</span>
-      </label>
-      <div className="inst-sheet-list">
-        <button
-          className="btn btn-ghost"
-          onClick={() => {
-            showNotes()
-            close()
-          }}
-        >
-          {notesOpen ? '▾ Hide the notes' : '▸ Show the notes'}
-        </button>
-        {/* The third way to fix a take, after undo and re-voice: play it again over the top. The
-            part keeps its place in the stack rather than jumping to the end. */}
-        <button
-          className="btn btn-ghost"
-          onClick={() => {
-            armRecord(l.id)
-            close()
-          }}
-          title="Record this part again, keeping its place"
-        >
-          ⏺ Record this part again
-        </button>
-        {/**
-         * What this part SOUNDS like, and a way to change your mind.
-         *
-         * The settings are frozen onto the part when you commit it, which is the whole point —
-         * but frozen with no way back would mean replaying a part you were happy with just to
-         * give it more room. This re-stamps the current ⚙ Sound onto it, so changing the reverb
-         * costs a press rather than a performance. ⚠️ The words say what it DOES (Evan, 11 Nov
-         * 2026: the face once read "dry", which looked like a label) and then what it has now.
-         */}
-        <button
-          className="btn btn-ghost"
-          onClick={() => setLayerFx(l.id)}
-          title={
-            `This part plays with echo ${Math.round(l.fx.echo * 100)}, ` +
-            `space ${Math.round(l.fx.space * 100)}, ` +
-            `vibrato ${Math.round(l.fx.vibrato * 100)}. ` +
-            'Press to copy the effects you have set now onto it.'
-          }
-        >
-          FX Copy your sound onto it <span className="muted">· now {fxWord(l.fx)}</span>
-        </button>
-        {/* ⚠️ Only on a kit take with more than one piece in it, because that is the only case
-            where it does anything — see splitDrumLayer. */}
-        {l.instrument === 'drums' && pieces > 1 && (
+    <li className="inst-part inst-lyrics-row">
+      <button
+        className="inst-layer-name"
+        aria-haspopup="dialog"
+        onClick={() => showLyrics()}
+        title="Change the words"
+      >
+        <span className="inst-part-line">🎤 Lyrics</span>
+        <small className="inst-part-line inst-part-detail">
+          {filled} bar{filled === 1 ? '' : 's'} of words
+        </small>
+      </button>
+      <span className="inst-arrange" role="group" aria-label="The words in each bar">
+        {lines.map((w, b) => (
           <button
-            className="btn btn-ghost"
-            onClick={() => {
-              splitDrumLayer(l.id)
-              close()
-            }}
-            /* ⚠️ Says WHY rather than going dead. A split needs one row per piece, so it is the
-               person with the fullest arrangement who finds the button does nothing — exactly the
-               person owed an explanation. */
-            disabled={noRoom}
-            title={
-              noRoom
-                ? `Not enough room — this kit needs a row per drum and there are only ${MAX_LAYERS}`
-                : 'Give each drum its own row, so they stop sharing one volume and one set of effects'
-            }
+            key={b}
+            className={'inst-bar-cell inst-word-cell' + (w.trim() ? ' is-on' : '')}
+            onClick={() => showLyrics(b)}
+            aria-label={`Bar ${b + 1}: ${w.trim() || 'no words'}`}
+            title={w.trim() ? `Bar ${b + 1}: ${w.trim()}` : `Bar ${b + 1}: no words — tap to add`}
           >
-            Split it, one part per drum
-            {noRoom && <span className="muted"> · needs {pieces} rows</span>}
+            {w.trim() ? '♪' : ''}
           </button>
-        )}
-        {/* Keeping ONE part. This is the drum-loop case: a part worth reusing is almost never a
-            whole song, and a library of one-part loops is what makes the next song faster to
-            start than the last one. */}
-        <button
-          className="btn btn-ghost"
-          onClick={() => {
-            /* closed first: keeping asks for a name in a dialog of its own */
-            close()
-            onKeep(l.id)
-          }}
-          title="Keep this part as a loop you can reuse"
-        >
-          ⬇ Keep it as a loop
-        </button>
-        {/* ⚠️ DELETING SOMEBODY ELSE'S TAKE ASKS FIRST, and names them. It has always been
-            allowed — every control works on every part, which is the point of one desk — but it
-            is the only one of them that cannot be undone by the person whose part it was. */}
-        <button
-          className="btn btn-ghost"
-          onClick={() => {
-            if (
-              theirs &&
-              !window.confirm(
-                `Delete ${name ?? 'someone in the room'}'s part? This cannot be undone.`,
-              )
-            )
-              return
-            removeLayer(l.id)
-            close()
-          }}
-          title={
-            theirs
-              ? `Delete ${name ? `${name}'s` : 'their'} part — for everyone`
-              : 'Delete this part'
-          }
-        >
-          ✕ {theirs ? `Delete ${name ? `${name}'s` : 'their'} part, for everyone` : 'Delete it'}
-        </button>
-      </div>
-    </div>
+        ))}
+      </span>
+      {/* the desktop row has a volume column; the words have none, so it is left empty */}
+      <span className="inst-part-vol" aria-hidden />
+      <button
+        className={'btn inst-icon' + (singing ? ' is-on' : '')}
+        onClick={() => (singing ? stopSinging() : startSinging())}
+        aria-label={singing ? 'Stop singing' : 'Sing the song through'}
+        aria-pressed={singing}
+        title={singing ? 'Stop singing' : 'Play the song from the top with the words sung'}
+      >
+        {singing ? '■' : '▶'}
+      </button>
+      <span aria-hidden />
+    </li>
   )
 }

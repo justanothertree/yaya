@@ -8814,7 +8814,7 @@ a.cz-msg-author:focus-visible {
 .inst-picks:not(.is-open) {
   display: none;
 }
-/* the singing prototype — see SingPanel */
+/* 🎤 Voice's door to the song's lyrics — see SingDoor in SongTools.tsx */
 .inst-sing {
   display: flex;
   flex-direction: column;
@@ -8824,13 +8824,6 @@ a.cz-msg-author:focus-visible {
 }
 .inst-sing > .btn {
   align-self: flex-start;
-}
-.inst-sing-lyric {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  font: inherit;
-  resize: vertical;
 }
 /* the instrument menu's families — one row of tiles at a time, see families.ts */
 .inst-families {
@@ -16004,6 +15997,14 @@ a.cz-msg-author:focus-visible {
   .snap-pick .btn {
     min-height: 36px;
   }
+  /* ⚠️ AND THE NOTE EDITOR'S LENGTH ROW, which sits under Snap and was left at 19px on a phone —
+     measured at 375 once the editor moved into a part's menu (15 Nov 2026), the first time
+     anything measured the editor open on a phone at all: it only exists after a press, so no
+     sweep of the room's opening state had ever reached it. */
+  .roll-len .btn {
+    min-height: 32px;
+    min-width: 32px;
+  }
   /* ⚠️ THE TWO SLIDERS THAT ARE NOT WRAPPED IN .appearance-slider, and this said "the one"
      until the second turned up. The keyboard range sits straight in the instrument; the map
      maker's creature size sits straight in its own row as .map-size. Both were 16px tall at
@@ -21219,4 +21220,203 @@ button.chron-runnote-n {
 /* the call note's way into a jam, once the note itself is put away */
 .inst-jam-door a {
   font-weight: 600;
+}
+
+/* ── a part's menu and the song's lyrics: a sheet on a phone, a side panel wider up ─────────────
+   ⚠️ THE SIDE PANEL IS NOT MODAL (see Panel.tsx): no backdrop, and the room beside it stays live,
+   so it sits under the nav's own bar and over the right-hand column — the visuals, on a desktop —
+   while the keys, the transport and the parts stay where they were. Below the sheets (1000), so a
+   name asked for by ⬇ Keep still comes up over it. */
+.inst-panel {
+  position: fixed;
+  top: var(--nav-h, 54px);
+  right: 0;
+  bottom: 0;
+  z-index: 150;
+  /* over the visuals' column exactly, when there is one — see useBeside in Panel.tsx; beside a
+     room it pushes over, no wider than leaves that room a desktop's width (PANEL_IS_SHEET) */
+  width: var(--inst-panel-w, min(40rem, 40vw));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 0.9rem 1.2rem;
+  color: var(--text);
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .inst-panel {
+    animation: inst-panel-in 0.16s ease-out;
+  }
+}
+@keyframes inst-panel-in {
+  from {
+    transform: translateX(1.5rem);
+    opacity: 0;
+  }
+}
+/* ⚠️ TALLER THAN THE ROOM'S OTHER SHEETS, because this one holds a piano roll — and on a tablet,
+   where the sheet is a centred card, wider too: a roll in 30rem is a phone's roll on a big screen */
+.inst-sheet.inst-panel-sheet {
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+@media (min-width: 701px) {
+  .inst-sheet.inst-panel-sheet {
+    width: min(48rem, 100%);
+  }
+}
+.inst-panel-head h3 {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.inst-panel-detail {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+/* ⚠️ ONE KNOB A LINE, as in the sheet — `.inst-knobs` is a grid of narrow cells in the room, and
+   a part's sliders in those cells were 16px short of their own value at 1440 (the audit's spill) */
+.inst-panel .inst-knobs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+/* a knob's own `flex: 1 1 11rem` is a WIDTH in the room's row and a HEIGHT in this column — each
+   slider stood 179px tall, a screen of air between them */
+.inst-panel .inst-knob {
+  flex: none;
+}
+.inst-panel .inst-knob,
+.inst-part-panel-top .inst-knob {
+  display: grid;
+  grid-template-columns: 5.4rem minmax(60px, 1fr) 2.6rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.inst-panel .inst-knob input[type='range'],
+.inst-part-panel-top .inst-knob input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+@media (pointer: fine) {
+  .inst-panel input[type='range'] {
+    min-height: 24px;
+  }
+}
+.inst-panel .inst-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+/* the volume and the mute, above the tabs, on whichever tab is open */
+.inst-part-panel-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.inst-part-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.inst-part-tabs .btn {
+  justify-content: center;
+  min-height: 2.4rem;
+}
+.inst-part-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+/* the roll fills the panel rather than shrinking to its take — the panel IS its frame here */
+.inst-part-panel .roll {
+  width: 100%;
+  min-width: 0;
+}
+.inst-copy-all {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.inst-copy-all .inst-pick {
+  min-width: 0;
+}
+.inst-copy-all select {
+  min-width: 0;
+  max-width: 100%;
+}
+/* Paste, outside the ⬚ tools, whenever something has been copied */
+.roll-paste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.roll-paste .inst-pick {
+  min-width: 0;
+}
+.roll-paste select {
+  min-width: 0;
+  max-width: 100%;
+}
+.roll-paste-said {
+  flex-basis: 100%;
+  font-size: 0.82rem;
+}
+
+/* ── the words: a row under the part that sings them, and a box a line per bar ─────────────── */
+.inst-lyrics-row .inst-layer-name {
+  border-style: dashed;
+}
+.inst-word-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.inst-word-cell.is-on {
+  color: var(--bg);
+}
+.inst-lyric-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inst-lyric-bar label {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.45rem;
+}
+.inst-lyric-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.inst-lyric-bar input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.2rem;
+}
+.inst-lyric-fit {
+  display: block;
+  margin: 0.15rem 0 0 2.25rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+.inst-lyric-fit.is-short {
+  color: var(--accent-2);
 }

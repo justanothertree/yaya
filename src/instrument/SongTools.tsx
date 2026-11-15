@@ -20,12 +20,13 @@ import {
 import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
-import { SingPanel } from '../audio/SingPanel'
+import { hasLyrics } from '../audio/lyricLines'
 import { TakesPanel } from '../audio/TakesPanel'
 import { useTakes } from '../audio/useTakes'
 import { jam } from '../party/jam'
 import { motionReduced } from '../ui/motion'
 import { partLines } from './partName'
+import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
 export type Tool = 'beats' | 'mix' | 'voice' | 'songs'
 
@@ -46,10 +47,10 @@ type Loop = ReturnType<typeof loopState>
  * keeping and opening: Keep this song, Stems, the kept songs and Clear all parts.
  *
  * ⚠️ A CLOSED TOOL STAYS MOUNTED, ONLY HIDDEN — the condition Evan approved one-at-a-time on.
- * `useTakes` and `SingPanel` each stop their work when they unmount, on purpose (a recording is
- * kept and the microphone released; a line scheduled ahead stops singing), so unmounting Voice to
- * open Mix would end a take mid-recording and a line mid-song. Hidden, you can open Mix while a
- * take records or the voice sings, and 🎤 Voice says so with a dot.
+ * `useTakes` stops its work when it unmounts, on purpose (a recording is kept and the microphone
+ * released), so unmounting Voice to open Mix would end a take mid-recording. Hidden, you can open
+ * Mix while a take records or the voice sings, and 🎤 Voice says so with a dot. (The singing is
+ * the song's now — singAlong.ts — and outlives every panel; the dot still says it is going.)
  *
  * ⚠️ AND `useTakes` IS CALLED HERE, ONCE, rather than inside TakesPanel, because its Stems moved to
  * 📁 Songs while its takes stayed in 🎤 Voice. Two calls would be two recorders with two lists,
@@ -62,7 +63,7 @@ export function SongTools({
   setEditing,
   keep,
   beats,
-  singScale,
+  showLyrics,
 }: {
   tool: Tool | null
   setTool: Dispatch<SetStateAction<Tool | null>>
@@ -71,11 +72,11 @@ export function SongTools({
   keep: (kind: 'song' | 'loop', layerId?: string) => void
   /** the beats panel, built by the room, which owns the backing's picks */
   beats: ReactNode
-  /** the scale the singer's harmony follows */
-  singScale: { degrees: readonly number[]; root: number }
+  /** open the song's lyrics box */
+  showLyrics: () => void
 }) {
   const takes = useTakes()
-  const [singing, setSinging] = useState(false)
+  const singing = useSyncExternalStore(subscribeSinging, singingNow, singingNow)
   const full = loop.layers.length >= MAX_LAYERS
   const panes = useRef<Partial<Record<Tool, HTMLElement | null>>>({})
 
@@ -159,13 +160,7 @@ export function SongTools({
         'Voice',
         <>
           <TakesPanel takes={takes} />
-          <SingPanel
-            inline
-            layers={loop.layers}
-            degrees={singScale.degrees}
-            root={singScale.root}
-            onSinging={setSinging}
-          />
+          <SingDoor loop={loop} singing={singing} showLyrics={showLyrics} />
         </>,
       )}
       {pane(
@@ -174,6 +169,50 @@ export function SongTools({
         <Songs loop={loop} takes={takes} keep={keep} setEditing={setEditing} />,
       )}
     </>
+  )
+}
+
+/**
+ * Where 🎤 Voice's "Sing lyrics" prototype was — a door to the song's words now.
+ *
+ * ⚠️ THE WORDS MOVED TO THE SONG, 15 Nov 2026: Evan built a song and could not find where its
+ * lyrics went, because they were here, behind a fold, in a box that forgot them with the page.
+ * They are a line per bar in the lyrics box now (LyricsPanel), opened from the parts as well as
+ * from here, and the voice, Double and Harmony went with them. This keeps the old door working
+ * for anybody who learned it.
+ */
+function SingDoor({
+  loop,
+  singing,
+  showLyrics,
+}: {
+  loop: Loop
+  singing: boolean
+  showLyrics: () => void
+}) {
+  const words = loop.layers.some(hasLyrics)
+  return (
+    <div className="inst-sing is-inline">
+      <h4 className="inst-tool-head">Sing lyrics</h4>
+      <p className="muted inst-note">
+        {words
+          ? 'The song has words. Change them, or hear them sung over the song.'
+          : 'Write a line of words for each bar of the song, and a voice sings them on its notes.'}
+      </p>
+      <div className="inst-row">
+        <button className="btn" onClick={showLyrics}>
+          🎤 {words ? 'Lyrics' : 'Add lyrics'}
+        </button>
+        {words && (
+          <button
+            className={'btn btn-ghost' + (singing ? ' is-on' : '')}
+            onClick={() => (singing ? stopSinging() : startSinging())}
+          >
+            {singing ? '■ Stop singing' : '▶ Sing the song'}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
