@@ -1,4 +1,14 @@
--- ⛔ DRAFT — NOT APPLIED. Nothing in this file has run against production.
+-- ✅ APPLIED to production 15 Nov 2026 as migration `lab_matches_and_results`, version
+-- 20261115002456 (Evan's approval, the same day). Production recorded md5(statements[1]) =
+-- d351789d65e262f809194c41a9e5c607 over 24,890 bytes — this file's body, byte for byte, and
+-- supabase/migrations/20261115002456_lab_matches_and_results.sql is the same body under this
+-- header. Before applying, block A of the checks file was run twice (14 Nov, and again just before
+-- the apply): nothing existed, is_suspended and lab_demo_open as tested, friendships and lab_demos
+-- as tested, reversi and chess registered and not hidden. After it, block B: all 17 functions
+-- "as drafted" with one definition each; the three tables RLS on, zero policies, zero anon or
+-- authenticated privileges; exactly the seven member functions callable, none by anon; the service
+-- key able to load, begin and commit; zero rows in all three tables. The lab-move edge function
+-- (#335) that writes through it is NOT deployed.
 --
 -- Step 2 of docs/2026-11-14-lab-async-matches-plan.md: Lab matches played by turns between two
 -- friends, saved on the server, and lab_results (step 9 of docs/2026-11-13-lab-social-plan.md),

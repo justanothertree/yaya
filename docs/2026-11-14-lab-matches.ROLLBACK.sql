@@ -1,4 +1,6 @@
--- ROLLBACK for docs/2026-11-14-lab-matches.DRAFT.sql. ⛔ Not applied, like the draft.
+-- ROLLBACK for docs/2026-11-14-lab-matches.DRAFT.sql, which IS applied (15 Nov 2026, migration
+-- 20261115002456_lab_matches_and_results). ⛔ This rollback has not been run against production;
+-- it was tested on the throwaway stack only.
 --
 -- In the reverse order of the draft: the functions first (they read the tables), then the tables,
 -- lab_results before the matches its rows point at.
