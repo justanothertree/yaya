@@ -6,7 +6,7 @@
  * First to the target wins. Pure, so dominoes.test.ts can play thousands of rounds without a page.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 /** a tile as its two ends, low first */
 export type Tile = [number, number]

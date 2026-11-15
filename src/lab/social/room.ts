@@ -169,9 +169,11 @@ export function whoseMove<G, M>(rules: Rules<G, M>, room: Room<G>): string | nul
 /**
  * Who the game is waiting for: a seated player who is not here, or null. In versus, either player
  * gone stops the game; together, only the one whose move it is; and a game anybody may move in at
- * any time never waits.
+ * any time never waits, nor does a finished one.
  */
 export function waitingFor<G, M>(room: Room<G>, rules: Rules<G, M>): string | null {
+  // a finished game waits for nobody: the loser leaving afterwards must not take the result away
+  if (rules.turn(room.game) === null) return null
   const here = new Set([room.me, ...room.present])
   if (room.mode === 'together') {
     const d = whoseMove(rules, room)

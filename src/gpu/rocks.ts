@@ -10,7 +10,7 @@
  */
 
 import { rngStep as roll } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const W = 16
 export const H = 12

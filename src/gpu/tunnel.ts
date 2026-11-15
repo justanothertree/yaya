@@ -7,7 +7,7 @@
  * World units: the tunnel is RADIUS across from its centreline, z runs forward, y is up.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 /** Hand-packed to match `struct Tunnel` — tunnel.test.ts lays the struct out from the shader. */
 export const TUNNEL = {

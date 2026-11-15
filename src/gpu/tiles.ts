@@ -12,7 +12,7 @@
  * and half heights, and a tile covers x..x+2 and y..y+2 on its layer z.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Place = { x: number; y: number; z: number }
 export type Layout = { id: string; name: string; places: Place[] }

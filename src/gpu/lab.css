@@ -6926,3 +6926,102 @@ html:has(.lab) {
     animation: none;
   }
 }
+
+/* ── matches by turns (src/lab/matches): the bar above a match's board, the challenge picker,
+   and Your games at the top of the Lab */
+.match-bar {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+}
+.match-bar .mc-line,
+.match-who {
+  margin: 0;
+}
+.match-who {
+  overflow-wrap: anywhere;
+}
+/* ⚠️ SEND STAYS UNDER THE THUMB on a phone: the board fills the screen there, and a move chosen at
+   the bottom of it should not need a scroll back up to send */
+@media (max-width: 700px) {
+  .match-send {
+    position: sticky;
+    bottom: calc(var(--bottom-guard, 0px) + 0.5rem);
+    z-index: 2;
+    padding: 0.4rem;
+    border-radius: 10px;
+    background: var(--panel, #fff);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  }
+}
+.match-send .btn {
+  min-height: 44px;
+  min-width: 6rem;
+}
+.match-link {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.match-challenge {
+  display: contents;
+}
+.match-panel {
+  flex-basis: 100%;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.match-panel p {
+  margin: 0;
+}
+
+.your-games {
+  display: grid;
+  gap: 0.4rem;
+}
+.your-games .fw-h {
+  margin: 0;
+}
+.your-games-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.your-game {
+  display: grid;
+  gap: 0.15rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.your-game:hover,
+.your-game:focus-visible {
+  border-color: var(--accent);
+}
+.your-game.is-yours {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 85%);
+}
+.your-game-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.your-game-state {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.your-game.is-yours .your-game-state {
+  color: inherit;
+  font-weight: 600;
+}

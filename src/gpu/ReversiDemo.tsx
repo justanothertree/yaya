@@ -23,11 +23,16 @@ import {
 } from './reversi'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { reversiRules, toWho } from './reversiRoom'
+import { reversiRules, toWho, type ReversiGame } from './reversiRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn, teamSide } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -185,22 +190,35 @@ export function ReversiDemo() {
   savedRef.current = saved
   const modeRef = useRef(mode)
   modeRef.current = mode
+  const inMatchRef = useRef(false)
   useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. */
+  const lm = useLabMatch('reversi')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as ReversiGame | null) : null
+  const matchSide: Who = toWho(lm.side)
+  inMatchRef.current = inMatch
 
   /* ── the call's room. The host's own size starts each game; the board then travels whole. */
   const roomRules = useMemo(() => reversiRules(saved.size), [saved.size])
   const lab = useLabRoom('reversi', roomRules)
-  const words = useCallWords(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
+  const words = tableSeats(lab, roomRules)
+  const room = mode === 'call' && !inMatch ? lab.room : null
   const mySeat = room ? words.mySeat : null
   // the side I place for: my seat's in versus, the team's together (dark)
   const mySide: Who = room?.mode === 'together' ? toWho(teamSide(roomRules)) : mySeat === 1 ? 2 : 1
-  // the board on screen is the room's, whenever it changes — and what turned over, turns over
+  // the board on screen is the room's or the match's, whenever it changes — and what turned over,
+  // turns over
+  const shared: ReversiGame | null = matchGame ?? room?.game ?? null
+  const sharedSide: Who = matchGame ? matchSide : mySide
   useEffect(() => {
-    if (mode !== 'call' || !room) return
+    if (!shared) return
     window.clearTimeout(timer.current)
     const was = game.current.b
-    const b = room.game.b
+    const b = shared.b
     let placed: number | null = null
     if (was.n === b.n && !reduced()) {
       const now = performance.now()
@@ -213,33 +231,49 @@ export function ReversiDemo() {
     game.current = {
       ...game.current,
       b,
-      turn: room.game.turn,
-      you: mySide,
+      turn: shared.turn,
+      you: sharedSide,
       moves: b.cells.filter((c) => c !== 0).length - 4,
       last: placed ?? (was.n === b.n ? game.current.last : null),
       recorded: true,
     }
     bump()
-  }, [mode, room, mySide])
+  }, [shared, sharedSide])
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
 
   const g = game.current
+  const seatName = (seat: 0 | 1) =>
+    lm.view ? (seat === lm.view.you ? 'You' : otherName(lm.view)) : ''
   const nameOf = (w: Who) =>
-    modeRef.current === 'call' && room
-      ? room.mode === 'together'
-        ? w === mySide
-          ? 'Together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
+        ? w === 1
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[w - 1])
-      : modeRef.current === 'bot'
-        ? w === game.current.you
-          ? 'You'
-          : 'The computer'
-        : w === 1
-          ? 'Dark'
-          : 'Light'
-  const computerTurn = mode === 'bot' && g.turn !== null && g.turn !== g.you
+        : seatName(w === 1 ? 0 : 1)
+      : modeRef.current === 'call' && room
+        ? room.mode === 'together'
+          ? w === mySide
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w - 1])
+        : modeRef.current === 'bot'
+          ? w === game.current.you
+            ? 'You'
+            : 'The computer'
+          : w === 1
+            ? 'Dark'
+            : 'Light'
+  const computerTurn = mode === 'bot' && !inMatch && g.turn !== null && g.turn !== g.you
 
   const playAt = (i: number) => {
+    // in a match the move waits for Send; the server plays it and the board comes back
+    if (inMatchRef.current) return void lm.play(i)
     // in the call the host decides: this asks it, and the board comes back with everybody's
     if (modeRef.current === 'call') return lab.act({ t: 'move', move: i })
     const gm = game.current
@@ -328,6 +362,7 @@ export function ReversiDemo() {
       fresh(mode, p.size ?? saved.size, p.level ?? saved.level, p.side ?? saved.side)
   }
   const yours = () => {
+    if (inMatchRef.current) return lm.canPlay
     if (modeRef.current === 'call') return lab.live && !!room && myTurn(roomRules, room)
     const gm = game.current
     return gm.turn !== null && (modeRef.current === 'two' || gm.turn === gm.you)
@@ -416,7 +451,7 @@ export function ReversiDemo() {
                 : 'empty'
         }`
   const scoreNames: [string, string] =
-    mode === 'call'
+    inMatch || mode === 'call'
       ? [`${nameOf(1)} · dark`, `${nameOf(2)} · light`]
       : mode === 'bot'
         ? g.you === 1
@@ -426,73 +461,83 @@ export function ReversiDemo() {
 
   return (
     <div className="lab-keys rv-room">
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['dark', 'light']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <>
+              <div className="lab-group" role="group" aria-label="How well the computer plays">
+                {LEVELS.map((lv) => (
+                  <button
+                    key={lv}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.level === lv}
+                    onClick={() => change({ level: lv })}
+                  >
+                    {LEVEL_NAMES[lv]}
+                  </button>
+                ))}
+              </div>
+              <div className="lab-group" role="group" aria-label="Your colour">
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={saved.side === 1}
+                  onClick={() => change({ side: 1 })}
+                >
+                  Play dark (first)
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={saved.side === 2}
+                  onClick={() => change({ side: 2 })}
+                >
+                  Play light
+                </button>
+              </div>
+            </>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge
+              demo="reversi"
+              settings={{ size: saved.size }}
+              levelNames={LEVEL_NAMES}
+            />
+          )}
         </div>
-        {mode === 'bot' && (
-          <>
-            <div className="lab-group" role="group" aria-label="How well the computer plays">
-              {LEVELS.map((lv) => (
-                <button
-                  key={lv}
-                  className="btn btn-ghost"
-                  aria-pressed={saved.level === lv}
-                  onClick={() => change({ level: lv })}
-                >
-                  {LEVEL_NAMES[lv]}
-                </button>
-              ))}
-            </div>
-            <div className="lab-group" role="group" aria-label="Your colour">
-              <button
-                className="btn btn-ghost"
-                aria-pressed={saved.side === 1}
-                onClick={() => change({ side: 1 })}
-              >
-                Play dark (first)
-              </button>
-              <button
-                className="btn btn-ghost"
-                aria-pressed={saved.side === 2}
-                onClick={() => change({ side: 2 })}
-              >
-                Play light
-              </button>
-            </div>
-          </>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={roomRules}
           sides={['Dark', 'Light']}
           ink={INK[saved.discs]}
@@ -580,7 +625,10 @@ export function ReversiDemo() {
           }}
         />
       </div>
-      {mode !== 'call' ? (
+      {inMatch && <MatchSend lm={lm} />}
+      {inMatch ? (
+        hints.length > 0 && <p className="muted mc-note">{hints.length} possible moves</p>
+      ) : mode !== 'call' ? (
         <p className="mc-line" aria-live="polite">
           {line}
           {hints.length > 0 && <span className="muted"> · {hints.length} possible moves</span>}
@@ -588,7 +636,7 @@ export function ReversiDemo() {
       ) : (
         hints.length > 0 && <p className="muted mc-note">{hints.length} possible moves</p>
       )}
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -598,6 +646,7 @@ export function ReversiDemo() {
         </p>
       )}
       {started &&
+        !inMatch &&
         g.turn !== null &&
         (g.b.n !== saved.size ||
           (mode === 'bot' && (g.level !== saved.level || g.you !== saved.side))) && (

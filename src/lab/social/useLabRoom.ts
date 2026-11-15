@@ -3,6 +3,7 @@ import { myPeerId, onParty, sendParty, voiceSession } from '../../voice/voiceSes
 import { party } from '../../party/party'
 import { usePartyHere } from '../../party/whereEveryone'
 import { labSocial } from './social'
+import type { Table } from './table'
 import { keepOnline } from './online'
 import {
   act,
@@ -36,14 +37,8 @@ import {
  * COMPUTER in a together game, after a pause long enough to see whose move it was, and A FINISHED
  * GAME IS KEPT (online.ts) for each seated player — once, on the move that finished it.
  */
-export type LabRoom<G, M> = {
-  live: boolean
-  /** the room now, or the last one there was; null before there has been one */
-  room: Room<G> | null
-  act: (a: Action<M>) => void
-  /** names of everybody on this toy, by id, from the party */
-  names: Record<string, string>
-}
+/** a call's room is a table (table.ts): the same seats, line and result words as a saved match */
+export type LabRoom<G, M> = Table<G, M>
 
 const sharingNow = () => party.getState().sharing
 /** the call's own roster, as one string so it only changes when somebody joins or leaves */
