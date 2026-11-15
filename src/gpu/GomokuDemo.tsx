@@ -19,7 +19,7 @@ import { useKept } from './kept'
 import { gomokuRules } from './gomokuRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn, teamSide } from '../lab/social/room'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
@@ -47,7 +47,7 @@ export function GomokuDemo() {
   /* ── the call's room: the host's size starts each game, which then travels as its moves */
   const roomRules = useMemo(() => gomokuRules(saved.size), [saved.size])
   const lab = useLabRoom('gomoku', roomRules)
-  const words = useCallWords(lab, roomRules)
+  const words = tableSeats(lab, roomRules)
   const room = mode === 'call' ? lab.room : null
   /** the side I place for: my seat's in versus, the team's (black) together */
   const mySide: Side =
@@ -249,7 +249,7 @@ export function GomokuDemo() {
       </div>
       {mode === 'call' && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={roomRules}
           sides={['Black', 'White']}
           ink={['#17191e', '#f4f3ee']}

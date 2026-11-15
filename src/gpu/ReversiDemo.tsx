@@ -26,7 +26,7 @@ import { useKept } from './kept'
 import { reversiRules, toWho } from './reversiRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn, teamSide } from '../lab/social/room'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
@@ -190,7 +190,7 @@ export function ReversiDemo() {
   /* ── the call's room. The host's own size starts each game; the board then travels whole. */
   const roomRules = useMemo(() => reversiRules(saved.size), [saved.size])
   const lab = useLabRoom('reversi', roomRules)
-  const words = useCallWords(lab, roomRules)
+  const words = tableSeats(lab, roomRules)
   const room = mode === 'call' ? lab.room : null
   const mySeat = room ? words.mySeat : null
   // the side I place for: my seat's in versus, the team's together (dark)
@@ -492,7 +492,7 @@ export function ReversiDemo() {
       </div>
       {mode === 'call' && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={roomRules}
           sides={['Dark', 'Light']}
           ink={INK[saved.discs]}
