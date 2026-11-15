@@ -1,8 +1,9 @@
 /**
  * `lab-move`: the only way a Lab match by turns gets a game or a move.
  *
- * ⛔ DRAFT, NOT DEPLOYED. Step 3 of docs/2026-11-14-lab-async-matches-plan.md. It needs the
- * matches SQL (docs/2026-11-14-lab-matches.DRAFT.sql) applied first, and its deploy is Evan's.
+ * Step 3 of docs/2026-11-14-lab-async-matches-plan.md, deployed with `verify_jwt` on, on top of
+ * the matches SQL (migration 20261115002456_lab_matches_and_results). Deploy it as it is in git,
+ * this file and core.bundle.js, and then diff `get_edge_function` against both (CLAUDE.md §2).
  *
  * ⚠️ THE API NEVER ACCEPTS A BOARD, ONLY A MOVE. A member can read their match through
  * `lab_match_get` and decline, resign or claim through RPCs, but nothing they can call writes a
