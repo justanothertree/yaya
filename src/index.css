@@ -18895,6 +18895,54 @@ button.chron-runnote-n {
   min-height: 32px;
   padding: 0.2rem 0.5rem;
 }
+
+/* the evening wrap-up — see EveningCard.tsx; on a phone the headline fold sits inside it */
+.chron-wrap {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.6rem 0.65rem;
+  border: 1px solid color-mix(in oklab, var(--accent), transparent 60%);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--panel), var(--accent) 4%);
+}
+.chron-wrap > .chron-fold {
+  margin: 0;
+}
+.chron-wrap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.chron-wrap-off,
+.chron-wrap-skip {
+  min-height: 32px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+}
+.chron-wrap-item > p {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+}
+.chron-wrap-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.chron-wrap-row > p {
+  /* ⚠️ a floor in PIXELS, so the button beside it cannot take the whole row (CLAUDE.md §6) */
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+}
+.chron-wrap-line {
+  flex: 1 1 160px;
+  min-width: 160px;
+  font: inherit;
+}
 .chron-run {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;

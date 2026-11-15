@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  addDayNote,
   addEntry,
   dayNotesBetween,
   myExercises,
@@ -8,6 +9,7 @@ import {
   dropSet,
   type MyExercise,
   setAmount,
+  setQuality,
   entriesBetween,
   myActivities,
   myMoments,
@@ -21,7 +23,9 @@ import { Plans } from './Plans'
 import { WeekGrid } from './WeekGrid'
 import { columns, coveredLine, coveredSoFar, weekOf } from './week'
 import { Routines } from './Routines'
-import { recentFirst, tilesFor } from './nowTiles'
+import { tilesFor, usualFirst } from './nowTiles'
+import { biggestStretch, isEvening, unrated } from './evening'
+import { EveningCard } from './EveningCard'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
@@ -131,6 +135,9 @@ function WallClock() {
     </span>
   )
 }
+
+/** the date somebody said Not tonight to the evening card — see `wrapOff` */
+const WRAP_OFF = 'chron.wrap.off.v1'
 
 export function Timer({
   day,
@@ -328,6 +335,27 @@ export function Timer({
     void load()
   }, [load, beat])
 
+  /**
+   * The four weeks before today, which is what "what you usually start around now" is read from —
+   * see `usualFirst`. Once a day and after an import, not on every tick: a habit does not move in
+   * a minute, and today's own starts arrive through `log` and `weekLog` anyway.
+   */
+  const today = todayISO()
+  const [past, setPast] = useState<Entry[]>([])
+  useEffect(() => {
+    let dead = false
+    const to = dayBounds(today).fromMs
+    void entriesBetween(
+      new Date(to - 28 * 86_400_000).toISOString(),
+      new Date(to).toISOString(),
+    ).then((e) => {
+      if (!dead) setPast(e)
+    })
+    return () => {
+      dead = true
+    }
+  }, [today, beat])
+
   const loadWeek = useCallback(async () => {
     if (!weekDays.length) return
     const from = dayBounds(weekDays[0]).fromMs
@@ -466,6 +494,8 @@ export function Timer({
    * that is where they are written and changed.
    */
   const [dayNotes, setDayNotes] = useState<DayNote[]>([])
+  /* bumped when the evening card writes a line about the day, so the notes are asked for again */
+  const [noteTick, setNoteTick] = useState(0)
   useEffect(() => {
     if (show !== 'day') return
     let dead = false
@@ -478,7 +508,7 @@ export function Timer({
     return () => {
       dead = true
     }
-  }, [seeing, bounds.toMs, beat, show])
+  }, [seeing, bounds.toMs, beat, show, noteTick])
 
   useEffect(() => {
     let dead = false
@@ -988,13 +1018,14 @@ export function Timer({
     if (actEd.actsOpen) setKitOpen(true)
   }, [actEd.actsOpen])
   /**
-   * The chips under ▶ Start something: the three you started last — #298's third answer, "the
-   * most recent rather than ones you pin". The week's log and today's, because the day alone is
-   * empty every morning; see `recentFirst` for what fills the row when even the week is.
+   * The chips under ▶ Start something: what you usually start around now, then the ones you
+   * started last — #298's third answer, "the most recent rather than ones you pin", with a routine
+   * put in front of it. The week's log and today's for the recency, because the day alone is empty
+   * every morning; the four weeks in `past` for the routine. See `usualFirst`.
    */
   const recent = useMemo(
-    () => recentFirst(acts ?? [], [...weekLog, ...log]).slice(0, 3),
-    [acts, weekLog, log],
+    () => usualFirst(acts ?? [], past, [...weekLog, ...log], Date.now()).slice(0, 3),
+    [acts, past, weekLog, log],
   )
   /* the week's figure, for the row that folds the grid — the grid prints the same one, from here */
   const weekSaid = useMemo(() => {
@@ -1022,6 +1053,60 @@ export function Timer({
     setTyped('')
     setGap(true)
   }
+  /**
+   * The evening wrap-up — see evening.ts and EveningCard.tsx.
+   *
+   * ⚠️ "NOT TONIGHT" IS REMEMBERED FOR THE DATE, in this browser only. It is a preference about a
+   * card, not data, so it does not belong in the account; and keyed on the date, it is gone by
+   * tomorrow evening without anybody having to undo it.
+   */
+  const [wrapOff, setWrapOff] = useState(() => {
+    try {
+      return window.localStorage.getItem(WRAP_OFF) === todayISO()
+    } catch {
+      return false
+    }
+  })
+  const [wrapSkip, setWrapSkip] = useState<ReadonlySet<string>>(new Set())
+  const [dayLine, setDayLine] = useState('')
+  const wrapNot = () => {
+    try {
+      window.localStorage.setItem(WRAP_OFF, todayISO())
+    } catch {
+      /* a browser that keeps nothing still closes it for this visit */
+    }
+    setWrapOff(true)
+  }
+  /* ⚠️ the same write the dialog's ratings make, by the same function — one tap, then the log is
+     asked again so the next unrated sitting takes its place */
+  const wrapRate = async (e: Entry, n: number) => {
+    if (busy) return
+    setBusy(true)
+    const ok = await setQuality(e.id, n)
+    setBusy(false)
+    if (!ok) return moan('that rating did not save')
+    await after()
+  }
+  /* the form Log a past session opens, with the stretch already in it */
+  const wrapLog = (x: { fromMs: number; toMs: number }) => {
+    setGapFrom(forInput(new Date(x.fromMs).toISOString()))
+    setGapTo(forInput(new Date(x.toMs).toISOString()))
+    setGapAct(pick || ranked[0]?.id || '')
+    setTyped('')
+    setGap(true)
+  }
+  /* a day note, the Journal's own kind, about today */
+  const wrapLine = async () => {
+    const body = dayLine.trim()
+    if (!body || busy) return
+    setBusy(true)
+    const bad = await addDayNote(todayISO(), body)
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    setDayLine('')
+    setNoteTick((n) => n + 1)
+  }
+
   /**
    * ✎ a note with no session, in the Journal — about the day on screen when that day has gone, or
    * about today. Never about a day still to come, which the writer refuses and nobody can have
@@ -1523,7 +1608,11 @@ export function Timer({
               </button>
             </div>
             {recent.length > 0 && (
-              <div className="chron-start-chips" role="group" aria-label="Start one you did lately">
+              <div
+                className="chron-start-chips"
+                role="group"
+                aria-label="Start one you usually do around now, or did lately"
+              >
                 {recent.map((a) => chip(a, () => void go(a.id)))}
               </div>
             )}
@@ -1792,6 +1881,45 @@ export function Timer({
           ) : null
         if (show !== 'day') return null
         /**
+         * ⚠️ THE EVENING CARD, after eight on today and until somebody says Not tonight, when it
+         * has something to ask. It holds the phone's headline inside it rather than adding a box
+         * above it — see EveningCard.
+         */
+        const now = Date.now()
+        const toRate =
+          isToday && !wrapOff && isEvening(now)
+            ? unrated(log, acts, bounds.fromMs, bounds.toMs, wrapSkip)
+            : []
+        const stretch =
+          isToday && !wrapOff && isEvening(now)
+            ? biggestStretch(log, bounds.fromMs, bounds.toMs, now)
+            : null
+        const lineDone = dayNotes.length > 0
+        const wrapping =
+          isToday &&
+          !wrapOff &&
+          isEvening(now) &&
+          (toRate.length > 0 || stretch != null || !lineDone)
+        const card = (headline?: ReactNode) => (
+          <EveningCard
+            rate={toRate[0] ?? null}
+            of={toRate.length}
+            name={(id) => byId.get(id)?.name ?? 'something'}
+            stretch={stretch}
+            line={dayLine}
+            lineDone={lineDone}
+            busy={busy}
+            onRate={(e, n) => void wrapRate(e, n)}
+            onSkip={(e) => setWrapSkip((s) => new Set(s).add(e.id))}
+            onLog={wrapLog}
+            onLine={setDayLine}
+            onSaveLine={() => void wrapLine()}
+            onOff={wrapNot}
+          >
+            {headline}
+          </EveningCard>
+        )
+        /**
          * ⚠️ ON A PHONE THEY GO UNDER THE DAY'S HEADLINE, and the headline is the rail. The rail
          * sat at the foot of the Day half under 900px — 1,680px down (#298) — so the number that
          * says how a day went was the last thing on it. Folded, it is the first line under the
@@ -1802,8 +1930,8 @@ export function Timer({
          * name, so stepping back to Tuesday has to bring Tuesday's figures; the side column is
          * "Today at a glance" and keeps saying so.
          */
-        if (!wide && acts.length > 0)
-          return (
+        if (!wide && acts.length > 0) {
+          const headline = (
             <Rail
               day={seeing}
               acts={acts}
@@ -1819,8 +1947,11 @@ export function Timer({
               }}
             />
           )
+          return wrapping ? card(headline) : headline
+        }
         return (
           <>
+            {wrapping ? card() : null}
             {catsLine}
             {siteToggle}
           </>
