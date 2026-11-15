@@ -109,6 +109,11 @@ is 800px wide because the pane scales a 1440 page down to fit.
 | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | <img src="2026-11-14-instrument-layout-built/phone-mix.jpg" width="220" alt="Mix open under the parts: your keys and each part's volume and mute"> | <img src="2026-11-14-instrument-layout-built/phone-voice.jpg" width="220" alt="Voice open: Record a take, Open a file, and Sing lyrics"> | <img src="2026-11-14-instrument-layout-built/phone-songs.jpg" width="220" alt="Songs open: Keep this song, Stems with three WAVs, one kept song, Clear all parts"> |
 
+**🎤 Voice, lower down** — retaken on 14 Nov 2026 after main brought in the Sing panel's new sound
+(#338): its Harmony row is now Off / Third / Third + octave, starting on Off.
+
+<img src="2026-11-14-instrument-layout-built/phone-voice-sing.jpg" width="220" alt="Voice, lower down: Voice, Add and the new Harmony row with Off chosen, then Sing">
+
 <img src="2026-11-14-instrument-layout-built/desktop.jpg" width="800" alt="Desktop at 1440: the play bar on one row, the song with each part's volume on its row, the four tools, and Visuals beside it">
 
 ## How it was checked
