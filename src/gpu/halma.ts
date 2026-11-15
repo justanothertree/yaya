@@ -8,7 +8,7 @@
  * Side 1 starts at the bottom point and races to the top; side 2 the other way.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Side = 1 | 2
 export type Hole = { q: number; r: number; s: number }

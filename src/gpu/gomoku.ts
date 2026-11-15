@@ -6,7 +6,7 @@
  * row; 1 is black, 2 white.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Side = 1 | 2
 export const SIZES = [11, 13] as const

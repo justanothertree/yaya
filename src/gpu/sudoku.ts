@@ -7,7 +7,7 @@
  * digit d.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Grid = number[]
 const ALL = 0x1ff

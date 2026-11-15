@@ -10,7 +10,7 @@
  * row by row from the top-left; side 1 starts at the bottom and moves up, side 2 the other way.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Side = 1 | 2
 export type Board = { n: number; cells: Int8Array }
