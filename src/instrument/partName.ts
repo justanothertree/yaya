@@ -8,7 +8,7 @@ import { layerTitle } from './layerTitle'
  * The row lost everything but its name, its bars, its mute and its ⋯, so the name has to carry
  * what the row used to show beside it: WHAT the part is on the first line ("1. Beat") and the
  * detail under it ("Funk · Drums") — the style it was laid in, and the instrument, which was the
- * row's own dropdown and is now in the ⋯ sheet.
+ * row's own dropdown and is now in the part's menu (PartPanel, Sound).
  *
  * ⚠️ A PART SOMEBODY PLAYED STILL COUNTS ITS NOTES, because that count is the handle for "show me
  * those notes" (see the name button in LayerList). A split kit row says WHICH drum first, because

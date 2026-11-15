@@ -8,6 +8,7 @@ import { toEvents, toNotes } from './noteEdit'
 import { getTake } from './takes'
 import { decodeTake } from './recordTake'
 import { followLastBar, growPlan, partAt, partsIn } from './arrange'
+import { tidyLyrics } from './lyricLines'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -135,6 +136,16 @@ export type Layer = {
    * the count-in ran is stored as you finally left it rather than as you first tried it.
    */
   fx: Fx
+  /**
+   * The words this part sings: one line per bar of the SONG, `''` for a bar with none — see
+   * songLyrics.ts. Absent on every part nobody has written on, which is nearly all of them.
+   *
+   * ⚠️ ON THE PART RATHER THAN BESIDE THE LAYERS, so the room's undo, the bench a reload puts
+   * back, a kept song and the jam all carry it without learning anything new: each of them
+   * already copies a part's fields. A field one of them forgot would be a delete — see the
+   * round trip in songFile.test.ts, which fills this in.
+   */
+  lyrics?: string[]
 }
 
 type State = {
@@ -1490,7 +1501,33 @@ export function addEmptyLayer(instrument: InstrumentId): string {
   return id
 }
 
-/** Put a layer back in every bar. */
+/**
+ * An empty part shaped like another — its sound, its length, its volume and its arrangement — for
+ * "copy all its notes to a new part" (PartPanel). The notes arrive through the new part's own
+ * editor, so its ↶ takes them back.
+ *
+ * ⚠️ NO PICKER'S MARK ON THE ID, so a copy of the chords is not a second "chords" for the beats
+ * panel to swap — see patternMark.ts.
+ */
+export function addPartLike(id: string): string {
+  const l = state.layers.find((x) => x.id === id)
+  if (!l || layersFull()) return ''
+  const nid = `${Date.now()}-copy`
+  const copy: Layer = {
+    id: nid,
+    instrument: l.instrument,
+    events: [],
+    muted: false,
+    fx: { ...l.fx },
+    len: l.len,
+    ...(l.gain !== undefined ? { gain: l.gain } : {}),
+    ...(l.plan ? { plan: [...l.plan] } : {}),
+    ...(l.play ? { play: [...l.play] } : {}),
+  }
+  set({ layers: [...state.layers, copy] })
+  return nid
+}
+
 /**
  * How many bars of its own a take holds — the blocks there are to arrange.
  */
@@ -1598,6 +1635,54 @@ export function setLayerGain(id: string, gain: number) {
 
 export function setLayerFx(id: string) {
   set({ layers: state.layers.map((l) => (l.id === id ? { ...l, fx: fxSnapshot() } : l)) })
+}
+
+/**
+ * One of a part's own effects, from its menu — the echo of the bassline without touching the
+ * knobs your hands are playing through (Evan, 15 Nov 2026: a part's "extra sound settings" in
+ * the menu its notes open in). Heard from the part's next note, as a re-stamp is.
+ */
+export function setLayerFxValue(id: string, k: keyof Fx, v: number) {
+  const x = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0
+  set({
+    layers: state.layers.map((l) => (l.id === id ? { ...l, fx: { ...l.fx, [k]: x } } : l)),
+  })
+}
+
+/**
+ * A part's lyrics, or none. Nothing is released: the notes are the same notes.
+ *
+ * ⚠️ TIDIED ON THE WAY IN (tidyLyrics), so what the room holds is what a file would hold, and a
+ * part whose last word was deleted carries no field at all rather than a list of empty lines.
+ */
+export function setLayerLyrics(id: string, lines: readonly string[] | undefined) {
+  const lyrics = tidyLyrics(lines, MAX_BARS)
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id !== id) return l
+      const next = { ...l, lyrics }
+      if (!lyrics) delete next.lyrics
+      return next
+    }),
+  })
+}
+
+/**
+ * The words onto a different part's notes — one change, so one undo takes the move back whole.
+ * Whatever the other part had is replaced: a song is sung on one part at a time from the box.
+ */
+export function moveLyrics(from: string, to: string) {
+  const words = state.layers.find((l) => l.id === from)?.lyrics
+  if (from === to || !words || !state.layers.some((l) => l.id === to)) return
+  set({
+    layers: state.layers.map((l) => {
+      if (l.id === to) return { ...l, lyrics: words }
+      if (l.id !== from) return l
+      const next = { ...l }
+      delete next.lyrics
+      return next
+    }),
+  })
 }
 
 /**

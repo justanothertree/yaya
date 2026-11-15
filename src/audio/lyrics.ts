@@ -151,17 +151,25 @@ export type SungNote = {
 export function assignSyllables(
   notes: readonly Note[],
   syls: readonly Syllable[],
+  /** the syllable sung just before these notes, when a line continues one — see fitLine */
+  carry?: string,
 ): { sung: SungNote[]; spare: number } {
   const order = [...notes].sort((a, b) => a.t - b.t || a.midi - b.midi)
   const sung: SungNote[] = []
-  let lastText = 'oo'
+  let lastText = carry ?? 'oo'
   order.forEach((n, i) => {
     const s = syls[i]
     if (s && !s.hold) {
       lastText = s.text
       sung.push({ t: n.t, dur: n.dur, midi: n.midi, text: s.text, hold: false, whole: s.whole })
     } else {
-      sung.push({ t: n.t, dur: n.dur, midi: n.midi, text: lastText, hold: i > 0 })
+      sung.push({
+        t: n.t,
+        dur: n.dur,
+        midi: n.midi,
+        text: lastText,
+        hold: i > 0 || carry !== undefined,
+      })
     }
   })
   return { sung, spare: Math.max(0, syls.length - order.length) }

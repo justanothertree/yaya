@@ -1,4 +1,4 @@
-import { INSTRUMENTS, type InstrumentId, type Knob } from '../audio/synth'
+import { INSTRUMENTS, type InstrumentId } from '../audio/synth'
 import { type ChordId } from '../audio/chords'
 import { STRUMS, type StrumId } from '../audio/strum'
 import { ARPS, type ArpId } from '../audio/arp'
@@ -7,25 +7,10 @@ import { applyFx, captureFx, makeInstKits, type InstKit } from '../audio/instKit
 import { KitBar } from '../ui/KitBar'
 import { FAMILIES, familyVoices } from '../audio/families'
 import { fxWord } from './fxWord'
+import { KNOBS } from './knobs'
 import { KnobRow } from './rowParts'
 import { Sheet } from './Sheet'
 import type { Dispatch, SetStateAction } from 'react'
-
-/** The five things you can bend about the sound, as sliders rather than a patch editor. */
-const KNOBS: Array<[Knob, string, string]> = [
-  ['echo', 'Echo', 'How much of the note comes back'],
-  ['echoTime', 'Echo time', 'How long before it does'],
-  ['space', 'Space', 'The size of the room it is played in'],
-  ['vibrato', 'Vibrato', 'A wobble in the pitch, like a singer'],
-  /* the only one that is about PLAYING rather than about the sound, and it applies to all of
-     them — see Fx.glide for why it lives with the effects rather than with the instruments */
-  ['glide', 'Glide', 'Each note slides from the one before it'],
-  /* ⚠️ THE ONE WHOSE MIDDLE IS "OFF". The other five add something and read 0 when they are
-     doing nothing; this one shapes what is already there, so the preset as written sits at the
-     halfway mark and the slider has somewhere to go both ways. The hint says so, because a
-     slider resting at 50 with no explanation looks like a setting somebody left on. */
-  ['tone', 'Tone', 'Darker to the left, brighter to the right — the middle is the sound as it is'],
-]
 
 /**
  * The saved rigs, built with the room's OWN scale list.

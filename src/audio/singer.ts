@@ -159,7 +159,8 @@ export type SingOpts = {
    * that voice: its dips, falls and plate had cost the line its clean character (measured in
    * docs/2026-11-14-singer-vibe.md). So each change is one switch, to be heard on its own. After
    * hearing them he made the late vibrato and the light room the Sing panel's sound, and harmony
-   * (none, a third, or a third and the octave) its choice — see SOUND in SingPanel.
+   * (none, a third, or a third and the octave) its choice — see SOUND in instrument/singAlong.ts,
+   * which sings the song's lyrics since they moved out of the Sing panel (15 Nov 2026).
    *
    * `vibrato: 'late'` — only long notes waver, later, slower and shallower: see `lateVibratoOf`.
    */

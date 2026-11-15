@@ -332,15 +332,31 @@ export function fitSyllables(
 ): { sung: SungNote[]; spare: number } {
   const melody = melodyOf(notes)
   const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
-  const perBar = grid.perBar ?? 4
-  const fine = levels[levels.length - 1]
   const snapped = snapToGrid(melody, levels, lean, grid.len)
-  const line = makeRoom(snapped, syls.length, grid.beat, fine, perBar)
-  if (syls.length >= line.length || !syls.length) return assignSyllables(line, syls)
-  const at = place(line, syls, grid.beat, perBar)
+  return fitLine(snapped, syls, grid.beat, levels[levels.length - 1], grid.perBar ?? 4)
+}
+
+/**
+ * Syllables onto notes that are ALREADY on the grid — the half of fitSyllables after the feel and
+ * the snap, so a song can be snapped once and fitted bar by bar (fitByBar).
+ *
+ * `carry` is the syllable sung just before this line, when there was one: a line that opens on
+ * `_` holds that vowel on, as `_` does inside a line, instead of coming in on "oo".
+ */
+export function fitLine(
+  snapped: readonly Note[],
+  syls: readonly Syllable[],
+  beat: number,
+  fine: Lattice,
+  perBar = 4,
+  carry?: string,
+): { sung: SungNote[]; spare: number } {
+  const line = makeRoom(snapped, syls.length, beat, fine, perBar)
+  if (syls.length >= line.length || !syls.length) return assignSyllables(line, syls, carry)
+  const at = place(line, syls, beat, perBar)
   const sung: SungNote[] = []
   let k = -1
-  let last = 'oo'
+  let last = carry ?? 'oo'
   line.forEach((n, i) => {
     if (at[k + 1] === i) {
       k++
@@ -351,9 +367,56 @@ export function fitSyllables(
         return
       }
     }
-    sung.push({ ...n, text: last, hold: i > 0 })
+    sung.push({ ...n, text: last, hold: i > 0 || carry !== undefined })
   })
   return { sung, spare: 0 }
+}
+
+/** One bar's share of a song's lyrics: what it sings, what did not fit, and how many notes it had. */
+export type BarFit = { sung: SungNote[]; spare: number; notes: number }
+
+/**
+ * A song's lyrics, one line per bar, onto the notes a part plays across the whole song.
+ *
+ * ⚠️ THE FEEL AND THE SNAP ARE ASKED OF THE WHOLE PART, ONCE. Fitting bar by bar with
+ * fitSyllables would read swing from three or four notes at a time, and a bar that happened to
+ * look straight would be sung straight in the middle of a swung song.
+ *
+ * ⚠️ A BAR'S WORDS GO ON THE NOTES THAT START IN THAT BAR, after the snap — so a note played a
+ * hair early still belongs to the downbeat it was meant for. A bar with no words sings nothing,
+ * whatever notes it has: the lyric decides where the voice is, which is how a verse leaves a gap
+ * for the chorus. Words in a bar with no notes are counted as spare, never dropped silently.
+ *
+ * `notes` is in SONG time (see notesInSong in songLyrics.ts), and `grid.len` is the song's length.
+ */
+export function fitByBar(
+  notes: readonly Note[],
+  lines: readonly (readonly Syllable[])[],
+  grid: Grid & { barLen: number },
+): { sung: SungNote[]; bars: BarFit[] } {
+  const melody = melodyOf(notes)
+  const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
+  const fine = levels[levels.length - 1]
+  const snapped = snapToGrid(melody, levels, lean, grid.len)
+  const perBar = grid.perBar ?? 4
+  const sung: SungNote[] = []
+  const bars: BarFit[] = []
+  let carry: string | undefined
+  lines.forEach((syls, b) => {
+    const from = b * grid.barLen
+    const mine = snapped.filter((n) => n.t >= from - 1e-6 && n.t < from + grid.barLen - 1e-6)
+    if (!syls.length) {
+      bars.push({ sung: [], spare: 0, notes: mine.length })
+      carry = undefined
+      return
+    }
+    const fit = fitLine(mine, syls, grid.beat, fine, perBar, carry)
+    bars.push({ ...fit, notes: mine.length })
+    sung.push(...fit.sung)
+    /* a hold carries on only from the bar just before; a silent bar between them is a rest */
+    carry = fit.sung.length ? fit.sung[fit.sung.length - 1].text : undefined
+  })
+  return { sung, bars }
 }
 
 /**
