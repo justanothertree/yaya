@@ -155,9 +155,11 @@ export type SingOpts = {
   seed?: number
   /**
    * ⚠️ THE THREE SWITCHES OF THE SECOND VIBE PROTOTYPE, 14 Nov 2026 — each off by default, and with
-   * all three off the voice is exactly today's. Evan heard the first prototype and preferred today's
-   * voice: its dips, falls and plate had cost the line its clean character (measured in
-   * docs/2026-11-14-singer-vibe.md). So each change is one switch, to be heard on its own.
+   * all three off the voice is exactly the #325 voice. Evan heard the first prototype and preferred
+   * that voice: its dips, falls and plate had cost the line its clean character (measured in
+   * docs/2026-11-14-singer-vibe.md). So each change is one switch, to be heard on its own. After
+   * hearing them he made the late vibrato and the light room the Sing panel's sound, and harmony
+   * (none, a third, or a third and the octave) its choice — see SOUND in SingPanel.
    *
    * `vibrato: 'late'` — only long notes waver, later, slower and shallower: see `lateVibratoOf`.
    */
