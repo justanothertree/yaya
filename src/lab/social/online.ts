@@ -1,4 +1,4 @@
-import { whole, writeKept } from '../../gpu/kept'
+import { whole, writeKept } from '../../gpu/stored'
 import { isToyId } from './gate'
 import type { Mode } from './room'
 

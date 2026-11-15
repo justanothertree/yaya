@@ -10,7 +10,7 @@
 import { gRank, value } from './gin'
 import { shuffled, suitOf, type Card } from './poker'
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Who = 0 | 1
 export const other = (w: Who): Who => (w === 0 ? 1 : 0)

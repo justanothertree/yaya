@@ -11,7 +11,7 @@
  * breath, the kickoff, the score, and the computer opponent's idea of where to stand.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type V2 = [number, number]
 

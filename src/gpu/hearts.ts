@@ -8,7 +8,7 @@
  * 0 spades, 1 hearts, 2 diamonds, 3 clubs.
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const SPADES = 0
 export const HEARTS = 1

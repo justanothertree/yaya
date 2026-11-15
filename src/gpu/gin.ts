@@ -9,7 +9,7 @@
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 /** an ace is 0, a two 1, … a king 12 */
 export const gRank = (c: Card) => (rankOf(c) === 12 ? 0 : rankOf(c) + 1)

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  addDayNote,
   addEntry,
   dayNotesBetween,
   myExercises,
@@ -8,6 +9,7 @@ import {
   dropSet,
   type MyExercise,
   setAmount,
+  setQuality,
   entriesBetween,
   myActivities,
   myMoments,
@@ -19,9 +21,11 @@ import {
 import { today as todayISO } from './goal'
 import { Plans } from './Plans'
 import { WeekGrid } from './WeekGrid'
-import { weekOf } from './week'
+import { columns, coveredLine, coveredSoFar, weekOf } from './week'
 import { Routines } from './Routines'
-import { tilesFor } from './nowTiles'
+import { tilesFor, usualFirst } from './nowTiles'
+import { biggestStretch, isEvening, nextEdge, readWrap, unrated, writeWrap } from './evening'
+import { EveningCard } from './EveningCard'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
@@ -30,6 +34,9 @@ import { LIMIT } from './limits'
 import { ActivitiesFold } from './ActivitiesFold'
 import { useActivityEditor } from './useActivityEditor'
 import { SittingDialog } from './SittingDialog'
+import { Rail } from './Rail'
+import { WIDE, useWide } from './useWide'
+import { Modal } from '../circuit/ui/Modal'
 import { forInput, useSittingEditor } from './useSittingEditor'
 import { bump as bumpTally, fresh, undo as undoTally, undoTo, type Tally } from './tally'
 import {
@@ -48,6 +55,7 @@ import {
   overlapMs,
   straddles,
   countText,
+  inkOf,
   spanText,
   typedMinutes,
   type Activity,
@@ -128,6 +136,9 @@ function WallClock() {
   )
 }
 
+/** what the evening card remembers for the date: Not tonight, and the sittings skipped — see `readWrap` */
+const WRAP = 'chron.wrap.v1'
+
 export function Timer({
   day,
   beat,
@@ -151,6 +162,12 @@ export function Timer({
    * started (see `startFor`), which is the only thing since that adds controls per ROW rather
    * than per room. Measured on the preview seed, 7 Nov 2026, at 375: day **26** in-room controls,
    * aims **40**, one of those being the ▶.
+   *
+   * ⚠️ AND #298 MOVED THEM AGAIN, 14 Nov 2026 — the same probe, the same seed, 375 with a timer
+   * running: Day **18**, Aims **21**, Journal **16**, Friends **7**, from 31, 49, 21 and 19. Dated,
+   * because the next change to this room makes it history like the figures above. What it is
+   * worth keeping is the decision: the things you do now and then are one tap away in words, and
+   * what you do every visit is on the screen.
    *
    * ⚠️ THE STOPWATCH IS IN NEITHER HALF. Everything from the running clock down to the gap form
    * renders whatever `show` says, because a session you forgot to stop must not be able to hide
@@ -318,6 +335,27 @@ export function Timer({
     void load()
   }, [load, beat])
 
+  /**
+   * The four weeks before today, which is what "what you usually start around now" is read from —
+   * see `usualFirst`. Once a day and after an import, not on every tick: a habit does not move in
+   * a minute, and today's own starts arrive through `log` and `weekLog` anyway.
+   */
+  const today = todayISO()
+  const [past, setPast] = useState<Entry[]>([])
+  useEffect(() => {
+    let dead = false
+    const to = dayBounds(today).fromMs
+    void entriesBetween(
+      new Date(to - 28 * 86_400_000).toISOString(),
+      new Date(to).toISOString(),
+    ).then((e) => {
+      if (!dead) setPast(e)
+    })
+    return () => {
+      dead = true
+    }
+  }, [today, beat])
+
   const loadWeek = useCallback(async () => {
     if (!weekDays.length) return
     const from = dayBounds(weekDays[0]).fromMs
@@ -391,28 +429,23 @@ export function Timer({
     [log, bounds.fromMs, bounds.toMs],
   )
   /**
-   * The handful worth a button of their own.
+   * Your activities, the ones you have done most today first — every chip list on this half.
    *
-   * ⚠️ ORDERED BY WHAT YOU HAVE DONE TODAY, then by name — so the list settles into your actual
-   * habits rather than the order you happened to create things in, and the first button is
-   * usually the right one. Six, because a seventh wraps the row on a phone and a row of buttons
-   * that wraps has stopped reading as a shortcut.
+   * ⚠️ ORDERED BY WHAT YOU HAVE DONE TODAY, then by name — so a list settles into your actual
+   * habits rather than the order you happened to create things in, and the first chip is usually
+   * the right one. The sheets draw all of them now; the gap panel the first six, because six is
+   * what a phone's row holds before it stops reading as a shortcut.
    *
-   * ⚠️ AND THE RANKING IS `tilesFor` RATHER THAN A SECOND COPY OF IT. This row and the Now
+   * ⚠️ AND THE RANKING IS `tilesFor` RATHER THAN A SECOND COPY OF IT. This list and the Now
    * room's tiles were the same three rules written twice — drop archived and `auto`, weigh each
    * activity by what it holds in the window, sort by that and then by name — and when Now moved
    * in here one of the two had to go. The one that went is the one with no test: `tilesFor` is
    * pure and `nowTiles.test.ts` asks it the midnight-straddle question, which a `useMemo` in a
-   * component cannot be asked at all. The cap stays here because it is about this row's width.
+   * component cannot be asked at all.
    */
-  const quick = useMemo(
-    () => tilesFor(acts ?? [], log, bounds.fromMs, bounds.toMs, Date.now()).slice(0, 6),
+  const ranked = useMemo(
+    () => tilesFor(acts ?? [], log, bounds.fromMs, bounds.toMs, Date.now()),
     [acts, log, bounds.fromMs, bounds.toMs],
-  )
-  /* what the row offers: the handful worth a button, minus whatever is running — see the row */
-  const switchable = useMemo(
-    () => quick.filter((a) => a.id !== running?.activity),
-    [quick, running?.activity],
   )
   /**
    * The day's rows, split into what you did and what the site noticed.
@@ -461,6 +494,8 @@ export function Timer({
    * that is where they are written and changed.
    */
   const [dayNotes, setDayNotes] = useState<DayNote[]>([])
+  /* bumped when the evening card writes a line about the day, so the notes are asked for again */
+  const [noteTick, setNoteTick] = useState(0)
   useEffect(() => {
     if (show !== 'day') return
     let dead = false
@@ -473,7 +508,7 @@ export function Timer({
     return () => {
       dead = true
     }
-  }, [seeing, bounds.toMs, beat, show])
+  }, [seeing, bounds.toMs, beat, show, noteTick])
 
   useEffect(() => {
     let dead = false
@@ -654,6 +689,8 @@ export function Timer({
      * the activity has had its minutes today, so it reads as a thing you confirm.
      */
     if (id === running?.activity) return
+    /* the words typed about the sitting this closes go onto it first — see `runNoteFor` */
+    if (!(await keepRunNote())) return
     setBusy(true)
     await flushReps()
     const bad = await startTimer(id)
@@ -678,8 +715,30 @@ export function Timer({
    * sitting had one — which meant an autosave echoing back through a reload overwrote whatever
    * had been typed since. The id is the question actually being asked: is this a different
    * sitting from the one the box was filled for.
+   *
+   * ⚠️ AND THE BOX IS BACK, UNDER THE BAR ON THE DAY, so the rule above is kept by saving rather
+   * than by emptying. `runNoteFor` is the sitting the words were typed about; Stop and every
+   * switch save them onto it FIRST, the way `flushReps` goes first, and refuse to go on if the
+   * server refused the words, so they are still on screen to try again. A sitting that changes
+   * some other way (▶ on a goal, or another device) still gets them, through the effect below.
    */
   const runId = running?.id ?? null
+  const [runNote, setRunNote] = useState('')
+  const runNoteFor = useRef<string | null>(null)
+  const keepRunNote = async (): Promise<boolean> => {
+    const id = runNoteFor.current
+    if (!id || !runNote.trim()) return true
+    const ok = await sed.addJournal(id, runNote)
+    if (ok) {
+      setRunNote('')
+      runNoteFor.current = null
+    }
+    return ok
+  }
+  useEffect(() => {
+    if (runNoteFor.current && runNoteFor.current !== runId) void keepRunNote()
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [runId])
   /**
    * The count on the sitting you are in, tapped up as you go.
    *
@@ -781,6 +840,9 @@ export function Timer({
 
   const halt = async () => {
     if (busy) return
+    /* the words in the box under the bar are about this sitting, so they go onto it before it
+       ends — and a refusal keeps it running with the words still there, rather than losing them */
+    if (!(await keepRunNote())) return
     setBusy(true)
     /**
      * ⚠️ THE NOTE GOES IN ON THE WAY OUT, which is the only moment anybody knows what to write.
@@ -909,6 +971,187 @@ export function Timer({
     }
   }
 
+  /**
+   * Which sheet is over the room: the running bar's ⋯, ▶ Start something, or the idle ⋯.
+   *
+   * ⚠️ ONE VALUE, BECAUSE ONLY ONE CAN BE UP. These are where the controls went that used to sit
+   * on every tab at once (#298): the running timer was a 226px card on a phone, with ✎ Note,
+   * ＋ Activity and four "switch to" chips around ■ Stop, and the idle Day was eleven controls
+   * before the first thing it had recorded. The bar keeps what you press while working — the
+   * clock, Stop, the count — and the sheet holds the rest, one tap away and in words.
+   */
+  const [sheet, setSheet] = useState<null | 'now' | 'start' | 'more'>(null)
+  /* a sheet about the running sitting means nothing once it has stopped, by this tab or another */
+  useEffect(() => {
+    if (!running && sheet === 'now') setSheet(null)
+  }, [running, sheet])
+  /** close whichever sheet is up, then do the thing — a sheet never stays over its own result */
+  const closing = (fn: () => void) => () => {
+    setSheet(null)
+    fn()
+  }
+  const wide = useWide()
+  /**
+   * Whether the week grid is open.
+   *
+   * ⚠️ FOLDED ON A PHONE AND OPEN WHERE THERE IS ROOM — #298's second answer. It was the Day's
+   * biggest block at 375, **481px** of picture between the log and everything under it, and it is
+   * a picture of the week rather than something you act on. Decided once per visit from the width;
+   * after that it stays as you left it.
+   */
+  const [weekOpen, setWeekOpen] = useState(() => !!window.matchMedia?.(WIDE).matches)
+  /**
+   * Whether "Plans, routines and activities" is open — three folds that are now one row (#298).
+   *
+   * ⚠️ AND TWO THINGS OPEN IT FROM OUTSIDE, which is the cost of a fold inside a fold. Plans opens
+   * itself on a day with a plan and nothing done against it, and the sitting dialog's "Name what
+   * Drawing counts" opens the Activities fold with its editor. Either one, opening only the inner
+   * fold, would open nothing anybody could see.
+   */
+  const [kitOpen, setKitOpen] = useState(false)
+  const [planSum, setPlanSum] = useState<{ planned: number; did: number } | null>(null)
+  const onPlanSum = useCallback((x: { planned: number; did: number; wants: boolean }) => {
+    setPlanSum({ planned: x.planned, did: x.did })
+    if (x.wants) setKitOpen(true)
+  }, [])
+  useEffect(() => {
+    if (actEd.actsOpen) setKitOpen(true)
+  }, [actEd.actsOpen])
+  /**
+   * The chips under ▶ Start something: what you usually start around now, then the ones you
+   * started last — #298's third answer, "the most recent rather than ones you pin", with a routine
+   * put in front of it. The week's log and today's for the recency, because the day alone is empty
+   * every morning; the four weeks in `past` for the routine. See `usualFirst`.
+   */
+  const recent = useMemo(
+    () => usualFirst(acts ?? [], past, [...weekLog, ...log], Date.now()).slice(0, 3),
+    [acts, past, weekLog, log],
+  )
+  /* the week's figure, for the row that folds the grid — the grid prints the same one, from here */
+  const weekSaid = useMemo(() => {
+    const now = Date.now()
+    return coveredSoFar(columns(weekDays, weekLog, now), now)
+  }, [weekDays, weekLog])
+  /* the stretch the gap panel scrolls into view when something far down the page opened it */
+  const gapRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (gap) gapRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [gap])
+
+  /**
+   * Log a past session: the form that was the `Log past` pill, opened from a sheet or a button.
+   *
+   * ⚠️ IT FILLS IN THE LAST HOUR, AS THE PILL DID — see `gapOpens`, which already knew how to do it
+   * for a past day as well as for today. The pill only ever appeared on today, so that half of it
+   * had been unreachable except by tapping the week grid.
+   */
+  const openGap = () => {
+    const o = gapOpens()
+    setGapFrom(o.from)
+    setGapTo(o.to)
+    setGapAct(pick || ranked[0]?.id || '')
+    setTyped('')
+    setGap(true)
+  }
+  /**
+   * The evening wrap-up — see evening.ts and EveningCard.tsx.
+   *
+   * ⚠️ NOT TONIGHT AND SKIP ARE REMEMBERED FOR THE DATE, in this browser only. They are
+   * preferences about a card, not data, so they do not belong in the account. Skip lived in React
+   * state at first, so a reload asked again about a sitting you had just waved away; both are one
+   * stored value now, read against today's date at every render (`readWrap`), which is also what
+   * keeps a page left open overnight from carrying tonight's answers into tomorrow evening.
+   */
+  const [wrapRaw, setWrapRaw] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(WRAP)
+    } catch {
+      return null
+    }
+  })
+  const wrapMem = readWrap(wrapRaw, todayISO())
+  const remember = (change: { off: true } | { skip: string }) => {
+    const next = writeWrap(wrapRaw, todayISO(), change)
+    try {
+      window.localStorage.setItem(WRAP, next)
+    } catch {
+      /* a browser that keeps nothing still remembers for this visit */
+    }
+    setWrapRaw(next)
+  }
+  const [dayLine, setDayLine] = useState('')
+  const wrapNot = () => remember({ off: true })
+  /**
+   * ⚠️ A WAKE-UP AT EIGHT, AND AT MIDNIGHT, because an idle room does not render — see `nextEdge`.
+   * Only the clock ticks, and only while a timer runs, so the card used to wait for the next thing
+   * that happened to move. Re-armed after each one, and on coming back to the tab, since a laptop
+   * asleep across eight o'clock fires its timer late or not until it wakes.
+   */
+  const [, setEdge] = useState(0)
+  useEffect(() => {
+    if (show !== 'day') return
+    let t = 0
+    const arm = () => {
+      const wait = nextEdge(Date.now()) - Date.now() + 500
+      t = window.setTimeout(
+        () => {
+          setEdge((n) => n + 1)
+          arm()
+        },
+        Math.min(Math.max(wait, 1000), 2 ** 31 - 1),
+      )
+    }
+    arm()
+    const back = () => {
+      if (document.visibilityState === 'visible') setEdge((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', back)
+    return () => {
+      window.clearTimeout(t)
+      document.removeEventListener('visibilitychange', back)
+    }
+  }, [show])
+  /* ⚠️ the same write the dialog's ratings make, by the same function — one tap, then the log is
+     asked again so the next unrated sitting takes its place */
+  const wrapRate = async (e: Entry, n: number) => {
+    if (busy) return
+    setBusy(true)
+    const ok = await setQuality(e.id, n)
+    setBusy(false)
+    if (!ok) return moan('that rating did not save')
+    await after()
+  }
+  /* the form Log a past session opens, with the stretch already in it */
+  const wrapLog = (x: { fromMs: number; toMs: number }) => {
+    setGapFrom(forInput(new Date(x.fromMs).toISOString()))
+    setGapTo(forInput(new Date(x.toMs).toISOString()))
+    setGapAct(pick || ranked[0]?.id || '')
+    setTyped('')
+    setGap(true)
+  }
+  /* a day note, the Journal's own kind, about today */
+  const wrapLine = async () => {
+    const body = dayLine.trim()
+    if (!body || busy) return
+    setBusy(true)
+    const bad = await addDayNote(todayISO(), body)
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    setDayLine('')
+    setNoteTick((n) => n + 1)
+  }
+
+  /**
+   * ✎ a note with no session, in the Journal — about the day on screen when that day has gone, or
+   * about today. Never about a day still to come, which the writer refuses and nobody can have
+   * noticed anything about; the sheets offer it only for today and earlier.
+   */
+  const writeNote = () => {
+    setWriteDay(seeing < todayISO() ? seeing : undefined)
+    setWriteNow((n) => n + 1)
+    onShow?.('journal')
+  }
+
   if (acts === null) {
     return (
       <p className="muted" aria-busy>
@@ -917,427 +1160,547 @@ export function Timer({
     )
   }
 
+  const isToday = seeing === todayISO()
+  /** the day on screen has happened, so something could have been done or noticed on it */
+  const lived = seeing <= todayISO()
+  const runName = running ? (byId.get(running.activity)?.name ?? 'something') : ''
+  /**
+   * An activity as a chip, with its dot.
+   *
+   * ⚠️ THE DOT RATHER THAN ▶: the triangle says "this starts something", which the row around it
+   * already says, and the colour says WHICH thing — the same dot the day log and the week grid
+   * draw. Every activity has one now, its kind's colour when it has none of its own (`inkOf`), so
+   * the ▶ that stood in for a missing colour has gone. `on` is for the chips that CHOOSE rather than start,
+   * which have to show which one is chosen or picking one looks like it did nothing.
+   */
+  const chip = (a: Activity, onClick: () => void, on?: boolean) => (
+    <button
+      key={a.id}
+      type="button"
+      className={'btn btn-ghost chron-chip-start' + (on ? ' is-on' : '')}
+      aria-pressed={on}
+      disabled={busy}
+      onClick={onClick}
+    >
+      <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
+      {a.name}
+    </button>
+  )
+  /**
+   * TYPE IT OR PICK IT — the box ▶ Start something and Log a past session both open with.
+   *
+   * ⚠️ A `<datalist>`, WHICH IS WHAT THE ROOM ALWAYS MEANT. The chips are the clicking half; this
+   * is the half for everything else, and for a name you have not made yet. The HTML version of
+   * this app has always done it this way (`<input list="act-dl">`).
+   *
+   * ⚠️ AND IT DOES NOT CREATE WHILE YOU TYPE. Resolution happens on Start, so a name half-entered
+   * is not an activity — otherwise "Gy" becomes a permanent activity on the way to "Gym". Logging
+   * a past session never creates one at all: it takes an exact name or a chip.
+   */
+  const picker = (
+    <>
+      <label className="chron-pickrow">
+        <span className="sr-only">{gap ? 'What was it?' : 'What are you doing?'}</span>
+        <input
+          list={actsListId}
+          value={typed}
+          placeholder={gap ? 'What was it?' : 'What are you doing?'}
+          onChange={(e) => {
+            setTyped(e.target.value)
+            /* an exact name is a choice, so the chips and the button agree with the box */
+            const hit = byName(e.target.value)
+            if (gap) setGapAct(hit?.id ?? '')
+            else setPick(hit?.id ?? '')
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || gap) return
+            e.preventDefault()
+            setSheet(null)
+            void startTyped()
+          }}
+        />
+      </label>
+      <datalist id={actsListId}>
+        {yours.map((a) => (
+          <option key={a.id} value={a.name} />
+        ))}
+      </datalist>
+    </>
+  )
+  /**
+   * The quieter things to do when nothing is running: the idle ⋯, and the foot of the Start sheet.
+   * Each one is a control that used to sit on screen — the `Log past` pill, ✎ Note and ＋ Activity.
+   */
+  const lesser = (
+    <>
+      {lived ? (
+        <button type="button" className="btn btn-ghost chron-sheet-act" onClick={closing(openGap)}>
+          <span>🕘 Log a past session</span>
+          <small>something you forgot to start</small>
+        </button>
+      ) : null}
+      {lived ? (
+        <button
+          type="button"
+          className="btn btn-ghost chron-sheet-act"
+          onClick={closing(writeNote)}
+        >
+          <span>✎ Write a note</span>
+          <small>no session needed</small>
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="btn btn-ghost chron-sheet-act"
+        onClick={closing(() => setAdding(true))}
+      >
+        <span>＋ New activity</span>
+      </button>
+    </>
+  )
+
   return (
     <div className="chron-rec">
       {/**
-       * ⚠️ TODAY IS NAMED RATHER THAN DATED, because "Today" is what anybody calls it and a date
-       * where the word should be makes you work out whether it is the word. Every other day gets
-       * its date, which is the only thing that identifies it.
+       * ⚠️ THE BAR COMES FIRST, ON EVERY TAB, and it is the one thing on this half that must not
+       * move. It was below the Day's own header; on every other tab it was first anyway, so the
+       * clock sat in a different place depending on where you had been. Now it is always the first
+       * thing under the tabs, and the day you are reading follows it.
        */}
-      {show === 'day' && (
-        <div className="chron-day">
-          <button
-            className="btn btn-ghost"
-            onClick={() => setSeeing(dayStep(seeing, -1))}
-            aria-label="The day before"
-            title="The day before"
-          >
-            ‹
-          </button>
-          <strong>
-            {seeing === todayISO()
-              ? 'Today'
-              : seeing === dayStep(todayISO(), 1)
-                ? 'Tomorrow'
-                : seeing === dayStep(todayISO(), -1)
-                  ? 'Yesterday'
-                  : niceDay(seeing)}
-          </strong>
-          <button
-            className="btn btn-ghost"
-            onClick={() => setSeeing(dayStep(seeing, 1))}
-            aria-label="The day after"
-            title="The day after"
-          >
-            ›
-          </button>
-          {seeing !== todayISO() && (
-            <button className="btn btn-ghost" onClick={() => setSeeing(todayISO())}>
-              back to today
-            </button>
-          )}
-          {/* ⚠️ only on today: a wall clock beside a day you are reading back is the time somewhere
-            else, and the one thing the header must be unambiguous about is which day it means */}
-          {seeing === todayISO() && <WallClock />}
-        </div>
-      )}
-      <div className="chron-timer">
-        {running ? (
-          <>
+      {running ? (
+        <>
+          {/**
+           * ⚠️ ONE SLIM BAR: THE CLOCK, WHAT IT IS, HOW LONG IS LEFT, ■ STOP AND ⋯. Measured on a
+           * phone before #298, the running card was **226px** on every tab — ✎ Note, ＋ Activity
+           * and four switch chips around Stop. Those are things you do now and then; Stop and the
+           * clock are the things you look for, so they are what stays, and the rest is one tap
+           * away under ⋯, named.
+           */}
+          <div className="chron-running">
             {/* ⚠️ `role="timer"`, which is what this is. Its implicit live setting is already
                 `off` — a clock announcing every second would drown everything else on the page —
                 so the role adds the name a screen reader gives it without adding any noise. */}
             <span className="chron-run" role="timer" aria-live="off">
               {clockText(Date.now() - Date.parse(running.start))}
             </span>
-            <span className="chron-run-name">
-              {byId.get(running.activity)?.name ?? 'something'}
-            </span>
-            {/**
-             * ⚠️ THE TARGET, WHILE IT STILL MATTERS. `session_mins` has been read only by
-             * `metSession`, which marks a FINISHED sitting short — so the room could tell you that
-             * you stopped early and never that you were about to. "Seven minutes left" is a reason
-             * to keep going; "short" is a verdict on something already over.
-             *
-             * ⚠️ AND IT SAYS THE MINUTES, NOT ONLY THE BAR. A bar with no number is a shape; the
-             * one thing you want at a glance is how much longer, so the bar carries the sentence
-             * rather than replacing it.
-             */}
-            {(() => {
-              const aim = byId.get(running.activity)?.session ?? null
-              const far = sitting((Date.now() - Date.parse(running.start)) / 60_000, aim)
-              if (!far) return null
-              return (
-                <span className={'chron-aim' + (far.over ? ' is-met' : '')}>
-                  <i aria-hidden>
-                    <b style={{ width: `${far.pct}%` }} />
-                  </i>
-                  <span>
-                    {far.over ? `${aim}m done` : `${Math.ceil(far.left)}m left of ${aim}m`}
-                  </span>
-                </span>
-              )
-            })()}
-            {/**
-             * ⚠️ A FACT AND THE WAY OUT, NEVER A QUESTION THAT HAS TO BE ANSWERED. The clock reads
-             * 14:03:22 for a timer left running overnight and says nothing about yesterday, so
-             * this says when it began — and that the dialog Stop opens is where the real finishing
-             * time is set. It asks nothing and blocks nothing: somebody genuinely at it for five
-             * hours reads one line and carries on, which is the whole difference between a fact
-             * and a nag. The rule for when it appears is `longRun`, with its own tests.
-             */}
-            {(() => {
-              const long = longRun(running.start, Date.now())
-              if (!long) return null
-              const t = new Date(running.start)
-              const time = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-              const when =
-                long.daysAgo === 0
-                  ? time
-                  : long.daysAgo === 1
-                    ? `${time} yesterday`
-                    : `${t.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`
-              return (
-                <p className="chron-longrun">
-                  Running since {when}. Forgot to stop? Press Stop, then set when you finished.
-                </p>
-              )
-            })()}
-            {/**
-             * ⚠️ ONLY WHEN THE ACTIVITY COUNTS SOMETHING. A metric is what makes a quantity mean
-             * anything — "24" against Drawing is a number with no unit, where "24 reps" against
-             * Gym is the set you just did. The activity editor is where a metric is named, so
-             * the row appears for the activities you have said count something and for no other.
-             *
-             * ⚠️ AND THE STEPS ARE +1 / +5 / +10 RATHER THAN A NUMBER FIELD. The whole request
-             * was "simple ui buttons to easily tap add reps" — a keyboard between sets is the
-             * thing being replaced, not the thing to offer. `−1` and Undo are the only other
-             * things a thumb needs here — see the note on Undo below.
-             */}
-            {(() => {
-              const metric = running ? (byId.get(running.activity)?.metric ?? null) : null
-              if (!metric) return null
-              const at = reps ?? 0
-              /**
-               * ⚠️ SETS MODE, WHEN THE ACTIVITY HAS EXERCISES LINKED TO IT. Each press is then a set
-               * of the chosen exercise, which the Circuit sees and the count includes — see
-               * `pressSet`. An activity with none counts exactly as it always has.
-               */
-              const linked = running
-                ? (exercises ?? []).filter((x) => x.activity === running.activity && x.ok)
-                : []
-              const chosen =
-                linked.find((x) => `${x.person}/${x.exercise}` === pickEx) ?? linked[0] ?? null
-              const lastSet = setStack.current[setStack.current.length - 1]
-              /**
-               * ⚠️ THE UPDATER FORM, FOR THE REASON THE NUDGE BUTTONS IN THE EDITOR ALREADY
-               * CARRY IN A COMMENT — and now through `tally.ts`, which is where the arithmetic
-               * can be asked a question. Measured in the pane before the fix: three `+5` presses
-               * inside one task gave **5 reps**; through the updater they give **15**. A thumb
-               * cannot press three times inside one task, but the window is "before React
-               * commits", which on a slow render is as long as the render takes.
-               */
-              const press = (by: number) => {
-                setRepsFailed(false)
-                setTally((t) => bumpTally(t, by))
-              }
-              const back = undoTo(tally)
-              /**
-               * What the row says about the server's copy.
+            <span className="chron-running-what">
+              <strong className="chron-run-name">{runName}</strong>
+              {/**
+               * ⚠️ THE TARGET, WHILE IT STILL MATTERS. `session_mins` has been read only by
+               * `metSession`, which marks a FINISHED sitting short — so the room could tell you that
+               * you stopped early and never that you were about to. "Seven minutes left" is a reason
+               * to keep going; "short" is a verdict on something already over.
                *
-               * ⚠️ NOTHING AT ALL WHEN THERE IS NOTHING TO SAY. "0 reps · saved" on a sitting
-               * that has counted nothing is a word about a non-event; the state appears the
-               * moment there is a number for it to be about.
-               */
-              const saving = reps !== repsSaved.current
-              const state = repsFailed ? (
-                <button
-                  className="btn btn-ghost chron-tally-retry"
-                  onClick={() => void flushReps()}
-                  disabled={busy}
-                >
-                  not saved — try again
-                </button>
-              ) : saving ? (
-                <span className="muted chron-tally-state">saving…</span>
-              ) : at > 0 ? (
-                <span className="muted chron-tally-state">saved</span>
-              ) : null
-              return (
-                /**
-                 * ⚠️ BUILT FOR BETWEEN SETS. The count is the biggest thing in the row because it
-                 * is the thing you glance at with your hands full; the three steps share the full
-                 * width so the one you want is under the thumb wherever it lands; and the two
-                 * corrections sit on their own line so a correction is never one finger-width
-                 * from the thing it corrects.
-                 *
-                 * ⚠️ AND THE UNIT IS SAID OUT LOUD. The buttons read "+5" on screen, which is
-                 * unambiguous beside "24 reps", and "Add 5 reps" to a screen reader, which has no
-                 * "beside". The count is an `<output>` that announces politely, so a run of taps
-                 * reads back as the number they arrived at rather than every step on the way.
-                 */
-                <div className="chron-tally" role="group" aria-label={`Count ${metric}`}>
-                  <div className="chron-tally-head">
-                    <output className="chron-tally-at" aria-live="polite" aria-atomic="true">
-                      <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
-                    </output>
-                    {state}
-                  </div>
-                  {/**
-                   * ⚠️ SAID, BECAUSE THIS IS THE ONE CHRONICLE NUMBER THAT LEAVES CHRONICLE. A set is
-                   * part of the person's Circuit cell, and the Circuit shows that cell to the
-                   * circuits the person is in — while everything else in this room is private
-                   * unless shared. The sitting itself, its time and its activity stay here.
-                   */}
-                  {chosen ? (
-                    <p className="muted chron-tally-where">
-                      Each set also counts in your Circuit column.
-                    </p>
-                  ) : null}
-                  {chosen ? (
-                    <div className="chron-tally-ex" role="group" aria-label="Which exercise">
-                      {linked.map((x) => {
-                        const key = `${x.person}/${x.exercise}`
-                        const on = key === `${chosen.person}/${chosen.exercise}`
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            className={'btn btn-ghost chron-tally-pick' + (on ? ' is-on' : '')}
-                            aria-pressed={on}
-                            onClick={() => setPickEx(key)}
-                          >
-                            {x.name}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-                  <div className="chron-tally-steps">
-                    {[1, 5, 10].map((n) => (
-                      <button
-                        key={n}
-                        className="btn btn-ghost chron-tally-up"
-                        onClick={() => (chosen ? void pressSet(n, chosen) : press(n))}
-                        disabled={busy}
-                        aria-label={
-                          chosen ? `Add a set of ${n} ${chosen.name}` : `Add ${n} ${metric}`
-                        }
-                      >
-                        +{n}
-                      </button>
-                    ))}
-                  </div>
-                  {chosen ? (
-                    <div className="chron-tally-fix">
-                      {/* ⚠️ ONE CORRECTION IN SETS MODE: Undo takes back the last SET, which is
-                          what a mis-press made. A −1 would have to edit some set, and which one
-                          is a question nobody between sets should have to answer. */}
-                      <button
-                        className="btn btn-ghost chron-tally-undo"
-                        onClick={() => void dropLastSet()}
-                        disabled={busy || !lastSet}
-                        aria-label={
-                          lastSet
-                            ? `Undo — take back ${countText(lastSet.value)} ${lastSet.name}`
-                            : 'Nothing to undo'
-                        }
-                      >
-                        ↶ Undo
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="chron-tally-fix">
-                      <button
-                        className="btn btn-ghost chron-tally-down"
-                        onClick={() => press(-1)}
-                        disabled={busy || at === 0}
-                        aria-label={`Take 1 off — ${metric}`}
-                      >
-                        −1
-                      </button>
-                      {/**
-                       * ⚠️ UNDO TAKES BACK THE LAST PRESS, WHATEVER ITS SIZE. `−1` was the only
-                       * correction, so a `+10` meant as a `+1` was nine more taps to repair, made
-                       * between sets with the wrong number on screen the whole time. The label says
-                       * where it goes back to, because "Undo" alone does not say how far.
-                       */}
-                      <button
-                        className="btn btn-ghost chron-tally-undo"
-                        onClick={() => {
-                          setRepsFailed(false)
-                          setTally((t) => undoTally(t))
-                        }}
-                        disabled={busy || back === undefined}
-                        aria-label={
-                          back === undefined
-                            ? 'Nothing to undo'
-                            : `Undo — back to ${countText(back ?? 0)} ${metric}`
-                        }
-                      >
-                        ↶ Undo
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-            {/* ⚠️ THE NOTE BOX IS GONE FROM HERE. It asked what a sitting was worth before you
-                had ended it, in one line — and it was the only moment the room ever offered to
-                write anything down. Stopping opens a dialog instead, where the rating is a tap
-                and the journal takes as many entries as you like. */}
-            {/**
-             * ⚠️ AND THAT LEFT THE JOURNAL WITH NO DOOR ANYBODY WOULD FIND. The decision above is
-             * right — a one-line box beside Stop asks the wrong question at the wrong moment —
-             * but the consequence it did not name is that writing something down became "press ✎
-             * on the row in the day log that happens to be the one with no end on it", which is
-             * two taps into a list on the other half of the room, and nothing says it is there.
-             * The dialog it opens is the same dialog; this is only the door, and the journal is
-             * drawn first inside it while a sitting is open so the door leads somewhere.
-             *
-             * ⚠️ NOT A SECOND WRITE PATH. It sets `fixEnt`, which is what the log row's ✎ sets.
-             * A box here with its own `addNote` would be the third place a note has been written
-             * from in this file, and the first two both lost one — see the autosave that moved a
-             * sentence onto the wrong sitting, and `chronicle_running_note`, which no longer
-             * exists.
-             */}
-            <button
-              className="btn btn-ghost chron-jot"
-              disabled={busy}
-              onClick={() => setFixEnt(running.id)}
-              title="Write something about this session, without stopping it"
-            >
-              ✎ Note
-              {running.notes.length ? (
-                <span className="chron-jot-n" aria-hidden>
-                  {running.notes.length}
-                </span>
-              ) : null}
-              <span className="sr-only">
-                {running.notes.length
-                  ? ` — ${running.notes.length} already written`
-                  : ' — nothing written yet'}
-              </span>
-            </button>
+               * ⚠️ AND IT SAYS THE MINUTES, NOT ONLY THE BAR. A bar with no number is a shape; the
+               * one thing you want at a glance is how much longer, so the bar carries the sentence
+               * rather than replacing it.
+               */}
+              {(() => {
+                const aim = byId.get(running.activity)?.session ?? null
+                const far = sitting((Date.now() - Date.parse(running.start)) / 60_000, aim)
+                if (!far) return null
+                return (
+                  <span className={'chron-aim' + (far.over ? ' is-met' : '')}>
+                    <i aria-hidden>
+                      <b style={{ width: `${far.pct}%` }} />
+                    </i>
+                    <span>
+                      {far.over ? `${aim}m done` : `${Math.ceil(far.left)}m left of ${aim}m`}
+                    </span>
+                  </span>
+                )
+              })()}
+            </span>
             <button className="btn" disabled={busy} onClick={() => void halt()}>
               ■ Stop
             </button>
-          </>
-        ) : seeing !== todayISO() ? (
-          /* ⚠️ a timer runs in the present or not at all. On another day the controls would be a
-             lie — there is nothing to time — so the day offers the repair tools instead. */
-          <>
-            <span className="muted">
-              {/**
-               * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. The condition here is "not
-               * today", which is true in both directions, and the copy was written for one of them:
-               * stepping forward to Saturday said "Looking back. Use ⏱ Fill a gap to add time",
-               * which is wrong twice — you are looking forward, and you cannot have spent time on a
-               * day you have not lived. Pointing somebody at Fill a gap there invites them to record
-               * work they have not done.
-               *
-               * ⚠️ AND IT POINTS AT THE THING THAT IS ACTUALLY FOR THIS. A future day is what the
-               * planner is for, and the plan list is a few inches further down the same column.
-               */}
-              {seeing > todayISO()
-                ? 'Not here yet. Plan a span below, or go back to today to start a timer.'
-                : 'Looking back. Use ⏱ Fill a gap to add time, or go back to today to start a timer.'}
-            </span>
-            {/**
-             * ⚠️ A NOTE ABOUT THIS DAY, FROM THIS DAY. The Journal's box only ever wrote about
-             * today, so "slept badly on Tuesday", remembered on Thursday, had to be filed under
-             * Thursday. On a past day this opens the same box on THIS day; the note keeps the moment
-             * it was written, and this day's log shows it with that date and no clock. Not on a day
-             * still to come: the writer refuses one, and you cannot have noticed anything about it.
-             */}
-            {seeing < todayISO() ? (
+            <button
+              type="button"
+              className="btn btn-ghost chron-more"
+              aria-haspopup="dialog"
+              aria-label={`More for ${runName}: switch to something else, or a new activity`}
+              onClick={() => setSheet('now')}
+            >
+              ⋯
+            </button>
+          </div>
+          {/**
+           * ⚠️ A FACT AND THE WAY OUT, NEVER A QUESTION THAT HAS TO BE ANSWERED. The clock reads
+           * 14:03:22 for a timer left running overnight and says nothing about yesterday, so
+           * this says when it began — and that the dialog Stop opens is where the real finishing
+           * time is set. It asks nothing and blocks nothing: somebody genuinely at it for five
+           * hours reads one line and carries on, which is the whole difference between a fact
+           * and a nag. The rule for when it appears is `longRun`, with its own tests.
+           */}
+          {(() => {
+            const long = longRun(running.start, Date.now())
+            if (!long) return null
+            const t = new Date(running.start)
+            const time = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+            const when =
+              long.daysAgo === 0
+                ? time
+                : long.daysAgo === 1
+                  ? `${time} yesterday`
+                  : `${t.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`
+            return (
+              <p className="chron-longrun">
+                Running since {when}. Forgot to stop? Press Stop, then set when you finished.
+              </p>
+            )
+          })()}
+          {/**
+           * ⚠️ ONLY WHEN THE ACTIVITY COUNTS SOMETHING. A metric is what makes a quantity mean
+           * anything — "24" against Drawing is a number with no unit, where "24 reps" against
+           * Gym is the set you just did. The activity editor is where a metric is named, so
+           * the row appears for the activities you have said count something and for no other.
+           *
+           * ⚠️ AND THE STEPS ARE +1 / +5 / +10 RATHER THAN A NUMBER FIELD. The whole request
+           * was "simple ui buttons to easily tap add reps" — a keyboard between sets is the
+           * thing being replaced, not the thing to offer. `−1` and Undo are the only other
+           * things a thumb needs here — see the note on Undo below.
+           */}
+          {(() => {
+            const metric = running ? (byId.get(running.activity)?.metric ?? null) : null
+            if (!metric) return null
+            const at = reps ?? 0
+            /**
+             * ⚠️ SETS MODE, WHEN THE ACTIVITY HAS EXERCISES LINKED TO IT. Each press is then a set
+             * of the chosen exercise, which the Circuit sees and the count includes — see
+             * `pressSet`. An activity with none counts exactly as it always has.
+             */
+            const linked = running
+              ? (exercises ?? []).filter((x) => x.activity === running.activity && x.ok)
+              : []
+            const chosen =
+              linked.find((x) => `${x.person}/${x.exercise}` === pickEx) ?? linked[0] ?? null
+            const lastSet = setStack.current[setStack.current.length - 1]
+            /**
+             * ⚠️ THE UPDATER FORM, FOR THE REASON THE NUDGE BUTTONS IN THE EDITOR ALREADY
+             * CARRY IN A COMMENT — and now through `tally.ts`, which is where the arithmetic
+             * can be asked a question. Measured in the pane before the fix: three `+5` presses
+             * inside one task gave **5 reps**; through the updater they give **15**. A thumb
+             * cannot press three times inside one task, but the window is "before React
+             * commits", which on a slow render is as long as the render takes.
+             */
+            const press = (by: number) => {
+              setRepsFailed(false)
+              setTally((t) => bumpTally(t, by))
+            }
+            const back = undoTo(tally)
+            /**
+             * What the row says about the server's copy.
+             *
+             * ⚠️ NOTHING AT ALL WHEN THERE IS NOTHING TO SAY. "0 reps · saved" on a sitting
+             * that has counted nothing is a word about a non-event; the state appears the
+             * moment there is a number for it to be about.
+             */
+            const saving = reps !== repsSaved.current
+            const state = repsFailed ? (
               <button
-                className="btn btn-ghost chron-jot"
-                onClick={() => {
-                  setWriteDay(seeing)
-                  setWriteNow((n) => n + 1)
-                  onShow?.('journal')
-                }}
+                className="btn btn-ghost chron-tally-retry"
+                onClick={() => void flushReps()}
+                disabled={busy}
               >
-                ✎ Note
-                <span className="sr-only"> — write something down about this day</span>
+                not saved — try again
               </button>
-            ) : null}
-          </>
+            ) : saving ? (
+              <span className="muted chron-tally-state">saving…</span>
+            ) : at > 0 ? (
+              <span className="muted chron-tally-state">saved</span>
+            ) : null
+            return (
+              /**
+               * ⚠️ BUILT FOR BETWEEN SETS. The count is the biggest thing in the row because it
+               * is the thing you glance at with your hands full; the three steps share the full
+               * width so the one you want is under the thumb wherever it lands; and the two
+               * corrections sit on their own line so a correction is never one finger-width
+               * from the thing it corrects.
+               *
+               * ⚠️ AND THE UNIT IS SAID OUT LOUD. The buttons read "+5" on screen, which is
+               * unambiguous beside "24 reps", and "Add 5 reps" to a screen reader, which has no
+               * "beside". The count is an `<output>` that announces politely, so a run of taps
+               * reads back as the number they arrived at rather than every step on the way.
+               */
+              <div className="chron-tally" role="group" aria-label={`Count ${metric}`}>
+                <div className="chron-tally-head">
+                  <output className="chron-tally-at" aria-live="polite" aria-atomic="true">
+                    <strong>{countText(at)}</strong> <span className="muted">{metric}</span>
+                  </output>
+                  {state}
+                </div>
+                {/**
+                 * ⚠️ SAID, BECAUSE THIS IS THE ONE CHRONICLE NUMBER THAT LEAVES CHRONICLE. A set is
+                 * part of the person's Circuit cell, and the Circuit shows that cell to the
+                 * circuits the person is in — while everything else in this room is private
+                 * unless shared. The sitting itself, its time and its activity stay here.
+                 */}
+                {chosen ? (
+                  <p className="muted chron-tally-where">
+                    Each set also counts in your Circuit column.
+                  </p>
+                ) : null}
+                {chosen ? (
+                  <div className="chron-tally-ex" role="group" aria-label="Which exercise">
+                    {linked.map((x) => {
+                      const key = `${x.person}/${x.exercise}`
+                      const on = key === `${chosen.person}/${chosen.exercise}`
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          className={'btn btn-ghost chron-tally-pick' + (on ? ' is-on' : '')}
+                          aria-pressed={on}
+                          onClick={() => setPickEx(key)}
+                        >
+                          {x.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+                <div className="chron-tally-steps">
+                  {[1, 5, 10].map((n) => (
+                    <button
+                      key={n}
+                      className="btn btn-ghost chron-tally-up"
+                      onClick={() => (chosen ? void pressSet(n, chosen) : press(n))}
+                      disabled={busy}
+                      aria-label={
+                        chosen ? `Add a set of ${n} ${chosen.name}` : `Add ${n} ${metric}`
+                      }
+                    >
+                      +{n}
+                    </button>
+                  ))}
+                </div>
+                {chosen ? (
+                  <div className="chron-tally-fix">
+                    {/* ⚠️ ONE CORRECTION IN SETS MODE: Undo takes back the last SET, which is
+                          what a mis-press made. A −1 would have to edit some set, and which one
+                          is a question nobody between sets should have to answer. */}
+                    <button
+                      className="btn btn-ghost chron-tally-undo"
+                      onClick={() => void dropLastSet()}
+                      disabled={busy || !lastSet}
+                      aria-label={
+                        lastSet
+                          ? `Undo — take back ${countText(lastSet.value)} ${lastSet.name}`
+                          : 'Nothing to undo'
+                      }
+                    >
+                      ↶ Undo
+                    </button>
+                  </div>
+                ) : (
+                  <div className="chron-tally-fix">
+                    <button
+                      className="btn btn-ghost chron-tally-down"
+                      onClick={() => press(-1)}
+                      disabled={busy || at === 0}
+                      aria-label={`Take 1 off — ${metric}`}
+                    >
+                      −1
+                    </button>
+                    {/**
+                     * ⚠️ UNDO TAKES BACK THE LAST PRESS, WHATEVER ITS SIZE. `−1` was the only
+                     * correction, so a `+10` meant as a `+1` was nine more taps to repair, made
+                     * between sets with the wrong number on screen the whole time. The label says
+                     * where it goes back to, because "Undo" alone does not say how far.
+                     */}
+                    <button
+                      className="btn btn-ghost chron-tally-undo"
+                      onClick={() => {
+                        setRepsFailed(false)
+                        setTally((t) => undoTally(t))
+                      }}
+                      disabled={busy || back === undefined}
+                      aria-label={
+                        back === undefined
+                          ? 'Nothing to undo'
+                          : `Undo — back to ${countText(back ?? 0)} ${metric}`
+                      }
+                    >
+                      ↶ Undo
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+          {/**
+           * ⚠️ A NOTE ABOUT WHAT IS RUNNING, ON THE DAY, UNDER THE BAR. #298 put ✎ Note behind
+           * the ⋯, which opened the sitting's own dialog; asked for back on the screen: "a note box
+           * for that activity right on the Day tab under the running bar, not behind ⋯ and not in
+           * the Journal tab". The Day only, because the bar is on every tab and the box would be
+           * the tallest thing in it.
+           *
+           * ⚠️ A SMALL SAVE, NOT AUTOSAVE. Each note is its own journal entry, so saving as you
+           * type would mean writing one and then rewriting it on every pause, and the write
+           * answers with no id to rewrite. Ctrl or ⌘ Enter saves too. Nothing waits on Save to be
+           * safe, though: Stop and every switch save the words first (see `runNoteFor`).
+           *
+           * ⚠️ AND THE COUNT IS THE DOOR TO WHAT IS ALREADY WRITTEN, which is where the ⋯'s Note
+           * used to lead: the sitting's own dialog, journal first, every entry editable in place.
+           */}
+          {show === 'day' ? (
+            <div className="chron-runnote">
+              <div className="chron-runnote-row">
+                <label className="chron-runnote-box">
+                  <span className="sr-only">A note about {runName}</span>
+                  <textarea
+                    rows={2}
+                    value={runNote}
+                    placeholder={`A note about ${runName}…`}
+                    onChange={(ev) => {
+                      setRunNote(ev.target.value)
+                      runNoteFor.current = running.id
+                    }}
+                    onKeyDown={(ev) => {
+                      if (ev.key !== 'Enter' || !(ev.ctrlKey || ev.metaKey)) return
+                      ev.preventDefault()
+                      void keepRunNote()
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-ghost chron-runnote-save"
+                  disabled={busy || !runNote.trim()}
+                  onClick={() => void keepRunNote()}
+                >
+                  Save
+                </button>
+              </div>
+              {running.notes.length ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost chron-runnote-n"
+                  onClick={() => setFixEnt(running.id)}
+                >
+                  {countText(running.notes.length)} written
+                  <span className="sr-only"> about {runName}, read or change them</span>
+                  <span aria-hidden> ›</span>
+                </button>
+              ) : (
+                <p className="muted chron-runnote-n">Nothing written yet</p>
+              )}
+            </div>
+          ) : null}
+        </>
+      ) : isToday ? (
+        gap ? null : yours.length === 0 ? (
+          /**
+           * ⚠️ A DEAD CONTROL HAS TO SAY SO IN WORDS. With nothing to time yet there is nothing to
+           * start, so the first screen offers the one thing that makes the rest work, and says why
+           * where the button is — not in a `title`, which a phone does not have.
+           */
+          <div className="chron-start">
+            <p className="muted chron-firstly">
+              Name an activity first — the stopwatch times one of them.
+            </p>
+            <div className="chron-start-main">
+              <button type="button" className="btn" onClick={() => setAdding((v) => !v)}>
+                ＋ New activity
+              </button>
+              {/* a note never needed a timer, and on the first day least of all */}
+              <button type="button" className="btn btn-ghost chron-jot" onClick={writeNote}>
+                ✎ Note
+                <span className="sr-only"> — write something down, no session needed</span>
+              </button>
+            </div>
+          </div>
         ) : (
           /**
-           * ⚠️ A NOTE WITHOUT A TIMER, which is the whole of "writing a note must not require
-           * starting a timer". With a session running, ✎ Note writes about it; with nothing
-           * running it used to be absent, so writing anything down meant timing something first.
-           * This goes to the Journal and puts the cursor in its box — the one place a note with
-           * no session is written and changed.
+           * ⚠️ ONE BUTTON STARTS SOMETHING, AND THE THREE YOU STARTED LAST SIT UNDER IT. The idle
+           * Day carried eleven controls before its log (#298): Live and Log past, a "Quick start"
+           * row of six, the picker and its Start, ✎ Note and ＋ Activity. ▶ Start something opens
+           * all of them in one sheet — the picker, every activity, and the three quieter things —
+           * and the chips keep the one-tap start for the likeliest three.
            */
-          <button
-            className="btn btn-ghost chron-jot"
-            onClick={() => {
-              setWriteDay(undefined)
-              setWriteNow((n) => n + 1)
-              onShow?.('journal')
-            }}
-          >
-            ✎ Note
-            <span className="sr-only"> — write something down, no session needed</span>
-          </button>
-        )}
-        <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
-          ＋ Activity
-        </button>
-        {/* ⚠️ "⏱ Fill a gap" IS THE `Log past` PILL NOW. It opened a second form with its own
-            copy of the activity list, so the room asked which activity in two places; the pills
-            change what the one picker does instead. The hour it used to fill in is filled in by
-            the pill — see `gapOpens`. */}
-      </div>
-
-      {/**
-       * ⚠️ A DEAD CONTROL HAS TO SAY SO IN WORDS, and until now this row said it three different
-       * ways, none of which a phone can show. Start, Fill a gap and Plan a span are all correctly
-       * disabled on a fresh account — there is nothing to time yet — but the only explanations
-       * were a `cursor: not-allowed`, which no touch screen has, and a `title` on one of the
-       * three, which is a tooltip and does not exist on a phone either. So the first screen every
-       * member passes through exactly once showed a picker with nothing in it and a Start that
-       * does nothing, and said why to nobody holding a phone.
-       *
-       * ⚠️ THE ROOM ALREADY KNEW HOW TO SAY IT, one section down: the Planned details reads "Name
-       * an activity with ＋ Activity first — a plan is a stretch of a day set aside for one of
-       * them." This is that sentence, where the dead buttons actually are, and in the same shape
-       * so the two do not read as different rules.
-       */}
-      {acts !== null && !acts.some((a) => !a.archived) && (
-        <p className="muted chron-firstly">
-          Name an activity with ＋ Activity first — the stopwatch times one of them.
-        </p>
+          <div className="chron-start">
+            <div className="chron-start-main">
+              <button
+                type="button"
+                className="btn chron-start-go"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setTyped('')
+                  setSheet('start')
+                }}
+              >
+                ▶ Start something
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost chron-more"
+                aria-haspopup="dialog"
+                aria-label="More: log a past session, write a note, a new activity"
+                onClick={() => setSheet('more')}
+              >
+                ⋯
+              </button>
+            </div>
+            {recent.length > 0 && (
+              <div
+                className="chron-start-chips"
+                role="group"
+                aria-label="Start one you usually do around now, or did lately"
+              >
+                {recent.map((a) => chip(a, () => void go(a.id)))}
+              </div>
+            )}
+          </div>
+        )
+      ) : (
+        /* ⚠️ a timer runs in the present or not at all. On another day the controls would be a
+           lie — there is nothing to time — so the day offers the repair tools instead. */
+        <div className="chron-start is-other">
+          {/**
+           * ⚠️ A DAY THAT HAS NOT HAPPENED GETS ITS OWN SENTENCE. "Not today" is true in both
+           * directions, and stepping forward to Saturday once said "Looking back. Use ⏱ Fill a gap
+           * to add time" — wrong twice, and an invitation to record work not yet done. A future day
+           * is what the planner is for.
+           *
+           * ⚠️ AND THE PAST ONE NAMES A BUTTON THAT EXISTS. It said "Use ⏱ Fill a gap" for weeks
+           * after Fill a gap became the `Log past` pill, which only ever appeared on today — so the
+           * sentence on a past day pointed at nothing on that day. It is the button beside it now.
+           */}
+          <p className="muted">
+            {lived
+              ? 'Looking back. Log a session you forgot, or go back to today to start a timer.'
+              : 'Not here yet. Plan a span below, or go back to today to start a timer.'}
+          </p>
+          {gap ? null : (
+            <div className="chron-start-main">
+              {lived ? (
+                <button type="button" className="btn btn-ghost" onClick={openGap}>
+                  🕘 Log a session
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost chron-more"
+                aria-haspopup="dialog"
+                aria-label={
+                  lived
+                    ? 'More: log a past session, write a note about this day, a new activity'
+                    : 'More: a new activity'
+                }
+                onClick={() => setSheet('more')}
+              >
+                ⋯
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/**
        * ⚠️ THE HOLE, NOT THE STATUS. The HTML app's banner says "Timer stopped", which is a fact
        * the Start button two inches away already carries. What it cannot tell you is that it is
        * nine in the evening and nothing has been written down since lunch — and that is the number
-       * `⏱ Fill a gap` exists to close.
+       * Log a past session exists to close.
        *
        * ⚠️ TEN MINUTES BEFORE IT SAYS ANYTHING. A gap of two minutes is the pause between stopping
        * one thing and starting the next, and a line reporting it on every stop is a room that
@@ -1351,159 +1714,56 @@ export function Timer({
       )}
 
       {/**
-       * ⚠️ ONE TAP FOR THE THING YOU ACTUALLY DO, because starting a timer is the most repeated
-       * action in the room and it cost two: open a dropdown, find the name, press Start. These are
-       * the same activities the picker holds, in the order you have used them today, so the one
-       * you want is almost always the first.
+       * Log a past session — what the `Log past` pill opened, now a panel of its own.
        *
-       * ⚠️ AND NOT THE SITE-WRITTEN ONES. "Paint" as an auto activity means the room was open; a
-       * button that started a timer on it would be recording something the site is already
-       * recording, twice over.
+       * ⚠️ IT CARRIES ITS OWN WAY TO SAY WHICH ACTIVITY, because the picker and the chips it used to
+       * borrow have moved into the Start sheet. A form that needs a thing has to carry the control
+       * for it — the lesson of the old Fill a gap, which once read "pick an activity first" while
+       * the room had removed the picker. One picker still, though: this is the same box and the
+       * same chips the sheet draws, in the mode that chooses rather than starts.
+       *
+       * ⚠️ AND IT OPENS FROM THE WEEK GRID TOO, far down the page — so it scrolls itself into view
+       * rather than appearing somewhere the thumb that opened it cannot see.
        */}
-      {/**
-       * ⚠️ AND IT STAYS WHILE SOMETHING IS RUNNING, which it did not. `!running` sat here
-       * unexplained, almost certainly copied from the gap line directly above — where it means
-       * something, because "two hours unaccounted" is only a sentence when nothing is going on.
-       * Here it took the fastest way to change what you are doing and hid it at the exact moment
-       * you were doing something. Switching is the most repeated action in this room and it was
-       * left costing a dropdown and a button.
-       *
-       * `chronicle_start` closes the open sitting before opening the next, so one tap is the
-       * whole switch and the record stays continuous — the same call the Now room is built on.
-       *
-       * ⚠️ AND THE RUNNING ONE IS NOT IN THE ROW. Tapping it would close the sitting and open a
-       * second on the same activity, splitting one stretch in two — measured in the Now room as
-       * a clock going from 7:09 back to 0:01.
-       */}
-
-      {/**
-       * ⚠️ ONE FORM WITH TWO MODES, WHICH IS THE HTML ORIGINAL'S ARRANGEMENT AND IT IS BETTER
-       * THAN TWO BUTTONS. "⏱ Fill a gap" opened a separate form carrying its own copy of the
-       * activity list — so the room asked "which activity" in two places three inches apart, and
-       * which one you answered depended on which button you had pressed. The pills change what
-       * the ONE picker below them does: start it now, or say when it was.
-       *
-       * ⚠️ AND SWITCHING TO `Log past` FILLS IN THE LAST HOUR, because a gap you are recording is
-       * nearly always the one just behind you. `gapOpens` already knew that; it was only ever
-       * reached from a button somebody had to find first.
-       */}
-      {show === 'day' && seeing === todayISO() && !running && yours.length > 0 && (
-        <div className="chron-modes">
-          <button
-            className={'btn' + (gap ? ' btn-ghost' : ' is-on')}
-            aria-pressed={!gap}
-            onClick={() => setGap(false)}
-          >
-            Live
-          </button>
-          <button
-            className={'btn' + (gap ? ' is-on' : ' btn-ghost')}
-            aria-pressed={gap}
-            onClick={() => {
-              const o = gapOpens()
-              setGapFrom(o.from)
-              setGapTo(o.to)
-              setGapAct(pick || (acts ?? []).find((a) => !a.archived && !a.auto)?.id || '')
-              setGap(true)
-            }}
-          >
-            Log past
-          </button>
-        </div>
-      )}
-
-      {seeing === todayISO() && switchable.length > 0 && (
-        <div className="chron-quick">
-          <span className="muted chron-quick-label">
-            {running ? 'Switch to' : gap ? 'What was it' : 'Quick start'}
-          </span>
-          {switchable.map((a) => (
-            <button
-              key={a.id}
-              /* ⚠️ the same chip, two meanings — and it has to SHOW which, or picking one while
-                 logging past looks like it did nothing at all */
-              className={
-                'btn btn-ghost chron-chip-start' + (gap && gapAct === a.id ? ' is-on' : '')
-              }
-              aria-pressed={gap ? gapAct === a.id : undefined}
-              disabled={busy}
-              onClick={() => (gap ? setGapAct(a.id) : void go(a.id))}
-            >
-              {/* ⚠️ the dot rather than ▶, where the activity has a colour: the triangle says
-                  "this starts something", which the row's own label already says, and the colour
-                  says WHICH thing — the same dot the day log and the week grid draw. */}
-              {a.colour ? (
-                <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-              ) : (
-                <span aria-hidden>▶</span>
-              )}
-              {a.name}
+      {gap && (
+        <div className="chron-gap" ref={gapRef}>
+          <div className="chron-gap-head">
+            <strong>Log a past session</strong>
+            <button type="button" className="btn btn-ghost" onClick={() => setGap(false)}>
+              Cancel
             </button>
-          ))}
-        </div>
-      )}
-
-      {/**
-       * ⚠️ THE SLOW ROAD, AND IT SITS BELOW THE FAST ONE NOW. This select and its Start button
-       * used to be the first thing in the timer row, with the one-tap chips underneath — so the
-       * control that costs three taps and a scroll through a grouped list was above the control
-       * that costs one, and the better path was the one you had to look past. Measured at 375
-       * before the move: the first chip began **419px** down an 812px screen.
-       *
-       * ⚠️ IT STAYS, BECAUSE THE CHIPS ARE ONLY THE TOP SIX. `quick` is ranked by what you have
-       * done today and capped at six — see `tilesFor` — so anything outside that, and everything
-       * at all on a day you have not started yet, is reachable only here. A shortcut that is the
-       * ONLY way in is not a shortcut.
-       */}
-      {!running && seeing === todayISO() && yours.length > 0 && (
-        <div className="chron-else">
-          {/**
-           * ⚠️ TYPE IT OR PICK IT, WHICH IS WHAT THE ROOM ALWAYS MEANT. The chips are the
-           * clicking half and this was a `<select>` — so "something else" meant opening a
-           * grouped list and hunting, and a thing you had not named yet meant leaving to find
-           * ＋ Activity first. A `<datalist>` is both: the names you have are suggestions, and
-           * anything else is a new activity. The HTML version of this app has always done it
-           * this way (`<input list="act-dl">`) and it is the one control that makes the room
-           * usable without knowing it.
-           *
-           * ⚠️ AND IT DOES NOT CREATE WHILE YOU TYPE. Resolution happens on submit, so a name
-           * half-entered is not an activity — otherwise "Gy" becomes a permanent activity on the
-           * way to "Gym", and the list this control exists to search fills with typos.
-           */}
-          <label className="chron-pickrow">
-            <span className="sr-only">What are you doing?</span>
-            <input
-              list={actsListId}
-              value={typed}
-              placeholder={gap ? 'What was it?' : 'What are you doing?'}
-              onChange={(e) => {
-                setTyped(e.target.value)
-                /* an exact name is a choice, so the chips and the button agree with the box */
-                const hit = byName(e.target.value)
-                if (gap) setGapAct(hit?.id ?? '')
-                else setPick(hit?.id ?? '')
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                if (!gap) void startTyped()
-              }}
-            />
-          </label>
-          <datalist id={actsListId}>
-            {yours.map((a) => (
-              <option key={a.id} value={a.name} />
-            ))}
-          </datalist>
-          {!gap && (
-            <button
-              className="btn btn-ghost"
-              disabled={busy || (!typed.trim() && !pick)}
-              onClick={() => void startTyped()}
-            >
-              ▶ Start
-            </button>
+          </div>
+          <div className="chron-else">{picker}</div>
+          {ranked.length > 0 && (
+            <div className="chron-quick" role="group" aria-label="What was it">
+              {ranked.slice(0, 6).map((a) => chip(a, () => setGapAct(a.id), gapAct === a.id))}
+            </div>
           )}
+          <div className="chron-span chron-frow">
+            <div className="chron-field">
+              <label htmlFor="gap-from">From when</label>
+              <input
+                id="gap-from"
+                type="datetime-local"
+                value={gapFrom}
+                onChange={(e) => setGapFrom(e.target.value)}
+              />
+            </div>
+            <div className="chron-field">
+              <label htmlFor="gap-to">Until when</label>
+              <input
+                id="gap-to"
+                type="datetime-local"
+                value={gapTo}
+                onChange={(e) => setGapTo(e.target.value)}
+              />
+            </div>
+            <div className="chron-field chron-span-go">
+              <button className="btn" disabled={busy || !gapAct} onClick={() => void fillGap()}>
+                {gapAct ? `Log ${byId.get(gapAct)?.name ?? 'it'}` : 'Pick one above'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1566,44 +1826,6 @@ export function Timer({
         </div>
       )}
 
-      {/**
-       * ⚠️ THE SAME PICKER FEEDS BOTH, which is what the pills are for. This form used to carry
-       * its own activity select — a second list of the same activities, three inches below the
-       * one the chips already are — because ⏱ Fill a gap opened a form rather than changing a
-       * mode. Two ways to answer "which activity" on one screen is two places for the answer to
-       * differ. Now the chips and "Something else…" above choose it in either mode, and this is
-       * only ever the two ends of a span.
-       */}
-      {gap && (
-        <div className="chron-span chron-frow">
-          <div className="chron-field">
-            <label htmlFor="gap-from">From when</label>
-            <input
-              id="gap-from"
-              type="datetime-local"
-              value={gapFrom}
-              onChange={(e) => setGapFrom(e.target.value)}
-            />
-          </div>
-          <div className="chron-field">
-            <label htmlFor="gap-to">Until when</label>
-            <input
-              id="gap-to"
-              type="datetime-local"
-              value={gapTo}
-              onChange={(e) => setGapTo(e.target.value)}
-            />
-          </div>
-          <div className="chron-field chron-span-go">
-            <button className="btn" disabled={busy || !gapAct} onClick={() => void fillGap()}>
-              {gapAct ? `Log ${byId.get(gapAct)?.name ?? 'it'}` : 'Pick one above'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ⚠️ the three categories, which is the reading the whole thing exists for — and zero is
-          shown as nothing rather than as "0m", because a day with no upkeep in it is not news */}
       {show === 'journal' && acts !== null && (
         <JournalList
           acts={acts}
@@ -1618,33 +1840,157 @@ export function Timer({
           }}
         />
       )}
-      {show === 'day' && Object.keys(cats).length > 0 && (
-        <p className="chron-cats">
-          {CATS.map(([c, label]) =>
-            cats[c] ? (
-              <span key={c} className={'chron-cat is-' + c}>
-                {label} {spanText(cats[c] * 60_000)}
-              </span>
-            ) : null,
+      {/**
+       * ⚠️ TODAY IS NAMED RATHER THAN DATED, because "Today" is what anybody calls it and a date
+       * where the word should be makes you work out whether it is the word. Every other day gets
+       * its date, which is the only thing that identifies it.
+       */}
+      {show === 'day' && (
+        <div className="chron-day">
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSeeing(dayStep(seeing, -1))}
+            aria-label="The day before"
+            title="The day before"
+          >
+            ‹
+          </button>
+          <strong>
+            {seeing === todayISO()
+              ? 'Today'
+              : seeing === dayStep(todayISO(), 1)
+                ? 'Tomorrow'
+                : seeing === dayStep(todayISO(), -1)
+                  ? 'Yesterday'
+                  : niceDay(seeing)}
+          </strong>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setSeeing(dayStep(seeing, 1))}
+            aria-label="The day after"
+            title="The day after"
+          >
+            ›
+          </button>
+          {seeing !== todayISO() && (
+            <button className="btn btn-ghost" onClick={() => setSeeing(todayISO())}>
+              back to today
+            </button>
           )}
-        </p>
+          {/* ⚠️ only on today: a wall clock beside a day you are reading back is the time somewhere
+            else, and the one thing the header must be unambiguous about is which day it means */}
+          {seeing === todayISO() && <WallClock />}
+        </div>
       )}
-
-      {show === 'day' && onSite.length > 0 && (
+      {/**
+       * The day's figures: what kind of time it was, and what the site noticed.
+       *
+       * ⚠️ ZERO IS SHOWN AS NOTHING rather than as "0m", because a day with no upkeep in it is not
+       * news. And the site's minutes say what is behind them, in rows and in minutes, because a
+       * fold whose label is just "more" is one nobody opens and nobody trusts — the minutes are
+       * already inside the totals, so the line has to account for them rather than let them vanish.
+       */}
+      {(() => {
+        const catsLine =
+          Object.keys(cats).length > 0 ? (
+            <p className="chron-cats">
+              {CATS.map(([c, label]) =>
+                cats[c] ? (
+                  <span key={c} className={'chron-cat is-' + c}>
+                    {label} {spanText(cats[c] * 60_000)}
+                  </span>
+                ) : null,
+              )}
+            </p>
+          ) : null
+        const siteToggle =
+          onSite.length > 0 ? (
+            <button
+              className="btn btn-ghost chron-site-toggle"
+              aria-expanded={seeSite}
+              onClick={() => setSeeSite((v) => !v)}
+            >
+              {seeSite ? '▾' : '▸'} {countText(onSite.length)} on the site · {spanText(onSiteMs)}
+            </button>
+          ) : null
+        if (show !== 'day') return null
         /**
-         * ⚠️ IT SAYS WHAT IS BEHIND IT, in rows and in minutes, because a fold whose label is
-         * just "more" is one nobody opens and nobody trusts. The minutes are the honest part:
-         * they are already inside the category totals two inches above, so the line has to
-         * account for them rather than let them vanish from the reading.
+         * ⚠️ THE EVENING CARD, after eight on today and until somebody says Not tonight, when it
+         * has something to ask. It holds the phone's headline inside it rather than adding a box
+         * above it — see EveningCard.
          */
-        <button
-          className="btn btn-ghost chron-site-toggle"
-          aria-expanded={seeSite}
-          onClick={() => setSeeSite((v) => !v)}
-        >
-          {seeSite ? '▾' : '▸'} {countText(onSite.length)} on the site · {spanText(onSiteMs)}
-        </button>
-      )}
+        const now = Date.now()
+        const toRate =
+          isToday && !wrapMem.off && isEvening(now)
+            ? unrated(log, acts, bounds.fromMs, bounds.toMs, wrapMem.skip)
+            : []
+        const stretch =
+          isToday && !wrapMem.off && isEvening(now)
+            ? biggestStretch(log, bounds.fromMs, bounds.toMs, now)
+            : null
+        const lineDone = dayNotes.length > 0
+        const wrapping =
+          isToday &&
+          !wrapMem.off &&
+          isEvening(now) &&
+          (toRate.length > 0 || stretch != null || !lineDone)
+        const card = (headline?: ReactNode) => (
+          <EveningCard
+            rate={toRate[0] ?? null}
+            of={toRate.length}
+            name={(id) => byId.get(id)?.name ?? 'something'}
+            stretch={stretch}
+            line={dayLine}
+            lineDone={lineDone}
+            busy={busy}
+            onRate={(e, n) => void wrapRate(e, n)}
+            onSkip={(e) => remember({ skip: e.id })}
+            onLog={wrapLog}
+            onLine={setDayLine}
+            onSaveLine={() => void wrapLine()}
+            onOff={wrapNot}
+          >
+            {headline}
+          </EveningCard>
+        )
+        /**
+         * ⚠️ ON A PHONE THEY GO UNDER THE DAY'S HEADLINE, and the headline is the rail. The rail
+         * sat at the foot of the Day half under 900px — 1,680px down (#298) — so the number that
+         * says how a day went was the last thing on it. Folded, it is the first line under the
+         * day's name, and these two go inside it. From 900px the rail is the side column it always
+         * was, and these stay where they were, above the log.
+         *
+         * ⚠️ AND THE PHONE'S HEADLINE IS THE DAY ON SCREEN, not today. It sits under the day's
+         * name, so stepping back to Tuesday has to bring Tuesday's figures; the side column is
+         * "Today at a glance" and keeps saying so.
+         */
+        if (!wide && acts.length > 0) {
+          const headline = (
+            <Rail
+              day={seeing}
+              acts={acts}
+              tick={beat ?? 0}
+              fold={{
+                site: onSite.length ? `${countText(onSite.length)} on the site` : null,
+                children: (
+                  <>
+                    {catsLine}
+                    {siteToggle}
+                  </>
+                ),
+              }}
+            />
+          )
+          return wrapping ? card(headline) : headline
+        }
+        return (
+          <>
+            {wrapping ? card() : null}
+            {catsLine}
+            {siteToggle}
+          </>
+        )
+      })()}
 
       {/**
        * ⚠️ A DAY CAN BE ALL SITE AND NOTHING ELSE, which is a state this list did not have until
@@ -1666,33 +2012,36 @@ export function Timer({
               const n = row.n
               return (
                 <li key={`n-${n.id}`} className="chron-moment is-note">
-                  <span className="chron-moment-what">
-                    <span aria-hidden>📝</span>{' '}
-                    <span className="sr-only">A note only you can read: </span>
-                    <span className="chron-note-text">{n.body}</span>
-                  </span>
-                  {/* ⚠️ THE TIME IT WAS WRITTEN, OR THE DAY — never a time on this day that the
-                      note does not have. See `dayLogNotes`. */}
-                  <span className="muted chron-moment-when">
-                    {row.timed
-                      ? new Date(n.at).toLocaleTimeString(undefined, {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })
-                      : `written ${new Date(n.at).toLocaleDateString(undefined, {
-                          weekday: 'short',
-                          day: 'numeric',
-                          month: 'short',
-                        })}`}
-                  </span>
-                  {/* changed where it is written — one editor for a note, not two that drift */}
                   <button
                     type="button"
-                    className="btn btn-ghost chron-x"
-                    aria-label="Change this note, in the Journal"
+                    className="chron-row-open"
                     onClick={() => onShow?.('journal')}
                   >
-                    ✎
+                    <span className="chron-moment-what">
+                      <span aria-hidden>📝</span>{' '}
+                      <span className="sr-only">A note only you can read: </span>
+                      <span className="chron-note-text">{n.body}</span>
+                    </span>
+                    {/* ⚠️ THE TIME IT WAS WRITTEN, OR THE DAY — never a time on this day that the
+                      note does not have. See `dayLogNotes`. */}
+                    <span className="muted chron-moment-when">
+                      {row.timed
+                        ? new Date(n.at).toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })
+                        : `written ${new Date(n.at).toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                          })}`}
+                    </span>
+                    {/* changed where it is written — one editor for a note, not two that drift. The row is
+    the button now, the way a sitting's is (#298), and it says where it goes */}
+                    <span className="chron-row-chev" aria-hidden>
+                      ›
+                    </span>
+                    <span className="sr-only"> — change it in the Journal</span>
                   </button>
                 </li>
               )
@@ -1740,168 +2089,162 @@ export function Timer({
             const out = straddles(e, bounds.fromMs, bounds.toMs, Date.now())
             return (
               <li key={e.id} className={'chron-ent' + (e.end == null ? ' is-live' : '')}>
-                {/* the same dot as the Activities list, where the day is actually read */}
-                {a?.colour ? (
-                  <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-                ) : null}
-                <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
                 {/**
-                 * ⚠️ THE FACTS ARE ONE GROUP SO THAT ✎ AND ✕ CANNOT BE PUSHED OFF THE LINE. As
-                 * direct children of a wrapping row they competed with the buttons for it, and
-                 * the row lost by two pixels: measured at 375, `dot 9 + name 100 + 35m 25 +
-                 * good 30 + buttons 100 + five 8px gaps` is 304 against a 302px row, so the
-                 * buttons dropped to a line of their own under an empty space. The standing
-                 * comment on `.chron-ent` budgeted four gaps and no rating, which is why it read
-                 * as sufficient and was not.
+                 * ⚠️ THE ROW IS THE BUTTON, AND › SAYS SO (#298). Every row carried a 34px ✎ of its own, which
+                 * is one control per sitting on a list that is the longest thing in the room — and the row
+                 * itself, the obvious thing to press, did nothing. It opens the same editor the ✎ did; the
+                 * name a screen reader hears starts with what pressing it does.
                  *
-                 * ⚠️ AND NO AMOUNT OF TUNING FIXES IT, which is why this is a group rather than
-                 * a smaller floor: a long sitting with a rough rating needs `9 + 50 + 38 + 100`
-                 * of rigid width before the name gets a pixel. Grouped, the row is four items —
-                 * dot, name, facts, buttons — the facts wrap among THEMSELVES, and the buttons
-                 * keep their place however many facts a sitting has.
+                 * ⚠️ AND IT USED TO SAY "only a finished span can be edited" — the editor's shape rather than
+                 * a decision, which left the two mistakes you notice WHILE WORKING with no remedy but Stop. A
+                 * running row opens the same editor, with the two things it can change while running.
                  */}
-                <span className="chron-ent-facts">
-                  <span className="chron-ent-span">{spanText(ms)}</span>
-                  {/* ⚠️ the amount sits with the length because they are the same fact measured two
+                <button
+                  type="button"
+                  className="chron-row-open"
+                  onClick={() => {
+                    setFixEnt(fixEnt === e.id ? null : e.id)
+                    seedSitting(e)
+                  }}
+                >
+                  <span className="sr-only">Change </span>
+                  {/* the same dot as the Activities list, where the day is actually read */}
+                  {a ? (
+                    <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
+                  ) : null}
+                  <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
+                  {/**
+                   * ⚠️ THE FACTS ARE ONE GROUP SO THAT ✎ AND ✕ CANNOT BE PUSHED OFF THE LINE. As
+                   * direct children of a wrapping row they competed with the buttons for it, and
+                   * the row lost by two pixels: measured at 375, `dot 9 + name 100 + 35m 25 +
+                   * good 30 + buttons 100 + five 8px gaps` is 304 against a 302px row, so the
+                   * buttons dropped to a line of their own under an empty space. The standing
+                   * comment on `.chron-ent` budgeted four gaps and no rating, which is why it read
+                   * as sufficient and was not.
+                   *
+                   * ⚠️ AND NO AMOUNT OF TUNING FIXES IT, which is why this is a group rather than
+                   * a smaller floor: a long sitting with a rough rating needs `9 + 50 + 38 + 100`
+                   * of rigid width before the name gets a pixel. Grouped, the row is four items —
+                   * dot, name, facts, buttons — the facts wrap among THEMSELVES, and the buttons
+                   * keep their place however many facts a sitting has.
+                   */}
+                  <span className="chron-ent-facts">
+                    <span className="chron-ent-span">{spanText(ms)}</span>
+                    {/* ⚠️ the amount sits with the length because they are the same fact measured two
                     ways — "40m, 4 pages" is one session, and separating them would invite reading
                     the number as a second entry.
                     ⚠️ AND `amountIn` RATHER THAN `e.amount != null`, which showed it on both of
                     the days a session straddles. See amountIn — the minutes split at midnight and
                     the quantity does not. */}
-                  {amt != null && a?.metric ? (
-                    <span className="chron-amount">
-                      {countText(amt)} {a.metric}
-                    </span>
-                  ) : null}
-                  {/**
-                   * ⚠️ THE SAME FACT AS THE WEEKDAY BELOW, FOR THE SCREEN THAT CANNOT SHOW IT.
-                   * `.chron-ent-when` is `display: none` under `max-width: 700px` or
-                   * `pointer: coarse` on purpose — a timestamp range is the first thing worth
-                   * dropping when a row will not fit a thumb — and it took the straddle marker
-                   * down with it. So a phone showed one sitting on two consecutive days with two
-                   * different lengths, the note on both, the quantity on one, and nothing at all
-                   * saying why. That fact is worth MORE there than the times it was bundled with:
-                   * it is the one that explains the apparent duplicate.
-                   *
-                   * ⚠️ TWO SPANS RATHER THAN ONE STRING. A sitting long enough to swallow a whole
-                   * day has both ends outside it, and "from Wed · into Fri" in a single
-                   * `white-space: nowrap` run is 19 characters the row cannot break — which is
-                   * the min-content that pushes a flex row past its own list. Separate, they wrap
-                   * between themselves and the row keeps its buttons.
-                   *
-                   * ⚠️ AND "still going" WHERE AN END WOULD GO, because a running sitting read on
-                   * an earlier day has no end to name a day with. It is `straddles`' own answer
-                   * — a timer still going reaches to now — said in the words the range uses for
-                   * it, which are " – now".
-                   */}
-                  {out.before ? (
-                    <span className="muted chron-ent-cross">from {shortDay(e.start)}</span>
-                  ) : null}
-                  {out.after ? (
-                    <span className="muted chron-ent-cross">
-                      {e.end ? `into ${shortDay(e.end)}` : 'still going'}
-                    </span>
-                  ) : null}
-                  {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
+                    {amt != null && a?.metric ? (
+                      <span className="chron-amount">
+                        {countText(amt)} {a.metric}
+                      </span>
+                    ) : null}
+                    {/**
+                     * ⚠️ THE SAME FACT AS THE WEEKDAY BELOW, FOR THE SCREEN THAT CANNOT SHOW IT.
+                     * `.chron-ent-when` is `display: none` under `max-width: 700px` or
+                     * `pointer: coarse` on purpose — a timestamp range is the first thing worth
+                     * dropping when a row will not fit a thumb — and it took the straddle marker
+                     * down with it. So a phone showed one sitting on two consecutive days with two
+                     * different lengths, the note on both, the quantity on one, and nothing at all
+                     * saying why. That fact is worth MORE there than the times it was bundled with:
+                     * it is the one that explains the apparent duplicate.
+                     *
+                     * ⚠️ TWO SPANS RATHER THAN ONE STRING. A sitting long enough to swallow a whole
+                     * day has both ends outside it, and "from Wed · into Fri" in a single
+                     * `white-space: nowrap` run is 19 characters the row cannot break — which is
+                     * the min-content that pushes a flex row past its own list. Separate, they wrap
+                     * between themselves and the row keeps its buttons.
+                     *
+                     * ⚠️ AND "still going" WHERE AN END WOULD GO, because a running sitting read on
+                     * an earlier day has no end to name a day with. It is `straddles`' own answer
+                     * — a timer still going reaches to now — said in the words the range uses for
+                     * it, which are " – now".
+                     */}
+                    {out.before ? (
+                      <span className="muted chron-ent-cross">from {shortDay(e.start)}</span>
+                    ) : null}
+                    {out.after ? (
+                      <span className="muted chron-ent-cross">
+                        {e.end ? `into ${shortDay(e.end)}` : 'still going'}
+                      </span>
+                    ) : null}
+                    {/* ⚠️ THE WORD, NOT THE NUMBER. "good" is readable without a legend; "4" needs one,
                     and a log is skimmed. The exact rating is kept where it is set — see moodWord,
                     whose test asserts this word and the month's buckets are the same rule. */}
-                  {/**
-                   * ⚠️ ONLY WHEN IT FINISHED SHORT, never while it runs — see metSession, which
-                   * returns null rather than false for a sitting still going. A reproach on screen
-                   * for the first half of every session is the opposite of what this is for.
-                   */}
-                  {metSession(e, a?.session ?? null, Date.now()) === false ? (
-                    <span
-                      className="chron-short"
-                      title={`Shorter than the ${a?.session}m you aim for`}
-                    >
-                      short
-                    </span>
-                  ) : null}
-                  {moodWord(e.quality) ? (
-                    <span className={'chron-mood is-' + moodWord(e.quality)}>
-                      {moodWord(e.quality)}
-                    </span>
-                  ) : null}
-                  {/* ⚠️ last of the facts, because it is the only one that can be a sentence — the
+                    {/**
+                     * ⚠️ ONLY WHEN IT FINISHED SHORT, never while it runs — see metSession, which
+                     * returns null rather than false for a sitting still going. A reproach on screen
+                     * for the first half of every session is the opposite of what this is for.
+                     */}
+                    {metSession(e, a?.session ?? null, Date.now()) === false ? (
+                      <span
+                        className="chron-short"
+                        title={`Shorter than the ${a?.session}m you aim for`}
+                      >
+                        short
+                      </span>
+                    ) : null}
+                    {moodWord(e.quality) ? (
+                      <span className={'chron-mood is-' + moodWord(e.quality)}>
+                        {moodWord(e.quality)}
+                      </span>
+                    ) : null}
+                    {/* ⚠️ last of the facts, because it is the only one that can be a sentence — the
                     others are a word or a number and keep their place in the row. A plan's note
                     has been shown beside its plan all along; this is the same thing for a
                     session, which had been written and never read. */}
-                  {/* ⚠️ THE FIRST ONE AND A COUNT, not all of them. A sitting can hold fifty
+                    {/* ⚠️ THE FIRST ONE AND A COUNT, not all of them. A sitting can hold fifty
                       journal entries and a log row is one line of a list — the row says there is
                       something to read and the editor is where it is read. */}
-                  {e.picture ? (
-                    <span
-                      className="muted chron-ent-shot"
-                      title="has a photograph"
-                      aria-label="has a photograph"
-                    >
-                      📷
+                    {e.picture ? (
+                      <span
+                        className="muted chron-ent-shot"
+                        title="has a photograph"
+                        aria-label="has a photograph"
+                      >
+                        📷
+                      </span>
+                    ) : null}
+                    {e.notes.length ? (
+                      <span className="muted chron-ent-note">
+                        {e.notes[0].body}
+                        {e.notes.length > 1 ? ` +${e.notes.length - 1}` : ''}
+                      </span>
+                    ) : null}
+                    {/**
+                     * ⚠️ AN END OUTSIDE THIS DAY SAYS WHICH DAY IT IS IN. See `straddles`: the
+                     * minutes beside this are only the share that falls here, so a bare
+                     * "11:00 PM – 1:00 AM" next to "1h" is a row disagreeing with itself — and on
+                     * today it names a time that has not happened yet. The weekday is enough to
+                     * resolve it and short enough not to crowd a row that already carries five
+                     * facts.
+                     *
+                     * ⚠️ AND IT IS NOT THE ONLY PLACE THAT ASKS. This whole span is hidden on a
+                     * phone or a tablet, so `.chron-ent-cross` above carries the straddle on its
+                     * own there. Both read the one `out` the row computed.
+                     */}
+                    <span className="muted chron-ent-when">
+                      {(() => {
+                        const day = (iso: string) => shortDay(iso) + ' '
+                        const clock = (iso: string) =>
+                          new Date(iso).toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })
+                        const from = (out.before ? day(e.start) : '') + clock(e.start)
+                        if (!e.end) return from + ' – now'
+                        return from + ' – ' + (out.after ? day(e.end) : '') + clock(e.end)
+                      })()}
                     </span>
-                  ) : null}
-                  {e.notes.length ? (
-                    <span className="muted chron-ent-note">
-                      {e.notes[0].body}
-                      {e.notes.length > 1 ? ` +${e.notes.length - 1}` : ''}
-                    </span>
-                  ) : null}
-                  {/**
-                   * ⚠️ AN END OUTSIDE THIS DAY SAYS WHICH DAY IT IS IN. See `straddles`: the
-                   * minutes beside this are only the share that falls here, so a bare
-                   * "11:00 PM – 1:00 AM" next to "1h" is a row disagreeing with itself — and on
-                   * today it names a time that has not happened yet. The weekday is enough to
-                   * resolve it and short enough not to crowd a row that already carries five
-                   * facts.
-                   *
-                   * ⚠️ AND IT IS NOT THE ONLY PLACE THAT ASKS. This whole span is hidden on a
-                   * phone or a tablet, so `.chron-ent-cross` above carries the straddle on its
-                   * own there. Both read the one `out` the row computed.
-                   */}
-                  <span className="muted chron-ent-when">
-                    {(() => {
-                      const day = (iso: string) => shortDay(iso) + ' '
-                      const clock = (iso: string) =>
-                        new Date(iso).toLocaleTimeString(undefined, {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })
-                      const from = (out.before ? day(e.start) : '') + clock(e.start)
-                      if (!e.end) return from + ' – now'
-                      return from + ' – ' + (out.after ? day(e.end) : '') + clock(e.end)
-                    })()}
                   </span>
-                </span>
-                {/* ⚠️ THE BUTTONS ARE A GROUP, like the plan row's. As loose siblings of a
-                    wrapping row they split across lines — one row dropped its ✕ alone onto the
-                    next line while another wrapped part way through its facts, which reads as a
-                    broken layout rather than a deliberate one. */}
-                <span className="chron-ent-do">
-                  {/**
-                   * ⚠️ IT USED TO SAY "only a finished span can be edited: the editor needs both
-                   * ends, and the running one is closed with Stop rather than by typing a time
-                   * into it". The second half still holds and is why there is no end box below
-                   * for a running one — but the first half was a consequence of the editor's
-                   * shape rather than a decision, and it left the two mistakes you notice WHILE
-                   * WORKING with no remedy but pressing Stop.
-                   */}
-                  <button
-                    className="btn btn-ghost chron-x"
-                    onClick={() => {
-                      setFixEnt(fixEnt === e.id ? null : e.id)
-                      seedSitting(e)
-                    }}
-                    aria-label="Change this session"
-                    title="Change this session"
-                  >
-                    ✎
-                  </button>
-                  {/* ⚠️ THE ✕ IS GONE FROM THE ROW AND LIVES IN THE DIALOG. Two controls on every
-                      row of a long list, one of which destroys a session, is most of what made the
-                      log feel dense — and the dangerous one sat 4px from the harmless one at the
-                      end of a 44px pair. Deleting is now a step inside the editor, beside the
-                      thing being deleted and away from Save, which is the arrangement the HTML
-                      version of this app uses. One tap further; one fewer thing to mis-tap. */}
-                </span>
+                  <span className="chron-row-chev" aria-hidden>
+                    ›
+                  </span>
+                  {/* ⚠️ THE ✕ IS NOT ON THE ROW; IT LIVES IN THE DIALOG, beside the thing being deleted and away
+    from Save — the arrangement the HTML version of this app uses. One fewer thing to mis-tap. */}
+                </button>
               </li>
             )
           })}
@@ -1938,7 +2281,7 @@ export function Timer({
         onShow={onShow}
       />
 
-      {!log.length && <p className="muted">Nothing recorded for this day yet.</p>}
+      {show === 'day' && !log.length && <p className="muted">Nothing recorded for this day yet.</p>}
 
       {/**
        * ⚠️ EVERY DAY, NOT JUST TODAY — unlike Routines above, which is today-only because running a
@@ -1971,76 +2314,219 @@ export function Timer({
        * entry needs an activity to point at, so there is provably nothing being hidden.
        */}
       {show === 'day' && acts !== null && acts.length > 0 && (
-        <WeekGrid
-          on={seeing}
-          log={weekLog}
-          acts={acts}
-          onPick={setSeeing}
-          /**
-           * ⚠️ TAPPING A BLOCK IS "GO AND LOOK AT THAT", which is two things and has to be both:
-           * the day under it and the session's own editor. Picking the day alone would leave you
-           * scanning a log for the row you had just pointed at, which is the work the tap was
-           * supposed to save.
-           */
-          onOpen={(day, id) => {
-            const e = weekLog.find((x) => x.id === id)
-            if (e) openSitting(day, e)
-            else {
+        /**
+         * ⚠️ A FOLD THAT SAYS WHAT IS IN IT. "This week" alone is a heading; the line under it is
+         * the figure the grid prints beneath itself, so the fold answers "how has the week gone"
+         * while closed and the picture is one tap away.
+         */
+        <details
+          className="chron-fold chron-week-fold"
+          open={weekOpen}
+          onToggle={(e) => setWeekOpen(e.currentTarget.open)}
+        >
+          <summary>
+            <span className="chron-fold-name">
+              This week
+              {weekSaid ? <small>{coveredLine(weekSaid)}</small> : null}
+            </span>
+          </summary>
+          <WeekGrid
+            on={seeing}
+            quiet
+            log={weekLog}
+            acts={acts}
+            onPick={setSeeing}
+            /**
+             * ⚠️ TAPPING A BLOCK IS "GO AND LOOK AT THAT", which is two things and has to be both:
+             * the day under it and the session's own editor. Picking the day alone would leave you
+             * scanning a log for the row you had just pointed at, which is the work the tap was
+             * supposed to save.
+             */
+            onOpen={(day, id) => {
+              const e = weekLog.find((x) => x.id === id)
+              if (e) openSitting(day, e)
+              else {
+                setSeeing(day)
+                setFixEnt(id)
+              }
+            }}
+            /**
+             * ⚠️ AND TAPPING A BARE PATCH IS "I DID SOMETHING THEN", which is Log a past session with
+             * its hour already filled in. The form is the same one the sheets open — this only saves
+             * typing a time you have just pointed at.
+             */
+            onEmpty={(day, hour) => {
               setSeeing(day)
-              setFixEnt(id)
-            }
-          }}
-          /**
-           * ⚠️ AND TAPPING A BARE PATCH IS "I DID SOMETHING THEN", which is ⏱ Fill a gap with its
-           * hour already filled in. The form is the same one the button opens — this only saves
-           * typing a time you have just pointed at.
-           */
-          onEmpty={(day, hour) => {
-            setSeeing(day)
-            const p = (n: number) => String(n).padStart(2, '0')
-            setGap(true)
-            setGapFrom(`${day}T${p(hour)}:00`)
-            setGapTo(`${day}T${p(Math.min(23, hour + 1))}:00`)
-            setGapAct(pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '')
-          }}
-        />
-      )}
-
-      {show === 'day' && acts !== null && (
-        <Plans acts={acts} log={log} bounds={bounds} onChange={after} busy={busy} />
+              const p = (n: number) => String(n).padStart(2, '0')
+              setGap(true)
+              setGapFrom(`${day}T${p(hour)}:00`)
+              setGapTo(`${day}T${p(Math.min(23, hour + 1))}:00`)
+              setGapAct(
+                pick || running?.activity || (acts ?? []).find((a) => !a.archived)?.id || '',
+              )
+            }}
+          />
+        </details>
       )}
 
       {/**
-       * ⚠️ ROUTINES SIT WITH THE ACTIVITIES, not above the timer. A routine is a thing you reach
-       * for at the start of a stretch and then forget about, so it earns a fold rather than a
-       * permanent row — the same judgement the activity list makes.
-       *
-       * ⚠️ AND IT IS HANDED TODAY'S MINUTES rather than fetching them. That is what makes a step
-       * look done, and the room already has the number: a second query for it would be a second
-       * answer to how long you spent on something today.
+       * ⚠️ THREE FOLDS, ONE ROW (#298). Planned, Routines and Activities were already folds, each a
+       * line of its own at the foot of the Day; together they are one row that names what is in it
+       * and carries the plan's figures, so closed it still says how the day stands against its plan.
+       * Nothing inside moved: each is still its own fold, opened the way it always was.
        */}
-      {show === 'day' && seeing === todayISO() && (
-        <details className="chron-tidy">
-          <summary>Routines</summary>
-          <Routines acts={acts ?? []} mins={mins} onStart={(id) => void go(id)} busy={busy} />
-        </details>
-      )}
-      {/* archiving lives with the totals rather than in a settings screen: the moment you notice
+      {show === 'day' && acts !== null && (
+        <details
+          className="chron-fold chron-kit"
+          open={kitOpen}
+          onToggle={(e) => setKitOpen(e.currentTarget.open)}
+        >
+          <summary>
+            <span className="chron-fold-name">
+              {(() => {
+                const parts = [
+                  'Plans',
+                  isToday ? 'routines' : null,
+                  open.length ? 'activities' : null,
+                ]
+                const xs = parts.filter((x): x is string => x !== null)
+                return xs.length > 1
+                  ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`
+                  : xs[0]
+              })()}
+              {planSum && planSum.planned > 0 ? (
+                <small>
+                  Planned {spanText(planSum.planned * 60_000)} · {spanText(planSum.did * 60_000)}{' '}
+                  done
+                </small>
+              ) : null}
+            </span>
+          </summary>
+          <Plans
+            acts={acts}
+            log={log}
+            bounds={bounds}
+            onChange={after}
+            busy={busy}
+            onSum={onPlanSum}
+          />
+
+          {/**
+           * ⚠️ ROUTINES SIT WITH THE ACTIVITIES, not above the timer. A routine is a thing you reach
+           * for at the start of a stretch and then forget about, so it earns a fold rather than a
+           * permanent row — the same judgement the activity list makes.
+           *
+           * ⚠️ AND IT IS HANDED TODAY'S MINUTES rather than fetching them. That is what makes a step
+           * look done, and the room already has the number: a second query for it would be a second
+           * answer to how long you spent on something today.
+           */}
+          {show === 'day' && seeing === todayISO() && (
+            <details className="chron-tidy">
+              <summary>Routines</summary>
+              <Routines acts={acts ?? []} mins={mins} onStart={(id) => void go(id)} busy={busy} />
+            </details>
+          )}
+          {/* archiving lives with the totals rather than in a settings screen: the moment you notice
           an activity is finished with is the moment you are looking at a day without it in */}
-      {show === 'day' && open.length > 0 && (
-        <ActivitiesFold
-          ed={actEd}
-          acts={acts}
-          byId={byId}
-          exercises={exercises}
-          mins={mins}
-          busy={busy}
-          after={after}
-          toggleLink={toggleLink}
-        />
+          {show === 'day' && open.length > 0 && (
+            <ActivitiesFold
+              ed={actEd}
+              acts={acts}
+              byId={byId}
+              exercises={exercises}
+              mins={mins}
+              busy={busy}
+              after={after}
+              toggleLink={toggleLink}
+            />
+          )}
+        </details>
       )}
 
       {say && <p className="chron-say">{say}</p>}
+
+      {/**
+       * The sheets. ⚠️ THE SHARED `Modal`, LIKE THE SITTING EDITOR — Escape, focus in and back, and
+       * the trap are in src/ui/dialogContract.ts, and a second implementation here would be a
+       * second place for all of it to be wrong.
+       */}
+      {sheet === 'now' && running ? (
+        <Modal title={runName} onClose={() => setSheet(null)}>
+          <div className="chron-sheet">
+            {/* ⚠️ SWITCHING AND A NEW ACTIVITY ONLY. The Note that was first here is the box under
+                the bar on the Day now, with its count as the door to what is written. */}
+            {/**
+             * ⚠️ EVERY ACTIVITY, NOT SIX, now that there is room. The switch row was capped at six
+             * because a seventh wrapped it on a phone; a sheet has the height. The running one is
+             * left out: tapping it would close the sitting and open a second on the same thing.
+             */}
+            {ranked.some((a) => a.id !== running.activity) ? (
+              <>
+                <p className="chron-sheet-lbl">Switch to</p>
+                <div className="chron-sheet-chips">
+                  {ranked
+                    .filter((a) => a.id !== running.activity)
+                    .map((a) =>
+                      chip(
+                        a,
+                        closing(() => void go(a.id)),
+                      ),
+                    )}
+                </div>
+              </>
+            ) : null}
+            <p className="chron-sheet-lbl">Or</p>
+            <button
+              type="button"
+              className="btn btn-ghost chron-sheet-act"
+              onClick={closing(() => setAdding(true))}
+            >
+              <span>＋ New activity</span>
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {sheet === 'start' ? (
+        <Modal title="Start something" onClose={() => setSheet(null)}>
+          <div className="chron-sheet">
+            <div className="chron-else">
+              {picker}
+              <button
+                type="button"
+                className="btn"
+                disabled={busy || (!typed.trim() && !pick)}
+                onClick={closing(() => void startTyped())}
+              >
+                {/* ⚠️ IT NAMES WHAT IT WILL START when nothing is typed, because a new activity is
+                    pre-selected the moment it is made — a choice nothing on screen used to show */}
+                ▶ Start{!typed.trim() && pick ? ` ${byId.get(pick)?.name ?? ''}` : ''}
+              </button>
+            </div>
+            {ranked.length > 0 ? (
+              <>
+                <p className="chron-sheet-lbl">Your activities</p>
+                <div className="chron-sheet-chips">
+                  {ranked.map((a) =>
+                    chip(
+                      a,
+                      closing(() => void go(a.id)),
+                    ),
+                  )}
+                </div>
+              </>
+            ) : null}
+            <p className="chron-sheet-lbl">Or</p>
+            {lesser}
+          </div>
+        </Modal>
+      ) : null}
+
+      {sheet === 'more' ? (
+        <Modal title="More" onClose={() => setSheet(null)}>
+          <div className="chron-sheet">{lesser}</div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
