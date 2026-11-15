@@ -5,8 +5,18 @@ manner of Vocaloid-style pop vocals. Still code only — oscillators, noise and 
 no models, no service — and aimed at the performance and the production rather than at new sounds.
 #325's diction stays.
 
-**A draft, not for merging.** `singer-vibe.html` plays today's voice (A, frozen in
-`src/singerPreview/before/` at the #325 release, fdd3fba) beside B.
+`singer-vibe.html` plays today's voice (A, frozen in `src/singerPreview/before/` at the #325 release,
+fdd3fba) beside B.
+
+✅ **Released with #329, 14 Nov 2026, and published unlisted at
+[evancook.dev/singer-vibe.html](https://evancook.dev/singer-vibe.html)** — Evan played round two
+("it's cool") and asked for it live so it can be heard on a phone. It is a second build input in
+`vite.config.ts`, linked from nowhere, marked `noindex`, and it saves nothing. Sound starts on a tap,
+which is the only moment a phone allows it; on an iPhone the page also declares itself a media
+player, so the ring switch does not silence it.
+
+**Every switch is off by default, on the page and in the singer.** The Sing panel asks for none of
+them, so the Instrument's singer is still today's voice exactly.
 
 ## Round one: Evan preferred A
 
@@ -96,8 +106,11 @@ every break turned its own test red. The breaks were:
   delays.
 - **The instrument room.** None of this is wired into it yet. The switches are options on the singer,
   off unless something asks for them.
+- **The live page on a real phone.** It was checked in the production build at 375 with touch
+  emulated: the tap starts the sound, nothing is clipped or undersized, a line plays and Stop leaves
+  0 voices (with the output muted, so nothing sounded here).
 
 ## Afterwards
 
-Delete `singer-vibe.html`, `src/singerPreview/vibe.ts` and `src/singerPreview/before/` once the
-comparison is done.
+When the page is no longer wanted, delete `singer-vibe.html`, `src/singerPreview/vibe.ts`,
+`src/singerPreview/before/` and the page's line in `vite.config.ts`'s `input`, together.

@@ -1,9 +1,10 @@
 <!doctype html>
-<!-- The vibe pass's A/B page: today's voice against the vibe prototype on fixed lines. Served by the dev server only, not a build input. See src/singerPreview/vibe.ts. -->
+<!-- The vibe pass's A/B page: today's voice against the same voice with three switches. Published unlisted at /singer-vibe.html (a second build input in vite.config.ts) and linked from nowhere. See src/singerPreview/vibe.ts. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
     <title>Singer A/B: the vibe pass</title>
     <style>
       /* one narrow column of controls; the sing button is the one thing that stands out */
@@ -74,6 +75,13 @@
         display: grid;
         gap: 8px;
       }
+      /* the controls wait for the tap that starts the sound; .group's grid would override hidden */
+      #controls {
+        gap: 18px;
+      }
+      #controls[hidden] {
+        display: none;
+      }
       .label {
         font-size: 0.85rem;
         color: var(--dim);
@@ -114,6 +122,7 @@
         padding: 10px 12px;
         min-height: 44px;
       }
+      #start,
       #all {
         background: var(--accent);
         color: var(--on-accent);
@@ -166,51 +175,54 @@
           each play.
         </p>
       </div>
-      <button id="all" type="button">▶ All lines, A then B</button>
-      <p id="now" class="dim" aria-live="polite">&nbsp;</p>
-      <div class="group">
-        <span class="label">Voice</span>
-        <div class="row">
-          <button class="pill" type="button" data-preset="clean">Clean</button>
-          <button class="pill" type="button" data-preset="breathy">Breathy</button>
-          <button class="pill" type="button" data-preset="glitchy">Glitchy</button>
+      <button id="start" type="button">Tap to start sound</button>
+      <div id="controls" class="group" hidden>
+        <button id="all" type="button">▶ All lines, A then B</button>
+        <p id="now" class="dim" aria-live="polite">&nbsp;</p>
+        <div class="group">
+          <span class="label">Voice</span>
+          <div class="row">
+            <button class="pill" type="button" data-preset="clean">Clean</button>
+            <button class="pill" type="button" data-preset="breathy">Breathy</button>
+            <button class="pill" type="button" data-preset="glitchy">Glitchy</button>
+          </div>
         </div>
-      </div>
-      <div class="group">
-        <span class="label">B: vibrato</span>
-        <div class="row">
-          <button class="pill" type="button" data-sw="vibrato" data-val="off">Today's</button>
-          <button class="pill" type="button" data-sw="vibrato" data-val="late">Late</button>
+        <div class="group">
+          <span class="label">B: vibrato</span>
+          <div class="row">
+            <button class="pill" type="button" data-sw="vibrato" data-val="off">Today's</button>
+            <button class="pill" type="button" data-sw="vibrato" data-val="late">Late</button>
+          </div>
+          <p class="dim">Late: only long notes waver, starting later, slower and gentler.</p>
         </div>
-        <p class="dim">Late: only long notes waver, starting later, slower and gentler.</p>
-      </div>
-      <div class="group">
-        <span class="label">B: room</span>
-        <div class="row">
-          <button class="pill" type="button" data-sw="space" data-val="off">Today's</button>
-          <button class="pill" type="button" data-sw="space" data-val="room">Light room</button>
-          <button class="pill" type="button" data-sw="space" data-val="echo">Soft echo</button>
+        <div class="group">
+          <span class="label">B: room</span>
+          <div class="row">
+            <button class="pill" type="button" data-sw="space" data-val="off">Today's</button>
+            <button class="pill" type="button" data-sw="space" data-val="room">Light room</button>
+            <button class="pill" type="button" data-sw="space" data-val="echo">Soft echo</button>
+          </div>
+          <p class="dim">
+            Light room: a shorter, cleaner room instead of today's. Soft echo: today's room plus one
+            quiet echo in time.
+          </p>
         </div>
-        <p class="dim">
-          Light room: a shorter, cleaner room instead of today's. Soft echo: today's room plus one
-          quiet echo in time.
-        </p>
-      </div>
-      <div class="group">
-        <span class="label">B: harmony</span>
-        <div class="row">
-          <button class="pill" type="button" data-sw="harmony" data-val="off">None</button>
-          <button class="pill" type="button" data-sw="harmony" data-val="third">Third</button>
-          <button class="pill" type="button" data-sw="harmony" data-val="octave">
-            Third + octave
-          </button>
+        <div class="group">
+          <span class="label">B: harmony</span>
+          <div class="row">
+            <button class="pill" type="button" data-sw="harmony" data-val="off">None</button>
+            <button class="pill" type="button" data-sw="harmony" data-val="third">Third</button>
+            <button class="pill" type="button" data-sw="harmony" data-val="octave">
+              Third + octave
+            </button>
+          </div>
+          <p class="dim">
+            Third: a second voice a third above. Third + octave: that, plus a quiet copy of the tune
+            an octave below.
+          </p>
         </div>
-        <p class="dim">
-          Third: a second voice a third above. Third + octave: that, plus a quiet copy of the tune
-          an octave below.
-        </p>
+        <ol id="lines" class="lines"></ol>
       </div>
-      <ol id="lines" class="lines"></ol>
     </main>
     <script type="module" src="/src/singerPreview/vibe.ts"></script>
   </body>

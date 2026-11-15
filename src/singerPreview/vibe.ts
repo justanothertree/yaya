@@ -19,8 +19,10 @@ import type { PresetId, SingOpts } from '../audio/singer'
  * below 38Hz) — and turned up or down by the difference. A harmony or an echo adds level, and the
  * louder side wins an A/B whatever else it does.
  *
- * ⚠️ DEV-ONLY, like singer-preview.html: not a build input, nothing saved. Delete it and ./before
- * once the comparison is done.
+ * ⚠️ PUBLISHED, UNLISTED, at /singer-vibe.html — Evan's call, 14 Nov 2026, so it can be heard on
+ * a phone. A second build input (vite.config.ts), linked from nowhere, asking not to be indexed, and
+ * saving nothing. Sound starts on a tap, because a phone will not play until something is touched.
+ * Delete it, ./before and its build input together when it is no longer wanted.
  */
 
 type Which = 'a' | 'b'
@@ -172,7 +174,9 @@ export function singLine(
  * the switches being judged. Across the four the beating averages out.
  */
 export async function loudness(which: Which, p: PresetId, s: Switches) {
-  const rate = 32000
+  /* low, because a phone renders all four lines before the first play of each setting; the curve's
+     shelf is at 1.5kHz and both sides lose the same top, so the difference is unchanged */
+  const rate = 16000
   let sum = 0
   let n = 0
   for (let line = 0; line < LINES.length; line++) {
@@ -197,22 +201,45 @@ export async function loudness(which: Which, p: PresetId, s: Switches) {
   return 10 * Math.log10(sum / n + 1e-20)
 }
 
-/** B's trim against A, in gain — measured once per voice and set of switches */
-const trims = new Map<string, number>()
-async function trimFor(p: PresetId, s: Switches) {
+/**
+ * B's trim against A, in gain — measured once per voice and set of switches, and kept as a PROMISE,
+ * so a play pressed while the same setting is still being measured waits for that measurement
+ * rather than starting a second one. A does not depend on the switches, so it is measured once per
+ * voice.
+ */
+const louder = new Map<string, Promise<number>>()
+const trims = new Map<string, Promise<number>>()
+function trimFor(p: PresetId, s: Switches) {
   const key = `${p}|${s.vibrato}|${s.space}|${s.harmony}`
   let g = trims.get(key)
-  if (g === undefined) {
-    const [a, b] = await Promise.all([loudness('a', p, s), loudness('b', p, s)])
-    g = 10 ** ((a - b) / 20)
+  if (!g) {
+    let a = louder.get(p)
+    if (!a) louder.set(p, (a = loudness('a', p, OFF)))
+    const b = loudness('b', p, s)
+    g = Promise.all([a, b]).then(([la, lb]) => 10 ** ((la - lb) / 20))
     trims.set(key, g)
   }
   return g
 }
 
+/**
+ * The context, made and started inside the tap that asks for sound — the only moment a phone allows
+ * it. On an iPhone, Web Audio also follows the ring switch unless the page says it is playing media,
+ * which a page you came to in order to listen to is; and one silent sample played inside the tap is
+ * what older iPhones need before they will play anything later.
+ */
 function audio() {
   if (ctx) return ctx
-  const c = new AudioContext()
+  const Ctor =
+    window.AudioContext ??
+    (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  const session = (navigator as { audioSession?: { type: string } }).audioSession
+  if (session) session.type = 'playback'
+  const c = new Ctor()
+  const blip = c.createBufferSource()
+  blip.buffer = c.createBuffer(1, 1, c.sampleRate)
+  blip.connect(c.destination)
+  blip.start()
   /* the instrument's own limiter, roughly: only the overshoot is caught */
   const limiter = c.createDynamicsCompressor()
   limiter.threshold.value = -6
@@ -243,14 +270,19 @@ function says(s: Switches) {
   return on.length ? `B, ${on.join(' + ')}` : 'B, nothing on (same as A)'
 }
 
+/** each press of a play button; one that is overtaken while it waits gives up */
+let generation = 0
+
 async function play(items: { line: number; which: Which }[]) {
   stop()
+  const mine = ++generation
   const { c, master, bus } = audio()
   await c.resume()
   const s = { ...sw }
   const p = preset
   $('now').textContent = 'Matching levels…'
   const trim = await trimFor(p, s)
+  if (mine !== generation) return
   const gains = items.map((it) => (it.which === 'a' ? 1 : trim))
   const stops: (() => void)[] = []
   const timers: number[] = []
@@ -326,16 +358,29 @@ if (typeof document !== 'undefined' && document.getElementById('lines')) {
       ]),
     )
   })
+  /* measuring a setting starts as soon as it is chosen, so the play after it rarely waits */
+  const warm = () => {
+    if (ctx) void trimFor(preset, sw)
+  }
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-preset]'))
     el.addEventListener('click', () => {
       preset = el.dataset.preset as PresetId
       render()
+      warm()
     })
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-sw]'))
     el.addEventListener('click', () => {
       sw = { ...sw, [el.dataset.sw as keyof Switches]: el.dataset.val } as Switches
       render()
+      warm()
     })
+  $('start').addEventListener('click', () => {
+    void audio().c.resume()
+    $('start').hidden = true
+    $('controls').hidden = false
+    warm()
+    $('all').focus()
+  })
   render()
 
   /* for whoever is measuring: how many voices each singer has alive right now */
