@@ -24,7 +24,7 @@ import { WeekGrid } from './WeekGrid'
 import { columns, coveredLine, coveredSoFar, weekOf } from './week'
 import { Routines } from './Routines'
 import { tilesFor, usualFirst } from './nowTiles'
-import { biggestStretch, isEvening, unrated } from './evening'
+import { biggestStretch, isEvening, nextEdge, readWrap, unrated, writeWrap } from './evening'
 import { EveningCard } from './EveningCard'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
@@ -136,8 +136,8 @@ function WallClock() {
   )
 }
 
-/** the date somebody said Not tonight to the evening card — see `wrapOff` */
-const WRAP_OFF = 'chron.wrap.off.v1'
+/** what the evening card remembers for the date: Not tonight, and the sittings skipped — see `readWrap` */
+const WRAP = 'chron.wrap.v1'
 
 export function Timer({
   day,
@@ -1056,27 +1056,61 @@ export function Timer({
   /**
    * The evening wrap-up — see evening.ts and EveningCard.tsx.
    *
-   * ⚠️ "NOT TONIGHT" IS REMEMBERED FOR THE DATE, in this browser only. It is a preference about a
-   * card, not data, so it does not belong in the account; and keyed on the date, it is gone by
-   * tomorrow evening without anybody having to undo it.
+   * ⚠️ NOT TONIGHT AND SKIP ARE REMEMBERED FOR THE DATE, in this browser only. They are
+   * preferences about a card, not data, so they do not belong in the account. Skip lived in React
+   * state at first, so a reload asked again about a sitting you had just waved away; both are one
+   * stored value now, read against today's date at every render (`readWrap`), which is also what
+   * keeps a page left open overnight from carrying tonight's answers into tomorrow evening.
    */
-  const [wrapOff, setWrapOff] = useState(() => {
+  const [wrapRaw, setWrapRaw] = useState<string | null>(() => {
     try {
-      return window.localStorage.getItem(WRAP_OFF) === todayISO()
+      return window.localStorage.getItem(WRAP)
     } catch {
-      return false
+      return null
     }
   })
-  const [wrapSkip, setWrapSkip] = useState<ReadonlySet<string>>(new Set())
-  const [dayLine, setDayLine] = useState('')
-  const wrapNot = () => {
+  const wrapMem = readWrap(wrapRaw, todayISO())
+  const remember = (change: { off: true } | { skip: string }) => {
+    const next = writeWrap(wrapRaw, todayISO(), change)
     try {
-      window.localStorage.setItem(WRAP_OFF, todayISO())
+      window.localStorage.setItem(WRAP, next)
     } catch {
-      /* a browser that keeps nothing still closes it for this visit */
+      /* a browser that keeps nothing still remembers for this visit */
     }
-    setWrapOff(true)
+    setWrapRaw(next)
   }
+  const [dayLine, setDayLine] = useState('')
+  const wrapNot = () => remember({ off: true })
+  /**
+   * ⚠️ A WAKE-UP AT EIGHT, AND AT MIDNIGHT, because an idle room does not render — see `nextEdge`.
+   * Only the clock ticks, and only while a timer runs, so the card used to wait for the next thing
+   * that happened to move. Re-armed after each one, and on coming back to the tab, since a laptop
+   * asleep across eight o'clock fires its timer late or not until it wakes.
+   */
+  const [, setEdge] = useState(0)
+  useEffect(() => {
+    if (show !== 'day') return
+    let t = 0
+    const arm = () => {
+      const wait = nextEdge(Date.now()) - Date.now() + 500
+      t = window.setTimeout(
+        () => {
+          setEdge((n) => n + 1)
+          arm()
+        },
+        Math.min(Math.max(wait, 1000), 2 ** 31 - 1),
+      )
+    }
+    arm()
+    const back = () => {
+      if (document.visibilityState === 'visible') setEdge((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', back)
+    return () => {
+      window.clearTimeout(t)
+      document.removeEventListener('visibilitychange', back)
+    }
+  }, [show])
   /* ⚠️ the same write the dialog's ratings make, by the same function — one tap, then the log is
      asked again so the next unrated sitting takes its place */
   const wrapRate = async (e: Entry, n: number) => {
@@ -1887,17 +1921,17 @@ export function Timer({
          */
         const now = Date.now()
         const toRate =
-          isToday && !wrapOff && isEvening(now)
-            ? unrated(log, acts, bounds.fromMs, bounds.toMs, wrapSkip)
+          isToday && !wrapMem.off && isEvening(now)
+            ? unrated(log, acts, bounds.fromMs, bounds.toMs, wrapMem.skip)
             : []
         const stretch =
-          isToday && !wrapOff && isEvening(now)
+          isToday && !wrapMem.off && isEvening(now)
             ? biggestStretch(log, bounds.fromMs, bounds.toMs, now)
             : null
         const lineDone = dayNotes.length > 0
         const wrapping =
           isToday &&
-          !wrapOff &&
+          !wrapMem.off &&
           isEvening(now) &&
           (toRate.length > 0 || stretch != null || !lineDone)
         const card = (headline?: ReactNode) => (
@@ -1910,7 +1944,7 @@ export function Timer({
             lineDone={lineDone}
             busy={busy}
             onRate={(e, n) => void wrapRate(e, n)}
-            onSkip={(e) => setWrapSkip((s) => new Set(s).add(e.id))}
+            onSkip={(e) => remember({ skip: e.id })}
             onLog={wrapLog}
             onLine={setDayLine}
             onSaveLine={() => void wrapLine()}

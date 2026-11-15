@@ -19,6 +19,69 @@ export const STRETCH_MIN_MS = 30 * 60_000
 export const isEvening = (nowMs: number): boolean => new Date(nowMs).getHours() >= EVENING
 
 /**
+ * The next moment the card can appear or has to go: eight tonight, or midnight once it is eight.
+ *
+ * ⚠️ AN IDLE ROOM DOES NOT RENDER, so "after eight" was only true the next time something else
+ * moved. The clock ticks once a second while a timer runs and not at all otherwise, which is
+ * exactly the evening somebody sits down at the end of. The room sets a timer for this moment.
+ * Built from the local date's own parts, so a day with a clock change still lands on eight and on
+ * midnight rather than an hour either side.
+ */
+export function nextEdge(nowMs: number): number {
+  const d = new Date(nowMs)
+  return d.getHours() < EVENING
+    ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), EVENING).getTime()
+    : new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+}
+
+/** what the card remembers about one evening, in this browser */
+export type WrapMemory = { off: boolean; skip: ReadonlySet<string> }
+
+/** the most skipped sittings one evening keeps; a day with more is not a day anybody rates */
+const SKIP_CAP = 200
+
+/**
+ * The evening's memory, read back from what was stored — Not tonight, and the sittings skipped.
+ *
+ * ⚠️ KEYED ON THE DATE, so it is gone by the next evening without anybody undoing it, and a page
+ * left open overnight reads tomorrow's empty memory rather than tonight's. Anything unreadable is
+ * an evening with nothing remembered, never an error: this is a preference about a card.
+ */
+export function readWrap(raw: string | null, day: string): WrapMemory {
+  const none: WrapMemory = { off: false, skip: new Set() }
+  if (!raw) return none
+  let v: unknown
+  try {
+    v = JSON.parse(raw)
+  } catch {
+    return none
+  }
+  if (!v || typeof v !== 'object') return none
+  const o = v as { on?: unknown; off?: unknown; skip?: unknown }
+  if (o.on !== day) return none
+  const skip = Array.isArray(o.skip)
+    ? o.skip.filter((x): x is string => typeof x === 'string').slice(0, SKIP_CAP)
+    : []
+  return { off: o.off === true, skip: new Set(skip) }
+}
+
+/** the same memory with one more thing in it, ready to store; a new day starts it again */
+export function writeWrap(
+  raw: string | null,
+  day: string,
+  change: { off: true } | { skip: string },
+): string {
+  const was = readWrap(raw, day)
+  const skip = new Set(was.skip)
+  if ('skip' in change) skip.add(change.skip)
+  return JSON.stringify({
+    on: day,
+    off: was.off || 'off' in change,
+    skip: [...skip].slice(-SKIP_CAP),
+  })
+}
+
+/**
  * The sittings that ended and were never rated, oldest first.
  *
  * ⚠️ ONLY THOSE THAT BEGAN IN THE WINDOW. A sitting from last night that ran past midnight belongs

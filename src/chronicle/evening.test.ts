@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { biggestStretch, EVENING, isEvening, STRETCH_MIN_MS, unrated } from './evening'
+import {
+  biggestStretch,
+  EVENING,
+  isEvening,
+  nextEdge,
+  readWrap,
+  STRETCH_MIN_MS,
+  unrated,
+  writeWrap,
+} from './evening'
 import { dayBounds, type Entry } from './record'
 
 /**
@@ -136,5 +145,64 @@ describe('the biggest stretch with nothing written down', () => {
       fromMs: t(1).getTime(),
       toMs: t(5).getTime(),
     })
+  })
+})
+
+describe('when the card next has to change, on a page nobody touches', () => {
+  it('is eight tonight, any time before eight', () => {
+    expect(nextEdge(t(7, 30).getTime())).toBe(t(20).getTime())
+    expect(nextEdge(t(19, 59).getTime())).toBe(t(20).getTime())
+    expect(nextEdge(new Date(2026, 10, 10, 0, 0).getTime())).toBe(t(20).getTime())
+  })
+
+  it('is midnight once it is eight, when the card has to go', () => {
+    const midnight = new Date(2026, 10, 11).getTime()
+    expect(nextEdge(t(20).getTime())).toBe(midnight)
+    expect(nextEdge(t(23, 59).getTime())).toBe(midnight)
+  })
+
+  it('lands on eight and on midnight on the days the clocks change', () => {
+    /* US clocks: back on 1 November 2026, forward on 14 March 2027 */
+    for (const [y, m, d] of [
+      [2026, 10, 1],
+      [2027, 2, 14],
+    ]) {
+      const eight = new Date(nextEdge(new Date(y, m, d, 12).getTime()))
+      expect([eight.getDate(), eight.getHours(), eight.getMinutes()]).toEqual([d, 20, 0])
+      const mid = new Date(nextEdge(new Date(y, m, d, 21).getTime()))
+      expect([mid.getDate(), mid.getHours(), mid.getMinutes()]).toEqual([d + 1, 0, 0])
+    }
+  })
+})
+
+describe('what the card remembers about an evening', () => {
+  it('remembers a skip, and then another, for that date', () => {
+    const one = writeWrap(null, DAY, { skip: 'a' })
+    const two = writeWrap(one, DAY, { skip: 'b' })
+    expect([...readWrap(two, DAY).skip]).toEqual(['a', 'b'])
+    expect(readWrap(two, DAY).off).toBe(false)
+  })
+
+  it('remembers Not tonight alongside the skips', () => {
+    const m = writeWrap(writeWrap(null, DAY, { skip: 'a' }), DAY, { off: true })
+    expect(readWrap(m, DAY)).toEqual({ off: true, skip: new Set(['a']) })
+    /* and a skip written after Not tonight does not undo it */
+    const later = writeWrap(writeWrap(null, DAY, { off: true }), DAY, { skip: 'b' })
+    expect(readWrap(later, DAY)).toEqual({ off: true, skip: new Set(['b']) })
+  })
+
+  it('forgets all of it the next day, and starts that day afresh', () => {
+    const tonight = writeWrap(writeWrap(null, DAY, { off: true }), DAY, { skip: 'a' })
+    expect(readWrap(tonight, '2026-11-11')).toEqual({ off: false, skip: new Set() })
+    expect(readWrap(writeWrap(tonight, '2026-11-11', { skip: 'b' }), '2026-11-11')).toEqual({
+      off: false,
+      skip: new Set(['b']),
+    })
+  })
+
+  it('reads anything it cannot understand as an evening with nothing remembered', () => {
+    for (const raw of [null, '', 'not json', '[]', '42', '{"on":"2026-11-10","skip":"a"}'])
+      expect(readWrap(raw, DAY).skip.size, String(raw)).toBe(0)
+    expect(readWrap('{"on":"2026-11-10","off":"yes"}', DAY).off).toBe(false)
   })
 })
