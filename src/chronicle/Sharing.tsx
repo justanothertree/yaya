@@ -4,6 +4,7 @@ import { previewMember } from '../dev/previewMember'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import { TIER_SHORT } from '../components/visibilityLabels'
 import { timelineSays, goalsSays, type Reach } from './sharingCopy'
+import { inkOf } from './record'
 import type { VisibilityTier } from '../circuit/types'
 
 /**
@@ -383,7 +384,7 @@ export function Sharing({
               <ShareRow
                 key={a.id}
                 name={a.name}
-                colour={a.colour}
+                colour={inkOf(a)}
                 item={{ kind: 'chronicle_activity', id: a.id }}
                 visibility={a.visibility}
                 reaches={a.reaches}
