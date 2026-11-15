@@ -4,6 +4,9 @@ _14 Nov 2026. A plan only: no migration, no SQL run anywhere, no source change. 
 "draft" below is for Evan to apply. It builds on the live call play (#297, #319, #324) and the
 verified-result design (steps 9–11 of `2026-11-13-lab-social-plan.md`), and replaces neither._
 
+**Status, 15 Nov:** steps 0–5 are live for Reversi and Chess, apart from the profile's Challenge
+button. See `2026-11-15-lab-matches-live.md` for what shipped, how it was checked, and what is next.
+
 ## Decisions — Evan, 14 Nov
 
 1. **Timeouts:** 7 days without a move, then the waiting player may **Claim the win**. Nothing ends a

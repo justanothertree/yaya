@@ -24,11 +24,15 @@ import {
   type Side,
 } from './chess'
 import { useKept } from './kept'
-import { chessRules, uci } from './chessRoom'
+import { chessRules, uci, type ChessGame } from './chessRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { wood: 'Wood', green: 'Green', blue: 'Blue' }
@@ -72,22 +76,30 @@ export function ChessDemo() {
   const levelRef = useRef(level)
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. */
+  const lm = useLabMatch('chess')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as ChessGame | null) : null
+  const matchSide: Side = lm.side === 1 ? 'b' : 'w'
+
   /* ── the call's room (src/lab/social/useLabRoom.ts): the game travels as its moves */
   const [withCall, setWithCall] = useState(false)
   const lab = useLabRoom('chess', chessRules)
   const words = tableSeats(lab, chessRules)
-  const room = withCall ? lab.room : null
+  const room = withCall && !inMatch ? lab.room : null
   // the side I move for: white in seat 0 or together, black in seat 1
   const callSide: Side = room && room.mode === 'versus' && words.mySeat === 1 ? 'b' : 'w'
   const callTurn = !!room && lab.live && myTurn(chessRules, room)
 
-  const shown = room ? room.game.turns : line
+  const shown = matchGame ? matchGame.turns : room ? room.game.turns : line
   const pos = shown[shown.length - 1].pos
   const last = shown[shown.length - 1].move
-  const ended = room ? !!room.game.over : !!over
+  const ended = matchGame ? !!matchGame.over : room ? !!room.game.over : !!over
   const legal = ended ? [] : moves(pos)
   // whose pieces are at the bottom, and whose a tap may pick up
-  const me: Side = room ? callSide : you
+  const me: Side = inMatch ? matchSide : room ? callSide : you
 
   const finish = (p: Pos, hist: string[]) => {
     const o = outcome(p, hist)
@@ -140,20 +152,26 @@ export function ChessDemo() {
 
   /** a move made here: to the room in a call, else against the computer */
   const make = (m: Move) => {
+    if (inMatch) {
+      // a match's move waits for Send; the server plays it and the board comes back
+      setPicked(null)
+      setPromo(null)
+      return void lm.play(uci(m))
+    }
     if (!room) return advance(line, m)
     setPicked(null)
     setPromo(null)
     lab.act({ t: 'move', move: uci(m) })
   }
   const tap = (i: number) => {
-    if (room) {
-      if (!callTurn || promo) return
+    if (inMatch || room) {
+      if (!(inMatch ? lm.canPlay : callTurn) || promo) return
       if (picked !== null) {
         const options = legal.filter((m) => m.from === picked && m.to === i)
         if (options.length > 1) return setPromo(options)
         if (options.length === 1) return make(options[0])
       }
-      const mine = pos.sq[i] && (pos.sq[i] === pos.sq[i].toUpperCase() ? 'w' : 'b') === callSide
+      const mine = pos.sq[i] && (pos.sq[i] === pos.sq[i].toUpperCase() ? 'w' : 'b') === me
       return setPicked(mine && picked !== i ? i : null)
     }
     if (over || thinking || pos.turn !== you || promo) return
@@ -290,7 +308,8 @@ export function ChessDemo() {
 
   return (
     <div className={`lab-keys ch-room is-${saved.board} set-${saved.set}`}>
-      {(lab.live || withCall) && (
+      {inMatch && <MatchBar lm={lm} sides={['white', 'black']} />}
+      {!inMatch && (lab.live || withCall) && (
         <div className="lab-controls">
           <div className="lab-group" role="group" aria-label="Opponent">
             <button
@@ -317,7 +336,7 @@ export function ChessDemo() {
           </div>
         </div>
       )}
-      {withCall && (
+      {withCall && !inMatch && (
         <CallTable
           table={lab}
           rules={chessRules}
@@ -327,7 +346,7 @@ export function ChessDemo() {
           onCarryOn={carryOn}
         />
       )}
-      {!withCall && (
+      {!withCall && !inMatch && (
         <div className="lab-controls">
           <div className="lab-group" role="group" aria-label="How well the computer plays">
             {LEVELS.map((l) => (
@@ -357,9 +376,17 @@ export function ChessDemo() {
           <button className="btn btn-ghost" onClick={() => fresh()}>
             ↻ New game
           </button>
+          {signedIn && <MatchChallenge demo="chess" settings={{}} levelNames={LEVEL_NAMES} />}
         </div>
       )}
-      {withCall ? (
+      {inMatch ? (
+        lm.canPlay && (
+          <p className="muted mc-note">
+            You play {sideName(me)}.{checked >= 0 ? ' Check!' : ''}
+            {last ? ` Last move ${shown[shown.length - 1].name}.` : ''}
+          </p>
+        )
+      ) : withCall ? (
         callTurn && (
           <p className="muted mc-note">
             You play {sideName(callSide)}.{checked >= 0 ? ' Check!' : ''}
@@ -446,6 +473,7 @@ export function ChessDemo() {
           </ol>
         </div>
       </div>
+      {inMatch && <MatchSend lm={lm} />}
       {promo && (
         <div className="lab-controls ch-promo" role="group" aria-label="Promote the pawn to">
           {promo.map((m) => (
@@ -456,7 +484,7 @@ export function ChessDemo() {
           ))}
         </div>
       )}
-      {!withCall && (
+      {!withCall && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost}
@@ -464,7 +492,7 @@ export function ChessDemo() {
           </span>
         </p>
       )}
-      {level !== saved.level && line.length > 1 && !over && (
+      {!inMatch && level !== saved.level && line.length > 1 && !over && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
       <div className="fw-panel">
