@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { columns, hours, weekOf } from './week'
+import { columns, coveredLine, coveredSoFar, hours, weekOf } from './week'
 import { blockAt, spanText, type Activity, type Entry } from './record'
 import { todayISO } from '../circuit/dates'
 
@@ -27,6 +27,7 @@ export function WeekGrid({
   onPick,
   onOpen,
   onEmpty,
+  quiet,
 }: {
   /** any day in the week to draw */
   on: string
@@ -47,6 +48,14 @@ export function WeekGrid({
   onOpen?: (day: string, entry: string) => void
   /** tap a bare patch of a day: somewhere nothing was recorded, at roughly that hour */
   onEmpty?: (day: string, hour: number) => void
+  /**
+   * Leave off the line underneath, because whatever holds the grid already says it.
+   *
+   * ⚠️ THE DAY HALF FOLDS THE GRID BEHIND A ROW CARRYING THIS FIGURE (#298), and printing it again
+   * under the grid would be one number said twice an inch apart. Both read `coveredSoFar`, so they
+   * cannot disagree — this only decides which of them speaks.
+   */
+  quiet?: boolean
 }) {
   const days = useMemo(() => weekOf(on), [on])
   const byId = useMemo(() => new Map(acts.map((a) => [a.id, a])), [acts])
@@ -62,7 +71,7 @@ export function WeekGrid({
      the column ringed as today was tomorrow's from 20:00 onwards. */
   const today = todayISO()
   /* only the days that have begun — a week you are three days into is not 60% empty */
-  const started = cols.filter((c) => c.fromMs <= Date.now())
+  const said = coveredSoFar(cols, Date.now())
 
   return (
     <div className="chron-week">
@@ -118,9 +127,10 @@ export function WeekGrid({
                  * this when it landed on nothing.
                  *
                  * ⚠️ AND IT IS NOT KEYBOARD-REACHABLE ON PURPOSE. A div you can click is a trap
-                 * if it is the ONLY way to do the thing — this is a shortcut to ⏱ Fill a gap,
-                 * which is a real button a few inches above with a real form behind it. The day
-                 * header is the keyboard route into a day and it always was.
+                 * if it is the ONLY way to do the thing — this is a shortcut to 🕘 Log a past
+                 * session, a real button in the Start sheet and the ⋯ beside it, with the same
+                 * form behind it. The day header is the keyboard route into a day and it always
+                 * was.
                  */
                 onClick={
                   onOpen || onEmpty
@@ -191,12 +201,7 @@ export function WeekGrid({
        * happened it is the honest fraction. The HTML app's sidebar says "Day covered" for the same
        * reason — it asks about a day you are in, not a week you are not finished with.
        */}
-      {started.length > 0 && (
-        <p className="muted chron-week-covered">
-          {Math.round(started.reduce((n, c) => n + c.covered, 0) / started.length)}% of{' '}
-          {started.length === 1 ? 'today' : `these ${started.length} days`} is written down.
-        </p>
-      )}
+      {said && !quiet && <p className="muted chron-week-covered">{coveredLine(said)}.</p>}
     </div>
   )
 }

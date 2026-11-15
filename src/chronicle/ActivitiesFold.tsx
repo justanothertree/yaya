@@ -1,6 +1,6 @@
 import { archiveActivity, type MyExercise } from './cloud'
 import { LIMIT } from './limits'
-import { CATS, COLOURS, spanText, type Activity } from './record'
+import { CATS, COLOURS, inkOf, spanText, type Activity } from './record'
 import { fit, fitText } from './units'
 import type { ActivityEditor } from './useActivityEditor'
 
@@ -89,7 +89,12 @@ export function ActivitiesFold({
                * tell the colours apart loses nothing — which is the only reason a row of
                * swatches is allowed to be the control.
                */}
-              <span className="chron-swatches" role="group" aria-label="A colour for this">
+              {/* ⚠️ SAID ON SCREEN, because "what do the green dots mean?" was asked about the
+                  dot this sets: it is this activity's colour beside its name and on the week */}
+              <span className="chron-swatch-say" id={`swatch-say-${a.id}`}>
+                Its colour, by its name and on the week
+              </span>
+              <span className="chron-swatches" role="group" aria-labelledby={`swatch-say-${a.id}`}>
                 {COLOURS.map((c) => (
                   <button
                     key={c}
@@ -101,11 +106,14 @@ export function ActivitiesFold({
                     onClick={() => setActColour(c)}
                   />
                 ))}
+                {/* ⚠️ "NO COLOUR" STILL DRAWS ONE, its kind's, so this swatch shows the colour
+                    it will give rather than an empty square that suggests no dot at all */}
                 <button
                   type="button"
                   className={'chron-swatch is-none' + (actColour == null ? ' is-on' : '')}
+                  style={{ background: inkOf({ colour: null, cat: actCat }) }}
                   aria-pressed={actColour == null}
-                  aria-label="No colour"
+                  aria-label={`No colour of its own: ${CATS.find(([c]) => c === actCat)?.[1] ?? 'its kind'}’s`}
                   onClick={() => setActColour(null)}
                 >
                   ✕
@@ -278,9 +286,7 @@ export function ActivitiesFold({
                 onClick={() => editActivity(a)}
                 title={`Rename ${a.name}, or change what kind it is`}
               >
-                {a.colour ? (
-                  <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-                ) : null}
+                <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
                 {a.name}
                 <span className="muted">{CATS.find(([c]) => c === a.cat)?.[1]}</span>
                 {/**

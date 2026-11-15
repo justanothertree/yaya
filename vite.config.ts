@@ -1,5 +1,6 @@
 /* ⚠️ `vitest/config` rather than `vite`, which is the same defineConfig with the `test` key
    typed — see the note on `test.exclude` below. Everything else here is Vite's. */
+import { fileURLToPath } from 'node:url'
 import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
@@ -57,6 +58,17 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      /**
+       * ⚠️ TWO PAGES. The site, and the singer's A/B page — published unlisted at
+       * /singer-vibe.html on Evan's call, 14 Nov 2026, so it can be heard on a phone. Nothing links
+       * to it and it asks not to be indexed. singer-preview.html stays dev-only and is not here.
+       * Remove the second line with the page (see docs/2026-11-14-singer-vibe.md).
+       */
+      input: {
+        /* named index, so the site's own entry keeps its index-*.js name */
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        'singer-vibe': fileURLToPath(new URL('./singer-vibe.html', import.meta.url)),
+      },
       output: {
         /**
          * Vendor code in its own files, so YOUR changes do not expire THEIR cache.

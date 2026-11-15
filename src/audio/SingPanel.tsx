@@ -29,14 +29,31 @@ import { fxSnapshot, partInput, type Fx } from './synth'
 const SAMPLE = 'glit-ter in the dark _ to-night'
 /* scale steps of the sample melody, one per syllable: up to the fifth and back down */
 const SAMPLE_STEPS = [0, 2, 4, 4, 5, 4, 2, 0]
-/* the voice brings its own vibrato, glide and breath, so its part bus adds only a little room */
-const DRY: Fx = { echo: 0, echoTime: 0.26, space: 0.25, vibrato: 0, glide: 0, tone: 0.5 }
+/**
+ * ⚠️ HOW EVERY LINE IS SUNG NOW — the vibe pass's two keepers, Evan's call on 14 Nov 2026 after
+ * the second A/B (docs/2026-11-14-singer-vibe.md, evancook.dev/singer-vibe.html): the late vibrato,
+ * which only lets long notes waver, and the light room, which is shorter and quieter than the bus's
+ * and keeps the gaps between words about 10dB clearer. The soft echo stays off; it blurs the words a
+ * little.
+ */
+const SOUND = { vibrato: 'late', space: 'room' } as const
+/* the voice brings its own vibrato, glide and breath — and now its own light room, which REPLACES
+   the bus's reverb, so the bus adds none (two rooms on one voice is the smear the A/B measured) */
+const DRY: Fx = { echo: 0, echoTime: 0.26, space: 0, vibrato: 0, glide: 0, tone: 0.5 }
+/* none, a third above, or a third above and a quiet copy an octave below — a choice Evan wanted to
+   keep rather than have made for him */
+type Harmony = 'off' | 'third' | 'octave'
+const HARMONIES: [Harmony, string][] = [
+  ['off', 'Off'],
+  ['third', 'Third'],
+  ['octave', 'Third + octave'],
+]
 const PRESET_IDS = Object.keys(PRESETS) as PresetId[]
 /* a doubled voice is part of what makes the breathy and glitchy sounds; clean starts single */
 const DOUBLED: Record<PresetId, boolean> = { clean: false, breathy: true, glitchy: true }
 const ABOUT: Record<PresetId, string> = {
   clean: 'A plain voice with a light vibrato on long notes.',
-  breathy: 'Soft and airy, with a slower, wider vibrato.',
+  breathy: 'Soft and airy, with a wider vibrato.',
   glitchy: 'Hard tune, a light stutter and a little grit.',
 }
 
@@ -65,7 +82,7 @@ export function SingPanel({
   const [layerId, setLayerId] = useState<string | null>(null)
   const [preset, setPreset] = useState<PresetId>('clean')
   const [double, setDouble] = useState(DOUBLED.clean)
-  const [harmony, setHarmony] = useState(false)
+  const [harmony, setHarmony] = useState<Harmony>('off')
   const [singing, setSinging] = useState(false)
   const stop = useRef<(() => void) | null>(null)
   const timer = useRef<number | null>(null)
@@ -103,9 +120,11 @@ export function SingPanel({
     const soon = c.currentTime + 0.1
     const start = !was ? origin : origin + Math.max(0, Math.ceil((soon - origin) / lap)) * lap
     stop.current = singInto(c, partInput('sing', DRY, 0.9), sung, start, {
+      ...SOUND,
       preset,
       double,
-      harmony: harmony ? (m) => harmonyAbove(m, degrees, root) : null,
+      harmony: harmony === 'off' ? null : (m) => harmonyAbove(m, degrees, root),
+      octave: harmony === 'octave',
       beat: 60 / loopState().bpm,
       seed: Math.floor(Math.random() * 1e9),
       /* a line that waits for the top of the loop has time for its first consonant before it */
@@ -227,18 +246,25 @@ export function SingPanel({
             >
               Double
             </button>
-            <button
-              className={'btn' + (harmony ? '' : ' btn-ghost')}
-              aria-pressed={harmony}
-              onClick={() => setHarmony((v) => !v)}
-            >
-              Harmony
-            </button>
+          </div>
+          <div className="inst-beats-row">
+            <span className="muted inst-beats-genre">Harmony</span>
+            {HARMONIES.map(([id, label]) => (
+              <button
+                key={id}
+                className={'btn' + (harmony === id ? '' : ' btn-ghost')}
+                aria-pressed={harmony === id}
+                onClick={() => setHarmony(id)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <p className="muted inst-note">
             {ABOUT[preset]}
             {double ? ' Double sings it twice, slightly apart.' : ''}
-            {harmony ? ' Harmony adds a third above.' : ''}
+            {harmony === 'third' ? ' Harmony adds a third above.' : ''}
+            {harmony === 'octave' ? ' Harmony adds a third above and a quiet octave below.' : ''}
           </p>
           <div className="inst-row">
             <button

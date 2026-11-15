@@ -27,6 +27,16 @@ const longestHold = (sung: { hold: boolean }[]) => {
   return most
 }
 
+describe('words stay words', () => {
+  it('a word spread across more notes than it has syllables is still a word on its own', () => {
+    const line = [0, 0.5, 1, 1.5, 2, 2.5].map((t) => n(t, 0.4))
+    const { sung } = words('my sky', line)
+    const said = sung.filter((s) => !s.hold)
+    expect(said.map((s) => s.text)).toEqual(['my', 'sky'])
+    expect(said.every((s) => s.whole)).toBe(true)
+  })
+})
+
 describe('one voice, on the grid', () => {
   it('a chord sings its top note, so its syllables do not all start at once', () => {
     const chords = [0, 1, 2, 3].flatMap((bar) => [60, 64, 67].map((m) => n(bar * 2, 1.8, m + bar)))
