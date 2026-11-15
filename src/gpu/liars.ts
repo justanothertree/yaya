@@ -9,7 +9,7 @@
  * Pure, so liars.test.ts can play a few thousand games without a page.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Bid = { q: number; f: number }
 export type Game = {

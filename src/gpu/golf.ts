@@ -10,7 +10,7 @@
  */
 import { rankOf, shuffled, type Card } from './poker'
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const COLUMNS = 7
 export const DEPTH = 5

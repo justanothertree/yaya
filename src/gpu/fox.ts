@@ -11,7 +11,7 @@
  * Pure, so fox.test.ts can play hundreds of games without a page. A point is row * 7 + column.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Side = 'geese' | 'fox'
 export const N = 7

@@ -260,8 +260,8 @@ export function JournalList({
         <p className="muted">Loading…</p>
       ) : rows.length === 0 ? (
         <p className="muted">
-          Nothing written {span}. Write something above, or use <strong>✎ Note</strong> under the ⋯
-          beside Stop to write about the session running now.
+          Nothing written {span}. Write something above. To write about the session running now, use
+          the note box under the timer on <strong>Day</strong>.
         </p>
       ) : shown.length === 0 ? (
         <p className="muted">

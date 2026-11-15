@@ -10,7 +10,7 @@
  * 3 clubs. Seats run clockwise: 0 you, 1 West, 2 North, 3 East; teams are seat % 2.
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const SPADE = 0
 export const teamOf = (seat: number) => seat % 2

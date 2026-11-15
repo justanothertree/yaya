@@ -21,7 +21,7 @@ import { useKept } from './kept'
 import { lampsRules } from './lampsRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
-import { useCallWords } from '../lab/social/callWords'
+import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
 
 const LOOK_NAMES: Record<Saved['look'], string> = {
@@ -87,7 +87,7 @@ export function LampsDemo() {
   const [withCall, setWithCall] = useState(false)
   const roomRules = useMemo(() => lampsRules(today, n, pattern), [today, n, pattern])
   const lab = useLabRoom('lamps', roomRules)
-  const words = useCallWords(lab, roomRules)
+  const words = tableSeats(lab, roomRules)
   const room = withCall ? lab.room : null
   const g = room?.game
   // the board on screen: the one board together; in a race your own, or the first for a watcher
@@ -224,7 +224,7 @@ export function LampsDemo() {
       )}
       {withCall && (
         <CallTable
-          lab={lab}
+          table={lab}
           rules={roomRules}
           sides={['Player 1', 'Player 2']}
           together="one board between you"

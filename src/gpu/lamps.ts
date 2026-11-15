@@ -10,7 +10,7 @@
  */
 import { keepBestOf } from './daily'
 import { daySeedOf, rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const SIZES = [4, 5, 6, 7] as const
 export type Size = (typeof SIZES)[number]

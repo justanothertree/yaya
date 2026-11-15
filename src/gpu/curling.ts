@@ -10,7 +10,7 @@
  * right as you look down it), y along it from where the stone is let go.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const HALF_W = 2.375
 export const HOG = 8

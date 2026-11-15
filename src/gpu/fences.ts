@@ -9,7 +9,7 @@
  * breadth-first search over at most 81 squares, cheap enough to run a few thousand times a move.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Who = 0 | 1
 export type Sq = [number, number]

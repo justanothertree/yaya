@@ -8,7 +8,7 @@
  * the right edge, and a creature's place on it is a distance along it.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const COLS = 12
 export const ROWS = 8

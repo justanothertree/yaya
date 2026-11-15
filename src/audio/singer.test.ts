@@ -7,8 +7,13 @@ import {
   crushCurve,
   doublePhrase,
   hz,
+  LIGHT,
+  lateVibratoOf,
+  lightTail,
+  plate,
   planLine,
   planPhrases,
+  voicesFor,
   type Burst,
   type Phrase,
   type SingOpts,
@@ -548,6 +553,127 @@ describe('humanising', () => {
         expect(Math.abs(cents(f, hz(n.midi)))).toBeLessThanOrEqual(v.humanize.cents + 1e-6)
       })
     }
+  })
+})
+
+/* ── the vibe pass, round two (14 Nov 2026): three switches, each off unless asked for ── */
+describe('the late vibrato', () => {
+  const late = lateVibratoOf(exact(PRESETS.clean))
+
+  it("leaves a note of just over half a second alone, where today's voice wavers on it", () => {
+    const n = [{ t: 0, dur: 0.62, midi: 72 }]
+    const [today] = plan('o', n, exact(PRESETS.clean))
+    const [p] = plan('o', n, late)
+    let wavers = 0
+    for (let t = 0; t < 0.62; t += 0.01) {
+      expect(valueAt(p.vibrato, t)).toBe(0)
+      wavers = Math.max(wavers, valueAt(today.vibrato, t))
+    }
+    expect(wavers).toBeGreaterThan(5)
+  })
+
+  it('on a long note waits half a second, then grows to a gentler depth than today, more slowly', () => {
+    const [p] = plan('o', [{ t: 0, dur: 1.6, midi: 72 }], late)
+    expect(valueAt(p.vibrato, 0.49)).toBe(0)
+    const depth = valueAt(p.vibrato, 1.2)
+    expect(depth).toBeGreaterThan(10)
+    expect(depth).toBeLessThan(PRESETS.clean.vibrato.cents * 0.75)
+    expect(late.vibrato.rate).toBeLessThan(PRESETS.clean.vibrato.rate)
+    expect(valueAt(p.vibrato, 1.61)).toBe(0)
+  })
+
+  it('the hard-tuned voice, which has none today, gets a light one, so the switch is never silent', () => {
+    expect(PRESETS.glitchy.vibrato.cents).toBe(0)
+    expect(lateVibratoOf(PRESETS.glitchy).vibrato.cents).toBeGreaterThan(0)
+  })
+})
+
+describe('the voices a line is sung with', () => {
+  const ns = [
+    { t: 0, dur: 0.45, midi: 72 },
+    { t: 0.5, dur: 0.45, midi: 74 },
+    { t: 1.5, dur: 0.45, midi: 76 },
+  ]
+  const v = PRESETS.clean
+  const specs = (over: Partial<SingOpts>) => {
+    const o = opts(over)
+    return voicesFor(planPhrases(planLine(sung('o o o', ns), 0, o), v, 0.5, 1), v, o)
+  }
+
+  it("with no switch on, the lead alone, or doubled either side — as today's voice sings", () => {
+    const one = specs({})
+    expect(one.map(({ ph, ...x }) => [ph.part, x])).toEqual([
+      ['lead', { pan: 0, gain: 1, cents: 0, bursts: true }],
+      ['lead', { pan: 0, gain: 1, cents: 0, bursts: true }],
+    ])
+    const two = specs({ double: true })
+    expect(two).toHaveLength(4)
+    expect(two.map((x) => x.pan)).toEqual([
+      -v.double.pan,
+      v.double.pan,
+      -v.double.pan,
+      v.double.pan,
+    ])
+  })
+
+  it('the octave: under every lead phrase once, an octave down, quiet, late, with no consonants', () => {
+    for (const double of [false, true]) {
+      const all = specs({ double, harmony: (m) => m + 4, octave: true })
+      const leads = all.filter((x) => x.ph.part === 'lead' && x.cents === 0)
+      const octaves = all.filter((x) => x.cents < -1000)
+      const harmony = all.filter((x) => x.ph.part === 'harmony')
+      expect(octaves).toHaveLength(leads.length)
+      expect(harmony.length).toBeGreaterThan(0)
+      for (const o of octaves) {
+        expect(Math.abs(o.cents + 1200)).toBeLessThan(10)
+        expect(o.bursts).toBe(false)
+        expect(o.gain).toBeLessThan(harmony[0].gain)
+        expect(o.ph.part).toBe('lead')
+      }
+      /* each a few milliseconds behind the lead it doubles */
+      octaves.forEach((o, i) => {
+        const late = o.ph.from - leads[i].ph.from
+        expect(late).toBeGreaterThan(0.002)
+        expect(late).toBeLessThan(0.02)
+      })
+    }
+  })
+})
+
+describe('the light room and the soft echo', () => {
+  it('the echo repeats every half beat, and the room outlasts its last repeat by 60dB', () => {
+    const { delay, tail } = lightTail(0.5)
+    expect(delay).toBeCloseTo(0.25, 9)
+    expect(LIGHT.echo.feedback).toBeLessThan(0.6)
+    let level = 1
+    let t = 0
+    while (level > 0.001) {
+      level *= LIGHT.echo.feedback
+      t += delay
+    }
+    expect(tail).toBeGreaterThanOrEqual(t - 1e-9)
+    expect(tail).toBeGreaterThanOrEqual(LIGHT.room.pre + LIGHT.room.decay)
+  })
+
+  it('the plate falls 60dB over its decay, and darkens as it falls', () => {
+    let x = 12345
+    const rand = () => (x = (x * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
+    const rate = 8000
+    const [l] = plate(rate, 1, rand)
+    expect(l.length).toBe(rate)
+    const rms = (a: number, b: number) => {
+      let sum = 0
+      for (let i = a; i < b; i++) sum += l[i] * l[i]
+      return Math.sqrt(sum / (b - a))
+    }
+    expect(20 * Math.log10(rms(rate - rate / 20, rate) / rms(0, rate / 20))).toBeLessThan(-50)
+    /* darker: the sign changes far less often at the end than at the start */
+    const crossings = (a: number, b: number) => {
+      let n = 0
+      for (let i = a + 1; i < b; i++) if (l[i - 1] < 0 !== l[i] < 0) n++
+      return n / (b - a)
+    }
+    expect(crossings(rate - rate / 5, rate)).toBeLessThan(crossings(0, rate / 5) * 0.6)
   })
 })
 

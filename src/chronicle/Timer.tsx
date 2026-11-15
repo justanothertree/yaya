@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  addDayNote,
   addEntry,
   dayNotesBetween,
   myExercises,
@@ -8,6 +9,7 @@ import {
   dropSet,
   type MyExercise,
   setAmount,
+  setQuality,
   entriesBetween,
   myActivities,
   myMoments,
@@ -21,7 +23,9 @@ import { Plans } from './Plans'
 import { WeekGrid } from './WeekGrid'
 import { columns, coveredLine, coveredSoFar, weekOf } from './week'
 import { Routines } from './Routines'
-import { recentFirst, tilesFor } from './nowTiles'
+import { tilesFor, usualFirst } from './nowTiles'
+import { biggestStretch, isEvening, nextEdge, readWrap, unrated, writeWrap } from './evening'
+import { EveningCard } from './EveningCard'
 import { JournalList } from './JournalList'
 import { dayLogNotes, type DayNote } from './journal'
 import { localISO } from '../circuit/dates'
@@ -51,6 +55,7 @@ import {
   overlapMs,
   straddles,
   countText,
+  inkOf,
   spanText,
   typedMinutes,
   type Activity,
@@ -130,6 +135,9 @@ function WallClock() {
     </span>
   )
 }
+
+/** what the evening card remembers for the date: Not tonight, and the sittings skipped — see `readWrap` */
+const WRAP = 'chron.wrap.v1'
 
 export function Timer({
   day,
@@ -327,6 +335,27 @@ export function Timer({
     void load()
   }, [load, beat])
 
+  /**
+   * The four weeks before today, which is what "what you usually start around now" is read from —
+   * see `usualFirst`. Once a day and after an import, not on every tick: a habit does not move in
+   * a minute, and today's own starts arrive through `log` and `weekLog` anyway.
+   */
+  const today = todayISO()
+  const [past, setPast] = useState<Entry[]>([])
+  useEffect(() => {
+    let dead = false
+    const to = dayBounds(today).fromMs
+    void entriesBetween(
+      new Date(to - 28 * 86_400_000).toISOString(),
+      new Date(to).toISOString(),
+    ).then((e) => {
+      if (!dead) setPast(e)
+    })
+    return () => {
+      dead = true
+    }
+  }, [today, beat])
+
   const loadWeek = useCallback(async () => {
     if (!weekDays.length) return
     const from = dayBounds(weekDays[0]).fromMs
@@ -465,6 +494,8 @@ export function Timer({
    * that is where they are written and changed.
    */
   const [dayNotes, setDayNotes] = useState<DayNote[]>([])
+  /* bumped when the evening card writes a line about the day, so the notes are asked for again */
+  const [noteTick, setNoteTick] = useState(0)
   useEffect(() => {
     if (show !== 'day') return
     let dead = false
@@ -477,7 +508,7 @@ export function Timer({
     return () => {
       dead = true
     }
-  }, [seeing, bounds.toMs, beat, show])
+  }, [seeing, bounds.toMs, beat, show, noteTick])
 
   useEffect(() => {
     let dead = false
@@ -658,6 +689,8 @@ export function Timer({
      * the activity has had its minutes today, so it reads as a thing you confirm.
      */
     if (id === running?.activity) return
+    /* the words typed about the sitting this closes go onto it first — see `runNoteFor` */
+    if (!(await keepRunNote())) return
     setBusy(true)
     await flushReps()
     const bad = await startTimer(id)
@@ -682,8 +715,30 @@ export function Timer({
    * sitting had one — which meant an autosave echoing back through a reload overwrote whatever
    * had been typed since. The id is the question actually being asked: is this a different
    * sitting from the one the box was filled for.
+   *
+   * ⚠️ AND THE BOX IS BACK, UNDER THE BAR ON THE DAY, so the rule above is kept by saving rather
+   * than by emptying. `runNoteFor` is the sitting the words were typed about; Stop and every
+   * switch save them onto it FIRST, the way `flushReps` goes first, and refuse to go on if the
+   * server refused the words, so they are still on screen to try again. A sitting that changes
+   * some other way (▶ on a goal, or another device) still gets them, through the effect below.
    */
   const runId = running?.id ?? null
+  const [runNote, setRunNote] = useState('')
+  const runNoteFor = useRef<string | null>(null)
+  const keepRunNote = async (): Promise<boolean> => {
+    const id = runNoteFor.current
+    if (!id || !runNote.trim()) return true
+    const ok = await sed.addJournal(id, runNote)
+    if (ok) {
+      setRunNote('')
+      runNoteFor.current = null
+    }
+    return ok
+  }
+  useEffect(() => {
+    if (runNoteFor.current && runNoteFor.current !== runId) void keepRunNote()
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [runId])
   /**
    * The count on the sitting you are in, tapped up as you go.
    *
@@ -785,6 +840,9 @@ export function Timer({
 
   const halt = async () => {
     if (busy) return
+    /* the words in the box under the bar are about this sitting, so they go onto it before it
+       ends — and a refusal keeps it running with the words still there, rather than losing them */
+    if (!(await keepRunNote())) return
     setBusy(true)
     /**
      * ⚠️ THE NOTE GOES IN ON THE WAY OUT, which is the only moment anybody knows what to write.
@@ -960,13 +1018,14 @@ export function Timer({
     if (actEd.actsOpen) setKitOpen(true)
   }, [actEd.actsOpen])
   /**
-   * The chips under ▶ Start something: the three you started last — #298's third answer, "the
-   * most recent rather than ones you pin". The week's log and today's, because the day alone is
-   * empty every morning; see `recentFirst` for what fills the row when even the week is.
+   * The chips under ▶ Start something: what you usually start around now, then the ones you
+   * started last — #298's third answer, "the most recent rather than ones you pin", with a routine
+   * put in front of it. The week's log and today's for the recency, because the day alone is empty
+   * every morning; the four weeks in `past` for the routine. See `usualFirst`.
    */
   const recent = useMemo(
-    () => recentFirst(acts ?? [], [...weekLog, ...log]).slice(0, 3),
-    [acts, weekLog, log],
+    () => usualFirst(acts ?? [], past, [...weekLog, ...log], Date.now()).slice(0, 3),
+    [acts, past, weekLog, log],
   )
   /* the week's figure, for the row that folds the grid — the grid prints the same one, from here */
   const weekSaid = useMemo(() => {
@@ -995,6 +1054,94 @@ export function Timer({
     setGap(true)
   }
   /**
+   * The evening wrap-up — see evening.ts and EveningCard.tsx.
+   *
+   * ⚠️ NOT TONIGHT AND SKIP ARE REMEMBERED FOR THE DATE, in this browser only. They are
+   * preferences about a card, not data, so they do not belong in the account. Skip lived in React
+   * state at first, so a reload asked again about a sitting you had just waved away; both are one
+   * stored value now, read against today's date at every render (`readWrap`), which is also what
+   * keeps a page left open overnight from carrying tonight's answers into tomorrow evening.
+   */
+  const [wrapRaw, setWrapRaw] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(WRAP)
+    } catch {
+      return null
+    }
+  })
+  const wrapMem = readWrap(wrapRaw, todayISO())
+  const remember = (change: { off: true } | { skip: string }) => {
+    const next = writeWrap(wrapRaw, todayISO(), change)
+    try {
+      window.localStorage.setItem(WRAP, next)
+    } catch {
+      /* a browser that keeps nothing still remembers for this visit */
+    }
+    setWrapRaw(next)
+  }
+  const [dayLine, setDayLine] = useState('')
+  const wrapNot = () => remember({ off: true })
+  /**
+   * ⚠️ A WAKE-UP AT EIGHT, AND AT MIDNIGHT, because an idle room does not render — see `nextEdge`.
+   * Only the clock ticks, and only while a timer runs, so the card used to wait for the next thing
+   * that happened to move. Re-armed after each one, and on coming back to the tab, since a laptop
+   * asleep across eight o'clock fires its timer late or not until it wakes.
+   */
+  const [, setEdge] = useState(0)
+  useEffect(() => {
+    if (show !== 'day') return
+    let t = 0
+    const arm = () => {
+      const wait = nextEdge(Date.now()) - Date.now() + 500
+      t = window.setTimeout(
+        () => {
+          setEdge((n) => n + 1)
+          arm()
+        },
+        Math.min(Math.max(wait, 1000), 2 ** 31 - 1),
+      )
+    }
+    arm()
+    const back = () => {
+      if (document.visibilityState === 'visible') setEdge((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', back)
+    return () => {
+      window.clearTimeout(t)
+      document.removeEventListener('visibilitychange', back)
+    }
+  }, [show])
+  /* ⚠️ the same write the dialog's ratings make, by the same function — one tap, then the log is
+     asked again so the next unrated sitting takes its place */
+  const wrapRate = async (e: Entry, n: number) => {
+    if (busy) return
+    setBusy(true)
+    const ok = await setQuality(e.id, n)
+    setBusy(false)
+    if (!ok) return moan('that rating did not save')
+    await after()
+  }
+  /* the form Log a past session opens, with the stretch already in it */
+  const wrapLog = (x: { fromMs: number; toMs: number }) => {
+    setGapFrom(forInput(new Date(x.fromMs).toISOString()))
+    setGapTo(forInput(new Date(x.toMs).toISOString()))
+    setGapAct(pick || ranked[0]?.id || '')
+    setTyped('')
+    setGap(true)
+  }
+  /* a day note, the Journal's own kind, about today */
+  const wrapLine = async () => {
+    const body = dayLine.trim()
+    if (!body || busy) return
+    setBusy(true)
+    const bad = await addDayNote(todayISO(), body)
+    setBusy(false)
+    if (bad) return moan(bad.why)
+    setDayLine('')
+    setNoteTick((n) => n + 1)
+  }
+
+  /**
    * ✎ a note with no session, in the Journal — about the day on screen when that day has gone, or
    * about today. Never about a day still to come, which the writer refuses and nobody can have
    * noticed anything about; the sheets offer it only for today and earlier.
@@ -1018,11 +1165,12 @@ export function Timer({
   const lived = seeing <= todayISO()
   const runName = running ? (byId.get(running.activity)?.name ?? 'something') : ''
   /**
-   * An activity as a chip — its colour where it has one, ▶ where not.
+   * An activity as a chip, with its dot.
    *
-   * ⚠️ THE DOT RATHER THAN ▶, where the activity has a colour: the triangle says "this starts
-   * something", which the row around it already says, and the colour says WHICH thing — the same
-   * dot the day log and the week grid draw. `on` is for the chips that CHOOSE rather than start,
+   * ⚠️ THE DOT RATHER THAN ▶: the triangle says "this starts something", which the row around it
+   * already says, and the colour says WHICH thing — the same dot the day log and the week grid
+   * draw. Every activity has one now, its kind's colour when it has none of its own (`inkOf`), so
+   * the ▶ that stood in for a missing colour has gone. `on` is for the chips that CHOOSE rather than start,
    * which have to show which one is chosen or picking one looks like it did nothing.
    */
   const chip = (a: Activity, onClick: () => void, on?: boolean) => (
@@ -1034,11 +1182,7 @@ export function Timer({
       disabled={busy}
       onClick={onClick}
     >
-      {a.colour ? (
-        <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
-      ) : (
-        <span aria-hidden>▶</span>
-      )}
+      <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
       {a.name}
     </button>
   )
@@ -1174,7 +1318,7 @@ export function Timer({
               type="button"
               className="btn btn-ghost chron-more"
               aria-haspopup="dialog"
-              aria-label={`More for ${runName}: a note, switch to something else, a new activity`}
+              aria-label={`More for ${runName}: switch to something else, or a new activity`}
               onClick={() => setSheet('now')}
             >
               ⋯
@@ -1384,6 +1528,65 @@ export function Timer({
               </div>
             )
           })()}
+          {/**
+           * ⚠️ A NOTE ABOUT WHAT IS RUNNING, ON THE DAY, UNDER THE BAR. #298 put ✎ Note behind
+           * the ⋯, which opened the sitting's own dialog; asked for back on the screen: "a note box
+           * for that activity right on the Day tab under the running bar, not behind ⋯ and not in
+           * the Journal tab". The Day only, because the bar is on every tab and the box would be
+           * the tallest thing in it.
+           *
+           * ⚠️ A SMALL SAVE, NOT AUTOSAVE. Each note is its own journal entry, so saving as you
+           * type would mean writing one and then rewriting it on every pause, and the write
+           * answers with no id to rewrite. Ctrl or ⌘ Enter saves too. Nothing waits on Save to be
+           * safe, though: Stop and every switch save the words first (see `runNoteFor`).
+           *
+           * ⚠️ AND THE COUNT IS THE DOOR TO WHAT IS ALREADY WRITTEN, which is where the ⋯'s Note
+           * used to lead: the sitting's own dialog, journal first, every entry editable in place.
+           */}
+          {show === 'day' ? (
+            <div className="chron-runnote">
+              <div className="chron-runnote-row">
+                <label className="chron-runnote-box">
+                  <span className="sr-only">A note about {runName}</span>
+                  <textarea
+                    rows={2}
+                    value={runNote}
+                    placeholder={`A note about ${runName}…`}
+                    onChange={(ev) => {
+                      setRunNote(ev.target.value)
+                      runNoteFor.current = running.id
+                    }}
+                    onKeyDown={(ev) => {
+                      if (ev.key !== 'Enter' || !(ev.ctrlKey || ev.metaKey)) return
+                      ev.preventDefault()
+                      void keepRunNote()
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-ghost chron-runnote-save"
+                  disabled={busy || !runNote.trim()}
+                  onClick={() => void keepRunNote()}
+                >
+                  Save
+                </button>
+              </div>
+              {running.notes.length ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost chron-runnote-n"
+                  onClick={() => setFixEnt(running.id)}
+                >
+                  {countText(running.notes.length)} written
+                  <span className="sr-only"> about {runName}, read or change them</span>
+                  <span aria-hidden> ›</span>
+                </button>
+              ) : (
+                <p className="muted chron-runnote-n">Nothing written yet</p>
+              )}
+            </div>
+          ) : null}
         </>
       ) : isToday ? (
         gap ? null : yours.length === 0 ? (
@@ -1439,7 +1642,11 @@ export function Timer({
               </button>
             </div>
             {recent.length > 0 && (
-              <div className="chron-start-chips" role="group" aria-label="Start one you did lately">
+              <div
+                className="chron-start-chips"
+                role="group"
+                aria-label="Start one you usually do around now, or did lately"
+              >
                 {recent.map((a) => chip(a, () => void go(a.id)))}
               </div>
             )}
@@ -1708,6 +1915,45 @@ export function Timer({
           ) : null
         if (show !== 'day') return null
         /**
+         * ⚠️ THE EVENING CARD, after eight on today and until somebody says Not tonight, when it
+         * has something to ask. It holds the phone's headline inside it rather than adding a box
+         * above it — see EveningCard.
+         */
+        const now = Date.now()
+        const toRate =
+          isToday && !wrapMem.off && isEvening(now)
+            ? unrated(log, acts, bounds.fromMs, bounds.toMs, wrapMem.skip)
+            : []
+        const stretch =
+          isToday && !wrapMem.off && isEvening(now)
+            ? biggestStretch(log, bounds.fromMs, bounds.toMs, now)
+            : null
+        const lineDone = dayNotes.length > 0
+        const wrapping =
+          isToday &&
+          !wrapMem.off &&
+          isEvening(now) &&
+          (toRate.length > 0 || stretch != null || !lineDone)
+        const card = (headline?: ReactNode) => (
+          <EveningCard
+            rate={toRate[0] ?? null}
+            of={toRate.length}
+            name={(id) => byId.get(id)?.name ?? 'something'}
+            stretch={stretch}
+            line={dayLine}
+            lineDone={lineDone}
+            busy={busy}
+            onRate={(e, n) => void wrapRate(e, n)}
+            onSkip={(e) => remember({ skip: e.id })}
+            onLog={wrapLog}
+            onLine={setDayLine}
+            onSaveLine={() => void wrapLine()}
+            onOff={wrapNot}
+          >
+            {headline}
+          </EveningCard>
+        )
+        /**
          * ⚠️ ON A PHONE THEY GO UNDER THE DAY'S HEADLINE, and the headline is the rail. The rail
          * sat at the foot of the Day half under 900px — 1,680px down (#298) — so the number that
          * says how a day went was the last thing on it. Folded, it is the first line under the
@@ -1718,8 +1964,8 @@ export function Timer({
          * name, so stepping back to Tuesday has to bring Tuesday's figures; the side column is
          * "Today at a glance" and keeps saying so.
          */
-        if (!wide && acts.length > 0)
-          return (
+        if (!wide && acts.length > 0) {
+          const headline = (
             <Rail
               day={seeing}
               acts={acts}
@@ -1735,8 +1981,11 @@ export function Timer({
               }}
             />
           )
+          return wrapping ? card(headline) : headline
+        }
         return (
           <>
+            {wrapping ? card() : null}
             {catsLine}
             {siteToggle}
           </>
@@ -1860,8 +2109,8 @@ export function Timer({
                 >
                   <span className="sr-only">Change </span>
                   {/* the same dot as the Activities list, where the day is actually read */}
-                  {a?.colour ? (
-                    <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+                  {a ? (
+                    <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
                   ) : null}
                   <span className="chron-ent-name">{a?.name ?? 'an activity since deleted'}</span>
                   {/**
@@ -2204,24 +2453,8 @@ export function Timer({
       {sheet === 'now' && running ? (
         <Modal title={runName} onClose={() => setSheet(null)}>
           <div className="chron-sheet">
-            {/**
-             * ⚠️ NOT A SECOND WRITE PATH. It opens the running sitting's own dialog, journal first,
-             * which is what the ✎ Note beside Stop did — a box here with its own write would be the
-             * third place a note has been written from, and the first two both lost one.
-             */}
-            <button
-              type="button"
-              className="btn btn-ghost chron-sheet-act"
-              disabled={busy}
-              onClick={closing(() => setFixEnt(running.id))}
-            >
-              <span>✎ Note</span>
-              <small>
-                {running.notes.length
-                  ? `${countText(running.notes.length)} written`
-                  : 'nothing written yet'}
-              </small>
-            </button>
+            {/* ⚠️ SWITCHING AND A NEW ACTIVITY ONLY. The Note that was first here is the box under
+                the bar on the Day now, with its count as the door to what is written. */}
             {/**
              * ⚠️ EVERY ACTIVITY, NOT SIX, now that there is room. The switch row was capped at six
              * because a seventh wrapped it on a phone; a sheet has the height. The running one is

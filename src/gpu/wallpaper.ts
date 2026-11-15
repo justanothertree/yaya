@@ -10,7 +10,7 @@
  * exactly that way: move a point by any operation of its group and the answer must not change.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type V2 = [number, number]
 /** x' = a·x + b·y + e, y' = c·x + d·y + f, on fractional coordinates of the lattice */

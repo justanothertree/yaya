@@ -34,7 +34,6 @@ import {
   keysToShow,
   shiftOctave,
 } from '../audio/keyboardSpan'
-import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { PianoRoll } from './PianoRoll'
 import { toSong } from '../audio/songFile'
 import { soundingAt, toNotes } from '../audio/noteEdit'
@@ -78,6 +77,7 @@ import { jam } from '../party/jam'
 import { hueFor } from '../party/party'
 import { useVoiceSession } from '../voice/useVoiceSession'
 import {
+  addEmptyLayer,
   capture,
   loopOrigin,
   loopState,
@@ -90,7 +90,6 @@ import {
   hushScheduled,
 } from '../audio/looper'
 import { benchTroubleText, openWorkbench } from '../audio/workbench'
-import { SingPanel } from '../audio/SingPanel'
 import { redo, startHistory, undo } from '../audio/history'
 import { familyOf } from '../audio/families'
 import { AudioHealthStrip } from '../instrument/AudioHealthStrip'
@@ -99,7 +98,8 @@ import { LayerList } from '../instrument/LayerList'
 import { useBacking } from '../instrument/useBacking'
 import { BackingPanel } from '../instrument/BackingPanel'
 import { SongControls } from '../instrument/SongControls'
-import { PHONE_MENU, SoundPanel } from '../instrument/SoundPanel'
+import { SongTools, type Tool } from '../instrument/SongTools'
+import { SoundPanel } from '../instrument/SoundPanel'
 import { openEditor } from '../instrument/openEditor'
 import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
@@ -168,8 +168,6 @@ const CHORD_KEY = 'instrument_chord_v1'
 const STRUM_KEY = 'instrument_strum_v1'
 const ARP_KEY = 'instrument_arp_v1'
 const SWING_KEY = 'instrument_swing_v1'
-/* whether the More sound fold is open — a per-device convenience, like the others here */
-const MORE_KEY = 'instrument_more_sound_v1'
 
 /**
  * @param inCanvas true when this is a window on the shared canvas rather than the page.
@@ -197,13 +195,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   const [famPick, setFamPick] = useState<{ forInst: string; fam: string } | null>(null)
   const famShown = famPick && famPick.forInst === inst ? famPick.fam : familyOf(inst)
   const setFamShown = (fam: string) => setFamPick({ forInst: inst, fam })
-  const [moreSound, setMoreSound] = useState(() => {
-    try {
-      return localStorage.getItem(MORE_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
+  /* ⚙ Sound — a sheet since 14 Nov 2026, so it starts shut rather than remembered open; see
+     SoundPanel */
+  const [moreSound, setMoreSound] = useState(false)
   const [octave, setOctave] = useState(() => {
     const v = Number(localStorage.getItem(OCT_KEY))
     return Number.isFinite(v) && v >= 1 && v <= 6 ? v : 4
@@ -308,15 +302,14 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   const [lead, setLead] = useState<number[]>([])
   /**
-   * ⚠️ OPEN ON A DESKTOP, CLOSED ON A PHONE — Evan's call, 9 Nov 2026. On a phone the open grid
-   * covers the page, which is why it closes after a pick there; on a desktop it fits, and seeing
-   * the sounds is how somebody new finds out there are two dozen of them. Same query as the
-   * close-after-pick below, so the two cannot disagree about which screen this is.
+   * ⚠️ CLOSED ON A DESKTOP TOO, since the #311 layout — Evan approved it on 14 Nov 2026. It was
+   * open there by his call of 9 Nov ("seeing the sounds is how somebody new finds out there are
+   * two dozen of them"), and that cost 14 of the 81 controls on a desktop's first screen. The
+   * button names the sound you have, so the choice is never hidden, and once opened on a desktop
+   * the menu still stays open while you try sounds — see the close-after-pick in SoundPanel.
    */
-  const [picksOpen, setPicksOpen] = useState(() => !window.matchMedia(PHONE_MENU).matches)
+  const [picksOpen, setPicksOpen] = useState(false)
   const loop = useSyncExternalStore(subscribeLoop, loopState, loopState)
-  const [vol, setVol] = useState(() => volume('instrument'))
-  useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
 
   /**
    * ⚠️ (octave + 1), not octave.
@@ -377,11 +370,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
       localStorage.setItem(STRUM_KEY, strum)
       localStorage.setItem(ARP_KEY, arp)
       localStorage.setItem(SWING_KEY, swing ? '1' : '0')
-      localStorage.setItem(MORE_KEY, moreSound ? '1' : '0')
     } catch {
       /* private mode — it still plays */
     }
-  }, [inst, octave, scale, root, chord, strum, arp, swing, moreSound])
+  }, [inst, octave, scale, root, chord, strum, arp, swing])
 
   /**
    * Every note goes to the synth AND offers itself to the recorder.
@@ -486,7 +478,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   /* ⚠️ AFTER the workbench above, so the bench it puts back is where undo starts rather than a
      step — it also marks that restore as from elsewhere, so the order is belt and braces */
   useEffect(() => startHistory(), [])
-  const [libOpen, setLibOpen] = useState(false)
+  /**
+   * Which of the four tools under the song is open — 🥁 Beats, 🎚 Mix, 🎤 Voice or 📁 Songs, one
+   * at a time (the #311 layout, 14 Nov 2026). Here rather than in SongTools because two things
+   * outside it open one: the first-visit step opens Beats, and keeping a song opens Songs.
+   */
+  const [tool, setTool] = useState<Tool | null>(null)
 
   /**
    * Keeping something.
@@ -531,10 +528,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
             : 'Nothing to keep — record something first.',
     )
     window.setTimeout(() => setCapMsg(null), item && librarySaved() ? 4000 : 9000)
-    if (item) setLibOpen(true)
+    /* the kept song is in 📁 Songs now, beside the list it joined */
+    if (item) setTool('songs')
   }
-
-  const [beatsOpen, setBeatsOpen] = useState(false)
 
   /**
    * peer id → their name, so a shared layer can say whose take it is.
@@ -1352,239 +1348,215 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        */}
       {inst !== 'drums' && (
         <p className="muted inst-note inst-chord-name">
-          <span aria-live="polite">{(held.length > 0 && nameChord(held, spell)) || ' '}</span>
+          <span aria-live="polite">{(held.length > 0 && nameChord(held, spell)) || ' '}</span>
           {/* only when your own hands are quiet — what you are playing always wins the line */}
           {held.length === 0 && backingChord && (
             <span className="inst-backing-chord">{backingChord} underneath</span>
           )}
+          {/* ⚠️ THE OCTAVE IS SAID HERE NOW, because its − and + left the bar (Evan, 14 Nov 2026,
+              the #311 layout). The strip above the keys sets the same number and − and = still
+              move it from a keyboard; this is what keeps the number in sight while they do. */}
+          <span className="inst-oct-say">Octave {octave}</span>
         </p>
       )}
 
       {/**
-       * ⚠️ WHAT YOUR HANDS NEED WHILE THEY ARE ON THE KEYS, DIRECTLY UNDER THEM. Octave, Volume,
-       * Hold and Panic sat in a row below the whole song — measured with an arrangement loaded,
-       * 1,150px under the keyboard at 1440×900 and 1,350px under it on a phone — so changing
-       * octave or catching a chord with Hold meant scrolling away from the thing being played.
-       * Evan's note asked for exactly this group. The row moved; nothing in it changed.
+       * ⚠️ WHAT YOUR HANDS NEED WHILE THEY ARE ON THE KEYS, DIRECTLY UNDER THEM — and since the
+       * #311 layout (14 Nov 2026), two rows of it on a phone rather than four. The first is how
+       * the keys sound and stop: the instrument, the pedal, Panic and ⚙ Sound. The second is what
+       * they play: Scale, Key and Chord, which stay beside your hands as Evan asked on 10 Nov.
+       * On a desktop the two sit on one line.
+       *
+       * What left: Octave − and + (the strip above sets the same octave, and the line above says
+       * which), and Volume, which is in 🎚 Mix with every other volume and on the floating player.
        */}
-      <div className="inst-row inst-playbar">
-        <button
-          className="btn inst-pick-open"
-          aria-expanded={picksOpen}
-          onClick={() => setPicksOpen((v) => !v)}
-          title="Choose an instrument"
-        >
-          <span aria-hidden>{INSTRUMENTS.find(([id]) => id === inst)?.[1]}</span>
-          {INSTRUMENTS.find(([id]) => id === inst)?.[2] ?? 'Keys'}
-          <span aria-hidden>{picksOpen ? '▴' : '▾'}</span>
-        </button>
-
-        <span className="muted inst-oct">
-          Octave
+      <div className="inst-playbar">
+        <div className="inst-playbar-hands">
           <button
-            className="btn"
-            onClick={() => setOctave((o) => shiftOctave(o, -1))}
-            disabled={octave <= 1}
-            aria-label="Octave down"
+            className="btn inst-pick-open"
+            aria-expanded={picksOpen}
+            onClick={() => setPicksOpen((v) => !v)}
+            title="Choose an instrument"
           >
-            −
+            <span aria-hidden>{INSTRUMENTS.find(([id]) => id === inst)?.[1]}</span>
+            {INSTRUMENTS.find(([id]) => id === inst)?.[2] ?? 'Keys'}
+            <span aria-hidden>{picksOpen ? '▴' : '▾'}</span>
           </button>
-          <strong>{octave}</strong>
+
+          {/**
+           * The pedal every keyboard has and this one did not.
+           *
+           * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
+           * the only safe answer anyway: notes ringing with no finger and no pedal would be
+           * unreachable by anything except Panic.
+           *
+           * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
+           * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
+           * that visibly does nothing is worse than one that is not offered. The title says so
+           * rather than the button vanishing, which would make the setting hard to find again.
+           */}
           <button
-            className="btn"
-            onClick={() => setOctave((o) => shiftOctave(o, 1))}
-            disabled={octave >= 6}
-            aria-label="Octave up"
+            className={'btn' + (hold ? ' is-on' : '')}
+            aria-pressed={hold}
+            disabled={arp !== 'off'}
+            onClick={() => {
+              if (hold)
+                for (const v of pedal.release()) {
+                  noteOff(v.voice)
+                  report(v.midi, false)
+                }
+              setHold(!hold)
+            }}
+            title={
+              arp !== 'off'
+                ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
+                : hold
+                  ? 'Notes keep ringing after you let go — click to let them stop'
+                  : 'Keep notes ringing after you let go, like a piano pedal'
+            }
           >
-            +
+            🦶 Hold
+            <Why>
+              {arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}
+            </Why>
           </button>
-        </span>
 
-        <label className="appearance-slider">
-          <span className="muted">Volume</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={vol}
-            onChange={(e) => {
-              const v = Number(e.target.value)
-              setVol(v)
-              setVolume('instrument', v)
+          {/**
+           * A stuck note is the one failure every synth has, and hunting for the key that caused
+           * it is miserable. One button, always there.
+           *
+           * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
+           * transport running, so the loop immediately scheduled the next repetition and whatever
+           * you were panicking about came straight back — you had to hit it, then find Stop, and
+           * in between the thing was still playing. "Make it stop" has one meaning.
+           *
+           * ⚠️ THE GLYPH, NAMED. The #311 layout put Panic on the first row as ⏹ alone, which is
+           * what lets that row hold four controls at 375; the word lives in its name, so a screen
+           * reader and the audit both have it.
+           */}
+          <button
+            className="btn inst-icon inst-panic"
+            onClick={() => {
+              stopLoop()
+              hush('all')
             }}
-          />
-          <span className="appearance-slider-val">{Math.round(vol * 100)}%</span>
-        </label>
-        {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
-            typing sometimes plays and sometimes does not */}
-        <span
-          className={'inst-keylight' + (keysLive ? ' is-live' : '')}
-          title={
-            keysLive
-              ? 'Your computer keyboard plays notes'
-              : 'Typing is going into a control — click the page to play with the keys again'
-          }
-        >
-          <span aria-hidden>⌨</span>
-          <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
-        </span>
-
-        {/**
-         * A stuck note is the one failure every synth has, and hunting for the key that caused
-         * it is miserable. One button, always there.
-         *
-         * ⚠️ It STOPS THE LOOP as well as silencing the voices. Panic used to leave the
-         * transport running, so the loop immediately scheduled the next repetition and whatever
-         * you were panicking about came straight back — you had to hit it, then find Stop, and
-         * in between the thing was still playing. "Make it stop" has one meaning.
-         */}
-        {/**
-         * The pedal every keyboard has and this one did not.
-         *
-         * ⚠️ TURNING IT OFF LETS GO OF WHAT IT WAS HOLDING, which is what a pedal does and is
-         * the only safe answer anyway: notes ringing with no finger and no pedal would be
-         * unreachable by anything except Panic.
-         *
-         * ⚠️ AND IT IS IGNORED WHILE AN ARPEGGIO RUNS. Arp notes end themselves — each is born
-         * with its note-off scheduled — so there is nothing for a pedal to catch, and a pedal
-         * that visibly does nothing is worse than one that is not offered. The title says so
-         * rather than the button vanishing, which would make the setting hard to find again.
-         */}
-        <button
-          className={'btn' + (hold ? ' is-on' : '')}
-          aria-pressed={hold}
-          disabled={arp !== 'off'}
-          onClick={() => {
-            if (hold)
-              for (const v of pedal.release()) {
-                noteOff(v.voice)
-                report(v.midi, false)
-              }
-            setHold(!hold)
-          }}
-          title={
-            arp !== 'off'
-              ? 'An arpeggio ends its own notes, so Hold has nothing to catch'
-              : hold
-                ? 'Notes keep ringing after you let go — click to let them stop'
-                : 'Keep notes ringing after you let go, like a piano pedal'
-          }
-        >
-          🦶 Hold
-          <Why>{arp !== 'off' ? 'arpeggio is on' : hold ? 'tap to let go' : 'lets notes ring'}</Why>
-        </button>
-
-        {/* ⚠️ SCALE, KEY AND CHORD BESIDE THE OTHER THINGS YOUR HANDS USE, not below the song —
-            Evan, 10 Nov 2026. These three decide what every key you press plays. */}
-        {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
-          degrees, so there is no wrong note left to press. */}
-        <label className="inst-pick">
-          <span className="muted">Scale</span>
-          <select
-            value={scale}
-            onChange={(e) => {
-              hush()
-              setScale(e.target.value)
-              e.target.blur()
-            }}
+            aria-label="Panic: silence everything and stop the loop"
+            title="Silence everything and stop the loop"
           >
-            {SCALES.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+            ⏹
+          </button>
 
-        {/* only when it does something — a key picker on Chromatic would be a control that
-            visibly changes nothing */}
-        {scale !== 'chromatic' && (
+          {/* ⚠️ says what is true rather than what to do: the light is the explanation for why
+              typing sometimes plays and sometimes does not */}
+          <span
+            className={'inst-keylight' + (keysLive ? ' is-live' : '')}
+            title={
+              keysLive
+                ? 'Your computer keyboard plays notes'
+                : 'Typing is going into a control — click the page to play with the keys again'
+            }
+          >
+            <span aria-hidden>⌨</span>
+            <span className="muted">{keysLive ? 'keys play' : 'keys off'}</span>
+          </span>
+
+          {/**
+           * ⚠️ THE REST OF THE SOUND, ONE PRESS AWAY — Evan, 10 Nov 2026: "keep common ones up
+           * front and advanced ones tucked away". The arpeggio, how a chord arrives, the six effect
+           * sliders and saved rigs, in a sheet since the #311 layout — see SoundPanel.
+           */}
+          <button
+            className={'btn inst-sound-open' + (moreSound ? ' is-on' : ' btn-ghost')}
+            aria-haspopup="dialog"
+            aria-expanded={moreSound}
+            onClick={() => setMoreSound(true)}
+            title="Arpeggio, effects and saved rigs"
+          >
+            ⚙ Sound
+          </button>
+        </div>
+
+        <div className="inst-playbar-keys">
+          {/* ⚠️ SCALE, KEY AND CHORD BESIDE THE OTHER THINGS YOUR HANDS USE, not below the song —
+              Evan, 10 Nov 2026. These three decide what every key you press plays. */}
+          {/* What the keys mean. Chromatic is a piano; anything else turns the keyboard into scale
+            degrees, so there is no wrong note left to press. */}
           <label className="inst-pick">
-            <span className="muted">Key</span>
+            <span className="muted">Scale</span>
             <select
-              value={root}
+              value={scale}
               onChange={(e) => {
                 hush()
-                setRoot(Number(e.target.value))
-                /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
-                   staying here would change the key again the moment you played a note */
+                setScale(e.target.value)
                 e.target.blur()
               }}
             >
-              {/* named in the scale's own convention — see keyName */}
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i} value={i}>
-                  {keyName(degrees, i)}
+              {SCALES.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
                 </option>
               ))}
             </select>
           </label>
-        )}
 
-        {/**
-         * One key, a chord.
-         *
-         * ⚠️ NO `hush()` HERE, unlike its two neighbours, and the difference is the point. They
-         * cut your notes off because the keys were about to mean something else; changing this
-         * does not need to, because the book remembers what each press actually sounded and
-         * releases that — so you can widen a chord you are already holding and the note you let
-         * go of is the note you played.
-         *
-         * ⚠️ AND NOT HIDDEN ON THE DRUM KIT. It would be a control appearing and disappearing as
-         * you browsed the instruments, and your choice would be silently forgotten; the kit
-         * ignores it instead and the hint below says so.
-         */}
-        <label className="inst-pick">
-          <span className="muted">Chord</span>
-          <select
-            value={chord}
-            onChange={(e) => {
-              setChord(e.target.value as ChordId)
-              /* ⚠️ hand the keyboard back, for the reason the Key picker gives: a focused
-                 select eats letters as type-ahead, so staying here would change the chord again
-                 the moment you played a note */
-              e.target.blur()
-            }}
-          >
-            {CHORDS.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+          {/* only when it does something — a key picker on Chromatic would be a control that
+              visibly changes nothing */}
+          {scale !== 'chromatic' && (
+            <label className="inst-pick">
+              <span className="muted">Key</span>
+              <select
+                value={root}
+                onChange={(e) => {
+                  hush()
+                  setRoot(Number(e.target.value))
+                  /* ⚠️ hand the keyboard back: a focused select eats letters as type-ahead, so
+                     staying here would change the key again the moment you played a note */
+                  e.target.blur()
+                }}
+              >
+                {/* named in the scale's own convention — see keyName */}
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {keyName(degrees, i)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
-        <button
-          className="btn"
-          onClick={() => {
-            stopLoop()
-            hush('all')
-          }}
-          title="Silence everything and stop the loop"
-        >
-          ⏹ Panic
-        </button>
-
-        {/**
-         * ⚠️ THE REST OF THE SOUND, ONE PRESS AWAY — Evan, 10 Nov 2026: "keep common ones up front
-         * and advanced ones tucked away". The arpeggio, how a chord arrives, the six effect sliders
-         * and saved rigs were always on screen, 1,600px down on a desktop and 1,550 on a phone,
-         * under the whole song. Tucked here they sit beside the sound they shape, and the choice
-         * to open them is remembered.
-         */}
-        <button
-          className={'btn' + (moreSound ? ' is-on' : ' btn-ghost')}
-          aria-expanded={moreSound}
-          aria-label="More sound"
-          onClick={() => setMoreSound((v) => !v)}
-          title="Arpeggio, effects and saved rigs"
-        >
-          {/* "More" alone on a phone, where the full word costs the bar a fifth line; the name
-              a screen reader hears stays whole */}
-          ⚙ More<span className="inst-more-word"> sound</span>{' '}
-          <span aria-hidden>{moreSound ? '▴' : '▾'}</span>
-        </button>
+          {/**
+           * One key, a chord.
+           *
+           * ⚠️ NO `hush()` HERE, unlike its two neighbours, and the difference is the point. They
+           * cut your notes off because the keys were about to mean something else; changing this
+           * does not need to, because the book remembers what each press actually sounded and
+           * releases that — so you can widen a chord you are already holding and the note you let
+           * go of is the note you played.
+           *
+           * ⚠️ AND NOT HIDDEN ON THE DRUM KIT. It would be a control appearing and disappearing as
+           * you browsed the instruments, and your choice would be silently forgotten; the kit
+           * ignores it instead and the hint below says so.
+           */}
+          <label className="inst-pick">
+            <span className="muted">Chord</span>
+            <select
+              value={chord}
+              onChange={(e) => {
+                setChord(e.target.value as ChordId)
+                /* ⚠️ hand the keyboard back, for the reason the Key picker gives: a focused
+                   select eats letters as type-ahead, so staying here would change the chord again
+                   the moment you played a note */
+                e.target.blur()
+              }}
+            >
+              {CHORDS.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {/**
@@ -1669,6 +1641,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           swing,
           setSwing,
           moreSound,
+          setMoreSound,
           picksOpen,
           setPicksOpen,
           famShown,
@@ -1711,40 +1684,50 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         </div>
       ) : null}
 
-      <SongControls
-        loop={loop}
-        live={live}
-        editing={editing}
-        setEditing={setEditing}
-        beatsOpen={beatsOpen}
-        setBeatsOpen={setBeatsOpen}
-        libOpen={libOpen}
-        setLibOpen={setLibOpen}
-        capMsg={capMsg}
-        setCapMsg={setCapMsg}
-        keep={keep}
-        inCall={call.inCall}
-      />
-      {beatsOpen && (
-        <BackingPanel loop={loop} scale={scale} root={root} degrees={degrees} backing={backing} />
-      )}
-      <LayerList
-        layers={loop.layers}
-        replacing={loop.replacing}
-        editing={editing}
-        setEditing={setEditing}
-        jamNames={jamNames}
-        onKeep={(id) => keep('loop', id)}
-      />
-
-      {/* ⚠️ THE SINGING PROTOTYPE — phase 0 of docs/2026-11-10-sung-lyrics-plan.md, parked for
-          Evan to hear. It sat beside the takes until 12 Nov 2026, when 🎤 Record a take moved up
-          beside ⏺ Record (see SongControls); a prototype stays where it is until it is decided. */}
-      <SingPanel
-        layers={loop.layers}
-        degrees={scale === 'chromatic' ? MAJOR_DEGREES : degrees}
-        root={scale === 'chromatic' ? 0 : root}
-      />
+      {/**
+       * ⚠️ THE SONG, IN ONE PLACE — the #311 layout, 14 Nov 2026. What you press while making a
+       * song first (▶ Play, ⏺ Record, ⧉ Capture, then the click and the speed), then the parts,
+       * one line each, then four tools under them. On a phone the whole of a three-part song now
+       * fits on one screen with the keys; it took two, and the first part started 1,415px down.
+       */}
+      <div className="inst-song">
+        <SongControls
+          loop={loop}
+          setEditing={setEditing}
+          beatsOpen={tool === 'beats'}
+          toggleBeats={() => setTool((t) => (t === 'beats' ? null : 'beats'))}
+          capMsg={capMsg}
+          setCapMsg={setCapMsg}
+        />
+        <LayerList
+          loop={loop}
+          editing={editing}
+          setEditing={setEditing}
+          jamNames={jamNames}
+          onKeep={(id) => keep('loop', id)}
+          newPart={() => setEditing(addEmptyLayer(live.current.inst) || null)}
+        />
+        <SongTools
+          tool={tool}
+          setTool={setTool}
+          loop={loop}
+          setEditing={setEditing}
+          keep={keep}
+          beats={
+            <BackingPanel
+              loop={loop}
+              scale={scale}
+              root={root}
+              degrees={degrees}
+              backing={backing}
+            />
+          }
+          singScale={{
+            degrees: scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+            root: scale === 'chromatic' ? 0 : root,
+          }}
+        />
+      </div>
 
       {/* ⚠️ THREE JOBS, THREE HOMES, AND THEY USED TO BE INTERLEAVED. Reported as the room being
           "a little fractured and almost more difficult to smoothly work on making a song", and
@@ -1888,7 +1871,27 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         )}
       </section>
       {!call.inCall && (
-        <AlsoTogether id="instrument">
+        <AlsoTogether
+          id="instrument"
+          whenGone={
+            /* ⚠️ THE WAY INTO A JAM WHEN THERE IS NO CALL — Evan, 12 Nov 2026 (flow map item 3).
+               It sat in the song's second row until the #311 layout moved it into the note
+               above; once that note is put away, this is what is left of it. A call starts in
+               Chat, so it is a link there that says so. */
+            <p className="muted inst-note inst-jam-door">
+              <a
+                href="#chat"
+                onClick={(e) => {
+                  e.preventDefault()
+                  window.location.hash = 'chat'
+                }}
+              >
+                🎶 Jam with friends
+              </a>{' '}
+              — start a call in Chat, then press Jam together here.
+            </p>
+          }
+        >
           Everyone in a call hears what you play, on one shared metronome.
         </AlsoTogether>
       )}
