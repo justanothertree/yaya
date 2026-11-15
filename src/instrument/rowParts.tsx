@@ -157,7 +157,7 @@ export function OffScaleRow({
  * is on the layer's own row below; this only says where the silence comes from.
  */
 export function MutedRow({ layer }: { layer: Layer | undefined }) {
-  return layer?.muted ? <span className="muted inst-beats-why">muted in the layers</span> : null
+  return layer?.muted ? <span className="muted inst-beats-why">muted in the parts</span> : null
 }
 
 /**

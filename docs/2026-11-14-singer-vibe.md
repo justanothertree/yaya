@@ -35,8 +35,10 @@ Checked in the room with the instrument muted:
 - Stop leaves 0 in every case.
 - The new row fits at 375 with nothing spilling.
 
-**The A/B page is kept as it was, on Evan's word.** So its "A is the voice on the site now" now means
-the voice before this round: the site sings with B's two switches on.
+**The A/B page kept its sound, and its words were corrected afterwards** (Evan, 14 Nov 2026, with
+#326). It used to say A was "the voice on the site now"; since this round the site sings with B's
+two switches on. So A is "the voice before the vibe pass", its button reads "A, before", and B's
+"Today's" choices read "As A". Nothing it plays changed.
 
 ## Round one: Evan preferred A
 

@@ -61,12 +61,23 @@ export function SingPanel({
   layers,
   degrees,
   root,
+  inline = false,
+  onSinging,
 }: {
   layers: readonly Layer[]
   degrees: readonly number[]
   root: number
+  /**
+   * Shown open under a heading rather than behind its own fold — inside 🎤 Voice since the #311
+   * layout (14 Nov 2026), where the tool is the fold and a second one inside it would be two
+   * presses to reach a prototype that has nothing else in its panel.
+   */
+  inline?: boolean
+  /** told when a line starts and stops, so 🎤 Voice can say it is still singing while closed */
+  onSinging?: (on: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [folded, setOpen] = useState(false)
+  const open = inline || folded
   const [lyric, setLyric] = useState(SAMPLE)
   const [layerId, setLayerId] = useState<string | null>(null)
   const [preset, setPreset] = useState<PresetId>('clean')
@@ -85,6 +96,7 @@ export function SingPanel({
   }
   /* leaving the room silences the voice — a line scheduled into the future would otherwise sing on */
   useEffect(() => () => stop.current?.(), [])
+  useEffect(() => onSinging?.(singing), [singing, onSinging])
 
   const candidates = layers.filter((l) => l.instrument !== 'drums' && l.events.some((e) => e.on))
   const layer =
@@ -155,15 +167,21 @@ export function SingPanel({
   }
 
   return (
-    <div className="inst-sing card">
-      <button
-        className={'btn' + (open ? ' is-on' : ' btn-ghost')}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        🎤 Sing lyrics <span className="muted">· prototype</span>{' '}
-        <span aria-hidden>{open ? '▴' : '▾'}</span>
-      </button>
+    <div className={'inst-sing' + (inline ? ' is-inline' : ' card')}>
+      {inline ? (
+        <h4 className="inst-tool-head">
+          Sing lyrics <span className="muted">· prototype</span>
+        </h4>
+      ) : (
+        <button
+          className={'btn' + (open ? ' is-on' : ' btn-ghost')}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          🎤 Sing lyrics <span className="muted">· prototype</span>{' '}
+          <span aria-hidden>{open ? '▴' : '▾'}</span>
+        </button>
+      )}
       {open && (
         <>
           <p className="muted inst-note">
