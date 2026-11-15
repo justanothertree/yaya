@@ -15,8 +15,28 @@ fdd3fba) beside B.
 which is the only moment a phone allows it; on an iPhone the page also declares itself a media
 player, so the ring switch does not silence it.
 
-**Every switch is off by default, on the page and in the singer.** The Sing panel asks for none of
-them, so the Instrument's singer is still today's voice exactly.
+**Every switch is off by default, on the page and in the singer.** When the page was published, the
+Sing panel asked for none of them.
+
+## Round three: two of the switches become the Sing panel's sound
+
+Evan, 14 Nov 2026, after playing round two:
+
+- The **late vibrato** and the **light room** are how the Sing panel sings every line now (`SOUND` in
+  `SingPanel.tsx`). The light room replaces the part bus's reverb, so the panel's bus has none.
+- The **soft echo** stays off.
+- **Harmony** is a choice in the panel, Off, Third or Third + octave, and starts on Off.
+
+Checked in the room with the instrument muted:
+
+- Off builds a voice and its room.
+- Third adds the harmony.
+- Third + octave adds the octave as well.
+- Stop leaves 0 in every case.
+- The new row fits at 375 with nothing spilling.
+
+**The A/B page is kept as it was, on Evan's word.** So its "A is the voice on the site now" now means
+the voice before this round: the site sings with B's two switches on.
 
 ## Round one: Evan preferred A
 
@@ -104,8 +124,8 @@ every break turned its own test red. The breaks were:
 - **How it sounds.** That is for ears.
 - Firefox, Safari and a real phone. A line with a room or an echo carries one more convolver or two
   delays.
-- **The instrument room.** None of this is wired into it yet. The switches are options on the singer,
-  off unless something asks for them.
+- **The instrument room, heard.** Round three's sound was checked there for what it builds and lets go,
+  with the output muted; nobody has listened to it in the room itself.
 - **The live page on a real phone.** It was checked in the production build at 375 with touch
   emulated: the tap starts the sound, nothing is clipped or undersized, a line plays and Stop leaves
   0 voices (with the output muted, so nothing sounded here).
