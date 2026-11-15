@@ -154,6 +154,20 @@ export type SingOpts = {
   /** the humanising is random but repeatable: the same seed sings the same line the same way */
   seed?: number
   /**
+   * ⚠️ THE THREE SWITCHES OF THE SECOND VIBE PROTOTYPE, 14 Nov 2026 — each off by default, and with
+   * all three off the voice is exactly today's. Evan heard the first prototype and preferred today's
+   * voice: its dips, falls and plate had cost the line its clean character (measured in
+   * docs/2026-11-14-singer-vibe.md). So each change is one switch, to be heard on its own.
+   *
+   * `vibrato: 'late'` — only long notes waver, later, slower and shallower: see `lateVibratoOf`.
+   */
+  vibrato?: 'late'
+  /** `'room'`: a short, light room of the voice's own, in place of the part bus's reverb (the
+   *  caller turns that off). `'echo'`: one soft echo in time with the song, on top of it. */
+  space?: 'room' | 'echo'
+  /** a quiet double of the lead an octave below it — the stack's second voice, with `harmony` */
+  octave?: boolean
+  /**
    * How long before `start` the first consonant may begin. When a line is scheduled for the next
    * time round the loop there is time in hand, and "sky" can hiss before the downbeat rather than
    * be clipped to it; 0 when the line starts now.
@@ -947,6 +961,125 @@ function lateVibrato(list: Step[], a: number, b: number, v: Voice) {
   list.push({ t: b, v: 0, how: 'ramp' })
 }
 
+/** the late vibrato's wait into a note, the time it takes to grow, and its speed */
+const LATE = { delay: 0.5, rise: 0.55, rate: 5.1 }
+
+/**
+ * The late vibrato: today's waits about a third of a second into anything held half a second and
+ * then grows quickly; this waits half a second, so only a long note wavers at all, grows over
+ * another half, and is slower and about two thirds as deep. A Voice in, a Voice out, so the planner
+ * sees one ordinary voice.
+ *
+ * ⚠️ GLITCHY GETS ONE TOO, at the floor of 12 cents. Its hard tune has none today, and a switch that
+ * did nothing on one voice in three would read as broken.
+ */
+export function lateVibratoOf(v: Voice): Voice {
+  return {
+    ...v,
+    vibrato: { ...LATE, cents: Math.max(12, Math.round(v.vibrato.cents * 0.65)) },
+  }
+}
+
+/** one voice to build for a line: which phrase, where, how loud, how detuned, and with or without
+ *  its consonants' noise */
+export type Spec = { ph: Phrase; pan: number; gain: number; cents: number; bursts: boolean }
+
+/**
+ * The voices a line is sung with — pure, so the stack can be asked. The lead (doubled either side
+ * of the middle when asked), the harmony when there is one, and the octave double under the lead.
+ *
+ * ⚠️ THE OCTAVE IS QUIET AND CARRIES NO CONSONANTS. It is the lead's own timeline a little late and
+ * twelve hundred cents down, so it can only thicken the vowels; its own hiss and bursts would land
+ * a few milliseconds after the lead's and smear exactly what #325 sharpened. It doubles the lead
+ * once, never the doubled voice or the harmony.
+ */
+export function voicesFor(phrases: readonly Phrase[], v: Voice, opts: SingOpts): Spec[] {
+  const out: Spec[] = []
+  for (const ph of phrases) {
+    if (ph.part === 'harmony') {
+      out.push({ ph, pan: 0, gain: HARMONY, cents: 0, bursts: false })
+      continue
+    }
+    if (opts.double) {
+      const d = v.double
+      out.push({ ph, pan: -d.pan, gain: 1, cents: 0, bursts: true })
+      out.push({
+        ph: doublePhrase(ph, d.ms / 1000, d.formant),
+        pan: d.pan,
+        gain: DOUBLE,
+        cents: d.cents,
+        bursts: true,
+      })
+    } else out.push({ ph, pan: 0, gain: 1, cents: 0, bursts: true })
+    if (opts.octave)
+      out.push({
+        ph: doublePhrase(ph, OCTAVE.ms / 1000, OCTAVE.formant),
+        pan: 0,
+        gain: OCTAVE.gain,
+        cents: -1200 + OCTAVE.cents,
+        bursts: false,
+      })
+  }
+  return out
+}
+
+/** how quiet the octave double is against the lead, how late, how detuned, and a slightly bigger
+ *  throat, as a lower voice has */
+const OCTAVE = { gain: 0.32, ms: 9, cents: 4, formant: 0.97 }
+
+/**
+ * A light room: short, answering a moment late; and a soft echo, one clear repeat and a faint second.
+ * Both are fed from the voice's middle only, so its consonants stay dry.
+ *
+ * Measured on 14 Nov 2026 as the wet signal's own energy against the dry voice, over the A/B page's
+ * four lines — two renders with the same random numbers, one with the send at 0, subtracted sample
+ * by sample, because two ordinary renders differ by more than a quiet reverb does. The part bus's
+ * room, today: 22dB under the voice, for 2.2s. This room: 25dB under, for 0.9s. The echo: 20dB under,
+ * on top of today's room. The first values tried, 0.45 and 0.16, read 18dB and 13dB: a "light" room
+ * wetter than today's, which only the exact measurement showed.
+ */
+export const LIGHT = {
+  room: { decay: 0.9, pre: 0.02, wet: 0.21 },
+  echo: { beats: 0.5, feedback: 0.18, wet: 0.07 },
+  send: { hp: 400, lp: 5000 },
+}
+
+/** how long the echo's repeats are, and how long the room must outlast the last note — until the
+ *  plate and the last repeat are both 60dB down */
+export function lightTail(beat: number) {
+  const delay = LIGHT.echo.beats * beat
+  const repeats = Math.ceil(Math.log(0.001) / Math.log(LIGHT.echo.feedback))
+  return { delay, tail: Math.max(LIGHT.room.pre + LIGHT.room.decay, delay * repeats) }
+}
+
+/**
+ * A plate's impulse, made from noise like every other sound here: two decorrelated channels falling
+ * 60dB over `decay` seconds, and darkening as they fall — a real plate's top end dies first, and a
+ * tail that stays as bright as its start sounds like hiss. `rand` makes it repeatable for a test.
+ */
+export function plate(
+  rate: number,
+  decay: number,
+  rand: () => number = Math.random,
+): [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] {
+  const n = Math.max(1, Math.round(rate * decay))
+  const out: [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] = [
+    new Float32Array(new ArrayBuffer(n * 4)),
+    new Float32Array(new ArrayBuffer(n * 4)),
+  ]
+  for (const d of out) {
+    let y = 0
+    for (let i = 0; i < n; i++) {
+      const x = i / n
+      /* a one-pole low-pass that closes as the tail falls: wide open at the start, dull by the end */
+      const a = 1 - 0.85 * x
+      y += a * (rand() * 2 - 1 - y)
+      d[i] = y * Math.exp(-6.91 * x)
+    }
+  }
+  return out
+}
+
 /**
  * The second voice of a doubled part: the same phrase a few milliseconds late, with a slightly
  * different throat. Its detune is applied by the oscillator, so the pitch timeline is shared.
@@ -1221,6 +1354,101 @@ function build(c: BaseAudioContext, dest: AudioNode, ph: Phrase, v: Voice, o: Bu
 const HARMONY = 0.5
 const DOUBLE = 0.8
 
+const plates = new WeakMap<BaseAudioContext, Map<number, AudioBuffer>>()
+function plateFor(c: BaseAudioContext, decay: number): AudioBuffer {
+  let m = plates.get(c)
+  if (!m) plates.set(c, (m = new Map()))
+  let b = m.get(decay)
+  if (!b) {
+    const [l, r] = plate(c.sampleRate, decay)
+    b = c.createBuffer(2, l.length, c.sampleRate)
+    b.copyToChannel(l, 0)
+    b.copyToChannel(r, 1)
+    m.set(decay, b)
+  }
+  return b
+}
+
+/**
+ * The light room or the soft echo, for one line: the voice straight through, and a send — high-
+ * and low-passed, so neither the low end nor the consonants' hiss goes in — to a short plate or to
+ * an echo that alternates sides.
+ *
+ * ⚠️ IT OUTLIVES THE LAST NOTE BY ITS TAIL, and is let go then, by a silent source timed to stop
+ * when the last of it is 60dB down: its `ended` fires in a live context and an offline one alike,
+ * where a timer would not. Stopping the line lets it go at once, tail and all.
+ */
+function lightFor(c: BaseAudioContext, dest: AudioNode, kind: 'room' | 'echo', beat: number) {
+  live++
+  const { delay, tail } = lightTail(beat)
+  const nodes: AudioNode[] = []
+  const add = <T extends AudioNode>(n: T): T => {
+    nodes.push(n)
+    return n
+  }
+  const input = add(c.createGain())
+  input.connect(dest)
+  const hp = add(c.createBiquadFilter())
+  hp.type = 'highpass'
+  hp.frequency.value = LIGHT.send.hp
+  const lp = add(c.createBiquadFilter())
+  lp.type = 'lowpass'
+  lp.frequency.value = LIGHT.send.lp
+  input.connect(hp)
+  hp.connect(lp)
+  const wet = add(c.createGain())
+  wet.connect(dest)
+  if (kind === 'room') {
+    const pre = add(c.createDelay(0.2))
+    pre.delayTime.value = LIGHT.room.pre
+    const verb = add(c.createConvolver())
+    verb.buffer = plateFor(c, LIGHT.room.decay)
+    wet.gain.value = LIGHT.room.wet
+    lp.connect(pre)
+    pre.connect(verb)
+    verb.connect(wet)
+  } else {
+    wet.gain.value = LIGHT.echo.wet
+    const sides = [-0.6, 0.6].map((side) => {
+      const d = add(c.createDelay(2))
+      d.delayTime.value = delay
+      const back = add(c.createGain())
+      back.gain.value = LIGHT.echo.feedback
+      const pan = add(c.createStereoPanner())
+      pan.pan.value = side
+      d.connect(pan)
+      pan.connect(wet)
+      d.connect(back)
+      return { d, back }
+    })
+    lp.connect(sides[0].d)
+    sides[0].back.connect(sides[1].d)
+    sides[1].back.connect(sides[0].d)
+  }
+  let done = false
+  let clock: ConstantSourceNode | null = null
+  const release = () => {
+    if (done) return
+    done = true
+    live--
+    for (const n of nodes) n.disconnect()
+    clock?.disconnect()
+  }
+  return {
+    input,
+    /** keep it until `end`, the last voice's end, plus its tail */
+    until(end: number) {
+      clock = c.createConstantSource()
+      clock.offset.value = 0
+      clock.connect(input)
+      clock.onended = release
+      clock.start()
+      clock.stop(end + tail)
+    },
+    stop: release,
+  }
+}
+
 /**
  * Sing a line into `dest` on context `c`. Returns a stop that silences it at once.
  *
@@ -1233,29 +1461,20 @@ export function singInto(
   start: number,
   opts: SingOpts,
 ): () => void {
-  const v = PRESETS[opts.preset]
+  const v = opts.vibrato === 'late' ? lateVibratoOf(PRESETS[opts.preset]) : PRESETS[opts.preset]
   const phrases = planPhrases(planLine(sung, start, opts), v, opts.beat, opts.seed ?? 1)
-  const voices: { stop(): void }[] = []
-  for (const ph of phrases) {
-    if (ph.part === 'harmony') {
-      voices.push(build(c, dest, ph, v, { pan: 0, gain: HARMONY, cents: 0, bursts: false }))
-    } else if (opts.double) {
-      const d = v.double
-      voices.push(build(c, dest, ph, v, { pan: -d.pan, gain: 1, cents: 0, bursts: true }))
-      voices.push(
-        build(c, dest, doublePhrase(ph, d.ms / 1000, d.formant), v, {
-          pan: d.pan,
-          gain: DOUBLE,
-          cents: d.cents,
-          bursts: true,
-        }),
-      )
-    } else voices.push(build(c, dest, ph, v, { pan: 0, gain: 1, cents: 0, bursts: true }))
+  const room = opts.space ? lightFor(c, dest, opts.space, opts.beat) : null
+  const into = room ? room.input : dest
+  const voices = voicesFor(phrases, v, opts).map(({ ph, ...o }) => build(c, into, ph, v, o))
+  if (room) {
+    const late = Math.max(0, ...voicesFor(phrases, v, opts).map((x) => x.ph.to))
+    room.until(Math.max(start, late))
   }
   let stopped = false
   return () => {
     if (stopped) return
     stopped = true
     for (const x of voices) x.stop()
+    room?.stop()
   }
 }
