@@ -8,7 +8,7 @@
  * to 23 and bears off above it. `board[i]` counts checkers: positive for side 1, negative for 2.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Who = 1 | 2
 export const other = (w: Who): Who => (w === 1 ? 2 : 1)

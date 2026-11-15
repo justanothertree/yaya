@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { entriesBetween, plansBetween, totalsBetween } from './cloud'
-import { coveredPct, dayBounds, endOfNextDay, spanText, type Activity, type Entry } from './record'
+import {
+  coveredPct,
+  dayBounds,
+  endOfNextDay,
+  inkOf,
+  spanText,
+  type Activity,
+  type Entry,
+} from './record'
 import { scoreOf } from './score'
 import type { Plan } from './plan'
 
@@ -138,8 +146,8 @@ export function Rail({
                     minute: '2-digit',
                   })}
                 </span>
-                {a?.colour ? (
-                  <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+                {a ? (
+                  <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
                 ) : null}
                 <span className="chron-rail-what">{a?.name ?? 'something'}</span>
               </li>

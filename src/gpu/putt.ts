@@ -8,7 +8,7 @@
  * times in seconds.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 export const W = 10
 export const H = 15
 /** the ball's radius, and the cup's: a ball whose centre is over the cup and is slow enough drops */

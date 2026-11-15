@@ -9,7 +9,7 @@
  * 0–51, rank = c >> 2 (0 a two, 6 an eight, 12 an ace), suit = c & 3.
  */
 import { rankOf, shuffled, suitOf, type Card } from './poker'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const EIGHT = 6
 export const isEight = (c: Card) => rankOf(c) === EIGHT

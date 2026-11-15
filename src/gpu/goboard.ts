@@ -9,7 +9,7 @@
  * still counted unless it is captured, so the game is played until it is.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const N = 9
 export type Stone = 0 | 1 | 2

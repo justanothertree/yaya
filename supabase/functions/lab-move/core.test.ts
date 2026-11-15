@@ -1,0 +1,321 @@
+import { readFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { bundle, OUT } from '../../../scripts/lab-move-bundle.mjs'
+import { chessRules, replay } from '../../../src/gpu/chessRoom'
+import { count, moves } from '../../../src/gpu/reversi'
+import { readReversiGame, reversiRules } from '../../../src/gpu/reversiRoom'
+import * as built from './core.bundle.js'
+import { GAMES, decide, readAsk, type Ask, type Plan, type Row } from './core'
+
+/**
+ * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
+ * runtime, a member's token and the matches tables. So what it decides is in core.ts, and this is
+ * where that is checked, against the toys' own rules. The plumbing in index.ts was driven against
+ * a throwaway Supabase stack with Deno (see the PR); these are the answers it relies on.
+ */
+
+const A = '00000000-0000-4000-8000-00000000000a'
+const B = '00000000-0000-4000-8000-00000000000b'
+const STRANGER = '00000000-0000-4000-8000-00000000000c'
+const MATCH = '11111111-2222-4333-8444-555555555555'
+
+/** a seeded stand-in for Math.random, so a computer's choice is the same on every run */
+function seeded(seed: number) {
+  let s = seed >>> 0
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0
+    let t = s
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+beforeEach(() => {
+  vi.spyOn(Math, 'random').mockImplementation(seeded(20261114))
+})
+afterEach(() => vi.restoreAllMocks())
+
+/** an invitation, every field unlike its default */
+const invite = (over: Partial<Row> = {}): Row => ({
+  id: MATCH,
+  demo_id: 'reversi',
+  mode: 'versus',
+  player_a: A,
+  player_b: B,
+  status: 'invited',
+  settings: { size: 6 },
+  state: null,
+  seq: 0,
+  turn: null,
+  ...over,
+})
+
+/** the match after `plan`, as lab_match_begin or lab_match_commit would leave it */
+function after(row: Row, plan: Plan): Row {
+  if (plan.kind === 'begin') return { ...row, status: 'active', state: plan.state, turn: plan.turn }
+  if (plan.kind === 'commit')
+    return {
+      ...row,
+      seq: row.seq + 1,
+      state: plan.state,
+      turn: plan.turn,
+      status: plan.result ? 'finished' : 'active',
+    }
+  throw new Error(`refused: ${plan.status} ${plan.error}`)
+}
+
+const status = (p: Plan) => (p.kind === 'refuse' ? p.status : p.kind)
+const move = (at: number, m: unknown): Ask => ({ op: 'move', at, move: m })
+
+describe('reading a request', () => {
+  it('takes an accept or a move, and nothing else', () => {
+    expect(readAsk({ op: 'accept', match: MATCH })).toEqual({ match: MATCH, ask: { op: 'accept' } })
+    expect(readAsk({ op: 'move', match: MATCH, at: 3, move: 'e2e4' })).toEqual({
+      match: MATCH,
+      ask: { op: 'move', at: 3, move: 'e2e4' },
+    })
+    for (const bad of [
+      null,
+      'accept',
+      { op: 'accept' },
+      { op: 'accept', match: 'not-a-uuid' },
+      { op: 'move', match: MATCH, move: 'e2e4' },
+      { op: 'move', match: MATCH, at: -1, move: 'e2e4' },
+      { op: 'move', match: MATCH, at: 1.5, move: 'e2e4' },
+      { op: 'move', match: MATCH, at: 0 },
+      { op: 'resign', match: MATCH },
+      { op: 'commit', match: MATCH, at: 0, move: 1, state: {} },
+    ])
+      expect(readAsk(bad)).toBeNull()
+  })
+})
+
+describe('who may ask', () => {
+  it('answers a stranger exactly as it answers a match that does not exist', () => {
+    const row = after(invite(), decide(invite(), B, { op: 'accept' }))
+    const missing = decide(null, A, move(0, 14))
+    expect(missing).toEqual({ kind: 'refuse', status: 404, error: 'no such match' })
+    expect(decide(row, STRANGER, move(0, 14))).toEqual(missing)
+    expect(decide(invite(), STRANGER, { op: 'accept' })).toEqual(missing)
+  })
+
+  it('lets only the challenged friend accept, and only while it is an invitation', () => {
+    expect(status(decide(invite(), A, { op: 'accept' }))).toBe(403)
+    const begun = after(invite(), decide(invite(), B, { op: 'accept' }))
+    expect(status(decide(begun, B, { op: 'accept' }))).toBe(409)
+    for (const s of ['declined', 'ended', 'finished'])
+      expect(status(decide(invite({ status: s }), B, { op: 'accept' }))).toBe(409)
+  })
+
+  it('refuses a toy, a mode or settings it cannot play, before anything is written', () => {
+    expect(status(decide(invite({ demo_id: 'pool' }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(invite({ demo_id: 'toString' }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(invite({ settings: { size: 7 } }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(invite({ settings: { size: '8' } }), B, { op: 'accept' }))).toBe(422)
+    const together = invite({ mode: 'together', settings: { size: 6, level: 'impossible' } })
+    expect(status(decide(together, B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(invite({ mode: 'race' as never }), B, { op: 'accept' }))).toBe(422)
+  })
+})
+
+describe('a game begins', () => {
+  it('with the toy’s own fresh board, and the challenger to move', () => {
+    const p = decide(invite({ settings: { size: 10 } }), B, { op: 'accept' })
+    expect(p).toEqual({
+      kind: 'begin',
+      state: reversiRules(10).encode(reversiRules(10).fresh()),
+      turn: 0,
+    })
+    const c = decide(invite({ demo_id: 'chess', settings: {} }), B, { op: 'accept' })
+    expect(c).toEqual({ kind: 'begin', state: { moves: [] }, turn: 0 })
+  })
+
+  it('at size 8 when the challenge named none', () => {
+    const p = decide(invite({ settings: {} }), B, { op: 'accept' })
+    expect(p.kind === 'begin' && (p.state as { n: number }).n).toBe(8)
+  })
+})
+
+describe('a move', () => {
+  const going = () => after(invite(), decide(invite(), B, { op: 'accept' }))
+
+  it('is refused out of turn, against an old board, or when it is not a move', () => {
+    const row = going()
+    const legal = moves(readReversiGame(row.state)!.b, 1)[0]
+    expect(status(decide(row, B, move(0, legal)))).toBe(409) // B is light; dark moves first
+    expect(status(decide(row, A, move(1, legal)))).toBe(409) // seq 0 is the board A saw
+    expect(status(decide(row, A, move(0, 'e2e4')))).toBe(400)
+    expect(status(decide(row, A, move(0, 0)))).toBe(400) // a corner: not a move at the start
+    expect(status(decide(row, A, move(0, legal)))).toBe('commit')
+  })
+
+  it('is refused on a match that is not going', () => {
+    for (const s of ['invited', 'finished', 'declined', 'ended'])
+      expect(status(decide({ ...going(), status: s }, A, move(0, 14)))).toBe(409)
+  })
+
+  it('is refused on a stored board no game could have made, rather than built on', () => {
+    const row = going()
+    const s = row.state as { cells: number[] }
+    const damaged = { ...row, state: { ...s, cells: s.cells.map(() => 0) } }
+    expect(decide(damaged, A, move(0, 14))).toEqual({
+      kind: 'refuse',
+      status: 500,
+      error: 'this match’s board cannot be read',
+    })
+    // a chess game that is not a game: the second move is white's again
+    const chess = { ...going(), demo_id: 'chess', settings: {}, state: { moves: ['e2e4', 'd2d4'] } }
+    expect(status(decide(chess, A, move(0, 'e7e5')))).toBe(500)
+  })
+
+  it('records the move, the board after it and the other player to move', () => {
+    const row = going()
+    const legal = moves(readReversiGame(row.state)!.b, 1)[0]
+    const p = decide(row, A, move(0, legal))
+    expect(p.kind).toBe('commit')
+    if (p.kind !== 'commit') return
+    expect(p.at).toBe(0)
+    expect(p.move).toEqual({ m: legal })
+    expect(p.turn).toBe(1)
+    expect(p.result).toBeNull()
+    const g = readReversiGame(p.state)!
+    expect(count(g.b)).toEqual([4, 1])
+  })
+})
+
+/** play a whole match from invitation to finish, each player choosing with `pick` */
+function playOut(start: Row, pick: (row: Row, who: string) => unknown, limit = 400) {
+  let row = after(start, decide(start, B, { op: 'accept' }))
+  const plans: Plan[] = []
+  for (let i = 0; i < limit && row.status === 'active'; i++) {
+    const who = row.turn === 0 ? A : B
+    const p = decide(row, who, move(row.seq, pick(row, who)))
+    plans.push(p)
+    row = after(row, p)
+  }
+  return { row, plans }
+}
+
+describe('a versus match played to its end', () => {
+  it('finishes in Reversi with the winner the board says, and the count as its score', () => {
+    let passes = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(invite(), (r) => {
+        const g = readReversiGame(r.state)!
+        const list = moves(g.b, g.turn!)
+        return list[Math.floor(rnd() * list.length)]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans[plans.length - 1]
+      expect(last.kind).toBe('commit')
+      if (last.kind !== 'commit') return
+      const [d, l] = count(readReversiGame(last.state)!.b)
+      expect(last.result).toEqual({ winner: d > l ? 0 : l > d ? 1 : 'draw', score: `${d}–${l}` })
+      expect(last.turn).toBeNull()
+      // a pass is a turn that stays with the same player
+      const turns = plans.map((p) => (p.kind === 'commit' ? p.turn : null))
+      if (turns.slice(1).some((t, i) => t !== null && t === turns[i])) passes++
+    }
+    // thirty random games and not one pass would mean passes were never asked about
+    expect(passes).toBeGreaterThan(0)
+  })
+
+  it('finishes in Chess on a mate, black winning, with no score', () => {
+    const fools = ['f2f3', 'e7e5', 'g2g4', 'd8h4']
+    const { row, plans } = playOut(invite({ demo_id: 'chess', settings: {} }), (r) => fools[r.seq])
+    expect(row.status).toBe('finished')
+    expect(plans.at(-1)).toMatchObject({ kind: 'commit', turn: null, result: { winner: 1 } })
+    expect((plans.at(-1) as { result: object }).result).not.toHaveProperty('score')
+    expect(replay((row.state as { moves: string[] }).moves)?.over).toBeTruthy()
+  })
+})
+
+describe('together: two friends against the computer', () => {
+  const together = (demo: string, settings: Record<string, unknown>) =>
+    invite({ demo_id: demo, mode: 'together', settings })
+
+  it('the computer answers in the same move, and the other friend moves next', () => {
+    const row = after(
+      together('chess', { level: 'easy' }),
+      decide(together('chess', { level: 'easy' }), B, { op: 'accept' }),
+    )
+    const p = decide(row, A, move(0, 'e2e4'))
+    expect(p.kind).toBe('commit')
+    if (p.kind !== 'commit') return
+    expect(p.move.m).toBe('e2e4')
+    expect(p.move.then).toHaveLength(1)
+    expect(p.turn).toBe(1) // B, not A again
+    const list = (p.state as { moves: string[] }).moves
+    expect(list).toEqual(['e2e4', p.move.then![0]])
+    expect(replay(list)).not.toBeNull()
+    // and A cannot take B's turn
+    expect(status(decide(after(row, p), A, move(1, 'd2d4')))).toBe(409)
+    expect(status(decide(after(row, p), B, move(1, 'd2d4')))).toBe('commit')
+  })
+
+  it('plays Reversi to the end at every level, every stored board a board the rules accept', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length)
+      const { row, plans } = playOut(together('reversi', { size: 6, level }), (r) => {
+        const g = readReversiGame(r.state)!
+        const list = moves(g.b, 1)
+        return list[Math.floor(rnd() * list.length)]
+      })
+      expect(row.status).toBe('finished')
+      for (const p of plans) {
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') continue
+        expect(readReversiGame(p.state)).not.toBeNull()
+        // the team never waits on the computer: a stored turn is always a friend's
+        expect([0, 1, null]).toContain(p.turn)
+      }
+      // the friends alternate, whatever the computer did in between
+      const turns = plans.map((p) => (p.kind === 'commit' ? p.turn : -1)).filter((t) => t !== null)
+      turns.forEach((t, i) => expect(t).toBe(i % 2 === 0 ? 1 : 0))
+      const last = plans.at(-1)!
+      if (last.kind === 'commit') expect(['0', '1', 'draw']).toContain(String(last.result!.winner))
+    }
+  })
+})
+
+describe('the list of toys', () => {
+  it('is the same as lab_match_playable in the matches SQL', () => {
+    const sql = readFileSync(
+      new URL('../../../docs/2026-11-14-lab-matches.DRAFT.sql', import.meta.url),
+      'utf8',
+    )
+    const body = /lab_match_playable[\s\S]*?select p_demo in \(([^)]*)\)/.exec(sql)
+    expect(body).not.toBeNull()
+    const listed = body![1].split(',').map((s) => s.trim().replace(/'/g, ''))
+    expect(listed.sort()).toEqual(Object.keys(GAMES).sort())
+  })
+
+  it('names each toy’s own rules, not a copy', () => {
+    expect(GAMES.chess({})!.rules).toBe(chessRules)
+  })
+})
+
+describe('the bundle the server runs', () => {
+  it('is exactly what the build makes of the source today', async () => {
+    expect(readFileSync(OUT, 'utf8')).toBe(await bundle())
+  }, 20_000)
+
+  it('gives the same answers as the source', () => {
+    const asks: [Row, string, Ask][] = []
+    const r0 = invite({ demo_id: 'chess', mode: 'together', settings: { level: 'fair' } })
+    asks.push([r0, B, { op: 'accept' }], [r0, A, { op: 'accept' }], [null as never, A, move(0, 1)])
+    const r1 = after(r0, decide(r0, B, { op: 'accept' }))
+    asks.push([r1, A, move(0, 'e2e4')], [r1, A, move(0, 'e2e5')], [r1, B, move(0, 'e2e4')])
+    for (const [row, who, ask] of asks) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(1))
+      const a = decide(row, who, ask)
+      vi.spyOn(Math, 'random').mockImplementation(seeded(1))
+      const b = built.decide(row, who, ask)
+      expect(b).toEqual(a)
+    }
+    expect(built.readAsk({ op: 'move', match: MATCH, at: 2, move: 5 })).toEqual(
+      readAsk({ op: 'move', match: MATCH, at: 2, move: 5 }),
+    )
+  })
+})

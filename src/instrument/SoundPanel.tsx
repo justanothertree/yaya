@@ -8,6 +8,7 @@ import { KitBar } from '../ui/KitBar'
 import { FAMILIES, familyVoices } from '../audio/families'
 import { fxWord } from './fxWord'
 import { KnobRow } from './rowParts'
+import { Sheet } from './Sheet'
 import type { Dispatch, SetStateAction } from 'react'
 
 /** The five things you can bend about the sound, as sliders rather than a patch editor. */
@@ -60,6 +61,7 @@ type SoundSettings = {
   swing: boolean
   setSwing: Dispatch<SetStateAction<boolean>>
   moreSound: boolean
+  setMoreSound: Dispatch<SetStateAction<boolean>>
   picksOpen: boolean
   setPicksOpen: Dispatch<SetStateAction<boolean>>
   famShown: string
@@ -68,8 +70,9 @@ type SoundSettings = {
 }
 
 /**
- * The instrument menu (one family at a time) and ⚙ More sound (arpeggio, strum, swing, the effect
- * sliders and the saved rigs) — moved out of InstrumentRoom.tsx unchanged on 11 Nov 2026.
+ * The instrument menu (one family at a time) and ⚙ Sound (arpeggio, strum, swing, the effect
+ * sliders and the saved rigs) — moved out of InstrumentRoom.tsx unchanged on 11 Nov 2026, and the
+ * second half put in a sheet on 14 Nov 2026.
  *
  * ⚠️ THE SETTINGS STAY IN THE ROOM. The keyboard plays with every one of them, and the room
  * remembers them across visits, so this panel is handed them rather than owning them.
@@ -93,6 +96,7 @@ export function SoundPanel({ sound }: { sound: SoundSettings }) {
     swing,
     setSwing,
     moreSound,
+    setMoreSound,
     picksOpen,
     setPicksOpen,
     famShown,
@@ -149,170 +153,183 @@ export function SoundPanel({ sound }: { sound: SoundSettings }) {
         </div>
       </div>
 
+      {/**
+       * ⚠️ A SHEET, NOT A FOLD — the #311 layout, 14 Nov 2026. These are the settings you choose
+       * once and leave, and as a fold under the play bar they pushed ▶ Play from 763px to 1,179px
+       * on a phone every time they opened. Over the page, nothing below moves.
+       *
+       * ⚠️ AND NOT REMEMBERED OPEN any more, which the fold was: a fold left open is part of the
+       * page, a sheet left open is a dialog covering the room the next time you arrive.
+       */}
       {moreSound && (
-        <div className="inst-more card">
-          <div className="inst-row">
-            {/**
-             * One key, a part.
-             *
-             * ⚠️ THIS ONE DOES `hush()`, UNLIKE Chord and Arrives, and the asymmetry is the point.
-             * Those two change what the NEXT press will do and leave what is sounding alone, which
-             * the book makes safe. This changes who is playing: switching it on mid-hold would
-             * leave the sustained chord ringing underneath the arpeggio it just started, and
-             * switching it off would strand the runner's last note. Dropping what you are holding
-             * is the honest answer, and it is the same one the Scale picker gives.
-             */}
-            {/**
-             * ⚠️ ALWAYS SHOWN, AND IT USED TO BE GATED ON `chord !== 'off'`. That hid the control
-             * without stopping the thing it controls, which is the worst of both: the setting is
-             * remembered across visits, so anybody who tried an arpeggio once and then put Chord
-             * back to One note came back to a keyboard where HOLDING A KEY REPEATS IT FOR EVER and
-             * nothing on screen said why or offered a way out. Measured before the fix — one key
-             * held for 1.5s gave six notes, all C4, 313ms apart, with the picker not rendered.
-             *
-             * Showing it is the right fix rather than suppressing the arp without a chord, because
-             * arpeggiating notes you are holding YOURSELF is the normal use of one: hold C and E
-             * and it alternates them. A single held key repeating is what every arpeggiator does;
-             * it is only alarming when you cannot see that one is switched on.
-             *
-             * `Arrives` stays hidden without a chord, and that is not the same call — a roll across
-             * one note genuinely does nothing, so it is a control with no effect rather than an
-             * effect with no control.
-             */}
-            <label className="inst-pick">
-              <span className="muted">Arpeggio</span>
-              <select
-                value={arp}
-                onChange={(e) => {
-                  hush()
-                  setArp(e.target.value as ArpId)
-                  e.target.blur()
-                }}
-              >
-                {ARPS.map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {/**
-             * How the chord arrives: together, or one note at a time like a hand does it.
-             *
-             * ⚠️ ONLY ONCE A CHORD IS CHOSEN, the same rule the Key picker follows on Chromatic. A
-             * single note cannot be rolled, so on an untouched room this would be a control that
-             * visibly does nothing — and the row already carries three.
-             *
-             * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
-             * because the book releases what was actually sounded rather than recomputing it.
-             */}
-            {/**
-             * ⚠️ HIDDEN WHEN THERE IS NO ARPEGGIO, AND THAT IS NOT THE TRAP THE ARPEGGIO PICKER
-             * WAS. Swing displaces arpeggio STEPS and nothing else — with no figure running there
-             * is nothing for it to move, so this is a control with no effect rather than an effect
-             * with no control. The arp picker was the other way round, which is why it is always
-             * shown now.
-             */}
-            {arp !== 'off' && (
+        <Sheet
+          title={`⚙ Sound · ${INSTRUMENTS.find(([id]) => id === inst)?.[2] ?? 'Keys'}`}
+          onClose={() => setMoreSound(false)}
+        >
+          <div className="inst-more">
+            <div className="inst-row">
+              {/**
+               * One key, a part.
+               *
+               * ⚠️ THIS ONE DOES `hush()`, UNLIKE Chord and Arrives, and the asymmetry is the point.
+               * Those two change what the NEXT press will do and leave what is sounding alone, which
+               * the book makes safe. This changes who is playing: switching it on mid-hold would
+               * leave the sustained chord ringing underneath the arpeggio it just started, and
+               * switching it off would strand the runner's last note. Dropping what you are holding
+               * is the honest answer, and it is the same one the Scale picker gives.
+               */}
+              {/**
+               * ⚠️ ALWAYS SHOWN, AND IT USED TO BE GATED ON `chord !== 'off'`. That hid the control
+               * without stopping the thing it controls, which is the worst of both: the setting is
+               * remembered across visits, so anybody who tried an arpeggio once and then put Chord
+               * back to One note came back to a keyboard where HOLDING A KEY REPEATS IT FOR EVER and
+               * nothing on screen said why or offered a way out. Measured before the fix — one key
+               * held for 1.5s gave six notes, all C4, 313ms apart, with the picker not rendered.
+               *
+               * Showing it is the right fix rather than suppressing the arp without a chord, because
+               * arpeggiating notes you are holding YOURSELF is the normal use of one: hold C and E
+               * and it alternates them. A single held key repeating is what every arpeggiator does;
+               * it is only alarming when you cannot see that one is switched on.
+               *
+               * `Arrives` stays hidden without a chord, and that is not the same call — a roll across
+               * one note genuinely does nothing, so it is a control with no effect rather than an
+               * effect with no control.
+               */}
               <label className="inst-pick">
-                <span className="muted">Feel</span>
+                <span className="muted">Arpeggio</span>
                 <select
-                  value={swing ? 'swing' : 'straight'}
+                  value={arp}
                   onChange={(e) => {
-                    setSwing(e.target.value === 'swing')
+                    hush()
+                    setArp(e.target.value as ArpId)
                     e.target.blur()
                   }}
                 >
-                  <option value="straight">Straight</option>
-                  <option value="swing">Swing</option>
-                </select>
-              </label>
-            )}
-
-            {chord !== 'off' && arp === 'off' && (
-              <label className="inst-pick">
-                <span className="muted">Arrives</span>
-                <select
-                  value={strum}
-                  onChange={(e) => {
-                    setStrum(e.target.value as StrumId)
-                    e.target.blur()
-                  }}
-                >
-                  {STRUMS.map(([id, label]) => (
+                  {ARPS.map(([id, label]) => (
                     <option key={id} value={id}>
                       {label}
                     </option>
                   ))}
                 </select>
               </label>
-            )}
-          </div>
-          <div className="inst-row inst-knobs">
-            {KNOBS.map(([k, label, hint]) => (
-              <KnobRow key={k} k={k} label={label} hint={hint} />
-            ))}
-          </div>
-          {/* ⚠️ NINE SETTINGS, of which the four that were already remembered are the four
+
+              {/**
+               * How the chord arrives: together, or one note at a time like a hand does it.
+               *
+               * ⚠️ ONLY ONCE A CHORD IS CHOSEN, the same rule the Key picker follows on Chromatic. A
+               * single note cannot be rolled, so on an untouched room this would be a control that
+               * visibly does nothing — and the row already carries three.
+               *
+               * ⚠️ AND NO `hush()`: like the Chord picker, it can be changed under your fingers,
+               * because the book releases what was actually sounded rather than recomputing it.
+               */}
+              {/**
+               * ⚠️ HIDDEN WHEN THERE IS NO ARPEGGIO, AND THAT IS NOT THE TRAP THE ARPEGGIO PICKER
+               * WAS. Swing displaces arpeggio STEPS and nothing else — with no figure running there
+               * is nothing for it to move, so this is a control with no effect rather than an effect
+               * with no control. The arp picker was the other way round, which is why it is always
+               * shown now.
+               */}
+              {arp !== 'off' && (
+                <label className="inst-pick">
+                  <span className="muted">Feel</span>
+                  <select
+                    value={swing ? 'swing' : 'straight'}
+                    onChange={(e) => {
+                      setSwing(e.target.value === 'swing')
+                      e.target.blur()
+                    }}
+                  >
+                    <option value="straight">Straight</option>
+                    <option value="swing">Swing</option>
+                  </select>
+                </label>
+              )}
+
+              {chord !== 'off' && arp === 'off' && (
+                <label className="inst-pick">
+                  <span className="muted">Arrives</span>
+                  <select
+                    value={strum}
+                    onChange={(e) => {
+                      setStrum(e.target.value as StrumId)
+                      e.target.blur()
+                    }}
+                  >
+                    {STRUMS.map(([id, label]) => (
+                      <option key={id} value={id}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            <div className="inst-row inst-knobs">
+              {KNOBS.map(([k, label, hint]) => (
+                <KnobRow key={k} k={k} label={label} hint={hint} />
+              ))}
+            </div>
+            {/* ⚠️ NINE SETTINGS, of which the four that were already remembered are the four
               that matter least. The effects decide what an instrument SOUNDS like far more than the
               octave does, and they were the ones thrown away on every visit. A rig keeps all nine,
               so "keys, dry" and "keys, drenched in echo" become two things you can switch between
               rather than one thing you rebuild. */}
-          <KitBar
-            store={instKits}
-            placeholder="Name this rig"
-            capture={(name) => ({
-              name,
-              inst,
-              octave,
-              scale,
-              root,
-              fx: captureFx(),
-              /* ⚠️ HOW IT IS PLAYED, NOT ONLY WHAT IT SOUNDS LIKE. A rig that remembered the
+            <KitBar
+              store={instKits}
+              placeholder="Name this rig"
+              capture={(name) => ({
+                name,
+                inst,
+                octave,
+                scale,
+                root,
+                fx: captureFx(),
+                /* ⚠️ HOW IT IS PLAYED, NOT ONLY WHAT IT SOUNDS LIKE. A rig that remembered the
                  reverb and forgot the arpeggio did not reproduce the thing you kept. */
-              chord,
-              strum,
-              arp,
-              swing,
-            })}
-            apply={(k: InstKit) => {
-              hush()
-              setInst(k.inst)
-              setOctave(k.octave)
-              setScale(k.scale)
-              setRoot(k.root)
-              applyFx(k.fx)
-              setChord(k.chord)
-              setStrum(k.strum)
-              setArp(k.arp)
-              setSwing(k.swing)
-            }}
-            /**
-             * ⚠️ THREE SEGMENTS, AND I BRIEFLY MADE IT FIVE. Adding the chord and the arpeggio
-             * here looked free — the rig had just learned to save them — and it overflowed the
-             * chip: `.kitbar-desc` is 158px wide and the text became 266px, so the audit found a
-             * clipped element and what a phone actually showed was "Rhodes · Harmonic minor ·
-             * Seve…". The two things I had added were the exact part that never appeared.
-             *
-             * The clamp is not the problem and must not be lifted: its own comment says a long
-             * name would otherwise make one chip twice the height of its neighbours and break
-             * the row. At 0.68rem in 158px there is room for about twenty-six characters, which
-             * three segments already spend.
-             *
-             * So the rig still SAVES the chord and the arpeggio — that was the fix — and the
-             * place to tell two rigs apart is the name on the line above, which the person wrote
-             * themselves and which is as long as they want it.
-             */
-            describe={(k) =>
-              [
-                INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
-                SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
-                fxWord(k.fx),
-              ].join(' · ')
-            }
-          />
-        </div>
+                chord,
+                strum,
+                arp,
+                swing,
+              })}
+              apply={(k: InstKit) => {
+                hush()
+                setInst(k.inst)
+                setOctave(k.octave)
+                setScale(k.scale)
+                setRoot(k.root)
+                applyFx(k.fx)
+                setChord(k.chord)
+                setStrum(k.strum)
+                setArp(k.arp)
+                setSwing(k.swing)
+              }}
+              /**
+               * ⚠️ THREE SEGMENTS, AND I BRIEFLY MADE IT FIVE. Adding the chord and the arpeggio
+               * here looked free — the rig had just learned to save them — and it overflowed the
+               * chip: `.kitbar-desc` is 158px wide and the text became 266px, so the audit found a
+               * clipped element and what a phone actually showed was "Rhodes · Harmonic minor ·
+               * Seve…". The two things I had added were the exact part that never appeared.
+               *
+               * The clamp is not the problem and must not be lifted: its own comment says a long
+               * name would otherwise make one chip twice the height of its neighbours and break
+               * the row. At 0.68rem in 158px there is room for about twenty-six characters, which
+               * three segments already spend.
+               *
+               * So the rig still SAVES the chord and the arpeggio — that was the fix — and the
+               * place to tell two rigs apart is the name on the line above, which the person wrote
+               * themselves and which is as long as they want it.
+               */
+              describe={(k) =>
+                [
+                  INSTRUMENTS.find(([id]) => id === k.inst)?.[2] ?? k.inst,
+                  SCALES.find(([id]) => id === k.scale)?.[1] ?? k.scale,
+                  fxWord(k.fx),
+                ].join(' · ')
+              }
+            />
+          </div>
+        </Sheet>
       )}
     </>
   )

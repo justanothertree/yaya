@@ -8,7 +8,7 @@
  * 1.6 wide and heights are measured up from the bottom; time in seconds.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const FIELD_W = 1.6
 export const COLS = 320

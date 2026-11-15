@@ -7,7 +7,7 @@
  * today's walls are the same for everybody, and a wall somebody drew travels as 80 characters.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const W = 1
 export const H = 1.4

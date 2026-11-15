@@ -5,7 +5,7 @@ import { PLAIN_VOICE, type VoiceFx } from './takeFx'
 import { CHOP_RATES, CHOP_SHAPES, NO_CHOP, type ChopShape } from './chop'
 import { TakeEditor } from './TakeEditor'
 import { editLen, isWholeEdit, logNow, readLog } from './takeEdit'
-import { mb, secs, useTakes } from './useTakes'
+import { mb, secs, type useTakes } from './useTakes'
 
 /**
  * Singing, kept beside the song.
@@ -55,7 +55,13 @@ const CHOP_SAYS: Record<ChopShape, string> = {
   stutter: 'Repeat the last bit of the bar',
 }
 
-export function TakesPanel() {
+/**
+ * ⚠️ THE TAKES ARE HANDED IN, NOT FETCHED HERE — the #311 layout, 14 Nov 2026. This panel lives in
+ * 🎤 Voice and its ⬇ Stems moved to 📁 Songs, so the one `useTakes` both read is in SongTools; a
+ * second call would be a second recorder. Stems was here because "a stem is the same idea one step
+ * on" from a take; it went to sit with keeping and exporting the song, which is what it does.
+ */
+export function TakesPanel({ takes }: { takes: ReturnType<typeof useTakes> }) {
   const {
     rows,
     used,
@@ -74,9 +80,6 @@ export function TakesPanel() {
     setCut,
     sure,
     setSure,
-    stems,
-    bouncing,
-    parts,
     refresh,
     stopPlaying,
     soundOf,
@@ -87,8 +90,7 @@ export function TakesPanel() {
     openFile,
     bin,
     toLoop,
-    doBounce,
-  } = useTakes()
+  } = takes
 
   if (!canRecord())
     return (
@@ -379,33 +381,6 @@ export function TakesPanel() {
             )}
         </div>
       )}
-      {/* ⚠️ WITH THE TAKES, because a stem is the same idea one step on: a take is one part
-          of a song you recorded, and a stem is one part of a song you are taking somewhere
-          else. Both are "a piece of this, on its own". */}
-      <div className="inst-takes-stems">
-        {parts > 0 && (
-          <button
-            className={'btn btn-ghost' + (bouncing ? ' is-on' : '')}
-            disabled={!!bouncing}
-            onClick={() => void doBounce()}
-            title="Bounce every layer and every take to its own WAV, in real time"
-          >
-            {bouncing
-              ? `Bouncing ${bouncing.doing || '…'} (${bouncing.done}/${bouncing.of})`
-              : '⬇ Stems'}
-          </button>
-        )}
-        {stems.map((st) => (
-          <a
-            key={st.name}
-            className="btn btn-ghost"
-            href={URL.createObjectURL(st.blob)}
-            download={st.name}
-          >
-            {st.name}
-          </a>
-        ))}
-      </div>
       {rows.length > 0 && (
         <span className="muted inst-takes-meta">
           {mb(used)} of {mb(TAKE_CAP)}MB

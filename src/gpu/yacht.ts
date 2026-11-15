@@ -11,7 +11,7 @@
  * Pure, so yacht.test.ts can play hundreds of games without a page.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const CATS = [
   'ones',

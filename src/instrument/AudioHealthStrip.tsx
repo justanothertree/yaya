@@ -97,7 +97,8 @@ export function AudioHealthStrip() {
   if (onlyLoud)
     return (
       <p className="muted inst-health-soft">
-        The mix is loud enough to be squashed — pull a layer&rsquo;s volume down if it sounds flat.
+        {/* ⚠️ SAYS WHERE — a part's volume left its row on a phone for 🎚 Mix (the #311 layout) */}
+        The mix is loud enough to be squashed — pull a part down in 🎚 Mix if it sounds flat.
       </p>
     )
   return (
