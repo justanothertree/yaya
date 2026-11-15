@@ -97,6 +97,23 @@ export const COLOURS: readonly string[] = [
   '#7a8a99',
 ]
 
+/**
+ * The colour an activity is drawn in: its own, or its kind's when it has none.
+ *
+ * ⚠️ THE WEEK GRID'S RULE, NOW THE DOT'S AS WELL. The dot beside a name was drawn only for an
+ * activity with a colour of its own, so a day log held a few names with a dot and most without,
+ * and the question that came back was "what do the green dots mean?" about two activities that
+ * had simply been given green. A dot on some rows reads as a status. On every row, in the colour
+ * the week grid already draws that activity's blocks in, it reads as which activity this is.
+ * The three kinds' colours are on `:root` in index.css, so this resolves anywhere on the page.
+ *
+ * ⚠️ A KIND IT DOES NOT KNOW IS FREE TIME, which is the week grid's own default (`is-free`), and
+ * the alternative is `var(--chron-whatever)`, which draws nothing at all. Some readers carry the
+ * kind as a plain string from the server rather than as `Activity['cat']`.
+ */
+export const inkOf = (a: { colour: string | null; cat: string }): string =>
+  a.colour ?? `var(--chron-${CATS.some(([c]) => c === a.cat) ? a.cat : 'free'})`
+
 export type Activity = {
   id: string
   name: string

@@ -18449,9 +18449,17 @@ a.cz-msg-author:focus-visible {
 }
 
 .chron-swatch.is-none {
-  color: var(--muted);
+  /* ⚠️ drawn in its kind's colour now (see `inkOf`), so the ✕ needs to read on all three */
+  color: #fff;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.6);
   font-size: 0.8rem;
   line-height: 1;
+}
+/* what the swatches set, on its own line above them in the editor's wrapping row */
+.chron-swatch-say {
+  flex: 1 1 100%;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .chron-dot {
@@ -18847,6 +18855,45 @@ a.cz-msg-author:focus-visible {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+/* the note about what is running, under the bar on the Day — see `runNoteFor` in Timer.tsx */
+.chron-runnote {
+  margin: 0 0 0.75rem;
+}
+.chron-runnote-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+.chron-runnote-box {
+  display: block;
+  flex: 1 1 auto;
+  /* ⚠️ A FLOOR IN PIXELS. `min-width: 0` alone lets the rigid Save button win the row and the
+     box pay for all of it — the "let it vanish" case in CLAUDE.md §6 */
+  min-width: 160px;
+}
+.chron-runnote-box textarea {
+  width: 100%;
+  /* the site's face, as the Journal's box has: a textarea's own default is monospace */
+  font: inherit;
+  resize: vertical;
+  /* grows with what is written where the browser can, two lines where it cannot */
+  field-sizing: content;
+  min-height: 2.6em;
+  max-height: 9em;
+}
+.chron-runnote-save {
+  flex: 0 0 auto;
+  min-height: 38px;
+}
+.chron-runnote-n {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+}
+button.chron-runnote-n {
+  min-height: 32px;
+  padding: 0.2rem 0.5rem;
 }
 .chron-run {
   font-family: var(--mono);
@@ -19753,8 +19800,12 @@ a.cz-msg-author:focus-visible {
 .chron-act-name {
   flex: 1;
   display: flex;
+  /* ⚠️ IT WRAPS, because every activity has a dot now (`inkOf`). The site-written ones had none,
+     and at 375 "Chronicle · Free Time · ON THE SITE" with a dot ran 5px past its own button —
+     mobileAudit's `spills`. A second line is the honest answer for a name and two facts. */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.1rem 0.4rem;
   justify-content: flex-start;
   min-height: 36px;
   text-align: left;
@@ -19762,6 +19813,10 @@ a.cz-msg-author:focus-visible {
 }
 .chron-act-name > .muted {
   font-size: 0.78rem;
+}
+/* the button's own gap spaces the dot, so its margin would double it */
+.chron-act-name > .chron-dot {
+  margin-right: 0;
 }
 
 /* the day you are looking at, and the one-tap starts — see chronicle/Timer.tsx */

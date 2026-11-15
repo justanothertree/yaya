@@ -188,8 +188,15 @@ export function useSittingEditor({
    */
   /* ⚠️ it answers whether the words were kept, so the one Done after a Stop can refuse to close
      over a note the server refused — see `done` in SittingDialog */
-  const addJournal = async (entry: string): Promise<boolean> => {
-    const body = entNote.trim()
+  /**
+   * ⚠️ `words` IS THE RUNNING NOTE BOX ON THE DAY, which keeps its own draft and writes through
+   * here. Its own draft, because this one is emptied whenever a sitting's dialog opens (the effect
+   * above), and a half-typed note about the running sitting must not vanish because a past row
+   * was looked at. Through here, because a second write would be a third place a note is written
+   * from, and the first two each lost one. The caller empties its own box when this says true.
+   */
+  const addJournal = async (entry: string, words?: string): Promise<boolean> => {
+    const body = (words ?? entNote).trim()
     if (!body || busy) return false
     setBusy(true)
     const bad = await addNote(entry, body)
@@ -198,7 +205,7 @@ export function useSittingEditor({
       moan(bad.why)
       return false
     }
-    setEntNote('')
+    if (words === undefined) setEntNote('')
     await after()
     return true
   }
