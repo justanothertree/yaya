@@ -9,7 +9,7 @@
  */
 import { keepBestOf } from './daily'
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const N = 1
 export const E = 2

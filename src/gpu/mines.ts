@@ -10,7 +10,7 @@
  * another laid. The time is then a measure of the player, and a board shared by everyone is fair.
  */
 import { rng } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Size = { w: number; h: number; mines: number }
 export const SIZES = {

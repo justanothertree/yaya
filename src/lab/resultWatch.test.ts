@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RESULT_EVENT, storeKept, writeKept } from '../gpu/kept'
+import { RESULT_EVENT, storeKept, writeKept } from '../gpu/stored'
 import { keepOnline } from './social/online'
 import { resultCard } from './bests'
 import { watchResult } from './resultWatch'
@@ -88,7 +88,7 @@ describe('the Share box hears a result the moment it is written', () => {
 
 describe('every Lab write goes through writeKept', () => {
   /* a toy that writes localStorage itself is a result the Share box never hears about */
-  it('no Lab source writes localStorage directly but kept.ts', () => {
+  it('no Lab source writes localStorage directly but stored.ts', () => {
     const sources = import.meta.glob<string>(['/src/gpu/**/*.{ts,tsx}', '/src/lab/**/*.{ts,tsx}'], {
       query: '?raw',
       import: 'default',
@@ -96,7 +96,7 @@ describe('every Lab write goes through writeKept', () => {
     })
     expect(Object.keys(sources).length).toBeGreaterThan(200)
     const offenders = Object.entries(sources)
-      .filter(([p]) => !/\.test\.tsx?$/.test(p) && !p.endsWith('/kept.ts'))
+      .filter(([p]) => !/\.test\.tsx?$/.test(p) && !p.endsWith('/stored.ts'))
       .filter(([, text]) => /localStorage\.setItem\(/.test(text))
       .map(([p]) => p)
     expect(offenders).toEqual([])

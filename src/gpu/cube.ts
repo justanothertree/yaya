@@ -7,7 +7,7 @@
  * column; 1 is crosses, who move first, and 2 noughts.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export type Side = 1 | 2
 export const other = (s: Side): Side => (s === 1 ? 2 : 1)

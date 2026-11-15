@@ -10,7 +10,7 @@
  */
 
 import { rngStep as roll } from './bricks'
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const COLS = 11
 /** rows above the line; one more row below it holds a bubble only long enough to lose */

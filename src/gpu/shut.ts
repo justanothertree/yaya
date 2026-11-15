@@ -9,7 +9,7 @@
  * number with a bit for each: bit 0 for the 1, up to bit 8 for the 9.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 export const ALL = 0b111111111
 export const tilesOf = (up: number) =>

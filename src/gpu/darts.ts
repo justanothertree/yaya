@@ -8,7 +8,7 @@
  * board are millimetres from the middle, x right and y UP, as the board is measured.
  */
 
-import { whole } from './kept'
+import { whole } from './stored'
 
 /** the board's numbers, clockwise from the top */
 export const ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
