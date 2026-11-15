@@ -68,17 +68,19 @@ export function NotificationBell({ notifications }: { notifications: Notificatio
                 <span className="notif-ic" aria-hidden>
                   {n.kind === 'call'
                     ? '📞'
-                    : n.kind === 'chat'
-                      ? '💬'
-                      : n.kind === 'friend'
-                        ? '🧑‍🤝‍🧑'
-                        : n.kind === 'kudos'
-                          ? '👏'
-                          : n.kind === 'comment'
-                            ? '💭'
-                            : n.kind === 'guestbook'
-                              ? '✍️'
-                              : '🎉'}
+                    : n.kind === 'lab'
+                      ? '🎲'
+                      : n.kind === 'chat'
+                        ? '💬'
+                        : n.kind === 'friend'
+                          ? '🧑‍🤝‍🧑'
+                          : n.kind === 'kudos'
+                            ? '👏'
+                            : n.kind === 'comment'
+                              ? '💭'
+                              : n.kind === 'guestbook'
+                                ? '✍️'
+                                : '🎉'}
                 </span>
                 <span className="notif-text">
                   <span className="notif-title">{n.text}</span>

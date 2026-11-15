@@ -18,6 +18,7 @@ import '../lab/lab-catalog.css'
 import { motionReduced, onMotionChange } from '../ui/motion'
 import '../gpu/lab.css'
 import { TOY_EVENT, hashParam, toyHash } from '../lab/links'
+import { YourGames } from '../lab/matches/YourGames'
 import { useFriendsOnToys } from '../lab/social/where'
 import { hueFor } from '../party/party'
 
@@ -248,6 +249,7 @@ export function GpuLab({ viewer = GUEST }: { viewer?: Viewer }) {
   }, [shownDemos])
   return (
     <div className="lab">
+      {viewer.authed && <YourGames />}
       <div className="lab-filter" role="group" aria-label="Show which kind">
         <button
           className="btn btn-ghost"

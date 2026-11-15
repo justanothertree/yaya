@@ -9,6 +9,8 @@ import {
 } from '../dev/previewMember'
 import { onNotificationsChanged } from './notifySignal'
 import { useRealtimeLife } from '../finance/realtimeLife'
+import { readView } from '../lab/matches/cloud'
+import { matchHash, noticeText } from '../lab/matches/words'
 
 /**
  * What's waiting for you, in one place: unread messages per conversation and friend requests
@@ -19,7 +21,7 @@ import { useRealtimeLife } from '../finance/realtimeLife'
 
 export type Notice = {
   id: string
-  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook' | 'call' | 'pool'
+  kind: 'chat' | 'friend' | 'kudos' | 'comment' | 'join' | 'guestbook' | 'call' | 'pool' | 'lab'
   text: string
   detail?: string
   /** where tapping it should take you */
@@ -43,6 +45,8 @@ export type Notifications = {
   total: number
   unreadChats: number
   friendRequests: number
+  /** Lab matches by turns waiting on you: your move, or a challenge to answer */
+  labWaiting: number
   refresh: () => void
   /** called when the bell is opened: activity stops being "new" */
   markSeen: () => void
@@ -129,10 +133,11 @@ export function useNotifications(authed: boolean): Notifications {
       return
     }
     const sb = getSupabaseClient()
-    const [chat, friends, activity] = await Promise.all([
+    const [chat, friends, activity, matches] = await Promise.all([
       sb.rpc('list_chat_overview'),
       sb.rpc('list_friends'),
       sb.rpc('list_activity_notices'),
+      sb.rpc('lab_match_list'),
     ])
     const overview = (chat.data ?? []) as {
       id: string
@@ -167,6 +172,15 @@ export function useNotifications(authed: boolean): Notifications {
         detail: '@' + f.username,
         href: '#people',
       })),
+      /* ⚠️ A MATCH WAITING ON YOU IS A STATE, LIKE AN UNREAD MESSAGE: it stays until you move or
+         answer, and opening the bell does not clear it. Only matches that wait on you are here;
+         every other match is in the Lab's Your games list. */
+      ...(Array.isArray(matches.data) ? matches.data : []).map(readView).flatMap((v) => {
+        const text = v && noticeText(v)
+        return v && text
+          ? [{ id: 'lab-' + v.id, kind: 'lab' as const, text, href: matchHash(v.demo, v.id) }]
+          : []
+      }),
       ...(seenRef.current ? [] : ((activity.data ?? []) as ActivityRow[]).map(activityNotice)),
     ])
   }, [authed])
@@ -308,17 +322,22 @@ export function useNotifications(authed: boolean): Notifications {
 
   const unreadChats = items.filter((i) => i.kind === 'chat').reduce((n, i) => n + (i.count ?? 0), 0)
   const friendRequests = items.filter((i) => i.kind === 'friend').length
-  // everything that isn't a chat or a friend request counts until the bell has been opened.
+  // everything that isn't a chat, a friend request or a match waiting on you counts until the bell
+  // has been opened.
   // Written as "not chat/friend" rather than a list of activity kinds on purpose: the old
   // version enumerated kudos/comment/join, so adding a kind meant it rendered in the panel but
   // was silently missing from the badge — a new notice type would arrive already half-wired.
-  const activity = seen ? 0 : items.filter((i) => i.kind !== 'chat' && i.kind !== 'friend').length
+  const labWaiting = items.filter((i) => i.kind === 'lab').length
+  const activity = seen
+    ? 0
+    : items.filter((i) => i.kind !== 'chat' && i.kind !== 'friend' && i.kind !== 'lab').length
   return {
     items,
     rooms,
-    total: unreadChats + friendRequests + activity,
+    total: unreadChats + friendRequests + labWaiting + activity,
     unreadChats,
     friendRequests,
+    labWaiting,
     refresh: () => void load(),
     markSeen,
   }
