@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { entriesBetween, plansBetween, totalsBetween } from './cloud'
-import { coveredPct, dayBounds, endOfNextDay, spanText, type Activity, type Entry } from './record'
+import {
+  coveredPct,
+  dayBounds,
+  endOfNextDay,
+  inkOf,
+  spanText,
+  type Activity,
+  type Entry,
+} from './record'
 import { scoreOf } from './score'
 import type { Plan } from './plan'
 
@@ -21,7 +29,27 @@ import type { Plan } from './plan'
  *  · GOALS TODAY is the Today tab, which is four inches below this and already counts itself.
  * What is left is the score and what is coming up, and both are read from rows that exist.
  */
-export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick: number }) {
+export function Rail({
+  day,
+  acts,
+  tick,
+  fold,
+}: {
+  day: string
+  acts: Activity[]
+  tick: number
+  /**
+   * Draw it as the Day half's first line instead of a side column — the phone's shape.
+   *
+   * ⚠️ THE SAME NUMBERS, FOLDED, RATHER THAN A SECOND SUMMARY. Under 900px this rail used to drop
+   * to the foot of the Day half, **1,680px down** on a phone (#298), so the one figure that says
+   * how a day went was the last thing on it. Folded, its big number and "written down" become the
+   * line under the day's name, and everything else it holds is one tap away beneath them —
+   * along with the room's own extras, handed in as children: the category totals and the site's
+   * minutes, which used to sit between the stopwatch and the log.
+   */
+  fold?: { site: string | null; children?: ReactNode }
+}) {
   const [rows, setRows] = useState<Array<{ cat: Activity['cat']; mins: number }>>([])
   const [ahead, setAhead] = useState<Plan[]>([])
   /**
@@ -69,22 +97,9 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
     return scoreOf(rows, coveredPct(log, fromMs, toMs, Date.now()))
   }, [rows, log, day])
 
-  return (
-    <aside className="chron-rail" aria-label="Today at a glance">
-      <h3 className="chron-rail-head">Today</h3>
-
-      {/**
-       * ⚠️ THE BIG NUMBER IS THE SHARE, AND THE WORD UNDER IT SAYS WHICH SHARE. A percentage with
-       * no noun is the thing a dashboard does that nobody can read: 62% of what. It is the part of
-       * what you wrote down that was Locked In, so the label is the category's own name.
-       */}
-      {/* ⚠️ an em dash when there is under a minute to take a share of — see `share` in score.ts,
-          which withholds the proportion rather than printing one made of noise */}
-      <p className="chron-rail-big">
-        {s.share == null ? '—' : `${Math.round(s.share)}%`}
-        <span className="chron-rail-of">{s.share == null ? 'nothing yet' : 'Locked In'}</span>
-      </p>
-
+  /* what both shapes hold under the headline: the two sums, the day's coverage, and what is next */
+  const rest = (
+    <>
       <dl className="chron-rail-nums">
         <div>
           <dt>Focused</dt>
@@ -107,7 +122,7 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
       <h3 className="chron-rail-head">Coming up</h3>
       {ahead.length === 0 ? (
         /* ⚠️ it says what the section is for, not that it is empty — "nothing" twice over is how a
-           new member learns a panel is decoration */
+             new member learns a panel is decoration */
         <p className="muted chron-rail-none">Nothing planned yet. Plan a span below.</p>
       ) : (
         <ul className="chron-rail-next">
@@ -131,8 +146,8 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
                     minute: '2-digit',
                   })}
                 </span>
-                {a?.colour ? (
-                  <span className="chron-dot" style={{ background: a.colour }} aria-hidden />
+                {a ? (
+                  <span className="chron-dot" style={{ background: inkOf(a) }} aria-hidden />
                 ) : null}
                 <span className="chron-rail-what">{a?.name ?? 'something'}</span>
               </li>
@@ -140,6 +155,48 @@ export function Rail({ day, acts, tick }: { day: string; acts: Activity[]; tick:
           })}
         </ul>
       )}
+    </>
+  )
+
+  if (fold)
+    return (
+      <details className="chron-fold chron-sum">
+        {/* ⚠️ ONE LINE, AND THE BIG NUMBER LEADS IT, for the same reason it leads the column: the
+            share is the reading people judge a day by. "nothing yet" stands in for it exactly as
+            the em dash does beside it — see `share` in score.ts. */}
+        <summary>
+          <span className="chron-sum-big">{s.share == null ? '—' : `${Math.round(s.share)}%`}</span>
+          <span className="chron-fold-name">
+            {s.share == null ? 'Nothing written down yet' : 'Locked In'}
+            <small>
+              {s.share == null ? '' : `${spanText(s.logged * 60_000)} written down`}
+              {s.share != null && fold.site ? ' · ' : ''}
+              {fold.site ?? ''}
+            </small>
+          </span>
+        </summary>
+        <div className="chron-rail is-folded">{rest}</div>
+        {fold.children}
+      </details>
+    )
+
+  return (
+    <aside className="chron-rail" aria-label="Today at a glance">
+      <h3 className="chron-rail-head">Today</h3>
+
+      {/**
+       * ⚠️ THE BIG NUMBER IS THE SHARE, AND THE WORD UNDER IT SAYS WHICH SHARE. A percentage with
+       * no noun is the thing a dashboard does that nobody can read: 62% of what. It is the part of
+       * what you wrote down that was Locked In, so the label is the category's own name.
+       */}
+      {/* ⚠️ an em dash when there is under a minute to take a share of — see `share` in score.ts,
+          which withholds the proportion rather than printing one made of noise */}
+      <p className="chron-rail-big">
+        {s.share == null ? '—' : `${Math.round(s.share)}%`}
+        <span className="chron-rail-of">{s.share == null ? 'nothing yet' : 'Locked In'}</span>
+      </p>
+
+      {rest}
     </aside>
   )
 }

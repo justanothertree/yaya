@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { moodsBetween, totalsBetween, type Total } from './cloud'
-import { CATS, countText, localMidnight, moodOf, spanText, type Moods } from './record'
+import { CATS, countText, inkOf, localMidnight, moodOf, spanText, type Moods } from './record'
 import { likeForLike, type Scope, type Window } from './goal'
 
 /**
@@ -211,9 +211,7 @@ export function Looking({
               {/* the third and last place an activity is named — the day log and the Activities
                   fold draw the same dot, and a colour that appeared in two of three would be the
                   "half exists" this project has a file about */}
-              {r.colour ? (
-                <span className="chron-dot" style={{ background: r.colour }} aria-hidden />
-              ) : null}
+              <span className="chron-dot" style={{ background: inkOf(r) }} aria-hidden />
               {/* ⚠️ ITS OWN ELEMENT, because the parent is a flex container and text-overflow does not
                   apply to an anonymous flex item — the name had the ellipsis properties on it and
                   still came out cut mid-word, "Chronicle (on the", which reads as a rendering
