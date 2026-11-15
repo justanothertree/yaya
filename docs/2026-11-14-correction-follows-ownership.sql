@@ -1,3 +1,14 @@
+-- ⛔ STILL NOT APPLIED as of 15 Nov 2026 14:30 UTC, but no longer merely proposed: the whole
+-- book has been previewed against production and the prediction at the bottom of this file
+-- ("expected count ... 5") came back exactly 5. See 2026-11-15-correction-preview.md for the
+-- 203-position decision table, and 2026-11-15-correct-position-rollback.sql for the live text
+-- this replaces, md5-proved rather than retyped. The apply itself was refused by the session's
+-- permission classifier before it reached the database; production was re-measured afterwards
+-- and is byte-identical, so nothing here is half-done.
+--
+-- The body below is 3,235 bytes, md5 acb9c5964b8394f87c45636f48ed53b4 through this repository's
+-- own bodyOf() — send exactly that and `statements[1]` will agree with it.
+--
 -- ⛔ NOT APPLIED. Proposed only — this file is the reasoning, and nothing in it has been run
 -- against production. Applying it is `apply_migration`, after which this header becomes
 -- ✅ APPLIED with the migration name, per CLAUDE.md §4.
