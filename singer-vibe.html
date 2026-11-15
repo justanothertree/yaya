@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- The vibe pass's A/B page: today's voice against the same voice with three switches. Published unlisted at /singer-vibe.html (a second build input in vite.config.ts) and linked from nowhere. See src/singerPreview/vibe.ts. -->
+<!-- The vibe pass's A/B page: the voice before the vibe pass against the same voice with three switches. Published unlisted at /singer-vibe.html (a second build input in vite.config.ts) and linked from nowhere. See src/singerPreview/vibe.ts. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -170,9 +170,9 @@
       <div class="group">
         <h1>Singer A/B: the vibe pass, round two</h1>
         <p class="dim">
-          A is the voice on the site now. B is the same voice plus whatever you switch on below, and
-          with everything off it is A. Try one switch at a time. B is matched to A's loudness before
-          each play.
+          A is the voice before the vibe pass. B is the same voice plus whatever you switch on
+          below, and with everything off it is A. The Instrument now sings with Late vibrato and
+          Light room on. Try one switch at a time. B is matched to A's loudness before each play.
         </p>
       </div>
       <button id="start" type="button">Tap to start sound</button>
@@ -190,7 +190,7 @@
         <div class="group">
           <span class="label">B: vibrato</span>
           <div class="row">
-            <button class="pill" type="button" data-sw="vibrato" data-val="off">Today's</button>
+            <button class="pill" type="button" data-sw="vibrato" data-val="off">As A</button>
             <button class="pill" type="button" data-sw="vibrato" data-val="late">Late</button>
           </div>
           <p class="dim">Late: only long notes waver, starting later, slower and gentler.</p>
@@ -198,13 +198,13 @@
         <div class="group">
           <span class="label">B: room</span>
           <div class="row">
-            <button class="pill" type="button" data-sw="space" data-val="off">Today's</button>
+            <button class="pill" type="button" data-sw="space" data-val="off">As A</button>
             <button class="pill" type="button" data-sw="space" data-val="room">Light room</button>
             <button class="pill" type="button" data-sw="space" data-val="echo">Soft echo</button>
           </div>
           <p class="dim">
-            Light room: a shorter, cleaner room instead of today's. Soft echo: today's room plus one
-            quiet echo in time.
+            Light room: a shorter, cleaner room instead of A's. Soft echo: A's room plus one quiet
+            echo in time.
           </p>
         </div>
         <div class="group">

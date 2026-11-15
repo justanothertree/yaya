@@ -6,9 +6,12 @@ import * as vibe from '../audio/singer'
 import type { PresetId, SingOpts } from '../audio/singer'
 
 /**
- * The vibe pass's A/B page (singer-vibe.html), second round: today's voice (A, frozen in ./before at
- * the #325 release) against the same voice with whichever of three switches are on (B). With every
- * switch off, B is A.
+ * The vibe pass's A/B page (singer-vibe.html), second round: the voice before the vibe pass (A,
+ * frozen in ./before at the #325 release) against the same voice with whichever of three switches
+ * are on (B). With every switch off, B is A.
+ *
+ * ⚠️ A IS NOT THE SITE'S VOICE ANY MORE. Since #338 the Sing panel sings with B's late vibrato and
+ * light room on, so the page calls A "before" rather than "today" (Evan, 14 Nov 2026).
  *
  * ⚠️ EACH SIDE HEARS THE ROOM IT WOULD GET IN THE INSTRUMENT: A, and B unless its room switch says
  * otherwise, go through a copy of the part bus's reverb at the singer's setting. B's "Light room"
@@ -94,7 +97,7 @@ let ctx: { c: AudioContext; master: AudioNode; bus: AudioNode } | null = null
 let playing: { stops: (() => void)[]; timers: number[] } | null = null
 
 /**
- * The part bus's reverb as the singer gets it today — synth.ts's makeBus at space 0.25: the dry
+ * The part bus's reverb as A's voice got it — synth.ts's makeBus at space 0.25: the dry
  * path at 1 - 0.25 × 0.35 and the wet at 0.25 × 0.9, through 2.2s of noise falling as (1 - x)^2.5.
  */
 export function busRoom(c: BaseAudioContext, dest: AudioNode): AudioNode {
@@ -296,7 +299,7 @@ async function play(items: { line: number; which: Which }[]) {
       sing()
       trim.disconnect()
     })
-    const label = it.which === 'a' ? 'A, today' : says(s)
+    const label = it.which === 'a' ? 'A, before' : says(s)
     timers.push(window.setTimeout(() => show(it, label), (t - LEAD - c.currentTime) * 1000))
     t += lineLength(it.line) + 1.2 + LEAD
   })
@@ -339,7 +342,7 @@ if (typeof document !== 'undefined' && document.getElementById('lines')) {
       el.addEventListener('click', () => void play(items))
       row.append(el)
     }
-    button('A, today', [{ line: i, which: 'a' }])
+    button('A, before', [{ line: i, which: 'a' }])
     button('B', [{ line: i, which: 'b' }])
     button('A then B', [
       { line: i, which: 'a' },
