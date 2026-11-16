@@ -91,6 +91,7 @@ import { aimFor, hitAt, land, SPREAD } from '../../../src/gpu/darts'
 import { dartsMatchRules, MAX_DARTS, tidy } from '../../../src/gpu/dartsRoom'
 import { plays as bgPlays } from '../../../src/gpu/backgammon'
 import { MAX_TURNS as BG_MAX_TURNS, replay as bgReplay } from '../../../src/gpu/backgammonRoom'
+import { FLEETS, randomFleet } from '../../../src/gpu/seabattle'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -139,9 +140,19 @@ const invite = (over: Partial<Row> = {}): Row => ({
   ...over,
 })
 
-/** the match after `plan`, as lab_match_begin or lab_match_commit would leave it */
+/**
+ * The match after `plan`, as lab_match_begin or lab_match_commit would leave it — the secret in
+ * their own words: begin sets `secret = p_secret`, commit `secret = coalesce(p_secret, secret)`.
+ */
 function after(row: Row, plan: Plan): Row {
-  if (plan.kind === 'begin') return { ...row, status: 'active', state: plan.state, turn: plan.turn }
+  if (plan.kind === 'begin')
+    return {
+      ...row,
+      status: 'active',
+      state: plan.state,
+      turn: plan.turn,
+      secret: plan.secret ?? null,
+    }
   if (plan.kind === 'commit')
     return {
       ...row,
@@ -149,6 +160,7 @@ function after(row: Row, plan: Plan): Row {
       state: plan.state,
       turn: plan.turn,
       status: plan.result ? 'finished' : 'active',
+      secret: plan.secret ?? row.secret ?? null,
     }
   throw new Error(`refused: ${plan.status} ${plan.error}`)
 }
@@ -159,6 +171,12 @@ const move = (at: number, m: unknown): Ask => ({ op: 'move', at, move: m })
 describe('reading a request', () => {
   it('takes an accept or a move, and nothing else', () => {
     expect(readAsk({ op: 'accept', match: MATCH })).toEqual({ match: MATCH, ask: { op: 'accept' } })
+    // an accept may bring the friend's side of what a toy keeps hidden; a player may ask for theirs
+    expect(readAsk({ op: 'accept', match: MATCH, brought: [[1, 2]] })).toEqual({
+      match: MATCH,
+      ask: { op: 'accept', brought: [[1, 2]] },
+    })
+    expect(readAsk({ op: 'mine', match: MATCH })).toEqual({ match: MATCH, ask: { op: 'mine' } })
     expect(readAsk({ op: 'move', match: MATCH, at: 3, move: 'e2e4' })).toEqual({
       match: MATCH,
       ask: { op: 'move', at: 3, move: 'e2e4' },
@@ -173,6 +191,8 @@ describe('reading a request', () => {
       { op: 'move', match: MATCH, at: 1.5, move: 'e2e4' },
       { op: 'move', match: MATCH, at: 0 },
       { op: 'resign', match: MATCH },
+      { op: 'mine' },
+      { op: 'mine', match: 'not-a-uuid' },
       { op: 'commit', match: MATCH, at: 0, move: 1, state: {} },
     ])
       expect(readAsk(bad)).toBeNull()
@@ -2509,5 +2529,156 @@ describe('backgammon by turns: the server rolls every die', () => {
         ),
       ),
     ).toBe(500)
+  })
+})
+
+describe('sea battle by turns: each fleet hidden, each player shown only their own', () => {
+  const settings = { size: 8, fleet: 'quick', apart: true, again: false }
+  const sb = (over: Partial<Row> = {}) => invite({ demo_id: 'seabattle', settings, ...over })
+  const fleetOf = (seed: number) =>
+    randomFleet(8, FLEETS.quick, true, seeded(seed)).map((sh) => sh.cells)
+  /** every cell of a fleet, for asking whether any of it reached somewhere it must not */
+  const cellsOf = (f: number[][]) => f.flat()
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error(`refused: ${JSON.stringify(p)}`)
+    return p.data as number[][] | null
+  }
+  const begun = (bo = fleetOf(1)) => after(sb(), decide(sb(), B, { op: 'accept', brought: bo }))
+
+  it('takes the friend’s fleet with their yes, and keeps it out of the state', () => {
+    expect(status(decide(sb(), B, { op: 'accept' }))).toBe(400)
+    // two ships touching when they must be apart, a ship of the wrong length, cells off the sea
+    const bad = fleetOf(1)
+    expect(
+      status(decide(sb(), B, { op: 'accept', brought: [bad[0], bad[0], ...bad.slice(2)] })),
+    ).toBe(400)
+    expect(
+      status(decide(sb(), B, { op: 'accept', brought: [bad[0].slice(1), ...bad.slice(1)] })),
+    ).toBe(400)
+    expect(
+      status(decide(sb(), B, { op: 'accept', brought: bad.map((c) => c.map((x) => x + 64)) })),
+    ).toBe(400)
+    const p = decide(sb(), B, { op: 'accept', brought: bad })
+    if (p.kind !== 'begin') throw new Error('refused')
+    expect(p.state).toEqual({ placed: [false, true], shots: [] })
+    expect(p.secret).toEqual({ fleets: [null, bad.map((c) => [...c].sort((x, y) => x - y))] })
+  })
+
+  it('shows each player their own fleet and nothing of the other’s', () => {
+    const bo = fleetOf(1)
+    const an = fleetOf(2)
+    let row = begun(bo)
+    expect(mine(sb(), A)).toBeNull()
+    expect(cellsOf(mine(row, B)!).sort()).toEqual(cellsOf(bo).sort())
+    expect(mine(row, A)).toBeNull()
+    expect(status(decide(row, 'stranger', { op: 'mine' }))).toBe(404)
+    // the challenger's fleet comes with their first shot, and the history keeps only the shot
+    expect(status(decide(row, A, move(row.seq, { at: 0 })))).toBe(400)
+    const p = decide(row, A, move(row.seq, { at: 0, fleet: an }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { at: 0 } })
+    row = after(row, p)
+    expect(cellsOf(mine(row, A)!).sort()).toEqual(cellsOf(an).sort())
+    expect(cellsOf(mine(row, B)!).sort()).toEqual(cellsOf(bo).sort())
+    // and neither fleet is in the state: only the shot, what it did, and who has set out
+    const st = row.state as { placed: boolean[]; shots: number[][] }
+    expect(Object.keys(st).sort()).toEqual(['placed', 'shots'])
+    expect(st.placed).toEqual([true, true])
+    expect(st.shots).toEqual([[0, bo.flat().includes(0) ? 2 : 1]])
+  })
+
+  it('takes a fleet only once, and only the challenger’s with their first shot', () => {
+    let row = begun()
+    row = after(row, decide(row, A, move(row.seq, { at: 0, fleet: fleetOf(2) })))
+    // the friend's was set out with their yes
+    expect(status(decide(row, B, move(row.seq, { at: 0, fleet: fleetOf(3) })))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, { at: 0 })))).toBe('commit')
+  })
+
+  it('plays versus to the end, the winner whoever sank every ship, asked of the fleets themselves', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      const rnd = seeded(seed)
+      const fleets = [fleetOf(seed * 2), fleetOf(seed * 2 + 1)]
+      let row = begun(fleets[1])
+      const shot: Set<number>[] = [new Set(), new Set()]
+      for (let k = 0; k < 200 && row.status === 'active'; k++) {
+        const who = row.turn as 0 | 1
+        const free = Array.from({ length: 64 }, (_, i) => i).filter((i) => !shot[who].has(i))
+        const at = free[Math.floor(rnd() * free.length)]
+        shot[who].add(at)
+        const m = who === 0 && k === 0 ? { at, fleet: fleets[0] } : { at }
+        const p = decide(row, who === 0 ? A : B, move(row.seq, m))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(JSON.stringify(p.move)).not.toContain('fleet')
+        row = after(row, p)
+        if (p.result) {
+          const w = p.result.winner as 0 | 1
+          // the winner's shots covered every cell of the other fleet; the loser's did not
+          expect(cellsOf(fleets[1 - w]).every((c) => shot[w].has(c))).toBe(true)
+          expect(cellsOf(fleets[w]).every((c) => shot[1 - w].has(c))).toBe(false)
+          // with no second shots, shots alternate from the challenger: an index says who fired
+          const sunkBy = [0, 1].map(
+            (who) =>
+              (row.state as { shots: number[][] }).shots.filter(
+                (x, n) => n % 2 === who && x[1] === 3,
+              ).length,
+          )
+          expect(sunkBy[w]).toBe(FLEETS.quick.length)
+          expect(p.result.score).toBe(`${sunkBy[0]}–${sunkBy[1]}`)
+          seen.add(String(w))
+        }
+      }
+      expect(row.status).toBe('finished')
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('refuses a stored match whose fleets and shots disagree, or a fleet where none was set out', () => {
+    let row = begun()
+    row = after(row, decide(row, A, move(row.seq, { at: 0, fleet: fleetOf(2) })))
+    const st = row.state as { placed: boolean[]; shots: number[][] }
+    // the shot's result flipped: the fleets say otherwise
+    const flipped = { ...st, shots: [[0, st.shots[0][1] === 1 ? 2 : 1]] }
+    const up = row.turn === 0 ? A : B
+    expect(status(decide({ ...row, state: flipped }, up, move(row.seq, { at: 5 })))).toBe(500)
+    // a fleet kept back for a side that never set one out
+    const sec = row.secret as { fleets: unknown[] }
+    expect(
+      status(
+        decide(
+          { ...row, state: { ...st, placed: [false, true], shots: [] }, secret: sec },
+          up,
+          move(row.seq, { at: 5 }),
+        ),
+      ),
+    ).toBe(500)
+    // no secret at all
+    expect(status(decide({ ...row, secret: null }, up, move(row.seq, { at: 5 })))).toBe(500)
+  })
+
+  it('together: the computer’s fleet is dealt on the server, and it fires back in the same call', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = sb({ mode: 'together', settings: { ...settings, again: true, level } })
+      const p0 = decide(start, B, { op: 'accept' })
+      if (p0.kind !== 'begin') throw new Error('refused')
+      const cpu = (p0.secret as { fleets: (number[][] | null)[] }).fleets[1]!
+      expect(cpu).toHaveLength(FLEETS.quick.length)
+      let row = after(start, p0)
+      // neither friend is shown the computer's fleet; theirs is the team's, once set out
+      expect(mine(row, A)).toBeNull()
+      expect(mine(row, B)).toBeNull()
+      const team = fleetOf(9)
+      const p = decide(row, A, move(row.seq, { at: 0, fleet: team }))
+      if (p.kind !== 'commit') throw new Error('refused')
+      row = after(row, p)
+      expect(cellsOf(mine(row, B)!).sort()).toEqual(cellsOf(team).sort())
+      const shots = (row.state as { shots: number[][] }).shots
+      // the team's shot, then the computer's: one, or more while it keeps hitting (again is on)
+      expect(shots.length).toBeGreaterThanOrEqual(cpu.flat().includes(0) ? 1 : 2)
+      expect(row.turn).toBe(1)
+    }
   })
 })

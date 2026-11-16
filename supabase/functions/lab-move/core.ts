@@ -45,6 +45,7 @@ import { curlingMatchRules, type CurlingGame } from '../../../src/gpu/curlingRoo
 import { puttRules, totals as puttTotals, type PuttGame } from '../../../src/gpu/puttRoom'
 import { dartsMatchRules, type DartsGame } from '../../../src/gpu/dartsRoom'
 import { backgammonRules, worth, type BackgammonGame } from '../../../src/gpu/backgammonRoom'
+import { readSeaSettings, seaRules, type SeaGame } from '../../../src/gpu/seabattleRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -151,6 +152,16 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // what the game was worth: a single game, a gammon or a backgammon
     score: (g: BackgammonGame) => worth(g) ?? '',
   }),
+  seabattle: (s) => {
+    const set = readSeaSettings(s)
+    return set === null
+      ? null
+      : {
+          rules: seaRules(set),
+          // ships each side sank, the challenger's first
+          score: (g: SeaGame) => `${g.seen[0].sunk.length}–${g.seen[1].sunk.length}`,
+        }
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -163,15 +174,24 @@ export type Row = {
   status: string
   settings: Record<string, unknown> | null
   state: unknown
+  /** what a toy keeps back from both players (Rules.hidden): never sent to a browser whole */
+  secret?: unknown
   seq: number
   turn: Seat | null
 }
 
-/** what the caller asked: to accept an invitation, or to make a move against the board at `at` */
-export type Ask = { op: 'accept' } | { op: 'move'; at: number; move: unknown }
+/**
+ * What the caller asked: to accept an invitation (bringing what a toy with something hidden needs
+ * from the friend, their fleet), to make a move against the board at `at`, or to see their own
+ * side of what the toy keeps hidden.
+ */
+export type Ask =
+  | { op: 'accept'; brought?: unknown }
+  | { op: 'move'; at: number; move: unknown }
+  | { op: 'mine' }
 
 export type Plan =
-  | { kind: 'begin'; state: unknown; turn: Seat }
+  | { kind: 'begin'; state: unknown; turn: Seat; secret?: unknown }
   | {
       kind: 'commit'
       at: number
@@ -180,7 +200,11 @@ export type Plan =
       state: unknown
       turn: Seat | null
       result: { winner: Seat | 'draw'; score?: string } | null
+      /** the hidden part as it now is, for a toy that keeps one */
+      secret?: unknown
     }
+  /** a player's own side of what a toy keeps hidden, and nothing of the other's */
+  | { kind: 'mine'; data: unknown }
   | { kind: 'refuse'; status: number; error: string }
 
 const refuse = (status: number, error: string): Plan => ({ kind: 'refuse', status, error })
@@ -191,7 +215,9 @@ export function readAsk(body: unknown): { match: string; ask: Ask } | null {
   if (!o || typeof o !== 'object') return null
   const match = o.match
   if (typeof match !== 'string' || !/^[0-9a-f-]{36}$/i.test(match)) return null
-  if (o.op === 'accept') return { match, ask: { op: 'accept' } }
+  if (o.op === 'accept')
+    return { match, ask: 'brought' in o ? { op: 'accept', brought: o.brought } : { op: 'accept' } }
+  if (o.op === 'mine') return { match, ask: { op: 'mine' } }
   if (o.op === 'move' && Number.isInteger(o.at) && (o.at as number) >= 0 && 'move' in o)
     return { match, ask: { op: 'move', at: o.at as number, move: o.move } }
   return null
@@ -273,10 +299,39 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
     return { g, then }
   }
 
+  const { hidden } = rules
+  /** the game as the server knows it: the state anybody may see, and what is kept back */
+  const whole = (r: Row) => {
+    const g = rules.decode(r.state)
+    return g === null || !hidden ? g : hidden.join(g, r.secret)
+  }
+
+  if (ask.op === 'mine') {
+    if (!hidden) return refuse(422, 'this toy keeps nothing hidden')
+    // before the friend has answered there is nothing kept yet, for either side
+    if (row.status === 'invited') return { kind: 'mine', data: null }
+    const g = whole(row)
+    if (g === null) return refuse(500, 'this match’s board cannot be read')
+    return { kind: 'mine', data: hidden.mine(g, row.mode === 'together' ? 0 : seat) }
+  }
+
   if (ask.op === 'accept') {
     if (row.status !== 'invited') return refuse(409, 'that invitation is no longer open')
     if (seat !== 1) return refuse(403, 'only the friend who was challenged can accept')
-    const g = rules.fresh(row.mode)
+    let g = rules.fresh(row.mode)
+    if (hidden) {
+      // the friend's own hidden part (their fleet) comes with their yes, and is kept back
+      const h = hidden.accept(g, ask.brought, row.mode)
+      if (h === null) return refuse(400, 'accepting this match needs your side set out first')
+      g = h
+      const t = rules.turn(g)
+      return {
+        kind: 'begin',
+        state: rules.encode(g),
+        turn: row.mode === 'together' || t === null || t === 'any' ? 0 : t,
+        secret: hidden.secret(g),
+      }
+    }
     // the challenger moves first, both in versus and as the first of the team
     if (!rules.roll) return { kind: 'begin', state: rules.encode(g), turn: 0 }
     // ⚠️ a toy with dice: its opening roll says who starts, and together the computer may, so it
@@ -294,7 +349,7 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   if (row.status !== 'active') return refuse(409, 'that match is not going')
   if (row.turn !== seat) return refuse(409, 'it is not your turn')
   if (ask.at !== row.seq) return refuse(409, 'the match has moved on')
-  const g0 = rules.decode(row.state)
+  const g0 = whole(row)
   // a stored game no rules could have made is damage, and nothing is built on it
   if (g0 === null) return refuse(500, 'this match’s board cannot be read')
   const move = rules.readMove(ask.move)
@@ -312,8 +367,12 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   return {
     kind: 'commit',
     at: row.seq,
-    move: historyRow(move, then),
+    // anything hidden in a move (the challenger's fleet, with their first shot) is not history
+    move: hidden
+      ? historyRow(hidden.logged(move), then.map(hidden.logged))
+      : historyRow(move, then),
     state: rules.encode(g),
+    ...(hidden ? { secret: hidden.secret(g) } : {}),
     // versus: whoever the board says; together: the other friend takes the team's next move
     turn: over ? null : row.mode === 'together' ? ((1 - seat) as Seat) : (rules.turn(g) as Seat),
     result:
