@@ -45,6 +45,7 @@ export const MATCH_NAMES: Record<string, string> = {
   eights: 'Crazy eights',
   liars: "Liar's dice",
   poker: 'Hold’em',
+  lamps: 'Lamps',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
@@ -57,4 +58,11 @@ export const toyName = (demo: string) =>
  * without importing every toy's rules; games.test.ts checks each toy's own list agrees.
  */
 export const MATCH_LEVELS = ['easy', 'fair', 'hard'] as const
+
+/**
+ * The toys whose match is versus alone: a duel with no computer side, so a challenge offers no
+ * Together and no level. Beside the names for the same reason as the levels; games.test.ts checks
+ * it against each toy's own modes.
+ */
+export const VERSUS_ONLY: ReadonlySet<string> = new Set(['lamps'])
 export const LEVEL_NAMES: Record<string, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
