@@ -139,7 +139,10 @@ export const ARCADE: Record<string, Reader> = {
     const record = beaten(ARTILLERY_LEVELS, r, 'duels')
     const best =
       few !== Infinity ? `best ever a win in ${few === 1 ? '1 shot' : `${few} shots`}` : null
-    return record && best ? `${record}; ${best}` : record || best
+    return join([
+      record && best ? `${record}; ${best}` : record || best,
+      onlineLine(read, 'artillery'),
+    ])
   },
   bowling: (read) => {
     const r = readBowling(read(BOWLING_KEY)).record
