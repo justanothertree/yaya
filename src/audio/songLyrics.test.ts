@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { barSays, fitSongLyrics, notesInSong } from './songLyrics'
+import {
+  barSays,
+  carries,
+  fitSongLyrics,
+  moreNotesFor,
+  moveWords,
+  notesInSong,
+  overflow,
+  setCarry,
+} from './songLyrics'
+import { splitLyrics } from './lyrics'
 import { linesFor, tidyLyrics } from './lyricLines'
 import { toEvents, type Note } from './noteEdit'
 
@@ -148,5 +158,115 @@ describe('the lines the box edits', () => {
 
   it('keep a typed space, so the next word can be typed after it', () => {
     expect(tidyLyrics(['glit-ter '])).toEqual(['glit-ter '])
+  })
+})
+
+describe("holding on to the bar before's last sound", () => {
+  it('is a leading _, put on and taken off without touching the words', () => {
+    expect(carries('_ love you')).toBe(true)
+    expect(carries('__ love')).toBe(true)
+    expect(carries('love _ you')).toBe(false)
+    expect(setCarry('love you', true)).toBe('_ love you')
+    expect(setCarry('', true)).toBe('_')
+    expect(setCarry('_ love you', false)).toBe('love you')
+    expect(setCarry('__ love', false)).toBe('love')
+    expect(setCarry('_', false)).toBe('')
+    expect(setCarry(setCarry('glit-ter in the', true), false)).toBe('glit-ter in the')
+  })
+
+  it('on an empty bar, holds the last word through every note of it', () => {
+    const four = part(
+      [0, 0.5, 1, 1.5].map((t) => ({ midi: 64, t, dur: 0.45 })),
+      BAR,
+    )
+    const song = { bpm: 120, bars: 2, quantize: 0 }
+    const fit = fitSongLyrics(
+      { ...four, lyrics: ['one two three night', setCarry('', true)] },
+      song,
+    )
+    expect(fit.bars[1].sung).toHaveLength(4)
+    expect(fit.bars[1].sung.every((s) => s.hold && s.text === 'night')).toBe(true)
+  })
+})
+
+describe('words that do not fit their bar', () => {
+  const lyric = 'and the cit-y lights are call-ing me home'
+
+  it('move whole words from the end, until the rest have a note each', () => {
+    expect(overflow(lyric, 8)).toEqual({
+      keep: 'and the cit-y lights are call-ing',
+      move: 'me home',
+    })
+    expect(overflow(lyric, 10)).toBeNull()
+    /* the line's first word always stays, and a word is never broken */
+    expect(overflow(lyric, 1)).toEqual({ keep: 'and', move: lyric.slice(4) })
+    expect(overflow('won-der-ful', 2)).toBeNull()
+  })
+
+  it('arrive at the start of the next bar, taking the place of a hold that opened it', () => {
+    const o = overflow(lyric, 8)!
+    expect(moveWords([lyric, '_ to-night'], 0, o)).toEqual([
+      'and the cit-y lights are call-ing',
+      'me home to-night',
+    ])
+    expect(moveWords([lyric], 0, o)).toEqual(['and the cit-y lights are call-ing', 'me home'])
+  })
+})
+
+describe('adding notes so the words have one each', () => {
+  /* one bar of four quarters held for 60% of the beat, a keys part played short */
+  const quarters = [0, 0.5, 1, 1.5].map((t, i) => ({ midi: 60 + i, t, dur: 0.3 }))
+  const song = { bpm: 120, bars: 1, quantize: 0 }
+  const six = 'shine on for-ev-er and'
+
+  it('adds as many notes as the line is short of, and then every word has its own', () => {
+    const p = { ...part(quarters, BAR), lyrics: [six] }
+    const more = moreNotesFor(p, song, 0)!
+    expect(more.added).toBe(2)
+    const after = { ...p, events: more.events }
+    expect(notesInSong(after, 120, 1)).toHaveLength(6)
+    expect(fitSongLyrics(after, song).bars[0].sung).toHaveLength(splitLyrics(six).length)
+  })
+
+  it('writes in the notes the voice was already singing, so what you hear does not move', () => {
+    const p = { ...part(quarters, BAR), lyrics: [six] }
+    const before = fitSongLyrics(p, song).sung.map((s) => [s.text, +s.t.toFixed(6)])
+    const after = fitSongLyrics({ ...p, events: moreNotesFor(p, song, 0)!.events }, song)
+    expect(after.sung.map((s) => [s.text, +s.t.toFixed(6)])).toEqual(before)
+  })
+
+  it('keeps every note where it was played, and plays the new ones as short as it', () => {
+    const p = { ...part(quarters, BAR), lyrics: [six] }
+    const notes = notesInSong({ ...p, events: moreNotesFor(p, song, 0)!.events }, 120, 1)
+    for (const q of quarters) expect(notes.some((n) => Math.abs(n.t - q.t) < 1e-9)).toBe(true)
+    /* two quarters shared into eighths, each held for 60% of its eighth; the others untouched */
+    const lengths = notes.map((n) => +n.dur.toFixed(6)).sort()
+    expect(lengths).toEqual([0.15, 0.15, 0.15, 0.15, 0.3, 0.3])
+  })
+
+  it('says which bars of the song play the changed notes: every bar a take repeats in', () => {
+    const p = { ...part(quarters, BAR), lyrics: [six] }
+    expect(moreNotesFor(p, { ...song, bars: 4 }, 0)!.bars).toEqual([0, 1, 2, 3])
+    /* arranged: song bar 1 plays the take's second bar, and only that bar changes */
+    const two = part([...quarters, ...quarters.map((q) => ({ ...q, t: q.t + BAR }))], 2 * BAR, {
+      plan: [0, 1, 0],
+    })
+    const more = moreNotesFor({ ...two, lyrics: ['', six] }, { ...song, bars: 3 }, 1)!
+    expect(more.bars).toEqual([1])
+    const take = notesInSong({ ...two, events: more.events, plan: undefined }, 120, 2)
+    expect(take.filter((n) => n.t < BAR)).toHaveLength(4)
+    expect(take.filter((n) => n.t >= BAR)).toHaveLength(6)
+  })
+
+  it('has nothing to add when the words fit, or when the notes are already as short as a word', () => {
+    const p = part(quarters, BAR)
+    expect(moreNotesFor({ ...p, lyrics: ['one two three four'] }, song, 0)).toBeNull()
+    /* sixteenths at 120 bpm: 125ms, and a syllable is never sung under 120ms */
+    const fast = part(
+      Array.from({ length: 16 }, (_, i) => ({ midi: 60, t: i * 0.125, dur: 0.1 })),
+      BAR,
+    )
+    const lots = Array.from({ length: 20 }, () => 'la').join(' ')
+    expect(moreNotesFor({ ...fast, lyrics: [lots] }, song, 0)).toBeNull()
   })
 })

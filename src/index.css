@@ -21434,6 +21434,36 @@ button.chron-runnote-n {
 .inst-lyric-fit.is-short {
   color: var(--accent-2);
 }
+/* under a bar: what does not fit and the two ways out, and holding the bar before on */
+.inst-lyric-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.45rem;
+  margin: 0.25rem 0 0 2.25rem;
+}
+.inst-lyric-tools .btn {
+  font-size: 0.75rem;
+  min-height: 1.8rem;
+  padding: 0.15rem 0.55rem;
+  max-width: 100%;
+}
+.inst-lyric-hint {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+}
+.inst-lyric-hint.is-short {
+  color: var(--accent-2);
+}
+/* a long run of moved words is cut, not wrapped, so the button stays one line */
+.inst-lyric-words {
+  display: inline-block;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
 
 /* ── 🎲 Challenge on a friend's profile (src/lab/matches/ProfileChallenge.tsx). ⚠️ Styled here,
    not by lab.css: that sheet arrives with the Lab's own chunk, and on a profile page it is not
