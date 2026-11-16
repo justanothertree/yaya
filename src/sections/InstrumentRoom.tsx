@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type SetStateAction,
 } from 'react'
 import {
   INSTRUMENTS,
@@ -34,7 +35,6 @@ import {
   keysToShow,
   shiftOctave,
 } from '../audio/keyboardSpan'
-import { PianoRoll } from './PianoRoll'
 import { toSong } from '../audio/songFile'
 import { soundingAt, toNotes } from '../audio/noteEdit'
 import { takeTimeAt } from '../audio/arrange'
@@ -101,6 +101,9 @@ import { SongControls } from '../instrument/SongControls'
 import { SongTools, type Tool } from '../instrument/SongTools'
 import { SoundPanel } from '../instrument/SoundPanel'
 import { openEditor } from '../instrument/openEditor'
+import { PartPanel, type PartTab } from '../instrument/PartPanel'
+import { LyricsPanel } from '../instrument/LyricsPanel'
+import { setSingScale, stopSinging } from '../instrument/singAlong'
 import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
 /**
@@ -329,6 +332,20 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    * range across the same seventeen keys.
    */
   const degrees = degreesOf(scale)
+  /**
+   * The scale the voice's harmony follows: the room's, or C major on Chromatic, where every key
+   * is in "the scale" and a third above has to mean something.
+   */
+  const singScale = useMemo(
+    () => ({
+      degrees: scale === 'chromatic' ? MAJOR_DEGREES : degrees,
+      root: scale === 'chromatic' ? 0 : root,
+    }),
+    // degrees is derived from scale, so scale and root are the whole of it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scale, root],
+  )
+  useEffect(() => setSingScale(singScale.degrees, singScale.root), [singScale])
   const noteAt = useCallback(
     (i: number) => {
       if (scale === 'chromatic') return base + i
@@ -423,8 +440,35 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     return together.subscribe(apply)
   }, [])
 
-  /** which layer's notes are open in the editor, if any */
-  const [editing, setEditing] = useState<string | null>(null)
+  /**
+   * Whose menu is open, and on which tab — see PartPanel. Since 15 Nov 2026 the notes open in it
+   * rather than at the end of the room.
+   *
+   * ⚠️ `editing` AND `setEditing` ARE KEPT, with their old meaning, because five places open a
+   * part's notes — a capture, a first take, ✎ New part, a loop dropped in, the beats panel — and
+   * "open its notes" is still exactly what each of them means. They now open the menu on Notes.
+   */
+  const [part, setPart] = useState<{ id: string; tab: PartTab } | null>(null)
+  /** the lyrics box, open at a bar or at the top — one panel at a time, so it closes the part's */
+  const [lyricsAt, setLyricsAt] = useState<{ bar?: number } | null>(null)
+  const editing = part?.id ?? null
+  const setEditing = useCallback((next: SetStateAction<string | null>) => {
+    setPart((was) => {
+      const id = typeof next === 'function' ? next(was?.id ?? null) : next
+      return id ? { id, tab: 'notes' } : null
+    })
+    setLyricsAt(null)
+  }, [])
+  const openPart = useCallback((id: string, tab: PartTab) => {
+    setPart({ id, tab })
+    setLyricsAt(null)
+  }, [])
+  const showLyrics = useCallback((bar?: number) => {
+    setPart(null)
+    setLyricsAt({ bar })
+  }, [])
+  /* the voice stops with the room — a song scheduled into the future would otherwise sing on */
+  useEffect(() => () => stopSinging(), [])
   /**
    * The first thing you record opens its own notes.
    *
@@ -445,11 +489,11 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     if (!id || opened.current === id) return
     opened.current = id
     if (loop.layers.length === 1) setEditing(id)
-  }, [loop.made, loop.layers.length])
+  }, [loop.made, loop.layers.length, setEditing])
   /* ⚠️ an editor for a layer that has gone is not open — see openEditor */
   useEffect(() => {
     const still = openEditor(editing, loop.layers)
-    if (still !== editing) setEditing(still)
+    if (still !== editing) setPart(null)
   }, [editing, loop.layers])
   /* a touch screen gets touch words in the help below — see the note there */
   const touch = useTouchOnly()
@@ -1701,11 +1745,12 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
         />
         <LayerList
           loop={loop}
-          editing={editing}
-          setEditing={setEditing}
+          open={part}
+          openPart={openPart}
+          closePart={() => setPart(null)}
           jamNames={jamNames}
-          onKeep={(id) => keep('loop', id)}
           newPart={() => setEditing(addEmptyLayer(live.current.inst) || null)}
+          showLyrics={showLyrics}
         />
         <SongTools
           tool={tool}
@@ -1722,10 +1767,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               backing={backing}
             />
           }
-          singScale={{
-            degrees: scale === 'chromatic' ? MAJOR_DEGREES : degrees,
-            root: scale === 'chromatic' ? 0 : root,
-          }}
+          showLyrics={() => showLyrics()}
         />
       </div>
 
@@ -1914,24 +1956,33 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * scrolling, and the layout was the thing to change: down here, opening a layer moves
        * nothing at all. The page simply gets longer at the end.
        */}
-      {editing &&
+      {part &&
         (() => {
-          const l = loop.layers.find((x) => x.id === editing)
+          const l = loop.layers.find((x) => x.id === part.id)
           if (!l) return null
           return (
-            <div className="inst-roll-host">
-              <PianoRoll
-                layer={l}
-                bpm={loop.bpm}
-                quantize={loop.quantize}
-                position={loop.position}
-                loopLen={loopLength()}
-                held={held}
-                onClose={() => setEditing(null)}
-              />
-            </div>
+            <PartPanel
+              l={l}
+              loop={loop}
+              tab={part.tab}
+              setTab={(tab) => setPart({ id: l.id, tab })}
+              open={openPart}
+              close={() => setPart(null)}
+              held={held}
+              theirs={l.from ? (jamNames[l.from] ?? '') : null}
+              onKeep={(id) => keep('loop', id)}
+            />
           )
         })()}
+      {lyricsAt && (
+        <LyricsPanel
+          key={lyricsAt.bar ?? 'top'}
+          loop={loop}
+          close={() => setLyricsAt(null)}
+          at={lyricsAt.bar}
+          scale={singScale}
+        />
+      )}
       {/* ⚠️ The room needs its own, like Circuit and Ratings: showToast has no host of its
           own, so a message sent from here — a take that would not fit — went nowhere at all. */}
       <Toast />

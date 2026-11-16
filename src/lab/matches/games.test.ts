@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GAMES } from '../../../supabase/functions/lab-move/core'
 import { MATCH_TOYS } from './games'
-import { MATCH_NAMES } from './names'
+import { MATCH_LEVELS, MATCH_NAMES } from './names'
 
 /**
  * The browser's list of match toys against the server's. A toy the server can play and the
@@ -49,5 +49,9 @@ describe('the match toys', () => {
   it('offer exactly the computer levels the server will accept', () => {
     for (const [demo, toy] of Object.entries(MATCH_TOYS))
       expect(toy.levels).toEqual(GAMES[demo]({})!.rules.computer!.levels)
+  })
+
+  it('all offer the levels a profile’s challenge lists without loading the rules', () => {
+    for (const toy of Object.values(MATCH_TOYS)) expect(toy.levels).toEqual(MATCH_LEVELS)
   })
 })
