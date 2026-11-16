@@ -55,6 +55,7 @@ import { codeRules, readCodeSettings } from '../../gpu/codebreakerRoom'
 import { boxRules, readBoxSettings } from '../../gpu/shadowboxRoom'
 import { readRpsSettings, rpsRules } from '../../gpu/rpsRoom'
 import { ginRules, readGinSettings } from '../../gpu/ginRoom'
+import { cribRules } from '../../gpu/cribbageRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -220,6 +221,11 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
       const set = readGinSettings(s)
       return set === null ? null : ginRules(set.target)
     },
+    levels: ['easy', 'fair', 'hard'],
+  },
+  cribbage: {
+    name: MATCH_NAMES.cribbage,
+    rulesFor: () => cribRules,
     levels: ['easy', 'fair', 'hard'],
   },
 }

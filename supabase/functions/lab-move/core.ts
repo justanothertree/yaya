@@ -65,6 +65,7 @@ import {
   totals as ginTotals,
   type GinGame,
 } from '../../../src/gpu/ginRoom'
+import { cribRules, type CribGame } from '../../../src/gpu/cribbageRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -221,6 +222,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // each side's points over the hands, the challenger's first
     return { rules: ginRules(set.target), score: (g: GinGame) => ginTotals(g).join('–') }
   },
+  cribbage: () => ({
+    rules: cribRules,
+    // each side's pegs, the challenger's first
+    score: (g: CribGame) => g.r.scores.join('–'),
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
