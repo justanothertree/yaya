@@ -16,6 +16,7 @@ export const MATCH_NAMES: Record<string, string> = {
   fourrow: 'Four in a row',
   mancala: 'Mancala',
   morris: 'Nine men’s morris',
+  hex: 'Hex',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */

@@ -48,6 +48,8 @@ import {
   type Move as MorrisMove,
 } from '../../../src/gpu/morris'
 import { replay as morrisReplay } from '../../../src/gpu/morrisRoom'
+import { chain as hexChain } from '../../../src/gpu/hex'
+import { SWAP, replay as hexReplay } from '../../../src/gpu/hexRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -1034,6 +1036,90 @@ describe('nine men’s morris by turns: a mill must take', () => {
           B,
           move(row.seq, [-1, 6, -1]),
         ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('hex by turns: a stone a turn, and the swap rule when asked for', () => {
+  const hex = (over: Partial<Row> = {}) => invite({ demo_id: 'hex', settings: {}, ...over })
+  const game = (state: unknown) => {
+    const o = state as { n: number; swap: boolean; moves: unknown[] }
+    return hexReplay(o.n, o.swap, o.moves)!
+  }
+
+  it('plays versus to the end on every board, the winner whoever joins their two sides', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 12; seed++) {
+      const rnd = seeded(seed)
+      const size = [7, 9, 11][seed % 3]
+      const { row, plans } = playOut(hex({ settings: { size } }), (r) => {
+        const b = game(r.state).b
+        const open = b.cells.flatMap((c, i) => (c ? [] : [i]))
+        return open[Math.floor(rnd() * open.length)]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const b = game(last.state).b
+      expect(b.n).toBe(size)
+      // asked of the stones: red joins top to bottom, blue left to right; Hex has no draw
+      const red = hexChain(b.cells, b.n, 1)
+      const blue = hexChain(b.cells, b.n, 2)
+      expect(!!red !== !!blue).toBe(true)
+      expect(last.result!.winner).toBe(red ? 0 : 1)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('takes the swap as the second move only, and only when the match asked for the rule', () => {
+    const on = hex({ settings: { swap: true } })
+    let row = after(on, decide(on, B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 40)))
+    expect(status(decide(row, B, move(row.seq, SWAP)))).toBe('commit')
+    row = after(row, decide(row, B, move(row.seq, SWAP)))
+    expect(status(decide(row, A, move(row.seq, SWAP)))).toBe(400)
+    const off = hex()
+    let r2 = after(off, decide(off, B, { op: 'accept' }))
+    r2 = after(r2, decide(r2, A, move(r2.seq, 40)))
+    expect(status(decide(r2, B, move(r2.seq, SWAP)))).toBe(400)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = hex({ mode: 'together', settings: { size: 11, level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const b = game(row.state).b
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, b.cells.indexOf(0)))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('reads the toy’s sizes and the swap rule and only those, 9 without it when none is named', () => {
+    for (const settings of [{ size: 8 }, { size: '9' }, { swap: 'yes' }, { size: 13 }])
+      expect(status(decide(hex({ settings }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(hex({ settings: {} }), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && begun.state).toEqual({ n: 9, swap: false, moves: [] })
+  })
+
+  it('refuses a taken cell, a cell off the board, and a stored game no stones could have made', () => {
+    let row = after(
+      hex({ settings: { size: 7 } }),
+      decide(hex({ settings: { size: 7 } }), B, { op: 'accept' }),
+    )
+    row = after(row, decide(row, A, move(row.seq, 10)))
+    expect(status(decide(row, B, move(row.seq, 10)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 49)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 11)))).toBe('commit')
+    expect(
+      status(
+        decide({ ...row, state: { n: 7, swap: false, moves: [10, 10] } }, B, move(row.seq, 12)),
       ),
     ).toBe(500)
   })
