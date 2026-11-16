@@ -167,7 +167,7 @@ export const BOARD: Record<string, Reader> = {
     versus(GIN_LEVELS, readGin(read(GIN_KEY)).record, (t) => [
       t.gins > 0 && `went gin ${times(t.gins)}`,
     ]),
-  go: (read) => versus(GO_LEVELS, readGo(read(GO_KEY)).record),
+  go: (read) => join(versus(GO_LEVELS, readGo(read(GO_KEY)).record), onlineLine(read, 'go')),
   gomoku: (read) =>
     join(versus(GOMOKU_LEVELS, readGomoku(read(GOMOKU_KEY)).record), onlineLine(read, 'gomoku')),
   halma: (read) =>
