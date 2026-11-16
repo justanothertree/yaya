@@ -146,7 +146,10 @@ export const BOARD: Record<string, Reader> = {
     ),
   eights: (read) => versus(EIGHTS_LEVELS, readEights(read(EIGHTS_KEY)).record, undefined, true),
   fences: (read) =>
-    versus(FENCES_LEVELS, readFences(read(FENCES_KEY)).record, (t) => [quickest(t.best)]),
+    join(
+      versus(FENCES_LEVELS, readFences(read(FENCES_KEY)).record, (t) => [quickest(t.best)]),
+      onlineLine(read, 'fences'),
+    ),
   fourrow: (read) =>
     versus(FOUR_LEVELS, readFourRow(read(FOUR_KEY)).record, (t) => [quickest(t.fastest)]),
   // the fox's record is kept per SIDE, not per level, so no level can be claimed
