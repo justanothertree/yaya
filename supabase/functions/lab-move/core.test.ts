@@ -85,6 +85,8 @@ import {
   pack as curlPack,
   replay as curlReplay,
 } from '../../../src/gpu/curlingRoom'
+import { COURSE, PICK_UP, stroke as puttStroke } from '../../../src/gpu/putt'
+import { replay as puttReplay } from '../../../src/gpu/puttRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2110,6 +2112,96 @@ describe('curling by turns: a throw and its sweep, kept small enough to keep', (
           A,
           move(row.seq, [0.01, 2.5, 1, []]),
         ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('putt by turns: each ball putts its hole out, the server rolls every putt', () => {
+  const pt = (over: Partial<Row> = {}) => invite({ demo_id: 'putt', settings: {}, ...over })
+  const game = (state: unknown) => puttReplay((state as { putts: unknown[] }).putts)!
+
+  it('plays versus to the end, the lower round winning, every hole holed out or picked up', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(pt(), (r) => {
+        const g = game(r.state)
+        const p = puttStroke(COURSE[g.hole], g.at, rnd() < 0.5 ? 'easy' : 'fair', rnd)
+        return [p.angle, p.power]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      // every hole has both balls' strokes, each between one and the pick-up
+      for (const c of g.card)
+        for (const n of c) expect(n !== null && n >= 1 && n <= PICK_UP).toBe(true)
+      // and every putt is one of them: a ball's putts on a hole are no more than its strokes there
+      const putts = new Map<string, number>()
+      let walk = game({ putts: [] })
+      for (const x of (last.state as { putts: unknown[] }).putts) {
+        const key = `${walk.hole}:${walk.up}`
+        putts.set(key, (putts.get(key) ?? 0) + 1)
+        walk = puttReplay([...walk.putts.map((q) => [q.angle, q.power]), x])!
+      }
+      for (const [key, n] of putts) {
+        const [h, side] = key.split(':').map(Number)
+        expect(n).toBeLessThanOrEqual(g.card[h][side]!)
+      }
+      const [a, b] = g.card.reduce((t, c) => [t[0] + c[0]!, t[1] + c[1]!], [0, 0])
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a < b ? 0 : b < a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  }, 60000)
+
+  it('keeps the turn with a ball until it holes out, then hands the hole to the other', () => {
+    let row = after(pt(), decide(pt(), B, { op: 'accept' }))
+    // a putt barely struck stays out, and the same ball plays again
+    row = after(row, decide(row, A, move(row.seq, [0, 0.02])))
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, B, move(row.seq, [0, 0.5])))).toBe(409)
+    expect(game(row.state).strokes).toBe(1)
+  })
+
+  it('together: the computer putts its ball out in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = pt({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const rnd = seeded(3)
+      let holes = 0
+      for (let k = 0; k < 30 && row.status === 'active' && holes < 2; k++) {
+        const g0 = game(row.state)
+        const p = puttStroke(COURSE[g0.hole], g0.at, 'hard', rnd)
+        const plan = decide(row, row.turn === 0 ? A : B, move(row.seq, [p.angle, p.power]))
+        expect(plan.kind).toBe('commit')
+        if (plan.kind !== 'commit') break
+        row = after(row, plan)
+        const h = plan.move as { then?: unknown[]; replies?: number }
+        if (h.then || h.replies) {
+          // the computer's whole hole came back: both balls have a score there, and it is the team's
+          const g = game(row.state)
+          expect(g.card[g0.hole][1]).not.toBeNull()
+          expect(g.up === 0 || g.up === null).toBe(true)
+          holes++
+        }
+      }
+      expect(holes).toBe(2)
+    }
+  }, 30000)
+
+  it('refuses a putt aimed past the toy’s limits, with no strength or too much, not numbers, and a stored round no putts could make', () => {
+    const row = after(pt(), decide(pt(), B, { op: 'accept' }))
+    for (const bad of [[10.1, 0.5], [0, 0], [0, 1.01], ['0', 0.5], [0], { angle: 0 }])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    expect(status(decide({ ...row, state: { putts: [[0, 2]] } }, A, move(row.seq, [0, 0.5])))).toBe(
+      500,
+    )
+    expect(
+      status(
+        decide({ ...row, state: { putts: Array(97).fill([0, 0.02]) } }, A, move(row.seq, [0, 0.5])),
       ),
     ).toBe(500)
   })
