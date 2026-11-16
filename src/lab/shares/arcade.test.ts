@@ -240,6 +240,18 @@ describe('arcade share readers', () => {
     expect(line('putt', PUTT_KEY, { level: 'hard', record: { hard: { lost: 2 } } })).toBeNull()
   })
 
+  it('putt adds rounds in a call, and shares them with nothing against the computer', () => {
+    const online = JSON.stringify({ putt: { versus: { won: 2, lost: 0, drawn: 1 } } })
+    const saved = JSON.stringify({ record: { easy: { won: 1, lost: 0, tied: 0, best: 20 } } })
+    const both = (k: string) => (k === ONLINE_KEY ? online : k === PUTT_KEY ? saved : null)
+    expect(ARCADE.putt(both)).toBe(
+      'best round 20 strokes over the 6 holes, won 1 of 1 rounds against the Easy computer, beat friends in 2 of 3 online games (1 drawn)',
+    )
+    expect(ARCADE.putt((k) => (k === ONLINE_KEY ? online : null))).toBe(
+      'beat friends in 2 of 3 online games (1 drawn)',
+    )
+  })
+
   it('rocks: the best score, the wilder pace on a tie', () => {
     const fx = {
       pace: 'calm',
