@@ -63,6 +63,7 @@ import { eightsRules, readEightsSettings } from '../../gpu/eightsRoom'
 import { liarsRules, readLiarsSettings } from '../../gpu/liarsRoom'
 import { holdemRules } from '../../gpu/holdemRoom'
 import { duelRules, readDuelSettings } from '../../gpu/lampsDuel'
+import { readTwentyOneSettings, twentyOneRules } from '../../gpu/twentyoneDuel'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -288,6 +289,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     },
     // a duel: no computer, so no Together
     levels: [],
+  },
+  twentyone: {
+    name: MATCH_NAMES.twentyone,
+    rulesFor: (s) => {
+      const set = readTwentyOneSettings(s)
+      return set === null ? null : twentyOneRules(set.rounds)
+    },
+    levels: ['easy', 'fair', 'hard'],
   },
 }
 
