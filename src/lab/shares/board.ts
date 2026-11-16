@@ -122,9 +122,12 @@ export const BOARD: Record<string, Reader> = {
       `${count(t.points, 'point')} to ${t.against}`,
     ]),
   breakthrough: (read) =>
-    versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
-      quickest(t.fastest),
-    ]),
+    join(
+      versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
+        quickest(t.fastest),
+      ]),
+      onlineLine(read, 'breakthrough'),
+    ),
   chess: (read) =>
     join(versus(CHESS_LEVELS, readChess(read(CHESS_KEY)).record), onlineLine(read, 'chess')),
   cribbage: (read) =>
