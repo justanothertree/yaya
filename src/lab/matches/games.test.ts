@@ -13,11 +13,13 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   reversi: [{}, { size: null }, { size: 6 }, { size: 8 }, { size: 10 }, { size: 6, level: 'hard' }],
   chess: [{}, { level: 'easy' }],
   pool: [{}, { level: 'hard' }],
+  gomoku: [{}, { size: null }, { size: 11 }, { size: 13 }, { size: 11, level: 'fair' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
   chess: [],
   pool: [],
+  gomoku: [{ size: 12 }, { size: '13' }, { size: 15 }],
 }
 
 describe('the match toys', () => {

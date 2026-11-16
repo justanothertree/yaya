@@ -4,6 +4,8 @@ import { LEVELS as REVERSI_LEVELS, SIZES } from '../../gpu/reversi'
 import { reversiRules } from '../../gpu/reversiRoom'
 import { LEVELS as POOL_LEVELS } from '../../gpu/pool'
 import { poolRules } from '../../gpu/poolRoom'
+import { LEVELS as GOMOKU_LEVELS, SIZES as GOMOKU_SIZES } from '../../gpu/gomoku'
+import { gomokuRules } from '../../gpu/gomokuRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -43,6 +45,17 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
   },
   chess: { name: MATCH_NAMES.chess, rulesFor: () => chessRules, levels: CHESS_LEVELS },
   pool: { name: MATCH_NAMES.pool, rulesFor: () => poolRules, levels: POOL_LEVELS },
+  gomoku: {
+    name: MATCH_NAMES.gomoku,
+    rulesFor: (s) => {
+      const size = s.size ?? 13
+      return (GOMOKU_SIZES as readonly unknown[]).includes(size)
+        ? gomokuRules(size as number)
+        : null
+    },
+    levels: GOMOKU_LEVELS,
+    sizes: GOMOKU_SIZES,
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
