@@ -1,17 +1,43 @@
--- ⛔ STILL NOT APPLIED as of 15 Nov 2026 14:30 UTC, but no longer merely proposed: the whole
--- book has been previewed against production and the prediction at the bottom of this file
--- ("expected count ... 5") came back exactly 5. See 2026-11-15-correction-preview.md for the
--- 203-position decision table, and 2026-11-15-correct-position-rollback.sql for the live text
--- this replaces, md5-proved rather than retyped. The apply itself was refused by the session's
--- permission classifier before it reached the database; production was re-measured afterwards
--- and is byte-identical, so nothing here is half-done.
+-- ✅ APPLIED 16 Nov 2026 02:08:28 UTC (15 Nov 21:08 Eastern) as migration
+-- `20261116020828_correction_follows_ownership`. The file that is the record of that event is
+-- `supabase/migrations/20261116020828_correction_follows_ownership.sql`; this file stays what it
+-- has always been, the reasoning.
 --
--- The body below is 3,235 bytes, md5 acb9c5964b8394f87c45636f48ed53b4 through this repository's
--- own bodyOf() — send exactly that and `statements[1]` will agree with it.
+-- `statements[1]` md5s to acb9c5964b8394f87c45636f48ed53b4 at 3,235 bytes, which is the md5 of
+-- the runnable portion of THIS file (lines 78–148) through the repository's own `bodyOf()`. So
+-- the text production ran is byte for byte the text reviewed here — no transcription drift, which
+-- is the one risk `apply_migration` cannot avoid, since it takes the SQL inline and there is no
+-- diff to look at.
 --
--- ⛔ NOT APPLIED. Proposed only — this file is the reasoning, and nothing in it has been run
--- against production. Applying it is `apply_migration`, after which this header becomes
--- ✅ APPLIED with the migration name, per CLAUDE.md §4.
+-- ⚠️ NOTE WHICH BODY THAT FIGURE IS. `bodyOf()` of this whole file is 5,303 bytes, because it
+-- strips the leading `--` block and keeps the trailing one — the check-10 sketch below the grant.
+-- 3,235 is the runnable portion alone, which is what was sent. The two were conflated once while
+-- preparing this, and the only reason it surfaced is that the number was recomputed rather than
+-- trusted. The migration file carries no trailing comment block, so `bodyOf()` of THAT file is
+-- the runnable text exactly, and `applied.md5` agrees with production.
+--
+-- Before / after, measured either side of the apply:
+--
+--   admin_correct_position  md5  b209b089d5a5da4d563f6303a7a124ba -> 5f10f7e40e747bc4294b3c634a95ea57
+--   account_payload, 33 accts    4cdb5581d2c9b9c722461c375c82cbef -> 4cdb5581d2c9b9c722461c375c82cbef
+--   executed_trades / allocations        1,774 / 15,840 -> 1,774 / 15,840
+--   ACL  anon / authenticated / service_role   false / true / true -> false / true / true
+--
+-- The payload fingerprint is identical because this migration contains no DML, which is the whole
+-- claim: it changes a decision a FUTURE correction will make, not a row that exists now.
+--
+-- ⚠️ THE PREVIEW'S OWN BASELINE HAD EXPIRED BY THEN, and that is worth recording rather than
+-- quietly working around. `2026-11-15-correction-preview.md` recorded the payload md5 as
+-- ad79add6983eeb9596b5a149486aef9f at 14:03 UTC, and the figure above is a different one — the
+-- 15 Nov 21:10–21:16 UTC price sweep had run in between, taking `price_cache` from 182 rows to
+-- 189 and pricing the seven positions the audit found unpriced. Every other table the payload
+-- reads was unchanged, and `family_share_at` is units-only so no price can reach it: the decision
+-- table re-ran to the same 77 / 3 / 118 / 5. A recorded fingerprint is a measured claim with a
+-- date on it (§2), and a daily cron is what spends this one — so the before/after pair that means
+-- anything is taken back to back, minutes apart, not against yesterday's figure.
+--
+-- Rollback: `2026-11-15-correct-position-rollback.sql` holds the previous live text, md5-proved
+-- rather than retyped. Rolling back re-opens the loss described below.
 --
 -- ── WHY ───────────────────────────────────────────────────────────────────────────────────────
 --
@@ -148,6 +174,19 @@ revoke all on function public.admin_correct_position(text, text, numeric) from p
 grant execute on function public.admin_correct_position(text, text, numeric) to authenticated;
 
 -- ── Check 10: the two write paths disagree about a symbol ─────────────────────────────────────
+--
+-- ✅ WRITTEN PROPERLY, 16 Nov 2026: `docs/2026-11-16-integrity-check-10.sql`, previewed against
+-- production and NOT APPLIED, awaiting a go-ahead. Read that file rather than this sketch — and
+-- note two things it found that this sketch could not, both of which would have shipped:
+--
+--   * `order by c->>'ord'` is a TEXT sort, so '10' lands between '1' and '2'. Nine checks could
+--     never expose it. The fix is a cast that leaves every existing `ord` value untouched.
+--   * the `meaning` below is now FALSE. It names the correction, and the correction was fixed by
+--     the migration at the top of this very file an hour earlier — §2 from the direction where
+--     what falsifies a sentence is a change in a different file.
+--
+-- The sketch is kept because it is the record of the reasoning, and because its stated prediction
+-- ("expected count ... 5") is what the preview was checked against. It was 5.
 --
 -- ⚠️ THE BODY OF `finance.integrity_checks()` IS NOT REPRODUCED HERE, because this file has not
 -- been applied and copying 6kB of it into a proposal is how the copy and the original drift. The

@@ -97,35 +97,58 @@ Every one of these is a **price clock**, and the fix for the big one shipped in 
 panel now asks for a price pass itself instead of leaving new symbols to wait for 21:10 UTC. None
 of it is what `admin_correct_position` does.
 
-## ⚠️ OUTCOME: the preview passed, and the apply was refused by the tooling
+## ✅ OUTCOME: applied 16 Nov 2026 02:08:28 UTC
 
-Recorded here because the two are easy to confuse and the distinction is the whole point of
-running a preview. **The preview matched.** What stopped the migration was this session's
-permission classifier refusing `apply_migration`, which fires before the call reaches the
-database.
+Applied as `20261116020828_correction_follows_ownership` after Evan's go-ahead. The first attempt,
+on 15 Nov, was refused by this session's permission classifier before the call reached the
+database — recorded here because that refusal and a failed migration look identical from outside,
+and the distinction is the whole point of keeping a preview. Production was re-measured after the
+refusal and was byte-identical, so nothing was ever half-done.
 
-Production was re-measured immediately afterwards to be certain the refusal happened _before_
-execution rather than part-way through it:
+| Measure                               | Before (02:05 UTC)                 | After (02:09 UTC)                      |
+| ------------------------------------- | ---------------------------------- | -------------------------------------- |
+| `admin_correct_position` md5          | `b209b089d5a5da4d563f6303a7a124ba` | **`5f10f7e40e747bc4294b3c634a95ea57`** |
+| Old gate `coalesce(sd.is_family…)`    | present                            | **gone**                               |
+| New gate `v_share := family_share_at` | absent                             | **present**                            |
+| Signatures                            | 1                                  | 1 (replaced, not overloaded)           |
+| `account_payload` md5, 33 accts       | `4cdb5581d2c9b9c722461c375c82cbef` | `4cdb5581d2c9b9c722461c375c82cbef`     |
+| executed_trades / allocations         | 1,774 / 15,840                     | 1,774 / 15,840                         |
+| ACL anon / authed / service_role      | false / true / true                | false / true / true                    |
 
-| Check                           | Result                                              |
-| ------------------------------- | --------------------------------------------------- |
-| `admin_correct_position` md5    | `b209b089d5a5da4d563f6303a7a124ba` — **unchanged**  |
-| Old gate still present?         | yes — `coalesce(sd.is_family, false) into v_family` |
-| `account_payload` md5, 33 accts | `ad79add6983eeb9596b5a149486aef9f` — **identical**  |
-| executed_trades / allocations   | 1,774 / 15,840 — unchanged                          |
-| Newest recorded migration       | `20261115002456` (main's lab migration, not this)   |
+`statements[1]` md5s to `acb9c5964b8394f87c45636f48ed53b4` at **3,235 bytes** — byte for byte the
+runnable portion of the proposal file through the repository's own `bodyOf()`. That is the only
+check that proves the deployed text is the reviewed text: `apply_migration` takes the SQL inline
+and shows no diff, so a dropped character would otherwise reach production unseen. The migration
+file and its `applied.md5` line were written from the same figure, and `scripts/migration-md5.mjs`
+was made to **fail once** against it — one byte changed in the body, and it named the file and both
+hashes — before its pass was believed.
 
-So the five positions are still exposed, and the rollback saved alongside this file is still a
-description of the live function rather than of a previous one.
+### ⚠️ And the baseline above is not the one this document recorded
 
-**What applying it needs**, when it is next attempted: the exact body is 3,235 bytes, md5
-`acb9c5964b8394f87c45636f48ed53b4`, with no trailing newline and no CR — fingerprinted with the
-repository's own `bodyOf()` from `scripts/migration-md5.mjs`, so the figure is what that check
-will recompute rather than a separate opinion about it. After applying, `statements[1]` should
-md5 to the same value; if it does not, the text drifted in transit and the difference is worth
-reading before anything else. Then the file goes in `supabase/migrations/` with its line in
-`applied.md5`, which is why no migration file is committed yet: §4's protocol makes a file
-without a recorded hash a build failure, and the hash cannot exist before the statement runs.
+`ad79add6983eeb9596b5a149486aef9f` was the payload fingerprint at 14:03 UTC. By 02:05 the next
+morning it was `4cdb5581…`, and a literal reading of "stop if anything differs" would have stopped
+there. The cause was found before anything was applied, and it is a cron job this very document
+predicted: the **15 Nov 21:10–21:16 UTC price sweep** ran, taking `price_cache` from 182 rows to
+189 and pricing the seven positions the audit found unpriced.
+
+Everything else the payload reads was unchanged — trades, allocations, designations, accounts,
+contributions, overrides, each asked separately so the answer named a cause instead of leaving
+"something moved". And `finance.family_share_at` is **units-only**, so no price can reach the
+decision under test: the whole-book table re-ran to the same **77 / 3 / 118 / 5**, and bucket D was
+the same five symbols at the same units.
+
+One figure did move for a reason that was mine rather than production's: bucket C's _held_ count
+read 21 against the preview's 22. The preview counted `abs(units) > DUST_UNITS` and the re-run
+counted `units > DUST_UNITS`, and exactly one position can tell those apart — **LCID at −0.003975**,
+the documented symbol-change residue, in the bucket this migration does not touch. Named rather
+than reasoned about, because a one-off discrepancy in a safety check is the last place to accept an
+argument instead of a row.
+
+**The rule worth keeping**: a recorded fingerprint is a measured claim with a date on it, and a
+daily cron is what spends it. The before/after pair that means anything is taken **back to back,
+minutes apart**, with the cron calendar checked first — all four price jobs run 21:10–21:16 UTC, so
+02:05 was ~19 hours of quiet either side. Comparing against yesterday's figure would have rolled
+back a correct migration.
 
 ## Safety checks run before applying
 
@@ -141,11 +164,26 @@ service_role=true`. A revoke aimed at `public, anon` cannot touch `service_role`
 - **A byte-exact rollback is saved** at `2026-11-15-correct-position-rollback.sql`, proved to be
   production's own text by md5 (`b209b089d5a5da4d563f6303a7a124ba`) rather than retyped.
 
-## One piece deliberately not applied
+## The piece that was deliberately not applied — now written
 
-The proposal file also sketches **integrity check 10**, "held by the family but the symbol is not
-marked", and explains why it is a sketch: the body of `finance.integrity_checks()` is 6 kB and
-copying it into a proposal is how a copy and its original drift. It remains unwritten.
+The proposal file sketched **integrity check 10**, "held by the family but the symbol is not
+marked", and explained why it was only a sketch: the body of `finance.integrity_checks()` is 6 kB
+and copying it into a proposal is how a copy and its original drift.
+
+It is written now, as `docs/2026-11-16-integrity-check-10.sql`, **previewed and not applied**. The
+way around the copying problem was not a more careful copy: the new body is two anchored string
+replacements applied by script to the repository's own committed text, which throws if either
+anchor is missing, so the nine existing checks are identical by construction. `diff` against the
+committed body is exactly **two hunks, one line removed**.
+
+Writing it properly found two things the sketch could not, and both would have shipped:
+
+- **`order by c->>'ord'` is a text sort.** Nine checks could never expose it; a tenth does, and
+  check 10 would have appeared second in the list with nothing on screen to say so. Measured, not
+  reasoned about: `order by v` over 1..10 gives `1, 10, 2, 3, …`.
+- **The sketch's `meaning` was already false.** It named the correction handing the family none of
+  it — which the migration at the top of this document fixed an hour earlier. Two pieces of live
+  copy in `Investments.tsx` said the same thing and were corrected in the same sitting.
 
 The read side of that finding did ship in #339 — the positions row now names the units the family
 holds while the symbol still reads Personal — so the state is visible on the screen. What it is
