@@ -116,6 +116,12 @@ export function PoolDemo() {
       show.current = null
       setGame(matchGame)
       setPhase(matchGame.winner !== null ? 'over' : 'aim')
+      // the toy's own hints still matter in a match: where to put the ball, and why not there
+      setLine(
+        matchGame.winner === null && matchGame.turn === meRef.current && matchGame.inHand
+          ? 'Ball in hand: tap where to put it, or move it with the arrows and press Enter.'
+          : '',
+      )
     }
     // a shot played since we last looked: watch it roll from the table it was played on
     if (moved && matchGame.last && matchGame.prev && !reduced()) {
@@ -235,7 +241,17 @@ export function PoolDemo() {
   }
   const myTurn = () =>
     phaseRef.current === 'aim' && (inMatchRef.current ? canRef.current : gameRef.current.turn === 0)
+  /** a match's shot being watched ends at once on a tap or a key: it is somebody else's shot, or
+   *  your own already played, and the table is waiting */
+  const skipWatching = () => {
+    const sh = show.current
+    if (!inMatchRef.current || !sh) return false
+    show.current = null
+    sh.after()
+    return true
+  }
   const onDown = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (skipWatching()) return
     if (!myTurn()) return
     const p = toTable(e)
     if (!p) return
@@ -271,6 +287,10 @@ export function PoolDemo() {
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if ((e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') && skipWatching()) {
+      e.preventDefault()
+      return
+    }
     if (!myTurn()) return
     const g = gameRef.current
     const fine = e.shiftKey ? 0.2 : 1
@@ -554,7 +574,14 @@ export function PoolDemo() {
       </div>
       {inMatch && <MatchSend lm={lm} send="Take the shot" undo="Aim again" />}
       {inMatch ? (
-        g.said && <p className="muted mc-note">Last shot: {g.said}</p>
+        <>
+          {g.said && <p className="muted mc-note">Last shot: {g.said}</p>}
+          {line && (
+            <p className="mc-note" aria-live="polite">
+              {line}
+            </p>
+          )}
+        </>
       ) : (
         <>
           <p className="mc-line" aria-live="polite">
