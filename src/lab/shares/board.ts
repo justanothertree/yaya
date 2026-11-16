@@ -171,7 +171,10 @@ export const BOARD: Record<string, Reader> = {
   gomoku: (read) =>
     join(versus(GOMOKU_LEVELS, readGomoku(read(GOMOKU_KEY)).record), onlineLine(read, 'gomoku')),
   halma: (read) =>
-    versus(HALMA_LEVELS, readHalma(read(HALMA_KEY)).record, (t) => [quickest(t.fewest)]),
+    join(
+      versus(HALMA_LEVELS, readHalma(read(HALMA_KEY)).record, (t) => [quickest(t.fewest)]),
+      onlineLine(read, 'halma'),
+    ),
   hearts: (read) =>
     versus(
       HEARTS_LEVELS,
