@@ -13,6 +13,7 @@ import {
   STONES_EACH,
   STONE_R,
   TEE,
+  addStep,
   after,
   choose,
   count,
@@ -38,11 +39,17 @@ import {
   type Plan,
   type Saved,
   type Shot,
+  type Spans,
   type Stone,
   type Team,
 } from './curling'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { curlingRules, type CurlingGame } from './curlingRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const ICE: Record<
@@ -93,18 +100,33 @@ const clampMark = (m: { x: number; y: number }) => ({
   y: Math.max(HOG + 0.3, Math.min(BACK - 0.05, m.y)),
 })
 /** the lie in words, for the line and for a screen reader */
-function lieWords(stones: readonly Stone[]): string {
+function lieWords(stones: readonly Stone[], names?: [string, string]): string {
   const c = count(stones)
   const near = stones.filter(inHouse).sort((a, b) => fromButton(a) - fromButton(b))[0]
   if (c.team === null) return 'Nothing in the house.'
+  if (names) {
+    // in a call: whoever sits on the side, by name, or "You"
+    const n = names[c.team]
+    return `${n} ${n === 'You' ? 'lie' : 'lies'} ${c.points} — the best stone ${fromButton(near).toFixed(1)} m from the button.`
+  }
   const who = c.team === 0 ? 'You lie' : 'The computer lies'
   return `${who} ${c.points} — ${c.team === 0 ? 'your' : 'its'} best stone ${fromButton(near).toFixed(1)} m from the button.`
 }
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'call'
 type Live = {
   stones: Stone[]
   thrown: Stone
   knocked: Set<Stone>
   by: Team
+  /** a stone of yours, slid here: swept by your hand, and the steps it was swept on kept */
+  mine?: boolean
+  /** steps slid so far, and the swept ones, for sending a throw to the call */
+  k?: number
+  spans?: Spans
+  shot?: Shot
+  /** a slide played back from the call, and what to do when it has come to rest */
+  done?: () => void
   /** the computer's stones play back a slide worked out in advance */
   frames?: Stone[][]
   t: number
@@ -149,12 +171,43 @@ export function CurlingDemo() {
     setSweeping(on)
   }
 
-  const yourTurn = !busy && !game.over && toThrow(game) === 0
+  /* ── the call's room: seat 0 yellow and first, seat 1 red with the hammer; it travels as throws */
+  const [mode, setMode] = useState<Mode>('bot')
+  const lab = useLabRoom('curling', curlingRules)
+  const words = tableSeats(lab, curlingRules)
+  const room = mode === 'call' ? lab.room : null
+  /** a throw of mine sent to the call, whose slide I have already watched here */
+  const sent = useRef(false)
+  const yourTurn = room
+    ? lab.live && myTurn(curlingRules, room) && !busy && !game.over
+    : mode === 'bot' && !busy && !game.over && toThrow(game) === 0
+  const callName = (t: Team) =>
+    !room
+      ? ''
+      : room.mode === 'together'
+        ? t === 1
+          ? 'The computer'
+          : words.mySeat !== null
+            ? 'You'
+            : 'The team'
+        : words.who(room.seats[t])
+  const names = (): [string, string] | undefined => (room ? [callName(0), callName(1)] : undefined)
   const [youTotal, itTotal] = totals(game)
   const endNo = game.scores.length + 1
 
   /** a stone has come to rest: the next throw, or the end scored, or the game over */
   const rested = (stones: Stone[], by: Team) => {
+    const lv = live.current
+    if (room && lv?.mine && lv.shot) {
+      // in the call the host slides it again with the same sweep, and the throw comes back to all
+      live.current = null
+      setSliding(false)
+      setSweep(false)
+      setLie(stones)
+      sent.current = true
+      lab.act({ t: 'move', move: { shot: lv.shot, sweeps: lv.spans ?? [] } })
+      return
+    }
     live.current = null
     setSliding(false)
     setSweep(false)
@@ -266,12 +319,17 @@ export function CurlingDemo() {
     // draw to the button — as a curler throws, so that sweeping is how a stone is brought home
     const w = wobble(planned, 'fair', Math.random)
     const shot = { ...w, speed: w.speed * 0.985 }
-    const stones = deliver(game.stones, shot, 0)
+    const team = room ? toThrow(game) : 0
+    const stones = deliver(game.stones, shot, team)
     live.current = {
       stones,
       thrown: stones[stones.length - 1],
       knocked: new Set(),
-      by: 0,
+      by: team,
+      mine: true,
+      k: 0,
+      spans: [],
+      shot,
       t: 0,
     }
     setBusy(true)
@@ -300,6 +358,135 @@ export function CurlingDemo() {
       setLine('A new game. You have the hammer, so the computer throws first.')
       computer(g)
     }
+  }
+
+  /* ── the call's throws, shown as they arrive: each slid in turn, then the stones as they lie */
+  const seen = useRef<number | null>(null)
+  const queue = useRef<CurlingGame[]>([])
+  const [said, setSaid] = useState('')
+  /** what a throw did, in words: the lie it left, and the end it closed */
+  const throwWords = (cg: CurlingGame) => {
+    const l = cg.last!
+    const n = names()
+    const e = l.ended
+    if (!e) return lieWords(l.stones, n)
+    const end = cg.g.scores.length
+    const ends =
+      e.team === null
+        ? 'A blank end — the hammer stays where it was.'
+        : `${callName(e.team)} ${callName(e.team) === 'You' ? 'score' : 'scores'} ${e.points} in end ${end}.`
+    const extra = !cg.g.over && end >= cg.g.ends ? ' Level — one extra end.' : ''
+    return `${ends}${extra}`
+  }
+  /** the stones to show between throws: a closed end's, until the next end's first stone */
+  const showGame = (cg: CurlingGame) => {
+    setGame(cg.g)
+    setLie(cg.last?.ended ? cg.last.stones : cg.g.stones)
+  }
+  const playNext = () => {
+    const cg = queue.current.shift()
+    if (!cg) return setBusy(false)
+    const l = cg.last!
+    const done = () => {
+      live.current = null
+      showGame(cg)
+      setSaid(throwWords(cg))
+      playNext()
+    }
+    setBusy(true)
+    if (reduced() || !l.frames.length) {
+      setLie(l.before)
+      later(300, done)
+      return
+    }
+    live.current = {
+      stones: l.frames[0],
+      thrown: l.frames[0][l.frames[0].length - 1],
+      knocked: new Set(),
+      by: l.by,
+      frames: l.frames,
+      t: 0,
+      done,
+    }
+    setSliding(false)
+  }
+  const callGame = room?.game
+  useEffect(() => {
+    if (!callGame) {
+      seen.current = null
+      queue.current = []
+      return
+    }
+    const n = callGame.throws.length
+    if (seen.current === n) return
+    const next1 = seen.current !== null && n === seen.current + 1 && !!callGame.last
+    seen.current = n
+    if (next1 && sent.current) {
+      // my own throw coming back: I watched it slide here already
+      sent.current = false
+      showGame(callGame)
+      setSaid(throwWords(callGame))
+      if (!show()) setBusy(false)
+      return
+    }
+    if (!next1) {
+      // a new game, or one joined part way: the stones as they lie, nothing to slide
+      queue.current = []
+      live.current = null
+      sent.current = false
+      showGame(callGame)
+      setSaid('')
+      setBusy(false)
+      setSliding(false)
+      return
+    }
+    queue.current.push(callGame)
+    if (!live.current) playNext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new game state is the only cue
+  }, [callGame])
+  /** whether a slide is being played back from the call */
+  const show = () => !!live.current?.done
+
+  const stopHere = () => {
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    live.current = null
+    queue.current = []
+    seen.current = null
+    sent.current = false
+    setSliding(false)
+    setSweep(false)
+    setBusy(false)
+  }
+
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the ice as it lies, as
+   * the yellow stones, the computer red — the sides swapped round for a player who was red — or
+   * starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const mine: Team = r?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+    stopHere()
+    setMode('bot')
+    if (!r || r.game.g.over) return start()
+    const g0 = r.game.g
+    const g: Game =
+      mine === 0
+        ? g0
+        : {
+            ...g0,
+            scores: g0.scores.map(([a, b]) => [b, a]),
+            hammer: g0.hammer === 0 ? 1 : 0,
+            stones: g0.stones.map((st) => ({ ...st, team: st.team === 0 ? 1 : 0 })),
+          }
+    recorded.current = false
+    setGame(g)
+    setLie(g.stones)
+    if (toThrow(g) === 1) {
+      setLine('Carrying on against the computer, which throws next…')
+      computer(g)
+    } else setLine(`Carrying on against the computer. Your stone — ${left(g, 0)} to come.`)
   }
 
   /* -------------------------------------------------------------------- the ice by hand */
@@ -353,46 +540,90 @@ export function CurlingDemo() {
   return (
     <div className={`lab-keys cu-room is-${saved.ice}`}>
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer throws">
-          {LEVELS.map((l) => (
+        {(lab.live || mode === 'call') && (
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
-              key={l}
               className="btn btn-ghost"
-              aria-pressed={saved.level === l}
+              aria-pressed={mode === 'bot'}
               onClick={() => {
-                setSaved((s) => ({ ...s, level: l }))
-                if (untouched || game.over) start(l)
+                if (mode === 'bot') return
+                stopHere()
+                setMode('bot')
+                start()
               }}
             >
-              {LEVEL_NAMES[l]}
+              Against the computer
             </button>
-          ))}
-        </div>
-        <div className="lab-group" role="group" aria-label="How many ends">
-          {END_COUNTS.map((n) => (
             <button
-              key={n}
               className="btn btn-ghost"
-              aria-pressed={saved.ends === n}
+              aria-pressed={mode === 'call'}
               onClick={() => {
-                setSaved((s) => ({ ...s, ends: n }))
-                if (untouched || game.over) start(saved.level, n)
+                stopHere()
+                setMode('call')
               }}
             >
-              {n} ends
+              👥 With the call
             </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => start()}>
-          ↻ New game
-        </button>
+          </div>
+        )}
+        {mode === 'bot' && (
+          <>
+            <div className="lab-group" role="group" aria-label="How well the computer throws">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (untouched || game.over) start(l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+            <div className="lab-group" role="group" aria-label="How many ends">
+              {END_COUNTS.map((n) => (
+                <button
+                  key={n}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.ends === n}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, ends: n }))
+                    if (untouched || game.over) start(saved.level, n)
+                  }}
+                >
+                  {n} ends
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost" onClick={() => start()}>
+              ↻ New game
+            </button>
+          </>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={curlingRules}
+          sides={['yellow', 'red']}
+          ink={[STONES[0], STONES[1]]}
+          levelNames={LEVEL_NAMES}
+          score={(cg) => {
+            const [a, b] = totals(cg.g)
+            return `, ${Math.max(a, b)}–${Math.min(a, b)}`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([0, 1] as Team[]).map((t) => (
           <div key={t} className={`dice-score${!game.over && toThrow(game) === t ? ' is-up' : ''}`}>
             <span>
               <span className="cu-dot" style={{ background: STONES[t] }} aria-hidden />
-              {t === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`}
+              {room ? callName(t) : t === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`}
               {game.hammer === t && !game.over ? ' · hammer' : ''}
             </span>
             <strong>{t === 0 ? youTotal : itTotal}</strong>
@@ -411,9 +642,17 @@ export function CurlingDemo() {
           </span>
         </div>
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode === 'call' ? (
+        said && (
+          <p className="muted cu-said" aria-live="polite">
+            {said}
+          </p>
+        )
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="cu-wrap"
@@ -426,7 +665,7 @@ export function CurlingDemo() {
       >
         <CanvasStage
           className="cu-stage"
-          label={`The house. ${lieWords(lie)}`}
+          label={`The house. ${lieWords(lie, names())}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -441,14 +680,20 @@ export function CurlingDemo() {
                     lv.t += dt * 60
                     const i = Math.min(lv.frames.length - 1, Math.floor(lv.t))
                     lv.stones = lv.frames[i]
-                    const by = lv.stones.filter((s) => s.team === 1)
+                    const by = lv.stones.filter((s) => s.team === lv.by)
                     lv.thrown = by[by.length - 1] ?? lv.thrown
-                    if (lv.t >= lv.frames.length - 1) restedRef.current(lv.final ?? lv.stones, 1)
+                    if (lv.t >= lv.frames.length - 1) {
+                      if (lv.done) lv.done()
+                      else restedRef.current(lv.final ?? lv.stones, 1)
+                    }
                   } else {
                     const n = Math.min(30, Math.round(dt / STEP))
                     for (let k = 0; k < n && moving(lv.stones); k++) {
                       const sw =
                         sweepRef.current && lv.stones.includes(lv.thrown) ? lv.thrown : null
+                      // the steps swept are kept, so the call can slide this stone again exactly
+                      if (sw && lv.spans) addStep(lv.spans, lv.k ?? 0)
+                      lv.k = (lv.k ?? 0) + 1
                       lv.stones = step(lv.stones, sw, STEP, lv.knocked)
                     }
                     if (!moving(lv.stones)) {
@@ -456,7 +701,10 @@ export function CurlingDemo() {
                         s.vx = 0
                         s.vy = 0
                       }
-                      restedRef.current(settle(lv.stones, lv.thrown, lv.knocked.has(lv.thrown)), 0)
+                      restedRef.current(
+                        settle(lv.stones, lv.thrown, lv.knocked.has(lv.thrown)),
+                        lv.by,
+                      )
                     }
                   }
                 }
@@ -563,7 +811,7 @@ export function CurlingDemo() {
                   ctx.stroke()
                 }
                 // the sweepers' brooms, just ahead of your stone
-                if (now && now.by === 0 && sweepRef.current && now.stones.includes(now.thrown)) {
+                if (now && now.mine && sweepRef.current && now.stones.includes(now.thrown)) {
                   const x = X(now.thrown.y + 0.5)
                   const y = Y(now.thrown.x)
                   ctx.strokeStyle = sv.ice === 'night' ? '#fff' : '#1b2a3a'
@@ -657,13 +905,15 @@ export function CurlingDemo() {
         )}
       </div>
 
-      <p className="sun-reading">
-        <span className="muted">
-          {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
-          {rec.drawn ? `, drawn ${rec.drawn}` : ''}
-          {rec.bestEnd ? ` · your best end ${rec.bestEnd}` : ''}
-        </span>
-      </p>
+      {mode === 'bot' && (
+        <p className="sun-reading">
+          <span className="muted">
+            {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
+            {rec.drawn ? `, drawn ${rec.drawn}` : ''}
+            {rec.bestEnd ? ` · your best end ${rec.bestEnd}` : ''}
+          </span>
+        </p>
+      )}
       <div className="fw-panel">
         <section aria-label="Look">
           <h3 className="fw-h">Ice</h3>
@@ -696,7 +946,10 @@ export function CurlingDemo() {
         mark to knock out whatever is there. A stone that stops short of the red hog line comes off,
         unless it touched another. When all eight are thrown, the side nearest the button scores one
         for each stone nearer than the other side’s best, and the other side takes the hammer — the
-        last stone — next end.
+        last stone — next end. In a call, 👥 With the call puts a friend on the red stones, or the
+        two of you on yellow taking turns against the computer; you sweep your own stones, and
+        everybody sees each one slide just as it slid for whoever threw it. A game in a call is four
+        ends.
       </p>
     </div>
   )

@@ -183,3 +183,18 @@ describe('what is kept', () => {
     expect(readSaved('{')).toEqual(EMPTY)
   })
 })
+
+describe('the computer taking up a ball where it lies', () => {
+  it('plays on from that spot, counting the strokes already taken there', () => {
+    const h = COURSE[2]
+    const mid = roll(h, h.tee, -Math.PI / 2, 0.25).end
+    const r = playHole(h, 'easy', rng(4), mid, 3)
+    expect(r.putts[0].from).toEqual(mid)
+    expect(r.strokes).toBeGreaterThan(3)
+    expect(r.strokes).toBeLessThanOrEqual(PICK_UP)
+    // and picks the ball up at PICK_UP counting the ones it came with: one putt left to play
+    const late = playHole(h, 'easy', rng(4), mid, PICK_UP - 1)
+    expect(late.putts).toHaveLength(1)
+    expect(late.strokes).toBe(PICK_UP)
+  })
+})

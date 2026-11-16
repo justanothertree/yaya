@@ -1342,6 +1342,16 @@ function place(g, x, y) {
   if (!g.inHand || !canPlace(g, x, y)) return g;
   return place_(g, { x, y });
 }
+function spotFree(balls, n, at2, along) {
+  const free = (x, y) => x >= R && x <= TW - R && y >= R && y <= TH - R && balls.every((b) => b.down || b.n === n || Math.hypot(b.x - x, b.y - y) >= 2 * R + 2e-3);
+  for (let k = 0; k <= 400; k++)
+    for (const way of k ? [1, -1] : [1]) {
+      const d = way * k * R * 0.25;
+      const p = along === "y" ? { x: at2.x, y: at2.y + d } : { x: at2.x + d, y: at2.y };
+      if (free(p.x, p.y)) return p;
+    }
+  return at2;
+}
 function shoot(g, angle, power, record = false) {
   const legal = targets(g);
   const { balls, log } = strike(g.balls, angle, power, record);
@@ -1359,7 +1369,7 @@ function shoot(g, angle, power, record = false) {
   if (potted.includes(8)) {
     if (!g.broken) {
       const spot = balls.find((b) => b.n === 8);
-      Object.assign(spot, { x: FOOT.x, y: FOOT.y, down: false, vx: 0, vy: 0 });
+      Object.assign(spot, { ...spotFree(balls, 8, FOOT, "x"), down: false, vx: 0, vy: 0 });
     } else {
       const earned = !foul && groups[w] !== null && left({ ...g, balls }, groups[w]) === 0 && legal.includes(8);
       return {
@@ -1385,7 +1395,12 @@ function shoot(g, angle, power, record = false) {
   }
   if (scratch) {
     const cue = balls.find((b) => b.n === 0);
-    Object.assign(cue, { down: false, x: HEAD_X, y: TH / 2, vx: 0, vy: 0 });
+    Object.assign(cue, {
+      down: false,
+      ...spotFree(balls, 0, { x: HEAD_X, y: TH / 2 }, "y"),
+      vx: 0,
+      vy: 0
+    });
   }
   const mine = groups[w];
   const keep = !foul && potted.some((n) => mine ? groupOf(n) === mine : n !== 8);

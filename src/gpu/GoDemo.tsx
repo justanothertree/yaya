@@ -18,6 +18,11 @@ import {
   type Who,
 } from './goboard'
 import { useKept } from './kept'
+import { goRules } from './goRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
@@ -33,6 +38,10 @@ const colourName = (w: Who) => (w === 1 ? 'black' : 'white')
 
 export function GoDemo() {
   const [saved, setSaved] = useKept(GO_KEY, readSaved)
+  /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+  const [mode, setMode] = useState<'bot' | 'call'>('bot')
+  /** in a call, why a point was not played: the table speaks for the turn, this for the rules */
+  const [note, setNote] = useState<string | null>(null)
   const [level, setLevel] = useState<Level>(saved.level)
   const [you, setYou] = useState<Who>(1)
   const [game, setGame] = useState<Game>(newGame)
@@ -47,6 +56,45 @@ export function GoDemo() {
   const levelRef = useRef(level)
   const recorded = useRef(false)
   useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  /* ── the call's room: the game travels as its moves, replayed by goboard.ts itself */
+  const lab = useLabRoom('go', goRules)
+  const words = tableSeats(lab, goRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the game on screen: the call's in a call, else this one */
+  const view = room ? room.game.g : game
+  /** the colour I play in a call: white only in seat 1 of a versus game */
+  const mine: Who = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+  const myMove = !!room && lab.live && myTurn(goRules, room)
+  const nameOf = (w: Who) =>
+    room
+      ? room.mode === 'together'
+        ? w === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[w - 1])
+      : w === you
+        ? 'You'
+        : 'The computer'
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their colour — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r0 = room ?? lab.room
+    setMode('bot')
+    setNote(null)
+    if (!r0 || r0.game.g.over) return fresh()
+    window.clearTimeout(timer.current)
+    youRef.current = mine
+    levelRef.current = saved.level
+    recorded.current = false
+    setYou(mine)
+    setLevel(saved.level)
+    setEnd(null)
+    setThinking(false)
+    after(r0.game.g, 'Carrying on against the computer.')
+  }
 
   const finish = (g: Game, resigned?: Who) => {
     const s = score(g.board)
@@ -96,15 +144,18 @@ export function GoDemo() {
   }
 
   const tap = (i: number) => {
-    if (end || thinking || game.turn !== you) return
-    if (game.board[i]) return setLine('That point is taken.')
-    const next = play(game, i)
-    if (!next)
-      return setLine(
-        i === game.ko
-          ? 'Ko: that stone cannot be taken straight back — play elsewhere first.'
-          : 'No liberty there: a stone may not fill its own last breath unless it captures.',
-      )
+    if (room) {
+      // in the call the host decides: this asks it, and the board comes back with everybody's
+      if (!myMove) return
+      const why = whyNot(view, i)
+      setNote(why)
+      if (!why) lab.act({ t: 'move', move: i })
+      return
+    }
+    if (mode !== 'bot' || end || thinking || game.turn !== you) return
+    const why = whyNot(game, i)
+    if (why) return setLine(why)
+    const next = play(game, i)!
     const caught = next.taken[you] - game.taken[you]
     after(
       next,
@@ -114,9 +165,22 @@ export function GoDemo() {
     )
   }
   const pass = () => {
+    if (room) {
+      if (myMove) lab.act({ t: 'move', move: PASS })
+      return
+    }
     if (end || thinking || game.turn !== you) return
     after(play(game, PASS)!, 'You pass.')
   }
+  /** why a point cannot be played now, in the rules' own words, or null when it can */
+  const whyNot = (g: Game, i: number) =>
+    g.board[i]
+      ? 'That point is taken.'
+      : play(g, i)
+        ? null
+        : i === g.ko
+          ? 'Ko: that stone cannot be taken straight back — play elsewhere first.'
+          : 'No liberty there: a stone may not fill its own last breath unless it captures.'
   const resign = () => {
     if (end || game.moves === 0) return
     window.clearTimeout(timer.current)
@@ -155,56 +219,112 @@ export function GoDemo() {
     refs.current[r * N + c]?.focus()
   }
 
-  const s = score(game.board)
+  const s = score(view.board)
   const r = saved.record[saved.level]
   return (
     <div className={`lab-keys go-room is-${saved.board}`}>
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer plays">
-          {LEVELS.map((l) => (
+        {(lab.live || mode === 'call') && (
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
-              key={l}
               className="btn btn-ghost"
-              aria-pressed={saved.level === l}
+              aria-pressed={mode === 'bot'}
               onClick={() => {
-                setSaved((x) => ({ ...x, level: l }))
-                if (game.moves === 0 || end) fresh(l)
+                setMode('bot')
+                setNote(null)
+                fresh()
               }}
             >
-              {LEVEL_NAMES[l]}
+              Against the computer
             </button>
-          ))}
-        </div>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                window.clearTimeout(timer.current)
+                setThinking(false)
+                setMode('call')
+              }}
+            >
+              👥 With the call
+            </button>
+          </div>
+        )}
+        {mode === 'bot' && (
+          <div className="lab-group" role="group" aria-label="How well the computer plays">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                className="btn btn-ghost"
+                aria-pressed={saved.level === l}
+                onClick={() => {
+                  setSaved((x) => ({ ...x, level: l }))
+                  if (game.moves === 0 || end) fresh(l)
+                }}
+              >
+                {LEVEL_NAMES[l]}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           className="btn btn-ghost"
           onClick={pass}
-          disabled={!!end || thinking || game.turn !== you}
+          disabled={room ? !myMove : mode !== 'bot' || !!end || thinking || game.turn !== you}
         >
           Pass
         </button>
-        <button className="btn btn-ghost" onClick={resign} disabled={!!end || game.moves === 0}>
-          Resign
-        </button>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode === 'bot' && (
+          <>
+            <button className="btn btn-ghost" onClick={resign} disabled={!!end || game.moves === 0}>
+              Resign
+            </button>
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          </>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={goRules}
+          sides={['Black', 'White']}
+          levelNames={LEVEL_NAMES}
+          score={(d) => {
+            const c = score(d.g.board)
+            return `, black ${c.black} to white ${c.white} with ${KOMI} komi`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([1, 2] as Who[]).map((w) => (
-          <div key={w} className={`dice-score${game.turn === w && !end ? ' is-up' : ''}`}>
+          <div
+            key={w}
+            className={`dice-score${view.turn === w && !(room ? view.over : end) ? ' is-up' : ''}`}
+          >
             <span>
-              {w === you ? 'You' : 'The computer'} · {colourName(w)}
+              {nameOf(w)} · {colourName(w)}
             </span>
             <strong>{w === 1 ? s.black : s.white}</strong>
             <span className="muted">
-              {w === 2 ? `with ${KOMI} komi · ` : ''}took {game.taken[w]}
+              {w === 2 ? `with ${KOMI} komi · ` : ''}took {view.taken[w]}
             </span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {end ?? line}
-      </p>
+      {mode === 'call' ? (
+        note && (
+          <p className="muted mc-note" aria-live="polite">
+            {note}
+          </p>
+        )
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {end ?? line}
+        </p>
+      )}
 
       <div
         className="go-board"
@@ -223,7 +343,7 @@ export function GoDemo() {
             <circle key={i} cx={i % N} cy={Math.floor(i / N)} r={0.09} />
           ))}
         </svg>
-        {game.board.map((st, i) => (
+        {view.board.map((st, i) => (
           <button
             key={i}
             ref={(el) => {
@@ -233,7 +353,7 @@ export function GoDemo() {
             className={[
               'go-pt',
               st ? `is-s${st}` : '',
-              game.last === i ? 'is-last' : '',
+              view.last === i ? 'is-last' : '',
               saved.shade && !st && s.owner[i] ? `own-${s.owner[i]}` : '',
             ]
               .filter(Boolean)
@@ -243,7 +363,7 @@ export function GoDemo() {
               top: `${(Math.floor(i / N) + 0.5) * (100 / N)}%`,
             }}
             tabIndex={i === cursor ? 0 : -1}
-            aria-label={`${pointName(i)}: ${st ? `${colourName(st as Who)} stone` : 'empty'}${game.last === i ? ', the last move' : ''}`}
+            aria-label={`${pointName(i)}: ${st ? `${colourName(st as Who)} stone` : 'empty'}${view.last === i ? ', the last move' : ''}`}
             onFocus={() => setCursor(i)}
             onClick={() => {
               setCursor(i)
@@ -254,13 +374,15 @@ export function GoDemo() {
           </button>
         ))}
       </div>
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost} · you play{' '}
-          {colourName(you)}, and swap each game
-        </span>
-      </p>
-      {level !== saved.level && game.moves > 0 && !end && (
+      {mode === 'bot' && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost} · you play{' '}
+            {colourName(you)}, and swap each game
+          </span>
+        </p>
+      )}
+      {mode === 'bot' && level !== saved.level && game.moves > 0 && !end && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
       <div className="fw-panel">

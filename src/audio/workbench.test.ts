@@ -32,6 +32,8 @@ const layer = (over: Partial<Layer> = {}): Layer => ({
   play: [true, false, true, true],
   plan: [0, null, 1, 0],
   fx,
+  /* ⚠️ an empty bar between two lines, so a writer that closed the gap would move the words */
+  lyrics: ['one two', '', 'three'],
   events: [
     { t: 0, midi: 36, on: true },
     { t: 0.25, midi: 36, on: false },
@@ -78,6 +80,7 @@ describe('a bench survives a reload', () => {
     expect(l.play).toEqual([true, false, true, true])
     expect(l.plan).toEqual([0, null, 1, 0])
     expect(l.fx).toEqual(fx)
+    expect(l.lyrics, 'the words a reload would otherwise lose').toEqual(['one two', '', 'three'])
     /* the notes, as pitches and moments rather than as a count */
     expect(l.events.filter((e) => e.on).map((e) => e.midi)).toEqual([36, 38])
     expect(l.events.filter((e) => e.on).map((e) => e.t)).toEqual([0, 1])

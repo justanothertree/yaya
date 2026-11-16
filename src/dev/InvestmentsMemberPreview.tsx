@@ -181,6 +181,40 @@ const CASES: Case[] = [
     account: { ...base, id: 'pv-6', name: 'Sable', holdings: holdings(STALE) },
   },
   {
+    /**
+     * ⚠️ THE CASE ABOVE IS THE FEED STOPPING; THIS IS ONE SYMBOL IT GAVE UP ON, and the
+     * difference is the whole point. `pricedAsOf` is the NEWEST price on the account —
+     * deliberately, so a single missed run stays quiet — which means an abandoned symbol is
+     * invisible there however old it gets: it is one date among many and the maximum does not
+     * move. `finance.store_prices` only writes a quote above zero, so a delisted symbol keeps
+     * its last price and its last date for ever while every sweep passes over it.
+     *
+     * Live on 14 Nov 2026: FATAQ, 30 units held by all 33 accounts, priced $0.0001 on 17 Sep —
+     * 58 days, with `pricesStale` false the whole time. Here it is worth $44 rather than three
+     * tenths of a cent, because the card only speaks above the `isDust` dollar and the real one
+     * is below it — the quiet case is covered by `accountNumbers.test.ts`, and this is the one
+     * that has to be legible on screen.
+     */
+    label: 'One holding the feed gave up on',
+    what: 'Prices fresh except for one symbol, stuck on a quote from seven weeks ago. The feed is healthy, so the "prices haven’t updated" warning must stay off — and the card still has to say which holding is being counted at an old price, and for how much.',
+    account: {
+      ...base,
+      id: 'pv-6b',
+      name: 'Rowan',
+      holdings: [
+        ...holdings(),
+        {
+          symbol: 'FATAQ',
+          assetType: 'stock',
+          units: 30,
+          netCash: 52,
+          price: 1.47,
+          priceAt: iso(Date.now() - 58 * DAY),
+        },
+      ],
+    },
+  },
+  {
     label: 'A holding with no price',
     what: 'One symbol the price sweep has never seen. It must not be silently counted as worth zero.',
     account: {
