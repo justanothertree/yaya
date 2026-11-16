@@ -18,6 +18,8 @@ import { LEVELS as MORRIS_LEVELS } from '../../gpu/morris'
 import { morrisRules } from '../../gpu/morrisRoom'
 import { LEVELS as HEX_LEVELS, SIZES as HEX_SIZES } from '../../gpu/hex'
 import { hexRules, readHexSettings } from '../../gpu/hexRoom'
+import { LEVELS as ULTIMATE_LEVELS } from '../../gpu/ultimate'
+import { ultimateRules } from '../../gpu/ultimateRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -104,6 +106,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     levels: HEX_LEVELS,
     sizes: HEX_SIZES,
   },
+  ultimate: { name: MATCH_NAMES.ultimate, rulesFor: () => ultimateRules, levels: ULTIMATE_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
