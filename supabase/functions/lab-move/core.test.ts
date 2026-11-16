@@ -30,6 +30,8 @@ import {
   owner,
 } from '../../../src/gpu/draughts'
 import { draughtsRules, replay as draughtsReplay } from '../../../src/gpu/draughtsRoom'
+import { choose as dotsChoose, lineCount } from '../../../src/gpu/dots'
+import { replay as dotsReplay } from '../../../src/gpu/dotsRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -598,5 +600,91 @@ describe('draughts by turns: a move is the whole path its piece takes', () => {
     for (const state of [{ moves: [[0, 4]] }, { moves: [first, first] }, { moves: 'none' }])
       expect(status(decide({ ...row, state }, A, move(0, first)))).toBe(500)
     expect(GAMES.draughts({})!.rules).toBe(draughtsRules)
+  })
+})
+
+describe('dots and boxes by turns: a closed box keeps the turn', () => {
+  const db = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'dots', settings: { size: 4 }, ...over })
+  const game = (state: unknown) => {
+    const o = state as { n: number; lines: number[] }
+    return dotsReplay(o.n, o.lines)!
+  }
+
+  it('plays versus to the end, the winner whoever owns more boxes on the board', () => {
+    const seen = new Set<string>()
+    let kept = 0
+    for (let seed = 1; seed <= 20; seed++) {
+      const rnd = seeded(seed)
+      const size = 3 + (seed % 4)
+      const { row, plans } = playOut(db({ settings: { size } }), (r) =>
+        dotsChoose(game(r.state).g, seed % 2 ? 'fair' : 'easy', rnd),
+      )
+      expect(row.status).toBe('finished')
+      // a line that closes a box leaves the turn with whoever drew it
+      let before = after(
+        db({ settings: { size } }),
+        decide(db({ settings: { size } }), B, { op: 'accept' }),
+      )
+      for (const p of plans) {
+        if (p.kind !== 'commit') throw new Error('refused')
+        const boxes = (st: unknown) => game(st).g.owner.filter((o) => o !== -1).length
+        if (p.turn !== null && boxes(p.state) > boxes(before.state)) {
+          expect(p.turn).toBe(before.turn)
+          kept++
+        }
+        before = after(before, p)
+      }
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') continue
+      // asked of the boxes themselves, not of the running score
+      const owned = [0, 1].map((w) => game(last.state).g.owner.filter((o) => o === w).length)
+      expect(owned[0] + owned[1]).toBe(size * size)
+      const winner = owned[0] > owned[1] ? 0 : owned[1] > owned[0] ? 1 : 'draw'
+      expect(last.result).toEqual({ winner, score: `${owned[0]}–${owned[1]}` })
+      seen.add(String(winner))
+    }
+    expect(kept).toBeGreaterThan(0)
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('together: the computer draws its whole run in the same call, and a friend moves next', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 11)
+      const start = db({ mode: 'together', settings: { size: 5, level } })
+      const { row, plans } = playOut(start, (r) => dotsChoose(game(r.state).g, 'easy', rnd))
+      expect(row.status).toBe('finished')
+      let longest = 0
+      for (const p of plans) {
+        if (p.kind !== 'commit') throw new Error('refused')
+        expect([0, 1, null]).toContain(p.turn)
+        longest = Math.max(longest, p.move.then?.length ?? p.move.replies ?? 0)
+      }
+      // a run longer than one line is what makes this toy different from the others
+      expect(longest).toBeGreaterThan(1)
+    }
+  })
+
+  it('refuses a size the toy does not offer, a line drawn twice and a line off the board', () => {
+    expect(status(decide(db({ settings: { size: 7 } }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(db({ settings: { size: '4' } }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(db({ settings: {} }), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && (begun.state as { n: number }).n).toBe(4)
+    const row = after(db(), decide(db(), B, { op: 'accept' }))
+    const one = after(row, decide(row, A, move(0, 0)))
+    const who = one.turn === 0 ? A : B
+    expect(status(decide(one, who, move(1, 0)))).toBe(400)
+    expect(status(decide(one, who, move(1, lineCount(game(one.state).g.b))))).toBe(400)
+    expect(status(decide(one, who, move(1, 1)))).toBe('commit')
+  })
+
+  it('refuses a stored game no board could have come from', () => {
+    const row = after(db(), decide(db(), B, { op: 'accept' }))
+    for (const state of [
+      { n: 4, lines: [3, 3] },
+      { n: 7, lines: [] },
+      { n: 4, lines: [999] },
+    ])
+      expect(status(decide({ ...row, state }, A, move(0, 5)))).toBe(500)
   })
 })
