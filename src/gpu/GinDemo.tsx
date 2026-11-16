@@ -18,6 +18,13 @@ import {
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { totals as ginTotals, type GinGame } from './ginRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', hard: 'Hard' }
 const FELT_NAMES: Record<Saved['felt'], string> = { green: 'Green', blue: 'Blue', red: 'Red' }
@@ -70,7 +77,18 @@ const laidOut = (cards: Card[]) => {
   }
 }
 
+const MATCH_LEVELS = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
+
 export function GinDemo() {
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): the hands are
+     kept back by the server (ginRoom.ts) and each player's is fetched from lab-move */
+  const lm = useLabMatch('gin', { preview: false })
+  if (lm.id) return <GinMatch lm={lm} />
+  return <GinAlone />
+}
+
+function GinAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(GIN_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [hand, setHand] = useState<Hand>(() => deal((Math.random() * 2 ** 31) | 0, 0))
@@ -229,6 +247,7 @@ export function GinDemo() {
         <button className="btn btn-ghost" onClick={() => nextHand(true)}>
           ↻ New game
         </button>
+        {signedIn && <MatchChallenge demo="gin" settings={{}} levelNames={MATCH_LEVELS} />}
       </div>
       <div className="dice-scores">
         <div className={`dice-score${hand.turn === 0 && !hand.over ? ' is-up' : ''}`}>
@@ -390,6 +409,225 @@ export function GinDemo() {
         and scores 25 more. No deadwood at all is gin: 25 and everything it holds. First to a
         hundred. Easy throws any loose card; Hard keeps what can still make a meld and steers clear
         of what you are collecting.
+      </p>
+    </div>
+  )
+}
+
+/** a match by turns: the table as both players see it, and my own hand as lab-move shows it me */
+function GinMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(GIN_KEY, readSaved)
+  const g = lm.shown as GinGame | null
+  const together = lm.view?.mode === 'together'
+  const side: 0 | 1 = together ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs: 0 | 1 = side === 0 ? 1 : 0
+  const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+  const [hand, setHand] = useState<Card[] | null>(null)
+  const [fresh, setFresh] = useState<Card | null>(null)
+  const [picked, setPicked] = useState<Card | null>(null)
+  const [cursor, setCursor] = useState(0)
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const before = useRef<Card[] | null>(null)
+  /* my hand, asked of lab-move after every move: it shows each player theirs and nobody the other's */
+  const seq = lm.view?.seq
+  const active = lm.view?.status === 'active' || lm.view?.status === 'finished'
+  useEffect(() => {
+    if (!lm.id || !active) return
+    let live = true
+    myHidden(lm.id)
+      .then((h) => {
+        if (!live || !Array.isArray(h)) return
+        const now = h as Card[]
+        const was = before.current
+        // the card that has just come in, if one has: the one to look for
+        setFresh(
+          was && now.length === was.length + 1 ? (now.find((c) => !was.includes(c)) ?? null) : null,
+        )
+        before.current = now
+        setHand(now)
+        setPicked(null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, active])
+
+  const t = g ? ginTotals(g) : [0, 0]
+  const myTurn = !!g && lm.canPlay
+  const drawing = myTurn && g.phase === 'draw'
+  const throwing = myTurn && g.phase === 'discard' && !!hand && hand.length === 11
+  const top = g?.pile[g.pile.length - 1]
+  const mine = hand ? laidOut(hand) : null
+  const after = picked !== null && hand ? arrange(hand.filter((c) => c !== picked)).points : null
+  const last = g?.done[g.done.length - 1] ?? null
+  const newHand = g && last && g.pile.length === 1 && g.phase === 'draw'
+  const lastWords = (() => {
+    if (!last) return ''
+    const who = (w: 0 | 1) => (w === side ? (together ? 'You two' : 'You') : them)
+    return last.how === 'void'
+      ? 'The last hand ran out with nobody out: no score.'
+      : last.how === 'gin'
+        ? `${who(last.winner!)} went gin: +${last.points}.`
+        : last.how === 'undercut'
+          ? `${who(last.knocker!)} knocked, and ${who(last.winner!).toLowerCase() === 'you' ? 'you' : who(last.winner!)} undercut: +${last.points}.`
+          : `${who(last.knocker!)} knocked: +${last.points}.`
+  })()
+  const words = !g
+    ? ''
+    : lm.view?.status === 'finished'
+      ? lastWords
+      : drawing
+        ? `${newHand ? `${lastWords} A new hand. ` : ''}Your draw: the stock, or the ${top !== undefined ? longName(top) : 'pile'}.`
+        : throwing
+          ? fresh !== null
+            ? `You drew the ${longName(fresh)}. Pick a card to discard.`
+            : 'Pick a card to discard.'
+          : `${newHand ? `${lastWords} ` : ''}${together && lm.view?.turn !== lm.view?.you ? 'Your partner' : them} is ${g.phase === 'draw' ? 'drawing' : 'choosing a discard'}.`
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!mine || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const n = Math.max(0, Math.min(mine.list.length - 1, cursor + (e.key === 'ArrowLeft' ? -1 : 1)))
+    setCursor(n)
+    refs.current[n]?.focus()
+  }
+  const back = `pk-card is-back tw-back is-${saved.back}`
+  const theirCount = g && !g.between ? (g.phase === 'discard' && g.turn === theirs ? 11 : 10) : 0
+  return (
+    <div className={`lab-keys gn-room is-${saved.felt}`}>
+      <MatchBar lm={lm} sides={['the first to draw', 'the second to draw']} />
+      {g && (
+        <>
+          <div className="dice-scores">
+            <div className={`dice-score${g.turn === side && !g.between ? ' is-up' : ''}`}>
+              <span>{together ? 'You two' : 'You'}</span>
+              <strong>{t[side]}</strong>
+              <span className="muted">deadwood {mine ? mine.points : '…'}</span>
+            </div>
+            <div className={`dice-score${g.turn === theirs && !g.between ? ' is-up' : ''}`}>
+              <span>{them}</span>
+              <strong>{t[theirs]}</strong>
+              <span className="muted">to {g.target}</span>
+            </div>
+          </div>
+          {words && (
+            <p className="mc-line" aria-live="polite">
+              {words}
+            </p>
+          )}
+          {!g.between && (
+            <div className="gn-table">
+              <div
+                className="gn-theirs"
+                role="img"
+                aria-label={`${them} holds ${theirCount} cards`}
+              >
+                {Array.from({ length: theirCount }, (_, k) => (
+                  <span key={k} className={`${back} gn-back`} />
+                ))}
+              </div>
+              <div className="gn-middle">
+                <button
+                  className="gn-pile"
+                  onClick={() => lm.commit({ draw: 'stock' })}
+                  disabled={!drawing || lm.busy}
+                  aria-label={`Draw from the stock, ${g.stockLeft} cards`}
+                >
+                  <span className={back}>
+                    <span className="gn-count">{g.stockLeft}</span>
+                  </span>
+                </button>
+                <button
+                  className="gn-pile"
+                  onClick={() => lm.commit({ draw: 'pile' })}
+                  disabled={!drawing || lm.busy || top === undefined}
+                  aria-label={
+                    top !== undefined
+                      ? `Take the ${longName(top)} from the pile`
+                      : 'The pile is empty'
+                  }
+                >
+                  {top !== undefined ? <Face c={top} /> : <span className="gn-empty" />}
+                </button>
+              </div>
+            </div>
+          )}
+          {mine && !g.between && (
+            <div
+              className="gn-hand"
+              role="group"
+              aria-label="Your hand, melds first. Left and right arrows move along it; Enter picks a card to discard."
+              onKeyDown={onKey}
+            >
+              {mine.list.map(({ c, meld }, k) => (
+                <button
+                  key={c}
+                  ref={(el) => {
+                    refs.current[k] = el
+                  }}
+                  className={`gn-mine${picked === c ? ' is-picked' : ''}${fresh === c ? ' is-new' : ''}`}
+                  tabIndex={k === cursor ? 0 : -1}
+                  aria-label={`${longName(c)}${meld >= 0 && saved.melds ? ', in a meld' : ', deadwood'}${g.took === c ? ', just taken from the pile' : fresh === c ? ', just drawn' : ''}`}
+                  onFocus={() => setCursor(k)}
+                  onClick={() => {
+                    setCursor(k)
+                    if (throwing) setPicked(picked === c ? null : c)
+                  }}
+                >
+                  <Face c={c} tint={saved.melds && meld >= 0 ? meld : undefined} />
+                </button>
+              ))}
+            </div>
+          )}
+          {picked !== null && throwing && (
+            <div className="lab-controls">
+              <button
+                className="btn"
+                disabled={picked === g.took || lm.busy}
+                onClick={() => lm.commit({ discard: picked, knock: false })}
+              >
+                {picked === g.took ? 'Just taken — keep it' : `Discard the ${longName(picked)}`}
+              </button>
+              {after !== null && after <= 10 && picked !== g.took && (
+                <button
+                  className="btn"
+                  disabled={lm.busy}
+                  onClick={() => lm.commit({ discard: picked, knock: true })}
+                >
+                  {after === 0 ? '✨ Gin!' : `Knock with ${after}`}
+                </button>
+              )}
+            </div>
+          )}
+          {last && (
+            <details className="gn-last" open={lm.view?.status === 'finished' || !!newHand}>
+              <summary>Hand {g.done.length}, laid down</summary>
+              {[side, theirs].map((s) => (
+                <div
+                  key={s}
+                  className="gn-theirs"
+                  role="img"
+                  aria-label={`${s === side ? 'Your' : `${them}’s`} last hand: ${[...last.shown[s].melds.flat(), ...last.shown[s].dead].map(longName).join(', ')}`}
+                >
+                  {laidOut([...last.shown[s].melds.flat(), ...last.shown[s].dead]).list.map(
+                    ({ c, meld }) => (
+                      <Face key={c} c={c} tint={meld >= 0 ? meld : undefined} />
+                    ),
+                  )}
+                </div>
+              ))}
+            </details>
+          )}
+        </>
+      )}
+      <p className="muted lab-hint">
+        Gin by turns, first to {g?.target ?? 50}: each hand is dealt by the server and your cards
+        are shown to you alone. Draw from the stock or the pile, then discard; knock at ten deadwood
+        or less, or go gin with none. When a hand ends both are laid down and the next is dealt.
+        {together
+          ? ' Together, the two of you hold one hand and take its draws and discards in turn.'
+          : ''}
       </p>
     </div>
   )

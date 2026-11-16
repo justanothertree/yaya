@@ -3392,3 +3392,77 @@ describe('rock, paper, scissors by turns: the first move of each round sealed', 
     }
   })
 })
+
+describe('gin rummy by turns: the hands kept back, dealt by the server', () => {
+  const gn = (over: Partial<Row> = {}) => invite({ demo_id: 'gin', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as number[]
+  }
+  type Sec = { hands: number[][]; stock: number[] }
+
+  it('deals with the yes, and shows each player their own hand and nobody the other’s', () => {
+    const p0 = decide(gn(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(sec.hands[0]).toHaveLength(10)
+    expect(sec.hands[1]).toHaveLength(10)
+    expect(JSON.stringify(p0.state)).not.toMatch(/hands|"stock"/)
+    const row = after(gn(), p0)
+    expect(mine(row, A)).toEqual(sec.hands[0])
+    expect(mine(row, B)).toEqual(sec.hands[1])
+  })
+
+  it('takes a draw and then a discard from the same player, the stock’s card seen only by them', () => {
+    let row = after(gn(), decide(gn(), B, { op: 'accept' }))
+    const before = row.secret as Sec
+    const p = decide(row, A, move(row.seq, { draw: 'stock' }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { draw: 'stock' } })
+    row = after(row, p)
+    expect(row.turn).toBe(0)
+    const drawn = before.stock[0]
+    expect(mine(row, A)).toContain(drawn)
+    expect(JSON.stringify(row.state)).not.toContain(`${drawn},`)
+    // a card Ann does not hold, or a knock she cannot make, is refused
+    expect(
+      status(decide(row, A, move(row.seq, { discard: before.hands[1][0], knock: false }))),
+    ).toBe(400)
+    const q = decide(row, A, move(row.seq, { discard: drawn, knock: false }))
+    if (q.kind !== 'commit') throw new Error('refused')
+    row = after(row, q)
+    expect(row.turn).toBe(1)
+    expect((row.state as { pile: number[] }).pile.at(-1)).toBe(drawn)
+  })
+
+  it('refuses a stored hand that is not one deck with the table', () => {
+    const row = after(gn(), decide(gn(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = { ...sec, stock: [...sec.stock.slice(1), sec.hands[1][0]] }
+    expect(status(decide({ ...row, secret: twice }, A, move(row.seq, { draw: 'stock' })))).toBe(500)
+  })
+
+  it('together: the friends take the team’s half-turns in turn, and the computer its whole turn in the same call', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = gn({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      row = after(row, decide(row, A, move(row.seq, { draw: 'stock' })))
+      // Bo throws: the team's second half-turn is his
+      expect(row.turn).toBe(1)
+      const hand = mine(row, B)
+      const st = row.state as { took: number | null }
+      const p = decide(
+        row,
+        B,
+        move(row.seq, { discard: hand.find((c) => c !== st.took)!, knock: false }),
+      )
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      // the computer's draw and discard came back with it, unless its draw ended the hand
+      const replies = (p.move as { then?: unknown[] }).then ?? []
+      expect(replies.length).toBeGreaterThanOrEqual(2)
+      row = after(row, p)
+      expect(row.turn).toBe(0)
+    }
+  })
+})
