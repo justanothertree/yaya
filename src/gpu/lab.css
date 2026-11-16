@@ -2437,6 +2437,19 @@ html:has(.lab) {
 .tw-hint {
   font-weight: 700;
 }
+/* a duel by turns, at its end: every round, both sides, side by side */
+.tw-duel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.tw-duel th,
+.tw-duel td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.25));
+  text-align: left;
+}
 .tw-acts .btn {
   min-height: 44px;
 }

@@ -93,6 +93,12 @@ import {
 import { liarsRules, readLiarsSettings, type LiarsGame } from '../../../src/gpu/liarsRoom'
 import { holdemRules, type HoldemGame } from '../../../src/gpu/holdemRoom'
 import { duelRules, pressesBoth, readDuelSettings, type DuelGame } from '../../../src/gpu/lampsDuel'
+import {
+  chipsOf as twentyOneChips,
+  readTwentyOneSettings,
+  twentyOneRules,
+  type TwentyOneGame,
+} from '../../../src/gpu/twentyoneDuel'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -304,6 +310,16 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     return {
       rules: duelRules(set.size, set.pattern),
       score: (g: DuelGame) => pressesBoth(g)?.join('–') ?? '',
+    }
+  },
+  twentyone: (s) => {
+    const set = readTwentyOneSettings(s)
+    if (set === null) return null
+    // each side's chips at the end, the challenger's first
+    return {
+      rules: twentyOneRules(set.rounds),
+      score: (g: TwentyOneGame) =>
+        g.shown ? (twentyOneChips(g.shown.seeds, g.shown.acts) ?? []).join('–') : '',
     }
   },
 }
