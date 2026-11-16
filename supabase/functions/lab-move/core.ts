@@ -43,6 +43,7 @@ import { bowlingRules, type BowlingGame } from '../../../src/gpu/bowlingRoom'
 import { totals as curlingTotals } from '../../../src/gpu/curling'
 import { curlingMatchRules, type CurlingGame } from '../../../src/gpu/curlingRoom'
 import { puttRules, totals as puttTotals, type PuttGame } from '../../../src/gpu/puttRoom'
+import { dartsMatchRules, type DartsGame } from '../../../src/gpu/dartsRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -138,6 +139,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     rules: puttRules,
     // strokes over the round, the first ball's first: the lower wins
     score: (g: PuttGame) => puttTotals(g).join('–'),
+  }),
+  darts: () => ({
+    rules: dartsMatchRules,
+    // legs won, the first thrower's first
+    score: (g: DartsGame) => g.legs.join('–'),
   }),
 }
 
