@@ -46,6 +46,7 @@ import { puttRules, totals as puttTotals, type PuttGame } from '../../../src/gpu
 import { dartsMatchRules, type DartsGame } from '../../../src/gpu/dartsRoom'
 import { backgammonRules, worth, type BackgammonGame } from '../../../src/gpu/backgammonRoom'
 import { readSeaSettings, seaRules, type SeaGame } from '../../../src/gpu/seabattleRoom'
+import { diceRules, type DiceGame } from '../../../src/gpu/diceRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -162,6 +163,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
           score: (g: SeaGame) => `${g.seen[0].sunk.length}–${g.seen[1].sunk.length}`,
         }
   },
+  dice: () => ({
+    rules: diceRules,
+    // the two scores banked, the challenger's first
+    score: (g: DiceGame) => g.scores.map((n) => n.toLocaleString('en-GB')).join('–'),
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

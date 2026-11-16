@@ -46,6 +46,7 @@ import { LEVELS as BACKGAMMON_LEVELS } from '../../gpu/backgammon'
 import { backgammonRules } from '../../gpu/backgammonRoom'
 import { LEVELS as SEA_LEVELS, SIZES as SEA_SIZES } from '../../gpu/seabattle'
 import { readSeaSettings, seaRules } from '../../gpu/seabattleRoom'
+import { diceRules } from '../../gpu/diceRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -178,6 +179,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     levels: SEA_LEVELS,
     sizes: SEA_SIZES,
   },
+  dice: { name: MATCH_NAMES.dice, rulesFor: () => diceRules, levels: ['fair'] },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
