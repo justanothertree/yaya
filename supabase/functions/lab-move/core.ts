@@ -35,6 +35,7 @@ import { fencesRules, readFencesSize } from '../../../src/gpu/fencesRoom'
 import { halmaRules } from '../../../src/gpu/halmaRoom'
 import { score as goScore } from '../../../src/gpu/goboard'
 import { goRules, type GoGame } from '../../../src/gpu/goRoom'
+import { foxRules } from '../../../src/gpu/foxRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -109,6 +110,7 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       return `${s.black}–${s.white}`
     },
   }),
+  fox: () => ({ rules: foxRules }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

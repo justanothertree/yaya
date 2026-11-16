@@ -22,11 +22,16 @@ import {
   type Side,
 } from './fox'
 import { useKept } from './kept'
-import { foxRules } from './foxRoom'
+import { foxRules, type FoxGame } from './foxRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -57,14 +62,26 @@ export function FoxDemo() {
   const refs = useRef<Map<number, HTMLButtonElement>>(new Map())
   const recorded = useRef(false)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. The seats
+     are the sides here too: the challenger herds the geese and the friend is the fox. */
+  const lm = useLabMatch('fox')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as FoxGame | null) : null
+
   /* ── the call's room: the seats are the sides, the geese first; the game travels as its paths */
   const lab = useLabRoom('fox', foxRules)
   const words = tableSeats(lab, foxRules)
-  const room = mode === 'call' ? lab.room : null
-  /** the game on screen: the call's in a call, else this one */
-  const view = room ? room.game.g : game
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** the game on screen: the match's, the call's in a call, else this one */
+  const view = matchGame ? matchGame.g : room ? room.game.g : game
   /** who plays a side, for its card: you, the computer, or the friend sitting there */
   const sideName = (s: Side) => {
+    if (inMatch && lm.view) {
+      if (lm.view.mode === 'together') return s === 'geese' ? 'you two' : 'computer'
+      return (s === 'geese' ? 0 : 1) === lm.view.you ? 'you' : otherName(lm.view)
+    }
     if (!room) return mode === 'bot' ? (you === s ? 'you' : 'computer') : ''
     if (room.mode === 'together') return s === 'geese' ? 'together' : 'computer'
     const who = words.who(room.seats[s === 'geese' ? 0 : 1])
@@ -72,8 +89,12 @@ export function FoxDemo() {
   }
 
   const done = over(view)
-  const computer = mode === 'bot' && !over(game) && game.turn !== you
-  const yours = room ? lab.live && myTurn(foxRules, room) : mode !== 'call' && !done && !computer
+  const computer = mode === 'bot' && !inMatch && !over(game) && game.turn !== you
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(foxRules, room)
+      : mode !== 'call' && !done && !computer
   const moves = yours ? movesFor(view) : []
   /** where the picked piece can end up, by the move with the most takes there */
   const targets = new Map<number, Move>()
@@ -163,6 +184,11 @@ export function FoxDemo() {
     setCursor(i)
     if (!yours) return
     const m = picked !== null ? targets.get(i) : undefined
+    if (m && inMatch) {
+      setPicked(null)
+      lm.play(m)
+      return
+    }
     if (m && room) {
       // in the call the host decides: this asks it, and the board comes back with everybody's
       setPicked(null)
@@ -179,6 +205,15 @@ export function FoxDemo() {
     }
     setPicked(null)
   }
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const d: Record<string, [number, number]> = {
       ArrowUp: [-1, 0],
@@ -235,76 +270,82 @@ export function FoxDemo() {
   }
   return (
     <div className={`lab-keys fg-room is-${saved.look}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['the geese', 'the fox']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                setMode('call')
-                setPicked(null)
-              }}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => {
+                  setMode('call')
+                  setPicked(null)
+                }}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <>
+              <div className="lab-group" role="group" aria-label="Your side">
+                {(['geese', 'fox'] as Side[]).map((s) => (
+                  <button
+                    key={s}
+                    className="btn btn-ghost"
+                    aria-pressed={you === s}
+                    onClick={() => {
+                      setSaved((x) => ({ ...x, side: s }))
+                      fresh('bot', s)
+                    }}
+                  >
+                    {s === 'geese' ? 'Geese' : '🦊 Fox'}
+                  </button>
+                ))}
+              </div>
+              <div className="lab-group" role="group" aria-label="How well the computer plays">
+                {LEVELS.map((l) => (
+                  <button
+                    key={l}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.level === l}
+                    onClick={() => {
+                      setSaved((s) => ({ ...s, level: l }))
+                      if (!game.plies || done) fresh(mode, you, l)
+                    }}
+                  >
+                    {LEVEL_NAMES[l]}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="fox" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
         </div>
-        {mode === 'bot' && (
-          <>
-            <div className="lab-group" role="group" aria-label="Your side">
-              {(['geese', 'fox'] as Side[]).map((s) => (
-                <button
-                  key={s}
-                  className="btn btn-ghost"
-                  aria-pressed={you === s}
-                  onClick={() => {
-                    setSaved((x) => ({ ...x, side: s }))
-                    fresh('bot', s)
-                  }}
-                >
-                  {s === 'geese' ? 'Geese' : '🦊 Fox'}
-                </button>
-              ))}
-            </div>
-            <div className="lab-group" role="group" aria-label="How well the computer plays">
-              {LEVELS.map((l) => (
-                <button
-                  key={l}
-                  className="btn btn-ghost"
-                  aria-pressed={saved.level === l}
-                  onClick={() => {
-                    setSaved((s) => ({ ...s, level: l }))
-                    if (!game.plies || done) fresh(mode, you, l)
-                  }}
-                >
-                  {LEVEL_NAMES[l]}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={foxRules}
@@ -336,7 +377,7 @@ export function FoxDemo() {
           <span className="muted">taken of {TAKE_TO_WIN}</span>
         </div>
       </div>
-      {mode !== 'call' && (
+      {mode !== 'call' && !inMatch && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -399,7 +440,8 @@ export function FoxDemo() {
         })}
       </div>
 
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             As the {you}: won {record.won}, lost {record.lost}
