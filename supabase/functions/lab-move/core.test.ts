@@ -90,7 +90,7 @@ import { replay as puttReplay } from '../../../src/gpu/puttRoom'
 import { aimFor, hitAt, land, SPREAD } from '../../../src/gpu/darts'
 import { dartsMatchRules, MAX_DARTS, tidy } from '../../../src/gpu/dartsRoom'
 import { plays as bgPlays } from '../../../src/gpu/backgammon'
-import { replay as bgReplay } from '../../../src/gpu/backgammonRoom'
+import { MAX_TURNS as BG_MAX_TURNS, replay as bgReplay } from '../../../src/gpu/backgammonRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2353,6 +2353,18 @@ describe('backgammon by turns: the server rolls every die', () => {
     const list = bgPlays(g.pos, g.turn!, g.dice!)
     return list[Math.floor(rnd() * list.length)].steps.map((s) => [s.from, s.to])
   }
+
+  it('keeps the longest game a match can hold inside its 16 KB column, every turn at its widest', () => {
+    // a double played four times, each step two two-digit points, for every turn there can be
+    const widest = [6, 6, 23, 17, 17, 11, 11, 15, 15, 24]
+    const state = {
+      open: [6, 5],
+      turns: Array.from({ length: BG_MAX_TURNS }, () => widest),
+      dice: [6, 6],
+    }
+    expect(BG_MAX_TURNS).toBe(300)
+    expect(jsonbBytes(state)).toBeLessThanOrEqual(16384)
+  })
 
   it('lets the opening roll say who starts: the higher die, playing both', () => {
     dice(2, 5)
