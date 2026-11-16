@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { challenge, challengeableFriends } from './cloud'
 import { matchToy } from './games'
+import { VERSUS_ONLY } from './names'
 import { matchHash } from './words'
 
 /**
@@ -29,6 +30,8 @@ export function MatchChallenge({
   const [mode, setMode] = useState<'versus' | 'together'>('versus')
   const [level, setLevel] = useState<string>(toy?.levels[1] ?? toy?.levels[0] ?? '')
   const [busy, setBusy] = useState(false)
+  // a duel has no computer: versus alone, and nothing to choose
+  const together = !VERSUS_ONLY.has(demo)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -51,8 +54,8 @@ export function MatchChallenge({
       const v = await challenge(
         who,
         demo,
-        mode,
-        mode === 'together' ? { ...settings, level } : settings,
+        together ? mode : 'versus',
+        together && mode === 'together' ? { ...settings, level } : settings,
       )
       setOpen(false)
       location.hash = matchHash(demo, v.id)
@@ -100,23 +103,25 @@ export function MatchChallenge({
                   </button>
                 ))}
               </div>
-              <div className="lab-controls" role="group" aria-label="How to play">
-                <button
-                  className="btn btn-ghost"
-                  aria-pressed={mode === 'versus'}
-                  onClick={() => setMode('versus')}
-                >
-                  ⚔️ Versus
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  aria-pressed={mode === 'together'}
-                  onClick={() => setMode('together')}
-                >
-                  🤝 Together against the computer
-                </button>
-              </div>
-              {mode === 'together' && (
+              {together && (
+                <div className="lab-controls" role="group" aria-label="How to play">
+                  <button
+                    className="btn btn-ghost"
+                    aria-pressed={mode === 'versus'}
+                    onClick={() => setMode('versus')}
+                  >
+                    ⚔️ Versus
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    aria-pressed={mode === 'together'}
+                    onClick={() => setMode('together')}
+                  >
+                    🤝 Together against the computer
+                  </button>
+                </div>
+              )}
+              {together && mode === 'together' && (
                 <div className="lab-controls" role="group" aria-label="How well the computer plays">
                   {toy.levels.map((l) => (
                     <button
