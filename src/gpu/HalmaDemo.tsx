@@ -18,8 +18,14 @@ import {
   type Side,
 } from './halma'
 import { useKept } from './kept'
+import { halmaRules } from './halmaRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { wood: 'Wood', marble: 'Marble', night: 'Night' }
 const SIDES: Record<Saved['look'], [string, string]> = {
@@ -53,14 +59,45 @@ export function HalmaDemo() {
   const recorded = useRef(false)
   const firstRef = useRef<Side>(1)
 
+  /* ── the call's room: the game travels as each peg's hole and landing */
+  const lab = useLabRoom('halma', halmaRules)
+  const words = tableSeats(lab, halmaRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the game on screen: the call's in a call, else this one */
+  const view = room ? room.game.g : game
+  const viewLast = room ? room.game.last : last
+  /**
+   * The star turned half round for whoever races from the far point in a call, so their pegs
+   * start at the bottom. The star is symmetric about its middle, so a hole drawn at (x, y) is drawn
+   * at (1 - x, 1 - y), and the arrow keys, which walk the holes by where they are on screen, follow.
+   */
+  const flip = room?.mode === 'versus' && words.mySeat === 1
+  const spot = (i: number) => {
+    const p = place(i)
+    return flip ? { x: 1 - p.x, y: 1 - p.y } : p
+  }
+
   const sides = SIDES[saved.look]
-  const all = moves(game)
-  const yours = !game.winner && (mode === 'two' || game.turn === 1)
+  const all = moves(view)
+  const yours = room
+    ? lab.live && myTurn(halmaRules, room)
+    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === 1)
   const computerTurn = mode === 'bot' && !game.winner && game.turn === 2
-  const nameOf = (s: Side) => (mode === 'bot' ? (s === 1 ? 'You' : 'The computer') : sides[s - 1])
+  const nameOf = (s: Side) =>
+    room
+      ? room.mode === 'together'
+        ? s === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[s - 1])
+      : mode === 'bot'
+        ? s === 1
+          ? 'You'
+          : 'The computer'
+        : sides[s - 1]
   const targets = picked === null ? [] : all.filter((m) => m.from === picked)
   const lit = new Map(targets.map((m) => [m.to, m]))
-  const inGoal = (s: Side) => goalOf(s).filter((i) => game.cells[i] === s).length
+  const inGoal = (s: Side) => goalOf(s).filter((i) => view.cells[i] === s).length
 
   const apply = (m: Move) => {
     const by = game.turn
@@ -136,13 +173,32 @@ export function HalmaDemo() {
 
   const tap = (i: number) => {
     if (!yours) return
-    if (game.cells[i] === game.turn) {
+    if (view.cells[i] === view.turn) {
       setPicked(picked === i ? null : i)
       return
     }
     const m = lit.get(i)
-    if (m) apply(m)
+    if (m && room) {
+      // in the call the host decides: this asks it, and the board comes back with everybody's
+      setPicked(null)
+      lab.act({ t: 'move', move: m })
+    } else if (m) apply(m)
     else setPicked(null)
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer, which always races from the
+   * far point: the board on screen comes with you when yours is the near one, else a new game.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.g.winner || flip) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setGame(r.game.g)
+    setLast(r.game.last)
+    setPicked(null)
+    setLine(r.game.g.turn === 1 ? 'Your move.' : 'The computer is thinking…')
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const dirs: Record<string, [number, number]> = {
@@ -154,11 +210,11 @@ export function HalmaDemo() {
     const d = dirs[e.key]
     if (d) {
       // the nearest hole that way, so the slanting rows can be walked with four keys
-      const p0 = place(cursor)
+      const p0 = spot(cursor)
       let best = -1
       let bd = Infinity
       HOLES.forEach((_, i) => {
-        const p = place(i)
+        const p = spot(i)
         const dx = p.x - p0.x
         const dy = p.y - p0.y
         const along = dx * d[0] + dy * d[1]
@@ -179,16 +235,16 @@ export function HalmaDemo() {
     e.stopPropagation()
   }
 
-  const trail = new Set(last ? last.path : [])
+  const trail = new Set(viewLast ? viewLast.path : [])
   const describe = (i: number) => {
-    const p = game.cells[i]
+    const p = view.cells[i]
     const bits = [
       p ? `${sides[p - 1].toLowerCase()} peg` : 'empty',
       picked === i ? 'picked' : '',
       lit.has(i) ? 'can go here' : '',
       HOME[2].includes(i) ? `${sides[0].toLowerCase()}’s goal` : '',
       HOME[1].includes(i) ? `${sides[1].toLowerCase()}’s goal` : '',
-      last && last.to === i ? 'last move' : '',
+      viewLast && viewLast.to === i ? 'last move' : '',
     ].filter(Boolean)
     return `${holeName(i)}: ${bits.join(', ')}`
   }
@@ -211,6 +267,18 @@ export function HalmaDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                setMode('call')
+                setPicked(null)
+              }}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -229,13 +297,25 @@ export function HalmaDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={halmaRules}
+          sides={sides}
+          levelNames={LEVEL_NAMES}
+          score={(d) => (d.g.winner ? ' — every hole of the far point filled' : null)}
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([1, 2] as Side[]).map((s) => (
-          <div key={s} className={`dice-score${game.turn === s && !game.winner ? ' is-up' : ''}`}>
+          <div key={s} className={`dice-score${view.turn === s && !view.winner ? ' is-up' : ''}`}>
             <span>
               {nameOf(s)} · {sides[s - 1].toLowerCase()}
             </span>
@@ -244,9 +324,11 @@ export function HalmaDemo() {
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="hm-board"
@@ -255,8 +337,8 @@ export function HalmaDemo() {
         onKeyDown={onKey}
       >
         {HOLES.map((_, i) => {
-          const p = place(i)
-          const peg = game.cells[i]
+          const p = spot(i)
+          const peg = view.cells[i]
           return (
             <button
               key={i}
@@ -274,7 +356,7 @@ export function HalmaDemo() {
                 saved.hints &&
                 yours &&
                 picked === null &&
-                peg === game.turn &&
+                peg === view.turn &&
                 all.some((m) => m.from === i)
                   ? 'can-move'
                   : '',

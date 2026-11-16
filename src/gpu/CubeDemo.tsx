@@ -15,8 +15,14 @@ import {
   type Side,
 } from './cube'
 import { useKept } from './kept'
+import { cubeRules } from './cubeRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { glass: 'Glass', chalk: 'Chalk', neon: 'Neon' }
 const MARK = ['', '✕', '◯']
@@ -42,14 +48,36 @@ export function CubeDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
+  /* ── the call's room: the game travels as its cells, replayed by cube.ts itself */
+  const lab = useLabRoom('cube', cubeRules)
+  const words = tableSeats(lab, cubeRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the cube on screen: the call's in a call, else this one */
+  const view = room ? room.game : game
+  /** the mark I place in a call: noughts only in seat 1 of a versus game */
+  const mySide: Side = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+
   const computerTurn = mode === 'bot' && !game.over && game.turn !== you
-  const yours = !game.over && (mode === 'two' || game.turn === you)
-  const nameOf = (s: Side) => (mode === 'bot' ? (s === you ? 'You' : 'The computer') : SIDE[s])
-  const lastMove = game.moves[game.moves.length - 1]
-  const winning = new Set(game.line)
+  const yours = room
+    ? lab.live && myTurn(cubeRules, room)
+    : mode !== 'call' && !game.over && (mode === 'two' || game.turn === you)
+  const nameOf = (s: Side) =>
+    room
+      ? room.mode === 'together'
+        ? s === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[s - 1])
+      : mode === 'bot'
+        ? s === you
+          ? 'You'
+          : 'The computer'
+        : SIDE[s]
+  const lastMove = view.moves[view.moves.length - 1]
+  const winning = new Set(view.line)
   /** the cells that would complete four, side by side: one cell can be both */
   const threat = ([1, 2] as Side[]).map(
-    (s) => new Set(saved.hints && !game.over ? winsAt(game.cells, s) : []),
+    (s) => new Set(saved.hints && !view.over ? winsAt(view.cells, s) : []),
   )
 
   const settle = (g: Game) => {
@@ -107,8 +135,24 @@ export function CubeDemo() {
     )
   }
   const tap = (i: number) => {
-    if (!yours || game.cells[i]) return
+    if (!yours || view.cells[i]) return
+    // in the call the host decides: this asks it, and the cube comes back with everybody's
+    if (room) return lab.act({ t: 'move', move: i })
     settle(place(game, i))
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the cube on screen,
+   * keeping their mark — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.over) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setYou(mySide)
+    setGame(r.game)
+    setLine(r.game.turn === mySide ? 'Your move.' : 'The computer is thinking…')
   }
   const takeBack = () => {
     if (!game.moves.length) return
@@ -131,7 +175,7 @@ export function CubeDemo() {
     else if (e.key === 'ArrowDown') next = l * 16 + Math.min(3, r + 1) * 4 + c
     else if (e.key === 'PageUp' || e.key === '[') next = Math.max(0, l - 1) * 16 + r * 4 + c
     else if (e.key === 'PageDown' || e.key === ']') next = Math.min(3, l + 1) * 16 + r * 4 + c
-    else if (e.key === 'u' || e.key === 'U') takeBack()
+    else if ((e.key === 'u' || e.key === 'U') && mode !== 'call') takeBack()
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -160,6 +204,15 @@ export function CubeDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -178,27 +231,41 @@ export function CubeDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={cubeRules}
+          sides={['Crosses', 'Noughts']}
+          levelNames={LEVEL_NAMES}
+          score={(g) => (g.winner ? ` in ${Math.ceil(g.moves.length / 2)} moves` : null)}
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([1, 2] as Side[]).map((s) => (
-          <div key={s} className={`dice-score${game.turn === s && !game.over ? ' is-up' : ''}`}>
-            <span>{mode === 'bot' ? `${nameOf(s)} · ${SIDE[s].toLowerCase()}` : SIDE[s]}</span>
-            <strong>{game.cells.filter((x) => x === s).length}</strong>
+          <div key={s} className={`dice-score${view.turn === s && !view.over ? ' is-up' : ''}`}>
+            <span>{mode === 'two' ? SIDE[s] : `${nameOf(s)} · ${SIDE[s].toLowerCase()}`}</span>
+            <strong>{view.cells.filter((x) => x === s).length}</strong>
             <span className="muted">placed</span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="cq-cube"
         role="group"
-        aria-label="The cube, four layers of four by four. Arrow keys move in a layer, Page Up and Page Down (or [ and ]) change layer, Enter places a mark, U takes back."
+        aria-label={`The cube, four layers of four by four. Arrow keys move in a layer, Page Up and Page Down (or [ and ]) change layer, Enter places a mark${mode === 'call' ? '' : ', U takes back'}.`}
         onKeyDown={onKey}
       >
         {LAYER.map((name, l) => (
@@ -209,7 +276,7 @@ export function CubeDemo() {
             <div className="cq-grid">
               {Array.from({ length: 16 }, (_, k) => {
                 const i = l * 16 + k
-                const v = game.cells[i]
+                const v = view.cells[i]
                 const t = ([1, 2] as Side[]).filter((s) => threat[s - 1].has(i))
                 return (
                   <button
@@ -243,13 +310,15 @@ export function CubeDemo() {
         ))}
       </div>
       <div className="lab-controls">
-        <button
-          className="btn btn-ghost"
-          onClick={takeBack}
-          disabled={!game.moves.length || computerTurn}
-        >
-          ↶ Take back
-        </button>
+        {mode !== 'call' && (
+          <button
+            className="btn btn-ghost"
+            onClick={takeBack}
+            disabled={!game.moves.length || computerTurn}
+          >
+            ↶ Take back
+          </button>
+        )}
         <button
           className="btn btn-ghost"
           aria-pressed={saved.hints}

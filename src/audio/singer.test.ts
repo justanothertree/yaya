@@ -13,6 +13,7 @@ import {
   plate,
   planLine,
   planPhrases,
+  TAIL,
   voicesFor,
   type Burst,
   type Phrase,
@@ -194,10 +195,27 @@ describe('phrases', () => {
     expect(valueAt(p.voicing, 0.47)).toBeGreaterThan(0.4)
   })
 
-  it('a vowel fills its whole note and lets go at the end', () => {
+  it('a vowel fills its whole note and, at the end of a phrase, lets go just after it', () => {
     const [p] = plan('o', [{ t: 0, dur: 1.5, midi: 72 }], exact(PRESETS.clean))
     expect(valueAt(p.voicing, 1.4)).toBeCloseTo(1, 5)
-    expect(valueAt(p.voicing, 1.52)).toBe(0)
+    /* still sounding as the note ends, fading rather than stopped */
+    expect(valueAt(p.voicing, 1.5)).toBeGreaterThan(0.2)
+    expect(valueAt(p.voicing, 1.5)).toBeLessThan(0.8)
+    expect(valueAt(p.voicing, 1.5 + TAIL + 0.001)).toBe(0)
+    expect(p.to).toBeGreaterThan(1.5 + TAIL)
+  })
+
+  it('inside a phrase a syllable still lets go at its own end, so the next one is heard', () => {
+    /* a quarter-second gap: past legato, short of a rest — one phrase, two releases */
+    const [p] = plan(
+      'o o',
+      [
+        { t: 0, dur: 0.5, midi: 72 },
+        { t: 0.75, dur: 0.5, midi: 72 },
+      ],
+      exact(PRESETS.clean),
+    )
+    expect(valueAt(p.voicing, 0.51)).toBe(0)
   })
 })
 

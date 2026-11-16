@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { useDialogContract } from '../ui/dialogContract'
 
 /**
- * A sheet for the instrument's set-once settings: ⚙ Sound, the song's speed and length, and a
- * part's ⋯ — the #311 layout, 14 Nov 2026. From the floor on a phone, a centred card wider up.
+ * A sheet for the instrument's set-once settings: ⚙ Sound and the song's speed and length — the
+ * #311 layout, 14 Nov 2026. From the floor on a phone, a centred card wider up. (A part's ⋯ was a
+ * third until 15 Nov 2026; it is the part's menu now, which is a side panel on a desktop — see
+ * Panel.tsx, which keeps this sheet's look on a phone.)
  *
  * ⚠️ PORTALLED TO THE BODY, for the reason the settings sheet gives: `position: fixed` inside a
  * transformed ancestor (a canvas window, the zoomed main) measures from that ancestor, and the

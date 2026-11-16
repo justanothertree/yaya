@@ -261,6 +261,31 @@ export function place(g: Game, x: number, y: number): Game {
   return place_(g, { x, y })
 }
 
+/**
+ * Where a ball goes back on the table: its spot if that is free, else the nearest free point on
+ * the line through it — the head string for the cue ball, the long string towards the foot rail
+ * for the black, as the rules put them.
+ *
+ * ⚠️ THE SPOT IS NOT ALWAYS FREE. A ball can come to rest on it, and putting another there laid the
+ * two on top of each other: measured, a scratch on the third shot of a computer game left the cue
+ * ball 0.023 from the 10, under one radius, and a match by turns refused the table as damage.
+ */
+function spotFree(balls: Ball[], n: number, at: { x: number; y: number }, along: 'x' | 'y') {
+  const free = (x: number, y: number) =>
+    x >= R &&
+    x <= TW - R &&
+    y >= R &&
+    y <= TH - R &&
+    balls.every((b) => b.down || b.n === n || Math.hypot(b.x - x, b.y - y) >= 2 * R + 0.002)
+  for (let k = 0; k <= 400; k++)
+    for (const way of k ? [1, -1] : [1]) {
+      const d = way * k * R * 0.25
+      const p = along === 'y' ? { x: at.x, y: at.y + d } : { x: at.x + d, y: at.y }
+      if (free(p.x, p.y)) return p
+    }
+  return at
+}
+
 /** play a shot by the rules of eight-ball, and say whose turn it is after */
 export function shoot(
   g: Game,
@@ -287,7 +312,7 @@ export function shoot(
     if (!g.broken) {
       // down on the break: back on its spot, and play on
       const spot = balls.find((b) => b.n === 8)!
-      Object.assign(spot, { x: FOOT.x, y: FOOT.y, down: false, vx: 0, vy: 0 })
+      Object.assign(spot, { ...spotFree(balls, 8, FOOT, 'x'), down: false, vx: 0, vy: 0 })
     } else {
       const earned =
         !foul && groups[w] !== null && left({ ...g, balls }, groups[w]!) === 0 && legal.includes(8)
@@ -317,7 +342,12 @@ export function shoot(
   }
   if (scratch) {
     const cue = balls.find((b) => b.n === 0)!
-    Object.assign(cue, { down: false, x: HEAD_X, y: TH / 2, vx: 0, vy: 0 })
+    Object.assign(cue, {
+      down: false,
+      ...spotFree(balls, 0, { x: HEAD_X, y: TH / 2 }, 'y'),
+      vx: 0,
+      vy: 0,
+    })
   }
   const mine = groups[w]
   const keep = !foul && potted.some((n) => (mine ? groupOf(n) === mine : n !== 8))

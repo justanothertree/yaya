@@ -281,6 +281,28 @@ export function next(rolls: readonly number[]): { over: boolean; fresh: boolean 
   return { over: true, fresh: true }
 }
 
+/**
+ * Whose ball it is after `by` bowls one, two bowlers taking a frame each: the same bowler while
+ * their frame is open, else the other while their game is not over, else the same bowler again
+ * while theirs is not — or null when both games are.
+ *
+ * ⚠️ THE SECOND BOWLER CAN STILL BE OWED BALLS WHEN THE FIRST IS DONE. The toy used to hand the
+ * lane back to you after every computer frame and call the game as soon as yours was over, so a
+ * computer that struck or spared in its tenth never bowled its bonus balls: that frame never
+ * scored, the result was given early, and the Bowl button came back on for a game you had
+ * finished. The room plays by this too, so a call cannot differ from the toy.
+ */
+export function upNext(
+  rolls: readonly [readonly number[], readonly number[]],
+  by: 0 | 1,
+): 0 | 1 | null {
+  const n = next(rolls[by])
+  const other = by === 0 ? 1 : 0
+  if (!n.over && !n.fresh) return by
+  if (!next(rolls[other]).over) return other
+  return n.over ? null : by
+}
+
 /* --------------------------------------------------------------------------- the computer */
 
 export const LEVELS = ['easy', 'fair', 'hard'] as const
