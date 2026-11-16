@@ -34,6 +34,8 @@ import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
 import { cubeRules } from '../../gpu/cubeRoom'
 import { LEVELS as ARTILLERY_LEVELS } from '../../gpu/artillery'
 import { artilleryRules } from '../../gpu/artilleryRoom'
+import { LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
+import { bowlingRules } from '../../gpu/bowlingRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -148,6 +150,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     rulesFor: () => artilleryRules,
     levels: ARTILLERY_LEVELS,
   },
+  bowling: { name: MATCH_NAMES.bowling, rulesFor: () => bowlingRules, levels: BOWLING_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>

@@ -74,6 +74,8 @@ import { replay as foxReplay } from '../../../src/gpu/foxRoom'
 import { cubeRules } from '../../../src/gpu/cubeRoom'
 import { gunner, LIFE } from '../../../src/gpu/artillery'
 import { replay as artReplay } from '../../../src/gpu/artilleryRoom'
+import { LANE_HALF, plan as bowlPlan, wobble as bowlWobble } from '../../../src/gpu/bowling'
+import { inside as bowlInside, replay as bowlReplay } from '../../../src/gpu/bowlingRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1854,6 +1856,122 @@ describe('artillery by turns: the server fires the shot, the seed and the shots 
           { ...row, state: { seed: st.seed, shots: [[90, 0.5]] } },
           A,
           move(row.seq, [45, 0.5]),
+        ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('bowling by turns: a frame each, the server bowls every ball', () => {
+  const bw = (over: Partial<Row> = {}) => invite({ demo_id: 'bowling', settings: {}, ...over })
+  const game = (state: unknown) => bowlReplay((state as { balls: unknown[] }).balls)!
+  /**
+   * A scorecard added up here rather than by bowling.ts: ten frames, a strike counting the next
+   * two balls and a spare the next one, and the balls a tenth frame's bonus earns, no more.
+   */
+  const tenPin = (r: readonly number[]) => {
+    let total = 0
+    let i = 0
+    for (let f = 0; f < 9; f++) {
+      if (r[i] === 10) {
+        total += 10 + r[i + 1] + r[i + 2]
+        i += 1
+      } else {
+        total += r[i] + r[i + 1] + (r[i] + r[i + 1] === 10 ? r[i + 2] : 0)
+        i += 2
+      }
+    }
+    // the tenth: its own balls, three of them after a strike or a spare and two otherwise
+    const third = r[i] === 10 || r[i] + r[i + 1] === 10
+    total += r[i] + r[i + 1] + (third ? r[i + 2] : 0)
+    return { total, balls: i + (third ? 3 : 2) }
+  }
+  const aim = (standing: number[], rnd: () => number) =>
+    bowlInside(bowlWobble(bowlPlan(standing, 'fair', rnd), 'fair', rnd))
+
+  it('plays versus to the end, the winner the higher scorecard, every ball accounted for', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(bw(), (r) => {
+        const s = aim(game(r.state).standing, rnd)
+        return [s.x, s.angle, s.speed, s.hook]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      const [a, b] = g.rolls.map((r) => tenPin(r).total)
+      // each card is exactly ten frames and the bonus they earned
+      for (const r of g.rolls) expect(r.length).toBe(tenPin(r).balls)
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a > b ? 0 : b > a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  }, 60000)
+
+  it('keeps the turn with a bowler between the balls of a frame, and passes it on a strike', () => {
+    let row = after(bw(), decide(bw(), B, { op: 'accept' }))
+    // off the edge of the lane at a crawl: a gutter ball, so the frame goes on
+    row = after(row, decide(row, A, move(row.seq, [LANE_HALF, 0.1, 5, 1])))
+    expect(game(row.state).rolls[0]).toEqual([0])
+    expect(row.turn).toBe(0)
+    expect(status(decide(row, B, move(row.seq, [0, 0, 8, 0])))).toBe(409)
+    row = after(row, decide(row, A, move(row.seq, [LANE_HALF, 0.1, 5, 1])))
+    expect(row.turn).toBe(1)
+  })
+
+  it('together: the computer bowls its whole frame in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = bw({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      let frames = 0
+      for (let k = 0; k < 8 && row.status === 'active' && frames < 2; k++) {
+        const before = game(row.state).rolls[1].length
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [0.05, 0, 8, 0]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+        const g = game(row.state)
+        // the replies are kept when they fit the history row and counted when they do not
+        const h = p.move as { then?: unknown[]; replies?: number }
+        const replies = h.then?.length ?? h.replies ?? 0
+        if (replies) {
+          // a frame is one ball on a strike and two otherwise, and it is the team's turn again
+          const n = g.rolls[1].length - before
+          expect(replies).toBe(n)
+          if (n === 1) expect(g.rolls[1].at(-1)).toBe(10)
+          else expect(n).toBe(2)
+          expect(g.up).toBe(0)
+          frames++
+        }
+      }
+      expect(frames).toBe(2)
+    }
+  }, 30000)
+
+  it('refuses a ball off the lane, too fast, too slow, too much hook, not numbers, and a stored game no balls could make', () => {
+    const row = after(bw(), decide(bw(), B, { op: 'accept' }))
+    for (const bad of [
+      [LANE_HALF + 0.01, 0, 8, 0],
+      [0, 0.11, 8, 0],
+      [0, 0, 4.9, 0],
+      [0, 0, 10.1, 0],
+      [0, 0, 8, 1.1],
+      [0, 0, '8', 0],
+      [0, 0, 8],
+    ])
+      expect(status(decide(row, A, move(row.seq, bad)))).toBe(400)
+    expect(
+      status(decide({ ...row, state: { balls: [[0, 0, 11, 0]] } }, A, move(row.seq, [0, 0, 8, 0]))),
+    ).toBe(500)
+    expect(
+      status(
+        decide(
+          { ...row, state: { balls: Array(43).fill([0, 0, 8, 0]) } },
+          A,
+          move(row.seq, [0, 0, 8, 0]),
         ),
       ),
     ).toBe(500)
