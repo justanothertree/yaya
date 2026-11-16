@@ -98,10 +98,26 @@ describe('a line of words per bar of the song', () => {
   })
 
   it('counts the words a bar cannot fit rather than dropping them', () => {
-    const one = part([{ midi: 64, t: 0, dur: 0.2 }], BAR)
-    const fit = fitSongLyrics({ ...one, lyrics: ['a b c'] }, song)
-    expect(fit.bars[0].sung).toHaveLength(1)
+    /* one eighth: shared into two sixteenths at most, so a third word has nowhere to go */
+    const one = part([{ midi: 64, t: 0, dur: 0.25 }], BAR)
+    const fit = fitSongLyrics({ ...one, lyrics: ['a b c d'] }, song)
+    expect(fit.bars[0].sung.map((s) => s.text)).toEqual(['a', 'b'])
     expect(fit.bars[0].spare).toBe(2)
+  })
+
+  it("holds a line's last word on to the next note of the part, across the bar line", () => {
+    /* a short note at the end of bar one, and the part's next note on bar two's downbeat — a bar
+       with no words, so nothing is sung there, but "star" rings until that note comes */
+    const p = part(
+      [
+        { midi: 64, t: 1.5, dur: 0.1 },
+        { midi: 62, t: BAR, dur: 0.1 },
+      ],
+      2 * BAR,
+    )
+    const fit = fitSongLyrics({ ...p, lyrics: ['star', ''] }, { ...song, bars: 2 })
+    expect(fit.sung).toHaveLength(1)
+    expect(fit.sung[0].t + fit.sung[0].dur).toBeCloseTo(BAR, 9)
   })
 
   it('counts every word in a bar the part is silent in as left over', () => {
