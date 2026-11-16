@@ -75,6 +75,12 @@ export type Rules<G, M> = {
    */
   roll?: (g: G, rand: () => number) => G
   /**
+   * Together, for a toy where each friend holds their own place at the table (Hearts, Spades):
+   * which of the two friends moves next, as the table says — at a table of four the friends do
+   * not simply take turns. Without it, they do. Only lab-move asks it.
+   */
+  friendTurn?: (g: G) => Seat | null
+  /**
    * For a toy where one side must not see something of the other's (a fleet, a hand), played
    * only by turns: what the server keeps back in the match's `secret`, which no RPC ever returns.
    * The game `encode` gives is the part anybody in the match may see; `join` puts the hidden part
@@ -85,8 +91,11 @@ export type Rules<G, M> = {
     secret: (g: G) => unknown
     /** a game read from its state with its hidden part put back, or null if they do not belong */
     join: (g: G, secret: unknown) => G | null
-    /** what one side may see of the hidden part: its own */
-    mine: (g: G, side: Seat) => unknown
+    /**
+     * What one side may see of the hidden part: its own. `seat` is the player asking — the same
+     * as `side` versus; together, which of the two friends, for a toy where each holds their own
+     */
+    mine: (g: G, side: Seat, seat?: Seat) => unknown
     /** what the match's history keeps of a move, anything hidden in it taken out */
     logged: (m: M) => unknown
     /** a fresh game with what accepting brought (the friend's fleet), or null if it brought none */
