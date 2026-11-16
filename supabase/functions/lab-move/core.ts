@@ -44,6 +44,7 @@ import { totals as curlingTotals } from '../../../src/gpu/curling'
 import { curlingMatchRules, type CurlingGame } from '../../../src/gpu/curlingRoom'
 import { puttRules, totals as puttTotals, type PuttGame } from '../../../src/gpu/puttRoom'
 import { dartsMatchRules, type DartsGame } from '../../../src/gpu/dartsRoom'
+import { backgammonRules, worth, type BackgammonGame } from '../../../src/gpu/backgammonRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -145,6 +146,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // legs won, the first thrower's first
     score: (g: DartsGame) => g.legs.join('–'),
   }),
+  backgammon: () => ({
+    rules: backgammonRules,
+    // what the game was worth: a single game, a gammon or a backgammon
+    score: (g: BackgammonGame) => worth(g) ?? '',
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -230,7 +236,8 @@ const MAX_REPLIES = 64
 
 /**
  * What to do about `ask`, from `me`, on the match `row` as stored. Pure: the same three things in
- * give the same plan out, except for the computer's choice where a toy's computer rolls dice.
+ * give the same plan out, except for the computer's choice where a toy's computer rolls dice, and
+ * a toy's own dice, which the server rolls here (`Rules.roll`) and nowhere else.
  */
 export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAMES = GAMES): Plan {
   // ⚠️ the same answer for a match that does not exist and one that is not yours, as
@@ -249,13 +256,39 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   const level = row.mode === 'together' ? levelOf(game, settings) : null
   if (row.mode === 'together' && level === null)
     return refuse(422, 'this match asks for a computer level the toy does not have')
+  /** the dice for whoever moves next, for a toy that has them */
+  const roll = (g: unknown) => (rules.roll ? rules.roll(g, Math.random) : g)
+  /** together: the computer answers now, as many times as the game gives it the move */
+  const answer = (g0: unknown): { g: unknown; then: unknown[] } | null => {
+    let g = g0
+    const then: unknown[] = []
+    if (row.mode !== 'together') return { g, then }
+    const cpu = rules.computer!
+    while (rules.turn(g) === cpu.side && then.length < MAX_REPLIES) {
+      const reply = cpu.choose(g, level!)
+      if (!rules.legal(g, reply, cpu.side)) return null
+      g = roll(rules.apply(g, reply, cpu.side))
+      then.push(reply)
+    }
+    return { g, then }
+  }
 
   if (ask.op === 'accept') {
     if (row.status !== 'invited') return refuse(409, 'that invitation is no longer open')
     if (seat !== 1) return refuse(403, 'only the friend who was challenged can accept')
     const g = rules.fresh(row.mode)
     // the challenger moves first, both in versus and as the first of the team
-    return { kind: 'begin', state: rules.encode(g), turn: 0 }
+    if (!rules.roll) return { kind: 'begin', state: rules.encode(g), turn: 0 }
+    // ⚠️ a toy with dice: its opening roll says who starts, and together the computer may, so it
+    // plays at once; the team's first move is the challenger's whoever opened
+    const opened = answer(rules.roll(g, Math.random))
+    if (!opened) return refuse(500, 'the computer could not move')
+    const t = rules.turn(opened.g)
+    return {
+      kind: 'begin',
+      state: rules.encode(opened.g),
+      turn: row.mode === 'together' || t === null || t === 'any' ? 0 : t,
+    }
   }
 
   if (row.status !== 'active') return refuse(409, 'that match is not going')
@@ -270,19 +303,9 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   const side: Seat = row.mode === 'together' ? 0 : seat
   if (rules.turn(g0) !== side) return refuse(500, 'this match’s turn and board disagree')
   if (!rules.legal(g0, move, side)) return refuse(400, 'that move is not allowed there')
-  let g = rules.apply(g0, move, side)
-
-  // together: the computer answers now, as many times as the game gives it the move
-  const then: unknown[] = []
-  if (row.mode === 'together') {
-    const cpu = rules.computer!
-    while (rules.turn(g) === cpu.side && then.length < MAX_REPLIES) {
-      const reply = cpu.choose(g, level!)
-      if (!rules.legal(g, reply, cpu.side)) return refuse(500, 'the computer could not move')
-      g = rules.apply(g, reply, cpu.side)
-      then.push(reply)
-    }
-  }
+  const answered = answer(roll(rules.apply(g0, move, side)))
+  if (!answered) return refuse(500, 'the computer could not move')
+  const { g, then } = answered
 
   const over = rules.turn(g) === null
   const winner = over ? (rules.result?.(g) ?? 'draw') : null
