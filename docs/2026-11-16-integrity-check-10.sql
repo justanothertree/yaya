@@ -1,6 +1,32 @@
--- ⛔ NOT APPLIED. Integrity check 10, drafted 16 Nov 2026 and previewed read-only against
--- production. Applying it is `apply_migration`, after which this header becomes ✅ APPLIED with
--- the migration name, per CLAUDE.md §4.
+-- ✅ APPLIED 16 Nov 2026 03:16:37 UTC (15 Nov 22:16 Eastern) as migration
+-- `20261116031637_integrity_check_10_held_but_not_marked`, after Evan's go-ahead on the preview
+-- below. The record of the event is
+-- `supabase/migrations/20261116031637_integrity_check_10_held_but_not_marked.sql`; this file stays
+-- the reasoning.
+--
+-- `statements[1]` md5s to 22f7433949aa87a9d406db156aa80049 at 9,512 bytes — byte for byte the
+-- runnable portion of this file, so the text production ran is the text previewed here. The
+-- deployed body is a real diff rather than a probe: `md5(prosrc)` is
+-- 8decb4325a8c0a54fa6af4e06dc0b2aa at 9,188 bytes, which is md5 of the body between this file's
+-- own `$function$` markers. Two different questions, both answered — the statement hash proves no
+-- drift in transit, the body hash proves the function in the database is this file's function.
+--
+-- Verified after applying, and the first one is the whole reason the sort was changed:
+--
+--   array positions 1..10 match ords 1..10, and check 10 is at POSITION 10 (not 2)
+--   the nine recorded counts are unchanged:  1:0 2:0 3:0 4:0 5:0 6:1 7:0 8:0 9:2, and 10:5
+--   Reconcile list                            9 -> 10 checks
+--   admin_attention.integrity (the badge)     2 -> 3
+--   account_payload md5, 33 accts             4cdb5581d2c9b9c722461c375c82cbef (unchanged)
+--   executed_trades / allocations             1,774 / 15,840 (unchanged — no DML)
+--   signatures                                1 (replaced, not overloaded)
+--   ACL                                       {postgres=X/postgres} (unchanged), anon false
+--
+-- `scripts/migration-md5.mjs` was made to FAIL once against the new migration file before its
+-- pass was believed: the sort cast was reverted in the body, and it named the file and both
+-- hashes (047676df942a9ecca572a3909bd68c98 against production's
+-- 22f7433949aa87a9d406db156aa80049), then went green again when the file was restored from a
+-- scratchpad copy.
 --
 -- ── WHY IT EXISTS AT ALL ──────────────────────────────────────────────────────────────────────
 --

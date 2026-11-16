@@ -223,8 +223,9 @@ the feed has stopped the line above already says it. Both of those were found on
 
 1. ✅ `2026-11-14-correction-follows-ownership.sql` — **applied 16 Nov 2026** as
    `20261116020828`. Payload fingerprint byte-identical either side; no rows changed.
-2. `2026-11-16-integrity-check-10.sql` — **previewed, not applied**, needs a go-ahead. It would
-   take the Reconcile list to ten checks and the attention badge from 2 to 3.
+2. ✅ `2026-11-16-integrity-check-10.sql` — **applied 16 Nov 2026** as `20261116031637`. The
+   Reconcile list is ten checks and the attention badge went 2 → 3; check 10 reads **5**. No DML,
+   payload fingerprint unchanged.
 3. **The Robinhood same-day collapse, and it is now the largest unexplained number on the page.**
    With the seven priced, the −$977 Robinhood stock gap is −$189, and nothing about prices accounts
    for the remainder (see the re-measurement above: zero unpriced, no missing-buy shapes, and the

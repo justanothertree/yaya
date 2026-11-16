@@ -175,9 +175,9 @@ grant execute on function public.admin_correct_position(text, text, numeric) to 
 
 -- ── Check 10: the two write paths disagree about a symbol ─────────────────────────────────────
 --
--- ✅ WRITTEN PROPERLY, 16 Nov 2026: `docs/2026-11-16-integrity-check-10.sql`, previewed against
--- production and NOT APPLIED, awaiting a go-ahead. Read that file rather than this sketch — and
--- note two things it found that this sketch could not, both of which would have shipped:
+-- ✅ WRITTEN PROPERLY AND APPLIED, 16 Nov 2026 03:16:37 UTC, as migration `20261116031637`:
+-- `docs/2026-11-16-integrity-check-10.sql`. Read that file rather than this sketch — and note two
+-- things it found that this sketch could not, both of which would have shipped:
 --
 --   * `order by c->>'ord'` is a TEXT sort, so '10' lands between '1' and '2'. Nine checks could
 --     never expose it. The fix is a cast that leaves every existing `ord` value untouched.

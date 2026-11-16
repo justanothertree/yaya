@@ -164,13 +164,15 @@ service_role=true`. A revoke aimed at `public, anon` cannot touch `service_role`
 - **A byte-exact rollback is saved** at `2026-11-15-correct-position-rollback.sql`, proved to be
   production's own text by md5 (`b209b089d5a5da4d563f6303a7a124ba`) rather than retyped.
 
-## The piece that was deliberately not applied — now written
+## The piece that was deliberately not applied — now written, and applied
 
 The proposal file sketched **integrity check 10**, "held by the family but the symbol is not
 marked", and explained why it was only a sketch: the body of `finance.integrity_checks()` is 6 kB
 and copying it into a proposal is how a copy and its original drift.
 
-It is written now, as `docs/2026-11-16-integrity-check-10.sql`, **previewed and not applied**. The
+It is written as `docs/2026-11-16-integrity-check-10.sql` and ✅ **applied 16 Nov 2026 03:16:37
+UTC** as `20261116031637`, after a read-only preview and Evan's go-ahead. Reconcile is ten checks,
+the badge went 2 → 3, check 10 reads 5, and the payload fingerprint was unchanged either side. The
 way around the copying problem was not a more careful copy: the new body is two anchored string
 replacements applied by script to the repository's own committed text, which throws if either
 anchor is missing, so the nine existing checks are identical by construction. `diff` against the
