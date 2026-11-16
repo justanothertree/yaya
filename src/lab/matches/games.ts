@@ -14,6 +14,8 @@ import { LEVELS as FOUR_LEVELS } from '../../gpu/fourrow'
 import { fourRowMatchRules, readFourSettings } from '../../gpu/fourrowRoom'
 import { LEVELS as MANCALA_LEVELS } from '../../gpu/mancala'
 import { mancalaRules, readMancalaSettings } from '../../gpu/mancalaRoom'
+import { LEVELS as MORRIS_LEVELS } from '../../gpu/morris'
+import { morrisRules } from '../../gpu/morrisRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -90,6 +92,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     },
     levels: MANCALA_LEVELS,
   },
+  morris: { name: MATCH_NAMES.morris, rulesFor: () => morrisRules, levels: MORRIS_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>

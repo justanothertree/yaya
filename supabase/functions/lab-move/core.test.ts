@@ -42,6 +42,12 @@ import {
   total,
 } from '../../../src/gpu/mancala'
 import { mancalaRules, replay as mancalaReplay } from '../../../src/gpu/mancalaRoom'
+import {
+  count as menOf,
+  moves as morrisMoves,
+  type Move as MorrisMove,
+} from '../../../src/gpu/morris'
+import { replay as morrisReplay } from '../../../src/gpu/morrisRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -937,5 +943,103 @@ describe('mancala by turns: sowing into your own store keeps the turn', () => {
       'together',
     ])
     expect(typeof mancalaChoose).toBe('function')
+  })
+})
+
+describe('nine men’s morris by turns: a mill must take', () => {
+  const morris = (over: Partial<Row> = {}) => invite({ demo_id: 'morris', settings: {}, ...over })
+  /** the game a stored state makes, replayed the toy's own way */
+  const game = (state: unknown) => morrisReplay((state as { moves: unknown[] }).moves)!.g
+  const wire = (m: MorrisMove) => [m.from, m.to, m.take]
+
+  it('plays versus to the end, the winner whoever left the other two men or no move', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 12; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(
+        morris(),
+        (r) => {
+          const list = morrisMoves(game(r.state))
+          return wire(list[Math.floor(rnd() * list.length)])
+        },
+        1000,
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      if (last.result!.winner === 'draw') {
+        expect(g.winner).toBe(3)
+        seen.add('draw')
+        continue
+      }
+      // asked of the board: the loser is down to two men, or has no move where it stands
+      const loser = last.result!.winner === 0 ? 2 : 1
+      const stuck = menOf(g, loser) < 3 || !morrisMoves({ ...g, turn: loser, winner: 0 }).length
+      expect(stuck).toBe(true)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  })
+
+  it('refuses a mill that does not take, and a man taken from a mill while another is free', () => {
+    let row = after(morris(), decide(morris(), B, { op: 'accept' }))
+    // the first colour places 0, 1 and then 2 for a mill along the top; the second places away
+    for (const [who, to] of [
+      [A, 0],
+      [B, 9],
+      [A, 1],
+      [B, 21],
+    ] as const)
+      row = after(row, decide(row, who, move(row.seq, [-1, to, -1])))
+    expect(status(decide(row, A, move(row.seq, [-1, 2, -1])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [-1, 2, 9])))).toBe('commit')
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 3)
+      const start = morris({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 6 && row.status === 'active'; k++) {
+        const list = morrisMoves(game(row.state))
+        const t0 = performance.now()
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, wire(list[Math.floor(rnd() * list.length)])),
+        )
+        expect(performance.now() - t0).toBeLessThan(2000)
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        if (p.turn !== null) expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a move off the board, onto a man, and a stored game no moves could have made', () => {
+    let row = after(morris(), decide(morris(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, [-1, 4, -1])))
+    expect(status(decide(row, B, move(row.seq, [-1, 4, -1])))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, [-1, 24, -1])))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, { from: -1, to: 5, take: -1 })))).toBe('commit')
+    expect(
+      status(
+        decide(
+          {
+            ...row,
+            state: {
+              moves: [
+                [-1, 4, -1],
+                [-1, 4, -1],
+              ],
+            },
+          },
+          B,
+          move(row.seq, [-1, 6, -1]),
+        ),
+      ),
+    ).toBe(500)
   })
 })
