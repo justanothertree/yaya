@@ -128,6 +128,18 @@ describe('arcade share readers', () => {
     ).toBeNull()
   })
 
+  it('curling adds games in a call, and shares them with nothing against the computer', () => {
+    const online = JSON.stringify({ curling: { together: { won: 1, lost: 2, drawn: 0 } } })
+    const saved = JSON.stringify({ record: { fair: { won: 1, lost: 1, drawn: 0, bestEnd: 2 } } })
+    const both = (k: string) => (k === ONLINE_KEY ? online : k === CURLING_KEY ? saved : null)
+    expect(ARCADE.curling(both)).toBe(
+      'won 1 of 2 games against the Fair computer, best end 2, won 1 of 3 online games together against the computer',
+    )
+    expect(ARCADE.curling((k) => (k === ONLINE_KEY ? online : null))).toBe(
+      'won 1 of 3 online games together against the computer',
+    )
+  })
+
   it('darts: matches won, best checkout, fastest leg and 180s across every level', () => {
     const record = {
       easy: { won: 2, lost: 0, best: 60, fewest: 18, tons: 1 },
