@@ -26,6 +26,8 @@ import { LEVELS as FENCES_LEVELS, SIZES as FENCES_SIZES } from '../../gpu/fences
 import { fencesRules, readFencesSize } from '../../gpu/fencesRoom'
 import { LEVELS as HALMA_LEVELS } from '../../gpu/halma'
 import { halmaRules } from '../../gpu/halmaRoom'
+import { LEVELS as GO_LEVELS } from '../../gpu/goboard'
+import { goRules } from '../../gpu/goRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -132,6 +134,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     sizes: FENCES_SIZES,
   },
   halma: { name: MATCH_NAMES.halma, rulesFor: () => halmaRules, levels: HALMA_LEVELS },
+  go: { name: MATCH_NAMES.go, rulesFor: () => goRules, levels: GO_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
