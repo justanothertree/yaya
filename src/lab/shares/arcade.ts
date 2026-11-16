@@ -152,6 +152,7 @@ export const ARCADE: Record<string, Reader> = {
       best > 0 && `best game ${best}`,
       strikes > 0 && `${n(strikes)} strikes in all`,
       beaten(BOWLING_LEVELS, r, 'games'),
+      onlineLine(read, 'bowling'),
     ])
   },
   bricks: (read) => {

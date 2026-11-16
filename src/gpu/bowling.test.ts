@@ -16,6 +16,7 @@ import {
   readSaved,
   score,
   strayFor,
+  upNext,
   type Saved,
 } from './bowling'
 
@@ -190,5 +191,32 @@ describe('what is kept', () => {
     )
     expect(r.stance).toEqual({ ...EMPTY.stance, speed: 7 })
     expect(r.record.easy.best).toBe(300)
+  })
+})
+
+describe('whose ball it is, two bowlers a frame each', () => {
+  const open = (frames: number) => Array.from({ length: frames * 2 }, () => 3)
+  it('keeps the lane for a second ball, then passes it on', () => {
+    expect(upNext([[3], []], 0)).toBe(0)
+    expect(upNext([[3, 4], []], 0)).toBe(1)
+    expect(upNext([[10], []], 0)).toBe(1)
+    expect(upNext([[3, 4], [10]], 1)).toBe(0)
+  })
+  it('⚠️ gives the second bowler their tenth-frame bonus balls after the first has finished', () => {
+    // you are done, open in the tenth; the computer strikes in its tenth and is owed two more
+    const you = open(10)
+    expect(upNext([you, [...open(9), 10]], 1)).toBe(1)
+    expect(upNext([you, [...open(9), 10, 10]], 1)).toBe(1)
+    expect(upNext([you, [...open(9), 10, 10, 10]], 1)).toBeNull()
+    // and a spare is owed one
+    expect(upNext([you, [...open(9), 6, 4]], 1)).toBe(1)
+    expect(upNext([you, [...open(9), 6, 4, 2]], 1)).toBeNull()
+  })
+  it('lets the first bowler take their own bonus balls once the other has finished', () => {
+    // a strike in your tenth: the computer bowls its tenth, then you have two to come
+    expect(upNext([[...open(9), 10], open(9)], 0)).toBe(1)
+    expect(upNext([[...open(9), 10], open(10)], 1)).toBe(0)
+    expect(upNext([[...open(9), 10, 3], open(10)], 0)).toBe(0)
+    expect(upNext([[...open(9), 10, 3, 4], open(10)], 0)).toBeNull()
   })
 })
