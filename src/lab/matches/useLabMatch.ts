@@ -37,7 +37,12 @@ const idFor = (demo: string) =>
 /** how often an open match looks again while it waits on the other player */
 const WATCH_MS = 20000
 
-export function useLabMatch(demo: string) {
+/**
+ * `preview: false` for a toy where seeing the move played would give it away — a pool shot, whose
+ * outcome IS the physics. Its chosen move is shown as itself (the aim), never applied, and only
+ * the server's answer moves anything.
+ */
+export function useLabMatch(demo: string, { preview = true }: { preview?: boolean } = {}) {
   const [id, setId] = useState<string | null>(() => idFor(demo))
   const [view, setView] = useState<MatchView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -120,8 +125,8 @@ export function useLabMatch(demo: string) {
   /** the side the viewer moves for: their own seat in versus, the team's (0) together */
   const side: Seat = view?.mode === 'together' ? 0 : (view?.you ?? 0)
   const shown = useMemo(
-    () => (rules && game && hasPending ? rules.apply(game, pending, side) : game),
-    [rules, game, pending, hasPending, side],
+    () => (preview && rules && game && hasPending ? rules.apply(game, pending, side) : game),
+    [preview, rules, game, pending, hasPending, side],
   )
   const myTurn = !!view && view.status === 'active' && view.turn === view.you
   const canPlay = myTurn && !hasPending && !busy && !!rules && !!game && rules.turn(game) === side
