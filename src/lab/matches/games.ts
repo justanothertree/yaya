@@ -24,6 +24,8 @@ import { LEVELS as BREAKTHROUGH_LEVELS, SIZES as BREAKTHROUGH_SIZES } from '../.
 import { breakthroughRules, readBreakthroughSize } from '../../gpu/breakthroughRoom'
 import { LEVELS as FENCES_LEVELS, SIZES as FENCES_SIZES } from '../../gpu/fences'
 import { fencesRules, readFencesSize } from '../../gpu/fencesRoom'
+import { LEVELS as HALMA_LEVELS } from '../../gpu/halma'
+import { halmaRules } from '../../gpu/halmaRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -129,6 +131,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     levels: FENCES_LEVELS,
     sizes: FENCES_SIZES,
   },
+  halma: { name: MATCH_NAMES.halma, rulesFor: () => halmaRules, levels: HALMA_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>

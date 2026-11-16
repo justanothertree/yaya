@@ -20,6 +20,7 @@ export const MATCH_NAMES: Record<string, string> = {
   ultimate: 'Ultimate noughts',
   breakthrough: 'Breakthrough',
   fences: 'Fences',
+  halma: 'Chinese checkers',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
