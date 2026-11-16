@@ -80,3 +80,93 @@ export function tilesFor(
     (x, y) => (mins.get(y.id) ?? 0) - (mins.get(x.id) ?? 0) || x.name.localeCompare(y.name),
   )
 }
+
+/**
+ * Your activities, the most recently started first — the chips under ▶ Start something.
+ *
+ * ⚠️ RECENT, NOT BUSIEST, which is the answer #298's third question was given ("the three most
+ * recent activities, or ones you pin?"). `tilesFor` ranks by minutes TODAY, which is right for a
+ * list you are switching around in and wrong for the first screen of a morning: before anything
+ * has run every activity has zero minutes, and the row is alphabetical. "What did I start last" is
+ * the question somebody opening an idle Day is asking.
+ *
+ * ⚠️ AND THE REST FOLLOW, BY NAME, rather than the list stopping short. The room hands in a week,
+ * so the first morning of a week has nothing recent in it — and no chips there would be the one
+ * screen where a shortcut is most wanted and least present. Auto and archived activities are never
+ * offered, for the reason `tilesFor` gives.
+ */
+export function recentFirst(acts: readonly Activity[], log: readonly Sat[]): Activity[] {
+  const last = new Map<string, number>()
+  for (const e of log) {
+    const t = Date.parse(e.start)
+    if (Number.isFinite(t) && t > (last.get(e.activity) ?? -Infinity)) last.set(e.activity, t)
+  }
+  /* ⚠️ `-Infinity - -Infinity` is NaN, which is falsy, so two never-started ones fall through to
+     the name — the same tie-break `tilesFor` uses */
+  return acts
+    .filter((a) => !a.archived && !a.auto)
+    .sort(
+      (x, y) =>
+        (last.get(y.id) ?? -Infinity) - (last.get(x.id) ?? -Infinity) ||
+        x.name.localeCompare(y.name),
+    )
+}
+
+/** how far either side of now a start still counts as "around now", in minutes */
+export const USUAL_WINDOW = 90
+/** how much evidence makes a habit: about two starts near this time */
+export const USUAL_ENOUGH = 1.5
+
+/**
+ * Your activities, what you usually start around now first — the chips under ▶ Start something.
+ *
+ * ⚠️ A ROUTINE BEFORE A MEMORY. "The three you started last" (`recentFirst`) answers the morning
+ * badly when last night was Drawing and every weekday at seven is Gym. So each start in `past` (the
+ * last four weeks, from the room) counts towards its activity when its clock time is within
+ * `USUAL_WINDOW` minutes of now, more the closer it is. Midnight wraps: 23:50 is twenty minutes
+ * from 00:10.
+ *
+ * ⚠️ THIS WEEKDAY FIRST, THEN ANY DAY, then recency. A single weighted sum let a habit five days a
+ * week outvote the one that only happens today: Gym at seven on weekdays beat Guitar at half past
+ * seven on Saturdays, ON a Saturday. So an activity with enough evidence on this weekday leads, one
+ * with enough evidence near this time on any day comes next, and everything else keeps the
+ * `recentFirst` order — which is the whole list on a new account, so nothing is lost by this.
+ *
+ * ⚠️ `USUAL_ENOUGH` IS ABOUT TWO STARTS, so one stray evening does not become a routine.
+ */
+export function usualFirst(
+  acts: readonly Activity[],
+  past: readonly Sat[],
+  lately: readonly Sat[],
+  nowMs: number,
+): Activity[] {
+  const now = new Date(nowMs)
+  const at = now.getHours() * 60 + now.getMinutes()
+  const sameDay = new Map<string, number>()
+  const anyDay = new Map<string, number>()
+  for (const e of past) {
+    const t = Date.parse(e.start)
+    if (!Number.isFinite(t) || t > nowMs) continue
+    const d = new Date(t)
+    const raw = Math.abs(d.getHours() * 60 + d.getMinutes() - at)
+    const off = Math.min(raw, 24 * 60 - raw)
+    if (off >= USUAL_WINDOW) continue
+    const w = 1 - off / USUAL_WINDOW
+    anyDay.set(e.activity, (anyDay.get(e.activity) ?? 0) + w)
+    if (d.getDay() === now.getDay()) sameDay.set(e.activity, (sameDay.get(e.activity) ?? 0) + w)
+  }
+  const order = recentFirst(acts, lately)
+  const rank = new Map(order.map((a, i) => [a.id, i]))
+  /* the tier, then the evidence inside it: this weekday, any day, or none */
+  const key = (a: Activity): [number, number] => {
+    const s = sameDay.get(a.id) ?? 0
+    if (s >= USUAL_ENOUGH) return [2, s]
+    const n = anyDay.get(a.id) ?? 0
+    return n >= USUAL_ENOUGH ? [1, n] : [0, 0]
+  }
+  return order.sort((x, y) => {
+    const [tx, sx] = key(x)
+    const [ty, sy] = key(y)
+    return ty - tx || sy - sx || rank.get(x.id)! - rank.get(y.id)!
+  })
+}

@@ -64,7 +64,16 @@ function PeerAudio({
   return <audio ref={ref} autoPlay playsInline />
 }
 
-export function CallDock() {
+/** DEV ONLY: a #dev-call tab opened with meter=1 shows the admin's meter (src/dev/labCall.ts) */
+const devMeter = () => {
+  try {
+    return /"meter":true/.test(sessionStorage.getItem('dev_call') ?? '')
+  } catch {
+    return false
+  }
+}
+
+export function CallDock({ isAdmin = false }: { isAdmin?: boolean }) {
   const [rosterOpen, setRosterOpen] = useState(false)
   const {
     inCall,
@@ -193,7 +202,12 @@ export function CallDock() {
       >
         👥 {peers.length + 1}
       </button>
-      {rosterOpen && <CallRoster onClose={() => setRosterOpen(false)} />}
+      {rosterOpen && (
+        <CallRoster
+          onClose={() => setRosterOpen(false)}
+          showMeter={isAdmin || (import.meta.env.DEV && devMeter())}
+        />
+      )}
       {/* A refusal has to be SEEN. This lived only in the button's tooltip, so hitting share
           with too many people in the call looked like the button was broken. */}
       {shareError && (

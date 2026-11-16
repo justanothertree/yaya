@@ -323,3 +323,33 @@ export function pickCell(b: Build, size: [number, number], yaw: number, px: [num
   }
   return -1
 }
+
+/** fewest blocks kept per puzzle, by name */
+export type Best = Record<string, number>
+/**
+ * What Shadow box keeps: the puzzle it was on and the fewest blocks per puzzle. Moved here
+ * unchanged from ShadowboxDemo so the Lab's share card reads it the toy's own way.
+ */
+export function readSaved(text: string | null): { puzzle: number; best: Best } {
+  try {
+    const v = JSON.parse(text ?? 'null') as {
+      puzzle?: unknown
+      best?: Record<string, unknown>
+    } | null
+    const puzzle =
+      typeof v?.puzzle === 'number' &&
+      Number.isInteger(v.puzzle) &&
+      v.puzzle >= 0 &&
+      v.puzzle < PUZZLES.length
+        ? v.puzzle
+        : 0
+    const best: Best = {}
+    for (const p of PUZZLES) {
+      const n = v?.best?.[p.name]
+      if (typeof n === 'number' && Number.isInteger(n) && n > 0) best[p.name] = n
+    }
+    return { puzzle, best }
+  } catch {
+    return { puzzle: 0, best: {} }
+  }
+}

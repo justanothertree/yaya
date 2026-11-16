@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columns, hours, weekOf } from './week'
+import { columns, coveredLine, coveredSoFar, hours, weekOf } from './week'
 import { localMidnight } from './record'
 
 /**
@@ -175,5 +175,57 @@ describe('the hour lines', () => {
   it('marks the quarter-day hours strong and the rest not', () => {
     const strong = hours().filter((x) => x.strong)
     expect(strong.map((x) => x.hour)).toEqual([0, 6, 12, 18])
+  })
+})
+
+/**
+ * Each hour's label against the blocks that start at that hour.
+ *
+ * ⚠️ TWO HALVES, BECAUSE THE BUG WAS IN THE ONE A UNIT TEST CANNOT SEE. A label sits at `hours()`'s
+ * percentage of the gutter, and a block at `lane`'s percentage of its own column. Those are two
+ * sums of one clock, and this holds them to it. But on 549bb15 both sums were right and every
+ * label was still in the wrong place: the gutter was `height: 240px` beside a 620px lane, so the
+ * same percentage meant two different heights, and 12p sat 185px above noon. Vitest has no layout
+ * (and hands a CSS import back empty), so `scripts/week-hours.test.mjs` asks the stylesheet the
+ * other half: does the gutter still have a size of its own, or is it the lanes' row? The pane
+ * measured the result at 1440, 820 and 375: every label within half a pixel of its line, and
+ * every on-the-hour block level with its label.
+ */
+describe('the hour labels against the lanes', () => {
+  /* the whole day is over, so nothing is clipped by the clock */
+  const after = localMidnight(DAY).getTime() + 30 * 3_600_000
+
+  it('puts each hour label exactly where a session starting at that hour begins', () => {
+    for (let h = 0; h < 24; h++) {
+      const [col] = columns([DAY], [span(DAY, h, h + 0.5)], after)
+      expect(col.blocks[0].left, `${h}:00`).toBeCloseTo(hours()[h].top, 9)
+    }
+  })
+})
+
+/**
+ * The week's figure, now printed in two places — under the grid and on the fold that hides it.
+ *
+ * ⚠️ WRITTEN FROM THE DAYS, NOT FROM THE SUM. Each column is built here by hand with a covered
+ * share chosen so the average is obvious on paper, and the days that have not begun carry a share
+ * that would move the answer if they were counted — which is the mistake the rule is for.
+ */
+describe('how much of the week so far is written down', () => {
+  const NOW = Date.parse('2026-11-11T15:00:00Z')
+  const DAY = 86_400_000
+  const col = (fromMs: number, covered: number) => ({ fromMs, covered })
+
+  it('averages the days that have begun and ignores the rest', () => {
+    const cols = [col(NOW - 2 * DAY, 50), col(NOW - DAY, 0), col(NOW + DAY, 100)]
+    expect(coveredSoFar(cols, NOW)).toEqual({ pct: 25, days: 2 })
+  })
+
+  it('says nothing at all before the week has begun', () => {
+    expect(coveredSoFar([col(NOW + DAY, 80)], NOW)).toBeNull()
+  })
+
+  it('calls a single day today, and several by their count', () => {
+    expect(coveredLine({ pct: 7, days: 1 })).toBe('7% of today is written down')
+    expect(coveredLine({ pct: 7, days: 6 })).toBe('7% of these 6 days is written down')
   })
 })

@@ -4,6 +4,7 @@ import { previewMember } from '../dev/previewMember'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import { TIER_SHORT } from '../components/visibilityLabels'
 import { timelineSays, goalsSays, type Reach } from './sharingCopy'
+import { inkOf } from './record'
 import type { VisibilityTier } from '../circuit/types'
 
 /**
@@ -238,8 +239,29 @@ function ShareRow({
   )
 }
 
-export function Sharing({ authed }: { authed: boolean }) {
+export function Sharing({
+  authed,
+  ask = 0,
+}: {
+  authed: boolean
+  /**
+   * Bumped by the room to open the settings — a goal shared with chosen friends sends you here,
+   * to the one control that can show that list, and a fold it lands on closed would hide it.
+   */
+  ask?: number
+}) {
   const [state, setState] = useState<Sharing | null>(null)
+  /**
+   * Whether the settings are open (#298).
+   *
+   * ⚠️ FOLDED, BECAUSE THE FEED IS WHAT THIS TAB IS FOR. The switch, the activity list and the goals
+   * list all came before a friend's first entry, which began **1,010px** down a phone. One row says
+   * whether sharing is on and how much of yours it reaches; the lists are behind it.
+   */
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (ask) setOpen(true)
+  }, [ask])
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -347,27 +369,10 @@ export function Sharing({ authed }: { authed: boolean }) {
    */
   const ticked = state.activities.filter((a) => a.reaches).length
 
-  return (
-    <section className="chron-sharing">
-      <label className="chron-sharing-switch">
-        <input
-          type="checkbox"
-          checked={state.timeline}
-          disabled={busy === 'timeline'}
-          onChange={(e) => void setTimeline(e.target.checked)}
-        />
-        <span>
-          <strong>Share my Chronicle with friends</strong>
-          {/**
-           * ⚠️ THE LINE UNDER IT IS DRAWN FROM THE STATE, never written once. The profile
-           * editor's own promise went stale the day a second switch was added to it, and the
-           * note there says so — a privacy promise that has to be remembered separately from the
-           * feature it describes is a promise that will be wrong.
-           */}
-          <span className="muted chron-sharing-says">{timelineSays(state, ticked)}</span>
-        </span>
-      </label>
-
+  const goalsShown = state.goals.filter((g) => g.reaches).length
+  const many = (n: number, one: string, more: string) => `${n} ${n === 1 ? one : more}`
+  const settings = (
+    <>
       {state.timeline && (
         <>
           <p className="muted chron-sharing-lede">
@@ -379,7 +384,7 @@ export function Sharing({ authed }: { authed: boolean }) {
               <ShareRow
                 key={a.id}
                 name={a.name}
-                colour={a.colour}
+                colour={inkOf(a)}
                 item={{ kind: 'chronicle_activity', id: a.id }}
                 visibility={a.visibility}
                 reaches={a.reaches}
@@ -403,8 +408,8 @@ export function Sharing({ authed }: { authed: boolean }) {
        * `state.timeline` would hide the goals control from somebody whose card shows goals and no
        * timeline — the exact person it is for.
        *
-       * ⚠️ AND IT IS THE ONLY PLACE A GOAL CAN BE SET TO CERTAIN FRIENDS. The ◍/◉/○ button in the
-       * Aims list narrows and widens between private and friends, which is all three glyphs can
+       * ⚠️ AND IT IS THE ONLY PLACE A GOAL CAN BE SET TO CERTAIN FRIENDS. The profile line in a goal's
+       * ⋯ on Aims narrows and widens between private and friends, which is all three glyphs can
        * say; the level worked in the database, the export carried its list, and nothing on screen
        * could choose it.
        */}
@@ -429,7 +434,91 @@ export function Sharing({ authed }: { authed: boolean }) {
           <p className="muted">No goals yet — add one on the Aims tab and it will appear here.</p>
         )}
       </div>
+    </>
+  )
 
+  /**
+   * ⚠️ WHEN SHARING IS OFF, THE SWITCH STAYS ON SCREEN. This tab is empty because sharing is off,
+   * so it is the screen that must be able to turn it on — the old empty state named three switches
+   * in prose and linked to none of them. Only the goals, which reach a profile by a different
+   * switch, fold. When it is on, everything does, behind a row that says how far it reaches.
+   */
+  if (!state.timeline)
+    return (
+      <section className="chron-sharing">
+        <label className="chron-sharing-switch">
+          <input
+            type="checkbox"
+            checked={state.timeline}
+            disabled={busy === 'timeline'}
+            onChange={(e) => void setTimeline(e.target.checked)}
+          />
+          <span>
+            <strong>Share my Chronicle with friends</strong>
+            {/**
+             * ⚠️ THE LINE UNDER IT IS DRAWN FROM THE STATE, never written once. The profile
+             * editor's own promise went stale the day a second switch was added to it, and the
+             * note there says so — a privacy promise that has to be remembered separately from the
+             * feature it describes is a promise that will be wrong.
+             */}
+            <span className="muted chron-sharing-says">{timelineSays(state, ticked)}</span>
+          </span>
+        </label>
+        <details
+          className="chron-fold chron-sharing-fold-all"
+          open={open}
+          onToggle={(e) => setOpen(e.currentTarget.open)}
+        >
+          <summary>
+            <span className="chron-fold-name">
+              Goals on your profile
+              <small>
+                {goalsShown ? `${many(goalsShown, 'goal', 'goals')} showing` : 'none showing'}
+              </small>
+            </span>
+          </summary>
+          {settings}
+        </details>
+        {error && <p className="chron-sharing-err">{error}</p>}
+      </section>
+    )
+
+  return (
+    <section className="chron-sharing">
+      <details
+        className="chron-fold chron-sharing-fold-all"
+        open={open}
+        onToggle={(e) => setOpen(e.currentTarget.open)}
+      >
+        <summary>
+          <span className="chron-fold-name">
+            Sharing is on
+            <small>
+              {many(ticked, 'activity', 'activities')} and {many(goalsShown, 'goal', 'goals')} · who
+              sees what
+            </small>
+          </span>
+        </summary>
+        <label className="chron-sharing-switch">
+          <input
+            type="checkbox"
+            checked={state.timeline}
+            disabled={busy === 'timeline'}
+            onChange={(e) => void setTimeline(e.target.checked)}
+          />
+          <span>
+            <strong>Share my Chronicle with friends</strong>
+            {/**
+             * ⚠️ THE LINE UNDER IT IS DRAWN FROM THE STATE, never written once. The profile
+             * editor's own promise went stale the day a second switch was added to it, and the
+             * note there says so — a privacy promise that has to be remembered separately from the
+             * feature it describes is a promise that will be wrong.
+             */}
+            <span className="muted chron-sharing-says">{timelineSays(state, ticked)}</span>
+          </span>
+        </label>
+        {settings}
+      </details>
       {error && <p className="chron-sharing-err">{error}</p>}
     </section>
   )

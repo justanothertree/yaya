@@ -97,6 +97,23 @@ export const COLOURS: readonly string[] = [
   '#7a8a99',
 ]
 
+/**
+ * The colour an activity is drawn in: its own, or its kind's when it has none.
+ *
+ * ⚠️ THE WEEK GRID'S RULE, NOW THE DOT'S AS WELL. The dot beside a name was drawn only for an
+ * activity with a colour of its own, so a day log held a few names with a dot and most without,
+ * and the question that came back was "what do the green dots mean?" about two activities that
+ * had simply been given green. A dot on some rows reads as a status. On every row, in the colour
+ * the week grid already draws that activity's blocks in, it reads as which activity this is.
+ * The three kinds' colours are on `:root` in index.css, so this resolves anywhere on the page.
+ *
+ * ⚠️ A KIND IT DOES NOT KNOW IS FREE TIME, which is the week grid's own default (`is-free`), and
+ * the alternative is `var(--chron-whatever)`, which draws nothing at all. Some readers carry the
+ * kind as a plain string from the server rather than as `Activity['cat']`.
+ */
+export const inkOf = (a: { colour: string | null; cat: string }): string =>
+  a.colour ?? `var(--chron-${CATS.some(([c]) => c === a.cat) ? a.cat : 'free'})`
+
 export type Activity = {
   id: string
   name: string
@@ -805,6 +822,16 @@ export function readLocal(value: string): Date | null {
   if (!m) return null
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), 0, 0)
   return Number.isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * Minutes typed into a box — a sitting's length, a goal's estimate, a routine step: a positive
+ * number rounded to the minute, or null. ⚠️ Blank and nonsense both mean "no opinion", never zero —
+ * see Activity.session and Goal.est.
+ */
+export const typedMinutes = (typed: string): number | null => {
+  const n = Number(typed)
+  return typed.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
 }
 
 /** write a moment back as `YYYY-MM-DDTHH:mm`, which is what a datetime-local input wants */

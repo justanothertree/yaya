@@ -719,6 +719,25 @@
   }
 }
 
+/* ⚠️ AND WITH A MOUSE, 24px: the WCAG 2.5.8 floor and no further (OPEN-DECISIONS 22a), so the
+   sheet stays quiet. Measured 10 Nov at 1440: an exercise's ✎ 23x17, a column's 🗑 18x16, the
+   column-rename box 14 tall. This block is the exact complement of the one above, so neither undoes
+   the other: a plain `.cz-slot-btn { min-width }` further down would have beaten the 34px there,
+   being the same specificity and later in the file. The board's log-today ＋ is sized in Board.tsx,
+   because .cz-tap is on controls in other rooms too. */
+@media (min-width: 641px) and (pointer: fine) {
+  .cz-slot-btn {
+    min-width: 24px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cz-col-rename {
+    min-height: 24px;
+  }
+}
+
 /* ⚠️ EVERY FIELD ON THE SITE, AND A THUMB IS NOT A WIDTH — the same correction the slider and
    visualiser blocks at the end of this file already carry, and the rule it was most expensive to
    miss, because this one selector is every input, select and textarea in every room. Gated on
@@ -1426,6 +1445,9 @@
 }
 .call-vol input[type='range'] {
   width: 56px;
+  /* a range input defaults to about 16px tall, under the 24px a control needs to be pressed */
+  height: 24px;
+  margin: 0;
   accent-color: var(--accent, #7c6af7);
 }
 .call-dock-who strong {
@@ -1445,6 +1467,34 @@
   padding: 0.15rem 0.55rem;
   min-height: 32px;
   flex: 0 0 auto;
+}
+/**
+ * ⚠️ ON A PHONE THE DOCK IS TWO ROWS. In one, every control kept its size (`flex-shrink: 0`,
+ * above) and the call's name took what was left — measured with five buttons and the volume, that
+ * was 2px at 390 wide and nothing at all at 320, where the row also ran past the dock's edge. So
+ * the name and the volume share the first row and the buttons wrap to the second. The basis
+ * reserves the dot, the volume and their gaps in PIXELS — the root size is fluid, so rem is not a
+ * length here — and nothing else fits beside them, which is what makes the buttons wrap.
+ */
+@media (max-width: 640px) {
+  .call-dock {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 0.35rem;
+    border-radius: 18px;
+    /* a fixed box sizes to its content, and wrapped content asks for very little: without a
+       width the dock shrank until the buttons took three rows */
+    width: min(92vw, 26rem);
+  }
+  .call-dock .call-dock-who {
+    flex: 1 1 calc(100% - 120px);
+  }
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .call-vol input[type='range'] {
+    width: 64px;
+    height: 32px;
+  }
 }
 
 /* "someone is in this call" on a conversation row — green rather than the accent used for
@@ -3173,15 +3223,6 @@ section[id] {
   min-width: 160px;
   font-size: 0.76rem;
 }
-.inst-oct {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-}
-.inst-oct .btn {
-  padding: 0.1rem 0.5rem;
-}
 
 /* The keyboard.
    ⚠️ touch-action: none is load-bearing — without it a drag across the keys on a phone is
@@ -3747,16 +3788,6 @@ section[id] {
   outline-offset: 3px;
   border-radius: 4px;
 }
-.inst-layer-inst {
-  font: inherit;
-  font-size: 0.78rem;
-  padding: 0.05rem 0.2rem;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  max-width: 6.5rem;
-}
 /* ⚠️ IT DOES NOT GROW, IT ONLY SHRINKS. `flex: 1` made the name eat every spare pixel in the
    row, so on a wide screen "3. 14 notes" sat in a button forty characters long and shoved the
    instrument picker — the control that belongs to that very layer — to the far edge of the
@@ -3773,9 +3804,6 @@ section[id] {
 .inst-layers li .btn {
   padding: 0.1rem 0.4rem;
   font-size: 0.8rem;
-}
-.inst-layers-all {
-  justify-content: flex-end;
 }
 .inst-note {
   margin: 0;
@@ -5193,19 +5221,6 @@ select {
   min-width: 6rem;
   accent-color: var(--accent);
 }
-/* the play row's volume shares a line with the octave rather than taking one of its own; a
-   pixel floor because rem is fluid here (see CLAUDE.md §6) */
-.inst-playbar .appearance-slider {
-  flex: 1 1 10rem;
-  min-width: 150px;
-}
-/* ⚠️ and the slider gives way inside it, with a floor in pixels: the shared rule's 6rem minimum
-   pushed the "70%" 29px past the edge of a 375 screen — measured, the first time this row was
-   given a narrower label. Zero would let the slider vanish, so 60px. */
-.inst-playbar .appearance-slider input[type='range'] {
-  flex: 1 1 4rem;
-  min-width: 60px;
-}
 .appearance-slider-val {
   min-width: 2.6rem;
   text-align: right;
@@ -5429,6 +5444,9 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .also-together-x {
   margin-left: auto;
+  /* ⚠️ 24px with a mouse — it was 15.5x20.3 (WCAG 2.5.8; see the note above .snap-pick's floor) */
+  min-width: 24px;
+  min-height: 24px;
   appearance: none;
   border: 0;
   background: none;
@@ -6728,6 +6746,7 @@ button.appearance-slider-val:not(:disabled):focus-visible {
      toolbar and the mobile nav. */
   .sharestage-controls .btn,
   .callroster-actions .btn,
+  .callroster-row .callroster-lab,
   .profile-editrow-actions .btn {
     min-width: 40px;
     min-height: 40px;
@@ -6894,6 +6913,23 @@ button.appearance-slider-val:not(:disabled):focus-visible {
 }
 .callroster-actions .btn {
   padding: 0.15rem 0.4rem;
+}
+/* the admin's Realtime meter under the roster (src/party/meter.ts) */
+.callroster-meter {
+  margin: 0.4rem 0.5rem 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+/* the Lab toy a friend is on — a link to it (src/lab/social/where.ts) */
+.callroster-lab {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 11rem;
+  padding: 0.15rem 0.45rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .callroster-empty {
   padding: 0.6rem;
@@ -7541,6 +7577,20 @@ table.reconcile tfoot .reconcile-total td {
 }
 
 /**
+ * The family holds units of a symbol still marked Personal.
+ *
+ * Same shape as `.cz-correction-warn` above and for the same reason: it is a sentence inside a
+ * flex row that already holds four things, so it takes a line of its own (`flex-basis: 100%` at
+ * the call site) rather than competing for width at 375.
+ */
+.cz-undeclared {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: #e0a33e;
+  padding: 0.1rem 0;
+}
+
+/**
  * One symbol's trades, answered together.
  *
  * ⚠️ THE GROUP IS INDENTED AND THE HEAD IS NOT, so the rows read as belonging to the symbol
@@ -8077,8 +8127,7 @@ a.cz-msg-author:focus-visible {
   .inst-scale-say {
     order: -2;
   }
-  .inst-bar,
-  .inst-more {
+  .inst-bar {
     order: -1;
   }
   /* the typing light explains a hardware keyboard, which a phone has not got — and on this row
@@ -8779,7 +8828,7 @@ a.cz-msg-author:focus-visible {
 .inst-picks:not(.is-open) {
   display: none;
 }
-/* the singing prototype — see SingPanel */
+/* 🎤 Voice's door to the song's lyrics — see SingDoor in SongTools.tsx */
 .inst-sing {
   display: flex;
   flex-direction: column;
@@ -8789,13 +8838,6 @@ a.cz-msg-author:focus-visible {
 }
 .inst-sing > .btn {
   align-self: flex-start;
-}
-.inst-sing-lyric {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  font: inherit;
-  resize: vertical;
 }
 /* the instrument menu's families — one row of tiles at a time, see families.ts */
 .inst-families {
@@ -8808,18 +8850,7 @@ a.cz-msg-author:focus-visible {
   padding: 0.3rem 0.7rem;
   font-size: 0.8rem;
 }
-/* the rest of the sound — arpeggio, effects, rigs — tucked behind ⚙ More sound */
-@media (max-width: 40rem) {
-  .inst-more-word {
-    display: none;
-  }
-  /* ⚠️ MEASURED AT 375: Chord, Panic and More came to 357px on a 351px line at the row's
-     usual gap, which pushed More onto a fifth line of its own. A narrower gap between the
-     controls fits them; at 360 it may still wrap, which is a taller bar rather than a broken one. */
-  .inst-playbar {
-    column-gap: 0.45rem;
-  }
-}
+/* the rest of the sound — arpeggio, effects, rigs — in the ⚙ Sound sheet */
 .inst-more {
   display: flex;
   flex-direction: column;
@@ -15916,6 +15947,35 @@ a.cz-msg-author:focus-visible {
   }
 }
 
+/**
+ * ⚠️ 24px WITH A MOUSE TOO — WCAG 2.5.8 IS NOT A TOUCH RULE. The block below sizes these for a
+ * thumb, and on a desktop they were left at whatever their padding made them: octave − and +
+ * 25.7x18.6, the Snap row 17-19px tall, a layer's "dry" and Split 19.6, Clear all 19.6, the
+ * layer buttons 23.6 — each in a row of neighbours, so the spacing exception does not save them.
+ * Measured at 1440 in the instrument room, 10 Nov 2026. (The tip's ✕, 15.5x20.3, is floored in its
+ * own rule, because its touch size is set in a block EARLIER than this one.)
+ *
+ * ⚠️ NOT THE BAR CELLS OR THE RULER. Those are 12px on a desktop on purpose — see the note on
+ * .inst-bar-cell, "widening every cell made the row longer and harder to take in" — and that is
+ * a decision to put to Evan, not one to overturn in a sizing pass.
+ *
+ * ⚠️ ONLY FOR A FINE POINTER, so it cannot touch a phone at all. Unconditional, it would be a
+ * plain min-height at the same specificity as the touch sizes and could undo any of them that
+ * happens to be written earlier in this file — the tip's 32px was one, and was caught measuring.
+ * The note editor's note-length row (Grid, 1/16 … 1) joins it: 20px with a mouse, same room.
+ */
+@media (pointer: fine) {
+  .snap-pick .btn,
+  .roll-len .btn,
+  .inst-layers li .btn {
+    min-height: 24px;
+  }
+  /* a one-character face is narrow as well as short: the note length "1" */
+  .roll-len .btn {
+    min-width: 24px;
+  }
+}
+
 /* ⚠️ EVERY SLIDER ON THE SITE, IN ONE RULE, because it was the same 16px everywhere and
    three rooms wearing the same wrapper is one problem rather than three. `.appearance-slider`
    is what the visualiser, the instrument and the paint room all put a range inside — measured
@@ -15948,15 +16008,16 @@ a.cz-msg-author:focus-visible {
   .appearance-slider input[type='range'] {
     min-height: 36px;
   }
-  .inst-oct .btn,
   .snap-pick .btn {
     min-height: 36px;
   }
-  /* ⚠️ WIDE ENOUGH TOO, not only tall. A minus and a plus are one character each, so a
-     height rule alone left them 24px across — a target that is easy to hit downwards and easy
-     to miss sideways, which is the half of the problem a min-height quietly does not fix. */
-  .inst-oct .btn {
-    min-width: 36px;
+  /* ⚠️ AND THE NOTE EDITOR'S LENGTH ROW, which sits under Snap and was left at 19px on a phone —
+     measured at 375 once the editor moved into a part's menu (15 Nov 2026), the first time
+     anything measured the editor open on a phone at all: it only exists after a press, so no
+     sweep of the room's opening state had ever reached it. */
+  .roll-len .btn {
+    min-height: 32px;
+    min-width: 32px;
   }
   /* ⚠️ THE TWO SLIDERS THAT ARE NOT WRAPPED IN .appearance-slider, and this said "the one"
      until the second turned up. The keyboard range sits straight in the instrument; the map
@@ -16483,8 +16544,7 @@ a.cz-msg-author:focus-visible {
  * for another.
  */
 @media (hover: none) and (pointer: coarse) {
-  .inst-layers li .btn,
-  .inst-layer-inst {
+  .inst-layers li .btn {
     min-height: 24px;
   }
   .inst-layer-vol input[type='range'] {
@@ -16572,7 +16632,8 @@ a.cz-msg-author:focus-visible {
  * three-pixel column. Measured at 320: "what you are aiming at" ellipses, both labels whole.
  */
 /* ⚠️ FOUR SINCE THE JOURNAL, AND STILL ONE ROW. Measured at 375 before settling on it: each
-   button is ~77px, "Journal" and "Friends" fit their labels, and "Aims" keeps room for its count.
+   button is ~77px and "Journal" and "Friends" fit their labels. "Aims" with its count did NOT,
+   whenever another half was the chosen one — see the side padding in the narrow block below.
    The hints already drop below 34rem (see below), which is what made a fourth affordable. */
 .chron-halves {
   display: grid;
@@ -16660,9 +16721,19 @@ a.cz-msg-author:focus-visible {
   .chron-halves .btn {
     align-items: center;
     text-align: center;
+    /* ⚠️ AND THE SIDES GIVE UP THEIR PADDING, or "Aims" reads "Ai…". The word, the gap and its
+       count need 57px, and an unchosen button at 375 had 55.7 inside 9.6px of padding a side, so
+       the word was cut whenever another half was chosen. With the labels centred, side padding
+       only ever sat between the word and the edge. Measured with 0.2rem: every label whole at 375
+       and 360 with a one- or two-digit count, chosen or not; at 320 with one digit, while a
+       two-digit count still clips the word there, which is the rule above doing its job. */
+    padding-inline: 0.2rem;
   }
   .chron-halves .btn small {
     display: none;
+  }
+  .chron-half-top {
+    gap: 0.2rem;
   }
 }
 
@@ -16672,9 +16743,13 @@ a.cz-msg-author:focus-visible {
   gap: 0.6rem;
   margin-top: 0.6rem;
 }
+/* the list's heading and its 🔍, which opens the search box under them — see JournalList */
 .chron-journal-top {
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.45rem;
+  margin: 0.6rem 0 0.4rem;
 }
 .chron-journal-top h3 {
   margin: 0;
@@ -16851,6 +16926,8 @@ a.cz-msg-author:focus-visible {
 .chron-site-toggle {
   width: 100%;
   justify-content: flex-start;
+  /* a .btn is inline-block, so the line above does nothing on its own and the label sat centred */
+  text-align: left;
   font-size: 0.8rem;
   color: var(--muted);
   min-height: 36px;
@@ -16876,7 +16953,7 @@ a.cz-msg-author:focus-visible {
  *
  * ⚠️ AND THE KEYBOARD ROUTE IS ELSEWHERE, deliberately. A div you can click is a trap when it is
  * the only way in; this is a shortcut. The day header is a real button with the day and its
- * coverage in its label, and every session has a 44px ✎ in the log below. WCAG 2.5.8's
+ * coverage in its label, and every session's row in the log below is a button. WCAG 2.5.8's
  * equivalent-control exception is what this rests on, not an exemption.
  */
 .chron-week-lane.is-tappable {
@@ -16928,23 +17005,6 @@ a.cz-msg-author:focus-visible {
   color: inherit;
 }
 
-/**
- * Live, or logging something past — two pills over one picker.
- *
- * ⚠️ THEY ARE A CHOICE BETWEEN EACH OTHER, so they sit together and share a width, the same rule
- * the halves strip at the top of the room follows. What they change is what the chips underneath
- * MEAN, which is why they have to be directly above them and not beside ＋ Activity.
- */
-.chron-modes {
-  display: flex;
-  gap: 0.3rem;
-  margin: 0 0 0.4rem;
-}
-.chron-modes .btn {
-  flex: 0 0 auto;
-  min-height: 36px;
-  font-size: 0.82rem;
-}
 /* the two ends of a past span, under the picker that says what it was */
 .chron-span {
   margin: 0.2rem 0 0.5rem;
@@ -17427,7 +17487,8 @@ a.cz-msg-author:focus-visible {
  * ⚠️ 44px, NOT 24. The WCAG floor is the outside bar; this is a control somebody taps thirty
  * times in a row with their hands shaking, which is the case the comfortable size is for.
  *
- * ⚠️ AND IT HAS TO OUT-SPECIFY `.chron-timer .btn`, WHICH IS WHY THE SELECTOR IS LONG. Written
+ * ⚠️ AND IT HAS TO OUT-SPECIFY THE ROOM'S OWN `.btn` RULES, WHICH IS WHY THE SELECTOR IS LONG.
+ * It was `.chron-timer .btn` until the timer became a bar (#298) and the count left it. Written
  * as `.chron-tally-up { min-height: 44px }` it lost silently: `.chron-timer .btn` is (0,2,0)
  * against a single class's (0,1,0), so the rule applied and the buttons came out **37px** while
  * the comment above said 44. Nothing failed — 37 clears the 24px audit floor comfortably, so the
@@ -17473,7 +17534,7 @@ a.cz-msg-author:focus-visible {
 .chron-tally-fix {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.chron-timer .chron-tally .btn {
+.chron-rec .chron-tally .btn {
   min-width: 52px;
   min-height: 44px;
   font-variant-numeric: tabular-nums;
@@ -17481,13 +17542,13 @@ a.cz-msg-author:focus-visible {
 /* ⚠️ THE STEPS ARE TALLER THAN THE CORRECTIONS. 56px is the size the Now room's tiles were, for
    the same reason — the control tapped thirty times in a row — and it makes the two rows read as
    two different kinds of thing without a word of explanation. */
-.chron-timer .chron-tally .chron-tally-up {
+.chron-rec .chron-tally .chron-tally-up {
   min-height: 56px;
   font-size: 1.1rem;
   font-weight: 700;
 }
 /* the retry is a sentence, not a step: it takes the width it needs, and the 44px floor above */
-.chron-timer .chron-tally .chron-tally-retry {
+.chron-rec .chron-tally .chron-tally-retry {
   min-width: 0;
   font-size: 0.78rem;
 }
@@ -17518,6 +17579,11 @@ a.cz-msg-author:focus-visible {
   margin-bottom: 0.5rem;
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+}
+/* nothing past the edge, so nothing to fade — set by the room as the strip scrolls */
+.chron-strip[data-end='true'] {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .chron-strip::-webkit-scrollbar {
   display: none;
@@ -17587,18 +17653,25 @@ a.cz-msg-author:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+/* the title and its chips, wrapping among themselves beside the buttons — see the note in goalRow */
+.chron-goal-what {
+  display: flex;
+  align-items: center;
   flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 /**
  * ⚠️ THE ROW'S CONTROLS MOVE AS ONE. They were siblings of the title in the wrapping row above,
  * which two of them survived and three did not: at 375 a short goal put ✎ and ◯ beside the title
  * and left ✕ alone on the next line, under an empty space. `nowrap` keeps them together and
- * `margin-left: auto` keeps them right, which is exactly what `.chron-ent-do` does for a log row.
+ * `margin-left: auto` keeps them right.
  *
- * ⚠️ FOUR OF THEM ON A GOAL THAT COUNTS AN ACTIVITY, since the ▶. Measured at 375: the group is
- * 206px wide against 151px with three, inside a 327px row, and the title keeps its 150px floor
- * with 175px to spare. It costs no HEIGHT — such a row already wrapped the group onto its own
- * line, and a four-button row and a three-button one both measure 156px tall.
+ * ⚠️ TWO AT MOST SINCE #298 — ⋯, and ▶ on a goal that counts an activity — where there were
+ * four. ✎ ○ ✕ are in the ⋯ sheet, and the title and its chips wrap in a column of their own
+ * (`.chron-goal-what`), so this group never shares a line it can be pushed off.
  */
 .chron-goal-do {
   display: flex;
@@ -17689,25 +17762,15 @@ a.cz-msg-author:focus-visible {
   color: var(--accent);
 }
 /**
- * ✎ Note on the running header — the door to the sitting's journal.
+ * ✎ Note with nothing to time yet — a note about the day, which never needed a timer.
  *
- * ⚠️ GHOST, NOT FILLED. Stop is the one filled button in that row and must stay the only one;
- * this sits beside it as an offer. The count rides inside rather than beside, so the control
- * stays one tap target instead of becoming a button with a chip glued to its edge.
+ * ⚠️ GHOST, NOT FILLED: ＋ New activity beside it is the one thing that screen is for. The running
+ * sitting's note is in the bar's ⋯ now (#298), which says how many are written in words.
  */
 .chron-jot {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-}
-.chron-jot-n {
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  padding: 0.12rem 0.3rem;
-  border-radius: 100px;
-  border: 1px solid var(--border);
-  color: var(--muted);
 }
 .chron-chip.is-going {
   color: var(--accent);
@@ -17888,12 +17951,6 @@ a.cz-msg-author:focus-visible {
 .chron-gapline {
   margin: 0.3rem 0 0.1rem;
   font-size: 0.8rem;
-}
-
-.chron-quick-label {
-  font-size: 0.64rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .chron-chip-start {
@@ -18128,14 +18185,29 @@ a.cz-msg-author:focus-visible {
   display: grid;
   /* the hour gutter, then seven equal days — `minmax(0, 1fr)` so a long block cannot widen one */
   grid-template-columns: 2.1rem repeat(7, minmax(0, 1fr));
-  gap: 3px;
+  /* two rows, the day headings and then the lanes — no gap between them, as when each column
+     stacked its own */
+  grid-template-rows: auto auto;
+  gap: 0 3px;
 }
 
+/**
+ * ⚠️ THE GUTTER HAS NO HEIGHT OF ITS OWN, AND THAT IS THE FIX. It was `height: 240px` with
+ * `margin-top: 2.4rem` — a copy of the lane's height and a guess at the heading's — and on 23 Oct
+ * the lane grew to 420px on a phone and 620px past 700, and the copy did not. So the twenty-four
+ * labels were squeezed into the top 39% of the grid: measured at 1440 on 549bb15, 12p sat 185px
+ * above noon's line and 11p 359px above its own. The top was off as well, by 5px, because the
+ * heading is sized in px and the guess was in rem, and the root is fluid.
+ *
+ * Now it is the lanes' grid row, so it starts where they start and is as tall as they are,
+ * whatever height a rule gives them. The transparent border is the lane's 1px border, so the
+ * labels' percentages resolve against the same box as its hour lines.
+ */
 .chron-week-hours {
   position: relative;
-  /* the labels hang beside the lanes, so the gutter starts where the lanes do */
-  margin-top: 2.4rem;
-  height: 240px;
+  grid-column: 1;
+  grid-row: 2;
+  border-block: 1px solid transparent;
 }
 
 /**
@@ -18166,8 +18238,13 @@ a.cz-msg-author:focus-visible {
   opacity: 1;
 }
 
+/* each day spans both rows on the grid's own tracks, so every lane, and the gutter beside them,
+   starts on one line and shares one height */
 .chron-week-col {
   min-width: 0;
+  grid-row: 1 / span 2;
+  display: grid;
+  grid-template-rows: subgrid;
 }
 
 .chron-week-day {
@@ -18201,16 +18278,20 @@ a.cz-msg-author:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
+/* ⚠️ AND THE CHOSEN DAY STILL SHOWS FOCUS. The selection is drawn as an outline, and the rule
+   above outranks the site's plain `:focus-visible`, so tabbing onto the selected day changed
+   nothing on screen: measured on 10 Nov, the only one of 143 controls across Chronicle and the
+   Circuit whose focus could not be seen. This puts the site's own ring back for that case. */
+.chron-week-day.is-on:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .chron-week-lane {
   position: relative;
-  /**
-   * ⚠️ 240px FOR TWENTY-FOUR HOURS, which is ten pixels an hour. At 190 a half-hour sitting was a
-   * hairline — technically in the right place and not readable as anything. Ten pixels an hour is
-   * the point at which the commonest session in this room, half an hour to an hour, is a mark you
-   * can see without being so tall that the grid pushes the day's log off the screen.
-   */
-  height: 240px;
+  /* ⚠️ its height is the `min-height` rule beside the tap rules above, and only that: this said
+     `height: 240px`, which that rule had overruled since 23 Oct, and a second number for the same
+     height is how the hour gutter came to be left at 240 */
   border-radius: 6px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -18309,9 +18390,17 @@ a.cz-msg-author:focus-visible {
 }
 
 .chron-swatch.is-none {
-  color: var(--muted);
+  /* ⚠️ drawn in its kind's colour now (see `inkOf`), so the ✕ needs to read on all three */
+  color: #fff;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.6);
   font-size: 0.8rem;
   line-height: 1;
+}
+/* what the swatches set, on its own line above them in the editor's wrapping row */
+.chron-swatch-say {
+  flex: 1 1 100%;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .chron-dot {
@@ -18377,15 +18466,321 @@ a.cz-msg-author:focus-visible {
   margin-bottom: 0.8rem;
   background: var(--panel);
 }
-.chron-timer {
+/**
+ * The running timer as one slim bar — the clock, what it is, how long is left, ■ Stop and ⋯ (#298).
+ *
+ * ⚠️ A GRID, SO STOP NEVER WRAPS AWAY FROM THE CLOCK. The card it replaces was a wrapping flex row
+ * that came out **226px** tall on a phone; the name is the one flexible column, with a floor in
+ * pixels so a long one ellipses instead of collapsing to nothing (the root size is fluid, so
+ * `rem` is not a length here — see CLAUDE.md §6).
+ */
+.chron-running {
+  display: grid;
+  grid-template-columns: auto minmax(64px, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  margin: 0 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.chron-running-what {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.chron-running-what .chron-run-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chron-running-what .chron-aim {
+  min-width: 0;
+}
+.chron-running > .btn {
+  min-height: 40px;
+}
+/* ⋯ — a square, sized for a thumb, in every bar and on every goal */
+.chron-more {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+/* the count sits under the bar now, rather than inside a row with a gap of its own */
+.chron-rec > .chron-tally {
+  margin: 0 0 0.7rem;
+}
+
+/* nothing running: one Start, a ⋯, and the three started last */
+.chron-start {
+  display: grid;
+  /* ⚠️ minmax(0, …), or the chips row's full width becomes the column's and the page scrolls */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+.chron-start-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+.chron-start-main > .btn {
+  min-height: 44px;
+}
+.chron-start-go {
+  font-weight: 700;
+}
+.chron-start.is-other .chron-start-main {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.chron-start.is-other p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.chron-start-chips {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.chron-start-chips .btn,
+.chron-sheet-chips .btn {
+  min-height: 40px;
+}
+
+/* Log a past session — its own panel now the pills are gone */
+.chron-gap {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.chron-gap-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.chron-gap .chron-quick {
+  margin-top: 0;
+}
+
+/**
+ * The sheets: the running bar's ⋯, ▶ Start something, the idle ⋯, a goal's ⋯ and More ▾.
+ *
+ * ⚠️ EACH ACTION IS A FULL-WIDTH ROW WITH ITS OWN WORDS, and a line under it saying what it is for
+ * where that is not obvious. These are the controls that were glyphs — ✎, ○, ✕ — explained by a
+ * `title`, which a phone does not have.
+ */
+.chron-sheet {
+  display: grid;
   gap: 0.45rem;
 }
-.chron-timer .btn,
-.chron-timer select {
-  min-height: 36px;
+.chron-sheet-act {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  text-align: left;
+  font-weight: 600;
+}
+.chron-sheet-act > small {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.78rem;
+  text-align: right;
+}
+.chron-sheet-act.is-on {
+  border-color: var(--accent);
+}
+.chron-sheet-lbl {
+  margin: 0.4rem 0 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chron-sheet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/**
+ * A fold that says what is in it: a row with a name, a line under the name, and ▸.
+ *
+ * ⚠️ THE ROW IS THE WHOLE TARGET, 44px tall, because it is the one way to what it holds. And the
+ * line under the name is the point of it — "This week" alone is a heading; "7% of these 6 days is
+ * written down" is the week, answered while folded.
+ */
+.chron-fold {
+  margin: 0.5rem 0 0;
+}
+.chron-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.chron-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.chron-fold > summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.chron-fold[open] > summary {
+  margin-bottom: 0.5rem;
+}
+.chron-fold[open] > summary::after {
+  transform: rotate(90deg);
+}
+.chron-fold-name {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.chron-fold-name > small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+/* the day's headline: the big number leads, as it leads the side rail */
+.chron-sum-big {
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.chron-rail.is-folded {
+  border: 0;
+  background: none;
+  padding: 0 0.2rem 0.4rem;
+}
+/* the dialog's More: no frame around a fold that is already inside a frame */
+.chron-more-fold {
+  margin-top: 0.6rem;
+}
+
+/**
+ * A row that is a button — a sitting, or a note, in the day's log (#298).
+ *
+ * ⚠️ IT CARRIES THE ROW'S LAYOUT, NOT THE <li>. The rules for `.chron-ent` were written for a flex
+ * <li>; the button inside it now is the flex row, so they moved to it, and the <li> is only the
+ * list's item. A › at the end says the row opens something.
+ */
+.chron-row-open {
+  width: 100%;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.15rem 0.25rem;
+  border-radius: 8px;
+}
+.chron-row-open:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.chron-row-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.chron-row-chev {
+  margin-left: auto;
+  color: var(--muted);
+}
+.chron-moment.is-note {
+  padding: 0;
+}
+.chron-moment.is-note > .chron-row-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.5rem;
+  padding: 0.3rem 0.5rem;
+}
+
+/* the horizon strip and its More ▾, which is not a tab and so sits beside the tablist */
+.chron-strip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+.chron-strip-row > .chron-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.chron-far {
+  flex: 0 0 auto;
+}
+/**
+ * ⚠️ COMPACT, SO FOUR FIT A PHONE. Today, Tomorrow, Week and More ▾ with their counts came to
+ * more than the 327px a 375 screen gives the strip, and the strip's sideways scroll hid Week —
+ * exactly the half-a-strip-off-screen #298 set out to end. The 36px floor is the height; the width
+ * is what each word needs.
+ */
+.chron-strip-row,
+.chron-strip-row > .chron-strip {
+  gap: 0.25rem;
+}
+.chron-strip-row .chron-tab {
+  padding-inline: 0.4rem;
+  gap: 0.2rem;
+}
+.chron-strip-row .chron-count {
+  padding: 0 0.18rem;
+}
+
+/* the window's line, with ＋ Add beside it */
+.chron-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.chron-head .chron-blurb {
+  margin: 0;
+  min-width: 0;
+}
+.chron-add-go {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
+/* the Journal's 🔍, and the box it opens */
+.chron-journal-find {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+.chron-journal-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 0.5rem;
 }
 .chron-pickrow {
   flex: 1 1 11rem;
@@ -18397,10 +18792,97 @@ a.cz-msg-author:focus-visible {
 /* when a running sitting began, once that is worth saying — see `longRun` in record.ts. A full-width
    line under the clock rather than a chip beside it, because it is a sentence and has to wrap. */
 .chron-longrun {
-  flex: 1 1 100%;
-  margin: 0;
+  /* under the bar now, rather than a wrapped line inside the old timer row (#298) */
+  margin: 0 0 0.5rem;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+/* the note about what is running, under the bar on the Day — see `runNoteFor` in Timer.tsx */
+.chron-runnote {
+  margin: 0 0 0.75rem;
+}
+.chron-runnote-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+.chron-runnote-box {
+  display: block;
+  flex: 1 1 auto;
+  /* ⚠️ A FLOOR IN PIXELS. `min-width: 0` alone lets the rigid Save button win the row and the
+     box pay for all of it — the "let it vanish" case in CLAUDE.md §6 */
+  min-width: 160px;
+}
+.chron-runnote-box textarea {
+  width: 100%;
+  /* the site's face, as the Journal's box has: a textarea's own default is monospace */
+  font: inherit;
+  resize: vertical;
+  /* grows with what is written where the browser can, two lines where it cannot */
+  field-sizing: content;
+  min-height: 2.6em;
+  max-height: 9em;
+}
+.chron-runnote-save {
+  flex: 0 0 auto;
+  min-height: 38px;
+}
+.chron-runnote-n {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+}
+button.chron-runnote-n {
+  min-height: 32px;
+  padding: 0.2rem 0.5rem;
+}
+
+/* the evening wrap-up — see EveningCard.tsx; on a phone the headline fold sits inside it */
+.chron-wrap {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.6rem 0.65rem;
+  border: 1px solid color-mix(in oklab, var(--accent), transparent 60%);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--panel), var(--accent) 4%);
+}
+.chron-wrap > .chron-fold {
+  margin: 0;
+}
+.chron-wrap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.chron-wrap-off,
+.chron-wrap-skip {
+  min-height: 32px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+}
+.chron-wrap-item > p {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+}
+.chron-wrap-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.chron-wrap-row > p {
+  /* ⚠️ a floor in PIXELS, so the button beside it cannot take the whole row (CLAUDE.md §6) */
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+}
+.chron-wrap-line {
+  flex: 1 1 160px;
+  min-width: 160px;
+  font: inherit;
 }
 .chron-run {
   font-family: var(--mono);
@@ -18478,7 +18960,7 @@ a.cz-msg-author:focus-visible {
    ⚠️ AND THE AUDIT CALLS IT CLEAN EVERY TIME, because the overflow is swallowed by an ancestor
    that scrolls — `offEdge` and `sideways` are measured against the viewport. Measure
    scrollWidth - clientWidth on the LIST, not on the page. See CLAUDE.md §6. */
-.chron-ent,
+.chron-ent > .chron-row-open,
 .chron-acts li {
   display: flex;
   align-items: center;
@@ -18812,12 +19294,10 @@ a.cz-msg-author:focus-visible {
  * padding, with no min-height. They are covered here with the rest.
  */
 .chron-goal-do .btn,
-.chron-plan-do .btn,
-.chron-ent-do .btn {
+.chron-plan-do .btn {
   min-width: 44px;
   min-height: 44px;
 }
-.chron-ent-do,
 .chron-plan-do {
   display: flex;
   align-items: center;
@@ -18877,7 +19357,7 @@ a.cz-msg-author:focus-visible {
    * must; what changed is that its facts now wrap as one group instead of the rating being left
    * on a line of its own at the far left.
    */
-  .chron-ent {
+  .chron-ent > .chron-row-open {
     gap: 6px;
   }
   .chron-ent-facts {
@@ -19309,8 +19789,12 @@ a.cz-msg-author:focus-visible {
 .chron-act-name {
   flex: 1;
   display: flex;
+  /* ⚠️ IT WRAPS, because every activity has a dot now (`inkOf`). The site-written ones had none,
+     and at 375 "Chronicle · Free Time · ON THE SITE" with a dot ran 5px past its own button —
+     mobileAudit's `spills`. A second line is the honest answer for a name and two facts. */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.1rem 0.4rem;
   justify-content: flex-start;
   min-height: 36px;
   text-align: left;
@@ -19318,6 +19802,10 @@ a.cz-msg-author:focus-visible {
 }
 .chron-act-name > .muted {
   font-size: 0.78rem;
+}
+/* the button's own gap spaces the dot, so its margin would double it */
+.chron-act-name > .chron-dot {
+  margin-right: 0;
 }
 
 /* the day you are looking at, and the one-tap starts — see chronicle/Timer.tsx */
@@ -19976,6 +20464,12 @@ a.cz-msg-author:focus-visible {
 .feed-row.is-snake_trophy {
   border-left-color: #60a5fa;
 }
+.feed-row.is-comment {
+  border-left-color: #f472b6;
+}
+.feed-row.is-made {
+  border-left-color: #fb923c;
+}
 .feed-glyph {
   font-size: 0.95em;
   line-height: 1;
@@ -19999,6 +20493,17 @@ a.cz-msg-author:focus-visible {
   gap: 0.1rem 0.4rem;
   min-width: 0;
 }
+/* a door inside the line -- a guestbook, a page -- looks like the name at the start of the row,
+   not like a button in the accent colour */
+.feed-what a {
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  /* a thumb-sized target (24px, WCAG 2.5.8) around a 17px line, without making the row taller */
+  padding-block: 4px;
+  margin-block: -4px;
+}
+.feed-what a:not(.muted) {
+  color: inherit;
+}
 .feed-noun {
   min-width: 0;
   overflow: hidden;
@@ -20009,6 +20514,13 @@ a.cz-msg-author:focus-visible {
 }
 .feed-sub {
   font-size: 0.82em;
+}
+/* a comment's preview: the server cut it to 80 characters on one line, so it may wrap but never
+   needs cutting again -- and a long word must not push the row past its card */
+.feed-quote {
+  font-size: 0.86em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .feed-score {
   font-weight: 600;
@@ -20261,4 +20773,664 @@ a.cz-msg-author:focus-visible {
 .take-edit-wave:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ── the instrument, regrouped — the #311 layout, 14 Nov 2026 ─────────────────────────────
+   Four places: PLAY (the keys and two rows under them), THE SONG (transport, the parts one line
+   each), four TOOLS under the song, and below that what was always there. The figures it was
+   built against — 34 → 26 controls on a phone's first screen, ▶ Play from 763px to about 600px —
+   are in docs/2026-11-14-instrument-layout.md, measured on the mockups, and re-measured on the
+   real room in the PR that built it. */
+
+/* the octave, said at the end of the chord line now its − and + have gone */
+.inst-chord-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.inst-oct-say {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* PLAY: two groups that share a line where there is room and stack where there is not */
+.inst-playbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.2rem;
+  min-width: 0;
+}
+.inst-playbar-hands,
+.inst-playbar-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+/* ⚠️ A PHONE'S FIRST ROW IS THE WHOLE WIDTH, so ⚙ Sound can stand at its far end, apart from the
+   three you press while playing — and the same width query the room's phone order uses, so the two
+   cannot disagree about which screen this is */
+@media (max-width: 780px), (orientation: landscape) and (max-height: 560px) {
+  .inst-playbar-hands {
+    flex: 1 1 100%;
+  }
+  .inst-sound-open {
+    margin-left: auto;
+  }
+  /* ⚠️ FOUR ON ONE LINE AT 375 TAKES BOTH OF THESE. Measured: Keys 105, Hold 102 with its line
+     under it, Panic 43 and Sound 90 came to 361px on a 327px row, so ⚙ Sound went down a line of
+     its own. Hold's "lets notes ring" stays on a desktop, where the row has room for it; on a
+     phone the pedal is the one control here whose name already says what it does. */
+  .inst-playbar-hands .btn {
+    padding-inline: 0.6rem;
+  }
+  .inst-playbar-hands .btn-why {
+    display: none;
+  }
+}
+
+/* a control whose face is one glyph, named in its aria-label: Panic, mute, ⋯, undo, redo.
+   ⚠️ TWO CLASSES, because `.inst-layers .btn` sets a 24px floor on a touch screen at two classes'
+   weight and was winning — a part's mute measured 31×24 and its ⋯ 26×24 at 375. */
+.btn.inst-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  min-height: 2.2rem;
+  padding: 0 0.35rem;
+}
+.inst-layers li .btn.inst-icon {
+  min-height: 2.2rem;
+  padding: 0 0.35rem;
+  font-size: 0.9rem;
+}
+/* ⚠️ PIXELS AS WELL, because the root is fluid and 2.2rem is 30px at its smallest (CLAUDE.md §6):
+   a glyph-only button is all target, so it gets the floor the touch rules give the rest */
+@media (hover: none) and (pointer: coarse) {
+  .btn.inst-icon,
+  .inst-layers li .btn.inst-icon {
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+/* THE SONG: one band under the play bar, ruled off from it */
+.inst-song {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+/* ⚠️ THE BUTTON READS ALL THREE VALUES, so on a phone it takes the rest of the row and its words
+   may wrap rather than push the row off the edge — a basis, not a width, so 🎯 Click keeps its own */
+.inst-tempo-open {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  white-space: normal;
+  text-align: left;
+}
+@media (min-width: 701px) {
+  .inst-tempo-open {
+    flex: 0 1 auto;
+  }
+}
+/* the first-visit steps sit under the transport now, not inside its row */
+.inst-song .inst-start {
+  margin-bottom: 0;
+}
+
+/* THE PARTS: one line each — name, bars, mute, ⋯ (and the volume on a desktop) */
+.inst-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  /* ⚠️ ONE WIDTH FOR THE NAME, shared by every row and by the ruler's label above them. It is
+     what lines the bars up into columns — bar 3 of one part over bar 3 of the next — which the
+     strip got from having a line of its own before. */
+  --part-name: 7.2rem;
+}
+@media (min-width: 701px) {
+  .inst-parts {
+    --part-name: 11rem;
+  }
+}
+.inst-parts-head {
+  display: grid;
+  grid-template-columns: var(--part-name) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.3rem;
+  /* the rows' own padding and border, so the ruler's cells start where the rows' cells start */
+  padding-inline: calc(var(--layer-pad) + var(--layer-line));
+}
+.inst-parts-head .inst-layers-count {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-parts-head .inst-ruler {
+  margin: 0;
+  padding-left: 0;
+  min-width: 0;
+}
+.inst-layers li.inst-part {
+  display: grid;
+  grid-template-columns: var(--part-name) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.3rem;
+  padding-block: 0.3rem;
+}
+.inst-part .inst-layer-name {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.2rem 0.4rem;
+  white-space: normal;
+}
+.inst-part-line {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.inst-part-detail {
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+.inst-part-detail .inst-layer-who {
+  margin: 0 0.3rem 0 0;
+}
+.inst-part .inst-arrange {
+  align-self: center;
+}
+/* a part's volume is on its row only on a desktop; on a phone it is in 🎚 Mix and the ⋯ */
+.inst-part-vol {
+  display: none;
+}
+@media (min-width: 701px) {
+  .inst-layers li.inst-part {
+    grid-template-columns: var(--part-name) minmax(0, 1fr) auto auto auto;
+  }
+  .inst-part-vol {
+    display: inline-flex;
+    margin-left: 0;
+  }
+  .inst-part-vol input[type='range'] {
+    width: 7rem;
+  }
+}
+.inst-parts-foot {
+  gap: 0.6rem;
+}
+
+/* THE TOOLS: four doors in a row, and whichever one is open under them */
+.inst-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.inst-tool-open {
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 0.2rem;
+  white-space: nowrap;
+}
+.inst-tool-busy {
+  margin-left: 0.25rem;
+  color: var(--accent-2);
+  font-size: 0.7rem;
+}
+.inst-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-bg, rgba(255, 255, 255, 0.03));
+}
+/* ⚠️ HIDDEN MEANS HIDDEN — the rule above sets `display`, which beats the UA's own [hidden] at the
+   same specificity, so a closed tool would stay on screen. Two classes' worth wins it back. */
+.inst-tool[hidden] {
+  display: none;
+}
+/* the beats panel brings its own card */
+.inst-tool.inst-tool-beats {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.inst-tool .inst-beats {
+  margin: 0;
+}
+.inst-tool-head {
+  margin: 0.3rem 0 0;
+  font-size: 0.95rem;
+}
+.inst-sing.is-inline {
+  padding: 0;
+}
+
+/* 🎚 Mix: a name, a slider, the figure and a mute, in columns so the sliders line up */
+.inst-mix {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.inst-mix-row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--mix-name, 7.6rem)) minmax(60px, 1fr) 2.8rem 2.2rem;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+@media (min-width: 701px) {
+  .inst-mix-row {
+    --mix-name: 11rem;
+  }
+}
+.inst-mix-row input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  min-height: 2rem;
+  accent-color: var(--accent);
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .inst-mix-row input[type='range'] {
+    min-height: 36px;
+  }
+}
+.inst-mix-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-mix-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+.inst-mix-as {
+  grid-column: 2 / 4;
+  font-size: 0.8rem;
+}
+.inst-mix-row.is-muted .inst-mix-name {
+  opacity: 0.55;
+}
+
+/* 📁 Songs */
+.inst-songs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+/* ⚠️ THE KEPT-SONGS LIST HAD NO STYLE AT ALL, from the day it was added (63833b09, 31 Aug) until
+   the #311 screenshots, 14 Nov 2026: a browser bullet, "Funk sketch3 parts" run together because
+   JSX drops the whitespace between two lines of elements, and Open, + Add and ✕ touching. Nothing
+   overflowed and nothing was under 24px, so mobileAudit passed it every time — a screenshot is what
+   saw it. The words take a line and the three verbs share the next on a phone; a desktop has room
+   for both on one. */
+.inst-lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.inst-lib-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+}
+.inst-lib-text {
+  flex: 1 1 13rem;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.6rem;
+}
+.inst-lib-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.inst-lib-meta {
+  font-size: 0.85rem;
+}
+.inst-lib-do {
+  display: flex;
+  gap: 0.45rem;
+}
+
+/* ── the instrument's sheets: ⚙ Sound, speed and length, a part's ⋯ ───────────────────────
+   ⚠️ FROM THE FLOOR ON A PHONE, A CARD WIDER UP, and over the nav bar the way the settings sheet
+   is — a modal sheet covering the navigation is what a phone does anyway, and the backdrop already
+   says the page is out of play. Portalled to the body (see Sheet), so fixed means the viewport. */
+.inst-sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+.inst-sheet {
+  width: 100%;
+  max-height: min(82vh, 40rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 0.9rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  color: var(--text);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+}
+@media (min-width: 701px) {
+  .inst-sheet-back {
+    align-items: center;
+    padding: 1rem;
+  }
+  .inst-sheet {
+    width: min(30rem, 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+}
+/* the same fade the settings sheet uses, for its reason: a stuck fade is still a usable sheet */
+@media (prefers-reduced-motion: no-preference) {
+  .inst-sheet {
+    animation: nav-sheet-in 0.18s ease-out;
+  }
+}
+.inst-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.inst-sheet-head h3 {
+  margin: 0;
+  min-width: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.inst-sheet-x {
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  flex: none;
+}
+.inst-sheet-body,
+.inst-sheet .inst-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0;
+}
+.inst-sheet-row {
+  gap: 0.8rem;
+}
+/* one knob a line, so a phone's sliders are the width of the sheet rather than two-up and short */
+.inst-sheet .inst-knobs {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.inst-sheet .inst-knob {
+  display: grid;
+  grid-template-columns: 5.4rem minmax(60px, 1fr) 2.6rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+.inst-sheet .inst-knob input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+/* ⚠️ 24px WITH A MOUSE — the audit measured the ⋯ sheet's Volume at 343×16 at 1440 (WCAG 2.5.8).
+   Only for a fine pointer: on a touch screen the site's slider rule already makes these 36px, and
+   an unconditional rule written later in this file would quietly take that back down to 24. */
+@media (pointer: fine) {
+  .inst-sheet input[type='range'],
+  .inst-part-vol input[type='range'] {
+    min-height: 24px;
+  }
+}
+.inst-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.inst-sheet-list .btn {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 2.4rem;
+  text-align: left;
+}
+/* the call note's way into a jam, once the note itself is put away */
+.inst-jam-door a {
+  font-weight: 600;
+}
+
+/* ── a part's menu and the song's lyrics: a sheet on a phone, a side panel wider up ─────────────
+   ⚠️ THE SIDE PANEL IS NOT MODAL (see Panel.tsx): no backdrop, and the room beside it stays live,
+   so it sits under the nav's own bar and over the right-hand column — the visuals, on a desktop —
+   while the keys, the transport and the parts stay where they were. Below the sheets (1000), so a
+   name asked for by ⬇ Keep still comes up over it. */
+.inst-panel {
+  position: fixed;
+  top: var(--nav-h, 54px);
+  right: 0;
+  bottom: 0;
+  z-index: 150;
+  /* over the visuals' column exactly, when there is one — see useBeside in Panel.tsx; beside a
+     room it pushes over, no wider than leaves that room a desktop's width (PANEL_IS_SHEET) */
+  width: var(--inst-panel-w, min(40rem, 40vw));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 0.9rem 1.2rem;
+  color: var(--text);
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .inst-panel {
+    animation: inst-panel-in 0.16s ease-out;
+  }
+}
+@keyframes inst-panel-in {
+  from {
+    transform: translateX(1.5rem);
+    opacity: 0;
+  }
+}
+/* ⚠️ TALLER THAN THE ROOM'S OTHER SHEETS, because this one holds a piano roll — and on a tablet,
+   where the sheet is a centred card, wider too: a roll in 30rem is a phone's roll on a big screen */
+.inst-sheet.inst-panel-sheet {
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+@media (min-width: 701px) {
+  .inst-sheet.inst-panel-sheet {
+    width: min(48rem, 100%);
+  }
+}
+.inst-panel-head h3 {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.inst-panel-detail {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+/* ⚠️ ONE KNOB A LINE, as in the sheet — `.inst-knobs` is a grid of narrow cells in the room, and
+   a part's sliders in those cells were 16px short of their own value at 1440 (the audit's spill) */
+.inst-panel .inst-knobs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+/* a knob's own `flex: 1 1 11rem` is a WIDTH in the room's row and a HEIGHT in this column — each
+   slider stood 179px tall, a screen of air between them */
+.inst-panel .inst-knob {
+  flex: none;
+}
+.inst-panel .inst-knob,
+.inst-part-panel-top .inst-knob {
+  display: grid;
+  grid-template-columns: 5.4rem minmax(60px, 1fr) 2.6rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.inst-panel .inst-knob input[type='range'],
+.inst-part-panel-top .inst-knob input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+@media (pointer: fine) {
+  .inst-panel input[type='range'] {
+    min-height: 24px;
+  }
+}
+.inst-panel .inst-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+/* the volume and the mute, above the tabs, on whichever tab is open */
+.inst-part-panel-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.inst-part-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.inst-part-tabs .btn {
+  justify-content: center;
+  min-height: 2.4rem;
+}
+.inst-part-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+/* the roll fills the panel rather than shrinking to its take — the panel IS its frame here */
+.inst-part-panel .roll {
+  width: 100%;
+  min-width: 0;
+}
+.inst-copy-all {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.inst-copy-all .inst-pick {
+  min-width: 0;
+}
+.inst-copy-all select {
+  min-width: 0;
+  max-width: 100%;
+}
+/* Paste, outside the ⬚ tools, whenever something has been copied */
+.roll-paste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.roll-paste .inst-pick {
+  min-width: 0;
+}
+.roll-paste select {
+  min-width: 0;
+  max-width: 100%;
+}
+.roll-paste-said {
+  flex-basis: 100%;
+  font-size: 0.82rem;
+}
+
+/* ── the words: a row under the part that sings them, and a box a line per bar ─────────────── */
+.inst-lyrics-row .inst-layer-name {
+  border-style: dashed;
+}
+.inst-word-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.inst-word-cell.is-on {
+  color: var(--bg);
+}
+.inst-lyric-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inst-lyric-bar label {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.45rem;
+}
+.inst-lyric-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.inst-lyric-bar input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.2rem;
+}
+.inst-lyric-fit {
+  display: block;
+  margin: 0.15rem 0 0 2.25rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+.inst-lyric-fit.is-short {
+  color: var(--accent-2);
 }

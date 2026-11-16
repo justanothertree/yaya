@@ -48,15 +48,7 @@ export const ODDS: readonly number[] = Array.from(
 export const expected = (risk: Risk) => ODDS.reduce((t, p, i) => t + p * RISKS[risk][i], 0)
 
 /** a seeded random source, so a run of drops can be replayed exactly */
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { rng as seeded } from './bricks'
 
 /* ---------------------------------------------------------------------------- the board */
 

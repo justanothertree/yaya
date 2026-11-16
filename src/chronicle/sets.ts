@@ -34,9 +34,16 @@ export type ChronSet = {
   counted: boolean
 }
 
+/**
+ * A sum of typed decimals, as Postgres `numeric` holds it. Floats make 1.1 + 2.2 into
+ * 3.3000000000000003 while the server's sum is exactly 3.3; fifteen significant digits is as many as
+ * a double always carries faithfully, so this drops the float's noise and nothing a person typed.
+ */
+export const asNumeric = (n: number): number => Number(n.toPrecision(15))
+
 /** How much of a sitting's count its sets hold — the floor the server holds that count to. */
 export const countedIn = (sets: readonly ChronSet[], entry: string): number =>
-  sets.reduce((n, s) => (s.entry === entry && s.counted ? n + s.value : n), 0)
+  asNumeric(sets.reduce((n, s) => (s.entry === entry && s.counted ? n + s.value : n), 0))
 
 /**
  * What a set is called on screen: the exercise's name today, or the one it had when the set was

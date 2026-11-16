@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCircuit } from '../store'
 import { peopleInGroup } from '../groupFilter'
 import { dayTotal, monthLabel, monthTotal } from '../scoring'
-import { todayMonth } from '../dates'
+import { dayOfMonth, localISO, todayMonth } from '../dates'
 import { catColor } from '../catColors'
 import type { Person } from '../types'
 
@@ -66,7 +66,7 @@ export function Charts({
   const shiftMonth = (d: number) => {
     const [y, m] = ym.split('-').map(Number)
     const dt = new Date(y, m - 1 + d, 1)
-    setPicked(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`)
+    setPicked(localISO(dt).slice(0, 7))
   }
 
   const [y, m] = ym.split('-').map(Number)
@@ -98,7 +98,7 @@ export function Charts({
         if (total <= 0) return null
         const daily: number[] = []
         for (let d = 1; d <= days; d++) {
-          daily.push(dayTotal(p, state.logs, `${ym}-${String(d).padStart(2, '0')}`))
+          daily.push(dayTotal(p, state.logs, dayOfMonth(ym, d)))
         }
         const cumulative: number[] = []
         let cum = 0
@@ -354,7 +354,7 @@ export function Charts({
               (() => {
                 const pct = (x(hover.day) / VW) * 100
                 const onRight = pct > 62
-                const dateStr = `${ym}-${String(hover.day).padStart(2, '0')}`
+                const dateStr = dayOfMonth(ym, hover.day)
                 return (
                   <div
                     style={{
@@ -569,7 +569,7 @@ function Donut({
   // sum points per category for the month
   const cats: Record<string, number> = {}
   for (let d = 1; d <= days; d++) {
-    const date = `${ym}-${String(d).padStart(2, '0')}`
+    const date = dayOfMonth(ym, d)
     logs
       .filter((l) => l.personId === person.id && l.date === date)
       .forEach((l) =>

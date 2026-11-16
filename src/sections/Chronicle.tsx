@@ -1,13 +1,4 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { moveTab } from '../ui/tabStrip'
 import {
   finished,
@@ -29,7 +20,6 @@ import {
   ideaTitle,
   profileGlyph,
   tallyAsks,
-  unitFor,
   weight,
   share,
   startFor,
@@ -45,8 +35,6 @@ import {
   marksFor,
   myActivities,
   myGoals,
-  saveGoal,
-  setDays,
   setMark,
   setProgress,
   shareGoal,
@@ -63,16 +51,7 @@ import {
   type MarkAt,
 } from '../chronicle/marks'
 import { CATS, countText, spanText, type Activity } from '../chronicle/record'
-import {
-  EVERY_DAY,
-  dayLetter,
-  dayName,
-  daysText,
-  maskOn,
-  validMask,
-  weekday,
-  type DayMask,
-} from '../chronicle/weekdays'
+import { daysText, maskOn } from '../chronicle/weekdays'
 import { Timer } from '../chronicle/Timer'
 import { dayAsked } from '../chronicle/dayLink'
 import { Friends } from '../chronicle/Friends'
@@ -81,7 +60,10 @@ import { Looking } from '../chronicle/Looking'
 import { MonthGrid } from '../chronicle/MonthGrid'
 import { Rail } from '../chronicle/Rail'
 import { Lifetime } from '../chronicle/Lifetime'
-import { LIMIT } from '../chronicle/limits'
+import { GoalForm } from '../chronicle/GoalForm'
+import { useGoalForm } from '../chronicle/useGoalForm'
+import { useWide } from '../chronicle/useWide'
+import { Modal } from '../circuit/ui/Modal'
 import { Toast } from '../circuit/ui/Toast'
 import { showToast } from '../circuit/toast'
 
@@ -98,6 +80,17 @@ import { showToast } from '../circuit/toast'
 type View = {
   id: string
   label: string
+  /**
+   * What the tab itself says. ⚠️ SHORTER THAN `label`, because four tabs and a More have to fit a
+   * phone's width (#298) and "This week" is the one that did not; the panel's own line and the
+   * goal form still say the whole thing.
+   */
+  short: string
+  /**
+   * A horizon that goes behind More ▾ once there are two of them — see `tabs` in the room.
+   * Month, year and years: the ones you look at now and then rather than every day.
+   */
+  far?: true
   scope: Scope
   when: () => string
   blurb: string
@@ -169,6 +162,7 @@ const VIEWS: View[] = [
   {
     id: 'today',
     label: 'Today',
+    short: 'Today',
     scope: 'day',
     when: todayISO,
     blurb: 'What today is for.',
@@ -177,6 +171,7 @@ const VIEWS: View[] = [
   {
     id: 'tomorrow',
     label: 'Tomorrow',
+    short: 'Tomorrow',
     scope: 'day',
     when: tomorrowISO,
     blurb: 'Decided now, so tomorrow does not have to be.',
@@ -184,6 +179,7 @@ const VIEWS: View[] = [
   {
     id: 'week',
     label: 'This week',
+    short: 'Week',
     scope: 'week',
     when: todayISO,
     blurb: 'Sunday to Saturday.',
@@ -192,14 +188,26 @@ const VIEWS: View[] = [
   {
     id: 'month',
     label: 'This month',
+    short: 'Month',
+    far: true,
     scope: 'month',
     when: todayISO,
     blurb: 'The calendar month.',
   },
-  { id: 'year', label: 'This year', scope: 'year', when: todayISO, blurb: 'The whole year.' },
+  {
+    id: 'year',
+    label: 'This year',
+    short: 'Year',
+    far: true,
+    scope: 'year',
+    when: todayISO,
+    blurb: 'The whole year.',
+  },
   {
     id: 'life',
     label: 'Years',
+    short: 'Years',
+    far: true,
     scope: 'life',
     core: true,
     when: todayISO,
@@ -269,7 +277,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * nothing else. `half` asks which question you are here for: what am I doing, or what am I
    * aiming at. The complaint that produced this change was that the room "looks messy and
    * confusing once you start using it", and it was right: both questions were answered at once,
-   * on one screen carrying **73 controls**. It is 38 and 37 now.
+   * on one screen carrying **73 controls**. It was 38 and 37 after that split; after #298 (14 Nov
+   * 2026, 375, a timer running) the four halves are 18, 21, 16 and 7 — see the note on `show` in
+   * Timer, which keeps the dated figures in one place.
    *
    * ⚠️ AND THAT FIGURE WAS 86 UNTIL IT WAS MEASURED PROPERLY, which is worth the line because
    * the wrong one was the whole justification for this change. 86 is what
@@ -293,8 +303,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    *
    * ⚠️ AND IT COSTS NOTHING, which is the only reason it is a one-line change rather than a
    * layout. The stopwatch is in NEITHER half — see the note on `show` in Timer — so opening here
-   * still shows the clock, what is running, the switch tiles and ＋ Activity, with the horizon
-   * strip and today's goals under them instead of the day log. Every step of that flow is on one
+   * still shows the timer's bar — the clock and Stop, or ▶ Start something — with the horizon
+   * strip and today's goals under it instead of the day log. Every step of that flow is on one
    * screen for the first time.
    *
    * What moves a tab away is the sitting-down half: the day log, the totals, the week strip, the
@@ -317,27 +327,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
-  const [adding, setAdding] = useState(false)
-  /**
-   * The goal the form is editing, or null when it is adding a new one.
-   *
-   * ⚠️ THE SAME FORM FOR BOTH, because they take the same six answers and two forms would be two
-   * places for the source picker's rules to drift apart. `chronicle_goal_save` has taken an id
-   * since step 1 and nothing had ever passed one — which is why a typo in a goal's name was
-   * permanent, and why one of the first real goals in the database has its unit spelled "p0ints".
-   */
-  const [fixing, setFixing] = useState<string | null>(null)
-  const [title, setTitle] = useState('')
-  const [target, setTarget] = useState('')
-  const [unit, setUnit] = useState('')
-  const [every, setEvery] = useState(false)
-  /**
-   * Which weekdays a repeating daily goal is for, as the form holds it — see weekdays.ts.
-   *
-   * ⚠️ SAVED FROM TODAY, NEVER FROM THE DAY THE GOAL WAS MADE. Evan's rule: an edit reaches today
-   * and the days after it, and every earlier day keeps the schedule it was judged under.
-   */
-  const [wdays, setWdays] = useState<DayMask>(EVERY_DAY)
   const [say, setSay] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   /**
@@ -375,60 +364,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
      that could change them — starting, stopping, filling a gap, an edit, a plan — already ends in
      the same `load()` the goals half uses. One number to watch beats five places to remember. */
   const [beat, setBeat] = useState(0)
-  const [src, setSrc] = useState('')
-  /**
-   * Whether a derived goal counts minutes or the activity's own metric.
-   *
-   * ⚠️ IT IS ONLY A REAL CHOICE FOR ONE ACTIVITY WITH A METRIC. A category's activities have
-   * different metrics, so adding pages to reps gives a number with no unit — the table refuses
-   * that pairing and the save function corrects it, and the picker below simply does not offer it.
-   */
-  const [countWhat, setCountWhat] = useState<'minutes' | 'amount'>('minutes')
-  /** the activity a goal is counted from, resolved once — null for a category or for neither */
-  const srcAct = useMemo(
-    () => (src.startsWith('a:') ? (acts.find((a) => a.id === src.slice(2)) ?? null) : null),
-    [src, acts],
-  )
-  /**
-   * ⚠️ WHAT THE GOAL ACTUALLY COUNTS, DERIVED RATHER THAN REMEMBERED — and this is the fix for a
-   * goal that could never move. The chooser above appears only when the source is one activity
-   * that names a metric, but it is a SEPARATE control from the source and it kept its answer when
-   * the source moved beneath it. Pick Gym, choose "count the reps", then change the source to
-   * Dishes: the chooser vanishes, `countWhat` stays on 'amount', and the save sent it.
-   *
-   * What that made was a goal counting a quantity its source never records. Driven in the room:
-   * "Read ten books · FROM DISHES · 0 / 10 done", two inches from "Wash up every evening · FROM
-   * DISHES · 12 / 10 minutes" — same activity, same twelve minutes, one of them stuck at zero for
-   * ever. The same shape as every other goal that read 0 with the minutes in the totals above it.
-   *
-   * Derived, the remembered answer is harmless: it only reaches a save when the source can
-   * actually produce one. chronicle_goal_save corrects it too, because a rule the client alone
-   * keeps is a rule that lasts until the next caller.
-   */
-  const goalCounts: 'minutes' | 'amount' = srcAct?.metric ? countWhat : 'minutes'
-  /**
-   * What the room would suggest for the unit box as things stand — the word the placeholder shows.
-   *
-   * ⚠️ IT EXISTS TO TELL THE ROOM'S WORD FROM THE PERSON'S. `unitFor` says a typed word always
-   * wins, and it must: somebody counting an activity's minutes who calls them "pomodoros" means
-   * pomodoros. But the box is also FILLED from this suggestion on save, so a goal saved against
-   * Gym comes back with "reps" in it — and that word is the room's, not theirs. Moving such a goal
-   * to an activity counting pages left the row disagreeing with itself in one line:
-   * "FROM WRITING · PAGES … 0 / 60 reps".
-   *
-   * So when the source changes, a box still holding the OLD suggestion is emptied and refills from
-   * the new one, and a box holding anything else is left exactly alone.
-   */
-  const suggestedUnit = unitFor('', {
-    counts: goalCounts,
-    activity: srcAct,
-    cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
-  })
-  /** how long this is guessed to take, as typed — minutes, blank for "no idea" */
-  const [why, setWhy] = useState('')
-  const [est, setEst] = useState('')
-  /** 0 normal, 1 important, 2 urgent — see Goal.priority, which is the list's order */
-  const [pri, setPri] = useState<0 | 1 | 2>(0)
 
   /**
    * Late goals you have ticked while looking at this view, kept on screen.
@@ -445,6 +380,22 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
    * do once it is done.
    */
   const [kept, setKept] = useState<string[]>([])
+
+  /** whether the room has the width for its side rail — see useWide */
+  const wide = useWide()
+  /**
+   * The goal whose ⋯ is open (#298).
+   *
+   * ⚠️ ONE ⋯ IN PLACE OF ✎ ○ ✕. Three buttons on every goal, on a line of their own at 375, were
+   * most of why Aims → Today carried 49 controls and showed two goals on the first screen. They
+   * are the things you do to a goal now and then; the tick, − and +, and ▶ are what you do to it
+   * every day, and those stay on the row.
+   */
+  const [goalSheet, setGoalSheet] = useState<string | null>(null)
+  /** the More ▾ list of the further horizons */
+  const [farOpen, setFarOpen] = useState(false)
+  /* bumped to open Sharing from a goal shared with chosen friends — see `ask` on Sharing */
+  const [askSharing, setAskSharing] = useState(0)
 
   /**
    * ⚠️ THE STRIP AND ITS PANEL ARE NAMED, which is the half `role="tablist"` needs that cannot be
@@ -499,7 +450,50 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     if (shown.length && !shown.some((x) => x.id === view)) setView(shown[0].id)
   }, [shown, view])
 
-  const viewAt = shown.findIndex((x) => x.id === view)
+  /**
+   * The tabs actually drawn, and what goes behind More ▾ (#298).
+   *
+   * ⚠️ TWO OR MORE FAR ONES GO BEHIND IT; ONE STAYS A TAB. Six horizons in a strip that scrolled
+   * sideways was half a strip off-screen on a phone, so month, year and years — the ones you look
+   * at now and then — share a menu. But on most days only Years has anything to show, and a menu
+   * holding one item is a tap that buys nothing, so a lone far horizon is simply a tab, as before.
+   *
+   * ⚠️ AND THE OPEN ONE IS ALWAYS A TAB. A panel has to be labelled by the tab that opened it, and
+   * a strip that did not show where you are would leave This month's goals under no heading at all.
+   */
+  const far = useMemo(() => shown.filter((x) => x.far), [shown])
+  const tabs = useMemo(() => {
+    if (far.length < 2) return shown
+    const near = shown.filter((x) => !x.far)
+    const there = far.find((x) => x.id === view)
+    return there ? [...near, there] : near
+  }, [shown, far, view])
+  /* what More ▾ holds that is not already a tab, and so what its count is about */
+  const behind = far.length < 2 ? [] : far.filter((x) => x.id !== view)
+  const viewAt = tabs.findIndex((x) => x.id === view)
+  /**
+   * ⚠️ THE OPEN TAB IS SCROLLED INTO THE STRIP. Picking This year from More ▾ adds it as a fifth
+   * tab, and five do not fit a phone — measured at 375, the chosen tab sat at 241–298px of a
+   * 260px strip, under the fade at its edge, so the room changed and the strip did not show where
+   * to. Scrolled by hand rather than with `scrollIntoView`, which may move the page as well.
+   */
+  const stripRef = useRef<HTMLDivElement | null>(null)
+  /* ⚠️ and the fade at its edge goes once nothing is past it — it says "there is more", and at
+     the end of the strip that is untrue, and it dims the very tab just scrolled to */
+  const atEnd = (strip: HTMLElement) => {
+    strip.dataset.end = String(strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 1)
+  }
+  useEffect(() => {
+    const strip = stripRef.current
+    const on = strip?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!strip || !on) return
+    const s = strip.getBoundingClientRect()
+    const r = on.getBoundingClientRect()
+    /* 24px is the fade the strip's mask draws over its last stretch */
+    if (r.right > s.right - 24) strip.scrollLeft += r.right - s.right + 24
+    else if (r.left < s.left) strip.scrollLeft -= s.left - r.left
+    atEnd(strip)
+  }, [view, half, tabs])
 
   /** which streak fetch is the current one — see the note in `load` about late answers */
   const runSeq = useRef(0)
@@ -584,25 +578,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
   const v = shown.find((x) => x.id === view) ?? shown[0] ?? VIEWS[0]
   const on = v.when()
   const win = windowOf(v.scope, on)
-  /**
-   * The goal being changed, when one is.
-   *
-   * ⚠️ A GOAL'S SCOPE IS ITS OWN, NOT THE VIEW'S. The save sent `scope: v.scope`, which is right
-   * for a new goal — the ＋ button says "Add to today" because you are looking at today — and
-   * silently wrong for an edit, because the two are not always the same list. A quarter goal is
-   * shown under the YEAR, by `homeFor`, so opening its editor in the only place it appears and
-   * pressing Save — changing nothing — rewrote it into a year goal. Measured: "Read ten books
-   * THIS QUARTER · 3 / 10 books" came back as "Read ten books · 3 / 10 books", and ten books a
-   * quarter had quietly become ten books a year.
-   *
-   * ⚠️ AND THAT IS A CONSEQUENCE OF MAKING QUARTER GOALS VISIBLE. Before `homeFor` they were in
-   * no list at all, so no editor could be opened on one and `v.scope` was always the goal's own
-   * scope. Fixing a thing into view gives it neighbours it never had.
-   */
-  const beingFixed = useMemo(
-    () => (fixing ? ((goals ?? []).find((g) => g.id === fixing) ?? null) : null),
-    [fixing, goals],
-  )
+  /** the goal form — see useGoalForm */
+  const goalForm = useGoalForm({ goals, acts, v, on, busy, setBusy, setSay, setKept, load })
+  const { setAdding, setFixing, fillGoalForm, openAdd } = goalForm
 
   /**
    * Every goal as it stands in the window on screen — see `asOf`. A one-off comes through as it
@@ -682,98 +660,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     [mine, overdue, settled, view, on],
   )
 
-  const add = async () => {
-    const t = title.trim()
-    if (!t || busy) return
-    setBusy(true)
-    const n = Number(target)
-    const hasTarget = target.trim() !== '' && Number.isFinite(n) && n > 0
-    /* a new goal belongs to the list you are looking at; an existing one keeps what it is */
-    const saveScope = beingFixed?.scope ?? v.scope
-    const r = await saveGoal({
-      id: fixing ?? undefined,
-      title: t,
-      scope: saveScope,
-      /* ⚠️ a repeat has no anchor and a one-off must have one — the check constraint enforces
-         exactly this pair, so the form cannot send a shape the table would refuse
-         ⚠️ AND AN EDIT KEEPS THE ANCHOR IT HAD. Taking `win.from` would move a one-off goal onto
-         whatever window is on screen, which for a quarter goal under the year is a different
-         window entirely. The fallback is only for the case that has no anchor to keep: a
-         repeating goal whose repeat has just been turned off, which needs one in its OWN scope. */
-      anchor:
-        saveScope === 'life' || every
-          ? null
-          : (beingFixed?.anchor ?? windowOf(saveScope, on)?.from ?? null),
-      every: saveScope === 'life' ? null : every ? 1 : null,
-      target: hasTarget ? n : null,
-      /* ⚠️ sent on every save, which is what makes the server's "null leaves it alone" something
-         to rely on rather than depend on — see docs/2026-10-13-chronicle-silent-erasures.sql. An
-         empty box clears it, deliberately. */
-      note: why.trim(),
-      /* ⚠️ a source needs a target to count towards, which the table also insists on — a derived
-         tick-box would tick itself the moment you did a minute of anything */
-      activity: hasTarget && src.startsWith('a:') ? src.slice(2) : null,
-      cat: hasTarget && src.startsWith('c:') ? (src.slice(2) as Activity['cat']) : null,
-      counts: hasTarget ? goalCounts : 'minutes',
-      /* ⚠️ a blank or unreadable guess is null, not zero: "no idea" is a real answer and zero
-         minutes of work is not — see Goal.est, and `weight`, which has to count the difference */
-      est: (() => {
-        const n = Number(est)
-        return est.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null
-      })(),
-      priority: pri,
-      /** see `unitFor` — a target always carries a unit, and the room usually knows which */
-      unit: hasTarget
-        ? unitFor(unit, {
-            counts: goalCounts,
-            activity: srcAct,
-            cat: src.startsWith('c:') ? (src.slice(2) as 'locked' | 'free' | 'life') : null,
-          })
-        : null,
-    })
-    /**
-     * ⚠️ THE SCHEDULE IS ITS OWN WRITE, AFTER THE GOAL, and only when it CHANGED. Writing it on
-     * every save would add a row per edit for nothing, and a goal saved as "every day" with no
-     * rows is already every day. A one-off has none to write; a goal that stops repeating keeps
-     * the rows it had — they are history, and the server keeps them for if it repeats again.
-     */
-    const was = beingFixed ? maskOn(beingFixed.days ?? [], todayISO()) : EVERY_DAY
-    const days =
-      !('why' in r) && saveScope === 'day' && every && wdays !== was
-        ? await setDays(r.id, wdays, todayISO())
-        : null
-    setBusy(false)
-    if ('why' in r) {
-      setSay(r.why)
-      window.setTimeout(() => setSay(null), 6000)
-      return
-    }
-    /* the goal saved and its days did not: said, and the form closes on what DID save */
-    if (days) {
-      setSay(`Saved, but not the days: ${days.why}`)
-      window.setTimeout(() => setSay(null), 6000)
-    }
-    /* ⚠️ A GOAL SAVED FOR DAYS THAT LEAVE THIS ONE OUT STAYS ON SCREEN FOR THE VISIT, saying
-       "not due today". Without this, adding "floss, not Sundays" on a Sunday made the row vanish
-       the moment Save was pressed — which reads as the save having failed. */
-    if (!days && saveScope === 'day' && every && (wdays & (1 << weekday(on))) === 0) {
-      setKept((k) => (k.includes(r.id) ? k : [...k, r.id]))
-    }
-    setTitle('')
-    setTarget('')
-    setUnit('')
-    setEvery(false)
-    setWdays(EVERY_DAY)
-    setSrc('')
-    setWhy('')
-    setCountWhat('minutes')
-    setEst('')
-    setPri(0)
-    setFixing(null)
-    setAdding(false)
-    await load()
-  }
-
   /**
    * Write one window of a repeating goal, and show it at once.
    *
@@ -838,29 +724,6 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
     /* the stopwatch is the Timer's, and `beat` is how this room tells it the record moved */
     setBeat((n) => n + 1)
     await load()
-  }
-
-  /**
-   * Open the add form empty, or with a title already in it.
-   *
-   * ⚠️ CLEARED ON THE WAY IN, or opening Add straight after a Cancel would show the goal you were
-   * editing and quietly save over it — which is why this is one function for both doors: the
-   * ＋ button and a journal entry handed over by `onIdea`. A second copy of these ten lines is
-   * where one field would quietly stop being cleared.
-   */
-  const openAdd = (draft: string) => {
-    setFixing(null)
-    setTitle(draft)
-    setTarget('')
-    setUnit('')
-    setEvery(false)
-    setWdays(EVERY_DAY)
-    setSrc('')
-    setWhy('')
-    setCountWhat('minutes')
-    setEst('')
-    setPri(0)
-    setAdding(true)
   }
 
   const tick = async (g: Goal) => {
@@ -940,6 +803,320 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
           Sign in
         </a>
       </section>
+    )
+  }
+
+  /**
+   * One goal's row — the same tick, meter, chips and ⋯ wherever it is drawn.
+   *
+   * ⚠️ ONE RENDERER FOR THREE PLACES — the window's own goals, the late ones under "From before",
+   * and the Done fold. A second copy of this block would be the place where those quietly drift
+   * apart; it used to be one map with the headings emitted at its boundaries, and the fold is why
+   * it is a function now. `isLate` is the one thing the row cannot work out for itself.
+   */
+  const goalRow = (g: Goal, isLate: boolean) => {
+    const s = share(g, got, on)
+    const done = finished(g, got, on)
+    const auto = derived(g)
+    const have = reached(g, got, on)
+    /**
+     * ⚠️ FREE, WHICH IS THE WHOLE REASON IT EXISTS. `streakAsks` already fetches
+     * thirty-one windows for every repeating goal and the chip throws all but the run
+     * away — the room was paying for a month of history and showing one number. These
+     * are the same answers, read instead of discarded: no query, no state, no load.
+     */
+    /* ⚠️ THE ROW, NOT THE RECORD: windows from before the goal was made are left
+                       off, and a day the schedule leaves out is `off` unless it was met — see
+                       `rowOf`. The chip's number below is read from the same row, so the two can
+                       never disagree about which days counted. */
+    const marks = rowOf(g, runs, on)
+    const act = g.activity ? acts.find((a) => a.id === g.activity) : null
+    const from = g.activity
+      ? (act?.name ?? 'an activity')
+      : g.cat
+        ? (CATS.find(([c]) => c === g.cat)?.[1] ?? g.cat)
+        : null
+    /* ⚠️ "from Writing · pages" rather than just "from Writing", because two goals on
+                 one activity — an hour a day AND four pages a day — are otherwise identical on
+                 screen while measuring completely different things */
+    const fromWhat = auto && g.counts === 'amount' && act?.metric ? act.metric : null
+    /* an activity that has been archived; a category source cannot be, so `cat` is never
+                 gone and only a goal pointing at an activity can say this */
+    const srcGone = !!act?.archived
+    /* what ▶ on this row would start, and whether it is already going — the rule
+                 and its three refusals are in `startFor` */
+    const canStart = startFor(g, acts, runningAct)
+    /* ⚠️ TOMORROW'S FLOSS CANNOT BE TICKED TODAY — the writer refuses a window that
+                       has not begun — so the controls say so rather than offering a press that
+                       would only come back as a refusal */
+    /* only where there IS a box or a ± — a goal the record counts has nothing to
+                       press, and "opens tomorrow" on it was a line about a control it never had */
+    const notYet = !auto && !markOpen(g, on, todayISO())
+    return (
+      <li key={g.id} className={'chron-goal' + (done ? ' is-done' : '')}>
+        <div className="chron-goal-top">
+          {/**
+           * ⚠️ THE TITLE AND ITS CHIPS WRAP AMONG THEMSELVES, AND THE BUTTONS KEEP A COLUMN. They
+           * were all siblings in one wrapping row, so a goal with two chips — "urgent" and "~10m" —
+           * sent its ⋯ to a line of its own under an empty space, a row twice the height it needed.
+           * Measured at 375 on the first build of #298. The same cure as a log row's facts.
+           */}
+          <span className="chron-goal-what">
+            {s == null ? (
+              <label className="chron-tick">
+                <input
+                  type="checkbox"
+                  checked={g.done}
+                  disabled={notYet}
+                  onChange={() => void tick(g)}
+                />
+                <span>{g.title}</span>
+              </label>
+            ) : (
+              <span className="chron-name">{g.title}</span>
+            )}
+            {/* ⚠️ "every day" rather than "repeats": the useful half of the fact is the
+                        cadence and the room already knows it, so a chip saying only that a thing
+                        repeats is a label that raises the question it should answer */}
+            {repeats(g) ? (
+              <span className="chron-chip">
+                {g.scope === 'day' ? daysText(maskOn(g.days ?? [], on)) : `every ${g.scope}`}
+              </span>
+            ) : null}
+            {/* ⚠️ said, because a row on a list it is not due on needs a reason
+                                to be there — it was done anyway, or before today was left out */}
+            {offOn(g, on) ? (
+              <span className="muted chron-notyet">
+                not due {v.id === 'tomorrow' ? 'tomorrow' : 'today'}
+              </span>
+            ) : null}
+            {notYet ? <span className="muted chron-notyet">opens tomorrow</span> : null}
+            {/**
+             * ⚠️ A CADENCE THE ROOM HAS NO VIEW FOR SAYS SO. `homeFor` lists a quarter goal
+             * under the year, because the year is the nearest cadence left and the
+             * alternative — which is what happened — is a goal in no list at all. But an
+             * unlabelled quarter goal sitting among the year's would be a quiet lie about
+             * what it is, and the member needs to know in order to edit it into something
+             * the room does show.
+             */}
+            {!repeats(g) && homeFor(g.scope) !== g.scope ? (
+              <span
+                className="chron-chip"
+                title={`A ${g.scope} goal, listed here because the room has no ${g.scope} view`}
+              >
+                this {g.scope}
+              </span>
+            ) : null}
+            {/**
+             * ⚠️ WHAT IT WAS FOR, because the row is in a window it does not belong to.
+             * The heading says these are from before; only this says from WHEN, and
+             * without it a goal under Today looks like a goal for today that the room has
+             * decided to shout about.
+             */}
+            {isLate ? (
+              <span
+                className="chron-chip is-late"
+                title={`Not finished, and the ${g.scope} it was for has ended`}
+              >
+                was for {wasFor(g)}
+              </span>
+            ) : null}
+            {/**
+             * ⚠️ FLAGGED ONLY WHEN IT IS FLAGGED. Ordinary is the overwhelming majority, and
+             * a chip reading "ordinary" on every row would be noise that makes the two that
+             * matter harder to find rather than easier — which is the opposite of what a
+             * priority is for. The order already puts these at the top; the chip says why.
+             */}
+            {g.priority > 0 ? (
+              <span
+                className={'chron-chip is-pri' + (g.priority === 2 ? ' is-now' : '')}
+                title={g.priority === 2 ? 'Urgent' : 'Important'}
+              >
+                {g.priority === 2 ? 'urgent' : 'important'}
+              </span>
+            ) : null}
+            {/* ⚠️ "~20m" with the tilde, because it is a guess and a bare "20m" beside a
+                        row that also carries real measured minutes reads as one of them */}
+            {g.est != null ? (
+              <span className="chron-chip is-est" title="How long you thought it would take">
+                ~{spanText(g.est * 60_000)}
+              </span>
+            ) : null}
+            {/**
+             * ⚠️ TWO IN A ROW IS THE FLOOR, because "a streak of 1" is just "done", and a
+             * badge that appears the first time you do anything teaches nobody that it
+             * means anything. It earns its place on the second window.
+             */}
+            {(() => {
+              const run = streakFrom(marks)
+              return run >= 2 ? (
+                <span className="chron-chip is-run" title={`${run} ${g.scope}s in a row`}>
+                  🔥 {run}
+                </span>
+              ) : null
+            })()}
+            {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
+                        moves on its own and does not say why reads as a bug rather than a feature */}
+            {/**
+             * ⚠️ AND IT SAYS WHEN THAT SOURCE IS ARCHIVED, which is the same lesson
+             * `readRoutine` was written for one surface over: an archived activity can
+             * never gain another minute, because `chronicle_start` refuses one with an
+             * `archived_at`. So a derived goal pointing at one reads 0 / 30 for ever and
+             * the room said nothing — the only clue was a number that had stopped
+             * moving, which reads as a bug in the counting rather than a consequence of
+             * something you did on purpose.
+             *
+             * ⚠️ IN THE TEXT, NOT ONLY THE TITLE. A tooltip does not exist on a phone,
+             * and this is the whole explanation for the row; the title carries the
+             * advice, the chip carries the fact.
+             */}
+            {from ? (
+              <span
+                className={'chron-chip is-auto' + (srcGone ? ' is-gone' : '')}
+                title={
+                  srcGone
+                    ? `${from} is archived — this cannot move again until you bring it back, or point the goal somewhere else`
+                    : undefined
+                }
+              >
+                from {from}
+                {fromWhat ? ' · ' + fromWhat : ''}
+                {srcGone ? ' · archived' : ''}
+              </span>
+            ) : null}
+            {/**
+             * ⚠️ A WORD RATHER THAN A SECOND ▶. Pressing Start on the activity you are
+             * already in is a real call that closes your sitting and opens a new one, so
+             * the row must not offer it — and the fact is worth saying anyway: it is the
+             * only thing on this half tying the clock at the top to the goal it is
+             * filling. The chip takes the ▶'s place rather than sitting beside it.
+             */}
+            {canStart?.running ? (
+              <span className="chron-chip is-going" title={`${canStart.name} is running now`}>
+                running
+              </span>
+            ) : null}
+          </span>
+          {/**
+           * ⚠️ ⋯ AND, ON A GOAL THAT COUNTS AN ACTIVITY, ▶ — AND THEY MOVE AS ONE, the way a log
+           * row's facts do. Loose siblings of a wrapping row split across lines: at 375 "Water the
+           * plants" once put two buttons on the title's line and left the third alone on the next.
+           */}
+          <span className="chron-goal-do">
+            {/**
+             * ⚠️ THE ROW THAT KNOWS WHAT TO DO CAN NOW DO IT. A goal counting an
+             * activity named that activity in a chip and offered no way to begin it:
+             * the switch tiles are on the other half, so "work out 20 minutes a day"
+             * and the twenty minutes lived on two screens. One tap starts it, or
+             * switches to it from whatever else is running — `chronicle_start` makes
+             * both the same call and leaves no trace of a mis-press.
+             */}
+            {canStart && !canStart.running ? (
+              <button
+                className="btn btn-ghost chron-x chron-go"
+                onClick={() => void startAt(canStart)}
+                disabled={busy}
+                /* ⚠️ THE SAME WORDS IN BOTH. `aria-label` wins over `title` as the
+                                     name, so a reader heard "Start Dishes" about a button whose own
+                                     tooltip said Switch — and switching is the thing it does that
+                                     needs saying, because something else is about to stop. */
+                aria-label={runningAct ? `Switch to ${canStart.name}` : `Start ${canStart.name}`}
+                title={runningAct ? `Switch to ${canStart.name}` : `Start ${canStart.name}`}
+              >
+                ▶
+              </button>
+            ) : null}
+            {/**
+             * ⚠️ ONE ⋯ FOR CHANGE, YOUR PROFILE AND DELETE — see `goalSheet`. The sheet says each in
+             * words, which matters most for the middle one: whether other people read the title of
+             * something you wrote about your own life was a ◍/◉/○ glyph explained by a tooltip, and a
+             * tooltip does not exist on a phone.
+             */}
+            <button
+              type="button"
+              className="btn btn-ghost chron-x chron-more"
+              aria-haspopup="dialog"
+              aria-label={`${g.title}: change it, your profile, or delete it`}
+              onClick={() => setGoalSheet(g.id)}
+            >
+              ⋯
+            </button>
+          </span>
+        </div>
+        {/**
+         * ⚠️ UNDER THE TITLE, NOT BESIDE IT. Everything else on that row is a chip or a
+         * number — a cadence, a flag, a bar — and a sentence wedged among them would
+         * either push them off the end or be clipped to a word. This is the only part of
+         * a goal that can be prose, so it gets its own line and wraps.
+         */}
+        {g.note ? <p className="muted chron-goal-why">{g.note}</p> : null}
+        {s != null && (
+          <div className="chron-meter">
+            <div className="chron-bar">
+              <i style={{ width: `${Math.round(s * 100)}%` }} />
+            </div>
+            <span className="chron-num">
+              {/* ⚠️ rounded for reading, and the raw value is never shown: minutes come
+                            back as a fraction of a minute from the overlap sum, and "29.983 / 30"
+                            is a number that looks broken rather than nearly done.
+                            ⚠️ AND GROUPED, by countText — the seed's own "20,000 reps" read
+                            "180 / 20000 reps" here, the same number twice in two notations.
+                            `g.target!` is safe because `s != null` IS "target is a positive
+                            number" — see share(), which TypeScript cannot narrow through. */}
+              {countText(auto ? Math.round(have) : have)} / {countText(g.target!)} {g.unit}
+            </span>
+            {/* ⚠️ NO PLUS AND MINUS ON A DERIVED GOAL. There is nothing to press — the
+                          record is the number — and buttons that looked like they moved it would
+                          either lie or fight the next tally. */}
+            {!auto && (
+              <>
+                <button
+                  className="btn btn-ghost"
+                  disabled={notYet}
+                  aria-label={`One less for ${g.title}`}
+                  onClick={() => void bump(g, -1)}
+                >
+                  −
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  disabled={notYet}
+                  aria-label={`One more for ${g.title}`}
+                  onClick={() => void bump(g, 1)}
+                >
+                  +
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/**
+         * ⚠️ ONE MARK PER WINDOW ALREADY FETCHED — see marksOf. The chip says "🔥 4"; this
+         * says which four, and what the month around them looked like. It costs no query.
+         *
+         * ⚠️ IT IS NOT A CONTROL, so it carries no touch target and nothing to press. A
+         * month of history you can tap is a month of history somebody taps by accident
+         * while scrolling.
+         *
+         * ⚠️ AND IT IS READ ALOUD AS A SENTENCE. Thirty-one `<i>`s are thirty-one pieces
+         * of nothing to a screen reader, so the row is aria-hidden and the count sits
+         * beside it in sr-only text — the same division the tick-boxes use.
+         */}
+        {marks.length > 0 && (
+          <>
+            <div className="chron-marks" aria-hidden>
+              {marks.map((m, i) => (
+                <i key={i} className={'is-' + m} />
+              ))}
+            </div>
+            <span className="sr-only">
+              {marks.filter((m) => m === 'met').length} of the last {marks.length} {g.scope}s
+              reached
+            </span>
+          </>
+        )}
+      </li>
     )
   }
 
@@ -1058,7 +1235,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
         })}
       </div>
 
-      <div className={'chron-body' + (acts.length ? '' : ' is-alone')}>
+      {/* ⚠️ THE SIDE COLUMN ONLY WHERE IT IS DRAWN. It was reserved whenever an activity existed,
+          so every half but Day had 15rem of nothing beside the stopwatch at a desktop width */}
+      <div className={'chron-body' + (half === 'day' && wide && acts.length ? '' : ' is-alone')}>
         <div className="chron-main">
           <Timer
             day={v.scope === 'day' ? on : todayISO()}
@@ -1086,7 +1265,9 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
          * number is the most prominent thing on the screen, and for a new member it would be a
          * verdict on a day they have not had a chance to spend.
          */}
-        {half === 'day' && acts.length > 0 && (
+        {/* ⚠️ FROM 900px ONLY. Narrower, the same rail is the first line of the Day half, folded —
+            see the summary in Timer — rather than a block at the foot of it */}
+        {half === 'day' && wide && acts.length > 0 && (
           <Rail day={v.scope === 'day' ? on : todayISO()} acts={acts} tick={beat} />
         )}
       </div>
@@ -1103,45 +1284,74 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
           {/* ⚠️ THE SWITCH SITS ABOVE THE LIST IT GOVERNS. This is the screen that is empty
               because sharing is off, so it is the screen that must be able to turn it on — the
               old empty state named three switches in prose and linked to none of them. */}
-          <Sharing authed={authed} />
+          <Sharing authed={authed} ask={askSharing} />
           <Friends authed={authed} />
         </>
       )}
 
       {half === 'aims' && (
         <>
-          <div className="chron-strip" role="tablist" aria-label="How far ahead">
-            {shown.map((x, i) => (
-              <button
-                key={x.id}
-                role="tab"
-                id={`${tabsId}-${i}`}
-                aria-selected={view === x.id}
-                aria-controls={panelId}
-                /**
-                 * ⚠️ ONE TAB STOP FOR THE WHOLE STRIP, which is the contract `role="tablist"` takes
-                 * on. Six buttons meant six stops on the way past, and the arrow keys — the thing a
-                 * tablist tells a screen reader to expect — did nothing at all. Declaring the role
-                 * and not keeping it is worse than six plain buttons, because the announcement
-                 * promises a behaviour that is not there.
-                 */
-                tabIndex={view === x.id ? 0 : -1}
-                className={'btn chron-tab' + (view === x.id ? ' is-on' : ' btn-ghost')}
-                onKeyDown={(e) =>
-                  moveTab(e, i, shown.length, (n) => {
-                    setView(shown[n].id)
+          <div className="chron-strip-row">
+            <div
+              className="chron-strip"
+              role="tablist"
+              aria-label="How far ahead"
+              ref={stripRef}
+              onScroll={(e) => atEnd(e.currentTarget)}
+            >
+              {tabs.map((x, i) => (
+                <button
+                  key={x.id}
+                  role="tab"
+                  id={`${tabsId}-${i}`}
+                  aria-selected={view === x.id}
+                  aria-controls={panelId}
+                  /**
+                   * ⚠️ ONE TAB STOP FOR THE WHOLE STRIP, which is the contract `role="tablist"` takes
+                   * on. Six buttons meant six stops on the way past, and the arrow keys — the thing a
+                   * tablist tells a screen reader to expect — did nothing at all. Declaring the role
+                   * and not keeping it is worse than six plain buttons, because the announcement
+                   * promises a behaviour that is not there.
+                   */
+                  tabIndex={view === x.id ? 0 : -1}
+                  className={'btn chron-tab' + (view === x.id ? ' is-on' : ' btn-ghost')}
+                  onKeyDown={(e) =>
+                    moveTab(e, i, tabs.length, (n) => {
+                      setView(tabs[n].id)
+                      setAdding(false)
+                    })
+                  }
+                  onClick={() => {
+                    setView(x.id)
                     setAdding(false)
-                  })
-                }
-                onClick={() => {
-                  setView(x.id)
-                  setAdding(false)
-                }}
+                  }}
+                >
+                  {x.short}
+                  {counts[x.id] ? <span className="chron-count">{counts[x.id]}</span> : null}
+                </button>
+              ))}
+            </div>
+            {/**
+             * ⚠️ OUTSIDE THE TABLIST, BECAUSE IT IS NOT A TAB. A tablist promises arrow keys between
+             * panels; this opens a list of them. Its count is the unfinished work behind it, the
+             * same `counts` the tabs show, so a month goal due is still said on the strip.
+             */}
+            {behind.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost chron-tab chron-far"
+                aria-haspopup="dialog"
+                aria-label={`More: ${behind.map((x) => x.label.toLowerCase()).join(', ')}`}
+                onClick={() => setFarOpen(true)}
               >
-                {x.label}
-                {counts[x.id] ? <span className="chron-count">{counts[x.id]}</span> : null}
+                More
+                {behind.reduce((n, x) => n + (counts[x.id] ?? 0), 0) > 0 ? (
+                  <span className="chron-count">
+                    {behind.reduce((n, x) => n + (counts[x.id] ?? 0), 0)}
+                  </span>
+                ) : null}
               </button>
-            ))}
+            )}
           </div>
 
           {/**
@@ -1154,23 +1364,41 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
            * tab body that had no element to be outside of.
            */}
           <div id={panelId} role="tabpanel" aria-labelledby={`${tabsId}-${viewAt}`}>
-            <p className="muted chron-blurb">
-              {v.blurb}
-              {win && v.scope !== 'life' ? (
-                <>
-                  {' '}
-                  <span className="chron-win">
-                    {v.scope === 'day'
-                      ? niceDate(win.from)
-                      : /* ⚠️ lastDay, not `win.to` — the end is exclusive, so naming it would tell
-                     somebody their month runs to the 1st of the next one. The arithmetic lives in
-                     goal.ts where it is tested; it was briefly here, done with toISOString, which
-                     is the UTC trap dates.ts opens with a warning about. */
-                        `${niceDate(win.from)} – ${niceDate(lastDay(win))}`}
-                  </span>
-                </>
-              ) : null}
-            </p>
+            {/**
+             * ⚠️ ＋ ADD SITS BESIDE THE WINDOW IT ADDS TO (#298). It was at the foot of the list, so
+             * the longer the list the further the way to add to it — and on a phone with a few goals
+             * it was off the first screen entirely. The button names the window to a screen reader;
+             * on screen the line it sits on already does.
+             */}
+            <div className="chron-head">
+              <p className="muted chron-blurb">
+                {v.blurb}
+                {win && v.scope !== 'life' ? (
+                  <>
+                    {' '}
+                    <span className="chron-win">
+                      {v.scope === 'day'
+                        ? niceDate(win.from)
+                        : /* ⚠️ lastDay, not `win.to` — the end is exclusive, so naming it would tell
+                       somebody their month runs to the 1st of the next one. The arithmetic lives in
+                       goal.ts where it is tested; it was briefly here, done with toISOString, which
+                       is the UTC trap dates.ts opens with a warning about. */
+                          `${niceDate(win.from)} – ${niceDate(lastDay(win))}`}
+                    </span>
+                  </>
+                ) : null}
+              </p>
+              {!goalForm.adding && (
+                <button
+                  type="button"
+                  className="btn chron-add-go"
+                  aria-label={`Add to ${v.label.toLowerCase()}`}
+                  onClick={() => openAdd('')}
+                >
+                  ＋ Add
+                </button>
+              )}
+            </div>
 
             {/**
              * ⚠️ IT SAYS WHAT IT COULD NOT COUNT, and that is the whole reason this is two sentences
@@ -1208,10 +1436,12 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                  * ⚠️ AND IT GOES AWAY FOR GOOD once anything exists, like the instrument's start row:
                  * scaffolding that never leaves is how a room gets cluttered by the help it needed once.
                  */}
+                {/* the form opens where its button is — at the top, under the window's own line */}
+                <GoalForm form={goalForm} v={v} acts={acts} busy={busy} />
                 {!goals.length && !acts.length ? (
                   <ol className="chron-first">
                     <li>
-                      <strong>Name something you do.</strong> Press ＋ Activity up there —
+                      <strong>Name something you do.</strong> Press ＋ New activity up there —
                       "Drawing", "Dishes", "Work". Each one is Locked In, Free Time or Life.
                     </li>
                     <li>
@@ -1219,9 +1449,8 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                       is the record, and it keeps running if you close the tab.
                     </li>
                     <li>
-                      <strong>Then aim at something.</strong> Add a goal below — a tick-box, or a
-                      number like 30 minutes. Point a number at an activity and you never have to
-                      tick it.
+                      <strong>Then aim at something.</strong> Press ＋ Add — a tick-box, or a number
+                      like 30 minutes. Point a number at an activity and you never have to tick it.
                     </li>
                   </ol>
                 ) : null}
@@ -1230,664 +1459,38 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
                 ordinary goal that wants the same tick, meter, editor and ✕ as any other — a second
                 copy of this block would be the place where those four quietly drift apart. The
                 heading is emitted at the boundary instead. */}
-                  {[...order.open, ...order.late, ...order.done].map((g, i) => {
-                    const isLate =
-                      i >= order.open.length && i < order.open.length + order.late.length
-                    const s = share(g, got, on)
-                    const done = finished(g, got, on)
-                    const auto = derived(g)
-                    const have = reached(g, got, on)
-                    /**
-                     * ⚠️ FREE, WHICH IS THE WHOLE REASON IT EXISTS. `streakAsks` already fetches
-                     * thirty-one windows for every repeating goal and the chip throws all but the run
-                     * away — the room was paying for a month of history and showing one number. These
-                     * are the same answers, read instead of discarded: no query, no state, no load.
-                     */
-                    /* ⚠️ THE ROW, NOT THE RECORD: windows from before the goal was made are left
-                       off, and a day the schedule leaves out is `off` unless it was met — see
-                       `rowOf`. The chip's number below is read from the same row, so the two can
-                       never disagree about which days counted. */
-                    const marks = rowOf(g, runs, on)
-                    const act = g.activity ? acts.find((a) => a.id === g.activity) : null
-                    const from = g.activity
-                      ? (act?.name ?? 'an activity')
-                      : g.cat
-                        ? (CATS.find(([c]) => c === g.cat)?.[1] ?? g.cat)
-                        : null
-                    /* ⚠️ "from Writing · pages" rather than just "from Writing", because two goals on
-                 one activity — an hour a day AND four pages a day — are otherwise identical on
-                 screen while measuring completely different things */
-                    const fromWhat =
-                      auto && g.counts === 'amount' && act?.metric ? act.metric : null
-                    /* an activity that has been archived; a category source cannot be, so `cat` is never
-                 gone and only a goal pointing at an activity can say this */
-                    const srcGone = !!act?.archived
-                    /* what ▶ on this row would start, and whether it is already going — the rule
-                 and its three refusals are in `startFor` */
-                    const canStart = startFor(g, acts, runningAct)
-                    /* ⚠️ TOMORROW'S FLOSS CANNOT BE TICKED TODAY — the writer refuses a window that
-                       has not begun — so the controls say so rather than offering a press that
-                       would only come back as a refusal */
-                    /* only where there IS a box or a ± — a goal the record counts has nothing to
-                       press, and "opens tomorrow" on it was a line about a control it never had */
-                    const notYet = !auto && !markOpen(g, on, todayISO())
-                    /* the ◍/◉/○ button's state and what pressing it does — see profileGlyph,
-                 which holds the rule that `certain` is not a toggle */
-                    const onProfile = profileGlyph(g.visibility)
-                    return (
-                      <Fragment key={g.id}>
-                        {/**
-                         * ⚠️ THE SECOND HEADING, FOR WHAT WAS ALREADY DONE WHEN YOU ARRIVED. Same
-                         * shape as "From before" and for the same reason: a row that is not part of
-                         * what this list is for needs saying why it is here, and a screen reader
-                         * reads the struck-through title of a finished goal exactly as it reads an
-                         * unfinished one.
-                         */}
-                        {order.done.length > 0 && i === order.open.length + order.late.length ? (
-                          <li className="chron-before">Done</li>
-                        ) : null}
-                        {order.late.length > 0 && i === order.open.length ? (
-                          /* ⚠️ AN <li> BECAUSE IT LIVES IN A <ul>: a heading between two list items is
-                       not a child a list may have. It keeps its text for a screen reader, which
-                       is the only thing saying why these rows are not part of the window above. */
-                          <li className="chron-before">From before</li>
-                        ) : null}
-                        <li className={'chron-goal' + (done ? ' is-done' : '')}>
-                          <div className="chron-goal-top">
-                            {s == null ? (
-                              <label className="chron-tick">
-                                <input
-                                  type="checkbox"
-                                  checked={g.done}
-                                  disabled={notYet}
-                                  onChange={() => void tick(g)}
-                                />
-                                <span>{g.title}</span>
-                              </label>
-                            ) : (
-                              <span className="chron-name">{g.title}</span>
-                            )}
-                            {/* ⚠️ "every day" rather than "repeats": the useful half of the fact is the
-                        cadence and the room already knows it, so a chip saying only that a thing
-                        repeats is a label that raises the question it should answer */}
-                            {repeats(g) ? (
-                              <span className="chron-chip">
-                                {g.scope === 'day'
-                                  ? daysText(maskOn(g.days ?? [], on))
-                                  : `every ${g.scope}`}
-                              </span>
-                            ) : null}
-                            {/* ⚠️ said, because a row on a list it is not due on needs a reason
-                                to be there — it was done anyway, or before today was left out */}
-                            {offOn(g, on) ? (
-                              <span className="muted chron-notyet">
-                                not due {v.id === 'tomorrow' ? 'tomorrow' : 'today'}
-                              </span>
-                            ) : null}
-                            {notYet ? (
-                              <span className="muted chron-notyet">opens tomorrow</span>
-                            ) : null}
-                            {/**
-                             * ⚠️ A CADENCE THE ROOM HAS NO VIEW FOR SAYS SO. `homeFor` lists a quarter goal
-                             * under the year, because the year is the nearest cadence left and the
-                             * alternative — which is what happened — is a goal in no list at all. But an
-                             * unlabelled quarter goal sitting among the year's would be a quiet lie about
-                             * what it is, and the member needs to know in order to edit it into something
-                             * the room does show.
-                             */}
-                            {!repeats(g) && homeFor(g.scope) !== g.scope ? (
-                              <span
-                                className="chron-chip"
-                                title={`A ${g.scope} goal, listed here because the room has no ${g.scope} view`}
-                              >
-                                this {g.scope}
-                              </span>
-                            ) : null}
-                            {/**
-                             * ⚠️ WHAT IT WAS FOR, because the row is in a window it does not belong to.
-                             * The heading says these are from before; only this says from WHEN, and
-                             * without it a goal under Today looks like a goal for today that the room has
-                             * decided to shout about.
-                             */}
-                            {isLate ? (
-                              <span
-                                className="chron-chip is-late"
-                                title={`Not finished, and the ${g.scope} it was for has ended`}
-                              >
-                                was for {wasFor(g)}
-                              </span>
-                            ) : null}
-                            {/**
-                             * ⚠️ FLAGGED ONLY WHEN IT IS FLAGGED. Ordinary is the overwhelming majority, and
-                             * a chip reading "ordinary" on every row would be noise that makes the two that
-                             * matter harder to find rather than easier — which is the opposite of what a
-                             * priority is for. The order already puts these at the top; the chip says why.
-                             */}
-                            {g.priority > 0 ? (
-                              <span
-                                className={
-                                  'chron-chip is-pri' + (g.priority === 2 ? ' is-now' : '')
-                                }
-                                title={g.priority === 2 ? 'Urgent' : 'Important'}
-                              >
-                                {g.priority === 2 ? 'urgent' : 'important'}
-                              </span>
-                            ) : null}
-                            {/* ⚠️ "~20m" with the tilde, because it is a guess and a bare "20m" beside a
-                        row that also carries real measured minutes reads as one of them */}
-                            {g.est != null ? (
-                              <span
-                                className="chron-chip is-est"
-                                title="How long you thought it would take"
-                              >
-                                ~{spanText(g.est * 60_000)}
-                              </span>
-                            ) : null}
-                            {/**
-                             * ⚠️ TWO IN A ROW IS THE FLOOR, because "a streak of 1" is just "done", and a
-                             * badge that appears the first time you do anything teaches nobody that it
-                             * means anything. It earns its place on the second window.
-                             */}
-                            {(() => {
-                              const run = streakFrom(marks)
-                              return run >= 2 ? (
-                                <span
-                                  className="chron-chip is-run"
-                                  title={`${run} ${g.scope}s in a row`}
-                                >
-                                  🔥 {run}
-                                </span>
-                              ) : null
-                            })()}
-                            {/* ⚠️ a derived goal says WHERE its number comes from, because a number that
-                        moves on its own and does not say why reads as a bug rather than a feature */}
-                            {/**
-                             * ⚠️ AND IT SAYS WHEN THAT SOURCE IS ARCHIVED, which is the same lesson
-                             * `readRoutine` was written for one surface over: an archived activity can
-                             * never gain another minute, because `chronicle_start` refuses one with an
-                             * `archived_at`. So a derived goal pointing at one reads 0 / 30 for ever and
-                             * the room said nothing — the only clue was a number that had stopped
-                             * moving, which reads as a bug in the counting rather than a consequence of
-                             * something you did on purpose.
-                             *
-                             * ⚠️ IN THE TEXT, NOT ONLY THE TITLE. A tooltip does not exist on a phone,
-                             * and this is the whole explanation for the row; the title carries the
-                             * advice, the chip carries the fact.
-                             */}
-                            {from ? (
-                              <span
-                                className={'chron-chip is-auto' + (srcGone ? ' is-gone' : '')}
-                                title={
-                                  srcGone
-                                    ? `${from} is archived — this cannot move again until you bring it back, or point the goal somewhere else`
-                                    : undefined
-                                }
-                              >
-                                from {from}
-                                {fromWhat ? ' · ' + fromWhat : ''}
-                                {srcGone ? ' · archived' : ''}
-                              </span>
-                            ) : null}
-                            {/**
-                             * ⚠️ A WORD RATHER THAN A SECOND ▶. Pressing Start on the activity you are
-                             * already in is a real call that closes your sitting and opens a new one, so
-                             * the row must not offer it — and the fact is worth saying anyway: it is the
-                             * only thing on this half tying the clock at the top to the goal it is
-                             * filling. The chip takes the ▶'s place rather than sitting beside it.
-                             */}
-                            {canStart?.running ? (
-                              <span
-                                className="chron-chip is-going"
-                                title={`${canStart.name} is running now`}
-                              >
-                                running
-                              </span>
-                            ) : null}
-                            {/* ⚠️ next to the delete rather than on the title, unlike the activity rows:
-                        a goal's title is already a checkbox for the tick-box kind, and a label
-                        that both ticks and opens an editor is a label you cannot press safely */}
-                            {/**
-                             * ⚠️ THREE OR FOUR, AND THEY MOVE AS ONE, the way a log row's do — see
-                             * `.chron-ent-do`. A goal that counts an activity carries a ▶ as well.
-                             * They
-                             * were siblings of the title in a wrapping row, which is survivable with two
-                             * of them and not with three: at 375 "Water the plants" put ✎ and ○ on the
-                             * title's line and left ✕ alone on the next, under an empty space. Every
-                             * measurement said the room was fine, because a wrap is not an overflow — the
-                             * same way the day log read clean this morning with its buttons orphaned.
-                             */}
-                            <span className="chron-goal-do">
-                              {/**
-                               * ⚠️ THE ROW THAT KNOWS WHAT TO DO CAN NOW DO IT. A goal counting an
-                               * activity named that activity in a chip and offered no way to begin it:
-                               * the switch tiles are on the other half, so "work out 20 minutes a day"
-                               * and the twenty minutes lived on two screens. One tap starts it, or
-                               * switches to it from whatever else is running — `chronicle_start` makes
-                               * both the same call and leaves no trace of a mis-press.
-                               */}
-                              {canStart && !canStart.running ? (
-                                <button
-                                  className="btn btn-ghost chron-x chron-go"
-                                  onClick={() => void startAt(canStart)}
-                                  disabled={busy}
-                                  /* ⚠️ THE SAME WORDS IN BOTH. `aria-label` wins over `title` as the
-                                     name, so a reader heard "Start Dishes" about a button whose own
-                                     tooltip said Switch — and switching is the thing it does that
-                                     needs saying, because something else is about to stop. */
-                                  aria-label={
-                                    runningAct
-                                      ? `Switch to ${canStart.name}`
-                                      : `Start ${canStart.name}`
-                                  }
-                                  title={
-                                    runningAct
-                                      ? `Switch to ${canStart.name}`
-                                      : `Start ${canStart.name}`
-                                  }
-                                >
-                                  ▶
-                                </button>
-                              ) : null}
-                              <button
-                                className="btn btn-ghost chron-x"
-                                onClick={() => {
-                                  setFixing(g.id)
-                                  setAdding(true)
-                                  setTitle(g.title)
-                                  setTarget(g.target == null ? '' : String(g.target))
-                                  setUnit(g.unit ?? '')
-                                  setEvery(repeats(g))
-                                  setWdays(maskOn(g.days ?? [], todayISO()))
-                                  setSrc(g.activity ? 'a:' + g.activity : g.cat ? 'c:' + g.cat : '')
-                                  setCountWhat(g.counts)
-                                  setEst(g.est == null ? '' : String(g.est))
-                                  setPri(g.priority)
-                                  setWhy(g.note ?? '')
-                                }}
-                                aria-label={`Change ${g.title}`}
-                                title={`Change ${g.title}`}
-                              >
-                                ✎
-                              </button>
-                              {/**
-                               * ⚠️ A WORD, NOT ONLY A GLYPH, in the label — this one decides whether other
-                               * people read the title of something you wrote about your own life, and
-                               * "share" is too consequential to be explained by a tooltip nobody on a phone
-                               * will see. The title names the other half of the switch, because a tick here
-                               * alone genuinely does nothing.
-                               */}
-                              {/**
-                               * ⚠️ IT READS THE TIER, NOT `shared`, AND THE THIRD STATE IS WHY. A
-                               * goal at `certain` has `shared = false` by check constraint — so
-                               * on the boolean this button showed ○, "not on your profile",
-                               * above a goal its owner's chosen friends can see on it.
-                               *
-                               * ⚠️ AND THE THIRD STATE IS NOT A TOGGLE AT ALL, 4 Nov. It used to
-                               * narrow: one press on a goal at `certain` set it private, and
-                               * `chronicle_goals_drop_certain` DELETED the chosen list — then a
-                               * second press, which anyone would read as undo, widened it to
-                               * every friend. Measured on production: certain·1 → private·0 →
-                               * friends·0. The deletion is right (a list left behind is an
-                               * audience that lets itself back in); a quick on/off offering it
-                               * as a first press was not. So `certain` opens Sharing, which is
-                               * the one control that can say all three levels and show the list.
-                               * The rule lives in `profileGlyph` with a test, because it is the
-                               * kind that gets re-derived wrongly in JSX.
-                               */}
-                              <button
-                                className={
-                                  'btn btn-ghost chron-x' +
-                                  (onProfile.press === 'share' ? '' : ' is-on')
-                                }
-                                onClick={() =>
-                                  onProfile.press === 'open-sharing'
-                                    ? setHalf('friends')
-                                    : void putOnProfile(g)
-                                }
-                                aria-label={
-                                  onProfile.press === 'open-sharing'
-                                    ? `${g.title} is on your profile for the friends you chose — open Sharing to change who`
-                                    : onProfile.press === 'unshare'
-                                      ? `${g.title} is on your profile — take it off`
-                                      : `Put ${g.title} on your profile`
-                                }
-                                title={
-                                  onProfile.press === 'open-sharing'
-                                    ? 'On your profile for the friends you chose. Opens Sharing, where that list is.'
-                                    : onProfile.press === 'unshare'
-                                      ? 'On your profile, if your Chronicle block is showing goals'
-                                      : 'Put this on your profile'
-                                }
-                              >
-                                {onProfile.glyph}
-                              </button>
-                              <button
-                                className="btn btn-ghost chron-x"
-                                onClick={() => void remove(g)}
-                                aria-label={`Delete ${g.title}`}
-                                title={`Delete ${g.title}`}
-                              >
-                                ✕
-                              </button>
-                            </span>
-                          </div>
-                          {/**
-                           * ⚠️ UNDER THE TITLE, NOT BESIDE IT. Everything else on that row is a chip or a
-                           * number — a cadence, a flag, a bar — and a sentence wedged among them would
-                           * either push them off the end or be clipped to a word. This is the only part of
-                           * a goal that can be prose, so it gets its own line and wraps.
-                           */}
-                          {g.note ? <p className="muted chron-goal-why">{g.note}</p> : null}
-                          {s != null && (
-                            <div className="chron-meter">
-                              <div className="chron-bar">
-                                <i style={{ width: `${Math.round(s * 100)}%` }} />
-                              </div>
-                              <span className="chron-num">
-                                {/* ⚠️ rounded for reading, and the raw value is never shown: minutes come
-                            back as a fraction of a minute from the overlap sum, and "29.983 / 30"
-                            is a number that looks broken rather than nearly done.
-                            ⚠️ AND GROUPED, by countText — the seed's own "20,000 reps" read
-                            "180 / 20000 reps" here, the same number twice in two notations.
-                            `g.target!` is safe because `s != null` IS "target is a positive
-                            number" — see share(), which TypeScript cannot narrow through. */}
-                                {countText(auto ? Math.round(have) : have)} / {countText(g.target!)}{' '}
-                                {g.unit}
-                              </span>
-                              {/* ⚠️ NO PLUS AND MINUS ON A DERIVED GOAL. There is nothing to press — the
-                          record is the number — and buttons that looked like they moved it would
-                          either lie or fight the next tally. */}
-                              {!auto && (
-                                <>
-                                  <button
-                                    className="btn btn-ghost"
-                                    disabled={notYet}
-                                    aria-label={`One less for ${g.title}`}
-                                    onClick={() => void bump(g, -1)}
-                                  >
-                                    −
-                                  </button>
-                                  <button
-                                    className="btn btn-ghost"
-                                    disabled={notYet}
-                                    aria-label={`One more for ${g.title}`}
-                                    onClick={() => void bump(g, 1)}
-                                  >
-                                    +
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
-
-                          {/**
-                           * ⚠️ ONE MARK PER WINDOW ALREADY FETCHED — see marksOf. The chip says "🔥 4"; this
-                           * says which four, and what the month around them looked like. It costs no query.
-                           *
-                           * ⚠️ IT IS NOT A CONTROL, so it carries no touch target and nothing to press. A
-                           * month of history you can tap is a month of history somebody taps by accident
-                           * while scrolling.
-                           *
-                           * ⚠️ AND IT IS READ ALOUD AS A SENTENCE. Thirty-one `<i>`s are thirty-one pieces
-                           * of nothing to a screen reader, so the row is aria-hidden and the count sits
-                           * beside it in sr-only text — the same division the tick-boxes use.
-                           */}
-                          {marks.length > 0 && (
-                            <>
-                              <div className="chron-marks" aria-hidden>
-                                {marks.map((m, i) => (
-                                  <i key={i} className={'is-' + m} />
-                                ))}
-                              </div>
-                              <span className="sr-only">
-                                {marks.filter((m) => m === 'met').length} of the last {marks.length}{' '}
-                                {g.scope}s reached
-                              </span>
-                            </>
-                          )}
-                        </li>
-                      </Fragment>
-                    )
-                  })}
+                  {order.open.map((g) => goalRow(g, false))}
+                  {/* ⚠️ AN <li> BECAUSE IT LIVES IN A <ul>: a heading between two list items is
+                      not a child a list may have. It keeps its text for a screen reader, which is
+                      the only thing saying why these rows are not part of the window above. */}
+                  {order.late.length > 0 ? <li className="chron-before">From before</li> : null}
+                  {order.late.map((g) => goalRow(g, true))}
                 </ul>
+                {/**
+                 * ⚠️ WHAT WAS ALREADY DONE WHEN YOU ARRIVED, FOLDED (#298's first answer). These
+                 * sat at the foot of the list under a "Done" heading, struck through, which on a
+                 * day going well was most of the list and pushed the open goals' neighbours off the
+                 * first screen. The fold says how many and which, so nothing is hidden that the
+                 * line itself does not name.
+                 *
+                 * ⚠️ ONLY THE ONES DONE BEFORE YOU GOT HERE — see `arrange`. A goal you tick now
+                 * stays where it is, struck through, until you leave the tab: a row that jumped into
+                 * a fold under the thumb that ticked it would be the row moving `arrange` exists
+                 * to prevent.
+                 */}
+                {order.done.length > 0 && (
+                  <details className="chron-fold chron-done-fold">
+                    <summary>
+                      <span className="chron-fold-name">
+                        {v.id === 'today' ? 'Done today' : 'Done'} · {order.done.length}
+                        <small>{order.done.map((g) => g.title).join(', ')}</small>
+                      </span>
+                    </summary>
+                    <ul className="chron-list">{order.done.map((g) => goalRow(g, false))}</ul>
+                  </details>
+                )}
 
                 {!mine.length && !overdue.length && <p className="muted">Nothing here yet.</p>}
-
-                {adding ? (
-                  <div className="chron-add">
-                    <label>
-                      <span className="sr-only">What is the goal?</span>
-                      <input
-                        autoFocus
-                        value={title}
-                        maxLength={LIMIT.goalTitle}
-                        placeholder={v.scope === 'life' ? 'Learn to animate' : 'What needs doing?'}
-                        onChange={(e) => setTitle(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && void add()}
-                      />
-                    </label>
-                    <label className="chron-qty">
-                      <span className="sr-only">A number to reach, if there is one</span>
-                      <input
-                        value={target}
-                        inputMode="decimal"
-                        placeholder="100"
-                        onChange={(e) => setTarget(e.target.value)}
-                      />
-                    </label>
-                    {/**
-                     * ⚠️ MINUTES, SAID IN THE PLACEHOLDER, because a bare number box next to another
-                     * bare number box is two fields nobody can tell apart. "20m?" says both the unit and
-                     * that it is optional.
-                     */}
-                    <label className="chron-qty">
-                      <span className="sr-only">How long will it take? In minutes</span>
-                      <input
-                        value={est}
-                        inputMode="numeric"
-                        placeholder="20m?"
-                        onChange={(e) => setEst(e.target.value)}
-                      />
-                    </label>
-                    {/**
-                     * ⚠️ "WHY" RATHER THAN "NOTE", because the field is only worth a box if it asks a
-                     * question somebody wants to answer. A goal's title says what; the one thing that
-                     * goes stale about a goal is the reason you set it, which is exactly what you want
-                     * back in March about something written in January.
-                     *
-                     * ⚠️ AND IT WRAPS TO ITS OWN LINE in the row, because it is the only part of this
-                     * form that can be a sentence — the same reason the goal row shows it under the
-                     * title rather than among the chips.
-                     */}
-                    <label className="chron-whyfor">
-                      <span className="sr-only">Why does this matter? Optional</span>
-                      <input
-                        value={why}
-                        maxLength={LIMIT.goalNote}
-                        placeholder="why, if it helps"
-                        onChange={(e) => setWhy(e.target.value)}
-                      />
-                    </label>
-                    <label className="chron-choice">
-                      <span className="sr-only">How much does it matter?</span>
-                      <select
-                        value={String(pri)}
-                        onChange={(e) => setPri(Number(e.target.value) as 0 | 1 | 2)}
-                      >
-                        <option value="0">ordinary</option>
-                        <option value="1">important</option>
-                        <option value="2">urgent</option>
-                      </select>
-                    </label>
-                    <label className="chron-qty">
-                      <span className="sr-only">What the number counts</span>
-                      {/**
-                       * ⚠️ THE HINT IS WHAT LEAVING IT BLANK ACTUALLY GIVES YOU, which "points" was not.
-                       * The box is optional and `unitFor` fills it from what the room already knows —
-                       * minutes for a goal counting an activity's time, that activity's own metric for
-                       * one counting an amount, "done" only where nothing can be known. A placeholder
-                       * naming a fourth word nobody will get is a guess the reader has to un-learn, and
-                       * it changes as the source does, so the preview is live.
-                       */}
-                      <input
-                        value={unit}
-                        maxLength={LIMIT.unit}
-                        placeholder={unitFor('', {
-                          counts: goalCounts,
-                          activity: srcAct,
-                          cat: src.startsWith('c:')
-                            ? (src.slice(2) as 'locked' | 'free' | 'life')
-                            : null,
-                        })}
-                        onChange={(e) => setUnit(e.target.value)}
-                      />
-                    </label>
-                    {/**
-                     * ⚠️ ONLY WHEN THERE IS A NUMBER TO COUNT, and only when the window can be added up.
-                     * A source on a tick-box has nothing to count towards, and a source on a lifetime
-                     * goal has no window to count over — both are refused one layer down, so offering
-                     * them here would be offering a thing that cannot be saved.
-                     */}
-                    {target.trim() !== '' && v.scope !== 'life' && acts.length > 0 && (
-                      <label className="chron-choice">
-                        <span className="sr-only">Counted from what?</span>
-                        <select
-                          value={src}
-                          onChange={(e) => {
-                            /* ours to update, theirs to keep — see `suggestedUnit` */
-                            if (unit.trim() === suggestedUnit) setUnit('')
-                            setSrc(e.target.value)
-                          }}
-                        >
-                          <option value="">I will count it myself</option>
-                          {/**
-                           * ⚠️ AN ARCHIVED ACTIVITY STAYS IN THE LIST WHILE IT IS THE ONE SELECTED, the
-                           * same rule the plan form already uses. Without it the picker had no option
-                           * matching the goal's source, so it rendered blank — which reads as "I will
-                           * count it myself" — on a goal whose own row two inches away said FROM DRAWING.
-                           * A control that shows a different current value from the thing it edits is a
-                           * lie about state, and the one somebody acts on.
-                           *
-                           * ⚠️ THE DATA WAS NEVER AT RISK, which is worth saying because the shape looks
-                           * exactly like §8's silent erasure. `src` is React state set when the editor
-                           * opens; a `<select>` whose value matches no option displays empty without
-                           * changing it, so pressing Save kept `activity=pv-draw`. Measured before
-                           * fixing: before and after both `activity=pv-draw counts=minutes`.
-                           */}
-                          <optgroup label="count my time on…">
-                            {acts
-                              .filter((a) => !a.archived || src === 'a:' + a.id)
-                              .map((a) => (
-                                <option key={a.id} value={'a:' + a.id}>
-                                  {a.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                          <optgroup label="count all my time that is…">
-                            {CATS.map(([c, label]) => (
-                              <option key={c} value={'c:' + c}>
-                                {label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                      </label>
-                    )}
-                    {/**
-                     * ⚠️ ONLY WHEN THE SOURCE IS ONE ACTIVITY THAT COUNTS SOMETHING. Without a metric
-                     * there is nothing to choose between, and for a category the choice is meaningless —
-                     * so the control appears exactly when it is a real question and never as a dropdown
-                     * with one answer.
-                     */}
-                    {(() => {
-                      const picked = srcAct
-                      return picked?.metric ? (
-                        <label className="chron-choice">
-                          <span className="sr-only">Count what?</span>
-                          <select
-                            value={countWhat}
-                            onChange={(e) => {
-                              /* the same question: "count the reps" instead of the time changes the
-                           word the room would suggest, so its own word follows and yours does not */
-                              if (unit.trim() === suggestedUnit) setUnit('')
-                              setCountWhat(e.target.value as 'minutes' | 'amount')
-                            }}
-                          >
-                            <option value="minutes">count the time</option>
-                            <option value="amount">count the {picked.metric}</option>
-                          </select>
-                        </label>
-                      ) : null
-                    })()}
-                    {v.scope !== 'life' && (
-                      <label className="chron-rep">
-                        <input
-                          type="checkbox"
-                          checked={every}
-                          onChange={(e) => setEvery(e.target.checked)}
-                        />
-                        <span>every {v.scope}</span>
-                      </label>
-                    )}
-                    {/**
-                     * ⚠️ ONLY FOR A REPEATING DAILY GOAL, the one shape a weekday means anything for.
-                     * Seven toggles rather than a list of ticks, because the choice is a pattern and
-                     * a row of letters shows the whole week at once. Each says its day in words, for
-                     * a screen reader and for the two Ts and two Ss; the last day left cannot be
-                     * unpressed, because a goal for no days is one the server refuses.
-                     */}
-                    {(beingFixed?.scope ?? v.scope) === 'day' && every && (
-                      <div className="chron-wdays" role="group" aria-label="On these days">
-                        {[1, 2, 3, 4, 5, 6, 0].map((d) => {
-                          const picked = (wdays & (1 << d)) !== 0
-                          return (
-                            <button
-                              key={d}
-                              type="button"
-                              className={'chron-wday' + (picked ? ' is-on' : '')}
-                              aria-pressed={picked}
-                              aria-label={dayName(d)}
-                              onClick={() => {
-                                const next = wdays ^ (1 << d)
-                                if (validMask(next)) setWdays(next)
-                              }}
-                            >
-                              {dayLetter(d)}
-                            </button>
-                          )
-                        })}
-                        {/* ⚠️ THE RULE, SAID WHERE IT APPLIES. An edit that changes the days and
-                            does not say from when would leave somebody wondering whether last
-                            week's misses just became something else. */}
-                        {beingFixed && wdays !== maskOn(beingFixed.days ?? [], todayISO()) ? (
-                          <span className="muted chron-wdays-note">
-                            From today. Earlier days keep the old days.
-                          </span>
-                        ) : null}
-                      </div>
-                    )}
-                    <button
-                      className="btn"
-                      disabled={!title.trim() || busy}
-                      onClick={() => void add()}
-                    >
-                      {fixing ? 'Save' : 'Add'}
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setAdding(false)
-                        setFixing(null)
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button className="btn" onClick={() => openAdd('')}>
-                    ＋ Add to {v.label.toLowerCase()}
-                  </button>
-                )}
 
                 {/**
                  * ⚠️ LOOKING BACK, FOR THE WINDOWS WHERE IT IS THE ONLY WAY TO SEE ANYTHING. Today and
@@ -1936,6 +1539,106 @@ export function Chronicle({ authed = false }: { authed?: boolean } = {}) {
             )}
           </div>
         </>
+      )}
+
+      {/**
+       * A goal's ⋯: change it, your profile, delete it — the three that were ✎ ○ ✕ on its row.
+       *
+       * ⚠️ THE PROFILE LINE READS THE TIER, NOT `shared`, AND THE THIRD STATE IS NOT A TOGGLE — see
+       * `profileGlyph`, which holds the rule with a test. A goal at `certain` has `shared = false`
+       * by check constraint, and pressing a quick on/off there once set it private (which deletes
+       * the chosen list, correctly) and a second press widened it to every friend: measured on
+       * production, certain·1 → private·0 → friends·0. So `certain` opens Sharing, the one control
+       * that can say all three levels and show the list — and opens its fold, now it has one.
+       *
+       * ⚠️ AND PUTTING ONE ON THE PROFILE SHOWS NOTHING BY ITSELF: the profile's Chronicle block
+       * has to be showing goals too. Said on the button, because it is the whole caveat.
+       */}
+      {(() => {
+        const g = goalSheet ? (goals ?? []).find((x) => x.id === goalSheet) : null
+        if (!g) return null
+        const prof = profileGlyph(g.visibility)
+        const close = () => setGoalSheet(null)
+        return (
+          <Modal title={g.title} onClose={close}>
+            <div className="chron-sheet">
+              <button
+                type="button"
+                className="btn btn-ghost chron-sheet-act"
+                onClick={() => {
+                  close()
+                  setFixing(g.id)
+                  setAdding(true)
+                  fillGoalForm(g)
+                }}
+              >
+                <span>✎ Change</span>
+                <small>its name, number, days and source</small>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost chron-sheet-act"
+                disabled={busy}
+                onClick={() => {
+                  close()
+                  if (prof.press === 'open-sharing') {
+                    setHalf('friends')
+                    setAskSharing((n) => n + 1)
+                  } else void putOnProfile(g)
+                }}
+              >
+                <span>
+                  {prof.glyph}{' '}
+                  {prof.press === 'open-sharing'
+                    ? 'On your profile for the friends you chose'
+                    : prof.press === 'unshare'
+                      ? 'Take it off your profile'
+                      : 'Put it on your profile'}
+                </span>
+                <small>
+                  {prof.press === 'open-sharing'
+                    ? 'change who, in Sharing ▸'
+                    : prof.press === 'unshare'
+                      ? 'it is on your profile now'
+                      : 'shows if your Chronicle block shows goals'}
+                </small>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost chron-sheet-act chron-danger"
+                onClick={() => {
+                  close()
+                  void remove(g)
+                }}
+              >
+                <span>✕ Delete</span>
+              </button>
+            </div>
+          </Modal>
+        )
+      })()}
+
+      {farOpen && (
+        <Modal title="Further ahead" onClose={() => setFarOpen(false)}>
+          <div className="chron-sheet">
+            {far.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                className={'btn btn-ghost chron-sheet-act' + (view === x.id ? ' is-on' : '')}
+                aria-pressed={view === x.id}
+                onClick={() => {
+                  setView(x.id)
+                  setAdding(false)
+                  setFarOpen(false)
+                }}
+              >
+                <span>{x.label}</span>
+                <small>{counts[x.id] ? `${counts[x.id]} not finished` : x.blurb}</small>
+              </button>
+            ))}
+          </div>
+        </Modal>
       )}
 
       {/**

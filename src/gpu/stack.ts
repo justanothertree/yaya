@@ -13,6 +13,8 @@
  * game exactly, and both wells in a race share one stream of pieces, which is what makes it fair.
  */
 
+import { rng as seeded } from './bricks'
+
 export const COLS = 10
 export const ROWS = 20
 /** rows above the top that a piece may poke into while it enters */
@@ -103,15 +105,7 @@ export function cellsOf(kind: Kind, rot: number): [number, number][] {
 }
 
 /** a seeded random source */
-export function seeded(seed: number) {
-  let s = seed >>> 0 || 1
-  return () => {
-    s ^= s << 13
-    s ^= s >>> 17
-    s ^= s << 5
-    return (s >>> 0) / 2 ** 32
-  }
-}
+export { seeded }
 
 /**
  * Pieces come in shuffled sets of all seven, so no shape is ever more than twelve pieces away —

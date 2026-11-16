@@ -19,6 +19,7 @@ import {
   type V2,
 } from './printshop'
 import { createShop, type Shop } from './printshopEngine'
+import { writeKept } from './kept'
 
 type Props = {
   running: boolean
@@ -85,7 +86,7 @@ export function PrintshopDemo({ running, setRunning, onAdapter }: Props) {
   const stepsNow = useRef(steps)
   /** the cut being drawn */
   const cutting = useRef<Cut | null>(null)
-  /** the work as it was before 🔄 New block, so Undo can bring it back */
+  /** the work as it was before ↻ New block, so Undo can bring it back */
   const cleared = useRef<Step[] | null>(null)
 
   const setSteps = (next: Step[]) => {
@@ -99,7 +100,7 @@ export function PrintshopDemo({ running, setRunning, onAdapter }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PRINTSHOP_KEY, JSON.stringify({ steps, gouge, ink, pressure }))
+      writeKept(PRINTSHOP_KEY, JSON.stringify({ steps, gouge, ink, pressure }))
     } catch {
       setNote('This browser would not keep the print — ⬇ Save it to a file to be sure of it.')
     }
@@ -265,7 +266,7 @@ export function PrintshopDemo({ running, setRunning, onAdapter }: Props) {
             ↶ Undo
           </button>
           <button className="btn btn-ghost" onClick={fresh} disabled={!steps.length}>
-            🔄 New block
+            ↻ New block
           </button>
         </div>
       )}

@@ -573,6 +573,11 @@ export function Chat({
                 // presence is already loaded for the room list — it is the only count of who
                 // is in a call, since nothing server-side keeps a tally
                 occupancy={voiceIn[room.id]?.length ?? 0}
+                roomKind={
+                  room.kind === 'lounge' || room.kind === 'dm' || room.kind === 'circuit'
+                    ? room.kind
+                    : undefined
+                }
               />
             )}
 
