@@ -170,7 +170,9 @@ export const sendMove = (id: string, at: number, m: unknown) =>
   move({ op: 'move', match: id, at, move: m })
 
 /** your friends, by id, for a challenge: accepted friendships only */
-export async function challengeableFriends(): Promise<{ id: string; name: string }[]> {
+export async function challengeableFriends(): Promise<
+  { id: string; name: string; username: string | null }[]
+> {
   const rows = await rpc('list_member_directory')
   return (Array.isArray(rows) ? rows : [])
     .filter(
@@ -179,6 +181,7 @@ export async function challengeableFriends(): Promise<{ id: string; name: string
     )
     .map((r: { user_id: string; name?: unknown; username?: unknown }) => ({
       id: r.user_id,
+      username: typeof r.username === 'string' ? r.username : null,
       name:
         typeof r.name === 'string' && r.name.trim()
           ? r.name

@@ -16,8 +16,14 @@ import {
   type Who,
 } from './ultimate'
 import { useKept } from './kept'
+import { ultimateRules } from './ultimateRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const MARK_NAMES: Record<MarkSet, string> = {
   classic: 'Crosses and noughts',
@@ -63,9 +69,29 @@ export function UltimateDemo() {
   const recorded = useRef(false)
 
   const marks = MARK_SETS[saved.marks]
+
+  /* ── the call's room: the game travels as its squares, replayed by ultimate.ts itself */
+  const lab = useLabRoom('ultimate', ultimateRules)
+  const words = tableSeats(lab, ultimateRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the mark I play: the second only in seat 1 of a versus game; together, the team is first */
+  const mySide: Who = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+  /** the board on screen: the call's in a call, else this one */
+  const view = room ? room.game.g : game
+
   const nameOf = (w: Who) =>
-    mode === 'bot' ? (w === you ? 'You' : 'The computer') : `${marks[w - 1]}`
-  const legal = new Set(moves(game))
+    room
+      ? room.mode === 'together'
+        ? w === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[w - 1])
+      : mode === 'bot'
+        ? w === you
+          ? 'You'
+          : 'The computer'
+        : `${marks[w - 1]}`
+  const legal = new Set(moves(view))
   const computerTurn = mode === 'bot' && !game.winner && game.turn !== you
 
   const afterMove = (g: Game, by: Who) => {
@@ -101,8 +127,29 @@ export function UltimateDemo() {
     )
   }
   const tap = (i: number) => {
-    if (!legal.has(i) || thinking || (mode === 'bot' && game.turn !== you)) return
+    // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (room) {
+      if (legal.has(i) && lab.live && myTurn(ultimateRules, room)) lab.act({ t: 'move', move: i })
+      return
+    }
+    if (mode === 'call' || !legal.has(i) || thinking || (mode === 'bot' && game.turn !== you))
+      return
     afterMove(play(game, i), game.turn)
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their mark — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.g.winner) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setYou(mySide)
+    setThinking(false)
+    setGame(r.game.g)
+    setLine(r.game.g.turn === mySide ? 'Your move.' : 'The computer is thinking…')
   }
 
   useEffect(() => {
@@ -172,6 +219,15 @@ export function UltimateDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -190,13 +246,26 @@ export function UltimateDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode === 'call' ? (
+        <CallTable
+          table={lab}
+          rules={ultimateRules}
+          sides={[marks[0], marks[1]]}
+          levelNames={LEVEL_NAMES}
+          score={(d) => (d.g.winner === 1 || d.g.winner === 2 ? ' — three boards in a row' : null)}
+          onCarryOn={carryOn}
+        />
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="ut-big"
@@ -205,10 +274,10 @@ export function UltimateDemo() {
         onKeyDown={onKey}
       >
         {Array.from({ length: 9 }, (_, b) => {
-          const won = game.boards[b]
+          const won = view.boards[b]
           const open =
             saved.guide &&
-            !game.winner &&
+            !view.winner &&
             Array.from({ length: 9 }, (_, s) => legal.has(b * 9 + s)).some(Boolean)
           return (
             <div
@@ -219,14 +288,14 @@ export function UltimateDemo() {
             >
               {Array.from({ length: 9 }, (_, s) => {
                 const i = b * 9 + s
-                const c = game.cells[i]
+                const c = view.cells[i]
                 return (
                   <div role="gridcell" key={s}>
                     <button
                       ref={(el) => {
                         refs.current[i] = el
                       }}
-                      className={`ut-cell${c ? ` is-p${c}` : ''}${game.last === i ? ' is-last' : ''}`}
+                      className={`ut-cell${c ? ` is-p${c}` : ''}${view.last === i ? ' is-last' : ''}`}
                       tabIndex={i === cursor ? 0 : -1}
                       aria-label={`${PLACE[b]} board, ${PLACE[s]} square: ${c ? marks[c - 1] : legal.has(i) ? 'empty, playable' : 'empty'}`}
                       aria-disabled={!legal.has(i)}
