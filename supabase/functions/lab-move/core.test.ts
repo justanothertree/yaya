@@ -52,6 +52,13 @@ import { chain as hexChain } from '../../../src/gpu/hex'
 import { SWAP, replay as hexReplay } from '../../../src/gpu/hexRoom'
 import { LINES as ULT_LINES, moves as ultMoves } from '../../../src/gpu/ultimate'
 import { replay as ultReplay } from '../../../src/gpu/ultimateRoom'
+import {
+  choose as halmaChoose,
+  DRAW_AFTER as HALMA_DRAW,
+  moves as halmaMoves,
+  won as halmaWon,
+} from '../../../src/gpu/halma'
+import { replay as halmaReplay } from '../../../src/gpu/halmaRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1353,6 +1360,84 @@ describe('fences by turns: a step or a fence, and no fence that shuts a side in'
           move(row.seq, ['s', r - 1, c]),
         ),
       ),
+    ).toBe(500)
+  })
+})
+
+describe('chinese checkers by turns: a peg and where it lands', () => {
+  const hm = (over: Partial<Row> = {}) => invite({ demo_id: 'halma', settings: {}, ...over })
+  const game = (state: unknown) => halmaReplay((state as { moves: unknown[] }).moves)!.g
+
+  it('plays versus to the end, the winner whoever filled the far point, or a draw at the cap', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 8; seed++) {
+      const rnd = seeded(seed)
+      // mostly sensible moves so a game ends, with enough chance in it that no two are alike;
+      // the last seed wanders at random, which is the game the cap is there for
+      const wander = seed === 8
+      const { row, plans } = playOut(
+        hm(),
+        (r) => {
+          const g = game(r.state)
+          const list = halmaMoves(g)
+          const m =
+            !wander && rnd() < 0.85
+              ? halmaChoose(g, 'fair', rnd)
+              : list[Math.floor(rnd() * list.length)]
+          return [m.from, m.to]
+        },
+        HALMA_DRAW + 1,
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      // asked of the board: the winner's pegs fill the far point, and the loser's do not
+      if (last.result!.winner === 'draw') {
+        expect(halmaWon(g.cells, 1) || halmaWon(g.cells, 2)).toBe(false)
+        expect(plans.length).toBe(HALMA_DRAW)
+        seen.add('draw')
+        continue
+      }
+      const side = last.result!.winner === 0 ? 1 : 2
+      expect(halmaWon(g.cells, side)).toBe(true)
+      expect(halmaWon(g.cells, side === 1 ? 2 : 1)).toBe(false)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1') && seen.has('draw')).toBe(true)
+  }, 60000)
+
+  it('takes a chain of hops as one move, named by where it lands', () => {
+    let row = after(hm(), decide(hm(), B, { op: 'accept' }))
+    // 115 hops over 111's row to 102: a jump, not a step, and the board knows the way
+    row = after(row, decide(row, A, move(row.seq, [115, 102])))
+    expect(game(row.state).cells[102]).toBe(1)
+    expect(game(row.state).cells[115]).toBe(0)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = hm({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const m = halmaMoves(game(row.state))[0]
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, [m.from, m.to]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  }, 30000)
+
+  it('refuses a landing no step or hop reaches, one off the board, an empty hole and the other side’s peg', () => {
+    const row = after(hm(), decide(hm(), B, { op: 'accept' }))
+    expect(status(decide(row, A, move(row.seq, [111, 93])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [111, 121])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [102, 93])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0, 10])))).toBe(400)
+    expect(
+      status(decide({ ...row, state: { moves: [[111, 93]] } }, A, move(row.seq, [111, 102]))),
     ).toBe(500)
   })
 })
