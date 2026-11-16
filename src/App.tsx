@@ -19,6 +19,7 @@ import { installClickFx, setClickFxEnabled, setClickFxStyle, type FxStyle } from
 import { FX_STYLES } from './ui/fxStyles'
 import { applyCursorSkin, isCursorSkin, type CursorSkin } from './ui/cursorSkin'
 import { SECTION_ALIASES, SECTION_TITLES, navFor, sectionOf, type Section } from './nav/places'
+import { isTypingTarget } from './nav/typing'
 import { occupancy, usePartyHere } from './party/whereEveryone'
 import { AppearanceDialog } from './components/AppearanceDialog'
 import { BugReport } from './components/BugReport'
@@ -1265,18 +1266,10 @@ export default function App() {
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName?.toLowerCase()
-      /* a focused <select> uses the arrow keys itself to change its option, and does it as the
-         key's DEFAULT action — so `defaultPrevented` below is false and cannot catch it. Without
-         this, ArrowRight on any dropdown changed the option AND walked off the page (found on
-         the Lab's Level maker). The help listener further down already counts select as typing. */
-      const isTyping =
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        (target as HTMLElement)?.isContentEditable
-      if (isTyping || e.altKey || e.ctrlKey || e.metaKey) return
+      /* a field keeps its own keys — a <select> included, which moves its option as the arrow
+         key's DEFAULT action, so `defaultPrevented` below cannot catch it (see nav/typing.ts) */
+      if (isTypingTarget(e.target as HTMLElement | null) || e.altKey || e.ctrlKey || e.metaKey)
+        return
       /**
        * ⚠️ AND NOT IF SOMETHING HAS ALREADY ANSWERED IT. This listener is on WINDOW, so a
        * component that handles an arrow key has to remember `stopPropagation` or the key does
@@ -1503,12 +1496,8 @@ export default function App() {
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Ignore while typing in inputs/textareas/contenteditable to avoid annoyance
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName?.toLowerCase()
-      const isTyping =
-        tag === 'input' || tag === 'textarea' || target?.isContentEditable || tag === 'select'
-      if (isTyping) return
+      // Ignore while typing in a field, a dropdown or anything contenteditable
+      if (isTypingTarget(e.target as HTMLElement | null)) return
       if (e.key === 'Escape' && helpOpen) {
         setHelpOpen(false)
         return
