@@ -78,6 +78,12 @@ import {
   totals as heartsTotals,
   type HeartsGame,
 } from '../../../src/gpu/heartsRoom'
+import {
+  readSpadesSettings,
+  spadesRules,
+  teams as spadesTeams,
+  type SpadesGame,
+} from '../../../src/gpu/spadesRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -254,6 +260,16 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       return (g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]).join('–')
     }
     return { rules: heartsRules(set.end, set.level), score }
+  },
+  spades: (s) => {
+    const set = readSpadesSettings(s)
+    if (set === null) return null
+    // the partnerships' scores, the challenger's first
+    const score = (g: SpadesGame) =>
+      spadesTeams(g)
+        .map((t) => t.score)
+        .join('–')
+    return { rules: spadesRules(set.target, set.level), score }
   },
 }
 
