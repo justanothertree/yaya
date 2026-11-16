@@ -12,6 +12,8 @@ import { LEVELS as DOTS_LEVELS, SIZES as DOTS_SIZES } from '../../gpu/dots'
 import { dotsRules } from '../../gpu/dotsRoom'
 import { LEVELS as FOUR_LEVELS } from '../../gpu/fourrow'
 import { fourRowMatchRules, readFourSettings } from '../../gpu/fourrowRoom'
+import { LEVELS as MANCALA_LEVELS } from '../../gpu/mancala'
+import { mancalaRules, readMancalaSettings } from '../../gpu/mancalaRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -79,6 +81,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
       return read ? fourRowMatchRules(...read) : null
     },
     levels: FOUR_LEVELS,
+  },
+  mancala: {
+    name: MATCH_NAMES.mancala,
+    rulesFor: (s) => {
+      const read = readMancalaSettings(s)
+      return read ? mancalaRules(read) : null
+    },
+    levels: MANCALA_LEVELS,
   },
 }
 

@@ -34,6 +34,14 @@ import { choose as dotsChoose, lineCount } from '../../../src/gpu/dots'
 import { replay as dotsReplay } from '../../../src/gpu/dotsRoom'
 import { choose as fourChoose, type Who } from '../../../src/gpu/fourrow'
 import { fourRowMatchRules, fourRowRules, readFourGame } from '../../../src/gpu/fourrowRoom'
+import {
+  choose as mancalaChoose,
+  legal as mancalaLegal,
+  score as stores,
+  storeOf,
+  total,
+} from '../../../src/gpu/mancala'
+import { mancalaRules, replay as mancalaReplay } from '../../../src/gpu/mancalaRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -806,5 +814,128 @@ describe('four in a row by turns', () => {
   it('leaves the call’s room as it was: versus only, as the toy’s call table was written for', () => {
     expect(fourRowRules('classic', 4).modes).toBeUndefined()
     expect(fourRowMatchRules('classic', 4).modes).toEqual(['versus', 'together'])
+  })
+})
+
+describe('mancala by turns: sowing into your own store keeps the turn', () => {
+  const mancala = (over: Partial<Row> = {}) => invite({ demo_id: 'mancala', settings: {}, ...over })
+  /** the game a stored state makes, read the toy's own way, never through the room's decode */
+  const game = (state: unknown) => {
+    const o = state as { pits: number; seeds: number; captures: boolean; sown: number[] }
+    return mancalaReplay({ pits: o.pits, seeds: o.seeds, captures: o.captures }, o.sown)!
+  }
+
+  it('plays versus to the end on every board, the winner whoever has the fuller store', () => {
+    const seen = new Set<string>()
+    const boards = [{}, { pits: 4, seeds: 3 }, { pits: 5, seeds: 6, captures: false }] as const
+    for (let seed = 1; seed <= 18; seed++) {
+      const rnd = seeded(seed)
+      const settings = boards[seed % 3]
+      const { row, plans } = playOut(mancala({ settings }), (r) => {
+        const g = game(r.state)
+        const list = mancalaLegal(g.b, g.turn!)
+        return list[Math.floor(rnd() * list.length)]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const b = game(last.state).b
+      // asked of the seeds in the two stores, which hold every seed once the game is over
+      const [a, c] = [b[storeOf(b, 0)], b[storeOf(b, 1)]]
+      expect(a + c).toBe(total(b))
+      expect(last.result!.winner).toBe(a > c ? 0 : c > a ? 1 : 'draw')
+      expect(last.result!.score).toBe(stores(b).join('–'))
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('keeps the turn after a sowing that ends in your own store', () => {
+    let row = after(mancala(), decide(mancala(), B, { op: 'accept' }))
+    // six pits of four: pit 2 drops its last seed in seat 0's store (pit 6), so it goes again
+    const p = decide(row, A, move(row.seq, 2))
+    expect(p.kind === 'commit' && p.turn).toBe(0)
+    row = after(row, p)
+    expect(status(decide(row, B, move(row.seq, 7)))).toBe(409)
+    expect(status(decide(row, A, move(row.seq, 0)))).toBe('commit')
+  })
+
+  it('together: the computer sows in the same call, every go-again of it, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 11)
+      const start = mancala({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      let replies = 0
+      for (let k = 0; k < 8 && row.status === 'active'; k++) {
+        const g = game(row.state)
+        const list = mancalaLegal(g.b, 0)
+        const t0 = performance.now()
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, list[Math.floor(rnd() * list.length)]),
+        )
+        // the hardest computer looks nine sowings ahead: it must answer well inside a call
+        expect(performance.now() - t0).toBeLessThan(2000)
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        replies += p.move.then?.length ?? 0
+        if (p.turn !== null) expect(game(p.state).turn).toBe(0)
+        row = after(row, p)
+      }
+      expect(replies).toBeGreaterThan(0)
+    }
+  })
+
+  it('reads the toy’s pits, seeds and captures and only those, its defaults when none are named', () => {
+    for (const settings of [
+      { pits: 7 },
+      { pits: '6' },
+      { seeds: 2 },
+      { captures: 'yes' },
+      { seeds: 7 },
+    ])
+      expect(status(decide(mancala({ settings }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(mancala({ settings: {} }), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && begun.state).toEqual({
+      pits: 6,
+      seeds: 4,
+      captures: true,
+      sown: [],
+    })
+  })
+
+  it('refuses an empty pit, the other side’s pit, and a pit off the board', () => {
+    let row = after(mancala(), decide(mancala(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 0)))
+    // seat 0 sowed pit 0, so it is empty; it is seat 1's turn now
+    const who = row.turn === 0 ? A : B
+    expect(row.turn).toBe(1)
+    expect(status(decide(row, who, move(row.seq, 0)))).toBe(400)
+    expect(status(decide(row, who, move(row.seq, 3)))).toBe(400)
+    expect(status(decide(row, who, move(row.seq, 14)))).toBe(400)
+    expect(status(decide(row, who, move(row.seq, 9)))).toBe('commit')
+  })
+
+  it('refuses a stored game that could not have been sown', () => {
+    const row = after(mancala(), decide(mancala(), B, { op: 'accept' }))
+    expect(
+      status(
+        decide({ ...row, state: { pits: 6, seeds: 4, captures: true, sown: [8] } }, A, move(0, 0)),
+      ),
+    ).toBe(500)
+    expect(
+      status(
+        decide({ ...row, state: { pits: 9, seeds: 4, captures: true, sown: [] } }, A, move(0, 0)),
+      ),
+    ).toBe(500)
+  })
+
+  it('plays the same rules the call room and the toy do', () => {
+    expect(mancalaRules({ pits: 6, seeds: 4, captures: true }).modes).toEqual([
+      'versus',
+      'together',
+    ])
+    expect(typeof mancalaChoose).toBe('function')
   })
 })
