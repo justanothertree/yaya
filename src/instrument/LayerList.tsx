@@ -7,6 +7,7 @@ import {
   layerPlan,
   loopLength,
   moveLayerBar,
+  muteTake,
   seekTo,
   setLayerGain,
   takeBars,
@@ -51,6 +52,9 @@ export function LayerList({
   jamNames,
   newPart,
   showLyrics,
+  beatsOpen,
+  toggleBeats,
+  openVoice,
 }: {
   loop: ReturnType<typeof loopState>
   /** whose menu is open, and on which tab */
@@ -62,6 +66,11 @@ export function LayerList({
   newPart: () => void
   /** open the lyrics box, at a bar when one was pressed */
   showLyrics: (bar?: number) => void
+  /** 🥁 Beats, whose door is down here with the other ways to add a part — see SongTools */
+  beatsOpen: boolean
+  toggleBeats: () => void
+  /** 🎤 Voice, where a recording's own controls are */
+  openVoice: () => void
 }) {
   const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
   const singing = useSyncExternalStore(subscribeSinging, singingNow, singingNow)
@@ -444,6 +453,15 @@ export function LayerList({
               ),
             ]
           })}
+          {/**
+           * ⚠️ A RECORDING IN THE LOOP IS PART OF THE SONG, SO IT IS IN THE LIST OF IT (15 Nov
+           * 2026). It was only inside 🎤 Voice, so the parts list was the song minus its vocal,
+           * and muting a take meant opening a tool. Its row has the mute; its name opens 🎤 Voice,
+           * where its sound, its trim and the rest still live.
+           */}
+          {loop.takes.map((t, k) => (
+            <TakeRow key={t.id} muted={!!t.muted} n={k + 1} openVoice={openVoice} id={t.id} />
+          ))}
         </ul>
       )}
 
@@ -462,6 +480,21 @@ export function LayerList({
           }
         >
           ✎ New part
+        </button>
+        {/* ⚠️ HERE SINCE 15 NOV 2026, beside ✎ New part: every way to add a part from the parts,
+            in one row. It was among the tools below, a row away from where its parts land. The
+            panel it opens is the same one, still in SongTools, placed just under this row. */}
+        <button
+          className={'btn' + (beatsOpen ? ' is-on' : ' btn-ghost')}
+          aria-expanded={beatsOpen}
+          aria-controls="inst-tool-beats"
+          onClick={toggleBeats}
+          /* it adds parts, so it goes dead at the ceiling — but never while open, or the one way
+             to close it would be the button that had stopped working */
+          disabled={full && !beatsOpen}
+          title="Drums, chords, a bassline and a fill — drop any of them in, then change them"
+        >
+          🥁 Beats
         </button>
         {/* ⚠️ THE DOOR TO THE WORDS, on the song rather than inside 🎤 Voice — see the note at the
             top. Once a part has words it gets its own row above, which is the door from then on. */}
@@ -482,6 +515,46 @@ export function LayerList({
         )}
       </div>
     </div>
+  )
+}
+
+/** A recording playing in the loop, as a row of the song: its mute, and the door to its controls. */
+function TakeRow({
+  id,
+  n,
+  muted,
+  openVoice,
+}: {
+  id: string
+  n: number
+  muted: boolean
+  openVoice: () => void
+}) {
+  return (
+    <li className={'inst-part inst-take-row' + (muted ? ' is-muted' : '')}>
+      <button
+        className="inst-layer-name"
+        aria-controls="inst-tool-voice"
+        onClick={openVoice}
+        title="Its sound and its trim, in 🎤 Voice"
+      >
+        <span className="inst-part-line">🎤 Take {n}</span>
+        <small className="inst-part-line inst-part-detail">in the loop</small>
+      </button>
+      {/* no bars: a take plays from where it was placed, every time round */}
+      <span className="inst-arrange" aria-hidden />
+      <span className="inst-part-vol" aria-hidden />
+      <button
+        className="btn inst-icon"
+        onClick={() => muteTake(id)}
+        aria-label={`Mute take ${n}`}
+        aria-pressed={muted}
+        title={muted ? 'Muted — click to hear it again' : 'Mute this take'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
+      <span aria-hidden />
+    </li>
   )
 }
 

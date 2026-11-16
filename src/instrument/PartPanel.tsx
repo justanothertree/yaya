@@ -3,6 +3,9 @@ import {
   MAX_LAYERS,
   addPartLike,
   armRecord,
+  clearLayerBars,
+  layerHeard,
+  takeBars,
   loopLength,
   removeLayer,
   setLayerFx,
@@ -152,7 +155,16 @@ export function PartPanel({
         )}
         {tab === 'sound' && <SoundTab l={l} />}
         {tab === 'more' && (
-          <MoreTab l={l} rows={loop.layers.length} theirs={theirs} close={close} onKeep={onKeep} />
+          <>
+            <PartBars l={l} bars={loop.bars} />
+            <MoreTab
+              l={l}
+              rows={loop.layers.length}
+              theirs={theirs}
+              close={close}
+              onKeep={onKeep}
+            />
+          </>
         )}
       </div>
     </Panel>
@@ -276,6 +288,35 @@ function SoundTab({ l }: { l: Layer }) {
 }
 
 /** Record it again, split it, keep it, delete it — the ones that take you somewhere else. */
+/**
+ * Which bars a part plays, said in words, and the way back to all of them.
+ *
+ * ⚠️ THE TILES ON ITS ROW ARE THE ARRANGEMENT, AND WHAT THEY DO WAS ONLY EVER IN A TOOLTIP (15 Nov
+ * 2026) — tap one to pick it up, tap another to move it there, tap it again to leave that bar
+ * silent — and a phone shows no tooltip. The part menu is where a phone goes for a part, so it
+ * says it here, with Play in every bar beside it. The tiles and their own "all" stay on the row.
+ */
+function PartBars({ l, bars }: { l: Layer; bars: number }) {
+  const heard = layerHeard(l).slice(0, bars)
+  const on = heard.filter((x) => x != null).length
+  const moved =
+    !!l.plan && heard.some((src, b) => src != null && src !== b % Math.max(1, takeBars(l)))
+  return (
+    <div className="inst-part-bars">
+      <p className="muted inst-note">
+        {on === bars ? `Plays in all ${bars} bars` : `Plays in ${on} of ${bars} bars`}
+        {moved ? ', in an order of its own' : ''}. On its row, tap a bar to pick it up, then tap
+        another to move it there, or the same one again to leave that bar silent.
+      </p>
+      {(l.play || l.plan) && (
+        <button className="btn btn-ghost" onClick={() => clearLayerBars(l.id)}>
+          Play in every bar
+        </button>
+      )}
+    </div>
+  )
+}
+
 function MoreTab({
   l,
   rows,

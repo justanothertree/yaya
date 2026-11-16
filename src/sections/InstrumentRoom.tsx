@@ -1751,6 +1751,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
           jamNames={jamNames}
           newPart={() => setEditing(addEmptyLayer(live.current.inst) || null)}
           showLyrics={showLyrics}
+          beatsOpen={tool === 'beats'}
+          toggleBeats={() => setTool((t) => (t === 'beats' ? null : 'beats'))}
+          openVoice={() => setTool('voice')}
         />
         <SongTools
           tool={tool}
