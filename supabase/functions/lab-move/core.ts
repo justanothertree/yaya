@@ -47,6 +47,8 @@ import { dartsMatchRules, type DartsGame } from '../../../src/gpu/dartsRoom'
 import { backgammonRules, worth, type BackgammonGame } from '../../../src/gpu/backgammonRoom'
 import { readSeaSettings, seaRules, type SeaGame } from '../../../src/gpu/seabattleRoom'
 import { diceRules, type DiceGame } from '../../../src/gpu/diceRoom'
+import { total as yachtTotal } from '../../../src/gpu/yacht'
+import { yachtRules, type YachtGame } from '../../../src/gpu/yachtRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -167,6 +169,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     rules: diceRules,
     // the two scores banked, the challenger's first
     score: (g: DiceGame) => g.scores.map((n) => n.toLocaleString('en-GB')).join('–'),
+  }),
+  yacht: () => ({
+    rules: yachtRules,
+    // the two cards' totals, the challenger's first
+    score: (y: YachtGame) => `${yachtTotal(y.g.cards[0])}–${yachtTotal(y.g.cards[1])}`,
   }),
 }
 
