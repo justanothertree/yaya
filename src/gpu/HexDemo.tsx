@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   HEX_KEY,
@@ -13,6 +13,7 @@ import {
   readSaved,
   recordGame,
   swap,
+  wantsSwap,
   winner,
   type Board,
   type Level,
@@ -20,8 +21,14 @@ import {
   type Saved,
 } from './hex'
 import { useKept } from './kept'
+import { SWAP, hexRules } from './hexRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const THEME_NAMES: Record<Saved['theme'], string> = {
   classic: 'Classic',
@@ -186,9 +193,36 @@ export function HexDemo() {
   savedRef.current = saved
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── the call's room: the host's size and swap rule start each game, which travels as its moves */
+  const roomRules = useMemo(() => hexRules(saved.size, saved.swap), [saved.size, saved.swap])
+  const lab = useLabRoom('hex', roomRules)
+  const words = tableSeats(lab, roomRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the colour I place for: blue only in seat 1 of a versus game; together, the team is red */
+  const mySide: Player = room?.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+  // the board on screen is the room's, whenever it changes
+  useEffect(() => {
+    if (mode !== 'call' || !room) return
+    window.clearTimeout(timer.current)
+    const r = room.game
+    game.current = {
+      ...game.current,
+      b: r.b,
+      turn: r.turn ?? game.current.turn,
+      you: mySide,
+      swapRule: r.swapRule,
+      moves: r.moves.length,
+      last: r.last,
+      over: r.turn === null,
+    }
+    bump()
+  }, [mode, room, mySide])
+
   const g = game.current
   const computerTurn = mode === 'bot' && !g.over && g.turn !== g.you
-  const canSwap = g.swapRule && g.moves === 1 && !g.over && (mode === 'two' || g.turn === g.you)
+  const myMove = room ? lab.live && myTurn(roomRules, room) : true
+  const canSwap =
+    g.swapRule && g.moves === 1 && !g.over && myMove && (mode === 'two' || g.turn === g.you)
   const after = (p: Player) => {
     const gm = game.current
     const w = winner(gm.b)
@@ -219,6 +253,8 @@ export function HexDemo() {
   const playAt = (i: number) => {
     const gm = game.current
     if (gm.over || gm.b.cells[i]) return
+    // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (room) return lab.act({ t: 'move', move: i })
     const p = gm.turn
     gm.b = place(gm.b, i, p)
     gm.moves++
@@ -226,6 +262,7 @@ export function HexDemo() {
     after(p)
   }
   const doSwap = () => {
+    if (room) return lab.act({ t: 'move', move: SWAP })
     const gm = game.current
     gm.b = swap(gm.b)
     gm.moves++
@@ -240,16 +277,10 @@ export function HexDemo() {
       const gm = game.current
       if (gm.over || gm.turn === gm.you) return
       // with the swap rule, take a strong first stone rather than answer it
-      if (gm.swapRule && gm.moves === 1) {
-        const at = gm.b.cells.findIndex((c) => c)
-        const r = Math.floor(at / gm.b.n)
-        const c = at % gm.b.n
-        const mid = (gm.b.n - 1) / 2
-        if (Math.abs(r - mid) + Math.abs(c - mid) <= gm.b.n / 3) {
-          doSwap()
-          setLine('The computer took the swap: your stone is now its own. Your move.')
-          return
-        }
+      if (gm.swapRule && gm.moves === 1 && wantsSwap(gm.b)) {
+        doSwap()
+        setLine('The computer took the swap: your stone is now its own. Your move.')
+        return
       }
       playAt(choose(gm.b, gm.turn, gm.level))
     }, 450)
@@ -286,8 +317,31 @@ export function HexDemo() {
     if (g.moves === 0 || g.over) fresh(mode, s)
   }
   const yours = () => {
+    if (mode === 'call') return lab.live && !!room && myTurn(roomRules, room)
     const gm = game.current
     return !gm.over && (mode === 'two' || gm.turn === gm.you)
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their colour — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.turn === null) return fresh('bot')
+    window.clearTimeout(timer.current)
+    game.current = {
+      b: r.game.b,
+      turn: r.game.turn,
+      you: mySide,
+      level: saved.level,
+      swapRule: r.game.swapRule,
+      moves: r.game.moves.length,
+      last: r.game.last,
+      over: false,
+    }
+    setMode('bot')
+    setLine(r.game.turn === mySide ? 'Your move.' : 'The computer is thinking…')
+    bump()
   }
   const cellAt = (e: PointerEvent<HTMLCanvasElement>): number | null => {
     const v = view.current
@@ -360,6 +414,15 @@ export function HexDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <>
@@ -393,9 +456,11 @@ export function HexDemo() {
             </div>
           </>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
         {canSwap && (
           <button className="btn" onClick={doSwap}>
             ⇄ Swap — take that stone
@@ -403,6 +468,21 @@ export function HexDemo() {
         )}
       </div>
 
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={roomRules}
+          sides={['Red', 'Blue']}
+          ink={[LOOKS[saved.theme].red, LOOKS[saved.theme].blue]}
+          levelNames={LEVEL_NAMES}
+          score={(h) => {
+            const wn = winner(h.b)
+            const c = wn ? chain(h.b.cells, h.b.n, wn) : null
+            return c ? `, a chain of ${c.length}` : null
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
       <div
         className="hx-wrap"
         tabIndex={0}
@@ -458,10 +538,12 @@ export function HexDemo() {
           }}
         />
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-        {path && <span className="muted"> · the winning chain is {path.length} stones</span>}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+          {path && <span className="muted"> · the winning chain is {path.length} stones</span>}
+        </p>
+      )}
       {mode === 'bot' && (
         <p className="sun-reading">
           <span className="muted">
@@ -471,6 +553,7 @@ export function HexDemo() {
         </p>
       )}
       {g.moves > 0 &&
+        mode !== 'call' &&
         !g.over &&
         (g.b.n !== saved.size ||
           g.swapRule !== saved.swap ||
@@ -481,19 +564,22 @@ export function HexDemo() {
       <div className="fw-panel">
         <section aria-label="The board">
           <h3 className="fw-h">The board</h3>
-          <div className="lab-controls" role="group" aria-label="Board size">
-            {SIZES.map((n) => (
-              <button
-                key={n}
-                className="btn btn-ghost"
-                aria-pressed={saved.size === n}
-                aria-label={`${n} by ${n}`}
-                onClick={() => change({ size: n })}
-              >
-                {n}×{n}
-              </button>
-            ))}
-          </div>
+          {/* in a call the host's size and swap rule start each game, and travel with it */}
+          {mode !== 'call' && (
+            <div className="lab-controls" role="group" aria-label="Board size">
+              {SIZES.map((n) => (
+                <button
+                  key={n}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.size === n}
+                  aria-label={`${n} by ${n}`}
+                  onClick={() => change({ size: n })}
+                >
+                  {n}×{n}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="lab-controls" role="group" aria-label="Colours">
             {THEMES.map((t) => (
               <button
@@ -510,15 +596,17 @@ export function HexDemo() {
               </button>
             ))}
           </div>
-          <div className="lab-controls">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={saved.swap}
-              onClick={() => change({ swap: !saved.swap })}
-            >
-              Swap rule
-            </button>
-          </div>
+          {mode !== 'call' && (
+            <div className="lab-controls">
+              <button
+                className="btn btn-ghost"
+                aria-pressed={saved.swap}
+                onClick={() => change({ swap: !saved.swap })}
+              >
+                Swap rule
+              </button>
+            </div>
+          )}
         </section>
       </div>
       <p className="muted lab-hint">
