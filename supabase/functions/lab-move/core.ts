@@ -36,6 +36,7 @@ import { halmaRules } from '../../../src/gpu/halmaRoom'
 import { score as goScore } from '../../../src/gpu/goboard'
 import { goRules, type GoGame } from '../../../src/gpu/goRoom'
 import { foxRules } from '../../../src/gpu/foxRoom'
+import { cubeRules } from '../../../src/gpu/cubeRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -111,6 +112,7 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     },
   }),
   fox: () => ({ rules: foxRules }),
+  cube: () => ({ rules: cubeRules }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

@@ -30,6 +30,8 @@ import { LEVELS as GO_LEVELS } from '../../gpu/goboard'
 import { goRules } from '../../gpu/goRoom'
 import { LEVELS as FOX_LEVELS } from '../../gpu/fox'
 import { foxRules } from '../../gpu/foxRoom'
+import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
+import { cubeRules } from '../../gpu/cubeRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -138,6 +140,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
   halma: { name: MATCH_NAMES.halma, rulesFor: () => halmaRules, levels: HALMA_LEVELS },
   go: { name: MATCH_NAMES.go, rulesFor: () => goRules, levels: GO_LEVELS },
   fox: { name: MATCH_NAMES.fox, rulesFor: () => foxRules, levels: FOX_LEVELS },
+  cube: { name: MATCH_NAMES.cube, rulesFor: () => cubeRules, levels: CUBE_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>

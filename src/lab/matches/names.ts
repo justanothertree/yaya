@@ -23,6 +23,7 @@ export const MATCH_NAMES: Record<string, string> = {
   halma: 'Chinese checkers',
   go: 'Go',
   fox: 'Fox and geese',
+  cube: 'Noughts and crosses in a cube',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */

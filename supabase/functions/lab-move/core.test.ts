@@ -71,6 +71,7 @@ import {
   TAKE_TO_WIN,
 } from '../../../src/gpu/fox'
 import { replay as foxReplay } from '../../../src/gpu/foxRoom'
+import { cubeRules } from '../../../src/gpu/cubeRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -1653,5 +1654,112 @@ describe('fox and geese by turns: the challenger herds the geese, the friend is 
     expect(
       status(decide({ ...row, state: { moves: [[29, 22]] } }, A, move(row.seq, [16, 23]))),
     ).toBe(500)
+  })
+})
+
+describe('noughts and crosses in a cube by turns: four in a line, any way through', () => {
+  const cb = (over: Partial<Row> = {}) => invite({ demo_id: 'cube', settings: {}, ...over })
+  const game = (state: unknown) => cubeRules.decode(state)!
+  /**
+   * Every line of four through the cube, found here rather than taken from cube.ts: each of the
+   * thirteen directions (a vector and its opposite are one), from every cell where four steps fit.
+   */
+  const LINES4 = (() => {
+    const out: number[][] = []
+    const dirs: number[][] = []
+    for (let x = -1; x <= 1; x++)
+      for (let y = -1; y <= 1; y++)
+        for (let z = -1; z <= 1; z++) {
+          const first = [x, y, z].find((v) => v !== 0)
+          if (first === 1) dirs.push([x, y, z])
+        }
+    const at = (x: number, y: number, z: number) => z * 16 + y * 4 + x
+    for (const [dx, dy, dz] of dirs)
+      for (let x = 0; x < 4; x++)
+        for (let y = 0; y < 4; y++)
+          for (let z = 0; z < 4; z++) {
+            const end = [x + 3 * dx, y + 3 * dy, z + 3 * dz]
+            if (end.some((v) => v < 0 || v > 3)) continue
+            out.push([0, 1, 2, 3].map((k) => at(x + k * dx, y + k * dy, z + k * dz)))
+          }
+    return out
+  })()
+  const hasLine = (cells: ArrayLike<number>, side: number) =>
+    LINES4.some((l) => l.every((i) => cells[i] === side))
+
+  it('counts the 76 lines a 4×4×4 cube has, none twice', () => {
+    expect(LINES4).toHaveLength(76)
+    expect(new Set(LINES4.map((l) => [...l].sort((x, y) => x - y).join())).size).toBe(76)
+  })
+
+  it('plays versus to the end, the winner whoever has four in a line', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 16; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(cb(), (r) => {
+        const g = game(r.state)
+        const free = [...g.cells.keys()].filter((i) => !g.cells[i])
+        return free[Math.floor(rnd() * free.length)]
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state)
+      if (last.result!.winner === 'draw') {
+        expect(g.cells.every((c) => c !== 0)).toBe(true)
+        expect(hasLine(g.cells, 1) || hasLine(g.cells, 2)).toBe(false)
+        seen.add('draw')
+        continue
+      }
+      const side = last.result!.winner === 0 ? 1 : 2
+      expect(hasLine(g.cells, side)).toBe(true)
+      expect(hasLine(g.cells, side === 1 ? 2 : 1)).toBe(false)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('ends on a line straight through the middle, corner to corner', () => {
+    let row = after(cb(), decide(cb(), B, { op: 'accept' }))
+    for (const [who, i] of [
+      [A, 0],
+      [B, 1],
+      [A, 21],
+      [B, 2],
+      [A, 42],
+      [B, 3],
+    ] as const)
+      row = after(row, decide(row, who, move(row.seq, i)))
+    expect(row.status).toBe('active')
+    const p = decide(row, A, move(row.seq, 63))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.result).toEqual({ winner: 0 })
+    expect(after(row, p).status).toBe('finished')
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = cb({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 3 && row.status === 'active'; k++) {
+        const g = game(row.state)
+        const free = [...g.cells.keys()].filter((i) => !g.cells[i])
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, free[0]))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a taken cell, one off the cube, a move that is not a cell, and a stored game no moves could make', () => {
+    let row = after(cb(), decide(cb(), B, { op: 'accept' }))
+    row = after(row, decide(row, A, move(row.seq, 21)))
+    expect(status(decide(row, B, move(row.seq, 21)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 64)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, -1)))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, 1.5)))).toBe(400)
+    expect(status(decide({ ...row, state: { moves: [5, 5] } }, B, move(row.seq, 6)))).toBe(500)
   })
 })
