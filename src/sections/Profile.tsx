@@ -23,6 +23,7 @@ import type { ActivityItem } from './activityLine'
 import { TIER_SHORT as TIER_LABEL } from '../components/visibilityLabels'
 import { VisibilityPicker } from '../components/VisibilityPicker'
 import { useFriendRoster } from '../components/friendRoster'
+import { ProfileChallenge, ProfileChallengeButton } from '../lab/matches/ProfileChallenge'
 
 /**
  * A member's profile — the page behind every name on the site.
@@ -193,6 +194,9 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
    */
   const [pageStyle, setPageStyle] = useState<unknown>(undefined)
   const [editing, setEditing] = useState(editFromHash)
+  /** the 🎲 Challenge panel under the head, on a friend's page */
+  const [challenging, setChallenging] = useState(false)
+  useEffect(() => setChallenging(false), [u])
   /**
    * Stop arranging, and remember that you did.
    *
@@ -1025,6 +1029,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
                 <button className="btn" onClick={() => void message()}>
                   💬 Message
                 </button>
+                <ProfileChallengeButton
+                  open={challenging}
+                  onToggle={() => setChallenging((c) => !c)}
+                />
                 <button
                   className="btn"
                   title="Remove friend"
@@ -1066,6 +1074,10 @@ export function Profile({ authed, username }: { authed: boolean; username?: stri
           </span>
         )}
       </div>
+
+      {challenging && !p.is_me && p.friend_status === 'friends' && (
+        <ProfileChallenge username={p.username} name={display} />
+      )}
 
       {/* A call that lives on this page. Renders nothing at all for a visitor with no call to
           join — which is also, deliberately, what somebody excluded from a private one sees. */}
