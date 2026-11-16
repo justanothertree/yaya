@@ -186,7 +186,8 @@ export const BOARD: Record<string, Reader> = {
     ),
   mancala: (read) =>
     versus(MANCALA_LEVELS, readMancala(read(MANCALA_KEY)).record, (t) => [widest(t.best, 'seed')]),
-  morris: (read) => versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record),
+  morris: (read) =>
+    join(versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record), onlineLine(read, 'morris')),
   reversi: (read) =>
     join(
       versus(REVERSI_LEVELS, readReversi(read(REVERSI_KEY)).record, (t) => [
