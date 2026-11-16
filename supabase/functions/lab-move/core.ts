@@ -40,6 +40,8 @@ import { cubeRules } from '../../../src/gpu/cubeRoom'
 import { artilleryRules, type ArtilleryGame } from '../../../src/gpu/artilleryRoom'
 import { score as bowlingScore } from '../../../src/gpu/bowling'
 import { bowlingRules, type BowlingGame } from '../../../src/gpu/bowlingRoom'
+import { totals as curlingTotals } from '../../../src/gpu/curling'
+import { curlingMatchRules, type CurlingGame } from '../../../src/gpu/curlingRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -126,6 +128,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // the two scorecards' totals, the first bowler's first
     score: (g: BowlingGame) => `${bowlingScore(g.rolls[0])}–${bowlingScore(g.rolls[1])}`,
   }),
+  curling: () => ({
+    rules: curlingMatchRules,
+    // the ends' points added up, yellow's first
+    score: (cg: CurlingGame) => curlingTotals(cg.g).join('–'),
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -194,9 +201,16 @@ export const HISTORY_BYTES = 180
 export const jsonbBytes = (x: unknown) =>
   new TextEncoder().encode(JSON.stringify(x).replace(/([,:])/g, '$1 ')).length
 export function historyRow(m: unknown, then: unknown[]) {
-  if (!then.length) return { m }
-  const whole = { m, then }
-  return jsonbBytes(whole) <= HISTORY_BYTES ? whole : { m, replies: then.length }
+  // the fullest row that fits: the replies kept, then counted, then the move itself only noted,
+  // so a move too big for its own row can never fail the insert and with it the whole move
+  const rows = then.length
+    ? [
+        { m, then },
+        { m, replies: then.length },
+        { m: null, replies: then.length },
+      ]
+    : [{ m }, { m: null }]
+  return rows.find((r) => jsonbBytes(r) <= HISTORY_BYTES) ?? rows[rows.length - 1]
 }
 
 /** the most moves the computer makes in a row before the team moves again: passes, in Reversi */
