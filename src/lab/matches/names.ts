@@ -13,6 +13,7 @@ export const MATCH_NAMES: Record<string, string> = {
   gomoku: 'Five in a row',
   draughts: 'Draughts',
   dots: 'Dots and boxes',
+  fourrow: 'Four in a row',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
