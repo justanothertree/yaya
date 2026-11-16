@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ARCADE } from './arcade'
 import { ARCHERY_KEY } from '../../gpu/archery'
 import { ARTILLERY_KEY } from '../../gpu/artillery'
+import { ONLINE_KEY } from '../social/online'
 import { BOWLING_KEY } from '../../gpu/bowling'
 import { BRICKS_KEY } from '../../gpu/bricks'
 import { CURLING_KEY } from '../../gpu/curling'
@@ -72,6 +73,21 @@ describe('arcade share readers', () => {
     expect(
       line('artillery', ARTILLERY_KEY, { level: 'hard', record: { hard: { lost: 3 } } }),
     ).toBeNull()
+  })
+
+  it('artillery adds duels in a call, and shares them with nothing against the computer', () => {
+    const online = JSON.stringify({
+      artillery: { versus: { won: 3, lost: 1, drawn: 0 }, together: { won: 1, lost: 1, drawn: 0 } },
+    })
+    const record = { easy: { won: 1, lost: 0, fewest: 3 } }
+    const saved = JSON.stringify({ record })
+    const both = (k: string) => (k === ONLINE_KEY ? online : k === ARTILLERY_KEY ? saved : null)
+    expect(ARCADE.artillery(both)).toBe(
+      'won 1 of 1 duels against the Easy computer; best ever a win in 3 shots, beat friends in 3 of 4 online games, won 1 of 2 online games together against the computer',
+    )
+    expect(ARCADE.artillery((k) => (k === ONLINE_KEY ? online : null))).toBe(
+      'beat friends in 3 of 4 online games, won 1 of 2 online games together against the computer',
+    )
   })
 
   it('bowling: best game, strikes and the hardest computer beaten', () => {

@@ -12,6 +12,7 @@ import {
   ARTILLERY_KEY,
   LEVELS as ARTILLERY_LEVELS,
 } from '../../gpu/artillery'
+import { onlineLine } from '../social/online'
 import { readSaved as readBowling, BOWLING_KEY, LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
 import { readSaved as readBricks, BRICKS_KEY } from '../../gpu/bricks'
 import { readSaved as readCurling, CURLING_KEY, LEVELS as CURLING_LEVELS } from '../../gpu/curling'
@@ -138,7 +139,10 @@ export const ARCADE: Record<string, Reader> = {
     const record = beaten(ARTILLERY_LEVELS, r, 'duels')
     const best =
       few !== Infinity ? `best ever a win in ${few === 1 ? '1 shot' : `${few} shots`}` : null
-    return record && best ? `${record}; ${best}` : record || best
+    return join([
+      record && best ? `${record}; ${best}` : record || best,
+      onlineLine(read, 'artillery'),
+    ])
   },
   bowling: (read) => {
     const r = readBowling(read(BOWLING_KEY)).record
