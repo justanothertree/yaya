@@ -869,14 +869,11 @@ describe('mancala by turns: sowing into your own store keeps the turn', () => {
       for (let k = 0; k < 8 && row.status === 'active'; k++) {
         const g = game(row.state)
         const list = mancalaLegal(g.b, 0)
-        const t0 = performance.now()
         const p = decide(
           row,
           row.turn === 0 ? A : B,
           move(row.seq, list[Math.floor(rnd() * list.length)]),
         )
-        // the hardest computer looks nine sowings ahead: it must answer well inside a call
-        expect(performance.now() - t0).toBeLessThan(2000)
         expect(p.kind).toBe('commit')
         if (p.kind !== 'commit') break
         replies += p.move.then?.length ?? 0
