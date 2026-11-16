@@ -23,6 +23,19 @@ import { partLines } from './partName'
 import type { PartTab } from './PartPanel'
 import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
+/**
+ * A button that opens a panel takes focus as it is pressed, so the panel can give it back.
+ *
+ * ⚠️ SAFARI DOES NOT FOCUS A BUTTON YOU CLICK, and neither does Firefox on a Mac. The part menu
+ * and the lyrics box both hand focus back to whatever had it when they opened (Panel, and the
+ * dialog contract), which in Chrome is the button that opened them. Measured in WebKit, 15 Nov
+ * 2026: closing the part menu with Escape left focus on the room's container instead of the
+ * part's name, so the next Tab started from the top of the room. Focusing the button on press is
+ * what Chrome already does, and costs nothing where it already happened.
+ */
+const pressed = (e: { currentTarget: HTMLElement }) =>
+  e.currentTarget.focus({ preventScroll: true })
+
 /** every strip of bars in the list, and the ruler over them — the things that scroll together */
 const BAR_STRIPS = '.inst-arrange, .inst-ruler'
 
@@ -267,7 +280,11 @@ export function LayerList({
                   className={'inst-layer-name' + (open?.id === l.id ? ' is-open' : '')}
                   aria-haspopup="dialog"
                   aria-expanded={open?.id === l.id}
-                  onClick={() => (editing === l.id ? closePart() : openPart(l.id, 'notes'))}
+                  onClick={(e) => {
+                    pressed(e)
+                    if (editing === l.id) closePart()
+                    else openPart(l.id, 'notes')
+                  }}
                   title={
                     editing === l.id ? 'Close this part' : 'Its notes, its volume and its sound'
                   }
@@ -436,7 +453,10 @@ export function LayerList({
                   aria-haspopup="dialog"
                   aria-expanded={open?.id === l.id && open.tab !== 'notes'}
                   aria-label={`More for part ${i + 1}`}
-                  onClick={() => openPart(l.id, 'sound')}
+                  onClick={(e) => {
+                    pressed(e)
+                    openPart(l.id, 'sound')
+                  }}
                   title="Its sound, its volume and the rest"
                 >
                   ⋯
@@ -501,7 +521,10 @@ export function LayerList({
         {!anyWords && (
           <button
             className="btn btn-ghost"
-            onClick={() => showLyrics()}
+            onClick={(e) => {
+              pressed(e)
+              showLyrics()
+            }}
             title="Write words for the song, a line for each bar, and hear them sung"
           >
             🎤 Add lyrics
@@ -584,7 +607,10 @@ function LyricsRow({
       <button
         className="inst-layer-name"
         aria-haspopup="dialog"
-        onClick={() => showLyrics()}
+        onClick={(e) => {
+          pressed(e)
+          showLyrics()
+        }}
         title="Change the words"
       >
         <span className="inst-part-line">🎤 Lyrics</span>
@@ -597,7 +623,10 @@ function LyricsRow({
           <button
             key={b}
             className={'inst-bar-cell inst-word-cell' + (w.trim() ? ' is-on' : '')}
-            onClick={() => showLyrics(b)}
+            onClick={(e) => {
+              pressed(e)
+              showLyrics(b)
+            }}
             aria-label={`Bar ${b + 1}: ${w.trim() || 'no words'}`}
             title={w.trim() ? `Bar ${b + 1}: ${w.trim()}` : `Bar ${b + 1}: no words — tap to add`}
           >
