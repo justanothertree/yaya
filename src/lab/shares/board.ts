@@ -135,7 +135,8 @@ export const BOARD: Record<string, Reader> = {
       t.skunks > 0 && count(t.skunks, 'skunk'),
       t.best > 0 && `best hand ${t.best}`,
     ]),
-  cube: (read) => versus(CUBE_LEVELS, readCube(read(CUBE_KEY)).record),
+  cube: (read) =>
+    join(versus(CUBE_LEVELS, readCube(read(CUBE_KEY)).record), onlineLine(read, 'cube')),
   dominoes: (read) => versus(DOMINOES_LEVELS, readDominoes(read(DOMINOES_KEY)).record),
   dots: (read) =>
     join(
