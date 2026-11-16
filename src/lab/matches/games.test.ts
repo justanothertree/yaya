@@ -22,6 +22,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   hex: [{}, { size: 7 }, { size: 11, swap: true }, { swap: false, level: 'hard' }],
   ultimate: [{}, { level: 'hard' }],
   breakthrough: [{}, { size: 6 }, { size: 8, level: 'hard' }],
+  fences: [{}, { size: 7 }, { size: 9, level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -36,6 +37,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   hex: [{ size: 8 }, { size: '9' }, { swap: 'yes' }, { size: 13 }],
   ultimate: [],
   breakthrough: [{ size: 7 }, { size: '8' }, { size: 10 }],
+  fences: [{ size: 8 }, { size: '9' }, { size: 11 }],
 }
 
 describe('the match toys', () => {

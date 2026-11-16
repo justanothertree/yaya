@@ -22,6 +22,8 @@ import { LEVELS as ULTIMATE_LEVELS } from '../../gpu/ultimate'
 import { ultimateRules } from '../../gpu/ultimateRoom'
 import { LEVELS as BREAKTHROUGH_LEVELS, SIZES as BREAKTHROUGH_SIZES } from '../../gpu/breakthrough'
 import { breakthroughRules, readBreakthroughSize } from '../../gpu/breakthroughRoom'
+import { LEVELS as FENCES_LEVELS, SIZES as FENCES_SIZES } from '../../gpu/fences'
+import { fencesRules, readFencesSize } from '../../gpu/fencesRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -117,6 +119,15 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     },
     levels: BREAKTHROUGH_LEVELS,
     sizes: BREAKTHROUGH_SIZES,
+  },
+  fences: {
+    name: MATCH_NAMES.fences,
+    rulesFor: (s) => {
+      const size = readFencesSize(s)
+      return size === null ? null : fencesRules(size)
+    },
+    levels: FENCES_LEVELS,
+    sizes: FENCES_SIZES,
   },
 }
 
