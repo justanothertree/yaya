@@ -244,9 +244,28 @@ export function healthOn(): boolean {
   }
 }
 
-/** Start measuring. Safe to call twice; does nothing unless the flag is on. */
-export async function startHealth(): Promise<boolean> {
-  if (node || !healthOn()) return !!node
+/** the start in flight, so a second caller waits on it rather than starting another */
+let starting: Promise<boolean> | null = null
+
+/**
+ * Start measuring. Safe to call twice, at once as well as one after the other; does nothing
+ * unless the flag is on.
+ *
+ * ⚠️ "SAFE TO CALL TWICE" WAS ONLY TRUE IN TURN (15 Nov 2026). `node` is set after the worklet
+ * module has loaded, so a second call made while the first was still loading it got past the
+ * guard and loaded it again, and the worklet's second `registerProcessor('audio-health')` threw.
+ * Firefox reports that as a page error on every visit to the room; a mount that runs its effect
+ * twice is enough to cause it. A second caller now waits on the first.
+ */
+export function startHealth(): Promise<boolean> {
+  if (node || !healthOn()) return Promise.resolve(!!node)
+  starting ??= begin().finally(() => {
+    starting = null
+  })
+  return starting
+}
+
+async function begin(): Promise<boolean> {
   const ctx = sharedCtx()
   try {
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }))

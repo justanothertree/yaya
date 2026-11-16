@@ -18,6 +18,7 @@ import {
   readSaved,
   score,
   strayFor,
+  upNext,
   wobble,
   type Level,
   type Roll,
@@ -26,6 +27,11 @@ import {
 } from './bowling'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { bowlingRules, type BowlingGame } from './bowlingRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
@@ -95,6 +101,8 @@ const mark = (rolls: number[], i: number, inFrame: number) => {
 }
 type Side = 0 | 1
 type Show = { roll: Roll; who: Side; t: number; after: () => void }
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'call'
 
 export function BowlingDemo() {
   const [saved, setSaved] = useKept(BOWLING_KEY, readSaved)
@@ -127,6 +135,16 @@ export function BowlingDemo() {
   /** the frame loop is made once, so it reads whether the game is over by ref */
   const overRef = useRef(over)
   overRef.current = over
+
+  /* ── the call's room: a frame each, seat 0 first; the game travels as its balls */
+  const [mode, setMode] = useState<Mode>('bot')
+  const lab = useLabRoom('bowling', bowlingRules)
+  const words = tableSeats(lab, bowlingRules)
+  const room = mode === 'call' ? lab.room : null
+  /** whether this player may bowl now: their frame alone, or their turn at the call's table */
+  const canBowl = room
+    ? lab.live && myTurn(bowlingRules, room) && !busy
+    : mode === 'bot' && !busy && up === 0 && !over
 
   /** play a ball's frames on the canvas, or jump to where everything lies under reduced motion */
   const animate = (roll: Roll, who: Side, after: () => void) => {
@@ -188,24 +206,26 @@ export function BowlingDemo() {
             : `${felled.length} down${fresh ? '' : `, ${stand.length - felled.length} standing (${stand.filter((p) => !felled.includes(p)).join(', ')})`}.`
     // the frame is over when the rack is fresh again, or the game is
     const frameOver = n.over || fresh
+    const upn = upNext(nextRolls, who)
     if (who === 0) {
       setLine(
-        `You: ${said}${frameOver && !next(nextRolls[1]).over ? ' The computer bowls…' : frameOver ? '' : ' Your next ball.'}`,
+        `You: ${said}${upn === 1 ? ' The computer bowls…' : upn === 0 && !frameOver ? ' Your next ball.' : ''}`,
       )
       setStanding(frameOver ? ALL : left)
-      if (frameOver && !next(nextRolls[1]).over) later(900, () => computerFrame(nextRolls))
+      if (upn === 1) later(900, () => computerFrame(nextRolls))
       else {
         setBusy(false)
-        if (n.over && next(nextRolls[1]).over) finish(nextRolls)
+        if (upn === null) finish(nextRolls)
       }
     } else {
       setLine(`The computer: ${said}`)
-      if (!frameOver) later(700, () => computerBall(nextRolls, left))
+      // the computer keeps the lane for its next ball, or for its bonus balls once you are done
+      if (upn === 1) later(700, () => computerBall(nextRolls, left))
       else {
         setStanding(ALL)
         setUp(0)
         setBusy(false)
-        if (next(nextRolls[0]).over) finish(nextRolls)
+        if (upn === null) finish(nextRolls)
         else setLine((l) => `${l} Your frame.`)
       }
     }
@@ -249,12 +269,17 @@ export function BowlingDemo() {
 
   /** let the ball go: the needle's place strays the line */
   const release = () => {
-    if (!swing.current || busy || up !== 0 || over) return
+    if (!swing.current || !canBowl) return
     const t = (performance.now() - swing.current) / 1000
     swing.current = 0
     const at = needle(t)
     const s = { ...shot, hook: shot.hook * mirror, angle: shot.angle + strayFor(at) }
     setSaved((x) => ({ ...x, stance: shot }))
+    if (room) {
+      // in the call the host bowls it, and the ball comes back to everybody
+      if (Math.abs(at) > 0.6) setSaid(`Let go ${at > 0 ? 'late' : 'early'} — the line strays.`)
+      return lab.act({ t: 'move', move: s })
+    }
     setBusy(true)
     const stand = standing
     const roll = bowl(stand, s, true)
@@ -262,7 +287,7 @@ export function BowlingDemo() {
     animate(roll, 0, () => land(0, roll.felled, roll.gutter, rolls, stand))
   }
   const startSwing = (byKey = false) => {
-    if (busy || up !== 0 || over || swing.current) return
+    if (!canBowl || swing.current) return
     swing.current = performance.now()
     swingByKey.current = byKey
     redraw((n) => n + 1)
@@ -279,6 +304,117 @@ export function BowlingDemo() {
     setUp(0)
     setBusy(false)
     setLine('A new game. Your frame first.')
+  }
+
+  /* ── the call's balls, shown as they arrive: each one rolled in turn, then the card it left */
+  const seen = useRef<number | null>(null)
+  const queue = useRef<BowlingGame[]>([])
+  const [said, setSaid] = useState('')
+  const callName = (w: Side) =>
+    !room
+      ? ''
+      : room.mode === 'together'
+        ? w === 1
+          ? 'Computer'
+          : words.mySeat !== null
+            ? 'Your side'
+            : 'The team'
+        : words.who(room.seats[w])
+  const callBall = (g: BowlingGame) => {
+    const { by, standing: at, roll } = g.last!
+    const strike = roll.felled.length === 10 && at.length === 10
+    const spare = !strike && roll.felled.length === at.length && at.length < 10
+    const what = roll.gutter
+      ? 'gutter ball.'
+      : strike
+        ? 'STRIKE!'
+        : spare
+          ? 'spare!'
+          : roll.felled.length === 0
+            ? 'nothing down.'
+            : `${roll.felled.length} down.`
+    return `${callName(by)}: ${what}`
+  }
+  const showCard = (g: BowlingGame) => {
+    setRolls(g.rolls)
+    setStanding(g.standing)
+    standingRef.current = g.standing
+    setUp(g.up ?? 0)
+  }
+  const playNext = () => {
+    const g = queue.current.shift()
+    if (!g) return setBusy(false)
+    const { by, standing: at, roll } = g.last!
+    const ours = room && (room.mode === 'together' ? by === 0 : by === words.mySeat)
+    setBusy(true)
+    setStanding(at)
+    standingRef.current = at
+    animate(roll, ours ? 0 : 1, () => {
+      showCard(g)
+      setSaid(callBall(g))
+      playNext()
+    })
+  }
+  const callGame = room?.game
+  useEffect(() => {
+    if (!callGame) {
+      seen.current = null
+      queue.current = []
+      return
+    }
+    const n = callGame.balls.length
+    if (seen.current === n) return
+    const next1 = seen.current !== null && n === seen.current + 1 && !!callGame.last
+    seen.current = n
+    if (!next1) {
+      // a new game, or one joined part way: the card as it stands, nothing to roll
+      queue.current = []
+      show.current = null
+      showCard(callGame)
+      setSaid('')
+      setBusy(false)
+      return
+    }
+    queue.current.push(callGame)
+    if (!show.current) playNext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new game state is the only cue
+  }, [callGame])
+
+  const stopHere = () => {
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    show.current = null
+    swing.current = 0
+    queue.current = []
+    seen.current = null
+    setBusy(false)
+  }
+
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the card on screen, as
+   * the first bowler — their own card on the top row whichever seat they had — or starts a new
+   * game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const mine: Side = r?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+    stopHere()
+    setMode('bot')
+    if (!r || r.game.up === null) return fresh()
+    const g = r.game
+    const all: [number[], number[]] = mine === 0 ? g.rolls : [g.rolls[1], g.rolls[0]]
+    const yours = g.up === mine
+    recorded.current = false
+    setRolls(all)
+    setStanding(g.standing)
+    standingRef.current = g.standing
+    setUp(yours ? 0 : 1)
+    if (yours) setLine('Carrying on against the computer. Your ball.')
+    else {
+      setBusy(true)
+      setLine('Carrying on against the computer, which bowls next…')
+      later(900, () => computerBall(all, g.standing))
+    }
   }
 
   /* -------------------------------------------------------------------- the lane in perspective */
@@ -303,7 +439,7 @@ export function BowlingDemo() {
     }
   }
   const onDown = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (busy || up !== 0 || over || !view.current) return
+    if (!canBowl || !view.current) return
     const c = e.currentTarget
     const r = c.getBoundingClientRect()
     const k = c.width / r.width
@@ -347,25 +483,69 @@ export function BowlingDemo() {
   return (
     <div className={`lab-keys bw-room is-${saved.lane}`}>
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer bowls">
-          {LEVELS.map((l) => (
+        {(lab.live || mode === 'call') && (
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
-              key={l}
               className="btn btn-ghost"
-              aria-pressed={saved.level === l}
+              aria-pressed={mode === 'bot'}
               onClick={() => {
-                setSaved((s) => ({ ...s, level: l }))
-                if (untouched || over) fresh(l)
+                if (mode === 'bot') return
+                stopHere()
+                setMode('bot')
+                fresh()
               }}
             >
-              {LEVEL_NAMES[l]}
+              Against the computer
             </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                stopHere()
+                setMode('call')
+              }}
+            >
+              👥 With the call
+            </button>
+          </div>
+        )}
+        {mode === 'bot' && (
+          <div className="lab-group" role="group" aria-label="How well the computer bowls">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                className="btn btn-ghost"
+                aria-pressed={saved.level === l}
+                onClick={() => {
+                  setSaved((s) => ({ ...s, level: l }))
+                  if (untouched || over) fresh(l)
+                }}
+              >
+                {LEVEL_NAMES[l]}
+              </button>
+            ))}
+          </div>
+        )}
+        {mode === 'bot' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={bowlingRules}
+          sides={['the first bowler', 'the second bowler']}
+          levelNames={LEVEL_NAMES}
+          score={(g) => {
+            // the winner's score first: "Bo wins, 80 to 79"
+            const [a, b] = [score(g.rolls[0]), score(g.rolls[1])]
+            return `, ${Math.max(a, b)} to ${Math.min(a, b)}`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="bw-card-wrap">
         <table className="bw-card">
@@ -390,7 +570,7 @@ export function BowlingDemo() {
               let i = 0
               return (
                 <tr key={w} className={up === w && !over ? 'is-up' : ''}>
-                  <th scope="row">{w === 0 ? 'You' : LEVEL_NAMES[level]}</th>
+                  <th scope="row">{room ? callName(w) : w === 0 ? 'You' : LEVEL_NAMES[level]}</th>
                   {cards.map((f, k) => {
                     const marks = f.rolls.map((_, j) => mark(rs, i + j, j))
                     i += f.rolls.length
@@ -408,9 +588,17 @@ export function BowlingDemo() {
           </tbody>
         </table>
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode === 'call' ? (
+        said && (
+          <p className="muted bw-said" aria-live="polite">
+            {said}
+          </p>
+        )
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="bw-wrap"
@@ -426,7 +614,7 @@ export function BowlingDemo() {
       >
         <CanvasStage
           className="bw-stage"
-          label={`A bowling lane. Standing: ${standing.join(', ')}. ${line}`}
+          label={`A bowling lane. Standing: ${standing.join(', ')}. ${mode === 'call' ? said : line}`}
           onPointerDown={onDown}
           make={(ctx, c) => {
             let last = ''
@@ -643,7 +831,7 @@ export function BowlingDemo() {
         <div className="lab-controls">
           <button
             className="btn bw-bowl"
-            disabled={busy || up !== 0 || over}
+            disabled={!canBowl}
             onPointerDown={(e) => {
               startSwing()
               try {
@@ -669,7 +857,7 @@ export function BowlingDemo() {
           >
             🎳 Hold to swing, let go to bowl
           </button>
-          {over && (
+          {mode === 'bot' && over && (
             <button className="btn" onClick={() => fresh()}>
               ↻ Play again
             </button>
@@ -677,14 +865,16 @@ export function BowlingDemo() {
         </div>
       </div>
 
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
-          {rec.best ? ` · best game ${rec.best}` : ''}
-          {rec.strikes ? ` · strikes ${rec.strikes}` : ''}
-        </span>
-      </p>
-      {level !== saved.level && !untouched && !over && (
+      {mode === 'bot' && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
+            {rec.best ? ` · best game ${rec.best}` : ''}
+            {rec.strikes ? ` · strikes ${rec.strikes}` : ''}
+          </span>
+        </p>
+      )}
+      {mode === 'bot' && level !== saved.level && !untouched && !over && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
       <div className="fw-panel">
@@ -720,7 +910,9 @@ export function BowlingDemo() {
         the ends. Tap low on the lane to stand there, higher to aim through that point. Strikes come
         from the pocket, just beside the head pin; straight at it tends to leave a split. You and
         the computer take turns, a frame each. Easy bowls straight and loose, Hard hooks into the
-        pocket with a steady hand and picks up spares with a straight ball.
+        pocket with a steady hand and picks up spares with a straight ball. In a call, 👥 With the
+        call lets a friend bowl the other card, or the two of you share one card and take its balls
+        in turn against the computer’s.
       </p>
     </div>
   )

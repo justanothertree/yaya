@@ -1,14 +1,12 @@
 import {
   useEffect,
   useRef,
-  useState,
   useSyncExternalStore,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
 } from 'react'
 import {
-  MAX_LAYERS,
   addLayers,
   clearLayers,
   loadSong,
@@ -17,20 +15,22 @@ import {
   toggleMute,
   type loopState,
 } from '../audio/looper'
-import { onMixerChange, setVolume, volume } from '../audio/mixer'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
-import { SingPanel } from '../audio/SingPanel'
+import { hasLyrics } from '../audio/lyricLines'
 import { TakesPanel } from '../audio/TakesPanel'
 import { useTakes } from '../audio/useTakes'
 import { jam } from '../party/jam'
 import { motionReduced } from '../ui/motion'
+import { KeysVolume } from './KeysVolume'
 import { partLines } from './partName'
+import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
 export type Tool = 'beats' | 'mix' | 'voice' | 'songs'
 
+/* ⚠️ 🥁 Beats is a tool without a button here since 15 Nov 2026: its door is under the parts,
+   beside ✎ New part (LayerList), and its pane is drawn first, just under that row */
 const TOOLS: Array<[Tool, string, string]> = [
-  ['beats', '🥁', 'Beats'],
   ['mix', '🎚', 'Mix'],
   ['voice', '🎤', 'Voice'],
   ['songs', '📁', 'Songs'],
@@ -46,10 +46,10 @@ type Loop = ReturnType<typeof loopState>
  * keeping and opening: Keep this song, Stems, the kept songs and Clear all parts.
  *
  * ⚠️ A CLOSED TOOL STAYS MOUNTED, ONLY HIDDEN — the condition Evan approved one-at-a-time on.
- * `useTakes` and `SingPanel` each stop their work when they unmount, on purpose (a recording is
- * kept and the microphone released; a line scheduled ahead stops singing), so unmounting Voice to
- * open Mix would end a take mid-recording and a line mid-song. Hidden, you can open Mix while a
- * take records or the voice sings, and 🎤 Voice says so with a dot.
+ * `useTakes` stops its work when it unmounts, on purpose (a recording is kept and the microphone
+ * released), so unmounting Voice to open Mix would end a take mid-recording. Hidden, you can open
+ * Mix while a take records or the voice sings, and 🎤 Voice says so with a dot. (The singing is
+ * the song's now — singAlong.ts — and outlives every panel; the dot still says it is going.)
  *
  * ⚠️ AND `useTakes` IS CALLED HERE, ONCE, rather than inside TakesPanel, because its Stems moved to
  * 📁 Songs while its takes stayed in 🎤 Voice. Two calls would be two recorders with two lists,
@@ -62,7 +62,7 @@ export function SongTools({
   setEditing,
   keep,
   beats,
-  singScale,
+  showLyrics,
 }: {
   tool: Tool | null
   setTool: Dispatch<SetStateAction<Tool | null>>
@@ -71,12 +71,11 @@ export function SongTools({
   keep: (kind: 'song' | 'loop', layerId?: string) => void
   /** the beats panel, built by the room, which owns the backing's picks */
   beats: ReactNode
-  /** the scale the singer's harmony follows */
-  singScale: { degrees: readonly number[]; root: number }
+  /** open the song's lyrics box */
+  showLyrics: () => void
 }) {
   const takes = useTakes()
-  const [singing, setSinging] = useState(false)
-  const full = loop.layers.length >= MAX_LAYERS
+  const singing = useSyncExternalStore(subscribeSinging, singingNow, singingNow)
   const panes = useRef<Partial<Record<Tool, HTMLElement | null>>>({})
 
   /**
@@ -118,6 +117,7 @@ export function SongTools({
 
   return (
     <>
+      {pane('beats', 'Beats', beats)}
       <div className="inst-tools" role="group" aria-label="Song tools">
         {TOOLS.map(([t, icon, name]) => (
           <button
@@ -128,17 +128,12 @@ export function SongTools({
             onClick={() => setTool((was) => (was === t ? null : t))}
             /* ⚠️ Beats adds parts, so it goes dead at the ceiling — but never while it is open,
                or the one way to close it would be the button that had stopped working */
-            disabled={t === 'beats' && full && tool !== 'beats'}
             title={
-              t === 'beats'
-                ? full
-                  ? `That is all ${MAX_LAYERS} parts — delete one to add another`
-                  : 'Drums, chords, a bassline and a fill — drop any of them in, then change them'
-                : t === 'mix'
-                  ? 'Every volume in one place'
-                  : t === 'voice'
-                    ? 'Record a take, open a sound file, or have the voice sing'
-                    : 'Keep this song, open a kept one, or take its stems'
+              t === 'mix'
+                ? 'Every volume in one place'
+                : t === 'voice'
+                  ? 'Record a take, open a sound file, or have the voice sing'
+                  : 'Keep this song, open a kept one, or take its stems'
             }
           >
             <span aria-hidden>{icon}</span> {name}
@@ -152,20 +147,13 @@ export function SongTools({
           </button>
         ))}
       </div>
-      {pane('beats', 'Beats', beats)}
       {pane('mix', 'Mix', <Mix loop={loop} />)}
       {pane(
         'voice',
         'Voice',
         <>
           <TakesPanel takes={takes} />
-          <SingPanel
-            inline
-            layers={loop.layers}
-            degrees={singScale.degrees}
-            root={singScale.root}
-            onSinging={setSinging}
-          />
+          <SingDoor loop={loop} singing={singing} showLyrics={showLyrics} />
         </>,
       )}
       {pane(
@@ -174,6 +162,50 @@ export function SongTools({
         <Songs loop={loop} takes={takes} keep={keep} setEditing={setEditing} />,
       )}
     </>
+  )
+}
+
+/**
+ * Where 🎤 Voice's "Sing lyrics" prototype was — a door to the song's words now.
+ *
+ * ⚠️ THE WORDS MOVED TO THE SONG, 15 Nov 2026: Evan built a song and could not find where its
+ * lyrics went, because they were here, behind a fold, in a box that forgot them with the page.
+ * They are a line per bar in the lyrics box now (LyricsPanel), opened from the parts as well as
+ * from here, and the voice, Double and Harmony went with them. This keeps the old door working
+ * for anybody who learned it.
+ */
+function SingDoor({
+  loop,
+  singing,
+  showLyrics,
+}: {
+  loop: Loop
+  singing: boolean
+  showLyrics: () => void
+}) {
+  const words = loop.layers.some(hasLyrics)
+  return (
+    <div className="inst-sing is-inline">
+      <h4 className="inst-tool-head">Sing lyrics</h4>
+      <p className="muted inst-note">
+        {words
+          ? 'The song has words. Change them, or hear them sung over the song.'
+          : 'Write a line of words for each bar of the song, and a voice sings them on its notes.'}
+      </p>
+      <div className="inst-row">
+        <button className="btn" onClick={showLyrics}>
+          🎤 {words ? 'Lyrics' : 'Add lyrics'}
+        </button>
+        {words && (
+          <button
+            className={'btn btn-ghost' + (singing ? ' is-on' : '')}
+            onClick={() => (singing ? stopSinging() : startSinging())}
+          >
+            {singing ? '■ Stop singing' : '▶ Sing the song'}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -190,26 +222,9 @@ export function SongTools({
  * place to silence anything in the song.
  */
 function Mix({ loop }: { loop: Loop }) {
-  const [vol, setVol] = useState(() => volume('instrument'))
-  useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
   return (
     <div className="inst-mix">
-      <label className="inst-mix-row">
-        <span className="inst-mix-name">Your keys</span>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={vol}
-          onChange={(e) => {
-            const v = Number(e.target.value)
-            setVol(v)
-            setVolume('instrument', v)
-          }}
-        />
-        <span className="muted inst-mix-pct">{Math.round(vol * 100)}%</span>
-      </label>
+      <KeysVolume />
       {loop.layers.map((l, i) => {
         const name = partLines(l, i).name
         return (

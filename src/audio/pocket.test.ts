@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { splitLyrics } from './lyrics'
-import { evenly, feelOf, fitSyllables, makeRoom, melodyOf, snapToGrid, strength } from './pocket'
+import {
+  SHORTEST,
+  evenly,
+  feelOf,
+  fitSyllables,
+  makeRoom,
+  melodyOf,
+  snapToGrid,
+  strength,
+} from './pocket'
 
 /**
  * Lyrics in the pocket. Every expectation is about the song's shape — which beat a word lands on,
@@ -224,11 +233,86 @@ describe('more syllables than notes: a long note is shared', () => {
     expect(sung[0].dur + sung[1].dur).toBeCloseTo(2 * BEAT, 9)
   })
 
-  it('a note shorter than a beat is never cut, so what is left over is counted', () => {
+  it('a long note is shared first: a note shorter than a beat only when that is not enough', () => {
     expect(makeRoom([n(0, BEAT / 2), n(BEAT / 2, BEAT / 2)], 3, BEAT)).toHaveLength(2)
-    const { sung, spare } = words('one two three', [n(0, BEAT / 2), n(BEAT / 2, BEAT / 2)])
+    /* a half note and an eighth, three syllables: the half note is shared, the eighth is not */
+    const { sung, spare } = words('one two three', [n(0, 2 * BEAT), n(2 * BEAT, BEAT / 2)])
+    expect(spare).toBe(0)
+    expect(sung.map((s) => onBeat(s.t))).toEqual([0, 1, 2])
+  })
+})
+
+describe('a bar with more words than notes is sung, not dropped', () => {
+  /* a bar of eighths at 120 bpm: a sixteenth is 125ms, just over the shortest a syllable is sung */
+  const eighths = Array.from({ length: 8 }, (_, i) => n((i * BEAT) / 2, BEAT / 4, 60 + i))
+  const lyric = 'and the cit-y lights are call-ing me home'
+
+  it('ten syllables on eight eighths are all sung, in order', () => {
+    const { sung, spare } = words(lyric, eighths)
+    expect(spare).toBe(0)
+    expect(sung.map((s) => s.text)).toEqual(splitLyrics(lyric).map((s) => s.text))
+  })
+
+  it('the light syllables take the halves of a shared note; the stressed ones keep the notes', () => {
+    /* in the second line a choice blind to the words shares the note under "let" (measured), so
+       a stressed word lands on a sixteenth; read, it shares "nev-er" instead */
+    for (const line of [lyric, 'hold me close and nev-er let me go']) {
+      const { sung, spare } = words(line, eighths)
+      expect(spare).toBe(0)
+      const stress = splitLyrics(line).map((s) => s.stress)
+      const played = new Set(eighths.map((e) => e.t.toFixed(6)))
+      sung.forEach((s, i) => {
+        if (!played.has(s.t.toFixed(6))) expect(stress[i]).toBeLessThan(0.75)
+      })
+    }
+  })
+
+  it('no syllable is sung shorter than a sixteenth, or than 120ms', () => {
+    const { sung } = words(lyric, eighths)
+    for (const s of sung) expect(s.dur).toBeGreaterThanOrEqual(Math.max(BEAT / 4, SHORTEST) - 1e-9)
+  })
+
+  it('a note is shared two ways at most, and what is left over is counted', () => {
+    const two = [n(0, BEAT / 2), n(BEAT / 2, BEAT / 2)]
+    expect(words('one two three four', two).spare).toBe(0)
+    const { sung, spare } = words('one two three four five', two)
+    expect(sung).toHaveLength(4)
+    expect(spare).toBe(1)
+  })
+
+  it('at 140 bpm a sixteenth is under 120ms, so an eighth is not shared at all', () => {
+    const beat = 60 / 140
+    const two = [n(0, beat / 2), n(beat / 2, beat / 2)]
+    const { sung, spare } = fitSyllables(two, splitLyrics('one two three'), { beat })
     expect(sung).toHaveLength(2)
     expect(spare).toBe(1)
+  })
+})
+
+describe('a line is sung joined up, the way a voice sings it', () => {
+  /* a keys part played short: four quarters, each held for 60% of its beat */
+  const short = [0, 1, 2, 3].map((b) => n(b * BEAT, 0.6 * BEAT))
+
+  it('each word is held until the next one, so there is no silence between them', () => {
+    const { sung } = words('you are my star', short)
+    for (let i = 0; i + 1 < sung.length; i++)
+      expect(sung[i].t + sung[i].dur).toBeCloseTo(sung[i + 1].t, 9)
+  })
+
+  it("the line's last word rings to the end of its beat, never past the loop's end", () => {
+    const { sung } = words('you are my star', short)
+    expect(sung[3].t + sung[3].dur).toBeCloseTo(4 * BEAT, 9)
+    const late = fitSyllables([n(3.5 * BEAT, 0.2 * BEAT)], splitLyrics('star'), {
+      beat: BEAT,
+      len: 3.75 * BEAT + 0.6 * BEAT,
+    })
+    expect(late.sung[0].t + late.sung[0].dur).toBeLessThanOrEqual(3.75 * BEAT + 0.6 * BEAT)
+  })
+
+  it('a rest of a beat or more is still a rest: the word before it does not reach across', () => {
+    const { sung } = words('sha-dows fall', [n(0, BEAT / 2), n(BEAT, BEAT / 2), n(3 * BEAT, BEAT)])
+    const dows = sung.find((s) => s.text === 'dows')!
+    expect(dows.t + dows.dur).toBeCloseTo(2 * BEAT, 9)
   })
 })
 
@@ -290,6 +374,8 @@ describe('a syncopated, staccato part: the slap bass of the Funk starter', () =>
   const { sung } = words('glit-ter in the dark _ to-night', slap)
   const at = (text: string) => sung.find((s) => s.text === text && !s.hold)!.t
 
+  /* ⚠️ ALSO THE GUARD ON fitLine PLACING WORDS ON THE NOTES AS PLAYED: given the lengths the voice
+     holds them for instead, the off-beat slaps followed by space read as long notes and won */
   it('its short gaps are not breaths: the stressed words still find the beats', () => {
     for (const w of ['glit', 'dark', 'night']) expect(onBeat(at(w))).not.toBeNull()
     expect(strength(at('dark'), BEAT)).toBe(1)

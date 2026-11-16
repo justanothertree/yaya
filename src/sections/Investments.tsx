@@ -9,6 +9,7 @@ import { site } from '../config/site'
 const fundOwner = site.fundOwner
 import { correctionWarning, fullPrecision } from '../finance/correction'
 import { accountNumbers, holdingWorth, type AccountNumbers } from '../finance/accountNumbers'
+import { DUST_UNITS, DUST_USD } from '../finance/dust'
 import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../ui/errText'
 import { isAuthDenial } from '../finance/auth'
@@ -1116,6 +1117,46 @@ function AccountHero({ account, n }: { account: AccountPortfolio; n: AccountNumb
           </span>
         )}
         {/**
+         * A holding the feed has quietly given up on, which `pricesStale` above cannot see.
+         *
+         * ⚠️ IT IS THE DOLLARS THAT DECIDE WHETHER TO SPEAK, not the count. `pricedAsOf` is the
+         * NEWEST price on the account on purpose — that question is “has the feed stopped” — so
+         * one abandoned symbol among eighty priced this morning never moves it. Measured 14 Nov
+         * 2026: FATAQ, 30 units in all 33 accounts, priced 17 Sep, and three tenths of a cent.
+         * A warning on a child’s card about that would be the checker crying wolf at its own
+         * dust, so this stays quiet under the same dollar `isDust` uses and speaks above it.
+         *
+         * ⚠️ AND IT STAYS QUIET WHEN THE LINE ABOVE IT IS ALREADY SPEAKING — caught on screen in
+         * the workbench, not by reasoning. When the whole feed has stopped, EVERY holding is
+         * stale, so this said “3 holdings are counted at prices from Nov 8 or earlier — $269.34
+         * of the total” under “Prices haven’t updated since Nov 8”, about the entire account.
+         * Two warnings for one fault reads as two faults, and the second one carries no
+         * information the first did not. This exists for the case the feed line CANNOT see.
+         */}
+        {!n.pricesStale && n.stalePricedWorth >= DUST_USD && n.stalePriced[0]?.priceAt && (
+          <span
+            style={{
+              fontSize: '0.76rem',
+              fontWeight: 600,
+              color: '#e0a33e',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span aria-hidden>⚠</span>
+            {n.stalePriced.length === 1
+              ? `${n.stalePriced[0].symbol} is counted at its price from`
+              : `${n.stalePriced.length} holdings are counted at prices from`}{' '}
+            {new Date(n.stalePriced[0].priceAt as string).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+            })}{' '}
+            or earlier — {usd(n.stalePricedWorth)} of the total.
+          </span>
+        )}
+        {/**
          * ⚠️ Cash, on the card a family member actually looks at.
          *
          * "Worth today" is the SHARES only — accountValue() leaves cash out on purpose so the
@@ -1789,9 +1830,35 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
   const priced = positions.filter((p) => p.value != null)
   const portfolioValue = priced.reduce((sum, p) => sum + (p.value ?? 0), 0)
   const familyValue = priced.reduce((sum, p) => sum + (p.familyValue ?? 0), 0)
-  const pricedCount = priced.length
-  const unpricedCount = positions.length - pricedCount
+  /**
+   * ⚠️ `admin_list_positions` RETURNS EVERY SYMBOL EVER TRADED, NOT EVERY HOLDING — it has no
+   * `units > 0` filter, deliberately, because the trades ledger below needs the closed ones too.
+   * So any count taken of it is a claim about the trade history wearing the word “holdings”.
+   *
+   * Measured on the live fund, 14 Nov 2026: 203 rows, 106 of them actually held. Cash App’s own
+   * line read “103 holdings” about 15, and the unpriced warning read 16 when 9 of those 16 are
+   * closed positions that contribute nothing to either figure above it — it overstated the one
+   * thing on the screen that exists to say how much is not known.
+   */
+  const held = positions.filter((p) => Math.abs(p.units) > DUST_UNITS)
+  const closedCount = positions.length - held.length
+  const heldPricedCount = held.filter((p) => p.value != null).length
+  const unpricedHeld = held.filter((p) => p.value == null)
   const familyCount = positions.filter((p) => p.isFamily).length
+  /**
+   * Positions the family holds units of whose SYMBOL was never marked Family.
+   *
+   * ⚠️ IT IS NOT A CONTRADICTION IN THE DATA, it is two write paths. Answering one trade
+   * “theirs” (`admin_set_trade_allocation`) creates the allocations and stamps `reviewed_at`; it
+   * never touches `finance.symbol_designations`. The row below reads `isFamily` and so says
+   * 🔒 Personal about something all 33 accounts own. Measured 14 Nov 2026: AKAM, CURI, GENI,
+   * MNRO and SKHY on Robinhood — 79.96 units, $813.84 at cost.
+   *
+   * It also costs money quietly: `admin_correct_position` gates the family’s share of a
+   * correction on that same flag, so fixing a missed split on one of these hands them none of it.
+   * That fix is a migration — see docs/2026-11-14-correction-follows-ownership.sql.
+   */
+  const undeclared = held.filter((p) => !p.isFamily && p.familyUnits > DUST_UNITS)
   const brokerLabel = (pl: string) =>
     pl === 'cashapp' ? 'Cash App' : pl === 'robinhood' ? 'Robinhood' : pl
   const byPlatform = new Map<string, Position[]>()
@@ -1837,10 +1904,21 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
           <Stat label="Still yours (worth)" value={usd(portfolioValue - familyValue)} big />
           <Stat label="Trades on record" value={String(trades.length)} />
         </div>
-        {unpricedCount > 0 && (
+        {unpricedHeld.length > 0 && (
           <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
-            ⚠️ {unpricedCount} {unpricedCount === 1 ? 'holding has' : 'holdings have'} no price yet
-            and are left out of both figures above, rather than counted as worth nothing.
+            ⚠️ {unpricedHeld.length} held{' '}
+            {unpricedHeld.length === 1 ? 'position has' : 'positions have'} no price yet and{' '}
+            {unpricedHeld.length === 1 ? 'is' : 'are'} left out of both figures above, rather than
+            counted as worth nothing: {unpricedHeld.map((p) => p.symbol).join(', ')}. A symbol the
+            import has only just introduced is priced by the next sweep.
+          </p>
+        )}
+        {undeclared.length > 0 && (
+          <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
+            🟡 {undeclared.length} {undeclared.length === 1 ? 'position is' : 'positions are'} held
+            by the family from per-trade answers while the symbol itself is still marked Personal:{' '}
+            {undeclared.map((p) => p.symbol).join(', ')}. They keep their units, but a ✏️ correction
+            to one of them gives the family none of it.
           </p>
         )}
         <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
@@ -1859,7 +1937,8 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
               {usd(portfolioValue)}
             </span>
             <span className="muted" style={{ fontSize: '0.74rem' }}>
-              {positions.length} symbols · {pricedCount} priced · {familyCount} marked family
+              {held.length} held · {closedCount} closed · {heldPricedCount} of the held priced ·{' '}
+              {familyCount} marked family
             </span>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.76rem' }}>
@@ -1868,7 +1947,22 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
             fund; wrong count after a split the export missed? Use ✏️ to set the true units.
           </p>
           {[...byPlatform.entries()].map(([platform, list]) => {
-            const subtotal = list.reduce((s, p) => s + (p.value ?? 0), 0)
+            /**
+             * ⚠️ THE SAME `?? 0` THE HERO STAT ELEVEN LINES UP ALREADY FIXED. Its comment says
+             * it: “UNPRICED IS NOT ZERO — `?? 0` booked an unpriced holding as worth nothing
+             * inside a 1.6rem hero stat”. It was corrected there and left here, which is the
+             * shape §2 keeps warning about — a cause and its consequence shipped apart. On
+             * 14 Nov 2026 Robinhood’s subtotal silently counted seven positions as $0.
+             *
+             * ⚠️ AND `list.length` WAS A COUNT OF THE TRADE HISTORY. `admin_list_positions`
+             * returns every symbol ever traded on this broker, so Cash App’s line read
+             * “103 holdings” about 15 — 88 of them closed years ago. Both figures now describe
+             * the same thing the rows underneath do.
+             */
+            const heldHere = list.filter((p) => Math.abs(p.units) > DUST_UNITS)
+            const pricedHere = heldHere.filter((p) => p.value != null)
+            const subtotal = pricedHere.reduce((s, p) => s + (p.value as number), 0)
+            const unpricedHere = heldHere.length - pricedHere.length
             return (
               <div key={platform} style={{ display: 'grid', gap: '0.4rem' }}>
                 <div
@@ -1881,7 +1975,8 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                 >
                   <strong style={{ fontSize: '0.9rem' }}>{brokerLabel(platform)}</strong>
                   <span className="muted cz-num" style={{ fontSize: '0.76rem' }}>
-                    {list.length} holdings · {usd(subtotal)}
+                    {heldHere.length} held · {usd(subtotal)}
+                    {unpricedHere > 0 && ` · ${unpricedHere} unpriced, left out`}
                   </span>
                 </div>
                 {list.map((p) => {
@@ -1911,6 +2006,28 @@ function TradesLedger({ accounts }: { accounts: AccountPortfolio[] | null }) {
                           title="More sold than bought in the data — usually a stock split the export missed"
                         >
                           oversold?
+                        </span>
+                      )}
+                      {/**
+                       * ⚠️ THE ROW SAID 🔒 PERSONAL ABOUT SOMETHING ALL 33 ACCOUNTS OWN. The
+                       * toggle below reads `isFamily`, which is the SYMBOL’s designation, and
+                       * answering one trade “theirs” allocates units without ever writing one. So
+                       * the one screen built to say who owns what had no way to say this.
+                       *
+                       * ⚠️ ITS OWN LINE, like `cz-correction-warn` below. This row already
+                       * carries a symbol, a unit count, ✏️ and the Family/Personal button; at 375
+                       * a fifth item is what pushes a toolbar past its own card (§6). Taking the
+                       * full basis costs nothing where there is room and cannot crowd anything
+                       * where there is not.
+                       */}
+                      {!p.isFamily && p.familyUnits > DUST_UNITS && (
+                        <span
+                          className="cz-undeclared"
+                          style={{ flexBasis: '100%' }}
+                          title="The family holds units of this from per-trade answers, but the symbol was never marked Family. A ✏️ correction here would give them none of it."
+                        >
+                          🟡 <strong>The family holds {fmtU(p.familyUnits)} units</strong> of this,
+                          answered trade by trade — the symbol itself is still Personal.
                         </span>
                       )}
                       <button

@@ -12,6 +12,7 @@ import {
   ARTILLERY_KEY,
   LEVELS as ARTILLERY_LEVELS,
 } from '../../gpu/artillery'
+import { onlineLine } from '../social/online'
 import { readSaved as readBowling, BOWLING_KEY, LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
 import { readSaved as readBricks, BRICKS_KEY } from '../../gpu/bricks'
 import { readSaved as readCurling, CURLING_KEY, LEVELS as CURLING_LEVELS } from '../../gpu/curling'
@@ -138,7 +139,10 @@ export const ARCADE: Record<string, Reader> = {
     const record = beaten(ARTILLERY_LEVELS, r, 'duels')
     const best =
       few !== Infinity ? `best ever a win in ${few === 1 ? '1 shot' : `${few} shots`}` : null
-    return record && best ? `${record}; ${best}` : record || best
+    return join([
+      record && best ? `${record}; ${best}` : record || best,
+      onlineLine(read, 'artillery'),
+    ])
   },
   bowling: (read) => {
     const r = readBowling(read(BOWLING_KEY)).record
@@ -148,6 +152,7 @@ export const ARCADE: Record<string, Reader> = {
       best > 0 && `best game ${best}`,
       strikes > 0 && `${n(strikes)} strikes in all`,
       beaten(BOWLING_LEVELS, r, 'games'),
+      onlineLine(read, 'bowling'),
     ])
   },
   bricks: (read) => {
@@ -158,7 +163,11 @@ export const ARCADE: Record<string, Reader> = {
   curling: (read) => {
     const r = readCurling(read(CURLING_KEY)).record
     const end = most(CURLING_LEVELS.map((l) => r[l].bestEnd))
-    return join([beaten(CURLING_LEVELS, r, 'games', (t) => t.drawn), end > 0 && `best end ${end}`])
+    return join([
+      beaten(CURLING_LEVELS, r, 'games', (t) => t.drawn),
+      end > 0 && `best end ${end}`,
+      onlineLine(read, 'curling'),
+    ])
   },
   darts: (read) => {
     const r = readDarts(read(DARTS_KEY)).record
@@ -269,6 +278,7 @@ export const ARCADE: Record<string, Reader> = {
     return join([
       best !== Infinity && `best round ${best} strokes over the ${COURSE.length} holes`,
       beaten(PUTT_LEVELS, r, 'rounds', (t) => t.tied),
+      onlineLine(read, 'putt'),
     ])
   },
   rocks: (read) => {

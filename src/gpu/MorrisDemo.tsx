@@ -20,8 +20,14 @@ import {
   type Who,
 } from './morris'
 import { useKept } from './kept'
+import { morrisRules } from './morrisRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = {
   wood: 'Wood',
@@ -102,13 +108,37 @@ export function MorrisDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
-  const all = moves(game)
-  const yours = !game.winner && (mode === 'two' || game.turn === you)
+  /* ── the call's room: the game travels as its moves, replayed by morris.ts itself */
+  const lab = useLabRoom('morris', morrisRules)
+  const words = tableSeats(lab, morrisRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the side I move for: the first in seat 0 and together, the second in seat 1 */
+  const mySide: Who = room && room.mode === 'versus' && words.mySeat === 1 ? 2 : 1
+  /** the board on screen: the call's in a call, else this one */
+  const view = room ? room.game.g : game
+  const viewLast = room ? room.game.last : last
+
+  const all = moves(view)
+  const yours = room
+    ? lab.live && myTurn(morrisRules, room)
+    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
   const computerTurn = mode === 'bot' && !game.winner && game.turn !== you
   const nameOf = (w: Who) =>
-    mode === 'bot' ? (w === you ? 'You' : 'The computer') : w === 1 ? 'Light' : 'Dark'
-  const placing = game.hand[game.turn] > 0
-  const flying = !placing && count(game, game.turn) === 3
+    room
+      ? room.mode === 'together'
+        ? w === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[w - 1])
+      : mode === 'bot'
+        ? w === you
+          ? 'You'
+          : 'The computer'
+        : w === 1
+          ? 'Light'
+          : 'Dark'
+  const placing = view.hand[view.turn] > 0
+  const flying = !placing && count(view, view.turn) === 3
 
   const apply = (m: Move) => {
     const by = game.turn
@@ -142,26 +172,50 @@ export function MorrisDemo() {
     )
   }
 
+  /** a whole move, made: here, or in the call, where the host decides and the board comes back */
+  const make = (m: Move) => {
+    if (!room) return apply(m)
+    setPicked(null)
+    setPending(null)
+    lab.act({ t: 'move', move: m })
+  }
   const tap = (p: number) => {
     if (!yours) return
     if (pending) {
       const m = all.find((x) => x.from === pending.from && x.to === pending.to && x.take === p)
-      if (m) apply(m)
+      if (m) make(m)
       return
     }
     const from = placing ? -1 : picked
-    if (!placing && game.board[p] === game.turn) {
+    if (!placing && view.board[p] === view.turn) {
       setPicked(p === picked ? null : p)
       return
     }
     if (from === null) return
     const options = all.filter((x) => x.from === from && x.to === p)
     if (!options.length) return
-    if (options[0].take < 0) apply(options[0])
+    if (options[0].take < 0) make(options[0])
     else {
       setPending({ from, to: p, take: -1 })
       setLine('A mill! Pick one of their men to take.')
     }
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their colour — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.g.winner) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setYou(mySide)
+    setGame(r.game.g)
+    setLast(r.game.last)
+    setPicked(null)
+    setPending(null)
+    setLine(r.game.g.turn === mySide ? 'Your move.' : 'The computer is thinking…')
   }
 
   useEffect(() => {
@@ -219,6 +273,19 @@ export function MorrisDemo() {
   }
 
   const record = saved.record[saved.level]
+  /** what the line says: the toy's own words, or in a call only a mill's question */
+  const lead = mode === 'call' ? (pending ? 'A mill! Pick one of their men to take.' : '') : line
+  /** where you are in your move, when it is yours */
+  const stage =
+    yours && !pending && !view.winner
+      ? placing
+        ? 'placing'
+        : flying
+          ? 'flying'
+          : picked === null
+            ? 'pick a man to move'
+            : 'now where it goes'
+      : null
   return (
     <div className={`lab-keys mo-room is-${saved.board} pieces-${saved.pieces}`}>
       <div className="lab-controls">
@@ -237,6 +304,19 @@ export function MorrisDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                setMode('call')
+                setPicked(null)
+                setPending(null)
+              }}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -255,37 +335,48 @@ export function MorrisDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={morrisRules}
+          sides={['Light', 'Dark']}
+          levelNames={LEVEL_NAMES}
+          score={(d) =>
+            d.g.winner === 1 || d.g.winner === 2
+              ? count(d.g, d.g.winner === 1 ? 2 : 1) < 3
+                ? ' — down to two men'
+                : ' — no move left'
+              : null
+          }
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="dice-scores">
         {([1, 2] as Who[]).map((w) => (
-          <div key={w} className={`dice-score${game.turn === w && !game.winner ? ' is-up' : ''}`}>
+          <div key={w} className={`dice-score${view.turn === w && !view.winner ? ' is-up' : ''}`}>
             <span>
               {nameOf(w)} · {SIDE[w]}
             </span>
-            <strong>{game.board.filter((x) => x === w).length}</strong>
+            <strong>{view.board.filter((x) => x === w).length}</strong>
             <span className="muted">
-              {game.hand[w] ? `on the board, ${game.hand[w]} to place` : 'on the board'}
+              {view.hand[w] ? `on the board, ${view.hand[w]} to place` : 'on the board'}
             </span>
           </div>
         ))}
       </div>
       <p className="mc-line" aria-live="polite">
-        {line}
-        {yours && !pending && !game.winner && (
+        {lead}
+        {stage && (
           <span className="muted">
-            {' '}
-            ·{' '}
-            {placing
-              ? 'placing'
-              : flying
-                ? 'flying'
-                : picked === null
-                  ? 'pick a man to move'
-                  : 'now where it goes'}
+            {/* in a call the table says whose turn it is, so this may be all the line holds */}
+            {lead ? ` · ${stage}` : stage[0].toUpperCase() + stage.slice(1)}
           </span>
         )}
       </p>
@@ -311,11 +402,11 @@ export function MorrisDemo() {
               y2={POINT[16 + k].y}
             />
           ))}
-          {last &&
+          {viewLast &&
             MILLS.filter(
               (m) =>
-                m.includes(last.to) &&
-                m.every((q) => game.board[q] === game.board[last.to] && game.board[q]),
+                m.includes(viewLast.to) &&
+                m.every((q) => view.board[q] === view.board[viewLast.to] && view.board[q]),
             ).map((m, i) => (
               <line
                 key={`m${i}`}
@@ -328,8 +419,9 @@ export function MorrisDemo() {
             ))}
         </svg>
         {POINT.map((pt, p) => {
-          const man = game.board[p]
-          const isLast = last && (last.to === p || last.take === p || last.from === p)
+          const man = view.board[p]
+          const isLast =
+            viewLast && (viewLast.to === p || viewLast.take === p || viewLast.from === p)
           return (
             <button
               key={p}
