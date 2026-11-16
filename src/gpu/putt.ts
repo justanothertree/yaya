@@ -368,11 +368,20 @@ export function stroke(h: Hole, from: Pt, level: Level, rand: () => number = Mat
 }
 /** most strokes on a hole before the ball is picked up and the hole scored at that */
 export const PICK_UP = 8
-/** play a whole hole for the computer: every putt, in order, and the strokes it took */
-export function playHole(h: Hole, level: Level, rand: () => number = Math.random) {
-  let at: Pt = { ...h.tee }
+/**
+ * play a whole hole for the computer: every putt, in order, and the strokes it took — from the
+ * tee, or from where a ball already lies with the strokes it has already taken there
+ */
+export function playHole(
+  h: Hole,
+  level: Level,
+  rand: () => number = Math.random,
+  from: Pt = h.tee,
+  taken = 0,
+) {
+  let at: Pt = { ...from }
   const putts: { from: Pt; angle: number; power: number; roll: Roll }[] = []
-  let strokes = 0
+  let strokes = taken
   while (strokes < PICK_UP) {
     const s = stroke(h, at, level, rand)
     const r = roll(h, at, s.angle, s.power)

@@ -278,6 +278,7 @@ export const ARCADE: Record<string, Reader> = {
     return join([
       best !== Infinity && `best round ${best} strokes over the ${COURSE.length} holes`,
       beaten(PUTT_LEVELS, r, 'rounds', (t) => t.tied),
+      onlineLine(read, 'putt'),
     ])
   },
   rocks: (read) => {
