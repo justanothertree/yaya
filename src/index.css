@@ -21434,3 +21434,33 @@ button.chron-runnote-n {
 .inst-lyric-fit.is-short {
   color: var(--accent-2);
 }
+
+/* ── 🎲 Challenge on a friend's profile (src/lab/matches/ProfileChallenge.tsx). ⚠️ Styled here,
+   not by lab.css: that sheet arrives with the Lab's own chunk, and on a profile page it is not
+   loaded at all, so the panel rendered bare — buttons flush to the edge, no border. */
+.profile-challenge {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.profile-challenge p {
+  margin: 0;
+}
+.profile-challenge .lab-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.profile-challenge .btn.btn-ghost[aria-pressed='true'] {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
+.profile-challenge .lab-warn {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #f59e0b;
+  border-radius: 6px;
+  background: color-mix(in oklab, #f59e0b, transparent 88%);
+}
