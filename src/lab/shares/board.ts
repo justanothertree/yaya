@@ -122,9 +122,12 @@ export const BOARD: Record<string, Reader> = {
       `${count(t.points, 'point')} to ${t.against}`,
     ]),
   breakthrough: (read) =>
-    versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
-      quickest(t.fastest),
-    ]),
+    join(
+      versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
+        quickest(t.fastest),
+      ]),
+      onlineLine(read, 'breakthrough'),
+    ),
   chess: (read) =>
     join(versus(CHESS_LEVELS, readChess(read(CHESS_KEY)).record), onlineLine(read, 'chess')),
   cribbage: (read) =>
@@ -132,7 +135,8 @@ export const BOARD: Record<string, Reader> = {
       t.skunks > 0 && count(t.skunks, 'skunk'),
       t.best > 0 && `best hand ${t.best}`,
     ]),
-  cube: (read) => versus(CUBE_LEVELS, readCube(read(CUBE_KEY)).record),
+  cube: (read) =>
+    join(versus(CUBE_LEVELS, readCube(read(CUBE_KEY)).record), onlineLine(read, 'cube')),
   dominoes: (read) => versus(DOMINOES_LEVELS, readDominoes(read(DOMINOES_KEY)).record),
   dots: (read) =>
     join(
@@ -146,7 +150,10 @@ export const BOARD: Record<string, Reader> = {
     ),
   eights: (read) => versus(EIGHTS_LEVELS, readEights(read(EIGHTS_KEY)).record, undefined, true),
   fences: (read) =>
-    versus(FENCES_LEVELS, readFences(read(FENCES_KEY)).record, (t) => [quickest(t.best)]),
+    join(
+      versus(FENCES_LEVELS, readFences(read(FENCES_KEY)).record, (t) => [quickest(t.best)]),
+      onlineLine(read, 'fences'),
+    ),
   fourrow: (read) =>
     versus(FOUR_LEVELS, readFourRow(read(FOUR_KEY)).record, (t) => [quickest(t.fastest)]),
   // the fox's record is kept per SIDE, not per level, so no level can be claimed
@@ -155,17 +162,21 @@ export const BOARD: Record<string, Reader> = {
     return join(
       r.geese.won > 0 && wonOf(r.geese, 'as the geese'),
       r.fox.won > 0 && wonOf(r.fox, 'as the fox'),
+      onlineLine(read, 'fox'),
     )
   },
   gin: (read) =>
     versus(GIN_LEVELS, readGin(read(GIN_KEY)).record, (t) => [
       t.gins > 0 && `went gin ${times(t.gins)}`,
     ]),
-  go: (read) => versus(GO_LEVELS, readGo(read(GO_KEY)).record),
+  go: (read) => join(versus(GO_LEVELS, readGo(read(GO_KEY)).record), onlineLine(read, 'go')),
   gomoku: (read) =>
     join(versus(GOMOKU_LEVELS, readGomoku(read(GOMOKU_KEY)).record), onlineLine(read, 'gomoku')),
   halma: (read) =>
-    versus(HALMA_LEVELS, readHalma(read(HALMA_KEY)).record, (t) => [quickest(t.fewest)]),
+    join(
+      versus(HALMA_LEVELS, readHalma(read(HALMA_KEY)).record, (t) => [quickest(t.fewest)]),
+      onlineLine(read, 'halma'),
+    ),
   hearts: (read) =>
     versus(
       HEARTS_LEVELS,
@@ -174,9 +185,12 @@ export const BOARD: Record<string, Reader> = {
       true,
     ),
   hex: (read) =>
-    versus(HEX_LEVELS, readHex(read(HEX_KEY)).record, (t) => [
-      t.best > 1 && `best run ${t.best} in a row`,
-    ]),
+    join(
+      versus(HEX_LEVELS, readHex(read(HEX_KEY)).record, (t) => [
+        t.best > 1 && `best run ${t.best} in a row`,
+      ]),
+      onlineLine(read, 'hex'),
+    ),
   liars: (read) =>
     versus(
       LIARS_LEVELS,
@@ -185,8 +199,14 @@ export const BOARD: Record<string, Reader> = {
       true,
     ),
   mancala: (read) =>
-    versus(MANCALA_LEVELS, readMancala(read(MANCALA_KEY)).record, (t) => [widest(t.best, 'seed')]),
-  morris: (read) => versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record),
+    join(
+      versus(MANCALA_LEVELS, readMancala(read(MANCALA_KEY)).record, (t) => [
+        widest(t.best, 'seed'),
+      ]),
+      onlineLine(read, 'mancala'),
+    ),
+  morris: (read) =>
+    join(versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record), onlineLine(read, 'morris')),
   reversi: (read) =>
     join(
       versus(REVERSI_LEVELS, readReversi(read(REVERSI_KEY)).record, (t) => [
@@ -221,7 +241,11 @@ export const BOARD: Record<string, Reader> = {
       s.decided > 0 && `${Math.round((100 * s.agreed) / s.decided)}% of decisions by the book`,
     )
   },
-  ultimate: (read) => versus(ULTIMATE_LEVELS, readUltimate(read(ULTIMATE_KEY)).record),
+  ultimate: (read) =>
+    join(
+      versus(ULTIMATE_LEVELS, readUltimate(read(ULTIMATE_KEY)).record),
+      onlineLine(read, 'ultimate'),
+    ),
   yacht: (read) => {
     const s = readYacht(read(YACHT_KEY))
     return join(versus(YACHT_LEVELS, s.record), s.best > 0 && `best game alone ${s.best}`)

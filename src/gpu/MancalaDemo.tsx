@@ -8,7 +8,6 @@ import {
   SEED_LOOKS,
   choose,
   owner,
-  pitsFor,
   readSaved,
   score,
   sow,
@@ -22,8 +21,14 @@ import {
 } from './mancala'
 import { motionReduced as still } from '../ui/motion'
 import { useKept } from './kept'
+import { mancalaRules, type MancalaGame } from './mancalaRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 type Game = {
   rules: Rules
   board: Board
@@ -87,6 +92,17 @@ function Seeds({
   )
 }
 
+/** a call's game as this toy's own, for drawing; `local` lends what a room does not carry */
+const fromRoom = (r: MancalaGame, local: Game): Game => ({
+  rules: r.rules,
+  board: r.b,
+  side: r.turn ?? local.side,
+  over: r.turn === null,
+  path: r.path,
+  first: 0,
+  level: local.level,
+})
+
 export function MancalaDemo() {
   const [saved, setSaved] = useKept(MANCALA_KEY, readSaved)
   const [mode, setMode] = useState<Mode>('bot')
@@ -108,10 +124,32 @@ export function MancalaDemo() {
   const later = (f: () => void, ms: number) => timers.current.push(window.setTimeout(f, ms))
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
 
-  const names = mode === 'bot' ? ['You', 'The computer'] : ['Player 1', 'Player 2']
+  /* ── the call's room: the host's rules start each game, which then travels as its sowings */
+  const { pits, seeds, captures } = saved.rules
+  const roomRules = useMemo(() => mancalaRules({ pits, seeds, captures }), [pits, seeds, captures])
+  const lab = useLabRoom('mancala', roomRules)
+  const words = tableSeats(lab, roomRules)
+  const room = mode === 'call' ? lab.room : null
+  /**
+   * The side whose row is drawn nearest you: the second side only for whoever sits second in a
+   * versus game. Together, the two of you sow for the near side.
+   */
+  const near: Side = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+  /** the game on screen: the call's in a call, else this one */
+  const view: Game = room ? fromRoom(room.game, game) : game
+
+  const names = room
+    ? room.mode === 'together'
+      ? ['Together', 'The computer']
+      : [words.who(room.seats[0]), words.who(room.seats[1])]
+    : mode === 'bot'
+      ? ['You', 'The computer']
+      : ['Player 1', 'Player 2']
   const busy = shown !== null
   const computerTurn = mode === 'bot' && game.side === 1 && !game.over
-  const humanTurn = !game.over && !busy && !computerTurn
+  const humanTurn = room
+    ? lab.live && myTurn(roomRules, room)
+    : mode !== 'call' && !game.over && !busy && !computerTurn
 
   const finish = (g: Game) => {
     const [a, b] = score(g.board)
@@ -149,6 +187,8 @@ export function MancalaDemo() {
 
   /** sow from a pit: seed by seed on screen, or at once under reduced motion */
   const play = (pit: number) => {
+    // in the call the host decides: this asks it, and the board comes back with everybody's
+    if (room) return lab.act({ t: 'move', move: pit })
     const g = game
     const who = g.side
     const s = sow(g.board, pit, who, g.rules)
@@ -235,11 +275,27 @@ export function MancalaDemo() {
     if (!started || game.over) newGame(mode, rules)
   }
 
-  const board = shown?.board ?? game.board
-  const n = game.rules.pits
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer, which always plays the far
+   * side: the board on screen comes with you when yours is the near side, else a new game.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.turn === null || near !== 0) return newGame('bot')
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    setMode('bot')
+    setShown(null)
+    setGame({ ...fromRoom(r.game, game), level: saved.level })
+    setLine(r.game.turn === 0 ? 'Your turn.' : 'The computer is thinking…')
+  }
+
+  const board = shown?.board ?? view.board
+  const n = view.rules.pits
   const [a, b] = score(board)
   const record = saved.record[saved.level]
   const hint = useMemo(() => {
+    const game = view
     if (!saved.hints || hover === null || !humanTurn || game.board[hover] === 0) return null
     if (owner(game.board, hover) !== game.side) return null
     const s = sow(game.board, hover, game.side, game.rules)
@@ -250,10 +306,16 @@ export function MancalaDemo() {
       end,
       text: owner(game.board, end) === game.side ? 'ends on your side' : 'ends on their side',
     }
-  }, [saved.hints, hover, humanTurn, game])
+  }, [saved.hints, hover, humanTurn, view])
 
+  /**
+   * The board turned half way round for whoever sits on the far side, so their own row is the
+   * near one: pit i is drawn where pit rot(i) would be. Half a turn is its own inverse.
+   */
+  const rot = (i: number) => (near === 1 ? (i + n + 1) % (2 * n + 2) : i)
   /** where each place sits on the board, across (wide) and down (narrow) */
-  const place = (i: number): CSSProperties => {
+  const place = (at: number): CSSProperties => {
+    const i = rot(at)
     const s0 = storeOf(board, 0)
     const s1 = storeOf(board, 1)
     if (i === s1) return { '--hc': 1, '--vr': 1 } as CSSProperties
@@ -266,8 +328,9 @@ export function MancalaDemo() {
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const num = Number(e.key)
     if (Number.isInteger(num) && num >= 1 && num <= n && humanTurn) {
-      const pit = pitsFor(game.board, game.side)[game.side === 0 ? num - 1 : n - num]
-      if (game.board[pit] > 0) {
+      // counting from the left as drawn: the near row left to right, the far row as it looks
+      const pit = rot(view.side === near ? num - 1 : 2 * n + 1 - num)
+      if (owner(view.board, pit) === view.side && view.board[pit] > 0) {
         e.preventDefault()
         play(pit)
       }
@@ -292,11 +355,28 @@ export function MancalaDemo() {
     }
   }
 
+  /**
+   * Whose a side's pits and store are, as a word: "Your" for yours, whether that is because you
+   * are playing the computer, sitting at the call's table, or one of the two playing together.
+   * ⚠️ NEVER "You’s". The names list says "You", and gluing "’s" to it is how the store against
+   * the computer read "You’s store, 1 seeds" for as long as the toy had a label.
+   */
+  const whose = (side: Side) => {
+    const nm = names[side]
+    if (nm === 'You' || (room?.mode === 'together' && side === 0 && words.mySeat !== null))
+      return 'Your'
+    if (nm === 'Together') return 'The team’s'
+    return `${nm}’s`
+  }
+  const seedsText = (k: number) => `${k} seed${k === 1 ? '' : 's'}`
+
   const pitLabel = (i: number) => {
     const side = owner(board, i)
-    const who = mode === 'bot' ? (side === 0 ? 'Your' : 'The computer’s') : `${names[side ?? 0]}’s`
-    const k = side === 0 ? i + 1 : 2 * n + 1 - i
-    return `${who} pit ${k}, ${board[i]} seed${board[i] === 1 ? '' : 's'}`
+    const who = whose(side ?? 0)
+    // numbered from the left as drawn, whichever way round the board is
+    const j = rot(i)
+    const k = j < n ? j + 1 : 2 * n + 1 - j
+    return `${who} pit ${k}, ${seedsText(board[i])}`
   }
 
   return (
@@ -317,6 +397,15 @@ export function MancalaDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => setMode('call')}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -335,14 +424,29 @@ export function MancalaDemo() {
             ))}
           </div>
         )}
-        <button className="btn btn-ghost" onClick={() => newGame()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => newGame()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={roomRules}
+          sides={['First', 'Second']}
+          levelNames={LEVEL_NAMES}
+          score={(g) => {
+            const [x, y] = score(g.b)
+            return `, ${Math.max(x, y)} seeds to ${Math.min(x, y)}`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="dice-scores">
         {names.map((nm, i) => (
-          <div key={nm} className={`dice-score${game.side === i && !game.over ? ' is-up' : ''}`}>
+          <div key={i} className={`dice-score${view.side === i && !view.over ? ' is-up' : ''}`}>
             <span>{nm}</span>
             <strong>{i === 0 ? a : b}</strong>
           </div>
@@ -358,12 +462,12 @@ export function MancalaDemo() {
         onKeyDown={onKey}
       >
         <span className="mc-side is-top" aria-hidden>
-          {names[1]}
+          {names[near === 0 ? 1 : 0]}
         </span>
         {Array.from({ length: board.length }, (_, i) => {
           const side = owner(board, i)
           const isStore = side === null
-          const lit = shown ? shown.at === i : game.path.includes(i)
+          const lit = shown ? shown.at === i : view.path.includes(i)
           const cls = `${isStore ? 'mc-store' : 'mc-pit'}${lit ? ' is-lit' : ''}${hint?.end === i ? ' is-hint' : ''}${shown?.at === i ? ' is-hand' : ''}`
           const content = (
             <>
@@ -378,12 +482,12 @@ export function MancalaDemo() {
                 className={cls}
                 style={place(i)}
                 role="img"
-                aria-label={`${i === storeOf(board, 0) ? names[0] : names[1]}’s store, ${board[i]} seeds`}
+                aria-label={`${whose(i === storeOf(board, 0) ? 0 : 1)} store, ${seedsText(board[i])}`}
               >
                 {content}
               </div>
             )
-          const mine = humanTurn && side === game.side
+          const mine = humanTurn && side === view.side
           return (
             <button
               key={i}
@@ -402,14 +506,18 @@ export function MancalaDemo() {
           )
         })}
         <span className="mc-side is-bottom" aria-hidden>
-          {names[0]}
+          {names[near]}
         </span>
       </div>
 
-      <p className="mc-line" aria-live="polite">
-        {line}
-        {hint && <span className="muted"> · this pit {hint.text}</span>}
-      </p>
+      {mode === 'call' ? (
+        hint && <p className="muted mc-note">This pit {hint.text}</p>
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {line}
+          {hint && <span className="muted"> · this pit {hint.text}</span>}
+        </p>
+      )}
       {mode === 'bot' && (
         <p className="sun-reading">
           <span className="muted">
@@ -423,42 +531,49 @@ export function MancalaDemo() {
       <div className="fw-panel">
         <section aria-label="Rules">
           <h3 className="fw-h">Rules</h3>
-          <div className="lab-controls" role="group" aria-label="Pits a side">
-            <span className="fw-label">Pits</span>
-            {PIT_CHOICES.map((p) => (
-              <button
-                key={p}
-                className="btn btn-ghost"
-                aria-pressed={saved.rules.pits === p}
-                aria-label={`${p} pits a side`}
-                onClick={() => setRules({ pits: p })}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-          <div className="lab-controls" role="group" aria-label="Seeds a pit">
-            <span className="fw-label">Seeds</span>
-            {SEED_CHOICES.map((p) => (
-              <button
-                key={p}
-                className="btn btn-ghost"
-                aria-pressed={saved.rules.seeds === p}
-                aria-label={`${p} seeds a pit`}
-                onClick={() => setRules({ seeds: p })}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
+          {/* in a call the host's rules start each game, and they travel with it */}
+          {mode !== 'call' && (
+            <>
+              <div className="lab-controls" role="group" aria-label="Pits a side">
+                <span className="fw-label">Pits</span>
+                {PIT_CHOICES.map((p) => (
+                  <button
+                    key={p}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.rules.pits === p}
+                    aria-label={`${p} pits a side`}
+                    onClick={() => setRules({ pits: p })}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <div className="lab-controls" role="group" aria-label="Seeds a pit">
+                <span className="fw-label">Seeds</span>
+                {SEED_CHOICES.map((p) => (
+                  <button
+                    key={p}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.rules.seeds === p}
+                    aria-label={`${p} seeds a pit`}
+                    onClick={() => setRules({ seeds: p })}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <div className="lab-controls">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={saved.rules.captures}
-              onClick={() => setRules({ captures: !saved.rules.captures })}
-            >
-              Captures
-            </button>
+            {mode !== 'call' && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={saved.rules.captures}
+                onClick={() => setRules({ captures: !saved.rules.captures })}
+              >
+                Captures
+              </button>
+            )}
             <button
               className="btn btn-ghost"
               aria-pressed={saved.hints}
@@ -468,6 +583,7 @@ export function MancalaDemo() {
             </button>
           </div>
           {started &&
+            mode !== 'call' &&
             !game.over &&
             (JSON.stringify(saved.rules) !== JSON.stringify(game.rules) ||
               (mode === 'bot' && saved.level !== game.level)) && (
