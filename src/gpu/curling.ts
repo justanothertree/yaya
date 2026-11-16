@@ -129,8 +129,8 @@ export function settle(stones: Stone[], thrown: Stone | undefined, touched: bool
   return stones.filter((s) => s !== thrown || touched || s.y >= HOG)
 }
 
-/** who decides whether to sweep, step by step, while a stone slides */
-export type Sweeper = (s: Stone) => boolean
+/** who decides whether to sweep, step by step, while a stone slides: the stone, and the step */
+export type Sweeper = (s: Stone, i: number) => boolean
 /** throw a stone and let everything come to rest, for the tests and the computer */
 export function slide(
   stones: readonly Stone[],
@@ -144,7 +144,7 @@ export function slide(
   const knocked = new Set<Stone>()
   const frames: Stone[][] = []
   for (let i = 0; i < 40 / STEP && moving(now); i++) {
-    const sweep = sweeper && now.includes(thrown) && sweeper(thrown) ? thrown : null
+    const sweep = sweeper && now.includes(thrown) && sweeper(thrown, i) ? thrown : null
     now = step(now, sweep, STEP, knocked)
     if (keep && i % 2 === 0) frames.push(now.map((s) => ({ ...s })))
   }
@@ -156,6 +156,41 @@ export function slide(
   if (keep) frames.push(done.map((s) => ({ ...s })))
   return { stones: done, frames }
 }
+
+/**
+ * A sweep as it was swept: the steps of a slide the stone was swept on, as [from, to) spans. A
+ * slide is the same every time from the same stones, throw and spans, so a throw and its spans
+ * are the whole of what happened — which is how a stone swept live on one screen is slid again,
+ * step for step, on every other.
+ */
+export type Spans = [number, number][]
+/** the steps a sweeper sweeps on, sliding this throw */
+export function spansOf(
+  stones: readonly Stone[],
+  shot: Shot,
+  team: Team,
+  sweeper: Sweeper | null,
+): Spans {
+  const out: Spans = []
+  if (!sweeper) return out
+  slide(stones, shot, team, (s, i) => {
+    const on = sweeper(s, i)
+    if (on) addStep(out, i)
+    return on
+  })
+  return out
+}
+/** one more swept step, joined to the span before it when it follows straight on */
+export function addStep(spans: Spans, i: number) {
+  const last = spans[spans.length - 1]
+  if (last && last[1] === i) last[1] = i + 1
+  else spans.push([i, i + 1])
+}
+/** sweep on exactly these steps */
+export const sweptOn =
+  (spans: readonly (readonly [number, number])[]): Sweeper =>
+  (_s, i) =>
+    spans.some(([a, b]) => i >= a && i < b)
 
 /* --------------------------------------------------------------------------- scoring */
 

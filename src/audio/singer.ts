@@ -159,7 +159,8 @@ export type SingOpts = {
    * that voice: its dips, falls and plate had cost the line its clean character (measured in
    * docs/2026-11-14-singer-vibe.md). So each change is one switch, to be heard on its own. After
    * hearing them he made the late vibrato and the light room the Sing panel's sound, and harmony
-   * (none, a third, or a third and the octave) its choice — see SOUND in SingPanel.
+   * (none, a third, or a third and the octave) its choice — see SOUND in instrument/singAlong.ts,
+   * which sings the song's lyrics since they moved out of the Sing panel (15 Nov 2026).
    *
    * `vibrato: 'late'` — only long notes waver, later, slower and shallower: see `lateVibratoOf`.
    */
@@ -308,6 +309,15 @@ export type Phrase = {
 export const LEGATO = 0.12
 /** a gap this long ends a phrase */
 export const REST = 0.35
+/**
+ * How far past its note the last vowel of a phrase fades out.
+ *
+ * ⚠️ MEASURED, 15 Nov 2026, from the sung song rendered to a WAV: every phrase ended by losing
+ * about 20dB in 15ms, the 40ms ramp landing exactly on the note's end, so the last word of each
+ * line read as cut off rather than let go. 80ms more, after the note, is still well inside the
+ * shortest rest that ends a phrase (REST) and inside the voice's own tail (Phrase.to).
+ */
+export const TAIL = 0.08
 
 export const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
 
@@ -910,7 +920,9 @@ function phrase(evs: Event[], part: Part, v: Voice, beat: number, seed: number):
       const last = voicing[voicing.length - 1].t
       const fall = Math.max(last, hold - 0.04)
       say(fall, level, 'set')
-      say(Math.max(fall + 0.01, hold), 0)
+      /* the last syllable of a phrase lets go a little past its note, as a voice does — inside a
+         phrase the next syllable is close and the release stays short (see TAIL) */
+      say(Math.max(fall + 0.01, hold + (next ? 0 : TAIL)), 0)
     }
     if (v.chop)
       for (const [a, b] of chopGates(cFrom, hold, beat)) {

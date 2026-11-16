@@ -13,6 +13,17 @@ import { SnapPicker } from '../audio/SnapPicker'
 import { isBlack } from '../audio/keyboardSpan'
 import { hits, isSame, roomAfter } from '../audio/rollNotes'
 import { noteOff, noteOn } from '../audio/synth'
+import {
+  atPlayhead,
+  clipNow,
+  copyNotes,
+  placeClip,
+  sameBarShift,
+  setPasteAt,
+  subscribeClip,
+  takePending,
+  type PasteAt,
+} from '../audio/noteClip'
 
 /**
  * Editing what you played, instead of playing it again.
@@ -99,6 +110,8 @@ export function PianoRoll({
   loopLen,
   held,
   onClose,
+  inPanel = false,
+  partName,
 }: {
   layer: Layer
   bpm: number
@@ -115,6 +128,13 @@ export function PianoRoll({
   position: number
   loopLen: number
   onClose: () => void
+  /**
+   * Inside the part's own menu (PartPanel), which has its own close and is already where the
+   * person is looking — so no Done of its own, and no scrolling the page to bring it into view.
+   */
+  inPanel?: boolean
+  /** what other parts are called, so a paste can say where its notes came from */
+  partName?: (id: string) => string | null
 }) {
   /**
    * The selected note, by WHAT IT IS rather than where it sits in the array.
@@ -136,7 +156,12 @@ export function PianoRoll({
    */
   const [picks, setPicks] = useState<Array<{ midi: number; t: number }>>([])
   const [selecting, setSelecting] = useState(false)
-  const [clip, setClip] = useState<Note[]>([])
+  /* ⚠️ THE CLIPBOARD IS THE ROOM'S, NOT THIS EDITOR'S — see noteClip.ts. It was component state,
+     so a phrase could only be pasted back into the part it came from. */
+  const shared = useSyncExternalStore(subscribeClip, clipNow, clipNow)
+  const clip = shared.clip?.notes ?? []
+  /** what the last paste could not put down, said rather than swallowed */
+  const [pasteSaid, setPasteSaid] = useState<string | null>(null)
   /** the rectangle being dragged out, in grid cells; a ref because it changes per pointer event */
   const band = useRef<{ c0: number; r0: number; c1: number; r1: number } | null>(null)
   const [bandBox, setBandBox] = useState<{ c0: number; r0: number; c1: number; r1: number } | null>(
@@ -438,7 +463,24 @@ export function PianoRoll({
     undoStack.current = []
     redoStack.current = []
     setHist({ undo: 0, redo: 0 })
+    /* ⚠️ and "where you last clicked" was a cell in the OTHER part's grid, whose rows are other
+       pitches — so it is forgotten, and a paste there waits for a click in this one */
+    anchor.current = null
+    setPasteSaid(null)
   }, [layer.id])
+
+  /**
+   * "Copy all its notes to…" from another part's menu lands HERE, once this part's notes are open
+   * — see `pending` in noteClip.ts. After the history reset above, which runs first because it is
+   * declared first, so the paste is the first step on this part's own undo rather than wiped by it.
+   * Taken before it is done, so a second run of the effect (Strict Mode's) finds nothing to do.
+   */
+  useEffect(() => {
+    if (shared.pending?.into !== layer.id) return
+    takePending()
+    pastePicked('same', true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a request, acted on once; see above
+  }, [shared.pending, layer.id])
 
   /**
    * Hear what you just did.
@@ -714,12 +756,12 @@ export function PianoRoll({
 
   const copyPicked = () => {
     const list = picked()
-    if (list.length) setClip(list.map((n) => ({ ...n })))
+    if (list.length) copyNotes(list, layer.id)
   }
   const cutPicked = () => {
     const list = picked()
     if (!list.length) return
-    setClip(list.map((n) => ({ ...n })))
+    copyNotes(list, layer.id)
     commit(notes.filter((n) => !isPicked(n)))
     dropPicks()
     setSel(null)
@@ -732,40 +774,75 @@ export function PianoRoll({
   }
 
   /**
-   * ⚠️ PASTED WHERE YOU LAST PUT THE POINTER, keeping the block's own shape.
+   * Paste what was copied — from this part or another — in one of three places.
    *
-   * The alternative is pasting back exactly where it came from, which is invisible, or always a
-   * bar later, which is only right when you happen to want that. Anchoring on the last cell you
-   * touched means "click there, paste" — and because the whole block is moved by one offset, the
-   * intervals and rhythm inside it survive, which is the only reason to copy a phrase at all.
+   * - **In the same bar** it came from (the default): copy a phrase from the lead and it lands in
+   *   the bass at the same moment of the song, which is what copying between parts is for. A
+   *   shorter part plays its bars over again, so it lands at that beat of the bar (sameBarShift).
+   * - **At the playhead**, on the nearest step: put the loop where you want it, and paste.
+   * - **Where you last clicked**, the editor's first paste: the block's top note goes on the row
+   *   you clicked, so it can move up or down as well as along. Only a click in THIS part counts,
+   *   because a row in another part's grid is another pitch.
    *
-   * Anything that would land outside the take or on top of an existing note is dropped rather
-   * than clamped: a paste that silently stacks notes or piles them against the last bar is worse
-   * than one that plainly puts fewer notes down.
+   * ⚠️ EVERY ONE KEEPS THE BLOCK'S OWN SHAPE — one shift for the whole block, so the rhythm and
+   * the intervals inside it survive, which is the only reason to copy a phrase at all.
+   *
+   * ⚠️ NOTHING ALREADY HERE IS DISTURBED, and what could not be put down is SAID. A note landing
+   * inside one of its own pitch, or off either end of the part, is refused by placeClip and
+   * counted, rather than stacked, clamped against the last bar, or dropped in silence.
+   *
+   * One commit, so ↶ takes the whole paste back.
    */
-  const pastePicked = () => {
+  const pastePicked = (where: PasteAt = shared.pasteAt, announce = false) => {
     if (!clip.length) return
-    const t0 = Math.min(...clip.map((n) => n.t))
-    const top = Math.max(...clip.map((n) => n.midi))
-    const a = anchor.current
-    const toT = a ? a.col * step : t0 + step
-    const toMidi = a ? hi - a.row : top
-    const out = [...notes]
-    const made: Array<{ midi: number; t: number }> = []
-    for (const n of clip) {
-      const t = toT + (n.t - t0)
-      const midi = toMidi + (n.midi - top)
-      if (midi < lo || midi > hi || t < 0 || t >= loopLen) continue
-      if (occupied(out, midi, t)) continue
-      const put = { midi, t, dur: Math.min(n.dur, loopLen - t) }
-      out.push(put)
-      made.push({ midi, t })
+    const len = layer.len
+    let shift = 0
+    let pitch = 0
+    if (where === 'same') shift = sameBarShift(clip, len)
+    else if (where === 'playhead') {
+      const intoTake = loopLen > 0 && len > 0 ? (posRef.current * loopLen) % len : 0
+      shift = atPlayhead(clip, intoTake, step, len)
+    } else {
+      const a = anchor.current
+      if (!a) {
+        setPasteSaid('Click where it should go first, then paste.')
+        return
+      }
+      const t0 = Math.min(...clip.map((n) => n.t))
+      const top = Math.max(...clip.map((n) => n.midi))
+      shift = a.col * step - t0
+      pitch = hi - a.row - top
     }
-    if (!made.length) return
+    const { notes: out, placed, refused } = placeClip(clip, notes, len, shift, pitch)
+    const left = refused
+      ? `${refused} note${refused === 1 ? '' : 's'} did not fit and ${refused === 1 ? 'was' : 'were'} left out.`
+      : ''
+    setPasteSaid(
+      !placed.length
+        ? 'Nothing fitted there — every note would land on one already there or off the end.'
+        : announce
+          ? `Copied ${placed.length} note${placed.length === 1 ? '' : 's'} here${clipFrom ? ` from ${clipFrom}` : ''}. ↶ takes ${placed.length === 1 ? 'it' : 'them'} back. ${left}`.trim()
+          : left || null,
+    )
+    if (!placed.length) return
     commit(out)
-    setPicks(made)
-    setSel(made[0])
+    setPicks(placed.map((n) => ({ midi: n.midi, t: n.t })))
+    setSel({ midi: placed[0].midi, t: placed[0].t })
+    /* ⚠️ BRING THE PASTE INTO VIEW. Notes copied from a higher part can land above this window,
+       which is fixed per part (see baseLo) — present and invisible reads as a paste that did
+       nothing. Whole octaves, so the labelled C rows stay where the eye expects them. */
+    const top = Math.max(...placed.map((n) => n.midi))
+    const low = Math.min(...placed.map((n) => n.midi))
+    if (top > hi || low < lo) {
+      const want = top > hi ? Math.ceil((top - hi) / 12) : -Math.ceil((lo - low) / 12)
+      setOctave((cur) => Math.max(octMin, Math.min(octMax, cur + want)))
+    }
   }
+  /** where the copied notes came from, in words, when it is another part */
+  const clipFrom =
+    shared.clip && shared.clip.from !== layer.id
+      ? (partName?.(shared.clip.from) ?? 'another part')
+      : null
 
   /**
    * ⚠️ CHANGE ONE, CHANGE ALL — but only the ones you picked.
@@ -925,8 +1002,9 @@ export function PianoRoll({
    */
   const rollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
+    if (inPanel) return
     rollRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
-  }, [layer.id])
+  }, [layer.id, inPanel])
 
   return (
     <div
@@ -987,7 +1065,9 @@ export function PianoRoll({
             }}
             title="Drag a box round some notes, then copy, move or retime them together"
           >
-            ⬚
+            {/* ⚠️ A WORD, because this is the way into copying notes to another part, and a
+                glyph explained only by its tooltip is no door at all on a phone */}
+            ⬚ Select
           </button>
           {selecting && (
             <>
@@ -1009,9 +1089,10 @@ export function PianoRoll({
               </button>
               <button
                 className="btn"
-                onClick={pastePicked}
+                onClick={() => pastePicked()}
                 disabled={!clip.length}
-                title="Paste where you last clicked"
+                title="Paste the copied notes — where is chosen beside Paste below"
+                aria-label="Paste"
               >
                 📋{clip.length ? ` ${clip.length}` : ''}
               </button>
@@ -1032,6 +1113,7 @@ export function PianoRoll({
             onClick={() => setOctave((v) => v + 1)}
             disabled={!canUp}
             title="Show higher notes"
+            aria-label="Show higher notes"
           >
             ▲
           </button>
@@ -1043,6 +1125,7 @@ export function PianoRoll({
             onClick={() => setOctave((v) => v - 1)}
             disabled={!canDown}
             title="Show lower notes"
+            aria-label="Show lower notes"
           >
             ▼
           </button>
@@ -1102,10 +1185,49 @@ export function PianoRoll({
         >
           🎯 Click
         </button>
-        <button className="btn" onClick={onClose} title="Close the editor (Esc)">
-          Done
-        </button>
+        {!inPanel && (
+          <button className="btn" onClick={onClose} title="Close the editor (Esc)">
+            Done
+          </button>
+        )}
       </div>
+      {/**
+       * ⚠️ PASTE IS HERE WHENEVER THERE IS SOMETHING TO PASTE, not only inside the ⬚ tools. The
+       * notes on the clipboard usually came from ANOTHER part, and the person pasting them has just
+       * opened this one — asking them to find ⬚ first, in an editor where nothing is picked yet, is
+       * a door behind a door. Ctrl+V does the same thing, to the same place.
+       */}
+      {clip.length > 0 && (
+        <div className="roll-paste" role="group" aria-label="Paste copied notes">
+          <button
+            className="btn"
+            onClick={() => pastePicked()}
+            title={`Paste ${clip.length} copied note${clip.length === 1 ? '' : 's'} (Ctrl+V)`}
+          >
+            📋 Paste {clip.length} note{clip.length === 1 ? '' : 's'}
+          </button>
+          <label className="inst-pick roll-paste-where">
+            <span className="muted">{clipFrom ? `from ${clipFrom}, into` : 'into'}</span>
+            <select
+              value={shared.pasteAt}
+              onChange={(e) => {
+                setPasteAt(e.target.value as PasteAt)
+                setPasteSaid(null)
+                e.target.blur()
+              }}
+            >
+              <option value="same">the same bar</option>
+              <option value="playhead">the playhead</option>
+              <option value="clicked">where you clicked</option>
+            </select>
+          </label>
+          {pasteSaid && (
+            <span className="muted roll-paste-said" role="status">
+              {pasteSaid}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="roll-body">
         {/* ⚠️ THE SLIDER THAT WAS HERE HAS MOVED TO THE KEYBOARD ITSELF, which is where it

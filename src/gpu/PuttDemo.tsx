@@ -26,6 +26,11 @@ import {
 } from './putt'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { puttRules, totals, type PuttGame } from './puttRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 type Theme = Saved['theme']
@@ -100,6 +105,9 @@ type Course = { kind: 'course' | 'mine' | 'sent' | 'try'; holes: Hole[] }
 type Card = { you: number | null; cpu: number | null }[]
 type Phase = 'aim' | 'rolling' | 'cpu' | 'between' | 'done'
 type Show = { frames: number[]; t: number; who: 0 | 1; after: () => void }
+/** 'call': the round shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Opponent = 'bot' | 'call'
+const CALL_COURSE: Course = { kind: 'course', holes: COURSE }
 
 type View = { s: number; ox: number; oy: number }
 const fitView = (w: number, h: number): View => {
@@ -153,8 +161,50 @@ export function PuttDemo() {
   const [cursor, setCursor] = useState(5 * W + 5)
   const [removing, setRemoving] = useState<number | null>(null)
 
-  const refs = useRef({ saved, course, idx, ball, cpuBall, phase, mode, draft, cursor })
-  refs.current = { saved, course, idx, ball, cpuBall, phase, mode, draft, cursor }
+  /* ── the call's round: the course, seat 0 putting each hole out first; it travels as putts */
+  const [opp, setOpp] = useState<Opponent>('bot')
+  const lab = useLabRoom('putt', puttRules)
+  const words = tableSeats(lab, puttRules)
+  const room = opp === 'call' && mode === 'play' ? lab.room : null
+  /** the call's round as it is on screen: behind the room's while a putt rolls */
+  const [shown, setShown] = useState<PuttGame | null>(null)
+  const [busy, setBusy] = useState(false)
+  /** this player's ball: their seat's, or the team's together */
+  const myBall: 0 | 1 = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+  const cv = room && shown ? shown : null
+  const vCourse = cv ? CALL_COURSE : course
+  const vIdx = cv ? Math.min(cv.hole, COURSE.length - 1) : idx
+  const vPhase: Phase = cv
+    ? cv.up === null
+      ? 'done'
+      : lab.live && myTurn(puttRules, room!) && !busy
+        ? 'aim'
+        : 'cpu'
+    : phase
+  const vBall = cv ? (cv.up === myBall ? cv.at : COURSE[vIdx].tee) : ball
+  const vCpu = cv ? (cv.up !== null && cv.up !== myBall ? cv.at : null) : cpuBall
+  const refs = useRef({
+    saved,
+    course: vCourse,
+    idx: vIdx,
+    ball: vBall,
+    cpuBall: vCpu,
+    phase: vPhase,
+    mode,
+    draft,
+    cursor,
+  })
+  refs.current = {
+    saved,
+    course: vCourse,
+    idx: vIdx,
+    ball: vBall,
+    cpuBall: vCpu,
+    phase: vPhase,
+    mode,
+    draft,
+    cursor,
+  }
   const aim = useRef({ angle: -Math.PI / 2, power: 0, dragging: false, from: { x: 0, y: 0 } })
   const show = useRef<Show | null>(null)
   const view = useRef<View | null>(null)
@@ -164,7 +214,7 @@ export function PuttDemo() {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 
-  const hole = course.holes[idx]
+  const hole = vCourse.holes[vIdx]
   const total = (k: 'you' | 'cpu') => card.reduce((s, c) => s + (c[k] ?? 0), 0)
 
   const start = (c: Course, lv: Level = saved.level) => {
@@ -234,9 +284,13 @@ export function PuttDemo() {
     )
   }
 
+  /** a ball the computer takes over part way through a hole, carried on from a call */
+  const resume = useRef<{ hole: number; at: Pt; strokes: number } | null>(null)
   const computerPlays = (c: Card) => {
     setPhase('cpu')
-    const res = playHole(hole, level)
+    const r0 = resume.current?.hole === idx ? resume.current : null
+    resume.current = null
+    const res = r0 ? playHole(hole, level, Math.random, r0.at, r0.strokes) : playHole(hole, level)
     let k = 0
     const next = () => {
       if (k >= res.putts.length) {
@@ -276,6 +330,13 @@ export function PuttDemo() {
   }
 
   const putt = (angle: number, power: number) => {
+    if (room) {
+      // in the call the host rolls it, and the putt comes back to everybody
+      aim.current.power = 0
+      setBusy(true)
+      lab.act({ t: 'move', move: { angle, power } })
+      return
+    }
     const from = refs.current.ball
     const r = roll(hole, from, angle, power, true)
     setPhase('rolling')
@@ -315,6 +376,128 @@ export function PuttDemo() {
     setPhase('aim')
     aim.current.power = 0
     setLine(`Hole ${i + 1} of ${course.holes.length}: ${course.holes[i].name}.`)
+  }
+
+  /* ── the call's putts, shown as they arrive: each one rolled in turn, then the card it left */
+  const seen = useRef<number | null>(null)
+  const queue = useRef<PuttGame[]>([])
+  const [said, setSaid] = useState('')
+  const callName = (w: 0 | 1) =>
+    !room
+      ? ''
+      : room.mode === 'together'
+        ? w === 1
+          ? 'Computer'
+          : words.mySeat !== null
+            ? 'You'
+            : 'The team'
+        : words.who(room.seats[w])
+  const puttWords = (g: PuttGame) => {
+    const l = g.last!
+    const who = callName(l.by)
+    const r = l.roll
+    const what = r.sunk
+      ? l.strokes === 1
+        ? '⛳ a hole in one!'
+        : `in, in ${l.strokes}.`
+      : l.out
+        ? `that is ${PICK_UP}: picked up.`
+        : r.wet
+          ? `splash — a stroke added, back to where it was played from. ${l.strokes} so far.`
+          : `${l.strokes} stroke${l.strokes === 1 ? '' : 's'}.`
+    const next =
+      g.up !== null && g.hole !== l.hole ? ` On to hole ${g.hole + 1}: ${COURSE[g.hole].name}.` : ''
+    return `${who}: ${what}${next}`
+  }
+  const playNext = () => {
+    const g = queue.current.shift()
+    if (!g) return setBusy(false)
+    const l = g.last!
+    const ours = room && (room.mode === 'together' ? l.by === 0 : l.by === words.mySeat)
+    setBusy(true)
+    animate(l.roll.frames.length ? l.roll.frames : [l.from.x, l.from.y], ours ? 0 : 1, () => {
+      setShown(g)
+      setSaid(puttWords(g))
+      playNext()
+    })
+  }
+  const callGame = room?.game
+  useEffect(() => {
+    if (!callGame) {
+      seen.current = null
+      queue.current = []
+      return
+    }
+    const n = callGame.putts.length
+    if (seen.current === n) return
+    const next1 = seen.current !== null && n === seen.current + 1 && !!callGame.last
+    seen.current = n
+    if (!next1) {
+      // a new round, or one joined part way: the card as it stands, nothing to roll
+      queue.current = []
+      show.current = null
+      setShown(callGame)
+      setSaid('')
+      setBusy(false)
+      return
+    }
+    queue.current.push(callGame)
+    if (!show.current) playNext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new game state is the only cue
+  }, [callGame])
+
+  const stopHere = () => {
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    show.current = null
+    queue.current = []
+    seen.current = null
+    setBusy(false)
+  }
+  const computerRef = useRef(computerPlays)
+  computerRef.current = computerPlays
+
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the round as it stands,
+   * their own ball the toy's, on the top row — or starts a new round if that one was over. The
+   * computer takes up the other ball where it lies, with the strokes it had taken; if you had not
+   * played this hole yet, you play it first, as the toy always has you do.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const me: 0 | 1 = r?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+    const them: 0 | 1 = me === 0 ? 1 : 0
+    stopHere()
+    setOpp('bot')
+    if (!r || r.game.up === null) return start(CALL_COURSE)
+    const g = r.game
+    const c: Card = g.card.map((x) => ({ you: x[me], cpu: x[them] }))
+    setCourse(CALL_COURSE)
+    setCard(c)
+    setIdx(g.hole)
+    setCpuBall(null)
+    aim.current.power = 0
+    const h = COURSE[g.hole]
+    if (g.up === me) {
+      setBall({ ...g.at })
+      setStrokes(g.strokes)
+      setPhase('aim')
+      setLine(`Carrying on against the computer: your ball, ${g.strokes} so far on this hole.`)
+    } else if (c[g.hole].you !== null) {
+      // you are in: the computer plays its ball out from where it lies
+      setBall({ ...h.cup })
+      setStrokes(c[g.hole].you!)
+      resume.current = { hole: g.hole, at: g.at, strokes: g.strokes }
+      setLine('Carrying on against the computer, which plays its ball out…')
+      later(500, () => computerRef.current(c))
+    } else {
+      // you have not played this hole: you first, and then the computer takes up its ball
+      setBall({ ...h.tee })
+      setStrokes(0)
+      setPhase('aim')
+      resume.current = { hole: g.hole, at: g.at, strokes: g.strokes }
+      setLine(`Carrying on against the computer. Hole ${g.hole + 1}: you play it first.`)
+    }
   }
 
   /* -------------------------------------------------------------------- pointer and keys */
@@ -397,7 +580,7 @@ export function PuttDemo() {
       e.stopPropagation()
       return
     }
-    if (phase !== 'aim') return
+    if (vPhase !== 'aim') return
     const fine = e.shiftKey ? 0.2 : 1
     if (arrows.includes(e.key)) {
       if (e.key === 'ArrowLeft') aim.current.angle -= 0.04 * fine
@@ -544,7 +727,7 @@ export function PuttDemo() {
   }
 
   const r = saved.record[saved.level]
-  const canPutt = mode === 'play' && phase === 'aim'
+  const canPutt = mode === 'play' && vPhase === 'aim'
 
   return (
     <div className={`lab-keys pt-room is-${saved.theme}`}>
@@ -565,7 +748,33 @@ export function PuttDemo() {
             ✎ Build a hole
           </button>
         </div>
-        {mode === 'play' && (
+        {mode === 'play' && (lab.live || opp === 'call') && (
+          <div className="lab-group" role="group" aria-label="Opponent">
+            <button
+              className="btn btn-ghost"
+              aria-pressed={opp === 'bot'}
+              onClick={() => {
+                if (opp === 'bot') return
+                stopHere()
+                setOpp('bot')
+                start(course)
+              }}
+            >
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={opp === 'call'}
+              onClick={() => {
+                stopHere()
+                setOpp('call')
+              }}
+            >
+              👥 With the call
+            </button>
+          </div>
+        )}
+        {mode === 'play' && opp === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer putts">
             {LEVELS.map((l) => (
               <button
@@ -584,42 +793,58 @@ export function PuttDemo() {
         )}
       </div>
 
+      {room && (
+        <CallTable
+          table={lab}
+          rules={puttRules}
+          sides={['the first ball', 'the second ball']}
+          levelNames={LEVEL_NAMES}
+          score={(g) => {
+            // fewest strokes first: "Bo wins, 18 to 23"
+            const t = totals(g)
+            return `, ${Math.min(t[0], t[1])} to ${Math.max(t[0], t[1])}`
+          }}
+          onCarryOn={carryOn}
+        />
+      )}
       {mode === 'play' && (
         <>
-          <div className="lab-controls" role="group" aria-label="Which holes">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={course.kind === 'course'}
-              onClick={() => start({ kind: 'course', holes: COURSE })}
-            >
-              The course · {COURSE.length} holes
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={course.kind === 'mine'}
-              disabled={!mine.length}
-              onClick={() => start({ kind: 'mine', holes: mine })}
-            >
-              Your holes · {mine.length}
-            </button>
-            {sentHole && (
+          {!room && (
+            <div className="lab-controls" role="group" aria-label="Which holes">
               <button
                 className="btn btn-ghost"
-                aria-pressed={course.kind === 'sent'}
-                onClick={() => start({ kind: 'sent', holes: [sentHole] })}
+                aria-pressed={course.kind === 'course'}
+                onClick={() => start({ kind: 'course', holes: COURSE })}
               >
-                The sent hole
+                The course · {COURSE.length} holes
               </button>
-            )}
-          </div>
+              <button
+                className="btn btn-ghost"
+                aria-pressed={course.kind === 'mine'}
+                disabled={!mine.length}
+                onClick={() => start({ kind: 'mine', holes: mine })}
+              >
+                Your holes · {mine.length}
+              </button>
+              {sentHole && (
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={course.kind === 'sent'}
+                  onClick={() => start({ kind: 'sent', holes: [sentHole] })}
+                >
+                  The sent hole
+                </button>
+              )}
+            </div>
+          )}
           <div className="pt-card-wrap">
             <table className="pt-card">
               <caption className="sr-only">Scorecard</caption>
               <thead>
                 <tr>
                   <th scope="row">Hole</th>
-                  {course.holes.map((_, i) => (
-                    <th key={i} scope="col" className={i === idx ? 'is-now' : ''}>
+                  {vCourse.holes.map((_, i) => (
+                    <th key={i} scope="col" className={i === vIdx ? 'is-now' : ''}>
                       {i + 1}
                     </th>
                   ))}
@@ -627,30 +852,55 @@ export function PuttDemo() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <th scope="row">You</th>
-                  {card.map((c, i) => (
-                    <td key={i} className={i === idx ? 'is-now' : ''}>
-                      {c.you ?? (i === idx && strokes ? `(${strokes})` : '·')}
-                    </td>
-                  ))}
-                  <td>{total('you')}</td>
-                </tr>
-                <tr>
-                  <th scope="row">{LEVEL_NAMES[level]}</th>
-                  {card.map((c, i) => (
-                    <td key={i} className={i === idx ? 'is-now' : ''}>
-                      {c.cpu ?? '·'}
-                    </td>
-                  ))}
-                  <td>{total('cpu')}</td>
-                </tr>
+                {cv ? (
+                  ([0, 1] as const).map((w) => (
+                    <tr key={w}>
+                      <th scope="row">{callName(w)}</th>
+                      {cv.card.map((c, i) => (
+                        <td key={i} className={i === vIdx ? 'is-now' : ''}>
+                          {c[w] ??
+                            (i === cv.hole && cv.up === w && cv.strokes ? `(${cv.strokes})` : '·')}
+                        </td>
+                      ))}
+                      <td>{cv.card.reduce((a, c) => a + (c[w] ?? 0), 0)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <>
+                    <tr>
+                      <th scope="row">You</th>
+                      {card.map((c, i) => (
+                        <td key={i} className={i === idx ? 'is-now' : ''}>
+                          {c.you ?? (i === idx && strokes ? `(${strokes})` : '·')}
+                        </td>
+                      ))}
+                      <td>{total('you')}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">{LEVEL_NAMES[level]}</th>
+                      {card.map((c, i) => (
+                        <td key={i} className={i === idx ? 'is-now' : ''}>
+                          {c.cpu ?? '·'}
+                        </td>
+                      ))}
+                      <td>{total('cpu')}</td>
+                    </tr>
+                  </>
+                )}
               </tbody>
             </table>
           </div>
-          <p className="mc-line" aria-live="polite">
-            {line}
-          </p>
+          {room ? (
+            said && (
+              <p className="muted pt-said" aria-live="polite">
+                {said}
+              </p>
+            )
+          ) : (
+            <p className="mc-line" aria-live="polite">
+              {line}
+            </p>
+          )}
         </>
       )}
 
@@ -686,7 +936,7 @@ export function PuttDemo() {
           label={
             mode === 'build'
               ? `A hole being built: ${draftHole ? 'it can be played' : 'the cup cannot be reached from the tee yet'}.`
-              : `Hole ${idx + 1}, ${hole.name}. ${line}`
+              : `Hole ${vIdx + 1}, ${hole.name}. ${room ? said : line}`
           }
           onPointerDown={onDown}
           onPointerMove={onMove}
@@ -790,7 +1040,7 @@ export function PuttDemo() {
         />
       </div>
 
-      {mode === 'play' && (
+      {mode === 'play' && !room && (
         <div className="lab-controls">
           {phase === 'between' && (
             <button className="btn" onClick={nextHole}>
@@ -913,14 +1163,16 @@ export function PuttDemo() {
         </>
       )}
 
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost}
-          {r.tied ? `, tied ${r.tied}` : ''}
-          {r.best ? ` · best round on the course ${r.best}` : ''}
-        </span>
-      </p>
-      {mode === 'play' && level !== saved.level && phase !== 'done' && (
+      {!room && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost}
+            {r.tied ? `, tied ${r.tied}` : ''}
+            {r.best ? ` · best round on the course ${r.best}` : ''}
+          </span>
+        </p>
+      )}
+      {!room && mode === 'play' && level !== saved.level && phase !== 'done' && (
         <p className="muted mc-note">The new level starts with the next round.</p>
       )}
       <div className="fw-panel">
@@ -955,7 +1207,9 @@ export function PuttDemo() {
         computer plays it; fewest strokes over the round wins. Easy, Fair and Hard all plan their
         putts the same way, and differ in how many they consider and how steady their hand is. Build
         your own holes too: paint grass, walls, sand and water, put down the tee and the cup, try
-        it, keep up to {MAX_HOLES}, and send one to someone by link.
+        it, keep up to {MAX_HOLES}, and send one to someone by link. In a call, 👥 With the call
+        plays the course against a friend — each of you putting each hole out in turn — or the two
+        of you on one ball against the computer’s.
       </p>
     </div>
   )

@@ -656,19 +656,24 @@ export function ReversiDemo() {
       <div className="fw-panel">
         <section aria-label="The board">
           <h3 className="fw-h">The board</h3>
-          <div className="lab-controls" role="group" aria-label="Board size">
-            {SIZES.map((n) => (
-              <button
-                key={n}
-                className="btn btn-ghost"
-                aria-pressed={saved.size === n}
-                aria-label={`${n} by ${n} squares`}
-                onClick={() => change({ size: n })}
-              >
-                {n}×{n}
-              </button>
-            ))}
-          </div>
+          {/* ⚠️ a match's board is the size it was challenged at. Offered here, a size pressed on a
+              finished match swapped the board on screen for a fresh local game, under the match's
+              own bar announcing who had won */}
+          {!inMatch && (
+            <div className="lab-controls" role="group" aria-label="Board size">
+              {SIZES.map((n) => (
+                <button
+                  key={n}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.size === n}
+                  aria-label={`${n} by ${n} squares`}
+                  onClick={() => change({ size: n })}
+                >
+                  {n}×{n}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="lab-controls" role="group" aria-label="Board">
             {BOARDS.map((bd) => (
               <button

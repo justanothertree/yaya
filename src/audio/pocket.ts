@@ -21,13 +21,20 @@ export const TOGETHER = 0.03
  * same instant.
  */
 export function melodyOf(notes: readonly Note[]): Note[] {
-  const order = [...notes].sort((a, b) => a.t - b.t || b.midi - a.midi)
-  const out: Note[] = []
+  return melodyIndex(notes).map((i) => ({ t: notes[i].t, dur: notes[i].dur, midi: notes[i].midi }))
+}
+
+/** melodyOf as indices into `notes`, in time order — for a caller that must find the note again */
+export function melodyIndex(notes: readonly Note[]): number[] {
+  const order = notes
+    .map((_, i) => i)
+    .sort((a, b) => notes[a].t - notes[b].t || notes[b].midi - notes[a].midi)
+  const out: number[] = []
   let groupAt = -Infinity
-  for (const n of order) {
-    if (n.t - groupAt < TOGETHER) continue
-    groupAt = n.t
-    out.push({ t: n.t, dur: n.dur, midi: n.midi })
+  for (const i of order) {
+    if (notes[i].t - groupAt < TOGETHER) continue
+    groupAt = notes[i].t
+    out.push(i)
   }
   return out
 }
@@ -305,6 +312,160 @@ export function makeRoom(
   return out
 }
 
+/**
+ * Each note held until the next one starts, unless a rest of a beat or more comes between them:
+ * how a voice sings a line, whatever the part's own articulation.
+ *
+ * ⚠️ MEASURED, 15 Nov 2026, by rendering the sung song to a WAV and reading it back: on a keys
+ * part played short (a quarter held for 60% of its beat, which is how most parts here are played)
+ * the voice stopped with every key, so a line came out one word at a time with 85–300ms of
+ * silence between them. And a line's last word went with it: "star", on a short quarter before a
+ * bar with no words, was sung for 313ms and gone. A singer joins those up. A real rest, a beat or
+ * more (the same line `place` draws a breath at), is kept, so a phrase still ends where the melody
+ * stops.
+ *
+ * ⚠️ FOR THE VOICE ONLY. The part keeps its own notes and plays them as it always did.
+ */
+export function legato(notes: readonly Note[], beat: number): Note[] {
+  return notes.map((n, i) => {
+    const next = notes[i + 1]
+    const gap = next ? next.t - (n.t + n.dur) : Infinity
+    return gap > 1e-9 && gap < beat - 1e-6 ? { ...n, dur: next.t - n.t } : { ...n }
+  })
+}
+
+/**
+ * The last word before a rest held to the end of its beat, at least — in place, on a line that is
+ * already sung (after legato and the fit), because how long a word rings is not room for more
+ * words: measured, ringing BEFORE the fit let four syllables share one staccato eighth.
+ *
+ * ⚠️ A PHRASE THAT ENDS ON A SHORT NOTE ENDS ON A SHORT WORD OTHERWISE, which is the cut-off the
+ * WAV showed. A singer lets it ring. Never into the next note of the part (`melody`), never into
+ * the next sung note, and never past `len`, the next pass's downbeat.
+ */
+export function ringOut(
+  sung: SungNote[],
+  melody: readonly Note[],
+  beat: number,
+  len = Infinity,
+): SungNote[] {
+  let m = 0
+  sung.forEach((s, i) => {
+    while (m < melody.length && melody[m].t <= s.t + 1e-9) m++
+    const end = s.t + s.dur
+    const next = Math.min(sung[i + 1]?.t ?? Infinity, melody[m]?.t ?? Infinity, len)
+    if (next - end < beat - 1e-6) return
+    const ring = Math.min(Math.ceil(end / beat - 1e-6) * beat, next)
+    if (ring > end) s.dur = ring - s.t
+  })
+  return sung
+}
+
+/** the shortest a syllable is ever sung — shorter, and the words stop being words and rush */
+export const SHORTEST = 0.12
+
+/**
+ * Where a note shorter than a beat would be shared: the strongest point of the grid inside it,
+ * nearer the middle on a close call (makeRoom's own rule), leaving both halves at least `floor`.
+ */
+function cutIn(n: Note, grid: Lattice, beat: number, perBar: number, floor: number): number | null {
+  const mid = n.t + n.dur / 2
+  let cut: number | null = null
+  let score = -Infinity
+  for (let p = nextOn(grid, n.t); p <= n.t + n.dur - floor + 1e-9; p = nextOn(grid, p)) {
+    if (p < n.t + floor - 1e-9) continue
+    const s = strength(p, beat, perBar) - Math.abs(p - mid) / n.dur
+    if (s > score + 1e-9) {
+      score = s
+      cut = p
+    }
+  }
+  return cut
+}
+
+/**
+ * Still more syllables than notes once every note a beat or longer has been shared (makeRoom):
+ * share the shorter ones too, down to a sixteenth and never under SHORTEST, and let the WORDS
+ * choose which. Each note takes one syllable or two, the best of every way of doing that by
+ * dynamic programming, scored as `place` scores a syllable on a note — so a light syllable ("the",
+ * the "-ing" of calling) takes the second half of a note and the stressed ones keep the notes that
+ * start on the beat. What still does not fit is left for the caller to count.
+ *
+ * ⚠️ MEASURED, 15 Nov 2026: "and the cit-y lights are call-ing me home" on a bar of eight eighths
+ * at 96 bpm sang to "call-ing" and stopped. "me home" was counted as spare and never heard,
+ * though a sixteenth there is 156ms, longer than many a sung syllable. makeRoom never cuts a note
+ * shorter than a beat, which is right as a FIRST resort and wrong as the last.
+ *
+ * ⚠️ AND NO FURTHER THAN THAT. A note shared three ways, or a syllable under 120ms, is a rush, and
+ * the box says what did not fit rather than the voice gabbling it.
+ */
+export function crowd(
+  notes: readonly Note[],
+  syls: readonly Syllable[],
+  beat: number,
+  fine: Lattice,
+  perBar = 4,
+): Note[] {
+  const N = notes.length
+  if (syls.length <= N) return notes.map((n) => ({ ...n }))
+  const steps = fine.at.map((a, i) => ((fine.at[i + 1] ?? 1) - a) * fine.beat)
+  const floor = Math.max(Math.min(...steps), SHORTEST)
+  const cuts = notes.map((n) => cutIn(n, fine, beat, perBar, floor))
+  const K = Math.min(syls.length, N + cuts.filter((c) => c !== null).length)
+  const best = Array.from({ length: N + 1 }, () => new Array<number>(K + 1).fill(-Infinity))
+  const took = Array.from({ length: N + 1 }, () => new Array<number>(K + 1).fill(0))
+  best[0][0] = 0
+  for (let i = 0; i < N; i++)
+    for (let k = 0; k < K; k++) {
+      if (best[i][k] === -Infinity) continue
+      const n = notes[i]
+      const one = best[i][k] + sylGain(syls[k], n.t, n.dur, beat, perBar)
+      if (one > best[i + 1][k + 1]) {
+        best[i + 1][k + 1] = one
+        took[i + 1][k + 1] = 1
+      }
+      const c = cuts[i]
+      if (c === null || k + 2 > K) continue
+      const end = n.t + n.dur
+      /* the shorter of the two halves: a cut costs more the nearer it leaves one to the floor */
+      const cost = (0.5 * floor) / Math.min(c - n.t, end - c)
+      const two =
+        best[i][k] +
+        sylGain(syls[k], n.t, c - n.t, beat, perBar) +
+        sylGain(syls[k + 1], c, end - c, beat, perBar) -
+        cost
+      if (two > best[i + 1][k + 2]) {
+        best[i + 1][k + 2] = two
+        took[i + 1][k + 2] = 2
+      }
+    }
+  const out: Note[] = []
+  for (let i = N, k = K; i > 0; i--) {
+    const n = notes[i - 1]
+    const c = cuts[i - 1]
+    if (took[i][k] === 2 && c !== null)
+      out.unshift({ ...n, dur: c - n.t }, { t: c, dur: n.t + n.dur - c, midi: n.midi })
+    else out.unshift({ ...n })
+    k -= took[i][k]
+  }
+  return out
+}
+
+/**
+ * The notes a line of `syls` is sung on when it has more syllables than `held` has notes: long
+ * notes shared first (makeRoom), then short ones where the words say (crowd). The one path for
+ * this, so the notes the voice sings and the notes "Add notes" writes into a part are the same.
+ */
+export function share(
+  held: readonly Note[],
+  syls: readonly Syllable[],
+  beat: number,
+  fine: Lattice,
+  perBar = 4,
+): Note[] {
+  return crowd(makeRoom(held, syls.length, beat, fine, perBar), syls, beat, fine, perBar)
+}
+
 export type Grid = {
   /** seconds per beat */
   beat: number
@@ -321,9 +482,12 @@ export type Grid = {
  *
  * - One voice: a chord sings its top note (melodyOf).
  * - On the grid: the room's Snap, in the line's own feel (feelOf), starts and ends (snapToGrid).
- * - Too many syllables: long notes split on the strongest beat inside them (makeRoom), and
- *   whatever still does not fit is counted, never dropped silently.
+ * - Too many syllables: long notes split on the strongest beat inside them (makeRoom), then
+ *   shorter ones shared between two syllables where the words say (crowd), and whatever still
+ *   does not fit is counted, never dropped silently.
  * - Too many notes: the syllables are SPREAD (place), and the notes between them are holds.
+ * - Joined up: each sung note held to the next unless a beat's rest comes between (legato), and
+ *   the last word before a rest rung to the end of its beat (ringOut).
  */
 export function fitSyllables(
   notes: readonly Note[],
@@ -332,16 +496,45 @@ export function fitSyllables(
 ): { sung: SungNote[]; spare: number } {
   const melody = melodyOf(notes)
   const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
-  const perBar = grid.perBar ?? 4
-  const fine = levels[levels.length - 1]
   const snapped = snapToGrid(melody, levels, lean, grid.len)
-  const line = makeRoom(snapped, syls.length, grid.beat, fine, perBar)
-  if (syls.length >= line.length || !syls.length) return assignSyllables(line, syls)
-  const at = place(line, syls, grid.beat, perBar)
+  const fit = fitLine(snapped, syls, grid.beat, levels[levels.length - 1], grid.perBar ?? 4)
+  ringOut(fit.sung, snapped, grid.beat, grid.len)
+  return fit
+}
+
+/**
+ * Syllables onto notes that are ALREADY on the grid — the half of fitSyllables after the feel and
+ * the snap, so a song can be snapped once and fitted bar by bar (fitByBar).
+ *
+ * `carry` is the syllable sung just before this line, when there was one: a line that opens on
+ * `_` holds that vowel on, as `_` does inside a line, instead of coming in on "oo".
+ *
+ * `held` is the same notes as the voice will hold them (legato): by default each to the next one
+ * here, and in a song to the next note of the part, across the bar line (fitByBar).
+ *
+ * ⚠️ WHERE A SYLLABLE GOES IS ASKED OF THE NOTES AS PLAYED, AND HOW LONG IT IS SUNG OF `held`.
+ * `place` gives a stressed syllable a little more for a long note, and held to the next note an
+ * off-beat slap that leaves a gap after it is as long as the beat it leads to: measured, the Funk
+ * starter's slap bass sang "dark" off the downbeat until placing went back to the played lengths.
+ * Sharing a note is the other way round: a short quarter has a quarter's room to share.
+ */
+export function fitLine(
+  snapped: readonly Note[],
+  syls: readonly Syllable[],
+  beat: number,
+  fine: Lattice,
+  perBar = 4,
+  carry?: string,
+  held: readonly Note[] = legato(snapped, beat),
+): { sung: SungNote[]; spare: number } {
+  if (syls.length > snapped.length)
+    return assignSyllables(share(held, syls, beat, fine, perBar), syls, carry)
+  if (syls.length === snapped.length || !syls.length) return assignSyllables(held, syls, carry)
+  const at = place(snapped, syls, beat, perBar)
   const sung: SungNote[] = []
   let k = -1
-  let last = 'oo'
-  line.forEach((n, i) => {
+  let last = carry ?? 'oo'
+  held.forEach((n, i) => {
     if (at[k + 1] === i) {
       k++
       const s = syls[k]
@@ -351,9 +544,94 @@ export function fitSyllables(
         return
       }
     }
-    sung.push({ ...n, text: last, hold: i > 0 })
+    sung.push({ ...n, text: last, hold: i > 0 || carry !== undefined })
   })
   return { sung, spare: 0 }
+}
+
+/** One bar's share of a song's lyrics: what it sings, what did not fit, and how many notes it had. */
+export type BarFit = { sung: SungNote[]; spare: number; notes: number }
+
+/**
+ * A song's lyrics, one line per bar, onto the notes a part plays across the whole song.
+ *
+ * ⚠️ THE FEEL AND THE SNAP ARE ASKED OF THE WHOLE PART, ONCE. Fitting bar by bar with
+ * fitSyllables would read swing from three or four notes at a time, and a bar that happened to
+ * look straight would be sung straight in the middle of a swung song.
+ *
+ * ⚠️ A BAR'S WORDS GO ON THE NOTES THAT START IN THAT BAR, after the snap — so a note played a
+ * hair early still belongs to the downbeat it was meant for. A bar with no words sings nothing,
+ * whatever notes it has: the lyric decides where the voice is, which is how a verse leaves a gap
+ * for the chorus. Words in a bar with no notes are counted as spare, never dropped silently.
+ *
+ * `notes` is in SONG time (see notesInSong in songLyrics.ts), and `grid.len` is the song's length.
+ */
+export function fitByBar(
+  notes: readonly Note[],
+  lines: readonly (readonly Syllable[])[],
+  grid: Grid & { barLen: number },
+): { sung: SungNote[]; bars: BarFit[] } {
+  const { snapped, held, fine } = songMelody(notes, grid)
+  const perBar = grid.perBar ?? 4
+  const sung: SungNote[] = []
+  const bars: BarFit[] = []
+  let carry: string | undefined
+  lines.forEach((syls, b) => {
+    const from = b * grid.barLen
+    const inBar = (n: Note) => n.t >= from - 1e-6 && n.t < from + grid.barLen - 1e-6
+    const mine = snapped.filter(inBar)
+    if (!syls.length) {
+      bars.push({ sung: [], spare: 0, notes: mine.length })
+      carry = undefined
+      return
+    }
+    const fit = fitLine(mine, syls, grid.beat, fine, perBar, carry, held.filter(inBar))
+    bars.push({ ...fit, notes: mine.length })
+    sung.push(...fit.sung)
+    /* a hold carries on only from the bar just before; a silent bar between them is a rest */
+    carry = fit.sung.length ? fit.sung[fit.sung.length - 1].text : undefined
+  })
+  /* the same notes as each bar's own list, so a word rung on is rung on in both */
+  ringOut(sung, snapped, grid.beat, grid.len)
+  return { sung, bars }
+}
+
+/**
+ * A song's melody as fitByBar sings it: one voice (melodyOf), on the grid in its own feel
+ * (feelOf, snapToGrid), and as held (legato) — across the bar lines too, so a line's last word
+ * rings on to the next bar's first note rather than stopping with the key. `source[i]` is the
+ * index in `notes` of `snapped[i]`.
+ *
+ * ⚠️ snapToGrid drops a note only when no point is left for it before the loop comes round, which
+ * is one of a crowd at the very end — so the notes it keeps are the first ones, in order.
+ */
+export function songMelody(
+  notes: readonly Note[],
+  grid: Grid,
+): { snapped: Note[]; held: Note[]; fine: Lattice; source: number[] } {
+  const source = melodyIndex(notes)
+  const melody = source.map((i) => ({ t: notes[i].t, dur: notes[i].dur, midi: notes[i].midi }))
+  const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
+  const snapped = snapToGrid(melody, levels, lean, grid.len)
+  return {
+    snapped,
+    held: legato(snapped, grid.beat),
+    fine: levels[levels.length - 1],
+    source: source.slice(0, snapped.length),
+  }
+}
+
+/**
+ * What one syllable earns on a note starting at `t`: a stressed one the strength of the beat, plus
+ * a little for a long note; a light one ("the", the "-ter" of glitter) loses a little for a strong
+ * beat, because it would rather be off it. A typed hold earns nothing either way.
+ */
+function sylGain(s: Syllable, t: number, dur: number, beat: number, perBar: number): number {
+  if (s.hold) return 0
+  const str = strength(t, beat, perBar)
+  const lands = s.stress >= 0.75 ? s.stress * (str + 0.3 * Math.min(1, dur / beat)) : 0
+  const dodges = s.stress < 0.75 ? -(0.75 - s.stress) * 2 * str : 0
+  return lands + dodges
 }
 
 /**
@@ -386,11 +664,7 @@ export function place(
   const gain = (k: number, i: number) => {
     const s = syls[k]
     if (s.hold) return 0
-    const str = strength(line[i].t, beat, perBar)
-    const lands = s.stress >= 0.75 ? s.stress * (str + 0.3 * Math.min(1, line[i].dur / beat)) : 0
-    /* a light syllable ("the", the "-ter" of glitter) would rather be off the beat */
-    const dodges = s.stress < 0.75 ? -(0.75 - s.stress) * 2 * str : 0
-    return lands + dodges + (s.start && rest[i] ? 0.4 : 0)
+    return sylGain(s, line[i].t, line[i].dur, beat, perBar) + (s.start && rest[i] ? 0.4 : 0)
   }
   /* the holds of syllable k over the notes strictly between `from` and `to` */
   const holds = (k: number, from: number, to: number) => {

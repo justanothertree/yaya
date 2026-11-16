@@ -17,3 +17,11 @@ export const MATCH_NAMES: Record<string, string> = {
 /** the toy's name, for a bell entry or a row, whatever the toy */
 export const toyName = (demo: string) =>
   Object.hasOwn(MATCH_NAMES, demo) ? MATCH_NAMES[demo] : 'a Lab game'
+
+/**
+ * The computer's levels for Together, easiest first: the same three for every toy that has a
+ * match. Here, beside the names, so a page that only offers a challenge (a profile) can list them
+ * without importing every toy's rules; games.test.ts checks each toy's own list agrees.
+ */
+export const MATCH_LEVELS = ['easy', 'fair', 'hard'] as const
+export const LEVEL_NAMES: Record<string, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
