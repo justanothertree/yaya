@@ -3,6 +3,7 @@ import { ARCADE } from './arcade'
 import { ARCHERY_KEY } from '../../gpu/archery'
 import { ARTILLERY_KEY } from '../../gpu/artillery'
 import { BOWLING_KEY } from '../../gpu/bowling'
+import { ONLINE_KEY } from '../social/online'
 import { BRICKS_KEY } from '../../gpu/bricks'
 import { CURLING_KEY } from '../../gpu/curling'
 import { DARTS_KEY } from '../../gpu/darts'
@@ -84,6 +85,18 @@ describe('arcade share readers', () => {
       'best game 214, 37 strikes in all, won 1 of 3 games against the Fair computer',
     )
     expect(line('bowling', BOWLING_KEY, { level: 'hard', lane: 'neon' })).toBeNull()
+  })
+
+  it('bowling adds games in a call, and shares them with nothing against the computer', () => {
+    const online = JSON.stringify({ bowling: { versus: { won: 2, lost: 2, drawn: 1 } } })
+    const saved = JSON.stringify({ record: { easy: { won: 1, lost: 0, best: 120, strikes: 2 } } })
+    const both = (k: string) => (k === ONLINE_KEY ? online : k === BOWLING_KEY ? saved : null)
+    expect(ARCADE.bowling(both)).toBe(
+      'best game 120, 2 strikes in all, won 1 of 1 games against the Easy computer, beat friends in 2 of 5 online games (1 drawn)',
+    )
+    expect(ARCADE.bowling((k) => (k === ONLINE_KEY ? online : null))).toBe(
+      'beat friends in 2 of 5 online games (1 drawn)',
+    )
   })
 
   it('bricks: best score and furthest wall', () => {

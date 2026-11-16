@@ -12,6 +12,7 @@ import {
   ARTILLERY_KEY,
   LEVELS as ARTILLERY_LEVELS,
 } from '../../gpu/artillery'
+import { onlineLine } from '../social/online'
 import { readSaved as readBowling, BOWLING_KEY, LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
 import { readSaved as readBricks, BRICKS_KEY } from '../../gpu/bricks'
 import { readSaved as readCurling, CURLING_KEY, LEVELS as CURLING_LEVELS } from '../../gpu/curling'
@@ -148,6 +149,7 @@ export const ARCADE: Record<string, Reader> = {
       best > 0 && `best game ${best}`,
       strikes > 0 && `${n(strikes)} strikes in all`,
       beaten(BOWLING_LEVELS, r, 'games'),
+      onlineLine(read, 'bowling'),
     ])
   },
   bricks: (read) => {
