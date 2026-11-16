@@ -106,6 +106,7 @@ import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
 import { packMove as packFence, replay as fencesReplay } from '../../../src/gpu/fencesRoom'
+import { holdemRules } from '../../../src/gpu/holdemRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -3840,6 +3841,85 @@ describe('liar’s dice by turns: the cups and their seed kept back', () => {
       expect(((p.move as { then?: unknown[] }).then ?? []).length).toBe(1)
       row = after(row, p)
       expect(row.turn).toBe(1)
+    }
+  })
+})
+
+describe('hold’em by turns: the deck and both pairs of hole cards kept back', () => {
+  const pk = (over: Partial<Row> = {}) => invite({ demo_id: 'poker', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as number[]
+  }
+  type Sec = { holes: number[][]; deck: number[] }
+  type St = {
+    past: { actions: unknown[]; board: number[]; shown: (number[] | null)[] }[]
+    cur: { actions: unknown[]; board: number[] }
+  }
+
+  it('deals with the yes, and shows each player their own two cards only', () => {
+    const p0 = decide(pk(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(sec.deck).toHaveLength(48)
+    expect(JSON.stringify(p0.state)).not.toMatch(/hole|deck/)
+    const row = after(pk(), p0)
+    expect(mine(row, A)).toEqual(sec.holes[0])
+    expect(mine(row, B)).toEqual(sec.holes[1])
+    // Ann has the button, so the small blind, and speaks first before the flop
+    expect(row.turn).toBe(0)
+  })
+
+  it('a fold ends the hand with nothing shown, and the server deals the next with the button moved', () => {
+    let row = after(pk(), decide(pk(), B, { op: 'accept' }))
+    const before = row.secret as Sec
+    const p = decide(row, A, move(row.seq, { kind: 'fold' }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    row = after(row, p)
+    const st = row.state as St
+    expect(st.past).toHaveLength(1)
+    expect(st.past[0].shown).toEqual([null, null])
+    expect(JSON.stringify(row.state)).not.toContain(JSON.stringify(before.holes[0]))
+    // Bo has the button now, and with it the first word
+    expect(row.turn).toBe(1)
+    expect((row.secret as Sec).holes).not.toEqual(before.holes)
+    // Ann's small blind went to Bo: the stacks a browser plays back from what travelled
+    const t = holdemRules.decode(row.state)!.t
+    expect(t.seats.map((x) => x.chips + x.put)).toEqual([990, 1010])
+  })
+
+  it('turns the flop off the top of the deck it kept back', () => {
+    let row = after(pk(), decide(pk(), B, { op: 'accept' }))
+    const deck = (row.secret as Sec).deck
+    row = after(row, decide(row, A, move(row.seq, { kind: 'call' })))
+    expect(status(decide(row, B, move(row.seq, { kind: 'fold' })))).toBe(400)
+    row = after(row, decide(row, B, move(row.seq, { kind: 'check' })))
+    expect((row.state as St).cur.board).toEqual([deck[47], deck[46], deck[45]])
+    // heads up, the big blind speaks first after the flop
+    expect(row.turn).toBe(1)
+  })
+
+  it('refuses a raise of an odd amount, and a stored deck that holds a card twice', () => {
+    const row = after(pk(), decide(pk(), B, { op: 'accept' }))
+    expect(status(decide(row, A, move(row.seq, { kind: 'raise', to: 39.5 })))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, { kind: 'raise', to: 5000 })))).toBe(400)
+    const sec = row.secret as Sec
+    const bad = { ...sec, deck: [...sec.deck.slice(1), sec.holes[1][0]] }
+    expect(status(decide({ ...row, secret: bad }, A, move(row.seq, { kind: 'call' })))).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = pk({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const p = decide(row, A, move(row.seq, { kind: 'call' }))
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      expect(((p.move as { then?: unknown[] }).then ?? []).length).toBeGreaterThan(0)
+      row = after(row, p)
+      // the friends take the seat's decisions in turn: Ann said call, so it is Bo's word next
+      expect(row.turn).toBe(1)
+      expect(row.status).toBe('active')
     }
   })
 })
