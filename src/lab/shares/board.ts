@@ -161,6 +161,7 @@ export const BOARD: Record<string, Reader> = {
     return join(
       r.geese.won > 0 && wonOf(r.geese, 'as the geese'),
       r.fox.won > 0 && wonOf(r.fox, 'as the fox'),
+      onlineLine(read, 'fox'),
     )
   },
   gin: (read) =>

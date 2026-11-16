@@ -22,8 +22,14 @@ import {
   type Side,
 } from './fox'
 import { useKept } from './kept'
+import { foxRules } from './foxRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { meadow: 'Meadow', snow: 'Snow', dusk: 'Dusk' }
 const COLS = 'ABCDEFG'
@@ -51,10 +57,24 @@ export function FoxDemo() {
   const refs = useRef<Map<number, HTMLButtonElement>>(new Map())
   const recorded = useRef(false)
 
-  const done = over(game)
-  const computer = mode === 'bot' && !done && game.turn !== you
-  const yours = !done && !computer
-  const moves = yours ? movesFor(game) : []
+  /* ── the call's room: the seats are the sides, the geese first; the game travels as its paths */
+  const lab = useLabRoom('fox', foxRules)
+  const words = tableSeats(lab, foxRules)
+  const room = mode === 'call' ? lab.room : null
+  /** the game on screen: the call's in a call, else this one */
+  const view = room ? room.game.g : game
+  /** who plays a side, for its card: you, the computer, or the friend sitting there */
+  const sideName = (s: Side) => {
+    if (!room) return mode === 'bot' ? (you === s ? 'you' : 'computer') : ''
+    if (room.mode === 'together') return s === 'geese' ? 'together' : 'computer'
+    const who = words.who(room.seats[s === 'geese' ? 0 : 1])
+    return who === 'You' ? 'you' : who
+  }
+
+  const done = over(view)
+  const computer = mode === 'bot' && !over(game) && game.turn !== you
+  const yours = room ? lab.live && myTurn(foxRules, room) : mode !== 'call' && !done && !computer
+  const moves = yours ? movesFor(view) : []
   /** where the picked piece can end up, by the move with the most takes there */
   const targets = new Map<number, Move>()
   if (picked !== null)
@@ -65,7 +85,7 @@ export function FoxDemo() {
         if (!had || m.takes.length > had.takes.length) targets.set(end, m)
       }
   const movable = new Set(moves.map((m) => m.path[0]))
-  const lastSet = new Set(game.last)
+  const lastSet = new Set(view.last)
 
   const settle = (g: Game, m: Move, who: 'you' | 'computer' | Side) => {
     setGame(g)
@@ -143,6 +163,12 @@ export function FoxDemo() {
     setCursor(i)
     if (!yours) return
     const m = picked !== null ? targets.get(i) : undefined
+    if (m && room) {
+      // in the call the host decides: this asks it, and the board comes back with everybody's
+      setPicked(null)
+      lab.act({ t: 'move', move: m })
+      return
+    }
     if (m) {
       settle(play(game, m), m, mode === 'bot' ? 'you' : game.turn)
       return
@@ -183,10 +209,27 @@ export function FoxDemo() {
     }
   }
 
-  const left = game.geese.size
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the board on screen,
+   * keeping their side — or starts a new game if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const side: Side = r?.mode === 'versus' && words.mySeat === 1 ? 'fox' : 'geese'
+    if (!r || over(r.game.g)) return fresh('bot', side)
+    recorded.current = false
+    setMode('bot')
+    setYou(side)
+    setLevel(saved.level)
+    setGame(r.game.g)
+    setPicked(null)
+    setLine(r.game.g.turn === side ? 'Your move.' : 'The computer is thinking…')
+  }
+
+  const left = view.geese.size
   const record = saved.record[you]
   const describe = (i: number) => {
-    const what = game.fox === i ? 'the fox' : game.geese.has(i) ? 'a goose' : 'empty'
+    const what = view.fox === i ? 'the fox' : view.geese.has(i) ? 'a goose' : 'empty'
     const t = targets.get(i)
     return `${pointName(i)}: ${what}${picked === i ? ', picked' : ''}${t ? (t.takes.length ? `, move here taking ${t.takes.length}` : ', move here') : ''}${lastSet.has(i) ? ', last move' : ''}`
   }
@@ -208,6 +251,18 @@ export function FoxDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                setMode('call')
+                setPicked(null)
+              }}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <>
@@ -243,27 +298,49 @@ export function FoxDemo() {
             </div>
           </>
         )}
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={foxRules}
+          sides={['the geese', 'the fox']}
+          levelNames={LEVEL_NAMES}
+          score={(d) =>
+            d.g.winner === 'geese'
+              ? ' — the fox is hemmed in'
+              : d.g.winner === 'fox'
+                ? d.g.taken >= TAKE_TO_WIN
+                  ? ` — the fox has taken ${d.g.taken}`
+                  : ' — the geese stopped stepping forward'
+                : null
+          }
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
-        <div className={`dice-score${game.turn === 'geese' && !done ? ' is-up' : ''}`}>
-          <span>Geese{mode === 'bot' ? (you === 'geese' ? ' · you' : ' · computer') : ''}</span>
+        <div className={`dice-score${view.turn === 'geese' && !done ? ' is-up' : ''}`}>
+          <span>Geese{sideName('geese') ? ` · ${sideName('geese')}` : ''}</span>
           <strong>{left}</strong>
           <span className="muted">
-            {game.idle ? `${IDLE_LIMIT - game.idle} moves to step forward` : 'left on the board'}
+            {view.idle ? `${IDLE_LIMIT - view.idle} moves to step forward` : 'left on the board'}
           </span>
         </div>
-        <div className={`dice-score${game.turn === 'fox' && !done ? ' is-up' : ''}`}>
-          <span>🦊 Fox{mode === 'bot' ? (you === 'fox' ? ' · you' : ' · computer') : ''}</span>
-          <strong>{game.taken}</strong>
+        <div className={`dice-score${view.turn === 'fox' && !done ? ' is-up' : ''}`}>
+          <span>🦊 Fox{sideName('fox') ? ` · ${sideName('fox')}` : ''}</span>
+          <strong>{view.taken}</strong>
           <span className="muted">taken of {TAKE_TO_WIN}</span>
         </div>
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="fg-board"
@@ -281,16 +358,16 @@ export function FoxDemo() {
               y2={Math.floor(b / N) + 0.5}
             />
           ))}
-          {game.last.length > 1 && (
+          {view.last.length > 1 && (
             <polyline
               className="fg-trail"
-              points={game.last.map((i) => `${(i % N) + 0.5},${Math.floor(i / N) + 0.5}`).join(' ')}
+              points={view.last.map((i) => `${(i % N) + 0.5},${Math.floor(i / N) + 0.5}`).join(' ')}
             />
           )}
         </svg>
         {POINTS.map((i) => {
-          const goose = game.geese.has(i)
-          const fox = game.fox === i
+          const goose = view.geese.has(i)
+          const fox = view.fox === i
           const t = saved.guides ? targets.get(i) : undefined
           return (
             <button
