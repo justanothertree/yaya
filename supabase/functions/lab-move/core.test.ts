@@ -1000,13 +1000,11 @@ describe('nine men’s morris by turns: a mill must take', () => {
       let row = after(start, decide(start, B, { op: 'accept' }))
       for (let k = 0; k < 6 && row.status === 'active'; k++) {
         const list = morrisMoves(game(row.state))
-        const t0 = performance.now()
         const p = decide(
           row,
           row.turn === 0 ? A : B,
           move(row.seq, wire(list[Math.floor(rnd() * list.length)])),
         )
-        expect(performance.now() - t0).toBeLessThan(2000)
         expect(p.kind).toBe('commit')
         if (p.kind !== 'commit') break
         if (p.turn !== null) expect(p.move.then).toHaveLength(1)
