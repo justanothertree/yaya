@@ -21211,6 +21211,12 @@ button.chron-runnote-n {
   width: 100%;
   min-width: 0;
 }
+/* your keys' volume at the top of ⚙ Sound (KeysVolume): the Mix row, drawn on the knobs' columns
+   so its slider lines up with the effects under it — Mix's fourth column is a mute it has not got */
+.inst-sheet .inst-more .inst-mix-row {
+  grid-template-columns: 5.4rem minmax(60px, 1fr) 2.6rem;
+  gap: 0.5rem;
+}
 /* ⚠️ 24px WITH A MOUSE — the audit measured the ⋯ sheet's Volume at 343×16 at 1440 (WCAG 2.5.8).
    Only for a fine pointer: on a touch screen the site's slider rule already makes these 36px, and
    an unconditional rule written later in this file would quietly take that back down to 24. */

@@ -8,6 +8,7 @@ import { KitBar } from '../ui/KitBar'
 import { FAMILIES, familyVoices } from '../audio/families'
 import { fxWord } from './fxWord'
 import { KNOBS } from './knobs'
+import { KeysVolume } from './KeysVolume'
 import { KnobRow } from './rowParts'
 import { Sheet } from './Sheet'
 import type { Dispatch, SetStateAction } from 'react'
@@ -152,6 +153,10 @@ export function SoundPanel({ sound }: { sound: SoundSettings }) {
           onClose={() => setMoreSound(false)}
         >
           <div className="inst-more">
+            {/* how loud your keys are, with the rest of how they sound — see KeysVolume */}
+            <div className="inst-mix">
+              <KeysVolume label="Volume" />
+            </div>
             <div className="inst-row">
               {/**
                * One key, a part.
