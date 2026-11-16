@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rng } from './bricks'
-import { bowl, plan, score, wobble, type Level, type Shot } from './bowling'
+import { bowl, score, wobble, type Shot } from './bowling'
 import { MAX_BALLS, bowlingRules as R, inside, readBall, type BowlingGame } from './bowlingRoom'
 
 const ALL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -10,14 +10,25 @@ const GUTTER: Shot = { x: 0.5, angle: 0.05, speed: 7.6, hook: 0 }
 const MIDDLE: Shot = { x: 0, angle: 0, speed: 8.6, hook: 0 }
 const wire = (balls: Shot[]) => ({ balls: balls.map((s) => [s.x, s.angle, s.speed, s.hook]) })
 
-/** a whole match between two computer bowlers through the room's own rules, every ball of it */
-function playThrough(seed: number, levels: [Level, Level] = ['fair', 'easy']) {
+/**
+ * A whole match through the room's own rules, every ball of it, from bowlers whose stance, line,
+ * speed and hook are all drawn at random inside what a bowler here can send: strikes, spares,
+ * splits and gutters all come up. Not the computer's plan — that searches a few hundred balls
+ * for each one bowled, and a match of it took 9 seconds here and over 20 on a busy runner. The
+ * computer's own ball is asked of the rules below, once.
+ */
+function playThrough(seed: number) {
   const rand = rng(seed ^ 0x51ed27)
   let g = R.fresh()
   const seen: BowlingGame[] = [g]
   while (R.turn(g) !== null) {
     const side = R.turn(g) as 0 | 1
-    const s = inside(wobble(plan(g.standing, levels[side], rand), levels[side], rand))
+    const s = inside({
+      x: (rand() * 2 - 1) * 0.4,
+      angle: (rand() * 2 - 1) * 0.03,
+      speed: 6.6 + rand() * 2,
+      hook: rand() < 0.5 ? 0 : rand(),
+    })
     expect(R.legal(g, s, side)).toBe(true)
     expect(R.legal(g, s, side === 0 ? 1 : 0)).toBe(false)
     g = R.apply(g, s, side)
@@ -28,8 +39,15 @@ function playThrough(seed: number, levels: [Level, Level] = ['fair', 'easy']) {
 
 describe('bowling on the wire', () => {
   it('replays to the very same game from its balls, at every ball of real matches', () => {
-    for (const seed of [1, 2]) {
+    let strikes = 0
+    let spares = 0
+    for (const seed of [1, 2, 3, 4]) {
       const { g, seen } = playThrough(seed)
+      for (const d of seen.slice(1)) {
+        const { standing, roll } = d.last!
+        if (roll.felled.length === 10) strikes++
+        else if (standing.length < 10 && roll.felled.length === standing.length) spares++
+      }
       expect(g.rolls[0].length).toBeGreaterThanOrEqual(11)
       expect(g.rolls[1].length).toBeGreaterThanOrEqual(11)
       for (const d of seen) {
@@ -47,6 +65,9 @@ describe('bowling on the wire', () => {
       const [a, b] = [score(g.rolls[0]), score(g.rolls[1])]
       expect(R.result!(g)).toBe(a > b ? 0 : b > a ? 1 : 'draw')
     }
+    // the matches were worth replaying: racks cleared both ways, not only open frames
+    expect(strikes).toBeGreaterThan(0)
+    expect(spares).toBeGreaterThan(0)
   })
 
   it('keeps the last ball’s path for showing it, and the pins it was bowled at', () => {
