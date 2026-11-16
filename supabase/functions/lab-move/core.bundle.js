@@ -699,7 +699,7 @@ function search$a(p, depth, alpha, beta, ply, budget2) {
 const LEVELS$q = ["easy", "fair", "hard"];
 const DEPTH$7 = { easy: 1, fair: 2, hard: 3 };
 const CAP = { easy: 1e9, fair: 1e9, hard: 35e3 };
-function choose$j(p, level, rand = Math.random, history2 = []) {
+function choose$k(p, level, rand = Math.random, history2 = []) {
   const list = order$2(moves$6(p));
   if (level === "easy" && rand() < 0.2) return list[Math.floor(rand() * list.length)];
   let settled = [list[0]];
@@ -726,7 +726,7 @@ function choose$j(p, level, rand = Math.random, history2 = []) {
   }
   return settled[Math.floor(rand() * settled.length)];
 }
-const MAX_MOVES$4 = 600;
+const MAX_MOVES$5 = 600;
 const uci = (m) => `${sqName(m.from)}${sqName(m.to)}${m.promo.toLowerCase()}`;
 function replay$k(list) {
   const turns = [{ pos: fromFen(START$1), move: null, name: "" }];
@@ -750,12 +750,12 @@ const history = (g) => g.turns.map((t) => posKey(t.pos));
 const chessRules = {
   fresh: () => replay$k([]),
   turn: (g) => g.over ? null : posOf(g).turn === "w" ? 0 : 1,
-  legal: (g, code2, by) => !g.over && (by === void 0 || (by === 0 ? "w" : "b") === posOf(g).turn) && g.list.length < MAX_MOVES$4 && moves$6(posOf(g)).some((m) => uci(m) === code2),
+  legal: (g, code2, by) => !g.over && (by === void 0 || (by === 0 ? "w" : "b") === posOf(g).turn) && g.list.length < MAX_MOVES$5 && moves$6(posOf(g)).some((m) => uci(m) === code2),
   apply: (g, code2) => replay$k([...g.list, code2]) ?? g,
   encode: (g) => ({ moves: g.list }),
   decode: (x) => {
     const list = x?.moves;
-    if (!Array.isArray(list) || list.length > MAX_MOVES$4) return null;
+    if (!Array.isArray(list) || list.length > MAX_MOVES$5) return null;
     if (!list.every((c) => typeof c === "string" && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(c)))
       return null;
     return replay$k(list);
@@ -765,7 +765,7 @@ const chessRules = {
   computer: {
     side: 1,
     levels: LEVELS$q,
-    choose: (g, level) => uci(choose$j(posOf(g), level, Math.random, history(g)))
+    choose: (g, level) => uci(choose$k(posOf(g), level, Math.random, history(g)))
   },
   result: (g) => !g.over ? null : g.over.winner === null ? "draw" : g.over.winner === "w" ? 0 : 1,
   begun: (g) => g.list.length > 0
@@ -918,7 +918,7 @@ function search$9(b, who, me, depth, alpha, beta, w, exact) {
   }
   return best;
 }
-function choose$i(b, who, level, rand = Math.random) {
+function choose$j(b, who, level, rand = Math.random) {
   const list = moves$5(b, who);
   if (list.length <= 1) return list[0];
   if (level === "easy") {
@@ -967,7 +967,7 @@ function reversiRules(size2) {
     computer: {
       side: 1,
       levels: LEVELS$p,
-      choose: (g, level) => choose$i(g.b, 2, level)
+      choose: (g, level) => choose$j(g.b, 2, level)
     },
     result: (g) => {
       if (g.turn !== null) return null;
@@ -1111,7 +1111,7 @@ function candidates$1(g) {
   return out;
 }
 const worth$2 = (g, i, defend) => shape(g.cells, g.n, i, g.turn) + defend * shape(g.cells, g.n, i, other$f(g.turn));
-function choose$h(g, level, rand = Math.random) {
+function choose$i(g, level, rand = Math.random) {
   const list = candidates$1(g);
   const me = g.turn;
   for (const i of list) if (shape(g.cells, g.n, i, me) >= 1e7) return i;
@@ -1129,8 +1129,8 @@ function choose$h(g, level, rand = Math.random) {
     return ranked[Math.floor(rand() * k)].i;
   }
   if (level === "fair") {
-    const top = ranked.filter((x) => x.v === ranked[0].v);
-    return top[Math.floor(rand() * top.length)].i;
+    const top2 = ranked.filter((x) => x.v === ranked[0].v);
+    return top2[Math.floor(rand() * top2.length)].i;
   }
   let best = ranked[0].i;
   let bv = -Infinity;
@@ -1138,7 +1138,7 @@ function choose$h(g, level, rand = Math.random) {
     const after2 = place$3(g, i);
     if (after2.winner === me) return i;
     if (after2.over) continue;
-    const reply = choose$h(after2, "fair", rand);
+    const reply = choose$i(after2, "fair", rand);
     const back = place$3(after2, reply);
     if (back.winner) continue;
     const list2 = candidates$1(back);
@@ -1173,7 +1173,7 @@ function gomokuRules(size2) {
     },
     readMove: (x) => Number.isInteger(x) && x >= 0 && x < 169 ? x : null,
     modes: ["versus", "together"],
-    computer: { side: 1, levels: LEVELS$o, choose: (g, level) => choose$h(g, level) },
+    computer: { side: 1, levels: LEVELS$o, choose: (g, level) => choose$i(g, level) },
     result: (g) => !g.over ? null : g.winner ? g.winner === 1 ? 0 : 1 : "draw",
     begun: (g) => g.moves.length > 0
   };
@@ -1314,7 +1314,7 @@ function search$8(g, me, depth, alpha, beta) {
   }
   return best;
 }
-function choose$g(g, level, rand = Math.random) {
+function choose$h(g, level, rand = Math.random) {
   const list = moves$4(g);
   if (list.length === 1) return list[0];
   if (level === "easy" && rand() < 0.25) return list[Math.floor(rand() * list.length)];
@@ -1330,11 +1330,11 @@ function choose$g(g, level, rand = Math.random) {
   }
   return best[Math.floor(rand() * best.length)];
 }
-const MAX_MOVES$3 = 500;
+const MAX_MOVES$4 = 500;
 const same$4 = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-const fresh$r = () => ({ g: newGame$c(), list: [], last: null });
+const fresh$s = () => ({ g: newGame$c(), list: [], last: null });
 function replay$j(list) {
-  let d = fresh$r();
+  let d = fresh$s();
   for (const path2 of list) {
     const m = moves$4(d.g).find((x) => same$4(x.path, path2));
     if (!m) return null;
@@ -1344,9 +1344,9 @@ function replay$j(list) {
 }
 const isPath = (x) => Array.isArray(x) && x.length >= 2 && x.length <= 10 && x.every((i) => Number.isInteger(i) && i >= 0 && i < 32);
 const draughtsRules = {
-  fresh: fresh$r,
+  fresh: fresh$s,
   turn: (d) => d.g.winner ? null : d.g.turn === 1 ? 0 : 1,
-  legal: (d, path2, by) => !d.g.winner && (by === void 0 || by === d.g.turn - 1) && d.list.length < MAX_MOVES$3 && moves$4(d.g).some((m) => same$4(m.path, path2)),
+  legal: (d, path2, by) => !d.g.winner && (by === void 0 || by === d.g.turn - 1) && d.list.length < MAX_MOVES$4 && moves$4(d.g).some((m) => same$4(m.path, path2)),
   apply: (d, path2) => {
     const m = moves$4(d.g).find((x) => same$4(x.path, path2));
     return m ? { g: play$b(d.g, m), list: [...d.list, m.path], last: m } : d;
@@ -1354,12 +1354,12 @@ const draughtsRules = {
   encode: (d) => ({ moves: d.list }),
   decode: (x) => {
     const list = x?.moves;
-    if (!Array.isArray(list) || list.length > MAX_MOVES$3 || !list.every(isPath)) return null;
+    if (!Array.isArray(list) || list.length > MAX_MOVES$4 || !list.every(isPath)) return null;
     return replay$j(list);
   },
   readMove: (x) => isPath(x) ? [...x] : null,
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$n, choose: (d, level) => choose$g(d.g, level).path },
+  computer: { side: 1, levels: LEVELS$n, choose: (d, level) => choose$h(d.g, level).path },
   result: (d) => !d.g.winner ? null : d.g.winner === 3 ? "draw" : d.g.winner === 1 ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
@@ -1466,7 +1466,7 @@ function rollout(g, me, rand) {
   while (!over$6(h)) play$a(h, fair(h, rand));
   return h.score[me] - h.score[me === 0 ? 1 : 0];
 }
-function choose$f(g, level, rand = Math.random) {
+function choose$g(g, level, rand = Math.random) {
   const all = open$3(g);
   if (level === "easy") {
     const take2 = all.filter((l) => takes(g, l));
@@ -1521,7 +1521,7 @@ function dotsRules(size2) {
     },
     readMove: (x) => Number.isInteger(x) && x >= 0 && x < 100 ? x : null,
     modes: ["versus", "together"],
-    computer: { side: 1, levels: LEVELS$m, choose: (d, level) => choose$f(copy(d.g), level) },
+    computer: { side: 1, levels: LEVELS$m, choose: (d, level) => choose$g(copy(d.g), level) },
     result: (d) => {
       if (!over$6(d.g)) return null;
       const [a, b] = d.g.score;
@@ -1635,7 +1635,7 @@ function search$7(g, who, me, depth, alpha, beta) {
   }
   return best;
 }
-function choose$e(g, who, level, rand = Math.random) {
+function choose$f(g, who, level, rand = Math.random) {
   const cols = centreFirst(g);
   for (const c of cols) if (lineAt(drop(g, c, who), c)) return c;
   if (level === "easy" && rand() < 0.35) {
@@ -1695,7 +1695,7 @@ function fourRowMatchRules(size2, need) {
     computer: {
       side: 1,
       levels: LEVELS$l,
-      choose: (s, level) => choose$e(s.g, s.turn ?? 2, level)
+      choose: (s, level) => choose$f(s.g, s.turn ?? 2, level)
     },
     result: (s) => s.turn !== null ? null : s.winner === 0 ? "draw" : s.winner === 1 ? 0 : 1,
     begun: (s) => s.moves > 0
@@ -2180,7 +2180,7 @@ function start(rules) {
   b[2 * rules.pits + 1] = 0;
   return b;
 }
-const legal$3 = (b, side) => pitsFor(b, side).filter((i) => b[i] > 0);
+const legal$4 = (b, side) => pitsFor(b, side).filter((i) => b[i] > 0);
 function sow(b, pit, side, rules) {
   if (owner(b, pit) !== side || b[pit] === 0) throw new Error(`side ${side} cannot sow from ${pit}`);
   const board2 = [...b];
@@ -2208,7 +2208,7 @@ function sow(b, pit, side, rules) {
     }
   }
   let next2 = at2 === mine2 ? side : side === 0 ? 1 : 0;
-  const over2 = legal$3(board2, 0).length === 0 || legal$3(board2, 1).length === 0;
+  const over2 = legal$4(board2, 0).length === 0 || legal$4(board2, 1).length === 0;
   if (over2) {
     for (const s of [0, 1])
       for (const i of pitsFor(board2, s)) {
@@ -2228,7 +2228,7 @@ function value$8(b, side) {
   return me * 100;
 }
 function search$6(b, side, me, depth, alpha, beta, rules) {
-  const moves2 = legal$3(b, side);
+  const moves2 = legal$4(b, side);
   if (depth === 0 || moves2.length === 0) return value$8(b);
   const ordered = moves2.map((m) => ({ m, s: sow(b, m, side, rules) })).sort((x, y) => Number(y.s.next === side) - Number(x.s.next === side));
   if (side === me) {
@@ -2250,8 +2250,8 @@ function search$6(b, side, me, depth, alpha, beta, rules) {
   }
   return best;
 }
-function choose$d(b, side, level, rules, rand = Math.random) {
-  const moves2 = legal$3(b, side);
+function choose$e(b, side, level, rules, rand = Math.random) {
+  const moves2 = legal$4(b, side);
   if (moves2.length === 1) return moves2[0];
   if (level === "easy" && rand() < 0.35) return moves2[Math.floor(rand() * moves2.length)];
   let best = [];
@@ -2267,7 +2267,7 @@ function choose$d(b, side, level, rules, rand = Math.random) {
   return best[Math.floor(rand() * best.length)];
 }
 const MAX_SOWINGS = 400;
-function fresh$q(rules) {
+function fresh$r(rules) {
   return { rules, b: start(rules), turn: 0, pits: [], path: [] };
 }
 function after$8(g, pit) {
@@ -2291,9 +2291,9 @@ function readMancalaSettings(s) {
 }
 function replay$h(rules, pits) {
   if (pits.length > MAX_SOWINGS) return null;
-  let g = fresh$q(rules);
+  let g = fresh$r(rules);
   for (const p of pits) {
-    if (g.turn === null || !Number.isInteger(p) || !legal$3(g.b, g.turn).includes(p))
+    if (g.turn === null || !Number.isInteger(p) || !legal$4(g.b, g.turn).includes(p))
       return null;
     g = after$8(g, p);
   }
@@ -2301,9 +2301,9 @@ function replay$h(rules, pits) {
 }
 function mancalaRules(rules) {
   return {
-    fresh: () => fresh$q(rules),
+    fresh: () => fresh$r(rules),
     turn: (g) => g.turn,
-    legal: (g, pit, by) => g.turn !== null && (by === void 0 || by === g.turn) && g.pits.length < MAX_SOWINGS && Number.isInteger(pit) && legal$3(g.b, g.turn).includes(pit),
+    legal: (g, pit, by) => g.turn !== null && (by === void 0 || by === g.turn) && g.pits.length < MAX_SOWINGS && Number.isInteger(pit) && legal$4(g.b, g.turn).includes(pit),
     apply: (g, pit) => after$8(g, pit),
     encode: (g) => ({
       pits: g.rules.pits,
@@ -2322,7 +2322,7 @@ function mancalaRules(rules) {
     computer: {
       side: 1,
       levels: LEVELS$j,
-      choose: (g, level) => choose$d(g.b, 1, level, g.rules)
+      choose: (g, level) => choose$e(g.b, 1, level, g.rules)
     },
     result: (g) => {
       if (g.turn !== null) return null;
@@ -2461,7 +2461,7 @@ function search$5(g, me, depth, alpha, beta) {
   }
   return best;
 }
-function choose$c(g, level, rand = Math.random) {
+function choose$d(g, level, rand = Math.random) {
   const list = moves$3(g);
   if (list.length === 1) return list[0];
   if (level === "easy" && rand() < 0.3) return list[Math.floor(rand() * list.length)];
@@ -2477,9 +2477,9 @@ function choose$c(g, level, rand = Math.random) {
   }
   return best[Math.floor(rand() * best.length)];
 }
-const MAX_MOVES$2 = 1e3;
+const MAX_MOVES$3 = 1e3;
 const same$3 = (a, b) => a.from === b.from && a.to === b.to && a.take === b.take;
-const fresh$p = () => ({ g: newGame$9(), list: [], last: null });
+const fresh$q = () => ({ g: newGame$9(), list: [], last: null });
 function readMove$6(x) {
   if (!Array.isArray(x) || x.length !== 3) return null;
   const [from, to, take] = x;
@@ -2487,8 +2487,8 @@ function readMove$6(x) {
   return ok(from, true) && ok(to, false) && ok(take, true) ? { from, to, take } : null;
 }
 function replay$g(list) {
-  if (list.length > MAX_MOVES$2) return null;
-  let d = fresh$p();
+  if (list.length > MAX_MOVES$3) return null;
+  let d = fresh$q();
   for (const x of list) {
     const asked = readMove$6(x);
     const m = asked && moves$3(d.g).find((y) => same$3(y, asked));
@@ -2498,9 +2498,9 @@ function replay$g(list) {
   return d;
 }
 const morrisRules = {
-  fresh: fresh$p,
+  fresh: fresh$q,
   turn: (d) => d.g.winner ? null : d.g.turn === 1 ? 0 : 1,
-  legal: (d, m, by) => !d.g.winner && (by === void 0 || by === d.g.turn - 1) && d.list.length < MAX_MOVES$2 && moves$3(d.g).some((x) => same$3(x, m)),
+  legal: (d, m, by) => !d.g.winner && (by === void 0 || by === d.g.turn - 1) && d.list.length < MAX_MOVES$3 && moves$3(d.g).some((x) => same$3(x, m)),
   apply: (d, m) => {
     const real = moves$3(d.g).find((x) => same$3(x, m));
     return real ? { g: play$9(d.g, real), list: [...d.list, real], last: real } : d;
@@ -2515,7 +2515,7 @@ const morrisRules = {
     Array.isArray(x) ? x : x && typeof x === "object" ? [x.from, x.to, x.take] : null
   ),
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$i, choose: (d, level) => choose$c(d.g, level) },
+  computer: { side: 1, levels: LEVELS$i, choose: (d, level) => choose$d(d.g, level) },
   result: (d) => !d.g.winner ? null : d.g.winner === 3 ? "draw" : d.g.winner === 1 ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
@@ -2712,7 +2712,7 @@ function search$4(b, p, iterations, rand) {
   for (const c of root.children) if (c.n > best.n) best = c;
   return best.move;
 }
-function choose$b(b, p, level, rand = Math.random) {
+function choose$c(b, p, level, rand = Math.random) {
   const free = [];
   b.cells.forEach((c, i) => {
     if (!c) free.push(i);
@@ -2759,7 +2759,7 @@ function choose$b(b, p, level, rand = Math.random) {
   return best;
 }
 const SWAP = -1;
-const fresh$o = (n, swapRule) => ({
+const fresh$p = (n, swapRule) => ({
   b: empty(n),
   turn: 1,
   swapRule,
@@ -2780,7 +2780,7 @@ function after$7(g, m) {
 }
 function replay$f(n, swapRule, moves2) {
   if (moves2.length > n * n + 1) return null;
-  let g = fresh$o(n, swapRule);
+  let g = fresh$p(n, swapRule);
   for (const m of moves2) {
     if (!isLegal(g, m)) return null;
     g = after$7(g, m);
@@ -2795,7 +2795,7 @@ function readHexSettings(s) {
 }
 function hexRules(size2, swapRule) {
   return {
-    fresh: () => fresh$o(size2, swapRule),
+    fresh: () => fresh$p(size2, swapRule),
     turn: (g) => g.turn === null ? null : g.turn === 1 ? 0 : 1,
     legal: (g, m, by) => (by === void 0 || by === (g.turn ?? 0) - 1) && isLegal(g, m),
     apply: (g, m) => after$7(g, m),
@@ -2811,7 +2811,7 @@ function hexRules(size2, swapRule) {
     computer: {
       side: 1,
       levels: LEVELS$h,
-      choose: (g, level) => canSwap(g) && wantsSwap(g.b) ? SWAP : choose$b(g.b, 2, level)
+      choose: (g, level) => canSwap(g) && wantsSwap(g.b) ? SWAP : choose$c(g.b, 2, level)
     },
     result: (g) => {
       const w = winner$2(g.b);
@@ -2876,7 +2876,7 @@ function randomFinish(g, rand) {
   }
   return h.winner;
 }
-function choose$a(g, level, rand = Math.random) {
+function choose$b(g, level, rand = Math.random) {
   const list = moves$2(g);
   if (list.length === 1) return list[0];
   for (const m of list) if (play$8(g, m).winner === g.turn) return m;
@@ -2927,10 +2927,10 @@ function choose$a(g, level, rand = Math.random) {
   for (const k of root.kids) if (k.n > best.n) best = k;
   return best.move;
 }
-const fresh$n = () => ({ g: newGame$8(), list: [] });
+const fresh$o = () => ({ g: newGame$8(), list: [] });
 function replay$e(list) {
   if (list.length > 81) return null;
-  let d = fresh$n();
+  let d = fresh$o();
   for (const at2 of list) {
     if (!Number.isInteger(at2) || !moves$2(d.g).includes(at2)) return null;
     d = { g: play$8(d.g, at2), list: [...d.list, at2] };
@@ -2938,7 +2938,7 @@ function replay$e(list) {
   return d;
 }
 const ultimateRules = {
-  fresh: fresh$n,
+  fresh: fresh$o,
   turn: (d) => d.g.winner ? null : d.g.turn === 1 ? 0 : 1,
   legal: (d, at2, by) => !d.g.winner && (by === void 0 || by === d.g.turn - 1) && Number.isInteger(at2) && moves$2(d.g).includes(at2),
   apply: (d, at2) => ({ g: play$8(d.g, at2), list: [...d.list, at2] }),
@@ -2949,7 +2949,7 @@ const ultimateRules = {
   },
   readMove: (x) => Number.isInteger(x) && x >= 0 && x < 81 ? x : null,
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$g, choose: (d, level) => choose$a(d.g, level) },
+  computer: { side: 1, levels: LEVELS$g, choose: (d, level) => choose$b(d.g, level) },
   result: (d) => !d.g.winner ? null : d.g.winner === 3 ? "draw" : d.g.winner === 1 ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
@@ -3102,7 +3102,7 @@ function rootValues(g, depth, limit2) {
   }
   return out;
 }
-function choose$9(g, level, rand = Math.random) {
+function choose$a(g, level, rand = Math.random) {
   const list = moves$1(g);
   if (list.length === 1) return list[0];
   let scored = rootValues(g, DEPTH$2[level], Infinity);
@@ -3118,14 +3118,14 @@ function choose$9(g, level, rand = Math.random) {
   }
   return best[Math.floor(rand() * best.length)];
 }
-const fresh$m = (n) => ({ g: newGame$7(n, 1), list: [], last: null });
+const fresh$n = (n) => ({ g: newGame$7(n, 1), list: [], last: null });
 const find$3 = (g, from, to) => moves$1(g).find((m) => m.from === from && m.to === to) ?? null;
 function after$6(d, m) {
   return { g: play$7(d.g, m), list: [...d.list, [m.from, m.to]], last: m };
 }
 function replay$d(n, list) {
   if (list.length > n * n * n) return null;
-  let d = fresh$m(n);
+  let d = fresh$n(n);
   for (const x of list) {
     const m = Array.isArray(x) && x.length === 2 ? find$3(d.g, x[0], x[1]) : null;
     if (!m) return null;
@@ -3144,7 +3144,7 @@ function readBreakthroughSize(s) {
 }
 function breakthroughRules(size2) {
   return {
-    fresh: () => fresh$m(size2),
+    fresh: () => fresh$n(size2),
     turn: (d) => d.g.winner ? null : d.g.turn === 1 ? 0 : 1,
     legal: (d, m, by) => !d.g.winner && (by === void 0 || by === d.g.turn - 1) && find$3(d.g, m.from, m.to) !== null,
     apply: (d, m) => {
@@ -3159,7 +3159,7 @@ function breakthroughRules(size2) {
     },
     readMove: readMove$5,
     modes: ["versus", "together"],
-    computer: { side: 1, levels: LEVELS$f, choose: (d, level) => choose$9(d.g, level) },
+    computer: { side: 1, levels: LEVELS$f, choose: (d, level) => choose$a(d.g, level) },
     result: (d) => !d.g.winner ? null : d.g.winner === 1 ? 0 : 1,
     begun: (d) => d.list.length > 0
   };
@@ -3380,7 +3380,7 @@ const TUNING = {
   fair: [2, 1.2, 3, 0.35],
   hard: [3, 0.01, 3, 1.5]
 };
-function choose$8(g, level, rand = Math.random) {
+function choose$9(g, level, rand = Math.random) {
   const me = g.turn;
   const other2 = me === 0 ? 1 : 0;
   const walk = () => {
@@ -3421,8 +3421,8 @@ function choose$8(g, level, rand = Math.random) {
   }
   return best;
 }
-const MAX_MOVES$1 = 600;
-const fresh$l = (n) => ({ g: newGame$6(n, 0), list: [], last: null });
+const MAX_MOVES$2 = 600;
+const fresh$m = (n) => ({ g: newGame$6(n, 0), list: [], last: null });
 function isMove$1(g, m) {
   if (g.winner !== null) return false;
   if (m.kind === "step") return steps(g).some(([r, c]) => r === m.to[0] && c === m.to[1]);
@@ -3440,8 +3440,8 @@ function readMove$4(x) {
   return null;
 }
 function replay$c(n, list) {
-  if (list.length > MAX_MOVES$1) return null;
-  let d = fresh$l(n);
+  if (list.length > MAX_MOVES$2) return null;
+  let d = fresh$m(n);
   for (const x of list) {
     const m = readMove$4(x);
     if (!m || !isMove$1(d.g, m)) return null;
@@ -3455,9 +3455,9 @@ function readFencesSize(s) {
 }
 function fencesRules(size2) {
   return {
-    fresh: () => fresh$l(size2),
+    fresh: () => fresh$m(size2),
     turn: (d) => d.g.winner !== null ? null : d.g.turn,
-    legal: (d, m, by) => (by === void 0 || by === d.g.turn) && d.list.length < MAX_MOVES$1 && isMove$1(d.g, m),
+    legal: (d, m, by) => (by === void 0 || by === d.g.turn) && d.list.length < MAX_MOVES$2 && isMove$1(d.g, m),
     apply: (d, m) => ({ g: play$6(d.g, m), list: [...d.list, m], last: m }),
     encode: (d) => ({ n: d.g.n, moves: d.list.map(packMove) }),
     decode: (x) => {
@@ -3467,7 +3467,7 @@ function fencesRules(size2) {
     },
     readMove: readMove$4,
     modes: ["versus", "together"],
-    computer: { side: 1, levels: LEVELS$e, choose: (d, level) => choose$8(d.g, level) },
+    computer: { side: 1, levels: LEVELS$e, choose: (d, level) => choose$9(d.g, level) },
     result: (d) => d.g.winner === null ? null : d.g.winner,
     begun: (d) => d.list.length > 0
   };
@@ -3563,7 +3563,7 @@ function value$5(cells, side) {
   return sum2(side) - sum2(other$8(side));
 }
 const gain = (m, s) => progress(m.to, s) - progress(m.from, s);
-function choose$7(g, level, rand = Math.random) {
+function choose$8(g, level, rand = Math.random) {
   const s = g.turn;
   const list = moves(g);
   const apply2 = (cells, m, who) => {
@@ -3605,7 +3605,7 @@ function choose$7(g, level, rand = Math.random) {
   }
   return best[Math.floor(rand() * best.length)];
 }
-const fresh$k = () => ({ g: newGame$5(1), list: [], last: null });
+const fresh$l = () => ({ g: newGame$5(1), list: [], last: null });
 const over$5 = (d) => d.g.winner !== 0 || d.list.length >= DRAW_AFTER;
 const find$2 = (g, from, to) => moves(g).find((m) => m.from === from && m.to === to) ?? null;
 const after$5 = (d, m) => ({
@@ -3615,7 +3615,7 @@ const after$5 = (d, m) => ({
 });
 function replay$b(list) {
   if (list.length > DRAW_AFTER) return null;
-  let d = fresh$k();
+  let d = fresh$l();
   for (const x of list) {
     const m = Array.isArray(x) && x.length === 2 && !over$5(d) ? find$2(d.g, x[0], x[1]) : null;
     if (!m) return null;
@@ -3630,7 +3630,7 @@ function readMove$3(x) {
   return ok(from) && ok(to) ? { from, to, path: [] } : null;
 }
 const halmaRules = {
-  fresh: fresh$k,
+  fresh: fresh$l,
   turn: (d) => over$5(d) ? null : d.g.turn === 1 ? 0 : 1,
   legal: (d, m, by) => !over$5(d) && (by === void 0 || by === d.g.turn - 1) && find$2(d.g, m.from, m.to) !== null,
   apply: (d, m) => {
@@ -3644,7 +3644,7 @@ const halmaRules = {
   },
   readMove: readMove$3,
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$d, choose: (d, level) => choose$7(d.g, level) },
+  computer: { side: 1, levels: LEVELS$d, choose: (d, level) => choose$8(d.g, level) },
   result: (d) => !over$5(d) ? null : d.g.winner === 0 ? "draw" : d.g.winner === 1 ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
@@ -3723,7 +3723,7 @@ function play$4(g, at2) {
   taken[w] += caught.length;
   return { board: board2, turn: other$7(w), ko, passes: 0, taken, over: false, last: at2, moves: g.moves + 1 };
 }
-const legal$2 = (g) => g.board.map((_, i) => i).filter((i) => play$4(g, i) !== null);
+const legal$3 = (g) => g.board.map((_, i) => i).filter((i) => play$4(g, i) !== null);
 function score$4(board2) {
   const owner2 = board2.slice();
   const seen = /* @__PURE__ */ new Set();
@@ -3766,16 +3766,16 @@ let gen = 0;
 function breathes(board2, i) {
   gen++;
   const colour = board2[i];
-  let top = 0;
-  stack[top++] = i;
+  let top2 = 0;
+  stack[top2++] = i;
   stamp[i] = gen;
-  while (top) {
-    const p = stack[--top];
+  while (top2) {
+    const p = stack[--top2];
     for (const q of NEIGH[p]) {
       if (board2[q] === 0) return true;
       if (board2[q] === colour && stamp[q] !== gen) {
         stamp[q] = gen;
-        stack[top++] = q;
+        stack[top2++] = q;
       }
     }
   }
@@ -3784,19 +3784,19 @@ function breathes(board2, i) {
 function lastBreath(board2, i) {
   gen++;
   const colour = board2[i];
-  let top = 0;
+  let top2 = 0;
   let found = -1;
-  stack[top++] = i;
+  stack[top2++] = i;
   stamp[i] = gen;
-  while (top) {
-    const p = stack[--top];
+  while (top2) {
+    const p = stack[--top2];
     for (const q of NEIGH[p]) {
       if (board2[q] === 0) {
         if (found >= 0 && found !== q) return -1;
         found = q;
       } else if (board2[q] === colour && stamp[q] !== gen) {
         stamp[q] = gen;
-        stack[top++] = q;
+        stack[top2++] = q;
       }
     }
   }
@@ -3804,15 +3804,15 @@ function lastBreath(board2, i) {
 }
 function lift(board2, i) {
   const colour = board2[i];
-  let top = 0;
-  stack[top++] = i;
+  let top2 = 0;
+  stack[top2++] = i;
   board2[i] = 0;
-  while (top) {
-    const p = stack[--top];
+  while (top2) {
+    const p = stack[--top2];
     for (const q of NEIGH[p])
       if (board2[q] === colour) {
         board2[q] = 0;
-        stack[top++] = q;
+        stack[top2++] = q;
       }
   }
 }
@@ -3872,10 +3872,10 @@ function playout(start2, rand) {
   }
   return black - white2;
 }
-function choose$6(g, level, rand = Math.random) {
+function choose$7(g, level, rand = Math.random) {
   const me = g.turn;
   if (g.passes === 1 && winner$1(g) === me) return PASS$1;
-  const options2 = legal$2(g).filter((i) => !eye(g.board, i, me));
+  const options2 = legal$3(g).filter((i) => !eye(g.board, i, me));
   if (!options2.length) return PASS$1;
   const stats = options2.map((at2) => {
     const next2 = play$4(g, at2);
@@ -3905,12 +3905,12 @@ function choose$6(g, level, rand = Math.random) {
   if (best.wins / Math.max(1, best.n) < 0.08 && g.moves > 30) return PASS$1;
   return best.at;
 }
-const MAX_MOVES = 400;
-const fresh$j = () => ({ g: newGame$4(), list: [] });
-const over$4 = (d) => d.g.over || d.list.length >= MAX_MOVES;
+const MAX_MOVES$1 = 400;
+const fresh$k = () => ({ g: newGame$4(), list: [] });
+const over$4 = (d) => d.g.over || d.list.length >= MAX_MOVES$1;
 function replay$a(list) {
-  if (list.length > MAX_MOVES) return null;
-  let d = fresh$j();
+  if (list.length > MAX_MOVES$1) return null;
+  let d = fresh$k();
   for (const at2 of list) {
     if (over$4(d) || !Number.isInteger(at2) || at2 < PASS$1 || at2 >= N$2 * N$2)
       return null;
@@ -3921,7 +3921,7 @@ function replay$a(list) {
   return d;
 }
 const goRules = {
-  fresh: fresh$j,
+  fresh: fresh$k,
   turn: (d) => over$4(d) ? null : d.g.turn === 1 ? 0 : 1,
   legal: (d, at2, by) => !over$4(d) && (by === void 0 || by === d.g.turn - 1) && Number.isInteger(at2) && at2 >= PASS$1 && at2 < N$2 * N$2 && play$4(d.g, at2) !== null,
   apply: (d, at2) => {
@@ -3935,7 +3935,7 @@ const goRules = {
   },
   readMove: (x) => Number.isInteger(x) && x >= PASS$1 && x < N$2 * N$2 ? x : null,
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$c, choose: (d, level) => choose$6(d.g, level) },
+  computer: { side: 1, levels: LEVELS$c, choose: (d, level) => choose$7(d.g, level) },
   result: (d) => !over$4(d) ? null : winner$1(d.g) === 1 ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
@@ -4090,7 +4090,7 @@ function search$1(g, depth, alpha, beta) {
   }
   return best;
 }
-function choose$5(g, level, rand = Math.random) {
+function choose$6(g, level, rand = Math.random) {
   const moves2 = movesFor(g);
   const geese = g.turn === "geese";
   const win = moves2.find((m) => play$3(g, m).winner === g.turn);
@@ -4102,19 +4102,19 @@ function choose$5(g, level, rand = Math.random) {
   }));
   scored.sort((a, b) => b.v - a.v);
   if (level === "easy") {
-    const top = scored.slice(0, 3);
-    return top[Math.floor(rand() * top.length)].m;
+    const top2 = scored.slice(0, 3);
+    return top2[Math.floor(rand() * top2.length)].m;
   }
   const best = scored.filter((x) => x.v === scored[0].v);
   return best[Math.floor(rand() * best.length)].m;
 }
-const fresh$i = () => ({ g: newGame$3(), list: [] });
+const fresh$j = () => ({ g: newGame$3(), list: [] });
 const same$2 = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 const find$1 = (g, path2) => over$3(g) ? null : movesFor(g).find((m) => same$2(m.path, path2)) ?? null;
 const seatOf$1 = (g) => g.turn === "geese" ? 0 : 1;
 function replay$9(list) {
   if (list.length > MAX_PLIES) return null;
-  let d = fresh$i();
+  let d = fresh$j();
   for (const path2 of list) {
     const m = Array.isArray(path2) ? find$1(d.g, path2) : null;
     if (!m) return null;
@@ -4129,7 +4129,7 @@ function readMove$2(x) {
   return { path: path2, takes: [] };
 }
 const foxRules = {
-  fresh: fresh$i,
+  fresh: fresh$j,
   turn: (d) => over$3(d.g) ? null : seatOf$1(d.g),
   legal: (d, m, by) => (by === void 0 || by === seatOf$1(d.g)) && find$1(d.g, m.path) !== null,
   apply: (d, m) => {
@@ -4143,7 +4143,7 @@ const foxRules = {
   },
   readMove: readMove$2,
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$b, choose: (d, level) => choose$5(d.g, level) },
+  computer: { side: 1, levels: LEVELS$b, choose: (d, level) => choose$6(d.g, level) },
   result: (d) => !over$3(d.g) ? null : d.g.drawn ? "draw" : d.g.winner === "geese" ? 0 : 1,
   begun: (d) => d.list.length > 0
 };
@@ -4325,7 +4325,7 @@ function forced(cells, side, depth) {
   return -1;
 }
 const DEPTH = { easy: 1, fair: 2, hard: 4 };
-function choose$4(g, level, rand = Math.random) {
+function choose$5(g, level, rand = Math.random) {
   const me = g.turn;
   const cells = g.cells.slice();
   const win = winsAt(cells, me);
@@ -4342,8 +4342,8 @@ function choose$4(g, level, rand = Math.random) {
   }
   const opts = order(cells, empties(cells), me);
   if (level === "easy") {
-    const top = opts.slice(0, 5);
-    return top[Math.floor(rand() * top.length)];
+    const top2 = opts.slice(0, 5);
+    return top2[Math.floor(rand() * top2.length)];
   }
   let best = [];
   let bv = -Infinity;
@@ -4376,7 +4376,7 @@ const cubeRules = {
   },
   readMove: (x) => Number.isInteger(x) && x >= 0 && x < 64 ? x : null,
   modes: ["versus", "together"],
-  computer: { side: 1, levels: LEVELS$a, choose: (g, level) => choose$4(g, level) },
+  computer: { side: 1, levels: LEVELS$a, choose: (g, level) => choose$5(g, level) },
   result: (g) => !g.over ? null : g.winner === 0 ? "draw" : g.winner === 1 ? 0 : 1,
   begun: (g) => g.moves.length > 0
 };
@@ -4546,7 +4546,7 @@ function gunner(f, level, rand = Math.random) {
 }
 const MAX_SHOTS = 200;
 const newSeed = () => Math.random() * 2 ** 31 >>> 0;
-function fresh$h(seed2 = newSeed()) {
+function fresh$i(seed2 = newSeed()) {
   return { seed: seed2, shots: [], f: newField(seed2, 0), last: null };
 }
 function after$4(g, s) {
@@ -4564,7 +4564,7 @@ function readShot(x) {
 function replay$8(seed2, shots2) {
   if (!Number.isInteger(seed2) || seed2 < 0 || seed2 >= 2 ** 31) return null;
   if (shots2.length > MAX_SHOTS) return null;
-  let g = fresh$h(seed2);
+  let g = fresh$i(seed2);
   for (const x of shots2) {
     const s = readShot(x);
     if (!s || over$2(g)) return null;
@@ -4573,7 +4573,7 @@ function replay$8(seed2, shots2) {
   return g;
 }
 const artilleryRules = {
-  fresh: () => fresh$h(),
+  fresh: () => fresh$i(),
   turn: (g) => over$2(g) ? null : g.f.turn,
   legal: (g, s, by) => !over$2(g) && (by === void 0 || by === g.f.turn) && readShot(s) !== null,
   apply: (g, s) => after$4(g, s),
@@ -4779,7 +4779,7 @@ const score$3 = (rolls) => {
   for (const f of c) if (f.total !== null) last = f.total;
   return last;
 };
-function next(rolls) {
+function next$1(rolls) {
   let i = 0;
   for (let f = 0; f < 9; f++) {
     if (i >= rolls.length) return { over: false, fresh: true };
@@ -4801,10 +4801,10 @@ function next(rolls) {
   return { over: true, fresh: true };
 }
 function upNext(rolls, by) {
-  const n = next(rolls[by]);
+  const n = next$1(rolls[by]);
   const other2 = by === 0 ? 1 : 0;
   if (!n.over && !n.fresh) return by;
-  if (!next(rolls[other2]).over) return other2;
+  if (!next$1(rolls[other2]).over) return other2;
   return n.over ? null : by;
 }
 const LEVELS$8 = ["easy", "fair", "hard"];
@@ -4847,7 +4847,7 @@ function wobble$1(s, level, rand) {
 }
 const ALL$1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const MAX_BALLS = 42;
-const fresh$g = () => ({
+const fresh$h = () => ({
   balls: [],
   rolls: [[], []],
   up: 0,
@@ -4859,7 +4859,7 @@ function after$3(g, s, keep = true) {
   const roll2 = bowl(g.standing, s, keep);
   const mine2 = [...g.rolls[by], roll2.felled.length];
   const rolls = by === 0 ? [mine2, g.rolls[1]] : [g.rolls[0], mine2];
-  const n = next(mine2);
+  const n = next$1(mine2);
   const frameOver = n.over || n.fresh;
   const up = upNext(rolls, by);
   const standing = frameOver ? ALL$1 : g.standing.filter((p) => !roll2.felled.includes(p));
@@ -4886,7 +4886,7 @@ const inside = (s) => ({
 });
 function replay$7(balls) {
   if (balls.length > MAX_BALLS) return null;
-  let g = fresh$g();
+  let g = fresh$h();
   for (let i = 0; i < balls.length; i++) {
     const s = readBall(balls[i]);
     if (!s || g.up === null) return null;
@@ -4895,7 +4895,7 @@ function replay$7(balls) {
   return g;
 }
 const bowlingRules = {
-  fresh: fresh$g,
+  fresh: fresh$h,
   turn: (g) => g.up,
   legal: (g, s, by) => g.up !== null && (by === void 0 || by === g.up) && readBall(s) !== null,
   apply: (g, s) => after$3(g, s),
@@ -5144,7 +5144,7 @@ function wobble(shot, level, rand) {
     spin: shot.spin
   };
 }
-function choose$3(stones, team, level, last, rand) {
+function choose$4(stones, team, level, last, rand) {
   const scored = candidates(stones, team, level).map((p) => ({
     p,
     v: value$2(slide(stones, p.shot, team, null).stones, team, last)
@@ -5162,7 +5162,7 @@ const newGame$1 = (ends2, hammer = 0) => ({
   over: false
 });
 const toThrow = (g) => g.thrown % 2 === 0 ? 1 - g.hammer : g.hammer;
-const totals$5 = (g) => g.scores.reduce((t, s) => [t[0] + s[0], t[1] + s[1]], [0, 0]);
+const totals$6 = (g) => g.scores.reduce((t, s) => [t[0] + s[0], t[1] + s[1]], [0, 0]);
 function after$2(g, stones) {
   const thrown = g.thrown + 1;
   if (thrown < STONES_EACH * 2) return { game: { ...g, stones, thrown }, ended: null };
@@ -5177,14 +5177,14 @@ function after$2(g, stones) {
 }
 function winner(g) {
   if (!g.over) return null;
-  const [a, b] = totals$5(g);
+  const [a, b] = totals$6(g);
   return a === b ? "draw" : a > b ? 0 : 1;
 }
 const CALL_ENDS = 4;
 const MAX_THROWS = (CALL_ENDS + 1) * STONES_EACH * 2;
 const LAST_STEP = Math.round(40 / STEP$1);
 const MAX_SPANS = 400;
-const fresh$f = () => ({ throws: [], g: newGame$1(CALL_ENDS, 1), last: null });
+const fresh$g = () => ({ throws: [], g: newGame$1(CALL_ENDS, 1), last: null });
 function play$2(cg, t, keep = true) {
   const by = toThrow(cg.g);
   const r = slide(cg.g.stones, t.shot, by, t.sweeps.length ? sweptOn(t.sweeps) : null, keep);
@@ -5217,7 +5217,7 @@ function readThrow(x) {
 }
 function replay$6(throws) {
   if (throws.length > MAX_THROWS) return null;
-  let cg = fresh$f();
+  let cg = fresh$g();
   for (let i = 0; i < throws.length; i++) {
     const t = readThrow(throws[i]);
     if (!t || cg.g.over) return null;
@@ -5228,7 +5228,7 @@ function replay$6(throws) {
 function computerThrow(cg, level, rand) {
   const team = toThrow(cg.g);
   const last = cg.g.thrown === STONES_EACH * 2 - 1;
-  const plan2 = choose$3(cg.g.stones, team, level, last, rand);
+  const plan2 = choose$4(cg.g.stones, team, level, last, rand);
   const shot = wobble(plan2.shot, level, rand);
   const sweeper = HANDS$1[level].sweeps && plan2.kind !== "hit" ? sweepTo(plan2.target) : null;
   const safe2 = {
@@ -5239,7 +5239,7 @@ function computerThrow(cg, level, rand) {
   return { shot: safe2, sweeps: spansOf(cg.g.stones, safe2, team, sweeper) };
 }
 const curlingRules = {
-  fresh: fresh$f,
+  fresh: fresh$g,
   turn: (cg) => cg.g.over ? null : toThrow(cg.g),
   legal: (cg, t, by) => !cg.g.over && (by === void 0 || by === toThrow(cg.g)) && readThrow(pack(t)) !== null,
   apply: (cg, t) => play$2(cg, t),
@@ -5278,7 +5278,7 @@ function fewerSpans(spans, max) {
   }
   return out;
 }
-const fits$2 = (t) => t.sweeps.length <= MATCH_SPANS && t.shot.angle === roundShot(t.shot).angle && t.shot.speed === roundShot(t.shot).speed;
+const fits$3 = (t) => t.sweeps.length <= MATCH_SPANS && t.shot.angle === roundShot(t.shot).angle && t.shot.speed === roundShot(t.shot).speed;
 function matchThrow(cg, level, rand) {
   const t = computerThrow(cg, level, rand);
   const shot = roundShot(t.shot);
@@ -5290,10 +5290,10 @@ function matchThrow(cg, level, rand) {
 }
 const curlingMatchRules = {
   ...curlingRules,
-  legal: (cg, t, by) => curlingRules.legal(cg, t, by) && fits$2(t),
+  legal: (cg, t, by) => curlingRules.legal(cg, t, by) && fits$3(t),
   readMove: (x) => {
     const t = readThrow(x);
-    return t && fits$2(t) ? t : null;
+    return t && fits$3(t) ? t : null;
   },
   computer: {
     side: 1,
@@ -5585,7 +5585,7 @@ function stroke(h, from, level, rand = Math.random) {
 }
 const PICK_UP = 8;
 const MAX_PUTTS = COURSE.length * 2 * PICK_UP;
-const fresh$e = () => ({
+const fresh$f = () => ({
   putts: [],
   hole: 0,
   up: 0,
@@ -5625,7 +5625,7 @@ function readPutt(x) {
 }
 function replay$5(putts) {
   if (putts.length > MAX_PUTTS) return null;
-  let g = fresh$e();
+  let g = fresh$f();
   for (let i = 0; i < putts.length; i++) {
     const p = readPutt(putts[i]);
     if (!p || g.up === null) return null;
@@ -5633,9 +5633,9 @@ function replay$5(putts) {
   }
   return g;
 }
-const totals$4 = (g) => g.card.reduce((t, c) => [t[0] + (c[0] ?? 0), t[1] + (c[1] ?? 0)], [0, 0]);
+const totals$5 = (g) => g.card.reduce((t, c) => [t[0] + (c[0] ?? 0), t[1] + (c[1] ?? 0)], [0, 0]);
 const puttRules = {
-  fresh: fresh$e,
+  fresh: fresh$f,
   turn: (g) => g.up,
   legal: (g, p, by) => g.up !== null && (by === void 0 || by === g.up) && readPutt(p) !== null,
   apply: (g, p) => play$1(g, p),
@@ -5654,7 +5654,7 @@ const puttRules = {
   },
   result: (g) => {
     if (g.up !== null) return null;
-    const [a, b] = totals$4(g);
+    const [a, b] = totals$5(g);
     return a < b ? 0 : b < a ? 1 : "draw";
   },
   begun: (g) => g.putts.length > 0
@@ -5812,7 +5812,7 @@ function aimFor(g, level) {
 const LEGS_TO_WIN = 2;
 const FAR = 300;
 const MAX_DARTS = 900;
-const fresh$d = () => ({
+const fresh$e = () => ({
   darts: [],
   leg: newLeg(0),
   legNo: 0,
@@ -5855,7 +5855,7 @@ function readDart(x) {
 const done$2 = (g) => g.over || g.darts.length >= MAX_DARTS;
 function replay$4(darts) {
   if (darts.length > MAX_DARTS) return null;
-  let g = fresh$d();
+  let g = fresh$e();
   for (const x of darts) {
     const p = readDart(x);
     if (!p || done$2(g)) return null;
@@ -5864,7 +5864,7 @@ function replay$4(darts) {
   return g;
 }
 const dartsRules = {
-  fresh: fresh$d,
+  fresh: fresh$e,
   turn: (g) => done$2(g) ? null : g.leg.turn,
   legal: (g, p, by) => !done$2(g) && (by === void 0 || by === g.leg.turn) && readDart(p) !== null,
   apply: (g, p) => play(g, p),
@@ -6054,7 +6054,7 @@ function value$1(p, w, careful = CAREFUL) {
   }
   return v;
 }
-function choose$2(p, w, dice, level, rand = Math.random, weights2 = CAREFUL) {
+function choose$3(p, w, dice, level, rand = Math.random, weights2 = CAREFUL) {
   const list = plays(p, w, dice);
   if (list.length === 1) return list[0];
   let best = [];
@@ -6072,7 +6072,7 @@ const MAX_TURNS$1 = 300;
 const seatOf = (w) => w === 1 ? 0 : 1;
 const die = (rand) => 1 + Math.floor(rand() * 6);
 const over$1 = (g) => g.drawn || result$1(g.pos) !== null;
-const fresh$c = () => ({
+const fresh$d = () => ({
   pos: startPos(),
   turn: null,
   dice: null,
@@ -6126,7 +6126,7 @@ function readMove$1(x) {
 function replay$3(x) {
   const o = x;
   if (!o || typeof o !== "object") return null;
-  let g = fresh$c();
+  let g = fresh$d();
   if (o.open === null || o.open === void 0) {
     return Array.isArray(o.turns) && !o.turns.length && o.dice == null ? g : null;
   }
@@ -6161,7 +6161,7 @@ function replay$3(x) {
   return g;
 }
 const backgammonRules = {
-  fresh: fresh$c,
+  fresh: fresh$d,
   turn: (g) => over$1(g) || g.turn === null ? null : seatOf(g.turn),
   legal: (g, m, by) => !over$1(g) && g.turn !== null && g.dice !== null && (by === void 0 || by === seatOf(g.turn)) && find(g.pos, g.turn, g.dice, m) !== null,
   apply: (g, m) => {
@@ -6181,7 +6181,7 @@ const backgammonRules = {
   computer: {
     side: 1,
     levels: LEVELS$4,
-    choose: (g, level) => g.turn === null || g.dice === null ? [] : choose$2(g.pos, g.turn, g.dice, level).steps.map((s) => [s.from, s.to])
+    choose: (g, level) => g.turn === null || g.dice === null ? [] : choose$3(g.pos, g.turn, g.dice, level).steps.map((s) => [s.from, s.to])
   },
   result: (g) => {
     if (!over$1(g)) return null;
@@ -6207,7 +6207,7 @@ function shipCells(n, at2, size2, across) {
   if (across ? c + size2 > n : r + size2 > n) return null;
   return Array.from({ length: size2 }, (_, k) => across ? at2 + k : at2 + k * n);
 }
-function fits$1(n, fleet, cells, apart, ignore = -1) {
+function fits$2(n, fleet, cells, apart, ignore = -1) {
   const taken = /* @__PURE__ */ new Set();
   for (const s of fleet) {
     if (s.id === ignore) continue;
@@ -6236,7 +6236,7 @@ function randomFleet(n, sizes, apart, rand) {
       for (let t = 0; t < 400 && !placed2; t++) {
         const across = rand() < 0.5;
         const cells = shipCells(n, Math.floor(rand() * n * n), size2, across);
-        if (cells && fits$1(n, fleet, cells, apart)) {
+        if (cells && fits$2(n, fleet, cells, apart)) {
           fleet.push({ id, size: size2, cells });
           placed2 = true;
         }
@@ -6363,7 +6363,7 @@ function readSeaSettings(s) {
   return { size: size2, fleet, apart, again };
 }
 const other$4 = (s) => s === 0 ? 1 : 0;
-function fresh$b(set) {
+function fresh$c(set) {
   return {
     set,
     sizes: FLEETS[set.fleet],
@@ -6387,7 +6387,7 @@ function readFleet(set, x) {
     const sorted = [...cells].sort((a, b) => a - b);
     const line = sizes[id] === 1 ? [sorted[0]] : shipCells(n, sorted[0], sizes[id], sorted[1] - sorted[0] === 1) ?? [];
     if (line.join() !== sorted.join()) return null;
-    if (!fits$1(n, fleet, sorted, set.apart)) return null;
+    if (!fits$2(n, fleet, sorted, set.apart)) return null;
     fleet.push({ id, size: sizes[id], cells: sorted });
   }
   return fleet;
@@ -6411,13 +6411,13 @@ function shoot(g, by, at2) {
     turn: won2 ? null : again ? by : other$4(by)
   };
 }
-function replayPublic$8(set, x) {
+function replayPublic$9(set, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.placed) || !Array.isArray(o.shots))
     return null;
   if (o.placed.length !== 2 || !o.placed.every((p) => typeof p === "boolean")) return null;
   const n = set.size;
-  let g = fresh$b(set);
+  let g = fresh$c(set);
   g = { ...g, placed: [o.placed[0], o.placed[1]] };
   if (o.shots.length > 2 * n * n) return null;
   for (const raw of o.shots) {
@@ -6468,7 +6468,7 @@ function seaRules(set) {
   const n = set.size;
   const brings = (g, m, by) => g.placed[by] ? m.fleet === void 0 ? "none" : null : m.fleet ? readFleet(set, m.fleet) : null;
   return {
-    fresh: () => fresh$b(set),
+    fresh: () => fresh$c(set),
     turn: (g) => g.turn,
     legal: (g, m, by) => {
       if (g.turn === null || by !== void 0 && by !== g.turn) return false;
@@ -6499,7 +6499,7 @@ function seaRules(set) {
         (s) => s.shot === "sunk" ? [s.at, 3, ...s.sunk] : [s.at, s.shot === "hit" ? 2 : 1]
       )
     }),
-    decode: (x) => replayPublic$8(set, x),
+    decode: (x) => replayPublic$9(set, x),
     readMove: readSeaMove,
     modes: ["versus", "together"],
     computer: {
@@ -6525,7 +6525,7 @@ function seaRules(set) {
           fleets[s] = readFleet(set, list[s]);
           if (!fleets[s]) return null;
         }
-        let check = { ...fresh$b(set), placed: g.placed, fleets };
+        let check = { ...fresh$c(set), placed: g.placed, fleets };
         for (const s of g.shots) {
           check = shoot(check, s.by, s.at);
           const again = check.shots[check.shots.length - 1];
@@ -6632,7 +6632,7 @@ function wantsBank(t, mine2, theirs) {
 }
 const MAX_TURNS = 400;
 const other$3 = (s) => s === 0 ? 1 : 0;
-const fresh$a = () => ({
+const fresh$b = () => ({
   scores: [0, 0],
   turn: 0,
   table: null,
@@ -6642,7 +6642,7 @@ const fresh$a = () => ({
   turns: 0,
   winner: null
 });
-function pass(g, banked) {
+function pass$1(g, banked) {
   const side = g.turn;
   const sc = [...g.scores];
   sc[side] += banked;
@@ -6662,14 +6662,14 @@ function pass(g, banked) {
 }
 function landed$1(g, r) {
   const cur = { ...g, log: [...g.log, { roll: r }] };
-  return scores$1(r) ? { ...cur, table: r } : pass(cur, 0);
+  return scores$1(r) ? { ...cur, table: r } : pass$1(cur, 0);
 }
 function decide$3(g, d) {
   if (g.turn === null || !g.table) return null;
   const t = setAside({ roll: g.table, points: g.points, free: g.free, bust: false }, d.keep);
   if (!t) return null;
   const cur = { ...g, log: [...g.log, { keep: [...d.keep], bank: d.bank }] };
-  if (d.bank) return pass(cur, t.points);
+  if (d.bank) return pass$1(cur, t.points);
   return { ...cur, table: null, points: t.points, free: t.free };
 }
 function roll$5(g, rand) {
@@ -6692,7 +6692,7 @@ function readDecision(x) {
 function replay$2(x) {
   const list = x?.log;
   if (!Array.isArray(list) || list.length > MAX_TURNS * 20) return null;
-  let g = fresh$a();
+  let g = fresh$b();
   for (const e of list) {
     if (g.turn === null || !Array.isArray(e) || !e.length) return null;
     if (e[0] === 0) {
@@ -6709,7 +6709,7 @@ function replay$2(x) {
   return g;
 }
 const LEVELS$2 = ["easy", "fair", "hard"];
-function choose$1(g, level) {
+function choose$2(g, level) {
   const table = g.table ?? [];
   const side = g.turn ?? 1;
   const keep = level === "hard" ? chooseKeep$1(table) : options(table).sort((a, b) => b.keep.length - a.keep.length || b.points - a.points)[0]?.keep ?? [];
@@ -6720,7 +6720,7 @@ function choose$1(g, level) {
   return { keep, bank };
 }
 const diceRules = {
-  fresh: fresh$a,
+  fresh: fresh$b,
   turn: (g) => g.turn,
   legal: (g, d, by) => g.turn !== null && (by === void 0 || by === g.turn) && decide$3(g, d) !== null,
   apply: (g, d) => decide$3(g, d) ?? g,
@@ -6734,7 +6734,7 @@ const diceRules = {
   computer: {
     side: 1,
     levels: LEVELS$2,
-    choose: (g, level) => choose$1(g, level)
+    choose: (g, level) => choose$2(g, level)
   },
   result: (g) => g.winner,
   begun: (g) => g.log.length > 1
@@ -6939,7 +6939,7 @@ function fill(g, cat) {
   };
 }
 Object.fromEntries(CATS.map((k) => [k, 0]));
-const fresh$9 = () => ({ g: newGame(0), need: false, log: [] });
+const fresh$a = () => ({ g: newGame(0), need: false, log: [] });
 const waiting$1 = (y) => y.g.rolls === 3 || y.need;
 function roll$3(y, rand) {
   if (y.g.over || !waiting$1(y)) return y;
@@ -6966,7 +6966,7 @@ function readYachtMove(x) {
 function replay$1(x) {
   const list = x?.log;
   if (!Array.isArray(list) || list.length > 200) return null;
-  let y = fresh$9();
+  let y = fresh$a();
   for (const e of list) {
     if (y.g.over || !Array.isArray(e)) return null;
     if (e.length === 5) {
@@ -6984,7 +6984,7 @@ function replay$1(x) {
   return y;
 }
 const yachtRules = {
-  fresh: fresh$9,
+  fresh: fresh$a,
   turn: (y) => y.g.over ? null : y.g.turn,
   legal: (y, m, by) => !y.g.over && (by === void 0 || by === y.g.turn) && decide$2(y, m) !== null,
   apply: (y, m) => decide$2(y, m) ?? y,
@@ -7074,7 +7074,7 @@ function chooseWay(up, roll2, level, rand) {
   return w.reduce((best, x) => EXPECT[up & ~x] < EXPECT[up & ~best] ? x : best);
 }
 const chooseDice = (up, level) => !oneDieAllowed(up) ? 2 : level === "hard" ? bestDice(up) : level === "fair" ? 1 : 2;
-const fresh$8 = () => ({
+const fresh$9 = () => ({
   up: [ALL, ALL],
   turn: 0,
   due: "roll",
@@ -7129,7 +7129,7 @@ const isFace = (v) => Number.isInteger(v) && v >= 1 && v <= 6;
 function replay(x) {
   const list = x?.log;
   if (!Array.isArray(list) || list.length > 120) return null;
-  let g = fresh$8();
+  let g = fresh$9();
   for (const e of list) {
     if (g.turn === null || !Array.isArray(e) || !e.length) return null;
     if (e[0] === 0 || e[0] === 9) {
@@ -7145,7 +7145,7 @@ function replay(x) {
   return g;
 }
 const shutRules = {
-  fresh: fresh$8,
+  fresh: fresh$9,
   turn: (g) => g.turn,
   legal: (g, m, by) => g.turn !== null && (by === void 0 || by === g.turn) && decide$1(g, m) !== null,
   apply: (g, m) => decide$1(g, m) ?? g,
@@ -7276,7 +7276,7 @@ function whoseGuess(g) {
   if (done(g, 1)) return 0;
   return count$2(g, 1) < count$2(g, 0) ? 1 : 0;
 }
-const fresh$7 = (rules) => ({
+const fresh$8 = (rules) => ({
   rules,
   codes: [null, null],
   placed: [false, false],
@@ -7294,12 +7294,12 @@ function readCodeMove(x) {
   if (!Array.isArray(o.code) || o.code.length > 5) return null;
   return { guess: [...o.guess], code: [...o.code] };
 }
-function replayPublic$7(rules, x) {
+function replayPublic$8(rules, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.placed) || !Array.isArray(o.guesses))
     return null;
   if (o.placed.length !== 2 || !o.placed.every((p) => typeof p === "boolean")) return null;
-  let g = { ...fresh$7(rules), placed: [o.placed[0], o.placed[1]] };
+  let g = { ...fresh$8(rules), placed: [o.placed[0], o.placed[1]] };
   for (const e of o.guesses) {
     const by = whoseGuess(g);
     if (by === null || !Array.isArray(e) || e.length !== rules.length + 2) return null;
@@ -7323,7 +7323,7 @@ function replayPublic$7(rules, x) {
 }
 function rejoin$1(g, codes) {
   for (const s of [0, 1]) if (g.placed[s] !== (codes[s] !== null)) return null;
-  let check = { ...fresh$7(g.rules), placed: g.placed, codes };
+  let check = { ...fresh$8(g.rules), placed: g.placed, codes };
   for (const x of g.guesses) {
     check = guessed(check, x.by, x.guess);
     const m = check.guesses[check.guesses.length - 1].mark;
@@ -7334,7 +7334,7 @@ function rejoin$1(g, codes) {
 function codeRules(rules) {
   const brings = (g, m, by) => g.placed[by] ? m.code === void 0 ? "none" : null : m.code ? readCode(rules, m.code) : null;
   return {
-    fresh: () => fresh$7(rules),
+    fresh: () => fresh$8(rules),
     turn: whoseGuess,
     legal: (g, m, by) => {
       const s = whoseGuess(g);
@@ -7363,7 +7363,7 @@ function codeRules(rules) {
       // once the race is over both codes are shown; before, neither is ever here
       ...whoseGuess(g) === null && g.codes[0] && g.codes[1] ? { codes: g.codes } : {}
     }),
-    decode: (x) => replayPublic$7(rules, x),
+    decode: (x) => replayPublic$8(rules, x),
     readMove: readCodeMove,
     modes: ["versus", "together"],
     computer: {
@@ -7485,10 +7485,10 @@ const isBuild = (x) => Array.isArray(x) && x.length === CELLS && x.every((h) => 
 const readShow = (x) => {
   const o = x;
   if (!o || typeof o !== "object") return null;
-  const { front, side, top } = o;
-  if (typeof front !== "boolean" || typeof side !== "boolean" || typeof top !== "boolean")
+  const { front, side, top: top2 } = o;
+  if (typeof front !== "boolean" || typeof side !== "boolean" || typeof top2 !== "boolean")
     return null;
-  return front || side || top ? { front, side, top } : null;
+  return front || side || top2 ? { front, side, top: top2 } : null;
 };
 function readBox(x) {
   const o = x;
@@ -7498,16 +7498,16 @@ function readBox(x) {
 }
 const clueOf = (b) => ({ show: { ...b.show }, shadows: shadowsOf(b.build) });
 const overPar = (rebuild, c) => blocks(rebuild) - blocks(fewest(c.shadows, c.show));
-function whoseMove$6(g) {
+function whoseMove$7(g) {
   const k = g.rebuilds[0].length + g.rebuilds[1].length;
   return k >= 2 * g.rounds ? null : k % 2 === 0 ? 0 : 1;
 }
 const waiting = (g, s) => g.clues[other$1(s)][g.rebuilds[s].length] ?? null;
 const owesBox = (g, s) => g.clues[s].length === g.rebuilds[other$1(s)].length && g.rebuilds[other$1(s)].length < g.rounds;
-const totals$3 = (g) => [0, 1].map(
+const totals$4 = (g) => [0, 1].map(
   (s) => g.rebuilds[s].reduce((a, b, i) => a + overPar(b, g.clues[other$1(s)][i]), 0)
 );
-const fresh$6 = (rounds) => ({
+const fresh$7 = (rounds) => ({
   rounds,
   boxes: [[], []],
   clues: [[], []],
@@ -7527,7 +7527,7 @@ function placed(g, s, box, clue) {
   clues[s].push(clue);
   return { ...g, boxes, clues };
 }
-function moved$5(g, m, s) {
+function moved$6(g, m, s) {
   const c = waiting(g, s);
   if (!c || !matches(m.rebuild, c.shadows, c.show)) return null;
   if (owesBox(g, s) !== (m.box !== void 0)) return null;
@@ -7574,7 +7574,7 @@ function readClue(x) {
   return { show: show2, shadows };
 }
 const same$1 = (a, b) => JSON.stringify(writeClue(a)) === JSON.stringify(writeClue(b));
-function replayPublic$6(rounds, x) {
+function replayPublic$7(rounds, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.clues) || !Array.isArray(o.rebuilds))
     return null;
@@ -7589,10 +7589,10 @@ function replayPublic$6(rounds, x) {
   if (rebuilds.some((l) => !l || l.some((b) => !b))) return null;
   const C = clues;
   const B = rebuilds;
-  let g = fresh$6(rounds);
+  let g = fresh$7(rounds);
   if (C[1].length) g = placed(g, 1, null, C[1][0]);
   for (; ; ) {
-    const s = whoseMove$6(g);
+    const s = whoseMove$7(g);
     if (s === null || g.rebuilds[s].length >= B[s].length) break;
     const box = owesBox(g, s) ? C[s][g.clues[s].length] : void 0;
     if (owesBox(g, s) && !box) return null;
@@ -7607,7 +7607,7 @@ function replayPublic$6(rounds, x) {
     if (g.rebuilds[s].length !== B[s].length || g.clues[s].length !== C[s].length) return null;
   if (o.boxes !== void 0) {
     const boxes = o.boxes;
-    if (whoseMove$6(g) !== null || !Array.isArray(boxes) || boxes.length !== 2) return null;
+    if (whoseMove$7(g) !== null || !Array.isArray(boxes) || boxes.length !== 2) return null;
     const read = boxes.map((l) => Array.isArray(l) ? l.map(readBox) : null);
     if (read.some((l) => !l || l.some((b) => !b))) return null;
     const joined = rejoin(g, read);
@@ -7630,8 +7630,8 @@ function randomBox(rand) {
   const build = emptyBuild();
   const stacks = 3 + Math.floor(rand() * 5);
   for (let k = 0; k < stacks; k++) build[Math.floor(rand() * CELLS)] = 1 + Math.floor(rand() * TALL);
-  const top = rand() < 0.5;
-  return { build, show: { front: true, side: true, top } };
+  const top2 = rand() < 0.5;
+  return { build, show: { front: true, side: true, top: top2 } };
 }
 function fullest(c) {
   const b = emptyBuild();
@@ -7664,24 +7664,24 @@ function rebuildFor(c, level, rand) {
 }
 function boxRules(rounds) {
   return {
-    fresh: () => fresh$6(rounds),
-    turn: whoseMove$6,
+    fresh: () => fresh$7(rounds),
+    turn: whoseMove$7,
     legal: (g, m, by) => {
-      const s = whoseMove$6(g);
+      const s = whoseMove$7(g);
       if (s === null || by !== void 0 && by !== s) return false;
-      return moved$5(g, m, s) !== null;
+      return moved$6(g, m, s) !== null;
     },
     apply: (g, m) => {
-      const s = whoseMove$6(g);
-      return s === null ? g : moved$5(g, m, s) ?? g;
+      const s = whoseMove$7(g);
+      return s === null ? g : moved$6(g, m, s) ?? g;
     },
     encode: (g) => ({
       clues: g.clues.map((l) => l.map(writeClue)),
       rebuilds: g.rebuilds.map((l) => l.map(digits)),
       // once it is over every box is shown; before, none is ever here
-      ...whoseMove$6(g) === null && g.boxes.every((l) => l.every(Boolean)) ? { boxes: g.boxes } : {}
+      ...whoseMove$7(g) === null && g.boxes.every((l) => l.every(Boolean)) ? { boxes: g.boxes } : {}
     }),
-    decode: (x) => replayPublic$6(rounds, x),
+    decode: (x) => replayPublic$7(rounds, x),
     readMove,
     modes: ["versus", "together"],
     computer: {
@@ -7694,8 +7694,8 @@ function boxRules(rounds) {
       }
     },
     result: (g) => {
-      if (whoseMove$6(g) !== null) return null;
-      const [a, b] = totals$3(g);
+      if (whoseMove$7(g) !== null) return null;
+      const [a, b] = totals$4(g);
       return a < b ? 0 : b < a ? 1 : "draw";
     },
     begun: (g) => g.rebuilds[0].length > 0,
@@ -7762,9 +7762,9 @@ function guess(g, h) {
     if (g.key(before) !== k) continue;
     counts2[h[i].me] += Math.pow(FADE, h.length - 1 - i);
   }
-  const top = Math.max(...counts2);
-  if (top < 0.5) return null;
-  const best = MOVES.filter((m) => counts2[m] === top);
+  const top2 = Math.max(...counts2);
+  if (top2 < 0.5) return null;
+  const best = MOVES.filter((m) => counts2[m] === top2);
   return best.length === 1 ? best[0] : null;
 }
 function scores(h) {
@@ -7808,20 +7808,20 @@ const wins = (g) => {
   return w;
 };
 const over = (g) => Math.max(...wins(g)) >= g.firstTo || g.rounds.length >= capOf(g.firstTo);
-const whoseMove$5 = (g) => over(g) ? null : g.sealed ? 1 : 0;
-const fresh$5 = (firstTo) => ({ firstTo, rounds: [], sealed: false, pending: null });
-function replayPublic$5(firstTo, x) {
+const whoseMove$6 = (g) => over(g) ? null : g.sealed ? 1 : 0;
+const fresh$6 = (firstTo) => ({ firstTo, rounds: [], sealed: false, pending: null });
+function replayPublic$6(firstTo, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.rounds) || typeof o.sealed !== "boolean")
     return null;
   if (Object.keys(o).length !== 2) return null;
-  let g = fresh$5(firstTo);
+  let g = fresh$6(firstTo);
   for (const r of o.rounds) {
-    if (whoseMove$5(g) === null || !Array.isArray(r) || r.length !== 2) return null;
+    if (whoseMove$6(g) === null || !Array.isArray(r) || r.length !== 2) return null;
     if (!isMove(r[0]) || !isMove(r[1])) return null;
     g = { ...g, rounds: [...g.rounds, [r[0], r[1]]] };
   }
-  if (o.sealed && whoseMove$5(g) === null) return null;
+  if (o.sealed && whoseMove$6(g) === null) return null;
   return { ...g, sealed: o.sealed };
 }
 function answerFor(rounds, level, rand) {
@@ -7836,21 +7836,21 @@ function answerFor(rounds, level, rand) {
 }
 function rpsRules(firstTo) {
   return {
-    fresh: () => fresh$5(firstTo),
-    turn: whoseMove$5,
+    fresh: () => fresh$6(firstTo),
+    turn: whoseMove$6,
     legal: (g, m, by) => {
-      const s = whoseMove$5(g);
+      const s = whoseMove$6(g);
       return s !== null && (by === void 0 || by === s) && isMove(m.play);
     },
     apply: (g, m) => {
-      const s = whoseMove$5(g);
+      const s = whoseMove$6(g);
       if (s === null || !isMove(m.play)) return g;
       if (s === 0) return { ...g, sealed: true, pending: m.play };
       if (g.pending === null) return { ...g, sealed: false };
       return { ...g, rounds: [...g.rounds, [g.pending, m.play]], sealed: false, pending: null };
     },
     encode: (g) => ({ rounds: g.rounds, sealed: g.sealed }),
-    decode: (x) => replayPublic$5(firstTo, x),
+    decode: (x) => replayPublic$6(firstTo, x),
     readMove: (x) => {
       const o = x;
       return o && typeof o === "object" && Object.keys(o).length === 1 && isMove(o.play) ? { play: o.play } : null;
@@ -7863,7 +7863,7 @@ function rpsRules(firstTo) {
       choose: (g, level) => ({ play: answerFor(g.rounds, level, Math.random) })
     },
     result: (g) => {
-      if (whoseMove$5(g) !== null) return null;
+      if (whoseMove$6(g) !== null) return null;
       const [a, b] = wins(g);
       return a > b ? 0 : b > a ? 1 : "draw";
     },
@@ -7965,7 +7965,7 @@ function layOff(melds, dead) {
   }
   return { left: left2, laid: laid2 };
 }
-function deal$4(seed2, first = 0) {
+function deal$5(seed2, first = 0) {
   const d = shuffled(rng(seed2));
   return {
     hands: [d.slice(0, 10), d.slice(10, 20)],
@@ -8061,11 +8061,11 @@ function bestDiscard(h, cards2, forbid, level) {
 }
 function chooseDraw(h, level) {
   const hand = h.hands[h.turn];
-  const top = h.pile[h.pile.length - 1];
-  if (top === void 0) return "stock";
+  const top2 = h.pile[h.pile.length - 1];
+  if (top2 === void 0) return "stock";
   if (level !== "hard")
-    return arrange([...hand, top]).melds.some((m) => m.includes(top)) ? "pile" : "stock";
-  return bestDiscard(h, [...hand, top], top, level).points < arrange(hand).points ? "pile" : "stock";
+    return arrange([...hand, top2]).melds.some((m) => m.includes(top2)) ? "pile" : "stock";
+  return bestDiscard(h, [...hand, top2], top2, level).points < arrange(hand).points ? "pile" : "stock";
 }
 function chooseDiscard$1(h, level, rand = Math.random) {
   const held = h.hands[h.turn];
@@ -8078,20 +8078,20 @@ function chooseDiscard$1(h, level, rand = Math.random) {
   const choice = bestDiscard(h, held, h.took, level === "fair" ? "easy" : level);
   return { card: choice.card, knock: choice.points <= 10 };
 }
-const TARGETS$2 = [50, 100];
-const MAX_HANDS$3 = 25;
+const TARGETS$3 = [50, 100];
+const MAX_HANDS$4 = 25;
 function readGinSettings(s) {
   const target = s.target ?? 50;
-  return TARGETS$2.includes(target) ? { target } : null;
+  return TARGETS$3.includes(target) ? { target } : null;
 }
-const totals$2 = (g) => {
+const totals$3 = (g) => {
   const t = [0, 0];
   for (const r of g.done) if (r.winner !== null) t[r.winner] += r.points;
   return t;
 };
-const matchOver$2 = (g) => Math.max(...totals$2(g)) >= g.target || g.done.length >= MAX_HANDS$3;
-const whoseMove$4 = (g) => g.between ? null : g.turn;
-const fresh$4 = (target) => ({
+const matchOver$3 = (g) => Math.max(...totals$3(g)) >= g.target || g.done.length >= MAX_HANDS$4;
+const whoseMove$5 = (g) => g.between ? null : g.turn;
+const fresh$5 = (target) => ({
   target,
   done: [],
   first: 1,
@@ -8105,9 +8105,9 @@ const fresh$4 = (target) => ({
   hands: [null, null],
   stock: null
 });
-function dealt$4(g, rand) {
+function dealt$5(g, rand) {
   const first = g.first === 0 ? 1 : 0;
-  const h = deal$4(Math.floor(rand() * 2 ** 32), first);
+  const h = deal$5(Math.floor(rand() * 2 ** 32), first);
   return {
     ...g,
     first,
@@ -8122,8 +8122,8 @@ function dealt$4(g, rand) {
     stock: h.stock
   };
 }
-const known$3 = (g) => !!g.hands[0] && !!g.hands[1] && !!g.stock;
-const toHand = (g) => ({
+const known$4 = (g) => !!g.hands[0] && !!g.hands[1] && !!g.stock;
+const toHand$1 = (g) => ({
   hands: [g.hands[0], g.hands[1]],
   stock: g.stock,
   pile: g.pile,
@@ -8133,7 +8133,7 @@ const toHand = (g) => ({
   picked: g.picked,
   over: null
 });
-function fromHand(g, h) {
+function fromHand$1(g, h) {
   const next2 = {
     ...g,
     pile: h.pile,
@@ -8147,23 +8147,23 @@ function fromHand(g, h) {
   };
   return h.over ? { ...next2, done: [...g.done, h.over], between: true } : next2;
 }
-const isCard$3 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
-function moved$4(g, m, s) {
-  if (whoseMove$4(g) !== s) return null;
+const isCard$4 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
+function moved$5(g, m, s) {
+  if (whoseMove$5(g) !== s) return null;
   if ("draw" in m) {
     if (g.phase !== "draw") return null;
     if (m.draw === "pile" ? !g.pile.length : g.stockLeft === 0) return null;
-    if (!known$3(g)) return g;
-    return fromHand(g, draw(toHand(g), m.draw));
+    if (!known$4(g)) return g;
+    return fromHand$1(g, draw(toHand$1(g), m.draw));
   }
   if (g.phase !== "discard" || m.discard === g.took || g.pile.includes(m.discard)) return null;
-  if (!known$3(g)) return g;
+  if (!known$4(g)) return g;
   const hand = g.hands[s];
   if (!hand.includes(m.discard)) return null;
   if (m.knock && arrange(hand.filter((c) => c !== m.discard)).points > 10) return null;
-  return fromHand(g, discard$1(toHand(g), m.discard, m.knock));
+  return fromHand$1(g, discard$1(toHand$1(g), m.discard, m.knock));
 }
-const cardList = (x, max = 52) => Array.isArray(x) && x.length <= max && x.every(isCard$3) && new Set(x).size === x.length;
+const cardList$1 = (x, max = 52) => Array.isArray(x) && x.length <= max && x.every(isCard$4) && new Set(x).size === x.length;
 const isMeld = (m) => allMelds(m).some((x) => x.length === m.length);
 function readResult(x) {
   const o = x;
@@ -8173,8 +8173,8 @@ function readResult(x) {
   if (!Array.isArray(shown) || shown.length !== 2) return null;
   const laid2 = shown.map((s) => {
     const v = s;
-    if (!v || !Array.isArray(v.melds) || !cardList(v.dead, 11)) return null;
-    if (!v.melds.every((m) => cardList(m, 10) && m.length >= 3 && isMeld(m))) return null;
+    if (!v || !Array.isArray(v.melds) || !cardList$1(v.dead, 11)) return null;
+    if (!v.melds.every((m) => cardList$1(m, 10) && m.length >= 3 && isMeld(m))) return null;
     return { melds: v.melds.map((m) => [...m]), dead: [...v.dead] };
   });
   if (!laid2[0] || !laid2[1]) return null;
@@ -8189,16 +8189,16 @@ function readResult(x) {
   const want = how === "gin" ? mine2 === 0 && winner2 === knocker && points2 === 25 + theirs : how === "undercut" ? mine2 > 0 && mine2 <= 10 && theirs <= mine2 && winner2 === other2 && points2 === 25 + mine2 - theirs : mine2 > 0 && mine2 <= 10 && theirs > mine2 && winner2 === knocker && points2 === theirs - mine2;
   return want ? r : null;
 }
-function replayPublic$4(target, x) {
+function replayPublic$5(target, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.done)) return null;
   const done2 = o.done.map(readResult);
-  if (done2.some((r) => r === null) || done2.length > MAX_HANDS$3) return null;
+  if (done2.some((r) => r === null) || done2.length > MAX_HANDS$4) return null;
   const { first, between, pile, turn, phase, took, picked, stockLeft } = o;
   if (first !== 0 && first !== 1 || typeof between !== "boolean") return null;
   if (turn !== 0 && turn !== 1 || phase !== "draw" && phase !== "discard") return null;
-  if (!cardList(pile) || took !== null && !isCard$3(took)) return null;
-  if (!Array.isArray(picked) || picked.length !== 2 || !picked.every((p) => cardList(p)))
+  if (!cardList$1(pile) || took !== null && !isCard$4(took)) return null;
+  if (!Array.isArray(picked) || picked.length !== 2 || !picked.every((p) => cardList$1(p)))
     return null;
   if (!Number.isInteger(stockLeft) || stockLeft < 0) return null;
   const g = {
@@ -8216,27 +8216,27 @@ function replayPublic$4(target, x) {
     stock: null
   };
   if (g.between) {
-    return matchOver$2(g) && g.done.length > 0 ? g : null;
+    return matchOver$3(g) && g.done.length > 0 ? g : null;
   }
-  if (matchOver$2(g)) return null;
+  if (matchOver$3(g)) return null;
   if (g.stockLeft + g.pile.length + 20 + (g.phase === "discard" ? 1 : 0) !== 52) return null;
   if (g.took !== null && (g.phase !== "discard" || g.pile.includes(g.took))) return null;
   return g;
 }
 function ginRules(target) {
   return {
-    fresh: () => fresh$4(target),
-    turn: whoseMove$4,
+    fresh: () => fresh$5(target),
+    turn: whoseMove$5,
     legal: (g, m, by) => {
-      const s = whoseMove$4(g);
-      return s !== null && (by === void 0 || by === s) && moved$4(g, m, s) !== null;
+      const s = whoseMove$5(g);
+      return s !== null && (by === void 0 || by === s) && moved$5(g, m, s) !== null;
     },
     apply: (g, m) => {
-      const s = whoseMove$4(g);
-      return s === null ? g : moved$4(g, m, s) ?? g;
+      const s = whoseMove$5(g);
+      return s === null ? g : moved$5(g, m, s) ?? g;
     },
     // a hand that ended is followed by the next, dealt by the server, unless the match is won
-    roll: (g, rand) => g.between && !matchOver$2(g) ? dealt$4(g, rand) : g,
+    roll: (g, rand) => g.between && !matchOver$3(g) ? dealt$5(g, rand) : g,
     encode: (g) => ({
       done: g.done,
       first: g.first,
@@ -8248,13 +8248,13 @@ function ginRules(target) {
       picked: g.picked,
       stockLeft: g.stockLeft
     }),
-    decode: (x) => replayPublic$4(target, x),
+    decode: (x) => replayPublic$5(target, x),
     readMove: (x) => {
       const o = x;
       if (!o || typeof o !== "object") return null;
       const keys = Object.keys(o).sort().join();
       if (keys === "draw" && (o.draw === "stock" || o.draw === "pile")) return { draw: o.draw };
-      if (keys === "discard,knock" && isCard$3(o.discard) && typeof o.knock === "boolean")
+      if (keys === "discard,knock" && isCard$4(o.discard) && typeof o.knock === "boolean")
         return { discard: o.discard, knock: o.knock };
       return null;
     },
@@ -8263,7 +8263,7 @@ function ginRules(target) {
       side: 1,
       levels: ["easy", "fair", "hard"],
       choose: (g, level) => {
-        const h = toHand(g);
+        const h = toHand$1(g);
         const l = level;
         if (g.phase === "draw") return { draw: chooseDraw(h, l) };
         const c = chooseDiscard$1(h, l, Math.random);
@@ -8271,8 +8271,8 @@ function ginRules(target) {
       }
     },
     result: (g) => {
-      if (whoseMove$4(g) !== null) return null;
-      const [a, b] = totals$2(g);
+      if (whoseMove$5(g) !== null) return null;
+      const [a, b] = totals$3(g);
       return a > b ? 0 : b > a ? 1 : "draw";
     },
     begun: (g) => g.done.length > 0 || g.pile.length > 1 || g.phase === "discard",
@@ -8283,7 +8283,7 @@ function ginRules(target) {
         if (!o || !Array.isArray(o.hands) || o.hands.length !== 2) return null;
         if (g.between) return { ...g };
         const [a, b] = o.hands;
-        if (!cardList(a, 11) || !cardList(b, 11) || !cardList(o.stock)) return null;
+        if (!cardList$1(a, 11) || !cardList$1(b, 11) || !cardList$1(o.stock)) return null;
         for (const s of [0, 1])
           if ([a, b][s].length !== (g.phase === "discard" && g.turn === s ? 11 : 10)) return null;
         if (o.stock.length !== g.stockLeft) return null;
@@ -8295,7 +8295,7 @@ function ginRules(target) {
       mine: (g, side) => g.hands[side],
       // nothing in a move is hidden: a stock draw names no card, and a discard is face up
       logged: (m) => m,
-      accept: (g) => dealt$4(g, Math.random)
+      accept: (g) => dealt$5(g, Math.random)
     }
   };
 }
@@ -8366,7 +8366,7 @@ function pegScore(pile) {
   }
   return { points: points2, why };
 }
-function deal$3(seed2, dealer, scores2 = [0, 0]) {
+function deal$4(seed2, dealer, scores2 = [0, 0]) {
   const deck = shuffled(rng(seed2));
   const pone = other(dealer);
   const hands = [[], []];
@@ -8519,11 +8519,11 @@ function choosePeg(r, level, rand = Math.random) {
   }
   return best;
 }
-const MAX_HANDS$2 = 40;
-const isCard$2 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
-const cards$2 = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every(isCard$2) && new Set(x).size === x.length;
+const MAX_HANDS$3 = 40;
+const isCard$3 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
+const cards$2 = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every(isCard$3) && new Set(x).size === x.length;
 const dealerOf$1 = (hand) => hand % 2 === 0 ? 1 : 0;
-const fresh$3 = () => ({
+const fresh$4 = () => ({
   past: [],
   r: {
     dealer: 1,
@@ -8543,13 +8543,13 @@ const fresh$3 = () => ({
   thrown: [false, false],
   known: false
 });
-function dealt$3(g, rand) {
-  const r = deal$3(Math.floor(rand() * 2 ** 32), dealerOf$1(g.past.length), g.r.scores);
+function dealt$4(g, rand) {
+  const r = deal$4(Math.floor(rand() * 2 ** 32), dealerOf$1(g.past.length), g.r.scores);
   return { ...g, r, throws: [null, null], thrown: [false, false], known: true };
 }
-function whoseMove$3(g) {
+function whoseMove$4(g) {
   const { r } = g;
-  if (r.winner !== null || r.phase === "over" || g.past.length >= MAX_HANDS$2) return null;
+  if (r.winner !== null || r.phase === "over" || g.past.length >= MAX_HANDS$3) return null;
   if (r.phase === "discard") {
     const pone = other(r.dealer);
     return g.thrown[pone] ? g.thrown[r.dealer] ? null : r.dealer : pone;
@@ -8563,8 +8563,8 @@ const laid = (r) => ({
   crib: [...r.crib],
   played: r.played.map((p) => ({ ...p }))
 });
-function moved$3(g, m, s) {
-  if (whoseMove$3(g) !== s) return null;
+function moved$4(g, m, s) {
+  if (whoseMove$4(g) !== s) return null;
   const { r } = g;
   if ("throw" in m) {
     if (r.phase !== "discard" || g.thrown[s] || !cards$2(m.throw, 2)) return null;
@@ -8592,13 +8592,13 @@ function readLaid(x) {
   const o = x;
   if (!o || typeof o !== "object") return null;
   const { dealer, starter, kept, crib, played } = o;
-  if (dealer !== 0 && dealer !== 1 || !isCard$2(starter)) return null;
+  if (dealer !== 0 && dealer !== 1 || !isCard$3(starter)) return null;
   if (!Array.isArray(kept) || kept.length !== 2 || !cards$2(kept[0], 4) || !cards$2(kept[1], 4))
     return null;
   if (!cards$2(crib, 4) || !Array.isArray(played) || played.length > 8) return null;
   const p = played.map((e) => {
     const v = e;
-    return v && isCard$2(v.card) && (v.by === 0 || v.by === 1) ? { card: v.card, by: v.by } : null;
+    return v && isCard$3(v.card) && (v.by === 0 || v.by === 1) ? { card: v.card, by: v.by } : null;
   });
   if (p.some((e) => !e)) return null;
   return {
@@ -8640,9 +8640,9 @@ function replayHand(h, scores2) {
   if (r.phase === "show") r = show(r);
   return r.phase === "done" || r.phase === "over" ? r : null;
 }
-function replayPublic$3(x) {
+function replayPublic$4(x) {
   const o = x;
-  if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS$2)
+  if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS$3)
     return null;
   const past = o.past.map(readLaid);
   if (past.some((h) => !h)) return null;
@@ -8666,11 +8666,11 @@ function replayPublic$3(x) {
   if (!cards$2(pile) || !Array.isArray(played)) return null;
   const pl = played.map((e) => {
     const v = e;
-    return v && isCard$2(v.card) && (v.by === 0 || v.by === 1) ? { card: v.card, by: v.by } : null;
+    return v && isCard$3(v.card) && (v.by === 0 || v.by === 1) ? { card: v.card, by: v.by } : null;
   });
   if (pl.some((e) => !e) || pl.length > 8) return null;
-  const g = fresh$3();
-  if (end && (end.phase === "over" || past.length >= MAX_HANDS$2)) {
+  const g = fresh$4();
+  if (end && (end.phase === "over" || past.length >= MAX_HANDS$3)) {
     if (phase !== end.phase || winner2 !== end.winner) return null;
     return { ...g, past, r: { ...end }, known: true };
   }
@@ -8682,7 +8682,7 @@ function replayPublic$3(x) {
   if (phase === "discard") {
     if (starter !== null || pl.length || pile.length || s0 !== scores2[0] || s1 !== scores2[1])
       return null;
-  } else if (!isCard$2(starter) || !thrown[0] || !thrown[1]) return null;
+  } else if (!isCard$3(starter) || !thrown[0] || !thrown[1]) return null;
   if (phase === "over" && (winner2 === null || [s0, s1][winner2] !== TARGET)) return null;
   if (phase !== "over" && winner2 !== null) return null;
   return {
@@ -8703,18 +8703,18 @@ function replayPublic$3(x) {
   };
 }
 const cribRules = {
-  fresh: fresh$3,
-  turn: whoseMove$3,
+  fresh: fresh$4,
+  turn: whoseMove$4,
   legal: (g, m, by) => {
-    const s = whoseMove$3(g);
-    return s !== null && (by === void 0 || by === s) && moved$3(g, m, s) !== null;
+    const s = whoseMove$4(g);
+    return s !== null && (by === void 0 || by === s) && moved$4(g, m, s) !== null;
   },
   apply: (g, m) => {
-    const s = whoseMove$3(g);
-    return s === null ? g : moved$3(g, m, s) ?? g;
+    const s = whoseMove$4(g);
+    return s === null ? g : moved$4(g, m, s) ?? g;
   },
   // a hand counted is followed by the next, the deal passing, unless the game is won
-  roll: (g, rand) => g.r.phase === "done" && g.past.length < MAX_HANDS$2 ? dealt$3(g, rand) : g,
+  roll: (g, rand) => g.r.phase === "done" && g.past.length < MAX_HANDS$3 ? dealt$4(g, rand) : g,
   encode: (g) => {
     const r = g.r;
     return {
@@ -8730,22 +8730,22 @@ const cribRules = {
       thrown: g.thrown
     };
   },
-  decode: replayPublic$3,
+  decode: replayPublic$4,
   readMove: (x) => {
     const o = x;
     if (!o || typeof o !== "object" || Object.keys(o).length !== 1) return null;
     if ("throw" in o && cards$2(o.throw, 2)) return { throw: [o.throw[0], o.throw[1]] };
-    if ("peg" in o && isCard$2(o.peg)) return { peg: o.peg };
+    if ("peg" in o && isCard$3(o.peg)) return { peg: o.peg };
     return null;
   },
   modes: ["versus", "together"],
   computer: {
     side: 1,
     levels: ["easy", "fair", "hard"],
-    choose: (g, level) => g.r.phase === "discard" ? { throw: chooseDiscard(g.r, whoseMove$3(g) ?? 1, level, Math.random) } : { peg: choosePeg(g.r, level, Math.random) }
+    choose: (g, level) => g.r.phase === "discard" ? { throw: chooseDiscard(g.r, whoseMove$4(g) ?? 1, level, Math.random) } : { peg: choosePeg(g.r, level, Math.random) }
   },
   result: (g) => {
-    if (whoseMove$3(g) !== null) return null;
+    if (whoseMove$4(g) !== null) return null;
     const [a, b] = g.r.scores;
     return g.r.winner ?? (a > b ? 0 : b > a ? 1 : "draw");
   },
@@ -8770,8 +8770,8 @@ const cribRules = {
         if (!end) return null;
         scores2 = end.scores;
       }
-      if (end && (end.phase === "over" || g.past.length >= MAX_HANDS$2)) return { ...g, known: true };
-      if (!isCard$2(o.starter) || !cards$2(o.crib)) return null;
+      if (end && (end.phase === "over" || g.past.length >= MAX_HANDS$3)) return { ...g, known: true };
+      if (!isCard$3(o.starter) || !cards$2(o.crib)) return null;
       const [h0, h1] = o.hands;
       const [k0, k1] = o.kept;
       const [t0, t1] = o.throws;
@@ -8820,7 +8820,7 @@ const cribRules = {
     }),
     // a throw is face down: the history keeps that it happened, never which two
     logged: (m) => "throw" in m ? { throw: "face down" } : m,
-    accept: (g) => dealt$3(g, Math.random)
+    accept: (g) => dealt$4(g, Math.random)
   }
 };
 function replayCurrent(h, scores2) {
@@ -8858,7 +8858,7 @@ for (let a = 0; a <= 6; a++) for (let b = a; b <= 6; b++) SET.push([a, b]);
 const pips = (t) => t[0] + t[1];
 const same = (a, b) => a[0] === b[0] && a[1] === b[1];
 const handPips = (h) => h.reduce((s, t) => s + pips(t), 0);
-function deal$2(seed2, first = 0) {
+function deal$3(seed2, first = 0) {
   const rand = rng(seed2);
   const tiles = SET.map((t) => [...t]);
   for (let i = tiles.length - 1; i > 0; i--) {
@@ -8876,7 +8876,7 @@ function deal$2(seed2, first = 0) {
   };
 }
 const ends = (r) => r.line.length ? [r.line[0].a, r.line[r.line.length - 1].b] : null;
-function fits(r, t) {
+function fits$1(r, t) {
   const e = ends(r);
   if (!e) return ["right"];
   const out = [];
@@ -8884,7 +8884,7 @@ function fits(r, t) {
   if (t[0] === e[1] || t[1] === e[1]) out.push("right");
   return out;
 }
-const playable = (r, who = r.turn) => r.hands[who].filter((t) => fits(r, t).length);
+const playable = (r, who = r.turn) => r.hands[who].filter((t) => fits$1(r, t).length);
 function finish(r) {
   const [a, b] = r.hands;
   if (!a.length || !b.length) {
@@ -8900,7 +8900,7 @@ function finish(r) {
   return r;
 }
 function lay(r, t, side) {
-  if (r.over || !r.hands[r.turn].some((x) => same(x, t)) || !fits(r, t).includes(side)) return r;
+  if (r.over || !r.hands[r.turn].some((x) => same(x, t)) || !fits$1(r, t).includes(side)) return r;
   const e = ends(r);
   let laid2;
   if (!e) laid2 = { a: t[0], b: t[1] };
@@ -8926,10 +8926,10 @@ function drawOrPass(r) {
   }
   return finish({ ...r, turn: r.turn === 0 ? 1 : 0, passes: r.passes + 1, lacks });
 }
-function choose(r, level, rand = Math.random) {
+function choose$1(r, level, rand = Math.random) {
   const me = r.turn;
   const options2 = [];
-  for (const t of r.hands[me]) for (const side of fits(r, t)) options2.push({ tile: t, side });
+  for (const t of r.hands[me]) for (const side of fits$1(r, t)) options2.push({ tile: t, side });
   if (!options2.length) return null;
   if (level === "easy") return options2[Math.floor(rand() * options2.length)];
   const score2 = (o) => {
@@ -8965,20 +8965,20 @@ function choose(r, level, rand = Math.random) {
   }
   return best;
 }
-const TARGETS$1 = [50, 100];
+const TARGETS$2 = [50, 100];
 const MAX_ROUNDS = 30;
 function readDominoSettings(s) {
   const target = s.target ?? 100;
-  return TARGETS$1.includes(target) ? { target } : null;
+  return TARGETS$2.includes(target) ? { target } : null;
 }
-const totals$1 = (g) => {
+const totals$2 = (g) => {
   const t = [0, 0];
   for (const r of g.done) if (r.winner !== null) t[r.winner] += r.points;
   return t;
 };
-const matchOver$1 = (g) => Math.max(...totals$1(g)) >= g.target || g.done.length >= MAX_ROUNDS;
-const whoseMove$2 = (g) => g.between ? null : g.turn;
-const fresh$2 = (target) => ({
+const matchOver$2 = (g) => Math.max(...totals$2(g)) >= g.target || g.done.length >= MAX_ROUNDS;
+const whoseMove$3 = (g) => g.between ? null : g.turn;
+const fresh$3 = (target) => ({
   target,
   done: [],
   first: 1,
@@ -8992,7 +8992,7 @@ const fresh$2 = (target) => ({
   hands: [null, null],
   yard: null
 });
-const known$2 = (g) => !!g.hands[0] && !!g.hands[1] && !!g.yard;
+const known$3 = (g) => !!g.hands[0] && !!g.hands[1] && !!g.yard;
 const toRound = (g) => ({
   hands: [g.hands[0], g.hands[1]],
   yard: g.yard,
@@ -9024,32 +9024,32 @@ function fromRound(g, r) {
   };
   return { ...next2, done: [...g.done, ended2], between: true };
 }
-function dealt$2(g, rand) {
+function dealt$3(g, rand) {
   const first = g.first === 0 ? 1 : 0;
-  const r = deal$2(Math.floor(rand() * 2 ** 32), first);
+  const r = deal$3(Math.floor(rand() * 2 ** 32), first);
   return { ...fromRound({ ...g, between: false }, r), first, between: false };
 }
 const isTile = (x) => Array.isArray(x) && x.length === 2 && x.every((v) => Number.isInteger(v) && v >= 0 && v <= 6) && x[0] <= x[1];
 const onLine = (g, t) => g.line.some((l) => same([Math.min(l.a, l.b), Math.max(l.a, l.b)], t));
-function moved$2(g, m, s) {
-  if (whoseMove$2(g) !== s) return null;
+function moved$3(g, m, s) {
+  if (whoseMove$3(g) !== s) return null;
   if ("lay" in m) {
     if (onLine(g, m.lay)) return null;
     const pub = { line: g.line };
-    if (!fits(pub, m.lay).includes(m.side)) return null;
-    if (!known$2(g)) return g;
+    if (!fits$1(pub, m.lay).includes(m.side)) return null;
+    if (!known$3(g)) return g;
     const r2 = toRound(g);
     const next2 = lay(r2, m.lay, m.side);
     return next2 === r2 ? null : fromRound(g, next2);
   }
-  if (!known$2(g)) return g;
+  if (!known$3(g)) return g;
   let r = toRound(g);
   if (playable(r).length) return null;
   for (let k = 0; k < 28 && !r.over && r.turn === s && !playable(r).length; k++) r = drawOrPass(r);
   return fromRound(g, r);
 }
 const tileList = (x, max = 28) => Array.isArray(x) && x.length <= max && x.every(isTile) && new Set(x.map((t) => t.join())).size === x.length;
-function readEnded(x) {
+function readEnded$1(x) {
   const o = x;
   if (!o || typeof o !== "object") return null;
   const { winner: winner2, points: points2, why, hands, laid: laid2 } = o;
@@ -9085,11 +9085,11 @@ function readLine(x) {
   const keys = line.map((l) => `${Math.min(l.a, l.b)},${Math.max(l.a, l.b)}`);
   return new Set(keys).size === keys.length ? line : null;
 }
-function replayPublic$2(target, x) {
+function replayPublic$3(target, x) {
   const o = x;
   if (!o || typeof o !== "object" || !Array.isArray(o.done) || o.done.length > MAX_ROUNDS)
     return null;
-  const done2 = o.done.map(readEnded);
+  const done2 = o.done.map(readEnded$1);
   if (done2.some((r) => !r)) return null;
   const { first, between, turn, passes, lacks, sizes, yardLeft } = o;
   const line = readLine(o.line);
@@ -9117,24 +9117,24 @@ function replayPublic$2(target, x) {
     hands: [null, null],
     yard: null
   };
-  if (g.between) return matchOver$1(g) && g.done.length > 0 ? g : null;
-  if (matchOver$1(g)) return null;
+  if (g.between) return matchOver$2(g) && g.done.length > 0 ? g : null;
+  if (matchOver$2(g)) return null;
   if (line.length + g.sizes[0] + g.sizes[1] + g.yardLeft !== 28) return null;
   return g;
 }
 function dominoRules(target) {
   return {
-    fresh: () => fresh$2(target),
-    turn: whoseMove$2,
+    fresh: () => fresh$3(target),
+    turn: whoseMove$3,
     legal: (g, m, by) => {
-      const s = whoseMove$2(g);
-      return s !== null && (by === void 0 || by === s) && moved$2(g, m, s) !== null;
+      const s = whoseMove$3(g);
+      return s !== null && (by === void 0 || by === s) && moved$3(g, m, s) !== null;
     },
     apply: (g, m) => {
-      const s = whoseMove$2(g);
-      return s === null ? g : moved$2(g, m, s) ?? g;
+      const s = whoseMove$3(g);
+      return s === null ? g : moved$3(g, m, s) ?? g;
     },
-    roll: (g, rand) => g.between && !matchOver$1(g) ? dealt$2(g, rand) : g,
+    roll: (g, rand) => g.between && !matchOver$2(g) ? dealt$3(g, rand) : g,
     encode: (g) => ({
       done: g.done,
       first: g.first,
@@ -9146,7 +9146,7 @@ function dominoRules(target) {
       sizes: g.sizes,
       yardLeft: g.yardLeft
     }),
-    decode: (x) => replayPublic$2(target, x),
+    decode: (x) => replayPublic$3(target, x),
     readMove: (x) => {
       const o = x;
       if (!o || typeof o !== "object") return null;
@@ -9161,13 +9161,13 @@ function dominoRules(target) {
       side: 1,
       levels: ["easy", "fair", "hard"],
       choose: (g, level) => {
-        const c = choose(toRound(g), level, Math.random);
+        const c = choose$1(toRound(g), level, Math.random);
         return c ? { lay: c.tile, side: c.side } : { draw: true };
       }
     },
     result: (g) => {
-      if (whoseMove$2(g) !== null) return null;
-      const [a, b] = totals$1(g);
+      if (whoseMove$3(g) !== null) return null;
+      const [a, b] = totals$2(g);
       return a > b ? 0 : b > a ? 1 : "draw";
     },
     begun: (g) => g.done.length > 0 || g.line.length > 0,
@@ -9197,7 +9197,7 @@ function dominoRules(target) {
       mine: (g, side) => g.hands[side],
       // nothing in a move is hidden: a tile laid is face up, and a draw names no tile
       logged: (m) => m,
-      accept: (g) => dealt$2(g, Math.random)
+      accept: (g) => dealt$3(g, Math.random)
     }
   };
 }
@@ -9209,20 +9209,20 @@ const TWO_CLUBS = 0 * 4 + CLUBS;
 const points = (c) => c === QUEEN ? 13 : suitOf(c) === HEARTS ? 1 : 0;
 const PASS = ["left", "right", "across", "hold"];
 const passTo = (i, way) => way === "left" ? (i + 1) % 4 : way === "right" ? (i + 3) % 4 : way === "across" ? (i + 2) % 4 : i;
-const sortHand$1 = (h) => h.sort((a, b) => {
+const sortHand$2 = (h) => h.sort((a, b) => {
   const order2 = [3, 2, 0, 1];
   return order2.indexOf(suitOf(a)) - order2.indexOf(suitOf(b)) || rankOf(a) - rankOf(b);
 });
-function deal$1(rand) {
+function deal$2(rand) {
   const d = shuffled(rand);
-  return [0, 1, 2, 3].map((s) => sortHand$1(d.slice(s * 13, s * 13 + 13)));
+  return [0, 1, 2, 3].map((s) => sortHand$2(d.slice(s * 13, s * 13 + 13)));
 }
 function startHand(hands, passed, way) {
   const hs = hands.map((h) => h.slice());
   if (passed && way !== "hold") {
     for (let i = 0; i < 4; i++) hs[i] = hs[i].filter((c) => !passed[i].includes(c));
     for (let i = 0; i < 4; i++) hs[passTo(i, way)].push(...passed[i]);
-    hs.forEach(sortHand$1);
+    hs.forEach(sortHand$2);
   }
   const leader = hs.findIndex((h) => h.includes(TWO_CLUBS));
   return {
@@ -9237,7 +9237,7 @@ function startHand(hands, passed, way) {
     played: []
   };
 }
-function legal$1(h, seat = h.turn) {
+function legal$2(h, seat = h.turn) {
   const hand = h.hands[seat];
   if (h.tricks === 0 && !h.trick.length) return hand.includes(TWO_CLUBS) ? [TWO_CLUBS] : [];
   if (h.trick.length) {
@@ -9262,7 +9262,7 @@ function winnerOf$1(trick) {
   for (const t of trick) if (suitOf(t.card) === suit && rankOf(t.card) > rankOf(best.card)) best = t;
   return best.seat;
 }
-function playCard$1(h, card2) {
+function playCard$2(h, card2) {
   const seat = h.turn;
   const hands = h.hands.map((x, i) => i === seat ? x.filter((c) => c !== card2) : x);
   const trick = [...h.trick, { seat, card: card2 }];
@@ -9307,7 +9307,7 @@ function choosePass(hand, level, rand = Math.random) {
   return [...hand].sort((a, b) => danger(b) - danger(a)).slice(0, 3);
 }
 function habit$1(h) {
-  const options2 = legal$1(h);
+  const options2 = legal$2(h);
   if (options2.length === 1) return options2[0];
   const seat = h.turn;
   const lowest = (cs) => cs.reduce((a, c) => rankOf(c) < rankOf(a) ? c : a);
@@ -9322,10 +9322,10 @@ function habit$1(h) {
   }
   const suit = suitOf(h.trick[0].card);
   const following = suitOf(options2[0]) === suit;
-  const top = h.trick.filter((t) => suitOf(t.card) === suit).reduce((a, t) => rankOf(t.card) > rankOf(a.card) ? t : a);
+  const top2 = h.trick.filter((t) => suitOf(t.card) === suit).reduce((a, t) => rankOf(t.card) > rankOf(a.card) ? t : a);
   const onTable = h.trick.reduce((a, t) => a + points(t.card), 0);
   if (following) {
-    const under = options2.filter((c) => rankOf(c) < rankOf(top.card));
+    const under = options2.filter((c) => rankOf(c) < rankOf(top2.card));
     if (h.trick.length === 3 && onTable === 0 && !(suit === SPADES && options2.includes(QUEEN)))
       return highest(
         options2.filter((c) => c !== QUEEN).length ? options2.filter((c) => c !== QUEEN) : options2
@@ -9343,14 +9343,14 @@ function habit$1(h) {
   return highest(options2);
 }
 function chooseCard$1(h, level, rand = Math.random, samples = 24) {
-  const options2 = legal$1(h);
+  const options2 = legal$2(h);
   if (options2.length === 1) return options2[0];
   if (level === "easy") return options2[Math.floor(rand() * options2.length)];
   if (level === "fair") return habit$1(h);
   const seat = h.turn;
   const seen = /* @__PURE__ */ new Set([...h.played, ...h.hands[seat], ...h.trick.map((t) => t.card)]);
   const unseen = Array.from({ length: 52 }, (_, c) => c).filter((c) => !seen.has(c));
-  const cost = new Map(options2.map((c) => [c, 0]));
+  const cost2 = new Map(options2.map((c) => [c, 0]));
   for (let k = 0; k < samples; k++) {
     const need = [0, 1, 2, 3].map((i) => i === seat ? 0 : h.hands[i].length);
     const guess2 = [[], [], [], []];
@@ -9372,18 +9372,18 @@ function chooseCard$1(h, level, rand = Math.random, samples = 24) {
     }
     for (const card2 of options2) {
       let sim = { ...h, hands: h.hands.map((x, i) => i === seat ? x : guess2[i]) };
-      sim = playCard$1(sim, card2);
-      while (!handOver$1(sim)) sim = playCard$1(sim, habit$1(sim));
+      sim = playCard$2(sim, card2);
+      while (!handOver$1(sim)) sim = playCard$2(sim, habit$1(sim));
       const s = score(sim);
-      cost.set(card2, cost.get(card2) + s[seat] - (s.reduce((a, x) => a + x, 0) - s[seat]) * 0.05);
+      cost2.set(card2, cost2.get(card2) + s[seat] - (s.reduce((a, x) => a + x, 0) - s[seat]) * 0.05);
     }
   }
   let best = options2[0];
-  for (const c of options2) if (cost.get(c) < cost.get(best)) best = c;
+  for (const c of options2) if (cost2.get(c) < cost2.get(best)) best = c;
   return best;
 }
 const ENDS = [50, 100];
-const MAX_HANDS$1 = 40;
+const MAX_HANDS$2 = 40;
 const isHuman$1 = (seat) => seat === 0 || seat === 2;
 function readHeartsSettings(s) {
   const end = s.end ?? 100;
@@ -9392,8 +9392,8 @@ function readHeartsSettings(s) {
   if (level !== "easy" && level !== "fair" && level !== "hard") return null;
   return { end, level };
 }
-const isCard$1 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
-const cards$1 = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every(isCard$1) && new Set(x).size === x.length;
+const isCard$2 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
+const cards$1 = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every(isCard$2) && new Set(x).size === x.length;
 const blank$1 = (leader) => ({
   hands: [[], [], [], []],
   trick: [],
@@ -9412,13 +9412,13 @@ function seatsOf(order2) {
   let h = blank$1(0);
   for (const c of order2) {
     seats.push(h.turn);
-    h = playCard$1(h, c);
+    h = playCard$2(h, c);
   }
   return seats;
 }
 function tableAfter$1(order2, first) {
   let h = blank$1(first);
-  for (const c of order2) h = playCard$1(h, c);
+  for (const c of order2) h = playCard$2(h, c);
   return h;
 }
 function replayFinished$1(p) {
@@ -9431,12 +9431,12 @@ function replayFinished$1(p) {
   if (held.some((x) => x.length !== 13)) return null;
   let h = { ...blank$1(first), hands: held.map((x) => [...x]) };
   for (const c of order2) {
-    if (!legal$1(h).includes(c)) return null;
-    h = playCard$1(h, c);
+    if (!legal$2(h).includes(c)) return null;
+    h = playCard$2(h, c);
   }
   return handOver$1(h) ? h : null;
 }
-function totals(g) {
+function totals$1(g) {
   const t = [0, 0, 0, 0];
   for (const p of g.past) {
     const h = replayFinished$1(p);
@@ -9445,18 +9445,18 @@ function totals(g) {
   }
   return t;
 }
-const matchOver = (g) => Math.max(...totals(g)) >= g.end || g.past.length >= MAX_HANDS$1;
+const matchOver$1 = (g) => Math.max(...totals$1(g)) >= g.end || g.past.length >= MAX_HANDS$2;
 const sideOf$1 = (g, seat) => g.together ? 0 : seat === 0 ? 0 : 1;
 function humanUp$1(g) {
   if (g.phase === "pass") return g.passed[0] ? g.passed[1] ? null : 2 : 0;
   if (g.phase === "play") return isHuman$1(g.h.turn) ? g.h.turn : null;
   return null;
 }
-const whoseMove$1 = (g) => {
+const whoseMove$2 = (g) => {
   const s = humanUp$1(g);
   return s === null ? null : sideOf$1(g, s);
 };
-const fresh$1 = (end, level, mode) => ({
+const fresh$2 = (end, level, mode) => ({
   end,
   level,
   together: mode === "together",
@@ -9468,8 +9468,8 @@ const fresh$1 = (end, level, mode) => ({
   dealt: null,
   passes: [null, null, null, null]
 });
-function dealt$1(g, rand) {
-  const d = deal$1(rand);
+function dealt$2(g, rand) {
+  const d = deal$2(rand);
   const way = PASS[g.past.length % 4];
   if (way === "hold") {
     const h = startHand(d, null, "hold");
@@ -9498,17 +9498,17 @@ function dealt$1(g, rand) {
 function settle$1(g) {
   if (g.phase !== "play" || !handOver$1(g.h)) return g;
   const next2 = { ...g, past: [...g.past, { first: g.first, order: g.h.played }] };
-  return { ...next2, phase: matchOver(next2) ? "over" : "between" };
+  return { ...next2, phase: matchOver$1(next2) ? "over" : "between" };
 }
-const known$1 = (g) => !!g.dealt;
-function moved$1(g, m, s) {
+const known$2 = (g) => !!g.dealt;
+function moved$2(g, m, s) {
   const seat = humanUp$1(g);
   if (seat === null || sideOf$1(g, seat) !== s) return null;
   if ("pass" in m) {
     if (g.phase !== "pass" || !cards$1(m.pass, 3)) return null;
     const passed = [...g.passed];
     passed[seat === 0 ? 0 : 1] = true;
-    if (!known$1(g)) return { ...g, passed };
+    if (!known$2(g)) return { ...g, passed };
     if (!m.pass.every((c) => g.dealt[seat].includes(c))) return null;
     const passes = [...g.passes];
     passes[seat] = [...m.pass];
@@ -9518,23 +9518,23 @@ function moved$1(g, m, s) {
     return { ...g, passed, passes, phase: "play", h, first: h.leader };
   }
   if (g.phase !== "play" || g.h.played.includes(m.play)) return null;
-  if (!known$1(g)) return g;
-  if (!legal$1(g.h).includes(m.play)) return null;
-  return settle$1({ ...g, h: playCard$1(g.h, m.play) });
+  if (!known$2(g)) return g;
+  if (!legal$2(g.h).includes(m.play)) return null;
+  return settle$1({ ...g, h: playCard$2(g.h, m.play) });
 }
 function roll$1(g, rand) {
   let cur = g;
   for (let k = 0; k < 200; k++) {
-    if (cur.phase === "between") cur = dealt$1(cur, rand);
-    else if (cur.phase === "play" && !isHuman$1(cur.h.turn) && known$1(cur))
-      cur = settle$1({ ...cur, h: playCard$1(cur.h, chooseCard$1(cur.h, cur.level, rand)) });
+    if (cur.phase === "between") cur = dealt$2(cur, rand);
+    else if (cur.phase === "play" && !isHuman$1(cur.h.turn) && known$2(cur))
+      cur = settle$1({ ...cur, h: playCard$2(cur.h, chooseCard$1(cur.h, cur.level, rand)) });
     else break;
   }
   return cur;
 }
-function replayPublic$1(end, level, together, x) {
+function replayPublic$2(end, level, together, x) {
   const o = x;
-  if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS$1)
+  if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS$2)
     return null;
   const past = [];
   for (const x2 of o.past) {
@@ -9551,13 +9551,13 @@ function replayPublic$1(end, level, together, x) {
   if (!cards$1(played) || played.length > 52) return null;
   if (first !== null && (!Number.isInteger(first) || first < 0 || first > 3))
     return null;
-  const g = fresh$1(end, level, together ? "together" : "versus");
+  const g = fresh$2(end, level, together ? "together" : "versus");
   const base = { ...g, past, passed: [passed[0], passed[1]] };
   if (phase === "over") {
-    if (!matchOver(base) || played.length || first !== null) return null;
+    if (!matchOver$1(base) || played.length || first !== null) return null;
     return { ...base, phase: "over" };
   }
-  if (matchOver(base)) return null;
+  if (matchOver$1(base)) return null;
   if (phase === "pass") {
     if (played.length || first !== null || passed[0] && passed[1]) return null;
     return { ...base, phase: "pass" };
@@ -9571,19 +9571,19 @@ function replayPublic$1(end, level, together, x) {
 }
 function heartsRules(end, level) {
   return {
-    fresh: (mode) => fresh$1(end, level, mode),
-    turn: whoseMove$1,
+    fresh: (mode) => fresh$2(end, level, mode),
+    turn: whoseMove$2,
     friendTurn: (g) => {
       const s = humanUp$1(g);
       return s === null ? null : s === 0 ? 0 : 1;
     },
     legal: (g, m, by) => {
-      const s = whoseMove$1(g);
-      return s !== null && (by === void 0 || by === s) && moved$1(g, m, s) !== null;
+      const s = whoseMove$2(g);
+      return s !== null && (by === void 0 || by === s) && moved$2(g, m, s) !== null;
     },
     apply: (g, m) => {
-      const s = whoseMove$1(g);
-      return s === null ? g : moved$1(g, m, s) ?? g;
+      const s = whoseMove$2(g);
+      return s === null ? g : moved$2(g, m, s) ?? g;
     },
     roll: roll$1,
     encode: (g) => ({
@@ -9597,13 +9597,13 @@ function heartsRules(end, level) {
     }),
     decode: (x) => {
       const o = x;
-      return replayPublic$1(end, level, !!o && o.together === true, x);
+      return replayPublic$2(end, level, !!o && o.together === true, x);
     },
     readMove: (x) => {
       const o = x;
       if (!o || typeof o !== "object" || Object.keys(o).length !== 1) return null;
       if ("pass" in o && cards$1(o.pass, 3)) return { pass: [o.pass[0], o.pass[1], o.pass[2]] };
-      if ("play" in o && isCard$1(o.play)) return { play: o.play };
+      if ("play" in o && isCard$2(o.play)) return { play: o.play };
       return null;
     },
     modes: ["versus", "together"],
@@ -9614,8 +9614,8 @@ function heartsRules(end, level) {
       choose: (g) => ({ play: chooseCard$1(g.h, g.level, Math.random) })
     },
     result: (g) => {
-      if (whoseMove$1(g) !== null || g.phase !== "over") return null;
-      const t = totals(g);
+      if (whoseMove$2(g) !== null || g.phase !== "over") return null;
+      const t = totals$1(g);
       const [a, b] = g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]];
       return a < b ? 0 : b < a ? 1 : "draw";
     },
@@ -9648,8 +9648,8 @@ function heartsRules(end, level) {
         let h = startHand(dealtHands, way === "hold" ? null : passes, way);
         if (h.leader !== g.first) return null;
         for (const c of g.h.played) {
-          if (!legal$1(h).includes(c)) return null;
-          h = playCard$1(h, c);
+          if (!legal$2(h).includes(c)) return null;
+          h = playCard$2(h, c);
         }
         if (h.turn !== g.h.turn || JSON.stringify(h.trick) !== JSON.stringify(g.h.trick))
           return null;
@@ -9667,22 +9667,22 @@ function heartsRules(end, level) {
       },
       // a pass is face down: the history keeps that it happened, never which three
       logged: (m) => "pass" in m ? { pass: "face down" } : m,
-      accept: (g) => dealt$1(g, Math.random)
+      accept: (g) => dealt$2(g, Math.random)
     }
   };
 }
 const SPADE = 0;
 const teamOf = (seat) => seat % 2;
 const partnerOf = (seat) => (seat + 2) % 4;
-const sortHand = (h) => h.sort((a, b) => {
+const sortHand$1 = (h) => h.sort((a, b) => {
   const order2 = [2, 3, 1, 0];
   return order2.indexOf(suitOf(a)) - order2.indexOf(suitOf(b)) || rankOf(a) - rankOf(b);
 });
-function deal(rand, dealer) {
+function deal$1(rand, dealer) {
   const d = shuffled(rand);
   const first = (dealer + 1) % 4;
   return {
-    hands: [0, 1, 2, 3].map((s) => sortHand(d.slice(s * 13, s * 13 + 13))),
+    hands: [0, 1, 2, 3].map((s) => sortHand$1(d.slice(s * 13, s * 13 + 13))),
     dealer,
     bids: [null, null, null, null],
     trick: [],
@@ -9701,7 +9701,7 @@ function bid(h, b) {
   bids[h.turn] = Math.max(0, Math.min(13, Math.round(b)));
   return { ...h, bids, turn: (h.turn + 1) % 4 };
 }
-function legal(h, seat = h.turn) {
+function legal$1(h, seat = h.turn) {
   const hand = h.hands[seat];
   if (h.trick.length) {
     const follow = hand.filter((c) => suitOf(c) === suitOf(h.trick[0].card));
@@ -9722,7 +9722,7 @@ function winnerOf(trick) {
   }
   return best.seat;
 }
-function playCard(h, card2) {
+function playCard$1(h, card2) {
   const seat = h.turn;
   const hands = h.hands.map((x, i) => i === seat ? x.filter((c) => c !== card2) : x);
   const trick = [...h.trick, { seat, card: card2 }];
@@ -9835,13 +9835,13 @@ function simulatedBid(h, rand, samples = 24) {
   let clean = 0;
   for (let k = 0; k < samples; k++) {
     const pool = [...rest].sort(() => rand() - 0.5);
-    const hands = [0, 1, 2, 3].map((i) => i === seat ? mine2 : sortHand(pool.splice(0, 13)));
+    const hands = [0, 1, 2, 3].map((i) => i === seat ? mine2 : sortHand$1(pool.splice(0, 13)));
     const fill2 = (as) => h.bids.map(
       (b2, i) => i === seat ? as : b2 !== null ? b2 : Math.max(1, Math.round(count(hands[i])))
     );
     const run2 = (as) => {
       let sim = { ...h, hands, bids: fill2(as), turn: h.leader };
-      while (!handOver(sim)) sim = playCard(sim, habit(sim));
+      while (!handOver(sim)) sim = playCard$1(sim, habit(sim));
       return sim.won[seat];
     };
     took += run2(Math.max(1, Math.round(count(mine2))));
@@ -9852,7 +9852,7 @@ function simulatedBid(h, rand, samples = 24) {
   return partner !== null && partner > 0 ? Math.min(b, 13 - partner) : b;
 }
 function habit(h) {
-  const options2 = legal(h);
+  const options2 = legal$1(h);
   if (options2.length === 1) return options2[0];
   const seat = h.turn;
   const me = h.bids[seat] ?? 1;
@@ -9889,7 +9889,7 @@ function habit(h) {
 }
 const power = (c) => (suitOf(c) === SPADE ? 13 : 0) + rankOf(c);
 function chooseCard(h, level, rand = Math.random, samples = 20) {
-  const options2 = legal(h);
+  const options2 = legal$1(h);
   if (options2.length === 1) return options2[0];
   if (level === "easy" && rand() < 0.35) return options2[Math.floor(rand() * options2.length)];
   if (level !== "hard") return habit(h);
@@ -9922,8 +9922,8 @@ function chooseCard(h, level, rand = Math.random, samples = 20) {
     }
     for (const card2 of options2) {
       let sim = { ...h, hands: h.hands.map((x, i) => i === seat ? x : guess2[i]) };
-      sim = playCard(sim, card2);
-      while (!handOver(sim)) sim = playCard(sim, habit(sim));
+      sim = playCard$1(sim, card2);
+      while (!handOver(sim)) sim = playCard$1(sim, habit(sim));
       const s = scoreHand(sim.bids, sim.won, blank2);
       const t = teamOf(seat);
       value2.set(card2, value2.get(card2) + s[t].score - s[1 - t].score - s[t].bags * 2);
@@ -9933,20 +9933,20 @@ function chooseCard(h, level, rand = Math.random, samples = 20) {
   for (const c of options2) if (value2.get(c) > value2.get(best)) best = c;
   return best;
 }
-const TARGETS = [200, 300, 500];
-const MAX_HANDS = 40;
+const TARGETS$1 = [200, 300, 500];
+const MAX_HANDS$1 = 40;
 function readSpadesSettings(s) {
   const target = s.target ?? 300;
   const level = s.level ?? "fair";
-  if (!TARGETS.includes(target)) return null;
+  if (!TARGETS$1.includes(target)) return null;
   if (level !== "easy" && level !== "fair" && level !== "hard") return null;
   return { target, level };
 }
 const dealerOf = (hand) => (hand + 3) % 4;
 const humans = (g) => g.together ? [0, 2] : [0, 1];
 const isHuman = (g, seat) => humans(g).includes(seat);
-const isCard = (x) => Number.isInteger(x) && x >= 0 && x < 52;
-const cards = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every(isCard) && new Set(x).size === x.length;
+const isCard$1 = (x) => Number.isInteger(x) && x >= 0 && x < 52;
+const cards = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every(isCard$1) && new Set(x).size === x.length;
 const isBid = (x) => Number.isInteger(x) && x >= 0 && x <= 13;
 function blank(dealer) {
   const first = (dealer + 1) % 4;
@@ -9971,7 +9971,7 @@ function tableAfter(dealer, bids, order2, hands) {
     if (bids[s] === null) break;
     h = bid(h, bids[s]);
   }
-  for (const c of order2) h = playCard(h, c);
+  for (const c of order2) h = playCard$1(h, c);
   return h;
 }
 function replayFinished(p, dealer) {
@@ -9981,15 +9981,15 @@ function replayFinished(p, dealer) {
   let t = tableAfter(dealer, p.bids, []);
   for (const c of p.order) {
     seats.push(t.turn);
-    t = playCard(t, c);
+    t = playCard$1(t, c);
   }
   const held = [[], [], [], []];
   p.order.forEach((c, i) => held[seats[i]].push(c));
   if (held.some((x) => x.length !== 13)) return null;
   let h = { ...tableAfter(dealer, p.bids, []), hands: held.map((x) => [...x]) };
   for (const c of p.order) {
-    if (!legal(h).includes(c)) return null;
-    h = playCard(h, c);
+    if (!legal$1(h).includes(c)) return null;
+    h = playCard$1(h, c);
   }
   return handOver(h) ? h : null;
 }
@@ -10004,14 +10004,14 @@ function teams(g) {
   });
   return t;
 }
-const ended = (g) => g.past.length >= MAX_HANDS || winnerTeam(teams(g), g.target) !== null;
+const ended = (g) => g.past.length >= MAX_HANDS$1 || winnerTeam(teams(g), g.target) !== null;
 const sideOf = (g, seat) => g.together ? 0 : seat % 2 === 0 ? 0 : 1;
 const humanUp = (g) => g.over || !isHuman(g, g.h.turn) ? null : g.h.turn;
-const whoseMove = (g) => {
+const whoseMove$1 = (g) => {
   const s = humanUp(g);
   return s === null ? null : sideOf(g, s);
 };
-const fresh = (target, level, mode) => ({
+const fresh$1 = (target, level, mode) => ({
   target,
   level,
   together: mode === "together",
@@ -10020,8 +10020,8 @@ const fresh = (target, level, mode) => ({
   over: false,
   dealt: null
 });
-function dealt(g, rand) {
-  const h = deal(rand, dealerOf(g.past.length));
+function dealt$1(g, rand) {
+  const h = deal$1(rand, dealerOf(g.past.length));
   return { ...g, h, dealt: h.hands.map((x) => [...x]) };
 }
 function settle(g) {
@@ -10029,8 +10029,8 @@ function settle(g) {
   const next2 = { ...g, past: [...g.past, { bids: g.h.bids, order: g.h.played }] };
   return { ...next2, over: ended(next2), dealt: null };
 }
-const known = (g) => !!g.dealt;
-function moved(g, m, s) {
+const known$1 = (g) => !!g.dealt;
+function moved$1(g, m, s) {
   const seat = humanUp(g);
   if (seat === null || sideOf(g, seat) !== s) return null;
   if ("bid" in m) {
@@ -10038,23 +10038,23 @@ function moved(g, m, s) {
     return { ...g, h: bid(g.h, m.bid) };
   }
   if (bidding(g.h) || g.h.played.includes(m.play)) return null;
-  if (!known(g)) return g;
-  if (!legal(g.h).includes(m.play)) return null;
-  return settle({ ...g, h: playCard(g.h, m.play) });
+  if (!known$1(g)) return g;
+  if (!legal$1(g.h).includes(m.play)) return null;
+  return settle({ ...g, h: playCard$1(g.h, m.play) });
 }
 function roll(g, rand) {
   let cur = g;
   for (let k = 0; k < 200 && !cur.over; k++) {
-    if (!cur.dealt) cur = dealt(cur, rand);
+    if (!cur.dealt) cur = dealt$1(cur, rand);
     else if (isHuman(cur, cur.h.turn)) break;
     else if (bidding(cur.h)) cur = { ...cur, h: bid(cur.h, chooseBid(cur.h, cur.level, rand)) };
-    else cur = settle({ ...cur, h: playCard(cur.h, chooseCard(cur.h, cur.level, rand)) });
+    else cur = settle({ ...cur, h: playCard$1(cur.h, chooseCard(cur.h, cur.level, rand)) });
   }
   return cur;
 }
-function replayPublic(target, level, x) {
+function replayPublic$1(target, level, x) {
   const o = x;
-  if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS)
+  if (!o || typeof o !== "object" || !Array.isArray(o.past) || o.past.length > MAX_HANDS$1)
     return null;
   if (typeof o.together !== "boolean") return null;
   const past = [];
@@ -10066,7 +10066,7 @@ function replayPublic(target, level, x) {
     if (k2 < o.past.length - 1 && ended({ past: past.concat(one), target })) return null;
     past.push(one);
   }
-  const g = fresh(target, level, o.together ? "together" : "versus");
+  const g = fresh$1(target, level, o.together ? "together" : "versus");
   const base = { ...g, past };
   if (ended(base)) {
     if (o.bids !== null || o.played !== null) return null;
@@ -10086,19 +10086,19 @@ function replayPublic(target, level, x) {
 }
 function spadesRules(target, level) {
   return {
-    fresh: (mode) => fresh(target, level, mode),
-    turn: whoseMove,
+    fresh: (mode) => fresh$1(target, level, mode),
+    turn: whoseMove$1,
     friendTurn: (g) => {
       const s = humanUp(g);
       return s === null ? null : s === 0 ? 0 : 1;
     },
     legal: (g, m, by) => {
-      const s = whoseMove(g);
-      return s !== null && (by === void 0 || by === s) && moved(g, m, s) !== null;
+      const s = whoseMove$1(g);
+      return s !== null && (by === void 0 || by === s) && moved$1(g, m, s) !== null;
     },
     apply: (g, m) => {
-      const s = whoseMove(g);
-      return s === null ? g : moved(g, m, s) ?? g;
+      const s = whoseMove$1(g);
+      return s === null ? g : moved$1(g, m, s) ?? g;
     },
     roll,
     encode: (g) => ({
@@ -10108,12 +10108,12 @@ function spadesRules(target, level) {
       // the mode decides who sits where, so it travels with the state, which only lab-move writes
       together: g.together
     }),
-    decode: (x) => replayPublic(target, level, x),
+    decode: (x) => replayPublic$1(target, level, x),
     readMove: (x) => {
       const o = x;
       if (!o || typeof o !== "object" || Object.keys(o).length !== 1) return null;
       if ("bid" in o && isBid(o.bid)) return { bid: o.bid };
-      if ("play" in o && isCard(o.play)) return { play: o.play };
+      if ("play" in o && isCard$1(o.play)) return { play: o.play };
       return null;
     },
     modes: ["versus", "together"],
@@ -10139,8 +10139,8 @@ function spadesRules(target, level) {
         const hands = d.map((x) => [...x]);
         let h = tableAfter(dealerOf(g.past.length), g.h.bids, [], hands);
         for (const c of g.h.played) {
-          if (bidding(h) || !legal(h).includes(c)) return null;
-          h = playCard(h, c);
+          if (bidding(h) || !legal$1(h).includes(c)) return null;
+          h = playCard$1(h, c);
         }
         if (h.turn !== g.h.turn || JSON.stringify(h.bids) !== JSON.stringify(g.h.bids)) return null;
         return { ...g, h, dealt: hands };
@@ -10153,6 +10153,347 @@ function spadesRules(target, level) {
       // a bid is announced and a card is face up: nothing in a move is hidden
       logged: (m) => m,
       accept: (g) => roll(g, Math.random)
+    }
+  };
+}
+const EIGHT = 6;
+const isEight = (c) => rankOf(c) === EIGHT;
+const cost = (c) => {
+  const r = rankOf(c);
+  return r === EIGHT ? 50 : r === 12 ? 1 : r >= 9 ? 10 : r + 2;
+};
+const sortHand = (h) => h.sort((a, b) => suitOf(a) - suitOf(b) || rankOf(a) - rankOf(b));
+function deal(players, rand, first = 0) {
+  const d = shuffled(rand);
+  const n = 7;
+  const hands = Array.from({ length: players }, (_, i) => sortHand(d.slice(i * n, i * n + n)));
+  let rest = d.slice(players * n);
+  let top2 = rest.findIndex((c) => !isEight(c));
+  if (top2 < 0) top2 = 0;
+  const start2 = rest[top2];
+  rest = rest.filter((_, i) => i !== top2);
+  return {
+    hands,
+    stock: rest,
+    pile: [start2],
+    suit: suitOf(start2),
+    turn: first,
+    drew: null,
+    short: hands.map(() => [false, false, false, false]),
+    winner: null
+  };
+}
+const top = (h) => h.pile[h.pile.length - 1];
+const fits = (h, c) => isEight(c) || suitOf(c) === h.suit || rankOf(c) === rankOf(top(h));
+function legal(h) {
+  if (h.winner !== null) return [];
+  if (h.drew !== null) return fits(h, h.drew) ? [h.drew] : [];
+  return h.hands[h.turn].filter((c) => fits(h, c));
+}
+const next = (h) => (h.turn + 1) % h.hands.length;
+function playCard(h, c, named) {
+  if (!legal(h).includes(c)) return h;
+  const hands = h.hands.map((x, i) => i === h.turn ? x.filter((y) => y !== c) : x);
+  const suit = isEight(c) ? named ?? suitOf(c) : suitOf(c);
+  const out = hands[h.turn].length === 0;
+  return {
+    ...h,
+    hands,
+    pile: [...h.pile, c],
+    suit,
+    turn: out ? h.turn : next(h),
+    drew: null,
+    winner: out ? h.turn : null
+  };
+}
+function drawCard(h, rand) {
+  if (h.winner !== null || h.drew !== null) return h;
+  let stock = h.stock;
+  let pile = h.pile;
+  if (!stock.length) {
+    stock = pile.slice(0, -1).sort(() => rand() - 0.5);
+    pile = pile.slice(-1);
+  }
+  const short = h.short.map((s, i) => i === h.turn ? s.map((x, k) => x || k === h.suit) : s);
+  if (!stock.length) return { ...h, short, turn: next(h) };
+  const c = stock[0];
+  const hands = h.hands.map((x, i) => i === h.turn ? sortHand([...x, c]) : x);
+  const after2 = { ...h, hands, stock: stock.slice(1), pile, short };
+  return fits(after2, c) ? { ...after2, drew: c } : { ...after2, turn: next(h) };
+}
+const pass = (h) => h.drew === null ? h : { ...h, drew: null, turn: next(h) };
+function nameSuit(h, after2, level) {
+  const counts2 = [0, 1, 2, 3].map((s) => after2.filter((c) => suitOf(c) === s && !isEight(c)).length);
+  let best = counts2.indexOf(Math.max(...counts2));
+  if (level === "hard") {
+    const nxt = next(h);
+    const theyLack = [0, 1, 2, 3].filter((s) => h.short[nxt][s]);
+    const mine2 = theyLack.filter((s) => counts2[s] > 0);
+    if (mine2.length) best = mine2.reduce((a, s) => counts2[s] > counts2[a] ? s : a);
+  }
+  return best;
+}
+function choose(h, level, rand = Math.random) {
+  const me = h.turn;
+  const options2 = legal(h);
+  if (!options2.length) return h.drew !== null ? { kind: "pass" } : { kind: "draw" };
+  const hand = h.hands[me];
+  if (level === "easy") {
+    const c2 = options2[Math.floor(rand() * options2.length)];
+    return { kind: "play", card: c2, suit: isEight(c2) ? Math.floor(rand() * 4) : void 0 };
+  }
+  const plain = options2.filter((c2) => !isEight(c2));
+  const pool = plain.length ? plain : options2;
+  const nxt = next(h);
+  const danger = h.hands.some((x, i) => i !== me && x.length <= 2);
+  const score2 = (c2) => {
+    const rest = hand.filter((x) => x !== c2);
+    let v = rest.filter((x) => suitOf(x) === suitOf(c2)).length * 3;
+    v += cost(c2) * (danger ? 0.6 : 0.15);
+    if (level === "hard") {
+      if (h.short[nxt][suitOf(c2)]) v += 6;
+      if (h.hands[nxt].length <= 2 && !h.short[nxt][suitOf(c2)]) v -= 2;
+    }
+    return v;
+  };
+  const c = pool.reduce((a, x) => score2(x) > score2(a) ? x : a);
+  return {
+    kind: "play",
+    card: c,
+    suit: isEight(c) ? nameSuit(
+      h,
+      hand.filter((x) => x !== c),
+      level
+    ) : void 0
+  };
+}
+const TARGETS = [50, 100];
+const MAX_HANDS = 30;
+const MAX_MOVES = 400;
+function readEightsSettings(s) {
+  const target = s.target ?? 100;
+  return TARGETS.includes(target) ? { target } : null;
+}
+const totals = (g) => {
+  const t = [0, 0];
+  for (const r of g.done) if (r.winner !== null) t[r.winner] += r.points;
+  return t;
+};
+const matchOver = (g) => Math.max(...totals(g)) >= g.target || g.done.length >= MAX_HANDS;
+const whoseMove = (g) => g.between ? null : g.turn;
+const fresh = (target) => ({
+  target,
+  done: [],
+  first: 1,
+  between: true,
+  pile: [],
+  suit: 0,
+  turn: 0,
+  drawn: false,
+  short: [
+    [false, false, false, false],
+    [false, false, false, false]
+  ],
+  sizes: [0, 0],
+  stockLeft: 0,
+  moves: 0,
+  hands: [null, null],
+  stock: null,
+  drew: null
+});
+const known = (g) => !!g.hands[0] && !!g.hands[1] && !!g.stock;
+const toHand = (g) => ({
+  hands: [g.hands[0], g.hands[1]],
+  stock: g.stock,
+  pile: g.pile,
+  suit: g.suit,
+  turn: g.turn,
+  drew: g.drew,
+  short: g.short,
+  winner: null
+});
+function fromHand(g, h, counted = true) {
+  const next2 = {
+    ...g,
+    pile: h.pile,
+    suit: h.suit,
+    turn: h.turn,
+    drawn: h.drew !== null,
+    drew: h.drew,
+    short: h.short.map((s) => [...s]),
+    sizes: [h.hands[0].length, h.hands[1].length],
+    stockLeft: h.stock.length,
+    moves: g.moves + (counted ? 1 : 0),
+    hands: [h.hands[0], h.hands[1]],
+    stock: h.stock
+  };
+  if (h.winner !== null) {
+    const loser = h.winner === 0 ? 1 : 0;
+    const left2 = [...h.hands[loser]];
+    const ended2 = {
+      winner: h.winner,
+      points: left2.reduce((a, c) => a + cost(c), 0),
+      left: left2
+    };
+    return { ...next2, done: [...g.done, ended2], between: true };
+  }
+  if (next2.moves >= MAX_MOVES)
+    return { ...next2, done: [...g.done, { winner: null, points: 0, left: [] }], between: true };
+  return next2;
+}
+function dealt(g, rand) {
+  const first = g.first === 0 ? 1 : 0;
+  const h = deal(2, rand, first);
+  return { ...fromHand({ ...g, between: false, moves: 0 }, h, false), first, moves: 0 };
+}
+const isCard = (x) => Number.isInteger(x) && x >= 0 && x < 52;
+const isSuit = (x) => x === 0 || x === 1 || x === 2 || x === 3;
+function moved(g, m, s) {
+  if (whoseMove(g) !== s) return null;
+  if ("pass" in m) {
+    if (!g.drawn) return null;
+    return known(g) ? fromHand(g, pass(toHand(g))) : g;
+  }
+  if ("draw" in m) {
+    if (g.drawn) return null;
+    if (!known(g)) return g;
+    const h2 = toHand(g);
+    if (legal(h2).length) return null;
+    return fromHand(g, drawCard(h2, Math.random));
+  }
+  if (g.pile.includes(m.play)) return null;
+  if (isEight(m.play) !== (m.suit !== void 0)) return null;
+  if (!known(g)) return g;
+  const h = toHand(g);
+  if (!legal(h).includes(m.play)) return null;
+  return fromHand(g, playCard(h, m.play, m.suit));
+}
+const cardList = (x, max = 52) => Array.isArray(x) && x.length <= max && x.every(isCard) && new Set(x).size === x.length;
+function readEnded(x) {
+  const o = x;
+  if (!o || typeof o !== "object" || !cardList(o.left)) return null;
+  if (o.winner === null)
+    return o.points === 0 && o.left.length === 0 ? { winner: null, points: 0, left: [] } : null;
+  if (o.winner !== 0 && o.winner !== 1) return null;
+  if (o.points !== o.left.reduce((a, c) => a + cost(c), 0)) return null;
+  return { winner: o.winner, points: o.points, left: [...o.left] };
+}
+function replayPublic(target, x) {
+  const o = x;
+  if (!o || typeof o !== "object" || !Array.isArray(o.done) || o.done.length > MAX_HANDS)
+    return null;
+  const done2 = o.done.map(readEnded);
+  if (done2.some((r) => !r)) return null;
+  const { first, between, pile, suit, turn, drawn, short, sizes, stockLeft, moves: moves2 } = o;
+  if (first !== 0 && first !== 1 || typeof between !== "boolean" || typeof drawn !== "boolean")
+    return null;
+  if (turn !== 0 && turn !== 1 || !isSuit(suit) || !cardList(pile)) return null;
+  if (!Array.isArray(short) || short.length !== 2 || !short.every(
+    (s) => Array.isArray(s) && s.length === 4 && s.every((b) => typeof b === "boolean")
+  ))
+    return null;
+  if (!Array.isArray(sizes) || sizes.length !== 2 || !sizes.every((n) => Number.isInteger(n) && n >= 0))
+    return null;
+  if (!Number.isInteger(stockLeft) || stockLeft < 0) return null;
+  if (!Number.isInteger(moves2) || moves2 < 0 || moves2 >= MAX_MOVES)
+    return null;
+  const g = {
+    ...fresh(target),
+    done: done2,
+    first,
+    between,
+    pile: [...pile],
+    suit,
+    turn,
+    drawn,
+    short: short.map((s) => [...s]),
+    sizes: [sizes[0], sizes[1]],
+    stockLeft,
+    moves: moves2
+  };
+  if (g.between) return matchOver(g) && g.done.length > 0 ? g : null;
+  if (matchOver(g)) return null;
+  if (!g.pile.length || g.pile.length + g.sizes[0] + g.sizes[1] + g.stockLeft !== 52) return null;
+  const top2 = g.pile[g.pile.length - 1];
+  if (!isEight(top2) && (top2 & 3) !== g.suit) return null;
+  return g;
+}
+function eightsRules(target) {
+  return {
+    fresh: () => fresh(target),
+    turn: whoseMove,
+    legal: (g, m, by) => {
+      const s = whoseMove(g);
+      return s !== null && (by === void 0 || by === s) && moved(g, m, s) !== null;
+    },
+    apply: (g, m) => {
+      const s = whoseMove(g);
+      return s === null ? g : moved(g, m, s) ?? g;
+    },
+    roll: (g, rand) => g.between && !matchOver(g) ? dealt(g, rand) : g,
+    encode: (g) => ({
+      done: g.done,
+      first: g.first,
+      between: g.between,
+      pile: g.pile,
+      suit: g.suit,
+      turn: g.turn,
+      drawn: g.drawn,
+      short: g.short,
+      sizes: g.sizes,
+      stockLeft: g.stockLeft,
+      moves: g.moves
+    }),
+    decode: (x) => replayPublic(target, x),
+    readMove: (x) => {
+      const o = x;
+      if (!o || typeof o !== "object") return null;
+      const keys = Object.keys(o).sort().join();
+      if (keys === "draw" && o.draw === true) return { draw: true };
+      if (keys === "pass" && o.pass === true) return { pass: true };
+      if (keys === "play" && isCard(o.play)) return { play: o.play };
+      if (keys === "play,suit" && isCard(o.play) && isSuit(o.suit))
+        return { play: o.play, suit: o.suit };
+      return null;
+    },
+    modes: ["versus", "together"],
+    computer: {
+      side: 1,
+      levels: ["easy", "fair", "hard"],
+      choose: (g, level) => {
+        const c = choose(toHand(g), level, Math.random);
+        if (c.kind === "draw") return { draw: true };
+        if (c.kind === "pass") return { pass: true };
+        return isEight(c.card) ? { play: c.card, suit: c.suit ?? c.card & 3 } : { play: c.card };
+      }
+    },
+    result: (g) => {
+      if (whoseMove(g) !== null) return null;
+      const [a, b] = totals(g);
+      return a > b ? 0 : b > a ? 1 : "draw";
+    },
+    begun: (g) => g.done.length > 0 || g.moves > 0,
+    hidden: {
+      secret: (g) => ({ hands: g.hands, stock: g.stock, drew: g.drew }),
+      join: (g, secret) => {
+        const o = secret;
+        if (!o || !Array.isArray(o.hands) || o.hands.length !== 2) return null;
+        if (g.between) return { ...g };
+        const [a, b] = o.hands;
+        if (!cardList(a) || !cardList(b) || !cardList(o.stock)) return null;
+        if (a.length !== g.sizes[0] || b.length !== g.sizes[1] || o.stock.length !== g.stockLeft)
+          return null;
+        const all = [...a, ...b, ...o.stock, ...g.pile];
+        if (all.length !== 52 || new Set(all).size !== 52) return null;
+        const drew = o.drew;
+        if (g.drawn !== (drew !== null) || drew !== null && !(isCard(drew) && [a, b][g.turn].includes(drew)))
+          return null;
+        return { ...g, hands: [[...a], [...b]], stock: [...o.stock], drew };
+      },
+      mine: (g, side) => ({ hand: g.hands[side], drew: g.turn === side ? g.drew : null }),
+      // nothing in a move is hidden: a card played is face up, and a draw names no card
+      logged: (m) => m,
+      accept: (g) => dealt(g, Math.random)
     }
   };
 }
@@ -10227,12 +10568,12 @@ const GAMES = {
   curling: () => ({
     rules: curlingMatchRules,
     // the ends' points added up, yellow's first
-    score: (cg) => totals$5(cg.g).join("–")
+    score: (cg) => totals$6(cg.g).join("–")
   }),
   putt: () => ({
     rules: puttRules,
     // strokes over the round, the first ball's first: the lower wins
-    score: (g) => totals$4(g).join("–")
+    score: (g) => totals$5(g).join("–")
   }),
   darts: () => ({
     rules: dartsMatchRules,
@@ -10276,7 +10617,7 @@ const GAMES = {
   shadowbox: (s) => {
     const set = readBoxSettings(s);
     if (set === null) return null;
-    return { rules: boxRules(set.rounds), score: (g) => totals$3(g).join("–") };
+    return { rules: boxRules(set.rounds), score: (g) => totals$4(g).join("–") };
   },
   rps: (s) => {
     const set = readRpsSettings(s);
@@ -10286,7 +10627,7 @@ const GAMES = {
   gin: (s) => {
     const set = readGinSettings(s);
     if (set === null) return null;
-    return { rules: ginRules(set.target), score: (g) => totals$2(g).join("–") };
+    return { rules: ginRules(set.target), score: (g) => totals$3(g).join("–") };
   },
   cribbage: () => ({
     rules: cribRules,
@@ -10296,13 +10637,13 @@ const GAMES = {
   dominoes: (s) => {
     const set = readDominoSettings(s);
     if (set === null) return null;
-    return { rules: dominoRules(set.target), score: (g) => totals$1(g).join("–") };
+    return { rules: dominoRules(set.target), score: (g) => totals$2(g).join("–") };
   },
   hearts: (s) => {
     const set = readHeartsSettings(s);
     if (set === null) return null;
     const score2 = (g) => {
-      const t = totals(g);
+      const t = totals$1(g);
       return (g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]).join("–");
     };
     return { rules: heartsRules(set.end, set.level), score: score2 };
@@ -10312,6 +10653,11 @@ const GAMES = {
     if (set === null) return null;
     const score2 = (g) => teams(g).map((t) => t.score).join("–");
     return { rules: spadesRules(set.target, set.level), score: score2 };
+  },
+  eights: (s) => {
+    const set = readEightsSettings(s);
+    if (set === null) return null;
+    return { rules: eightsRules(set.target), score: (g) => totals(g).join("–") };
   }
 };
 const refuse = (status, error) => ({ kind: "refuse", status, error });
