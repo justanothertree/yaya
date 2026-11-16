@@ -174,9 +174,12 @@ export const BOARD: Record<string, Reader> = {
       true,
     ),
   hex: (read) =>
-    versus(HEX_LEVELS, readHex(read(HEX_KEY)).record, (t) => [
-      t.best > 1 && `best run ${t.best} in a row`,
-    ]),
+    join(
+      versus(HEX_LEVELS, readHex(read(HEX_KEY)).record, (t) => [
+        t.best > 1 && `best run ${t.best} in a row`,
+      ]),
+      onlineLine(read, 'hex'),
+    ),
   liars: (read) =>
     versus(
       LIARS_LEVELS,
