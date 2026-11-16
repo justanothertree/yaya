@@ -25,6 +25,12 @@ import {
 import { motionReduced as reduced } from '../ui/motion'
 import { DieFace } from './DieFace'
 import { useKept } from './kept'
+import { type ShutGame } from './shutRoom'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 type Mode = 'bot' | 'alone'
 type Whose = 'you' | 'computer' | 'done'
@@ -149,6 +155,24 @@ export function ShutDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whose])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). The server
+     rolls every die (shutRoom.ts): tiles are picked towards the roll it made and, once they add
+     up, proposed and sent; one die or two is chosen the same way. */
+  const lm = useLabMatch('shut')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const mg = inMatch ? (lm.shown as ShutGame | null) : null
+  const [mPicked, setMPicked] = useState(0)
+  const pickKey = mg ? `${mg.log.length}|${lm.hasPending}` : ''
+  useEffect(() => setMPicked(0), [pickKey])
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
+
   const fresh = (m: Mode = mode, lv: Level = saved.level) => {
     recorded.current = false
     setMode(m)
@@ -191,6 +215,126 @@ export function ShutDemo() {
 
   const record = saved.record[saved.level]
   const showDice = t.dice.length > 0
+  if (inMatch) {
+    const v = lm.view
+    const together = v?.mode === 'together'
+    const me: 0 | 1 = together ? 0 : v?.you === 1 ? 1 : 0
+    const them: 0 | 1 = me === 0 ? 1 : 0
+    const theirName = !v ? 'They' : together ? 'The computer' : otherName(v)
+    const named = (side: 0 | 1) => (side === me ? (together ? 'You two' : 'You') : theirName)
+    // the box on show: the one being played, or mine once both are done
+    const shown = mg ? (mg.turn ?? me) : me
+    const up = mg ? mg.up[shown] : 0b111111111
+    const total = mg ? mg.dice.reduce((a, d) => a + d, 0) : 0
+    const canShut = lm.canPlay && mg?.due === 'shut'
+    const tap = (tile: number) => {
+      const bit = 1 << (tile - 1)
+      if (!canShut || !(up & bit)) return
+      const next = mPicked ^ bit
+      if (sum(next) > total) return
+      setMPicked(next)
+      if (sum(next) === total) lm.play({ shut: next })
+    }
+    const said = !mg
+      ? ''
+      : mg.turn === null
+        ? (() => {
+            const [a, b] = [sum(mg.up[me]), sum(mg.up[them])]
+            return a < b
+              ? `🏆 ${together ? 'You two leave' : 'You leave'} ${a}, ${theirName} ${b}.`
+              : a > b
+                ? `${theirName} ${b === 0 ? 'shut the box' : `left ${b}`}; ${together ? 'you two' : 'you'} left ${a}.`
+                : `Both left ${a}: a draw.`
+          })()
+        : mg.turn === me
+          ? mg.due === 'dice'
+            ? 'The 7, 8 and 9 are down: roll one die or two.'
+            : canShut
+              ? `${total} to shut: pick tiles that add up to it.`
+              : lm.hasPending
+                ? 'Send it, and the server rolls.'
+                : 'Your teammate’s pick.'
+          : me === 1
+            ? `${theirName} plays first; your box is next.`
+            : mg.up[me] === 0
+              ? `You shut the box! ${theirName} is playing theirs.`
+              : `You left ${sum(mg.up[me])}. ${theirName} is playing their box.`
+    return (
+      <div className={`lab-keys xb-room is-${saved.look}`}>
+        <MatchBar lm={lm} sides={['the first box', 'the second box']} />
+        {mg && (
+          <div className="dice-scores">
+            {([me, them] as (0 | 1)[]).map((side) => (
+              <div key={side} className={`dice-score${mg.turn === side ? ' is-up' : ''}`}>
+                <span>{named(side)}</span>
+                <strong>{side === them && mg.turn === me ? '—' : sum(mg.up[side])}</strong>
+                <span className="muted">still up</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {said && (
+          <p className="mc-line xb-said" aria-live="polite">
+            {said}
+          </p>
+        )}
+        {mg && (
+          <div className="xb-box">
+            <p className="xb-whose">{shown === me ? 'Your box' : `${theirName}’s box`}</p>
+            <div className="xb-tiles" role="group" aria-label="The tiles: press one to shut it">
+              {TILES.map((tile) => {
+                const bit = 1 << (tile - 1)
+                const isUp = (up & bit) !== 0
+                const picked = (mPicked & bit) !== 0
+                return (
+                  <button
+                    key={tile}
+                    className={['xb-tile', isUp ? '' : 'is-down', picked ? 'is-picked' : '']
+                      .filter(Boolean)
+                      .join(' ')}
+                    disabled={!canShut || !isUp}
+                    aria-pressed={picked}
+                    aria-label={`${tile}: ${isUp ? (picked ? 'picked' : 'up') : 'shut'}`}
+                    onClick={() => tap(tile)}
+                  >
+                    {tile}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="dice-row" aria-live="off">
+              {mg.dice.length ? (
+                mg.dice.map((d, i) => (
+                  <span
+                    key={i}
+                    className="die is-kept"
+                    role="img"
+                    aria-label={`A die showing ${d}`}
+                  >
+                    <DieFace face={d} />
+                  </span>
+                ))
+              ) : (
+                <span className="muted xb-nodice">No dice on the table</span>
+              )}
+            </div>
+            {lm.canPlay && mg.due === 'dice' && (
+              <div className="lab-controls xb-roll">
+                <button className="btn" onClick={() => lm.play({ dice: 2 })}>
+                  🎲🎲 Roll two
+                </button>
+                <button className="btn btn-ghost" onClick={() => lm.play({ dice: 1 })}>
+                  🎲 Roll one
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        <MatchSend lm={lm} />
+      </div>
+    )
+  }
+
   return (
     <div className={`lab-keys xb-room is-${saved.look}`}>
       <div className="lab-controls">
@@ -230,6 +374,9 @@ export function ShutDemo() {
         <button className="btn btn-ghost" onClick={() => fresh()}>
           ↻ {mode === 'alone' ? 'New turn' : 'New game'}
         </button>
+        {signedIn && mode === 'bot' && (
+          <MatchChallenge demo="shut" settings={{}} levelNames={LEVEL_NAMES} />
+        )}
       </div>
       <div className="dice-scores">
         <div className={`dice-score${mine ? ' is-up' : ''}`}>
