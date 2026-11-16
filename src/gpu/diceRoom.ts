@@ -1,6 +1,7 @@
 import {
   TARGET,
   chooseKeep,
+  options,
   roll as rollDice,
   scoreOf,
   scores,
@@ -141,6 +142,33 @@ export function replay(x: unknown): DiceGame | null {
   return g
 }
 
+/**
+ * The computer's three levels. The toy's own computer (dice.ts) is Hard: it keeps what is worth
+ * most counting the dice it leaves, and banks by how many it would roll next. Banking thresholds
+ * tuned either way did not beat it — 43 to 51% over 8,000 games each — so the levels are made
+ * below it rather than above. Fair keeps every die that scores, which leaves fewer to roll, and
+ * banks as Hard does; Easy keeps every die that scores and banks at 300. Measured on 16 Nov 2026
+ * over 8,000 games each: Easy wins 24% against Hard, Fair 39% against Hard and 65% against Easy.
+ */
+export const LEVELS = ['easy', 'fair', 'hard'] as const
+export type Level = (typeof LEVELS)[number]
+export function choose(g: DiceGame, level: Level): Decision {
+  const table = g.table ?? []
+  const side = g.turn ?? 1
+  const keep =
+    level === 'hard'
+      ? chooseKeep(table)
+      : (options(table).sort((a, b) => b.keep.length - a.keep.length || b.points - a.points)[0]
+          ?.keep ?? [])
+  const t = setAside({ roll: table, points: g.points, free: g.free, bust: false }, keep)
+  if (!t) return { keep, bank: true }
+  const mine = g.scores[side]
+  const bank =
+    mine + t.points >= TARGET ||
+    (level === 'easy' ? t.points >= 300 : wantsBank(t, mine, g.scores[side === 0 ? 1 : 0]))
+  return { keep, bank }
+}
+
 export const diceRules: Rules<DiceGame, Decision> & {
   roll: (g: DiceGame, rand: () => number) => DiceGame
 } = {
@@ -158,12 +186,8 @@ export const diceRules: Rules<DiceGame, Decision> & {
   modes: ['versus', 'together'],
   computer: {
     side: 1,
-    levels: ['fair'],
-    choose: (g) => {
-      const keep = chooseKeep(g.table ?? [])
-      const t = setAside({ roll: g.table ?? [], points: g.points, free: g.free, bust: false }, keep)
-      return { keep, bank: !!t && wantsBank(t, g.scores[1], g.scores[0]) }
-    },
+    levels: LEVELS,
+    choose: (g, level) => choose(g, level as Level),
   },
   result: (g) => g.winner,
   begun: (g) => g.log.length > 1,

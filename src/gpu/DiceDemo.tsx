@@ -441,7 +441,13 @@ export function DiceDemo() {
         <button className="btn btn-ghost" onClick={() => reset()}>
           ↻ New game
         </button>
-        {signedIn && <MatchChallenge demo="dice" settings={{}} levelNames={{ fair: 'Fair' }} />}
+        {signedIn && (
+          <MatchChallenge
+            demo="dice"
+            settings={{}}
+            levelNames={{ easy: 'Easy', fair: 'Fair', hard: 'Hard' }}
+          />
+        )}
       </div>
 
       <div className="dice-scores">

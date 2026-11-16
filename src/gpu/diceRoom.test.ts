@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { TARGET, chooseKeep, scoreOf } from './dice'
-import { MAX_TURNS, diceRules as R, replay, roll, type DiceGame } from './diceRoom'
+import {
+  MAX_TURNS,
+  choose,
+  diceRules as R,
+  replay,
+  roll,
+  type DiceGame,
+  type Level,
+} from './diceRoom'
 
 function seeded(seed: number) {
   let s = seed >>> 0
@@ -130,5 +138,24 @@ describe('ten thousand by turns: the server rolls', () => {
     expect(R.readMove({ keep: [6], bank: true })).toBeNull()
     expect(R.readMove({ keep: [0], bank: 'yes' })).toBeNull()
     expect(R.readMove({ keep: [2, 0], bank: false })).toEqual({ keep: [0, 2], bank: false })
+  })
+
+  it('offers three levels that beat each other in order', () => {
+    /** games between two levels, each side first in half of them */
+    const wins = (a: Level, b: Level, n: number) => {
+      const rnd = seeded(99)
+      let w = 0
+      for (let k = 0; k < n; k++) {
+        const lv: Level[] = k % 2 ? [b, a] : [a, b]
+        let g = roll(R.fresh(), rnd)
+        for (let s = 0; s < 5000 && g.turn !== null; s++)
+          g = roll(R.apply(g, choose(g, lv[g.turn])), rnd)
+        if (g.winner === (k % 2 ? 1 : 0)) w++
+      }
+      return w / n
+    }
+    expect(wins('fair', 'easy', 600)).toBeGreaterThan(0.55)
+    expect(wins('hard', 'fair', 600)).toBeGreaterThan(0.53)
+    expect(wins('hard', 'easy', 600)).toBeGreaterThan(0.65)
   })
 })
