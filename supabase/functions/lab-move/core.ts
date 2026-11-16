@@ -27,6 +27,7 @@ import { fourRowMatchRules, readFourSettings } from '../../../src/gpu/fourrowRoo
 import { poolRules } from '../../../src/gpu/poolRoom'
 import { score as mancalaScore } from '../../../src/gpu/mancala'
 import { mancalaRules, readMancalaSettings, type MancalaGame } from '../../../src/gpu/mancalaRoom'
+import { morrisRules } from '../../../src/gpu/morrisRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -78,6 +79,7 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       score: (g: MancalaGame) => mancalaScore(g.b).join('–'),
     }
   },
+  morris: () => ({ rules: morrisRules }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
