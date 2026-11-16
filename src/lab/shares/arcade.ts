@@ -182,8 +182,10 @@ export const ARCADE: Record<string, Reader> = {
       tons > 0 && (tons === 1 ? 'a 180' : `${n(tons)} 180s`),
     ])
     const record = beaten(DARTS_LEVELS, r, 'matches')
-    if (!ever) return record
-    return record ? `${record}; best ever: ${ever}` : `best ever: ${ever}`
+    const alone = !ever ? record : record ? `${record}; best ever: ${ever}` : `best ever: ${ever}`
+    // set apart from "best ever", which would otherwise seem to take the call's games in its list
+    const online = onlineLine(read, 'darts')
+    return alone && online ? `${alone}; ${online}` : alone || online
   },
   echo: (read) => {
     const s = readEcho(read(ECHO_KEY))

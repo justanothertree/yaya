@@ -164,6 +164,20 @@ describe('arcade share readers', () => {
     expect(line('darts', DARTS_KEY, { level: 'hard', record: { hard: { lost: 2 } } })).toBeNull()
   })
 
+  it('darts adds matches in a call, and shares them with nothing against the computer', () => {
+    const online = JSON.stringify({ darts: { versus: { won: 1, lost: 1, drawn: 0 } } })
+    const saved = JSON.stringify({
+      record: { easy: { won: 1, lost: 0, best: 40, fewest: 0, tons: 0 } },
+    })
+    const both = (k: string) => (k === ONLINE_KEY ? online : k === DARTS_KEY ? saved : null)
+    expect(ARCADE.darts(both)).toBe(
+      'won 1 of 1 matches against the Easy computer; best ever: checkout 40; beat friends in 1 of 2 online games',
+    )
+    expect(ARCADE.darts((k) => (k === ONLINE_KEY ? online : null))).toBe(
+      'beat friends in 1 of 2 online games',
+    )
+  })
+
   it('echo: the longest tune, and how it was played', () => {
     const best = {
       strict: { 4: { echo: 9, mirror: 0 }, 6: { echo: 0, mirror: 0 } },
