@@ -56,6 +56,7 @@ import { boxRules, readBoxSettings } from '../../gpu/shadowboxRoom'
 import { readRpsSettings, rpsRules } from '../../gpu/rpsRoom'
 import { ginRules, readGinSettings } from '../../gpu/ginRoom'
 import { cribRules } from '../../gpu/cribbageRoom'
+import { dominoRules, readDominoSettings } from '../../gpu/dominoesRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -226,6 +227,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
   cribbage: {
     name: MATCH_NAMES.cribbage,
     rulesFor: () => cribRules,
+    levels: ['easy', 'fair', 'hard'],
+  },
+  dominoes: {
+    name: MATCH_NAMES.dominoes,
+    rulesFor: (s) => {
+      const set = readDominoSettings(s)
+      return set === null ? null : dominoRules(set.target)
+    },
     levels: ['easy', 'fair', 'hard'],
   },
 }

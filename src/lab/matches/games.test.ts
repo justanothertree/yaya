@@ -50,6 +50,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   rps: [{}, { firstTo: 5 }, { firstTo: 10, level: 'hard' }],
   gin: [{}, { target: 100 }, { target: 50, level: 'hard' }],
   cribbage: [{}, { level: 'hard' }],
+  dominoes: [{}, { target: 50 }, { target: 100, level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -84,6 +85,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   rps: [{ firstTo: 4 }, { firstTo: '3' }, { firstTo: 0 }],
   gin: [{ target: 75 }, { target: '50' }, { target: 0 }],
   cribbage: [],
+  dominoes: [{ target: 75 }, { target: '100' }, { target: 0 }],
 }
 
 describe('the match toys', () => {
