@@ -122,9 +122,12 @@ export const BOARD: Record<string, Reader> = {
       `${count(t.points, 'point')} to ${t.against}`,
     ]),
   breakthrough: (read) =>
-    versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
-      quickest(t.fastest),
-    ]),
+    join(
+      versus(BREAKTHROUGH_LEVELS, readBreakthrough(read(BREAKTHROUGH_KEY)).record, (t) => [
+        quickest(t.fastest),
+      ]),
+      onlineLine(read, 'breakthrough'),
+    ),
   chess: (read) =>
     join(versus(CHESS_LEVELS, readChess(read(CHESS_KEY)).record), onlineLine(read, 'chess')),
   cribbage: (read) =>
@@ -233,7 +236,11 @@ export const BOARD: Record<string, Reader> = {
       s.decided > 0 && `${Math.round((100 * s.agreed) / s.decided)}% of decisions by the book`,
     )
   },
-  ultimate: (read) => versus(ULTIMATE_LEVELS, readUltimate(read(ULTIMATE_KEY)).record),
+  ultimate: (read) =>
+    join(
+      versus(ULTIMATE_LEVELS, readUltimate(read(ULTIMATE_KEY)).record),
+      onlineLine(read, 'ultimate'),
+    ),
   yacht: (read) => {
     const s = readYacht(read(YACHT_KEY))
     return join(versus(YACHT_LEVELS, s.record), s.best > 0 && `best game alone ${s.best}`)
