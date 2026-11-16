@@ -51,6 +51,7 @@ import { LEVELS as YACHT_LEVELS } from '../../gpu/yacht'
 import { yachtRules } from '../../gpu/yachtRoom'
 import { LEVELS as SHUT_LEVELS } from '../../gpu/shut'
 import { shutRules } from '../../gpu/shutRoom'
+import { codeRules, readCodeSettings } from '../../gpu/codebreakerRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -186,6 +187,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
   dice: { name: MATCH_NAMES.dice, rulesFor: () => diceRules, levels: DICE_LEVELS },
   yacht: { name: MATCH_NAMES.yacht, rulesFor: () => yachtRules, levels: YACHT_LEVELS },
   shut: { name: MATCH_NAMES.shut, rulesFor: () => shutRules, levels: SHUT_LEVELS },
+  codebreaker: {
+    name: MATCH_NAMES.codebreaker,
+    rulesFor: (s) => {
+      const rules = readCodeSettings(s)
+      return rules === null ? null : codeRules(rules)
+    },
+    levels: ['easy', 'fair', 'hard'],
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
