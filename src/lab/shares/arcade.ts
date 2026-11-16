@@ -163,7 +163,11 @@ export const ARCADE: Record<string, Reader> = {
   curling: (read) => {
     const r = readCurling(read(CURLING_KEY)).record
     const end = most(CURLING_LEVELS.map((l) => r[l].bestEnd))
-    return join([beaten(CURLING_LEVELS, r, 'games', (t) => t.drawn), end > 0 && `best end ${end}`])
+    return join([
+      beaten(CURLING_LEVELS, r, 'games', (t) => t.drawn),
+      end > 0 && `best end ${end}`,
+      onlineLine(read, 'curling'),
+    ])
   },
   darts: (read) => {
     const r = readDarts(read(DARTS_KEY)).record
