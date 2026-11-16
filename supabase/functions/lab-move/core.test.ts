@@ -3779,3 +3779,67 @@ describe('crazy eights by turns: the hands, the stock and a drawn card kept back
     }
   })
 })
+
+describe('liar’s dice by turns: the cups and their seed kept back', () => {
+  const ld = (over: Partial<Row> = {}) => invite({ demo_id: 'liars', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as number[]
+  }
+  type Sec = { dice: number[][]; seed: number }
+
+  it('rolls with the yes, and shows each player their own cup only', () => {
+    const p0 = decide(ld(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(JSON.stringify(p0.state)).not.toMatch(/dice|seed/)
+    const row = after(ld(), p0)
+    expect(mine(row, A)).toEqual(sec.dice[0])
+    expect(mine(row, B)).toEqual(sec.dice[1])
+  })
+
+  it('a call lifts both cups: the showdown is counted, a die lost, and both roll again from the secret', () => {
+    let row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const before = row.secret as Sec
+    row = after(row, decide(row, A, move(row.seq, { bid: { q: 4, f: 6 } })))
+    const p = decide(row, B, move(row.seq, { call: true }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    row = after(row, p)
+    const st = row.state as { past: { dice: number[][]; actual: number; loser: number }[] }
+    expect(st.past[0].dice).toEqual(before.dice)
+    const sixes = before.dice.flat().filter((d) => d === 6 || d === 1).length
+    expect(st.past[0].actual).toBe(sixes)
+    expect(st.past[0].loser).toBe(sixes >= 4 ? 1 : 0)
+    const after2 = row.secret as Sec
+    expect(after2.dice[st.past[0].loser]).toHaveLength(4)
+    expect(after2.seed).not.toBe(before.seed)
+    expect(JSON.stringify(row.state)).not.toMatch(/seed/)
+  })
+
+  it('refuses a stored cup that is not the size the table says', () => {
+    const row = after(ld(), decide(ld(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(
+      status(
+        decide(
+          { ...row, secret: { ...sec, dice: [sec.dice[0].slice(1), sec.dice[1]] } },
+          A,
+          move(row.seq, { bid: { q: 2, f: 3 } }),
+        ),
+      ),
+    ).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = ld({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const p = decide(row, A, move(row.seq, { bid: { q: 2, f: 3 } }))
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      expect(((p.move as { then?: unknown[] }).then ?? []).length).toBe(1)
+      row = after(row, p)
+      expect(row.turn).toBe(1)
+    }
+  })
+})

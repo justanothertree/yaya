@@ -54,6 +54,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   hearts: [{}, { end: 50 }, { end: 100, level: 'hard' }],
   spades: [{}, { target: 200 }, { target: 500, level: 'hard' }],
   eights: [{}, { target: 50 }, { target: 100, level: 'hard' }],
+  liars: [{}, { wild: false }, { wild: true, level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -92,6 +93,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   hearts: [{ end: 75 }, { end: '100' }, { level: 'expert' }],
   spades: [{ target: 250 }, { target: '300' }, { level: 'expert' }],
   eights: [{ target: 75 }, { target: '100' }, { target: 0 }],
+  liars: [{ wild: 'yes' }, { wild: 1 }],
 }
 
 describe('the match toys', () => {
