@@ -102,6 +102,19 @@ export function swap(b: Board): Board {
 
 /* ---------------------------------------------------------------------------- the computer */
 
+/**
+ * Whether the computer, second with the swap rule on, takes the first stone rather than answer
+ * it: it does when that stone is near the middle, where a first stone is strongest. Here rather
+ * than in the room, so a call's computer and the toy's own decide the same way.
+ */
+export function wantsSwap(b: Board): boolean {
+  const at = b.cells.findIndex((c) => c)
+  const r = Math.floor(at / b.n)
+  const c = at % b.n
+  const mid = (b.n - 1) / 2
+  return Math.abs(r - mid) + Math.abs(c - mid) <= b.n / 3
+}
+
 export const LEVELS = ['easy', 'fair', 'hard'] as const
 export type Level = (typeof LEVELS)[number]
 /**

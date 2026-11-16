@@ -174,9 +174,12 @@ export const BOARD: Record<string, Reader> = {
       true,
     ),
   hex: (read) =>
-    versus(HEX_LEVELS, readHex(read(HEX_KEY)).record, (t) => [
-      t.best > 1 && `best run ${t.best} in a row`,
-    ]),
+    join(
+      versus(HEX_LEVELS, readHex(read(HEX_KEY)).record, (t) => [
+        t.best > 1 && `best run ${t.best} in a row`,
+      ]),
+      onlineLine(read, 'hex'),
+    ),
   liars: (read) =>
     versus(
       LIARS_LEVELS,
@@ -191,7 +194,8 @@ export const BOARD: Record<string, Reader> = {
       ]),
       onlineLine(read, 'mancala'),
     ),
-  morris: (read) => versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record),
+  morris: (read) =>
+    join(versus(MORRIS_LEVELS, readMorris(read(MORRIS_KEY)).record), onlineLine(read, 'morris')),
   reversi: (read) =>
     join(
       versus(REVERSI_LEVELS, readReversi(read(REVERSI_KEY)).record, (t) => [
