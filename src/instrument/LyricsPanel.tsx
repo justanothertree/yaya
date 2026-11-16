@@ -4,15 +4,26 @@ import {
   addLayers,
   loopLength,
   moveLyrics,
+  setLayerEvents,
   setLayerLyrics,
   toggleMute,
   type Layer,
   type LoopEvent,
   type loopState,
 } from '../audio/looper'
+import { splitLyrics } from '../audio/lyrics'
 import { hasLyrics, linesFor } from '../audio/lyricLines'
 import { PRESETS, type PresetId } from '../audio/singer'
-import { barSays, fitSongLyrics } from '../audio/songLyrics'
+import {
+  barSays,
+  carries,
+  fitSongLyrics,
+  moreNotesFor,
+  moveWords,
+  overflow,
+  setCarry,
+  type Overflow,
+} from '../audio/songLyrics'
 import { fxSnapshot } from '../audio/synth'
 import { Panel } from './Panel'
 import { partLines } from './partName'
@@ -61,6 +72,14 @@ const SAMPLE_STEPS = [0, 2, 4, 4, 5, 4, 2, 0]
  *
  * ⚠️ PASTING A VERSE SPREADS IT, one line to a bar, from the bar you pasted into — the way people
  * already have lyrics, in a note on their phone.
+ *
+ * ⚠️ AND A LINE THAT DOES NOT FIT SAYS SO, WITH TWO WAYS OUT — Evan, 15 Nov 2026: "show a clear
+ * hint when a line has more syllables than notes. Offer to fit them by adding notes or splitting
+ * the words." ＋ Add notes writes the notes the voice was already squeezing in into the part
+ * (moreNotesFor), so nothing heard moves; ⤵ Move takes the words that have no note of their own
+ * to the start of the next bar. Both are one step on the room's undo. And a bar after a sung one
+ * can hold that bar's last word on ("let a bar's words carry across a held note into the next
+ * bar") — the `_` that always did it, as a button, because nobody would find the `_`.
  */
 export function LyricsPanel({
   loop,
@@ -156,6 +175,12 @@ export function LyricsPanel({
     setPick(id)
   }
 
+  /** the whole song's lines, the ones past its end kept — what a change to one bar writes back */
+  const allLines = () => (part ? linesFor(part, Math.max(loop.bars, part.lyrics?.length ?? 0)) : [])
+  const move = (b: number, o: Overflow) => {
+    if (part) setLayerLyrics(part.id, moveWords(allLines(), b, o))
+  }
+
   const singing = view.singing
   const sungBars = fit ? fit.bars.filter((x) => x.sung.length).length : 0
   return (
@@ -228,9 +253,24 @@ export function LyricsPanel({
                 : ''
               : !f?.notes
                 ? 'No notes in this bar — these words are not sung'
-                : f.spare
-                  ? `${says} — ${f.spare} left over`
-                  : says
+                : says /* what did not fit is said by the hint under it */
+            /* more syllables than notes: say so, and offer the two ways to fit them */
+            const syls = w.trim() ? splitLyrics(w).length : 0
+            const over = !!f && syls > f.notes
+            const more = over && f.notes ? moreNotesFor(part, loop, b) : null
+            const off =
+              over && b + 1 < loop.bars
+                ? f.notes
+                  ? overflow(w, f.notes)
+                  : { keep: '', move: w.trim() }
+                : null
+            /* the word the bar before ends on, when it sings one — what this bar can hold on */
+            const last = fit?.bars[b - 1]?.sung.length ? lastWord(lines, b) : null
+            const held = carries(w)
+            /* offered where it is the whole question — a bar left empty after a sung one — and
+               wherever it is already on, so it can be taken off; a bar with its own words can
+               still open on `_`, which the note at the top says */
+            const offerHold = held || (!!last && !!f?.notes && !w.trim())
             return (
               <li key={b} className="inst-lyric-bar">
                 <label>
@@ -267,13 +307,57 @@ export function LyricsPanel({
                 </label>
                 {note && (
                   <small
-                    className={
-                      'muted inst-lyric-fit' +
-                      (w.trim() && (!f?.notes || f.spare) ? ' is-short' : '')
-                    }
+                    className={'muted inst-lyric-fit' + (w.trim() && !f?.notes ? ' is-short' : '')}
                   >
                     {note}
                   </small>
+                )}
+                {(over || offerHold) && (
+                  <div className="inst-lyric-tools">
+                    {over && f.notes > 0 && (
+                      <small className={'inst-lyric-hint' + (f.spare ? ' is-short' : ' muted')}>
+                        {syls} syllables, {f.notes} note{f.notes === 1 ? '' : 's'}
+                        {f.spare
+                          ? `: ${f.spare} not sung.`
+                          : ', so some notes carry more than one.'}
+                      </small>
+                    )}
+                    {more && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setLayerEvents(part.id, more.events)}
+                      >
+                        ＋ Add {more.added} note{more.added === 1 ? '' : 's'}
+                      </button>
+                    )}
+                    {off && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        aria-label={`Move “${off.move}” to bar ${b + 2}`}
+                        onClick={() => move(b, off)}
+                      >
+                        ⤵ Move “<span className="inst-lyric-words">{off.move}</span>” to bar{' '}
+                        {b + 2}
+                      </button>
+                    )}
+                    {offerHold && (
+                      <button
+                        type="button"
+                        className={'btn' + (held ? '' : ' btn-ghost')}
+                        aria-pressed={held}
+                        onClick={() => write(b, setCarry(w, !held))}
+                      >
+                        ⤵ Hold “{last ?? '…'}” into this bar
+                      </button>
+                    )}
+                    {more && more.bars.length > 1 && (
+                      <small className="muted inst-lyric-hint">
+                        Adding notes changes bars {listBars(more.bars)}, which play the same notes.
+                      </small>
+                    )}
+                  </div>
                 )}
               </li>
             )
@@ -341,4 +425,24 @@ export function LyricsPanel({
       </div>
     </Panel>
   )
+}
+
+/** bar numbers as people count them: "1, 3 and 5" */
+function listBars(bars: readonly number[]): string {
+  const n = bars.map((b) => String(b + 1))
+  return n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : n.join('')
+}
+
+/**
+ * The word the song is singing as bar `b` begins: the last one typed before it, reaching back over
+ * bars that only hold on (`_`), and none across a bar with nothing in it, which is a rest.
+ */
+function lastWord(lines: readonly string[], b: number): string | null {
+  for (let k = b - 1; k >= 0; k--) {
+    const words = lines[k].trim().split(/\s+/).filter(Boolean)
+    if (!words.length) return null
+    const said = words.filter((w) => !/^_+$/.test(w))
+    if (said.length) return said[said.length - 1].replace(/-/g, '')
+  }
+  return null
 }
