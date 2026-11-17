@@ -1,5 +1,7 @@
 import {
+  LEVELS,
   SIZES,
+  choose,
   drop,
   full,
   lineAt,
@@ -7,6 +9,7 @@ import {
   other,
   type Disc,
   type Grid,
+  type Level,
   type Size,
   type Who,
 } from './fourrow'
@@ -66,6 +69,45 @@ export function fourRowRules(size: Size, need: number): Rules<FourGame, number> 
     readMove: (x) =>
       Number.isInteger(x) && (x as number) >= 0 && (x as number) < 9 ? (x as number) : null,
   }
+}
+
+/**
+ * The same game for a match by turns (src/lab/matches), which a call's room is not.
+ *
+ * ⚠️ A SEPARATE OBJECT, NOT MORE FIELDS ON THE ONE ABOVE. The call's table offers whatever modes a
+ * toy's rules name, and this toy's call room was written for versus alone: naming Together there
+ * would put a button in every call that leads to a game the room cannot seat. A match is played by
+ * lab-move instead, which needs three things the room never did. It needs `result`: without it a
+ * finished match is stored as a draw. It needs the computer, for Together. And `legal` asks whose
+ * side is moving, because the server's rules are the last word, not the room's host.
+ */
+export function fourRowMatchRules(size: Size, need: number): Rules<FourGame, number> {
+  const base = fourRowRules(size, need)
+  return {
+    ...base,
+    legal: (s, col, by) => (by === undefined || by === (s.turn ?? 0) - 1) && base.legal(s, col),
+    modes: ['versus', 'together'],
+    computer: {
+      side: 1,
+      levels: LEVELS,
+      choose: (s, level) => choose(s.g, s.turn ?? 2, level as Level),
+    },
+    result: (s) => (s.turn !== null ? null : s.winner === 0 ? 'draw' : s.winner === 1 ? 0 : 1),
+    begun: (s) => s.moves > 0,
+  }
+}
+
+/**
+ * A match's settings as the toy offers them: a board it has, and four or five to win — never
+ * five on the small board, which is too short to hold five across. Null for anything else.
+ */
+export function readFourSettings(s: Record<string, unknown>): [Size, number] | null {
+  const size = s.size ?? 'classic'
+  const need = s.need ?? 4
+  if (typeof size !== 'string' || !Object.hasOwn(SIZES, size)) return null
+  if (need !== 4 && need !== 5) return null
+  if (size === 'small' && need === 5) return null
+  return [size as Size, need]
 }
 
 const ints = (v: unknown, n: number, lo: number, hi: number): number[] | null =>

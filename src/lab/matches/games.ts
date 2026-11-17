@@ -10,6 +10,8 @@ import { LEVELS as DRAUGHTS_LEVELS } from '../../gpu/draughts'
 import { draughtsRules } from '../../gpu/draughtsRoom'
 import { LEVELS as DOTS_LEVELS, SIZES as DOTS_SIZES } from '../../gpu/dots'
 import { dotsRules } from '../../gpu/dotsRoom'
+import { LEVELS as FOUR_LEVELS } from '../../gpu/fourrow'
+import { fourRowMatchRules, readFourSettings } from '../../gpu/fourrowRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -69,6 +71,14 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     },
     levels: DOTS_LEVELS,
     sizes: DOTS_SIZES,
+  },
+  fourrow: {
+    name: MATCH_NAMES.fourrow,
+    rulesFor: (s) => {
+      const read = readFourSettings(s)
+      return read ? fourRowMatchRules(...read) : null
+    },
+    levels: FOUR_LEVELS,
   },
 }
 
