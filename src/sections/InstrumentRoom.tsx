@@ -103,6 +103,7 @@ import { SoundPanel } from '../instrument/SoundPanel'
 import { openEditor } from '../instrument/openEditor'
 import { PartPanel, type PartTab } from '../instrument/PartPanel'
 import { LyricsPanel } from '../instrument/LyricsPanel'
+import { WhatsNew } from '../instrument/WhatsNew'
 import { setSingScale, stopSinging } from '../instrument/singAlong'
 import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
@@ -1734,6 +1735,9 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
        * one line each, then four tools under them. On a phone the whole of a three-part song now
        * fits on one screen with the keys; it took two, and the first part started 1,415px down.
        */}
+      {/* what is new, until it is closed: under the keys and the play bar, never above the
+          keyboard, which is the first thing in the room on purpose (see the note at the top) */}
+      <WhatsNew />
       <div className="inst-song">
         <SongControls
           loop={loop}
