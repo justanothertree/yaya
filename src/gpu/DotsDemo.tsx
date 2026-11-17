@@ -22,11 +22,16 @@ import {
 } from './dots'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { dotsRules } from './dotsRoom'
+import { dotsRules, type DotsGame } from './dotsRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -199,35 +204,68 @@ export function DotsDemo() {
   modeRef.current = mode
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A drawn line
+     shows at once and waits for Send, and a closed box keeps the turn here as everywhere. */
+  const lm = useLabMatch('dots')
+  const inMatch = !!lm.id
+  const inMatchRef = useRef(false)
+  inMatchRef.current = inMatch
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as DotsGame | null) : null
+
   /* ── the call's room: the host's size starts each game, which then travels as its lines */
   const roomRules = useMemo(() => dotsRules(saved.size), [saved.size])
   const lab = useLabRoom('dots', roomRules)
   const words = tableSeats(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
-  // the board on screen is the room's whenever it changes, its newest line growing in
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  // the board on screen is the match's or the room's whenever it changes, its newest line growing in
+  const shared: DotsGame | null = matchGame ?? room?.game ?? null
   useEffect(() => {
-    if (mode !== 'call' || !room) return
+    if (!shared) return
     window.clearTimeout(timer.current)
     const was = game.current.moves
-    game.current = copy(room.game.g)
-    const l = room.game.lines[room.game.lines.length - 1] ?? null
-    if (room.game.lines.length !== was) last.current = { l, at: performance.now() }
+    game.current = copy(shared.g)
+    const l = shared.lines[shared.lines.length - 1] ?? null
+    if (shared.lines.length !== was) last.current = { l, at: performance.now() }
     bump()
-  }, [mode, room])
+  }, [shared])
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
+
+  /* ⚠️ YOUR COLOUR AND YOUR LETTER ARE KEPT AS THE FIRST PLAYER'S, because against the computer
+     you are always first. A match can seat you second, and there they must follow you: Bo, second,
+     saw his own boxes in Ann's colour and hers under his letter. `meSecond` turns them round. */
+  const meSecond = inMatch && lm.view?.mode === 'versus' && lm.view.you === 1
+  const secondRef = useRef(false)
+  secondRef.current = meSecond
+  /** the saved colour of the board's first or second player, as seen from this seat */
+  const inkOf = (i: number) => COLOURS[(i === 0) !== meSecond ? saved.mine : saved.theirs]
 
   // the draw loop is set up once, so it reads this through a ref: the computer's boxes get 🤖
   const togetherRef = useRef(false)
-  togetherRef.current = room?.mode === 'together'
+  togetherRef.current = inMatch ? lm.view?.mode === 'together' : room?.mode === 'together'
 
   const g = game.current
-  const names = room
-    ? room.mode === 'together'
-      ? ['Together', 'The computer']
-      : [words.who(room.seats[0]), words.who(room.seats[1])]
-    : mode === 'bot'
-      ? ['You', 'The computer']
-      : ['Player 1', 'Player 2']
-  const computerTurn = mode === 'bot' && g.turn === 1 && !over(g)
+  const names =
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
+        ? ['You two', 'The computer']
+        : lm.view.you === 0
+          ? ['You', otherName(lm.view)]
+          : [otherName(lm.view), 'You']
+      : room
+        ? room.mode === 'together'
+          ? ['Together', 'The computer']
+          : [words.who(room.seats[0]), words.who(room.seats[1])]
+        : mode === 'bot'
+          ? ['You', 'The computer']
+          : ['Player 1', 'Player 2']
+  const computerTurn = mode === 'bot' && !inMatch && g.turn === 1 && !over(g)
 
   const finish = () => {
     const gm = game.current
@@ -248,6 +286,8 @@ export function DotsDemo() {
   }
 
   const draw1 = (l: number) => {
+    // in a match the line waits for Send; the server plays it and the board comes back
+    if (inMatchRef.current) return void (!game.current.drawn[l] && lm.play(l))
     // in the call the host decides: this asks it, and the board comes back with everybody's
     if (modeRef.current === 'call') return lab.act({ t: 'move', move: l })
     const gm = game.current
@@ -332,9 +372,11 @@ export function DotsDemo() {
     return best
   }
   const yours = () =>
-    modeRef.current === 'call'
-      ? lab.live && !!room && myTurn(roomRules, room)
-      : !over(game.current) && !(modeRef.current === 'bot' && game.current.turn === 1)
+    inMatchRef.current
+      ? lm.canPlay
+      : modeRef.current === 'call'
+        ? lab.live && !!room && myTurn(roomRules, room)
+        : !over(game.current) && !(modeRef.current === 'bot' && game.current.turn === 1)
   /**
    * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer. Against it you are always the
    * first player, so the board on screen comes with you when you were first; otherwise a new game.
@@ -374,19 +416,21 @@ export function DotsDemo() {
   const record = saved.record[saved.level]
   const [r0, c0, r1, c1] = ends(g.b, cursor.current)
   const cursorSays = `${r0 === r1 ? 'Across' : 'Down'} from row ${r0 + 1}, column ${c0 + 1} to row ${r1 + 1}, column ${c1 + 1}${g.drawn[cursor.current] ? ', already drawn' : ''}`
+  const myName = names[meSecond ? 1 : 0]
+  const theirName = names[meSecond ? 0 : 1]
   const colourGroup = (which: 'mine' | 'theirs') => (
     <div
       className="fw-swatches"
       role="group"
-      aria-label={which === 'mine' ? `${names[0]}’s colour` : `${names[1]}’s colour`}
+      aria-label={`${which === 'mine' ? myName : theirName}’s colour`}
     >
-      <span className="fw-label">{which === 'mine' ? names[0] : names[1]}</span>
+      <span className="fw-label">{which === 'mine' ? myName : theirName}</span>
       {COLOURS.map((c, i) => (
         <button
           key={c}
           className="fw-swatch"
           style={{ background: c }}
-          aria-label={`${COLOUR_NAMES[i]} for ${which === 'mine' ? names[0] : names[1]}`}
+          aria-label={`${COLOUR_NAMES[i]} for ${which === 'mine' ? myName : theirName}`}
           aria-pressed={saved[which] === i}
           disabled={saved[which === 'mine' ? 'theirs' : 'mine'] === i}
           onClick={() => setSaved((s) => ({ ...s, [which]: i }))}
@@ -397,68 +441,74 @@ export function DotsDemo() {
 
   return (
     <div className="lab-keys db-room">
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['first', 'second']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => change({ level: l })}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <div className="lab-group" role="group" aria-label="Board size">
+              {SIZES.map((n) => (
+                <button
+                  key={n}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.size === n}
+                  aria-label={`${n} by ${n} boxes`}
+                  onClick={() => change({ size: n })}
+                >
+                  {n}×{n}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="dots" settings={{ size: saved.size }} levelNames={LEVEL_NAMES} />
+          )}
         </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => change({ level: l })}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <div className="lab-group" role="group" aria-label="Board size">
-            {SIZES.map((n) => (
-              <button
-                key={n}
-                className="btn btn-ghost"
-                aria-pressed={saved.size === n}
-                aria-label={`${n} by ${n} boxes`}
-                onClick={() => change({ size: n })}
-              >
-                {n}×{n}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={roomRules}
@@ -478,7 +528,7 @@ export function DotsDemo() {
           <div
             key={i}
             className={`dice-score${g.turn === i && !over(g) ? ' is-up' : ''}`}
-            style={{ borderLeft: `6px solid ${COLOURS[i === 0 ? saved.mine : saved.theirs]}` }}
+            style={{ borderLeft: `6px solid ${inkOf(i)}` }}
           >
             <span>{nm}</span>
             <strong>{g.score[i]}</strong>
@@ -524,16 +574,21 @@ export function DotsDemo() {
                 const grow = reduced()
                   ? 1
                   : Math.min(1, (performance.now() - last.current.at) / 180)
-                const k = `${c.width}x${c.height}|${gm.moves}|${ghost.current}|${s.mine}${s.theirs}${s.fill}${s.initial}${s.initial2}|${modeRef.current}${togetherRef.current}|${grow}`
+                const sw = secondRef.current
+                const k = `${c.width}x${c.height}|${gm.moves}|${ghost.current}|${s.mine}${s.theirs}${s.fill}${s.initial}${s.initial2}|${modeRef.current}${togetherRef.current}${sw}|${grow}`
                 if (k === key) return
                 key = k
                 view.current = draw(ctx, c.width, c.height, {
                   g: gm,
-                  colours: [COLOURS[s.mine], COLOURS[s.theirs]],
-                  letters: [
-                    s.initial,
-                    modeRef.current === 'bot' || togetherRef.current ? '🤖' : s.initial2,
-                  ],
+                  colours: sw
+                    ? [COLOURS[s.theirs], COLOURS[s.mine]]
+                    : [COLOURS[s.mine], COLOURS[s.theirs]],
+                  letters: sw
+                    ? [s.initial2, s.initial]
+                    : [
+                        s.initial,
+                        modeRef.current === 'bot' || togetherRef.current ? '🤖' : s.initial2,
+                      ],
                   fill: s.fill,
                   ghost: ghost.current,
                   last: last.current.l,
@@ -544,12 +599,13 @@ export function DotsDemo() {
           }}
         />
       </div>
-      {mode !== 'call' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode !== 'call' && !inMatch && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
       )}
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -560,6 +616,7 @@ export function DotsDemo() {
       )}
       {started &&
         mode !== 'call' &&
+        !inMatch &&
         !over(g) &&
         (g.b.rows !== saved.size || (mode === 'bot' && meta.current.level !== saved.level)) && (
           <p className="muted mc-note">Your changes start with the next game.</p>
@@ -587,7 +644,7 @@ export function DotsDemo() {
           </div>
           <div className="lab-controls">
             <label className="db-initial">
-              <span>{names[0]}’s letter</span>
+              <span>{myName}’s letter</span>
               <input
                 value={saved.initial}
                 maxLength={4}
@@ -599,7 +656,7 @@ export function DotsDemo() {
             </label>
             {mode === 'two' && (
               <label className="db-initial">
-                <span>{names[1]}’s letter</span>
+                <span>{theirName}’s letter</span>
                 <input
                   value={saved.initial2}
                   maxLength={4}

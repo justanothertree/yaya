@@ -8,6 +8,8 @@ import { LEVELS as GOMOKU_LEVELS, SIZES as GOMOKU_SIZES } from '../../gpu/gomoku
 import { gomokuRules } from '../../gpu/gomokuRoom'
 import { LEVELS as DRAUGHTS_LEVELS } from '../../gpu/draughts'
 import { draughtsRules } from '../../gpu/draughtsRoom'
+import { LEVELS as DOTS_LEVELS, SIZES as DOTS_SIZES } from '../../gpu/dots'
+import { dotsRules } from '../../gpu/dotsRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -59,6 +61,15 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     sizes: GOMOKU_SIZES,
   },
   draughts: { name: MATCH_NAMES.draughts, rulesFor: () => draughtsRules, levels: DRAUGHTS_LEVELS },
+  dots: {
+    name: MATCH_NAMES.dots,
+    rulesFor: (s) => {
+      const size = s.size ?? 4
+      return (DOTS_SIZES as readonly unknown[]).includes(size) ? dotsRules(size as number) : null
+    },
+    levels: DOTS_LEVELS,
+    sizes: DOTS_SIZES,
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
