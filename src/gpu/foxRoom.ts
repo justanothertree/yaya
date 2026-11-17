@@ -10,8 +10,9 @@ import {
   type Game,
   type Level,
   type Move,
+  type Side,
 } from './fox'
-import type { Rules } from '../lab/social/room'
+import type { Rules, Seat } from '../lab/social/room'
 
 /**
  * Fox and geese as a room game (src/lab/social/room.ts). The game is lopsided, so the seats are
@@ -72,4 +73,53 @@ export const foxRules: Rules<FoxGame, Move> = {
   computer: { side: 1, levels: LEVELS, choose: (d, level) => choose(d.g, level as Level) },
   result: (d) => (!over(d.g) ? null : d.g.drawn ? 'draw' : d.g.winner === 'geese' ? 0 : 1),
   begun: (d) => d.list.length > 0,
+}
+
+/**
+ * A match's side for its CHALLENGER, from its settings: the geese unless they asked to be the fox.
+ * Anything else is refused rather than read as the geese, so a match can never be played on a side
+ * nobody chose. The friend plays the other.
+ */
+export function readFoxSide(s: Record<string, unknown>): Side | null {
+  const side = s.side ?? 'geese'
+  return side === 'geese' || side === 'fox' ? side : null
+}
+
+const swap = (s: Seat): Seat => (s === 0 ? 1 : 0)
+
+/**
+ * Fox and geese for a match by turns, with the challenger on `side`. A match's seat 0 is always
+ * the challenger, so when they chose the fox the seats are the other way round from foxRules':
+ * the friend's seat 1 herds the geese and moves first. The board, its moves and its wire form are
+ * the same game either way; only which seat is which side changes.
+ *
+ * ⚠️ VERSUS ONLY ON THE FOX'S SIDE. Together, the two friends herd the geese against the computer's
+ * fox and the challenger has no side of their own to pick, so the swapped rules offer no together
+ * game and lab-move refuses one ("this toy has no together game") rather than guess.
+ */
+export function foxMatchRules(side: Side): Rules<FoxGame, Move> {
+  if (side === 'geese') return foxRules
+  const turn = (d: FoxGame) => {
+    const t = foxRules.turn(d)
+    return t === 0 || t === 1 ? swap(t) : t
+  }
+  return {
+    ...foxRules,
+    turn,
+    legal: (d, m, by) => foxRules.legal(d, m, by === undefined ? undefined : swap(by)),
+    apply: (d, m, by) => foxRules.apply(d, m, by === undefined ? undefined : swap(by)),
+    modes: ['versus'],
+    computer: undefined,
+    result: (d) => {
+      const r = foxRules.result!(d)
+      return r === 0 || r === 1 ? swap(r) : r
+    },
+  }
+}
+
+/** the side a seat plays in a match on these settings, or null for settings that are not a match */
+export function foxSideOf(s: Record<string, unknown>, seat: Seat): Side | null {
+  const side = readFoxSide(s)
+  if (!side) return null
+  return seat === 0 ? side : side === 'geese' ? 'fox' : 'geese'
 }
