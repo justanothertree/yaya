@@ -21,6 +21,13 @@
  *
  * The drawn seed is in the test's name. To repeat a red run, pin it:
  *   YAYA_SEED=<seed> npx vitest run src/gpu/bowlingRoom.test.ts
+ *
+ * The tests that ask whether each computer level beats the one below it are split the same way,
+ * with `NIGHTLY` and nothing drawn: their bars were measured over dozens of games, and a game
+ * drawn at random can be lost by the better player, so a drawn one would make a red run mean
+ * nothing. Every push plays one named seed from both chairs, which a level that plays like the one
+ * below cannot win twice; the whole games the bars were measured on run nightly. Measured on
+ * 16 Nov 2026 under a full run: cribbage 58.5s and hex 51.4s, each against a 60-second limit.
  */
 
 /** the exhaustive run: every named match, every position */
