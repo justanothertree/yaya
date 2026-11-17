@@ -76,6 +76,15 @@ import { gunner, LIFE } from '../../../src/gpu/artillery'
 import { replay as artReplay } from '../../../src/gpu/artilleryRoom'
 import { LANE_HALF, plan as bowlPlan, wobble as bowlWobble } from '../../../src/gpu/bowling'
 import { inside as bowlInside, replay as bowlReplay } from '../../../src/gpu/bowlingRoom'
+import { HOUSE_R, STONE_R, TEE } from '../../../src/gpu/curling'
+import {
+  fewerSpans,
+  matchThrow,
+  MATCH_SPANS,
+  MAX_THROWS as MAX_CURL_THROWS,
+  pack as curlPack,
+  replay as curlReplay,
+} from '../../../src/gpu/curlingRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2037,6 +2046,134 @@ describe('bowling by turns: a frame each, the server bowls every ball', () => {
           { ...row, state: { balls: Array(43).fill([0, 0, 8, 0]) } },
           A,
           move(row.seq, [0, 0, 8, 0]),
+        ),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('history rows: a move too big for its row', () => {
+  it('is noted without itself, so the insert cannot fail the whole move', () => {
+    const big = { sweeps: Array.from({ length: 30 }, (_, i) => [i * 10, i * 10 + 5]) }
+    expect(jsonbBytes({ m: big })).toBeGreaterThan(HISTORY_BYTES)
+    expect(historyRow(big, [])).toEqual({ m: null })
+    expect(historyRow(big, [1, 2])).toEqual({ m: null, replies: 2 })
+    expect(jsonbBytes(historyRow(big, [1, 2]))).toBeLessThanOrEqual(HISTORY_BYTES)
+  })
+})
+
+describe('curling by turns: a throw and its sweep, kept small enough to keep', () => {
+  const cu = (over: Partial<Row> = {}) => invite({ demo_id: 'curling', settings: {}, ...over })
+  const game = (state: unknown) => curlReplay((state as { throws: unknown[] }).throws)!
+  /** an end's points recounted from where the stones lie: the button at (0, TEE) */
+  const recount = (stones: readonly { x: number; y: number; team: number }[]) => {
+    const near = stones
+      .map((s) => ({ d: Math.hypot(s.x, s.y - TEE), team: s.team }))
+      .filter((s) => s.d < HOUSE_R + STONE_R)
+      .sort((a, b) => a.d - b.d)
+    let n = 0
+    while (n < near.length && near[n].team === near[0]?.team) n++
+    return near.length ? { team: near[0].team, points: n } : { team: null, points: 0 }
+  }
+
+  it('cuts a sweep down by joining its closest spans, and never sweeps a step it did not', () => {
+    const spans: [number, number][] = [
+      [0, 10],
+      [12, 20],
+      [40, 41],
+      [41, 50],
+      [90, 95],
+      [300, 310],
+    ]
+    const out = fewerSpans(spans, 3)
+    expect(out).toHaveLength(3)
+    // every step swept before is swept after, and the joins are the shortest gaps: 0, 2, then 20
+    for (const [a, b] of spans)
+      for (let i = a; i < b; i++) expect(out.some(([x, y]) => i >= x && i < y)).toBe(true)
+    expect(out).toEqual([
+      [0, 50],
+      [90, 95],
+      [300, 310],
+    ])
+  })
+
+  it('keeps the longest game a match can hold inside its 16 KB column, every throw at its widest', () => {
+    // five ends of eight stones, each with the most sweeps a match keeps, at four-digit steps
+    const widest = [
+      -0.5999,
+      9.9999,
+      -1,
+      Array.from({ length: MATCH_SPANS }, (_, i) => [4000 + i * 100, 4050 + i * 100]),
+    ]
+    const state = { throws: Array.from({ length: MAX_CURL_THROWS }, () => widest) }
+    expect(MAX_CURL_THROWS).toBe(40)
+    expect(jsonbBytes(state)).toBeLessThanOrEqual(16384)
+  })
+
+  it('plays versus to the end, each end scored as the stones lay, every throw small enough to keep', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 6; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(cu(), (r) => curlPack(matchThrow(game(r.state), 'fair', rnd)))
+      expect(row.status).toBe('finished')
+      const ends: [number, number][] = []
+      for (const p of plans) {
+        if (p.kind !== 'commit') throw new Error('refused')
+        expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+        expect(jsonbBytes(p.state)).toBeLessThanOrEqual(16384)
+        const last = game(p.state).last!
+        if (last.ended) {
+          const c = recount(last.stones)
+          expect([last.ended.team, last.ended.points]).toEqual([c.team, c.points])
+          ends.push(c.team === null ? [0, 0] : c.team === 0 ? [c.points, 0] : [0, c.points])
+        }
+      }
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const [a, b] = ends.reduce((t, e) => [t[0] + e[0], t[1] + e[1]], [0, 0])
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a > b ? 0 : b > a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  }, 60000)
+
+  it('together: the computer throws in the same call at every level, its sweep cut to fit', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = cu({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const rnd = seeded(7)
+      for (let k = 0; k < 4 && row.status === 'active'; k++) {
+        const t = matchThrow(game(row.state), 'fair', rnd)
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, curlPack(t)))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+        row = after(row, p)
+        for (const th of game(row.state).throws)
+          expect(th.sweeps.length).toBeLessThanOrEqual(MATCH_SPANS)
+      }
+    }
+  }, 30000)
+
+  it('refuses a throw with more sweeps than a match keeps, or numbers past four places, and what the room refuses', () => {
+    const row = after(cu(), decide(cu(), B, { op: 'accept' }))
+    const nine = Array.from({ length: MATCH_SPANS + 1 }, (_, i) => [i * 10, i * 10 + 5])
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 1, nine.slice(0, MATCH_SPANS)])))).toBe(
+      'commit',
+    )
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 1, nine])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.012345, 2.5, 1, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.50001, 1, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.7, 2.5, 1, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 0, []])))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, [0.01, 2.5, 1, [[5, 3]]])))).toBe(400)
+    expect(
+      status(
+        decide(
+          { ...row, state: { throws: [[0.01, 99, 1, []]] } },
+          A,
+          move(row.seq, [0.01, 2.5, 1, []]),
         ),
       ),
     ).toBe(500)
