@@ -1,0 +1,30 @@
+name: Nightly
+
+# The room tests, all the way through. On every push each `*Room.test.ts` plays the few matches
+# it names plus one drawn at random, and decodes a sample of their positions; with YAYA_NIGHTLY=1
+# it plays every match it ever played, at every position (see src/gpu/testMatches.ts). That is
+# too slow for every push and too useful to drop, so it runs here once a day.
+#
+# A red run names the drawn seed in the failing test's title. Repeat it with
+#   YAYA_SEED=<seed> YAYA_NIGHTLY=1 npx vitest run <file>
+#
+# ⚠️ Scheduled runs are best-effort: GitHub delays them under load and turns them off after 60
+# days without a commit to the repository. "Run workflow" on the Actions tab runs it by hand.
+on:
+  schedule:
+    - cron: '41 8 * * *' # 08:41 UTC: 3:41 AM Eastern in winter, 4:41 in summer
+  workflow_dispatch:
+
+jobs:
+  rooms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run Room.test
+        env:
+          YAYA_NIGHTLY: '1'
