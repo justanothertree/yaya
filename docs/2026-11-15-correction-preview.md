@@ -105,15 +105,15 @@ database — recorded here because that refusal and a failed migration look iden
 and the distinction is the whole point of keeping a preview. Production was re-measured after the
 refusal and was byte-identical, so nothing was ever half-done.
 
-| Measure                               | Before (02:05 UTC)                 | After (02:09 UTC)                      |
-| ------------------------------------- | ---------------------------------- | -------------------------------------- |
-| `admin_correct_position` md5          | `b209b089d5a5da4d563f6303a7a124ba` | **`5f10f7e40e747bc4294b3c634a95ea57`** |
-| Old gate `coalesce(sd.is_family…)`    | present                            | **gone**                               |
-| New gate `v_share := family_share_at` | absent                             | **present**                            |
-| Signatures                            | 1                                  | 1 (replaced, not overloaded)           |
-| `account_payload` md5, 33 accts       | `4cdb5581d2c9b9c722461c375c82cbef` | `4cdb5581d2c9b9c722461c375c82cbef`     |
-| executed_trades / allocations         | 1,774 / 15,840                     | 1,774 / 15,840                         |
-| ACL anon / authed / service_role      | false / true / true                | false / true / true                    |
+| Measure                                  | Before (02:05 UTC)                 | After (02:09 UTC)                      |
+| ---------------------------------------- | ---------------------------------- | -------------------------------------- |
+| `admin_correct_position` functiondef md5 | `b209b089d5a5da4d563f6303a7a124ba` | **`5f10f7e40e747bc4294b3c634a95ea57`** |
+| Old gate `coalesce(sd.is_family…)`       | present                            | **gone**                               |
+| New gate `v_share := family_share_at`    | absent                             | **present**                            |
+| Signatures                               | 1                                  | 1 (replaced, not overloaded)           |
+| `account_payload` md5, 33 accts          | `4cdb5581d2c9b9c722461c375c82cbef` | `4cdb5581d2c9b9c722461c375c82cbef`     |
+| executed_trades / allocations            | 1,774 / 15,840                     | 1,774 / 15,840                         |
+| ACL anon / authed / service_role         | false / true / true                | false / true / true                    |
 
 `statements[1]` md5s to `acb9c5964b8394f87c45636f48ed53b4` at **3,235 bytes** — byte for byte the
 runnable portion of the proposal file through the repository's own `bodyOf()`. That is the only
@@ -149,6 +149,25 @@ daily cron is what spends it. The before/after pair that means anything is taken
 minutes apart**, with the cron calendar checked first — all four price jobs run 21:10–21:16 UTC, so
 02:05 was ~19 hours of quiet either side. Comparing against yesterday's figure would have rolled
 back a correct migration.
+
+### Re-measured 17 Nov 2026, before releasing this record
+
+Both figures above were asked of production again on the way to the merge, because a hash in a
+document is a measured claim with a date on it and this document is the claim.
+`integrity_checks` is `8decb4325a8c0a54fa6af4e06dc0b2aa` at 9,188 bytes and
+`admin_correct_position` is `5f10f7e40e747bc4294b3c634a95ea57` at 3,046 bytes, both unchanged,
+with `anon` still refused. **The two rows are measured different ways** — `prosrc` for the
+first and `pg_get_functiondef` for the second — which is recorded in the reasoning file now,
+because re-measuring the second the first's way gives a different hash about an identical
+function.
+
+One thing that came out of asking: **`prosrc ~ 'coalesce\(sd\.is_family'` is still true, and the
+match is inside the comment the migration added.** The comment explains the gate that was
+removed, so a substring sweep for the old code finds the sentence describing its removal and
+reports the old code present. The executable gate is one line
+(`v_share := finance.family_share_at(...)`) and there is no other. A sweep for removed code has
+to ask whether the match is in a statement, not in the file — the same shape as
+`grep dist/` finding a constant in a comment.
 
 ## Safety checks run before applying
 

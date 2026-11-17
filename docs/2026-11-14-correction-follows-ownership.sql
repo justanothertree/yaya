@@ -18,7 +18,17 @@
 --
 -- Before / after, measured either side of the apply:
 --
---   admin_correct_position  md5  b209b089d5a5da4d563f6303a7a124ba -> 5f10f7e40e747bc4294b3c634a95ea57
+--   admin_correct_position  md5(pg_get_functiondef(oid))
+--                                b209b089d5a5da4d563f6303a7a124ba -> 5f10f7e40e747bc4294b3c634a95ea57
+--     ⚠️ THE RECIPE IS PART OF THE FIGURE, and this line did not say so for a day. The
+--     rollback file names `pg_get_functiondef` because that is what it captured; the check-10
+--     document beside it insists on `prosrc` and says functiondef was deliberately NOT used.
+--     So a reader re-measuring this one the neighbouring document's way gets
+--     5abf0235a2ec44e68615e6aee19ead04 at 2,809 bytes and concludes the function has drifted.
+--     Both figures are of the same unchanged function: functiondef carries the CREATE header
+--     and prosrc is the body alone. Re-measured 17 Nov 2026, before releasing this record:
+--     functiondef 5f10f7e40e747bc4294b3c634a95ea57 / 3,046 bytes, prosrc
+--     5abf0235a2ec44e68615e6aee19ead04 / 2,809 bytes, ACL still false/true/true.
 --   account_payload, 33 accts    4cdb5581d2c9b9c722461c375c82cbef -> 4cdb5581d2c9b9c722461c375c82cbef
 --   executed_trades / allocations        1,774 / 15,840 -> 1,774 / 15,840
 --   ACL  anon / authenticated / service_role   false / true / true -> false / true / true
