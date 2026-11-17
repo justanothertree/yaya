@@ -35,7 +35,7 @@ import { fencesRules, readFencesSize } from '../../../src/gpu/fencesRoom'
 import { halmaRules } from '../../../src/gpu/halmaRoom'
 import { score as goScore } from '../../../src/gpu/goboard'
 import { goRules, type GoGame } from '../../../src/gpu/goRoom'
-import { foxRules } from '../../../src/gpu/foxRoom'
+import { foxMatchRules, readFoxSide } from '../../../src/gpu/foxRoom'
 import { cubeRules } from '../../../src/gpu/cubeRoom'
 import { artilleryRules, type ArtilleryGame } from '../../../src/gpu/artilleryRoom'
 import { score as bowlingScore } from '../../../src/gpu/bowling'
@@ -139,7 +139,10 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       return `${s.black}–${s.white}`
     },
   }),
-  fox: () => ({ rules: foxRules }),
+  fox: (s) => {
+    const side = readFoxSide(s)
+    return side ? { rules: foxMatchRules(side) } : null
+  },
   cube: () => ({ rules: cubeRules }),
   artillery: () => ({
     rules: artilleryRules,
@@ -391,8 +394,13 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
         secret: hidden.secret(g),
       }
     }
-    // the challenger moves first, both in versus and as the first of the team
-    if (!rules.roll) return { kind: 'begin', state: rules.encode(g), turn: 0 }
+    if (!rules.roll) {
+      // the first of the team moves first together; in versus, whoever the board says, which is
+      // the challenger unless they took a side that moves second (Fox and geese's fox)
+      const t = rules.turn(g)
+      const first: Seat = row.mode === 'versus' && (t === 0 || t === 1) ? t : 0
+      return { kind: 'begin', state: rules.encode(g), turn: first }
+    }
     // ⚠️ a toy with dice: its opening roll says who starts, and together the computer may, so it
     // plays at once; the team's first move is the challenger's whoever opened
     const opened = answer(rules.roll(g, Math.random))

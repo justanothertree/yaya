@@ -22,7 +22,7 @@ import {
   type Side,
 } from './fox'
 import { useKept } from './kept'
-import { foxRules, type FoxGame } from './foxRoom'
+import { foxRules, foxSideOf, type FoxGame } from './foxRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
@@ -36,6 +36,10 @@ import { otherName } from '../lab/matches/words'
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
+const MATCH_SIDES = [
+  { value: 'geese', name: 'Geese' },
+  { value: 'fox', name: '🦊 Fox' },
+] as const
 const LOOK_NAMES: Record<Saved['look'], string> = { meadow: 'Meadow', snow: 'Snow', dusk: 'Dusk' }
 const COLS = 'ABCDEFG'
 const pointName = (i: number) => `${COLS[i % N]}${N - Math.floor(i / N)}`
@@ -63,8 +67,9 @@ export function FoxDemo() {
   const recorded = useRef(false)
 
   /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
-     the board over whatever else was showing; leaving it puts the toy back as it was. The seats
-     are the sides here too: the challenger herds the geese and the friend is the fox. */
+     the board over whatever else was showing; leaving it puts the toy back as it was. The
+     challenger picked a side when they challenged (the geese unless they chose the fox), and the
+     friend plays the other; a rematch swaps them (games.ts). */
   const lm = useLabMatch('fox')
   const inMatch = !!lm.id
   const signedIn = useSignedIn()
@@ -80,7 +85,7 @@ export function FoxDemo() {
   const sideName = (s: Side) => {
     if (inMatch && lm.view) {
       if (lm.view.mode === 'together') return s === 'geese' ? 'you two' : 'computer'
-      return (s === 'geese' ? 0 : 1) === lm.view.you ? 'you' : otherName(lm.view)
+      return foxSideOf(lm.view.settings, lm.view.you) === s ? 'you' : otherName(lm.view)
     }
     if (!room) return mode === 'bot' ? (you === s ? 'you' : 'computer') : ''
     if (room.mode === 'together') return s === 'geese' ? 'together' : 'computer'
@@ -270,7 +275,16 @@ export function FoxDemo() {
   }
   return (
     <div className={`lab-keys fg-room is-${saved.look}`}>
-      {inMatch && <MatchBar lm={lm} sides={['the geese', 'the fox']} />}
+      {inMatch && (
+        <MatchBar
+          lm={lm}
+          sides={
+            lm.view && lm.view.mode === 'versus' && foxSideOf(lm.view.settings, 0) === 'fox'
+              ? ['the fox', 'the geese']
+              : ['the geese', 'the fox']
+          }
+        />
+      )}
       {!inMatch && (
         <div className="lab-controls">
           <div className="lab-group" role="group" aria-label="Opponent">
@@ -341,7 +355,7 @@ export function FoxDemo() {
             </button>
           )}
           {signedIn && mode !== 'call' && (
-            <MatchChallenge demo="fox" settings={{}} levelNames={LEVEL_NAMES} />
+            <MatchChallenge demo="fox" settings={{}} levelNames={LEVEL_NAMES} sides={MATCH_SIDES} />
           )}
         </div>
       )}
