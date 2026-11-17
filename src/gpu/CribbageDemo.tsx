@@ -26,6 +26,13 @@ import { value } from './gin'
 import { RANK_NAMES, SUITS, rankOf, suitOf, type Card } from './poker'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { type CribGame } from './cribbageRoom'
+import { useLabMatch, type LabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
+import { myHidden } from '../lab/matches/cloud'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const BOARD_NAMES: Record<Saved['board'], string> = { oak: 'Oak', walnut: 'Walnut', mint: 'Mint' }
@@ -105,6 +112,15 @@ function readOut(ps: Part[]): string {
 type Shown = { who: string; cards: Card[]; points: number; spoken: string }
 
 export function CribbageDemo() {
+  /* a match by turns, when the address names one (src/lab/matches/useLabMatch.ts): hands, crib and
+     starter kept back by the server (cribbageRoom.ts), each player's own fetched from lab-move */
+  const lm = useLabMatch('cribbage', { preview: false })
+  if (lm.id) return <CribbageMatch lm={lm} />
+  return <CribbageAlone />
+}
+
+function CribbageAlone() {
+  const signedIn = useSignedIn()
   const [saved, setSaved] = useKept(CRIBBAGE_KEY, readSaved)
   const [level, setLevel] = useState<Level>(saved.level)
   const [r, setR] = useState<Round>(() => deal(seed(), 1))
@@ -289,6 +305,7 @@ export function CribbageDemo() {
         <button className="btn btn-ghost" onClick={() => newGame()}>
           ↻ New game
         </button>
+        {signedIn && <MatchChallenge demo="cribbage" settings={{}} levelNames={LEVEL_NAMES} />}
       </div>
 
       <div
@@ -493,6 +510,254 @@ export function CribbageDemo() {
         five) and one for the jack of the starter’s suit. The dealer’s crib is counted last. First
         to 121; win by 31 or more and it is a skunk. Easy plays at random; Fair keeps its best four
         but pegs without thinking; Hard also weighs the crib and what you could score straight back.
+      </p>
+    </div>
+  )
+}
+
+type Mine = { hand: Card[]; kept: Card[] | null; thrown: Card[] | null }
+
+/** a match by turns: the board and table both players see, and my own cards as lab-move shows them */
+function CribbageMatch({ lm }: { lm: LabMatch }) {
+  const [saved] = useKept(CRIBBAGE_KEY, readSaved)
+  const g = lm.shown as CribGame | null
+  const together = lm.view?.mode === 'together'
+  const side: Who = together ? 0 : lm.view?.you === 1 ? 1 : 0
+  const theirs = other(side)
+  const them = !lm.view ? 'They' : together ? 'The computer' : otherName(lm.view)
+  const [cards, setCards] = useState<Mine | null>(null)
+  const [picked, setPicked] = useState<Card[]>([])
+  const seq = lm.view?.seq
+  const active = lm.view?.status === 'active' || lm.view?.status === 'finished'
+  useEffect(() => {
+    if (!lm.id || !active) return
+    let live = true
+    myHidden(lm.id)
+      .then((m) => {
+        if (!live || !m || typeof m !== 'object') return
+        setCards(m as Mine)
+        setPicked([])
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [lm.id, seq, active])
+
+  if (!g)
+    return (
+      <div className="lab-keys cg-room">
+        <MatchBar lm={lm} sides={['the first to play', 'the first to deal']} />
+      </div>
+    )
+  const r = g.r
+  const myName = together ? 'You two' : 'You'
+  const crib = (w: Who) => (w === side ? 'your' : together ? 'the computer’s' : `${them}’s`)
+  const total = r.pile.reduce((t, c) => t + value(c), 0)
+  const throwing = r.phase === 'discard' && lm.canPlay
+  const pegging = r.phase === 'peg' && lm.canPlay
+  const hand = cards ? [...cards.hand].sort(order) : []
+  const myThrow = cards?.thrown ?? null
+  // what is mine to hold right now: in the throw, the six less any two already thrown
+  const holding = r.phase === 'discard' && myThrow ? hand.filter((c) => !myThrow.includes(c)) : hand
+  const playable = new Set(pegging ? holding.filter((c) => total + value(c) <= 31) : [])
+  const playedBy = (w: Who) => r.played.filter((p) => p.by === w).length
+  const theirCount =
+    r.phase === 'discard'
+      ? g.thrown[theirs]
+        ? 4
+        : 6
+      : r.phase === 'peg'
+        ? 4 - playedBy(theirs)
+        : 0
+  const last = g.past[g.past.length - 1] ?? null
+  // the last show stays up until the first card of the next hand is pegged
+  const showLast = !!last && (r.phase === 'discard' || lm.view?.status === 'finished')
+  const words = (() => {
+    if (lm.view?.status === 'finished')
+      return `${r.scores[side] >= TARGET ? '🏆 ' : ''}${myName} ${r.scores[side]}, ${them} ${r.scores[theirs]}.`
+    if (r.phase === 'discard') {
+      if (throwing) return `Pick two for ${crib(r.dealer)} crib.`
+      if (g.thrown[side])
+        return `Your two are in ${crib(r.dealer)} crib, face down. ${them} is throwing.`
+      return `${together ? 'Your partner' : them} is throwing first.`
+    }
+    if (pegging) return `Your card — the count is ${total}.`
+    return `${together && lm.view?.turn !== lm.view?.you ? 'Your partner is' : `${them} is`} pegging. The count is ${total}.`
+  })()
+  const shows = last
+    ? (
+        [
+          [other(last.dealer), last.kept[other(last.dealer)], false],
+          [last.dealer, last.kept[last.dealer], false],
+          [last.dealer, last.crib, true],
+        ] as [Who, Card[], boolean][]
+      ).map(([w, cs, isCrib]) => {
+        const ps = parts(cs, last.starter, isCrib)
+        return {
+          who: `${w === side ? myName : them}${isCrib ? ' — the crib' : ''}`,
+          cards: cs,
+          points: score(cs, last.starter, isCrib),
+          spoken: readOut(ps),
+        }
+      })
+    : []
+  return (
+    <div className={`lab-keys cg-room is-${saved.board}`}>
+      <MatchBar lm={lm} sides={['the first to play', 'the first to deal']} />
+      <div
+        className="cg-board"
+        role="img"
+        aria-label={`The board: ${myName.toLowerCase()} ${r.scores[side]}, ${them} ${r.scores[theirs]}, of ${TARGET}.`}
+      >
+        {([side, theirs] as Who[]).map((w) => (
+          <div key={w} className={`cg-lane is-${w === side ? 0 : 1}`}>
+            <span className="cg-who">
+              {w === side ? myName : them}
+              {r.dealer === w ? ' · deals' : ''}
+            </span>
+            <span className="cg-track">
+              <span className="cg-fill" style={{ width: `${(r.scores[w] / TARGET) * 100}%` }} />
+              <span className="cg-peg" style={{ left: `${(r.scores[w] / TARGET) * 100}%` }} />
+            </span>
+            <strong className="cg-score">{r.scores[w]}</strong>
+          </div>
+        ))}
+      </div>
+      <p className="mc-line" aria-live="polite">
+        {words}
+      </p>
+      {r.phase !== 'over' && lm.view?.status !== 'finished' && (
+        <div className="cg-table">
+          <div className="cg-row" aria-label={`${them} holds ${theirCount} cards`} role="img">
+            {Array.from({ length: theirCount }, (_, k) => (
+              <span key={k} className="pk-card is-back tw-back cg-back" />
+            ))}
+          </div>
+          <div className="cg-middle">
+            <div className="cg-spot">
+              <span className="cg-label">Starter</span>
+              {r.phase === 'discard' ? (
+                <span
+                  className="pk-card is-back tw-back cg-back"
+                  role="img"
+                  aria-label="The starter, face down"
+                />
+              ) : (
+                <span role="img" aria-label={`The starter: the ${longName(r.starter)}`}>
+                  <Face c={r.starter} />
+                </span>
+              )}
+            </div>
+            <div className="cg-spot">
+              <span className="cg-label">{r.dealer === side ? 'Your crib' : 'Their crib'}</span>
+              <span
+                className="cg-crib"
+                role="img"
+                aria-label={`${r.dealer === side ? 'Your' : 'Their'} crib: ${r.phase === 'discard' ? (g.thrown[0] ? 2 : 0) + (g.thrown[1] ? 2 : 0) : 4} cards${myThrow ? `, your two the ${myThrow.map(longName).join(' and the ')}` : ''}`}
+              >
+                {Array.from(
+                  {
+                    length:
+                      r.phase === 'discard' ? (g.thrown[0] ? 2 : 0) + (g.thrown[1] ? 2 : 0) : 4,
+                  },
+                  (_, k) => (
+                    <span key={k} className="pk-card is-back tw-back cg-back is-small" />
+                  ),
+                )}
+              </span>
+            </div>
+            <div className="cg-spot cg-count">
+              <span className="cg-label">Count</span>
+              <strong>{r.phase === 'peg' ? total : '—'}</strong>
+            </div>
+          </div>
+          {r.phase === 'peg' && (
+            <div
+              className="cg-row cg-pile"
+              role="img"
+              aria-label={`Cards in this count: ${r.pile.map(longName).join(', ') || 'none yet'}`}
+            >
+              {r.pile.map((c) => {
+                const by = r.played.find((p) => p.card === c)?.by
+                return (
+                  <span key={c} className={`cg-played by-${by === side ? 0 : 1}`}>
+                    <Face c={c} small />
+                  </span>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      {cards && r.phase !== 'over' && lm.view?.status !== 'finished' && (
+        <div
+          className="cg-hand"
+          role="group"
+          aria-label={throwing ? 'Your hand: pick two for the crib' : 'Your hand'}
+        >
+          {holding.map((c) => (
+            <button
+              key={c}
+              className={`cg-mine${picked.includes(c) ? ' is-picked' : ''}${r.phase === 'peg' && !playable.has(c) ? ' is-dim' : ''}`}
+              disabled={lm.busy || !(throwing || playable.has(c))}
+              aria-pressed={throwing ? picked.includes(c) : undefined}
+              aria-label={`${longName(c)}${pegging && !playable.has(c) ? ', would pass thirty-one' : ''}`}
+              onClick={() => {
+                if (throwing)
+                  setPicked((p) =>
+                    p.includes(c) ? p.filter((x) => x !== c) : p.length < 2 ? [...p, c] : [p[1], c],
+                  )
+                else if (playable.has(c)) lm.commit({ peg: c })
+              }}
+            >
+              <Face c={c} />
+            </button>
+          ))}
+        </div>
+      )}
+      {throwing && (
+        <div className="lab-controls">
+          <button
+            className="btn"
+            disabled={picked.length !== 2 || lm.busy}
+            onClick={() => lm.commit({ throw: [picked[0], picked[1]] })}
+          >
+            {picked.length === 2
+              ? `Send them to ${crib(r.dealer)} crib`
+              : `Pick ${2 - picked.length} more`}
+          </button>
+        </div>
+      )}
+      {showLast && last && (
+        <section className="fw-panel cg-show" aria-label="The last show">
+          <h3 className="fw-h">
+            The show, hand {g.past.length} · starter {RANK_NAMES[rankOf(last.starter)]}
+            {SUITS[suitOf(last.starter)]}
+          </h3>
+          {shows.map((x) => (
+            <div key={x.who} className="cg-shown">
+              <span className="cg-shown-cards" aria-hidden>
+                {[...x.cards].sort(order).map((c) => (
+                  <Face key={c} c={c} small />
+                ))}
+              </span>
+              <span>
+                <strong>
+                  {x.who}: {x.points}
+                </strong>
+                {saved.spell && <span className="muted"> — {x.spoken}</span>}
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+      <p className="muted lab-hint">
+        Cribbage by turns, to {TARGET}: each hand is dealt by the server and your cards are shown to
+        you alone. Throw two to the dealer’s crib, face down; the starter is cut once both have
+        thrown. Then peg in turn without passing 31 — the gos are pegged for you — and the show is
+        counted as the last card goes down, the deal passing to the other side.
+        {together ? ' Together, the two of you hold one hand and take its moves in turn.' : ''}
       </p>
     </div>
   )
