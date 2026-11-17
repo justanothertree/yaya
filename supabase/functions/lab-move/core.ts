@@ -18,6 +18,8 @@
 import { chessRules } from '../../../src/gpu/chessRoom'
 import { SIZES, count } from '../../../src/gpu/reversi'
 import { reversiRules } from '../../../src/gpu/reversiRoom'
+import { SIZES as GOMOKU_SIZES } from '../../../src/gpu/gomoku'
+import { gomokuRules } from '../../../src/gpu/gomokuRoom'
 import { poolRules } from '../../../src/gpu/poolRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
@@ -46,6 +48,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
   },
   chess: () => ({ rules: chessRules }),
   pool: () => ({ rules: poolRules }),
+  gomoku: (s) => {
+    const size = s.size ?? 13
+    return (GOMOKU_SIZES as readonly unknown[]).includes(size)
+      ? { rules: gomokuRules(size as number) }
+      : null
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */

@@ -17,6 +17,12 @@ import {
   type Row,
 } from './core'
 import { poolRules, readPoolGame } from '../../../src/gpu/poolRoom'
+import {
+  choose as gomokuChoose,
+  newGame as gomokuGame,
+  place as gomokuPlace,
+} from '../../../src/gpu/gomoku'
+import { gomokuRules } from '../../../src/gpu/gomokuRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -413,5 +419,91 @@ describe('pool by turns: the shot is the move, and the server plays it', () => {
     const shot = { a: 1.2345678901234567, p: 0.8765432109876543 }
     expect(historyRow(shot, [shot])).toEqual({ m: shot, then: [shot] })
     expect(historyRow(shot, [shot, shot, shot, shot])).toEqual({ m: shot, replies: 4 })
+  })
+})
+
+describe('five in a row by turns', () => {
+  const five = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'gomoku', settings: { size: 11 }, ...over })
+  /** the board a stored state stands for, replayed by the toy itself rather than by decode */
+  const board = (state: unknown) => {
+    const o = state as { n: number; moves: number[] }
+    return o.moves.reduce(gomokuPlace, gomokuGame(o.n))
+  }
+
+  it('plays versus to the end, the winner being whoever owns the five on the board', () => {
+    let white = 0
+    for (let seed = 1; seed <= 24; seed++) {
+      const rnd = seeded(seed)
+      const level = (['easy', 'fair', 'hard'] as const)[seed % 3]
+      const { row, plans } = playOut(five({ settings: { size: seed % 2 ? 11 : 13 } }), (r) =>
+        gomokuChoose(board(r.state), level, rnd),
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      expect(last.kind).toBe('commit')
+      if (last.kind !== 'commit') continue
+      const g = board(last.state)
+      if (g.winner === 0) {
+        expect(last.result!.winner).toBe('draw')
+        continue
+      }
+      // the stones in the line say who won; black is the challenger's, seat 0
+      const colour = g.cells[g.line[0]]
+      expect(g.line.length).toBeGreaterThanOrEqual(5)
+      expect(g.line.every((i) => g.cells[i] === colour)).toBe(true)
+      expect(last.result!.winner).toBe(colour === 1 ? 0 : 1)
+      if (colour === 2) white++
+      expect(last.turn).toBeNull()
+    }
+    // twenty-four games won only by black would mean the second seat was never asked about
+    expect(white).toBeGreaterThan(0)
+  })
+
+  it('together: the computer answers each stone in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 7)
+      const { row, plans } = playOut(
+        five({ mode: 'together', settings: { size: 13, level } }),
+        (r) => gomokuChoose(board(r.state), 'easy', rnd),
+      )
+      expect(row.status).toBe('finished')
+      for (const p of plans.slice(0, -1)) {
+        expect(p.kind).toBe('commit')
+        if (p.kind === 'commit') expect(p.move.then).toHaveLength(1)
+      }
+      const turns = plans.map((p) => (p.kind === 'commit' ? p.turn : -1)).filter((t) => t !== null)
+      turns.forEach((t, i) => expect(t).toBe(i % 2 === 0 ? 1 : 0))
+    }
+  })
+
+  it('refuses a size the toy does not offer, a taken point and a point off the board', () => {
+    expect(status(decide(five({ settings: { size: 12 } }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(five({ settings: { size: '13' } }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(five({ settings: {} }), B, { op: 'accept' })
+    // a challenge that named no size is played on the toy's own 13
+    expect(begun.kind === 'begin' && (begun.state as { n: number }).n).toBe(13)
+    const row = after(five(), decide(five(), B, { op: 'accept' }))
+    const one = after(row, decide(row, A, move(0, 60)))
+    expect(status(decide(one, B, move(1, 60)))).toBe(400) // black is already there
+    expect(status(decide(one, B, move(1, 121)))).toBe(400) // 11 × 11 ends at 120
+    expect(status(decide(one, B, move(1, 61)))).toBe('commit')
+  })
+
+  it('refuses a stored game no board could have come from', () => {
+    const row = after(five(), decide(five(), B, { op: 'accept' }))
+    for (const state of [
+      { n: 11, moves: [60, 60] },
+      { n: 12, moves: [] },
+      { n: 11, moves: [0, 11, 1, 12, 2, 13, 3, 14, 4, 15] }, // a stone after black's five
+    ])
+      expect(status(decide({ ...row, state }, A, move(0, 5)))).toBe(500)
+  })
+
+  it("is the toy's own rules, at the toy's own sizes", () => {
+    expect(GAMES.gomoku({ size: 11 })!.rules.fresh('versus')).toEqual(
+      gomokuRules(11).fresh('versus'),
+    )
+    expect(GAMES.gomoku({ size: 9 })).toBeNull()
   })
 })
