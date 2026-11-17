@@ -451,7 +451,7 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
    */
   const [part, setPart] = useState<{ id: string; tab: PartTab } | null>(null)
   /** the lyrics box, open at a bar or at the top — one panel at a time, so it closes the part's */
-  const [lyricsAt, setLyricsAt] = useState<{ bar?: number } | null>(null)
+  const [lyricsAt, setLyricsAt] = useState<{ bar?: number; on?: string } | null>(null)
   const editing = part?.id ?? null
   const setEditing = useCallback((next: SetStateAction<string | null>) => {
     setPart((was) => {
@@ -464,9 +464,10 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
     setPart({ id, tab })
     setLyricsAt(null)
   }, [])
-  const showLyrics = useCallback((bar?: number) => {
+  /** `on`: a part to sing them, when the box is opened from that part's menu */
+  const showLyrics = useCallback((bar?: number, on?: string) => {
     setPart(null)
-    setLyricsAt({ bar })
+    setLyricsAt({ bar, on })
   }, [])
   /* the voice stops with the room — a song scheduled into the future would otherwise sing on */
   useEffect(() => () => stopSinging(), [])
@@ -1978,15 +1979,17 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
               held={held}
               theirs={l.from ? (jamNames[l.from] ?? '') : null}
               onKeep={(id) => keep('loop', id)}
+              words={(id) => showLyrics(undefined, id)}
             />
           )
         })()}
       {lyricsAt && (
         <LyricsPanel
-          key={lyricsAt.bar ?? 'top'}
+          key={`${lyricsAt.bar ?? 'top'} ${lyricsAt.on ?? ''}`}
           loop={loop}
           close={() => setLyricsAt(null)}
           at={lyricsAt.bar}
+          on={lyricsAt.on}
           scale={singScale}
         />
       )}
