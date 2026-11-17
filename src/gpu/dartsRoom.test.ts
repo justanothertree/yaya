@@ -10,6 +10,7 @@ import {
   tidy,
   type DartsGame,
 } from './dartsRoom'
+import { matches, sample } from './testMatches'
 
 /** a whole match between two computer hands through the room's own rules, every dart of it */
 function playThrough(seed: number, levels: [Level, Level] = ['hard', 'fair']) {
@@ -30,12 +31,13 @@ const at = (t: Parameters<typeof centreOf>[0]) => tidy(centreOf(t))
 const wire = (ps: { x: number; y: number }[]) => ({ darts: ps.map((p) => [p.x, p.y]) })
 
 describe('darts on the wire', () => {
-  it('replays to the very same match from its darts, at every dart of real matches', () => {
-    for (const seed of [1, 2]) {
+  it.each(matches([1], [1, 2]))(
+    'replays to the very same match from its darts, through a real match (seed $seed, $kind)',
+    ({ seed }) => {
       const { g, seen } = playThrough(seed)
       expect(g.over).toBe(true)
       expect(Math.max(...g.legs)).toBe(LEGS_TO_WIN)
-      for (const d of seen) {
+      for (const d of sample(seen)) {
         const w = JSON.parse(JSON.stringify(R.encode(d)))
         const back = R.decode(w)!
         expect(back.leg).toEqual(d.leg)
@@ -49,8 +51,8 @@ describe('darts on the wire', () => {
       const w = R.encode(g) as { darts: number[][] }
       expect(w.darts.length).toBeLessThan(MAX_DARTS)
       expect(R.decode({ darts: [...w.darts, [0, 0]] })).toBeNull()
-    }
-  })
+    },
+  )
 
   it('scores a dart by where it landed, three to a turn, the board cleared for the next turn', () => {
     const t20 = at({ n: 20, mult: 3 })
