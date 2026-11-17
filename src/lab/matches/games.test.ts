@@ -16,6 +16,7 @@ const SETTINGS: Record<string, Record<string, unknown>[]> = {
   gomoku: [{}, { size: null }, { size: 11 }, { size: 13 }, { size: 11, level: 'fair' }],
   draughts: [{}, { level: 'hard' }],
   dots: [{}, { size: null }, { size: 3 }, { size: 6 }, { size: 5, level: 'hard' }],
+  fourrow: [{}, { size: 'small' }, { size: 'wide', need: 5 }, { size: 'classic', level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
@@ -24,6 +25,7 @@ const REFUSED: Record<string, Record<string, unknown>[]> = {
   gomoku: [{ size: 12 }, { size: '13' }, { size: 15 }],
   draughts: [],
   dots: [{ size: 2 }, { size: '4' }, { size: 7 }],
+  fourrow: [{ size: 'small', need: 5 }, { size: 'huge' }, { need: 3 }, { size: 7 }],
 }
 
 describe('the match toys', () => {
