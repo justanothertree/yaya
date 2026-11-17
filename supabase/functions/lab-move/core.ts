@@ -35,6 +35,7 @@ import { fencesRules, readFencesSize } from '../../../src/gpu/fencesRoom'
 import { halmaRules } from '../../../src/gpu/halmaRoom'
 import { score as goScore } from '../../../src/gpu/goboard'
 import { goRules, type GoGame } from '../../../src/gpu/goRoom'
+import { foxMatchRules, readFoxSide } from '../../../src/gpu/foxRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -109,6 +110,10 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
       return `${s.black}–${s.white}`
     },
   }),
+  fox: (s) => {
+    const side = readFoxSide(s)
+    return side ? { rules: foxMatchRules(side) } : null
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -211,8 +216,11 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
     if (row.status !== 'invited') return refuse(409, 'that invitation is no longer open')
     if (seat !== 1) return refuse(403, 'only the friend who was challenged can accept')
     const g = rules.fresh(row.mode)
-    // the challenger moves first, both in versus and as the first of the team
-    return { kind: 'begin', state: rules.encode(g), turn: 0 }
+    // the first of the team moves first together; in versus, whoever the board says, which is the
+    // challenger unless they took a side that moves second (Fox and geese's fox)
+    const t = rules.turn(g)
+    const first: Seat = row.mode === 'versus' && (t === 0 || t === 1) ? t : 0
+    return { kind: 'begin', state: rules.encode(g), turn: first }
   }
 
   if (row.status !== 'active') return refuse(409, 'that match is not going')
