@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rng } from './bricks'
-import { SPREAD, START, aimFor, centreOf, land, type Level } from './darts'
+import { SPREAD, START, aimFor, centreOf, hitAt, land, type Level } from './darts'
 import {
   FAR,
   LEGS_TO_WIN,
@@ -29,6 +29,14 @@ function playThrough(seed: number, levels: [Level, Level] = ['hard', 'fair']) {
 }
 const at = (t: Parameters<typeof centreOf>[0]) => tidy(centreOf(t))
 const wire = (ps: { x: number; y: number }[]) => ({ darts: ps.map((p) => [p.x, p.y]) })
+/**
+ * ⚠️ A DART AT −0 AND ONE AT +0 ARE ONE DART, and the wire cannot tell them apart. `tidy` rounds a
+ * landing a hair below a line to −0, JSON writes it as 0, and the replay has +0. Found by a seed
+ * drawn for one run (590987058, 17 Nov 2026), which failed the deploy gate. Nothing scores the two
+ * differently (the last test in this file asks), so the boards are compared as numbers, where
+ * −0 is 0, rather than as bit patterns.
+ */
+const placed = (b: DartsGame['board']) => b.map((d) => ({ ...d, x: d.x + 0, y: d.y + 0 }))
 
 describe('darts on the wire', () => {
   it.each(matches([1], [1, 2]))(
@@ -42,7 +50,7 @@ describe('darts on the wire', () => {
         const back = R.decode(w)!
         expect(back.leg).toEqual(d.leg)
         expect([back.legNo, back.legs, back.over]).toEqual([d.legNo, d.legs, d.over])
-        expect(back.board).toEqual(d.board)
+        expect(placed(back.board)).toEqual(placed(d.board))
         expect(back.last).toEqual(d.last)
         expect(R.encode(back)).toEqual(w)
       }
@@ -112,6 +120,30 @@ describe('darts on the wire', () => {
     const misses = R.decode({ darts: Array.from({ length: MAX_DARTS }, () => [0, -FAR]) })!
     expect(R.turn(misses)).toBeNull()
     expect(R.result!(misses)).toBe('draw')
+  })
+
+  it('scores a dart the same on either side of zero, which is all the wire can carry', () => {
+    /* every ring, read off the board's own targets, on the four lines where an angle's sign of
+       zero could matter: straight up, straight down, and level either side */
+    const rings = (
+      [
+        { n: 20, mult: 3 },
+        { n: 20, mult: 2 },
+        { n: 20, mult: 1 },
+        { n: 25, mult: 1 },
+      ] as const
+    ).map((t) => Math.hypot(centreOf(t).x, centreOf(t).y))
+    for (const r of rings)
+      for (const [x, y] of [
+        [0, r],
+        [0, -r],
+        [r, 0],
+        [-r, 0],
+      ]) {
+        const plus = hitAt(x === 0 ? 0 : x, y === 0 ? 0 : y)
+        expect(hitAt(x === 0 ? -0 : x, y === 0 ? -0 : y)).toEqual(plus)
+        expect(plus.mult).toBeGreaterThan(0)
+      }
   })
 
   it('lets the computer throw its dart together', () => {
