@@ -1,4 +1,8 @@
--- ⛔ DRAFT — NOT APPLIED. The nudge on an open match: step 12 of the Lab multiplayer plan, second
+-- ✅ APPLIED to production 17 Nov 2026 (UTC) as migration `lab_match_nudge`, version 20261117003350:
+-- md5(statements[1]) = 3a800bb1841dd09037c43545fc817bd8, this file's body. The record is
+-- supabase/migrations/20261117003350_lab_match_nudge.sql.
+--
+-- (as drafted) The nudge on an open match: step 12 of the Lab multiplayer plan, second
 -- half (docs/2026-11-14-lab-async-matches-plan.md, "How you know it's your move").
 --
 -- While both players have a match open, whoever acts sends `{ seq }` on the match's own private
