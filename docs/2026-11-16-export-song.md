@@ -43,7 +43,7 @@ ring-out.
    (the first kick peaked at +0.1dB). The WAV is lowered by one amount until its peak is −0.3dBFS,
    only when it is over.
 3. **The file was named for tomorrow.** `toISOString` is UTC; an evening in Eastern time is the next
-   day there. Named by the local date now.
+   day there. Named by the local date now, and since 17 Nov after the song as well (below).
 
 ## The stems now include the sung voice
 
@@ -83,5 +83,46 @@ every play. The voice is in the export: without it the mix would be about −14.
 ## Not checked
 
 Real Safari, an iPhone, and the share sheet itself: the pane and desktop Firefox have no Web Share,
-and Playwright's WebKit on Windows has no Web Audio. A song with a voice take (a recording) in it.
+and Playwright's WebKit on Windows has no Web Audio. ~~A song with a voice take (a recording) in
+it.~~ Checked 17 Nov, below, and it was not in the file.
 A jam: exporting stops the loop, as ⬇ Stems always has.
+
+## 17 Nov: a recording in the export, and the file named after the song
+
+Evan, 17 Nov 2026: name the file after the song, and let an export include a voice recording in the
+loop, tested with a generated sound file standing in for a recording, the level and length checked
+against playback.
+
+**A recording was not in the export.** Tested with a generated file opened through 📂 Open a file and
+put in the loop: 2s of 660Hz at 0.25, in a 10s song with one keys part. The export had every part at
+full level and, of the recording, only the noise floor, 68dB under where it was recorded. Normal
+playback, recorded off the same tap, had the same hole, so this was not the export's own doing.
+
+The cause was the order of two nodes. The stems and the export tap the synth after its limiter and
+before the instrument fader, so a file is the song rather than how loud this device was turned up.
+The take bus WAS the fader, so the same tap got every recording after it. The fader in this browser
+sat at 0, so the recordings were gone; at the default 0.7 every recording would have come out 3dB
+under the parts beside how they sound together. Fixed in `takeBus.ts`: the bus is at unity and the
+fader is the next node, so the speakers hear what they always did and the tap gets the recording as
+recorded. The stems were tapping the same node and are fixed by the same change.
+
+Measured after, in Chrome, with the fader still at 0 (the speakers silent):
+
+|                                 | Recorded   | Played     | Exported                 |
+| ------------------------------- | ---------- | ---------- | ------------------------ |
+| The 660Hz recording, amplitude  | 0.25       | 0.2541     | 0.2541                   |
+| Where it starts and stops       | 0.25–2.25s | 0.27–2.24s | 0.27–2.24s               |
+| The same tone where it is not   |            | 0.00013    | 0.0001                   |
+| Whole song, RMS                 |            | −14.65dB   | −14.65dB                 |
+| Each half second, export − play |            |            | −0.05 to +0.06dB         |
+| Length                          |            | 10.000s    | 10.000s + 1.27s ring-out |
+
+The extra 0.004 is the keys part's own energy near 660Hz. Nothing clipped. The M4A copy carries it at
+0.227, which is 0.2541 one decibel down, as that copy is recorded.
+
+**The file is named after the song.** `Sunday morning 2026-11-17.wav`, `.m4a` and `.mid`, or
+`song-2026-11-17` when the song was never kept. The name is the one it was kept under, or the kept
+song it was opened from, or the one a jam partner's offered song carried; it is forgotten when the
+song goes from something to nothing, never on the empty room a reload starts with. Characters some
+phone or desktop will not have in a file name are left out, and a long name is cut by character so
+an emoji is never cut in half. The MIDI file's own title is the exact name. See `songName.ts`.

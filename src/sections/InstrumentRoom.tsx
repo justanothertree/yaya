@@ -104,6 +104,7 @@ import { openEditor } from '../instrument/openEditor'
 import { PartPanel, type PartTab } from '../instrument/PartPanel'
 import { LyricsPanel } from '../instrument/LyricsPanel'
 import { WhatsNew } from '../instrument/WhatsNew'
+import { forgetWhenEmptied, setSongName } from '../instrument/songName'
 import { setSingScale, stopSinging } from '../instrument/singAlong'
 import { vizStartsOpen } from '../instrument/vizStartsOpen'
 
@@ -524,6 +525,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
   /* ⚠️ AFTER the workbench above, so the bench it puts back is where undo starts rather than a
      step — it also marks that restore as from elsewhere, so the order is belt and braces */
   useEffect(() => startHistory(), [])
+  /* the song's kept name, for what an export is called, goes when the song empties (songName.ts) */
+  useEffect(() => forgetWhenEmptied(), [])
   /**
    * Which of the four tools under the song is open — 🥁 Beats, 🎚 Mix, 🎤 Voice or 📁 Songs, one
    * at a time (the #311 layout, 14 Nov 2026). Here rather than in SongTools because two things
@@ -562,6 +565,8 @@ export function InstrumentRoom({ inCanvas = false }: { inCanvas?: boolean } = {}
      * storage. Same three answers the paint room gives, for the same reason.
      */
     const item = saveToLibrary(kind, toSong(name, loop.bpm, loop.bars, loop.layers, layerId))
+    /* a song kept is a song named; one part kept as a loop names nothing about the rest */
+    if (item && kind === 'song') setSongName(item.name)
     setCapMsg(
       item
         ? librarySaved()

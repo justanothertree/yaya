@@ -179,6 +179,11 @@ describe('a song as a MIDI file', () => {
     expect(at480.map((e) => e.status & 0xf0)).toEqual([0x80, 0x90])
   })
 
+  it('is titled with the name the song was kept under, and Song when it has none', () => {
+    const title = (b: Uint8Array) => word(parse(b).tracks[0].find((e) => e.status === 0xff03)!.data)
+    expect(title(songToMidi({ ...song, name: 'Sunday morning 🎵' }))).toBe('Sunday morning 🎵')
+    expect(title(songToMidi(song))).toBe('Song')
+  })
   it('writes a delta as seven bits a byte, the high bit set on all but the last', () => {
     expect(vlq(0)).toEqual([0])
     expect(vlq(127)).toEqual([0x7f])

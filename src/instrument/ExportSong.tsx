@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { loopLength, type loopState } from '../audio/looper'
 import { songToMidi } from '../audio/midiFile'
 import { exportSong, type ExportProgress, type SongExport } from './songExport'
+import { exportName, songName, subscribeSongName } from './songName'
 
 /**
  * ⬇ Export song and ⬇ MIDI, in 📁 Songs. Evan, 16 Nov 2026: "renders the full mix (every part,
@@ -17,11 +18,6 @@ import { exportSong, type ExportProgress, type SongExport } from './songExport'
  * revoked, and a link that makes one every render keeps a song's worth of audio per render.
  */
 
-/** today, where the person is: toISOString is UTC, and an evening in Eastern time is tomorrow there */
-const stamp = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const mb = (b: Blob) => `${(b.size / 1e6).toFixed(1)} MB`
 /** a file for the share sheet, typed without codec details, which some browsers refuse */
@@ -41,7 +37,9 @@ export function ExportSong({
   const [done, setDone] = useState<SongExport | null>(null)
   const [say, setSay] = useState('')
   const stop = useRef<AbortController | null>(null)
-  const name = `song-${stamp()}`
+  /* the song's kept name and the day, or song- and the day (songName.ts) */
+  const kept = useSyncExternalStore(subscribeSongName, songName, songName)
+  const name = exportName(kept, new Date())
   const empty = !loop.layers.length && !loop.takes.length
 
   const urls = useMemo(
@@ -93,7 +91,7 @@ export function ExportSong({
   }
 
   const midi = () => {
-    const bytes = songToMidi(loop)
+    const bytes = songToMidi({ ...loop, name: kept ?? undefined })
     const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/midi' }))
     const a = document.createElement('a')
     a.href = url
