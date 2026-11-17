@@ -3596,3 +3596,64 @@ describe('cribbage by turns: hands and crib kept back until the show', () => {
     }
   })
 })
+
+describe('dominoes by turns: the hands and boneyard kept back', () => {
+  const dm = (over: Partial<Row> = {}) => invite({ demo_id: 'dominoes', settings: {}, ...over })
+  const mine = (row: Row, who: string) => {
+    const p = decide(row, who, { op: 'mine' })
+    if (p.kind !== 'mine') throw new Error('refused')
+    return p.data as number[][]
+  }
+  type Sec = { hands: number[][][]; yard: number[][] }
+
+  it('deals with the yes, and shows each player their own hand only', () => {
+    const p0 = decide(dm(), B, { op: 'accept' })
+    if (p0.kind !== 'begin') throw new Error('refused')
+    const sec = p0.secret as Sec
+    expect(JSON.stringify(p0.state)).not.toMatch(/hands|"yard"/)
+    const row = after(dm(), p0)
+    expect(mine(row, A)).toEqual(sec.hands[0])
+    expect(mine(row, B)).toEqual(sec.hands[1])
+  })
+
+  it('takes a lay of a tile Ann holds, and refuses one she does not', () => {
+    let row = after(dm(), decide(dm(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    expect(status(decide(row, A, move(row.seq, { lay: sec.hands[1][0], side: 'right' })))).toBe(400)
+    const p = decide(row, A, move(row.seq, { lay: sec.hands[0][0], side: 'right' }))
+    if (p.kind !== 'commit') throw new Error('refused')
+    expect(p.move).toEqual({ m: { lay: sec.hands[0][0], side: 'right' } })
+    row = after(row, p)
+    expect(row.turn).toBe(1)
+    expect((row.state as { sizes: number[] }).sizes).toEqual([6, 7])
+  })
+
+  it('refuses a stored round that is not one set with the line', () => {
+    const row = after(dm(), decide(dm(), B, { op: 'accept' }))
+    const sec = row.secret as Sec
+    const twice = { ...sec, yard: [...sec.yard.slice(1), sec.hands[1][0]] }
+    expect(
+      status(
+        decide(
+          { ...row, secret: twice },
+          A,
+          move(row.seq, { lay: sec.hands[0][0], side: 'right' }),
+        ),
+      ),
+    ).toBe(500)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = dm({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      const hand = mine(row, A)
+      const p = decide(row, A, move(row.seq, { lay: hand[0], side: 'right' }))
+      if (p.kind !== 'commit') throw new Error(`refused at ${level}`)
+      expect(((p.move as { then?: unknown[] }).then ?? []).length).toBeGreaterThanOrEqual(1)
+      row = after(row, p)
+      expect(row.turn).toBe(1)
+      expect((row.state as { line: unknown[] }).line.length).toBeGreaterThanOrEqual(1)
+    }
+  })
+})

@@ -66,6 +66,12 @@ import {
   type GinGame,
 } from '../../../src/gpu/ginRoom'
 import { cribRules, type CribGame } from '../../../src/gpu/cribbageRoom'
+import {
+  dominoRules,
+  readDominoSettings,
+  totals as dominoTotals,
+  type DominoGame,
+} from '../../../src/gpu/dominoesRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -230,6 +236,12 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     // each side's pegs, the challenger's first
     score: (g: CribGame) => g.r.scores.join('–'),
   }),
+  dominoes: (s) => {
+    const set = readDominoSettings(s)
+    if (set === null) return null
+    // each side's points over the rounds, the challenger's first
+    return { rules: dominoRules(set.target), score: (g: DominoGame) => dominoTotals(g).join('–') }
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
