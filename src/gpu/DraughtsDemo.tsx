@@ -22,11 +22,16 @@ import {
   type Who,
 } from './draughts'
 import { useKept } from './kept'
-import { draughtsRules } from './draughtsRoom'
+import { draughtsRules, type DraughtsGame } from './draughtsRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -57,36 +62,60 @@ export function DraughtsDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A move is
+     picked square by square as ever, shows once its last landing is picked, and waits for Send. */
+  const lm = useLabMatch('draughts')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as DraughtsGame | null) : null
+
   /* ── the call's room: the game travels as the paths its pieces took */
   const lab = useLabRoom('draughts', draughtsRules)
   const words = tableSeats(lab, draughtsRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
   /** the side I move for: the bottom in seat 0 and together, the top in seat 1 */
-  const mySide: Who = room && room.mode === 'versus' && words.mySeat === 1 ? 2 : 1
-  /** the board on screen: the call's in a call, else this one */
-  const shown = room ? room.game.g : game
-  const shownLast = room ? room.game.last : last
+  const mySide: Who = inMatch
+    ? lm.view?.mode === 'versus' && lm.view.you === 1
+      ? 2
+      : 1
+    : room && room.mode === 'versus' && words.mySeat === 1
+      ? 2
+      : 1
+  /** the board on screen: the match's, the call's in a call, else this one */
+  const shown = matchGame ? matchGame.g : room ? room.game.g : game
+  const shownLast = matchGame ? matchGame.last : room ? room.game.last : last
 
   const sides = SIDES[saved.pieces]
   const all = moves(shown)
-  const yours = room
-    ? lab.live && myTurn(draughtsRules, room)
-    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
-  const computerTurn = mode === 'bot' && !game.winner && game.turn !== you
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(draughtsRules, room)
+      : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === you)
+  const computerTurn = mode === 'bot' && !inMatch && !game.winner && game.turn !== you
   // the board turns round so the side you play is always at the bottom
-  const flip = room ? mySide === 2 : mode === 'bot' ? you === 2 : false
+  const flip = inMatch || room ? mySide === 2 : mode === 'bot' ? you === 2 : false
   const nameOf = (w: Who) =>
-    room
-      ? room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
-          ? 'Together'
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[w - 1])
-      : mode === 'bot'
-        ? w === you
+        : w - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : sides[w - 1]
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? w === 1
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[w - 1])
+        : mode === 'bot'
+          ? w === you
+            ? 'You'
+            : 'The computer'
+          : sides[w - 1]
   const verb = (w: Who, plain: string, s: string) => (nameOf(w) === 'You' ? plain : s)
 
   const candidates = prefix.length
@@ -143,7 +172,11 @@ export function DraughtsDemo() {
     if (!lit.has(i)) return
     const next = [...prefix, i]
     const done = all.find((m) => same(m.path, next))
-    if (done && room) {
+    if (done && inMatch) {
+      // in a match the move waits for Send; the server plays it and the board comes back
+      setPrefix([])
+      lm.play(done.path)
+    } else if (done && room) {
       // in the call the host decides: this asks it, and the board comes back with everybody's
       setPrefix([])
       lab.act({ t: 'move', move: done.path })
@@ -225,63 +258,76 @@ export function DraughtsDemo() {
     return `${squareName(i)}: ${what}${extra.length ? `, ${extra.join(', ')}` : ''}`
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
+
   const record = saved.record[saved.level]
   const marks = new Set(shownLast ? [...shownLast.path, ...shownLast.taken] : [])
   return (
     <div className={`lab-keys dr-room is-${saved.board} pieces-${saved.pieces}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={[sides[0].toLowerCase(), sides[1].toLowerCase()]} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                setMode('call')
-                setPrefix([])
-              }}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
             </button>
-          )}
-        </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={mode === 'call'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!last || game.winner) fresh(mode, l)
+                  setMode('call')
+                  setPrefix([])
                 }}
               >
-                {LEVEL_NAMES[l]}
+                👥 With the call
               </button>
-            ))}
+            )}
           </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!last || game.winner) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge demo="draughts" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={draughtsRules}
@@ -312,7 +358,7 @@ export function DraughtsDemo() {
           </div>
         ))}
       </div>
-      {mode !== 'call' && (
+      {mode !== 'call' && !inMatch && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -363,7 +409,8 @@ export function DraughtsDemo() {
           )
         })}
       </div>
-      {mode === 'bot' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -371,7 +418,7 @@ export function DraughtsDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && last && !game.winner && level !== saved.level && (
+      {mode === 'bot' && !inMatch && last && !game.winner && level !== saved.level && (
         <p className="muted mc-note">The new level starts with the next game.</p>
       )}
 

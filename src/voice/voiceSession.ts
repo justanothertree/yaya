@@ -8,8 +8,16 @@ import { broadcastBus, sharedCtx } from '../audio/context'
  * a level gate can't stop a keyboard, because clacks are LOUD — they open any gate that speech
  * can open. A denoiser removes them from the signal itself, and putting the gate AFTER it means
  * clacks no longer even count toward opening the gate.
+ *
+ * ⚠️ THE LIBRARY ITSELF IS LOADED WHEN A CALL NEEDS IT, NOT WITH THE PAGE (15 Nov 2026). It
+ * declares `class … extends AudioWorkletNode` at the top of its module, so in a browser with no
+ * AudioWorklet it throws the moment it is imported — and this module is imported by App.tsx, so
+ * the whole site came up blank. Measured in Playwright's WebKit, which has no AudioWorkletNode:
+ * `<main>` empty, "Can't find variable: AudioWorkletNode" from this package. The catch below
+ * already promised that a call works without the denoiser; importing it there is what lets that
+ * be true, for an old Safari or an insecure context as much as for a test engine. The three
+ * `?url` imports are only file names, and stay.
  */
-import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppressor'
 import rnnoiseWorkletPath from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url'
 import rnnoiseWasmPath from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url'
 import rnnoiseWasmSimdPath from '@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url'
@@ -813,6 +821,7 @@ function buildGate(mic: MediaStream): MediaStream {
     const ctxAtBuild = audioCtx
     void (async () => {
       try {
+        const { RnnoiseWorkletNode, loadRnnoise } = await import('@sapphi-red/web-noise-suppressor')
         rnnoiseBinary ??= await loadRnnoise({
           url: rnnoiseWasmPath,
           simdUrl: rnnoiseWasmSimdPath,

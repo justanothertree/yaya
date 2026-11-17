@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { CanvasStage } from './CanvasStage'
 import {
   ARTILLERY_KEY,
@@ -11,16 +11,23 @@ import {
   SKIES,
   gunAt,
   gunner,
+  mirror,
   newField,
   readSaved,
   shoot,
   type Field,
+  type Flight,
   type Level,
   type Saved,
   type Who,
 } from './artillery'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { artilleryRules, type ArtilleryGame } from './artilleryRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SKY: Record<
@@ -33,6 +40,10 @@ const SKY: Record<
 }
 const FIELD_H = 0.8
 const GUNS = ['#ffd34d', '#ff6b6b']
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'call'
+/** a shell's path seen from the other side of the field */
+const flipPath = (p: number[]) => p.map((v, i) => (i % 2 ? v : FIELD_W - v))
 type Show = { path: number[]; t: number; burst: { x: number; y: number } | null; after: () => void }
 
 export function ArtilleryDemo() {
@@ -46,8 +57,24 @@ export function ArtilleryDemo() {
     'Your gun is on the left. Set the angle and the charge, mind the wind, and fire.',
   )
   const [shots, setShots] = useState(0)
-  const fieldRef = useRef(field)
-  fieldRef.current = field
+  const [mode, setMode] = useState<Mode>('bot')
+
+  /* ── the call's room: seat 0 the left gun, seat 1 the right; the game travels as its shots */
+  const lab = useLabRoom('artillery', artilleryRules)
+  const words = tableSeats(lab, artilleryRules)
+  const room = mode === 'call' ? lab.room : null
+  /**
+   * ⚠️ THE RIGHT GUN'S PLAYER SEES THE FIELD FROM THEIR SIDE: their gun on the left, like the
+   * toy's own, so the controls, the drag and the guide all mean what they always mean. The field
+   * is mirrored to draw it, and firing is symmetric, so nothing else needs to know.
+   */
+  const flip = room?.mode === 'versus' && words.mySeat === 1
+  /** the field on screen: the one held here, from this player's side */
+  const view = useMemo(() => (flip ? mirror(field) : field), [flip, field])
+  /** a real gun, by where it is drawn: the left one is this player's */
+  const realGun = (d: Who): Who => (flip ? (d === 0 ? 1 : 0) : d)
+  const fieldRef = useRef(view)
+  fieldRef.current = view
   const aimRef = useRef({ angle, charge })
   aimRef.current = { angle, charge }
   const savedRef = useRef(saved)
@@ -61,7 +88,12 @@ export function ArtilleryDemo() {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 
-  const yourTurn = field.turn === 0 && field.winner === null && !busy
+  const yourTurn = room
+    ? lab.live && myTurn(artilleryRules, room) && !busy
+    : mode === 'bot' && field.turn === 0 && field.winner === null && !busy
+  /** what the frame needs that is not the field: whose colours are where, and whether to aim */
+  const drawRef = useRef({ flip, aiming: yourTurn })
+  drawRef.current = { flip, aiming: yourTurn }
   const windWords = (w: number) =>
     w === 0 ? 'no wind' : `wind ${Math.abs(w).toFixed(2)} to the ${w > 0 ? 'right' : 'left'}`
 
@@ -155,6 +187,125 @@ export function ArtilleryDemo() {
     } else setLine(`A new field. Your shot — ${windWords(f.wind)}.`)
   }
 
+  /* ── the call's shots, shown as they arrive: each one flown in turn, then the field it left */
+  const seen = useRef<{ seed: number; shots: number } | null>(null)
+  const queue = useRef<ArtilleryGame[]>([])
+  const [said, setSaid] = useState('')
+  const callName = (w: Who) =>
+    !room
+      ? ''
+      : room.mode === 'together'
+        ? w === 1
+          ? 'The computer'
+          : words.mySeat !== null
+            ? 'Your side'
+            : 'The team'
+        : words.who(room.seats[w])
+  const callShot = (g: ArtilleryGame) => {
+    const { by, flight, hurt } = g.last!
+    const other: Who = by === 0 ? 1 : 0
+    const what = !flight.burst
+      ? 'it sails off the field'
+      : flight.struck === other
+        ? `a direct hit, ${hurt[other]} damage`
+        : hurt[other]
+          ? `close, ${hurt[other]} damage`
+          : hurt[by]
+            ? `it came down on its own gun, ${hurt[by]} damage`
+            : 'a miss'
+    return `${callName(by)} fired: ${what}.`
+  }
+  const playNext = () => {
+    const g = queue.current.shift()
+    if (!g) return setBusy(false)
+    const { by, flight } = g.last!
+    const path = flip ? flipPath(flight.path) : flight.path
+    const burst: Flight['burst'] =
+      flight.burst && (flip ? { x: FIELD_W - flight.burst.x, y: flight.burst.y } : flight.burst)
+    const ours = room && (room.mode === 'together' ? by === 0 : by === words.mySeat)
+    if (ours) trail.current = path
+    const done = () => {
+      show.current = null
+      if (burst) flash.current = { ...burst, t: performance.now() }
+      setField(g.f)
+      setSaid(callShot(g))
+      playNext()
+    }
+    setBusy(true)
+    if (reduced()) {
+      show.current = { path: path.slice(-2), t: 0, burst, after: () => {} }
+      later(300, done)
+    } else show.current = { path, t: 0, burst, after: done }
+  }
+  const callGame = room?.game
+  useEffect(() => {
+    if (!callGame) {
+      seen.current = null
+      queue.current = []
+      return
+    }
+    const s = seen.current
+    if (s && s.seed === callGame.seed && s.shots === callGame.shots.length) return
+    const next =
+      !!s && s.seed === callGame.seed && callGame.shots.length === s.shots + 1 && !!callGame.last
+    seen.current = { seed: callGame.seed, shots: callGame.shots.length }
+    if (!next) {
+      // a new game, or one joined part way: the field as it stands, nothing to fly
+      queue.current = []
+      show.current = null
+      trail.current = null
+      flash.current = null
+      setField(callGame.f)
+      setSaid('')
+      setBusy(false)
+      return
+    }
+    queue.current.push(callGame)
+    if (!show.current) playNext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new game state is the only cue
+  }, [callGame])
+
+  const stopHere = () => {
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    show.current = null
+    trail.current = null
+    queue.current = []
+    seen.current = null
+    setBusy(false)
+  }
+  /** fire this aim: in the call the host fires it, and the shot comes back to everybody */
+  const pull = () => {
+    if (!yourTurn) return
+    if (room) lab.act({ t: 'move', move: { angle, charge } })
+    else fire(field, angle, charge)
+  }
+
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the field on screen, as
+   * the left gun — the right gun's player on the field mirrored, which is the field they were
+   * looking at — or starts a new field if that game was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const mine: Who = r?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+    stopHere()
+    setMode('bot')
+    if (!r || artilleryRules.turn(r.game) === null) return newGame()
+    const f = mine === 1 ? mirror(r.game.f) : r.game.f
+    recorded.current = false
+    setShots(0)
+    setField(f)
+    if (f.turn === 1) {
+      setBusy(true)
+      setLine('Carrying on against the computer, which fires next…')
+      later(900, () => {
+        const s = gunner(f, level)
+        fire(f, s.angle, s.charge)
+      })
+    } else setLine(`Carrying on against the computer. Your turn — ${windWords(f.wind)}.`)
+  }
+
   /* -------------------------------------------------------------------- aiming by hand */
 
   const toField = (e: PointerEvent<HTMLCanvasElement>) => {
@@ -193,7 +344,7 @@ export function ArtilleryDemo() {
       setCharge((c) => Math.min(1, Math.round((c + 0.01 * fine * 4) * 100) / 100))
     else if (e.key === 'ArrowDown')
       setCharge((c) => Math.max(0.1, Math.round((c - 0.01 * fine * 4) * 100) / 100))
-    else if (e.key === ' ' || e.key === 'Enter') fire(field, angle, charge)
+    else if (e.key === ' ' || e.key === 'Enter') pull()
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -205,44 +356,104 @@ export function ArtilleryDemo() {
   return (
     <div className={`lab-keys at-room is-${saved.sky}`}>
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer shoots">
-          {LEVELS.map((l) => (
+        {(lab.live || mode === 'call') && (
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
-              key={l}
               className="btn btn-ghost"
-              aria-pressed={saved.level === l}
+              aria-pressed={mode === 'bot'}
               onClick={() => {
-                setSaved((s) => ({ ...s, level: l }))
-                if (untouched || field.winner !== null) newGame(l)
+                if (mode === 'bot') return
+                stopHere()
+                setMode('bot')
+                newGame()
               }}
             >
-              {LEVEL_NAMES[l]}
+              Against the computer
             </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => newGame()}>
-          ↻ New field
-        </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                stopHere()
+                setMode('call')
+              }}
+            >
+              👥 With the call
+            </button>
+          </div>
+        )}
+        {mode === 'bot' && (
+          <div className="lab-group" role="group" aria-label="How well the computer shoots">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                className="btn btn-ghost"
+                aria-pressed={saved.level === l}
+                onClick={() => {
+                  setSaved((s) => ({ ...s, level: l }))
+                  if (untouched || field.winner !== null) newGame(l)
+                }}
+              >
+                {LEVEL_NAMES[l]}
+              </button>
+            ))}
+          </div>
+        )}
+        {mode === 'bot' && (
+          <button className="btn btn-ghost" onClick={() => newGame()}>
+            ↻ New field
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={artilleryRules}
+          sides={['the left gun', 'the right gun']}
+          ink={[GUNS[0], GUNS[1]]}
+          levelNames={LEVEL_NAMES}
+          score={(g) =>
+            g.f.winner === null ? null : ` with ${g.f.guns[g.f.winner].life} to spare`
+          }
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([0, 1] as Who[]).map((w) => (
           <div
             key={w}
-            className={`dice-score${field.turn === w && field.winner === null ? ' is-up' : ''}`}
+            className={`dice-score${view.turn === w && view.winner === null ? ' is-up' : ''}`}
           >
-            <span>{w === 0 ? 'Your gun' : `The computer · ${LEVEL_NAMES[level]}`}</span>
-            <strong>{field.guns[w].life}</strong>
+            <span>
+              {room
+                ? callName(realGun(w))
+                : w === 0
+                  ? 'Your gun'
+                  : `The computer · ${LEVEL_NAMES[level]}`}
+            </span>
+            <strong>{view.guns[w].life}</strong>
             <span className="at-life" aria-hidden>
               <span
-                style={{ width: `${(field.guns[w].life / LIFE) * 100}%`, background: GUNS[w] }}
+                style={{
+                  width: `${(view.guns[w].life / LIFE) * 100}%`,
+                  background: GUNS[realGun(w)],
+                }}
               />
             </span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode === 'call' ? (
+        said && (
+          <p className="muted at-said" aria-live="polite">
+            {said}
+          </p>
+        )
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className="at-wrap"
@@ -253,7 +464,7 @@ export function ArtilleryDemo() {
       >
         <CanvasStage
           className="at-stage"
-          label={`A field with two guns, ${windWords(field.wind)}. ${line}`}
+          label={`A field with two guns, ${windWords(view.wind)}. ${mode === 'call' ? said : line}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -270,9 +481,10 @@ export function ArtilleryDemo() {
                 const f = fieldRef.current
                 const sv = savedRef.current
                 const a = aimRef.current
+                const dr = drawRef.current
                 const fl = flash.current
                 const flashing = fl && performance.now() - fl.t < (reduced() ? 600 : 450)
-                const key = `${c.width}x${c.height}|${sv.sky}|${sv.trail}|${f.guns[0].life},${f.guns[1].life}|${a.angle},${a.charge}|${sh ? sh.t.toFixed(1) : ''}|${flashing ? performance.now() : ''}|${f.turn}|${f.wind}`
+                const key = `${c.width}x${c.height}|${sv.sky}|${sv.trail}|${f.guns[0].life},${f.guns[1].life}|${a.angle},${a.charge}|${sh ? sh.t.toFixed(1) : ''}|${flashing ? performance.now() : ''}|${f.turn}|${f.wind}|${dr.flip}|${dr.aiming}`
                 // a field is replaced, never changed, so the object itself says whether it moved
                 if (key === last && f === lastField) return
                 last = key
@@ -353,14 +565,15 @@ export function ArtilleryDemo() {
                     gy - Math.sin((ang * Math.PI) / 180) * r * 1.9,
                   )
                   ctx.stroke()
-                  ctx.fillStyle = f.guns[who].life > 0 ? GUNS[who] : '#555'
+                  const ink = GUNS[dr.flip ? (who === 0 ? 1 : 0) : who]
+                  ctx.fillStyle = f.guns[who].life > 0 ? ink : '#555'
                   ctx.beginPath()
                   ctx.arc(gx, gy, r, Math.PI, 0)
                   ctx.fill()
                   ctx.fillRect(gx - r * 1.2, gy, r * 2.4, r * 0.7)
                 }
                 // the aim, as a short guide from your barrel, while it is your turn
-                if (f.turn === 0 && f.winner === null && !sh) {
+                if (dr.aiming && !sh) {
                   const g = gunAt(f, 0)
                   const rad = (a.angle * Math.PI) / 180
                   ctx.strokeStyle = 'rgba(255,255,255,0.8)'
@@ -444,15 +657,11 @@ export function ArtilleryDemo() {
             +
           </button>
         </span>
-        <button
-          className="btn at-fire"
-          disabled={!yourTurn}
-          onClick={() => fire(field, angle, charge)}
-        >
+        <button className="btn at-fire" disabled={!yourTurn} onClick={pull}>
           💥 Fire
         </button>
       </div>
-      {field.winner !== null && (
+      {mode === 'bot' && field.winner !== null && (
         <div className="lab-controls">
           <button className="btn" onClick={() => newGame()}>
             ↻ Play again
@@ -460,13 +669,15 @@ export function ArtilleryDemo() {
         </div>
       )}
 
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
-          {rec.fewest ? ` · fewest shots to win ${rec.fewest}` : ''}
-        </span>
-      </p>
-      {level !== saved.level && !untouched && field.winner === null && (
+      {mode === 'bot' && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
+            {rec.fewest ? ` · fewest shots to win ${rec.fewest}` : ''}
+          </span>
+        </p>
+      )}
+      {mode === 'bot' && level !== saved.level && !untouched && field.winner === null && (
         <p className="muted mc-note">The new level starts with the next field.</p>
       )}
       <div className="fw-panel">
@@ -500,7 +711,9 @@ export function ArtilleryDemo() {
         little every turn, pushes it sideways. A shell digs a crater where it lands, and a gun whose
         ground is dug away drops into the hole. A direct hit does the most; a near one less. Three
         good hits win. The computer works out the shot that would land on you exactly; Easy, Fair
-        and Hard differ in how steady their hand is.
+        and Hard differ in how steady their hand is. In a call, 👥 With the call puts a friend on
+        the other gun, or the two of you on one gun against the computer; whoever has the right gun
+        sees the field from their side.
       </p>
     </div>
   )

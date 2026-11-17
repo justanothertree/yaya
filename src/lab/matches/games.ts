@@ -2,6 +2,16 @@ import { LEVELS as CHESS_LEVELS } from '../../gpu/chess'
 import { chessRules } from '../../gpu/chessRoom'
 import { LEVELS as REVERSI_LEVELS, SIZES } from '../../gpu/reversi'
 import { reversiRules } from '../../gpu/reversiRoom'
+import { LEVELS as POOL_LEVELS } from '../../gpu/pool'
+import { poolRules } from '../../gpu/poolRoom'
+import { LEVELS as GOMOKU_LEVELS, SIZES as GOMOKU_SIZES } from '../../gpu/gomoku'
+import { gomokuRules } from '../../gpu/gomokuRoom'
+import { LEVELS as DRAUGHTS_LEVELS } from '../../gpu/draughts'
+import { draughtsRules } from '../../gpu/draughtsRoom'
+import { LEVELS as DOTS_LEVELS, SIZES as DOTS_SIZES } from '../../gpu/dots'
+import { dotsRules } from '../../gpu/dotsRoom'
+import { LEVELS as FOUR_LEVELS } from '../../gpu/fourrow'
+import { fourRowMatchRules, readFourSettings } from '../../gpu/fourrowRoom'
 import type { Rules } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -40,6 +50,36 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
     sizes: SIZES,
   },
   chess: { name: MATCH_NAMES.chess, rulesFor: () => chessRules, levels: CHESS_LEVELS },
+  pool: { name: MATCH_NAMES.pool, rulesFor: () => poolRules, levels: POOL_LEVELS },
+  gomoku: {
+    name: MATCH_NAMES.gomoku,
+    rulesFor: (s) => {
+      const size = s.size ?? 13
+      return (GOMOKU_SIZES as readonly unknown[]).includes(size)
+        ? gomokuRules(size as number)
+        : null
+    },
+    levels: GOMOKU_LEVELS,
+    sizes: GOMOKU_SIZES,
+  },
+  draughts: { name: MATCH_NAMES.draughts, rulesFor: () => draughtsRules, levels: DRAUGHTS_LEVELS },
+  dots: {
+    name: MATCH_NAMES.dots,
+    rulesFor: (s) => {
+      const size = s.size ?? 4
+      return (DOTS_SIZES as readonly unknown[]).includes(size) ? dotsRules(size as number) : null
+    },
+    levels: DOTS_LEVELS,
+    sizes: DOTS_SIZES,
+  },
+  fourrow: {
+    name: MATCH_NAMES.fourrow,
+    rulesFor: (s) => {
+      const read = readFourSettings(s)
+      return read ? fourRowMatchRules(...read) : null
+    },
+    levels: FOUR_LEVELS,
+  },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
