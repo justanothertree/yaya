@@ -23,11 +23,16 @@ import {
 } from './artillery'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { artilleryRules, type ArtilleryGame } from './artilleryRoom'
+import { artilleryRules, replay, type ArtilleryGame } from './artilleryRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const SKY: Record<
@@ -59,16 +64,32 @@ export function ArtilleryDemo() {
   const [shots, setShots] = useState(0)
   const [mode, setMode] = useState<Mode>('bot')
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the field over whatever else was showing; leaving it puts the toy back as it was.
+     ⚠️ NO PREVIEW: a shot shown landing before Send would let it be aimed, watched and taken
+     back until it hits. Fire only proposes it; the server fires it and the shell flies when the
+     field comes back, as a call's shots do. */
+  const lm = useLabMatch('artillery', { preview: false })
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as ArtilleryGame | null) : null
+
   /* ── the call's room: seat 0 the left gun, seat 1 the right; the game travels as its shots */
   const lab = useLabRoom('artillery', artilleryRules)
   const words = tableSeats(lab, artilleryRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
+  /** shared with somebody, in a call or a match: the shots arrive and fly, the line is theirs */
+  const shared = !!room || inMatch
+  /** my seat in a match or a call, null when I only watch */
+  const mySeat = inMatch ? (lm.view?.you ?? null) : words.mySeat
+  /** the mode of the shared game: versus, or together against the computer */
+  const sharedMode = inMatch ? lm.view?.mode : room?.mode
   /**
    * ⚠️ THE RIGHT GUN'S PLAYER SEES THE FIELD FROM THEIR SIDE: their gun on the left, like the
    * toy's own, so the controls, the drag and the guide all mean what they always mean. The field
    * is mirrored to draw it, and firing is symmetric, so nothing else needs to know.
    */
-  const flip = room?.mode === 'versus' && words.mySeat === 1
+  const flip = sharedMode === 'versus' && mySeat === 1
   /** the field on screen: the one held here, from this player's side */
   const view = useMemo(() => (flip ? mirror(field) : field), [flip, field])
   /** a real gun, by where it is drawn: the left one is this player's */
@@ -88,9 +109,11 @@ export function ArtilleryDemo() {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 
-  const yourTurn = room
-    ? lab.live && myTurn(artilleryRules, room) && !busy
-    : mode === 'bot' && field.turn === 0 && field.winner === null && !busy
+  const yourTurn = inMatch
+    ? lm.canPlay && !busy
+    : room
+      ? lab.live && myTurn(artilleryRules, room) && !busy
+      : mode === 'bot' && field.turn === 0 && field.winner === null && !busy
   /** what the frame needs that is not the field: whose colours are where, and whether to aim */
   const drawRef = useRef({ flip, aiming: yourTurn })
   drawRef.current = { flip, aiming: yourTurn }
@@ -192,15 +215,23 @@ export function ArtilleryDemo() {
   const queue = useRef<ArtilleryGame[]>([])
   const [said, setSaid] = useState('')
   const callName = (w: Who) =>
-    !room
-      ? ''
-      : room.mode === 'together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
         ? w === 1
           ? 'The computer'
-          : words.mySeat !== null
-            ? 'Your side'
-            : 'The team'
-        : words.who(room.seats[w])
+          : 'You two'
+        : w === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : !room
+        ? ''
+        : room.mode === 'together'
+          ? w === 1
+            ? 'The computer'
+            : words.mySeat !== null
+              ? 'Your side'
+              : 'The team'
+          : words.who(room.seats[w])
   const callShot = (g: ArtilleryGame) => {
     const { by, flight, hurt } = g.last!
     const other: Who = by === 0 ? 1 : 0
@@ -222,7 +253,7 @@ export function ArtilleryDemo() {
     const path = flip ? flipPath(flight.path) : flight.path
     const burst: Flight['burst'] =
       flight.burst && (flip ? { x: FIELD_W - flight.burst.x, y: flight.burst.y } : flight.burst)
-    const ours = room && (room.mode === 'together' ? by === 0 : by === words.mySeat)
+    const ours = shared && (sharedMode === 'together' ? by === 0 : by === mySeat)
     if (ours) trail.current = path
     const done = () => {
       show.current = null
@@ -237,17 +268,22 @@ export function ArtilleryDemo() {
       later(300, done)
     } else show.current = { path, t: 0, burst, after: done }
   }
-  const callGame = room?.game
+  const callGame = matchGame ?? room?.game
   useEffect(() => {
     if (!callGame) {
+      // nothing shared yet (a match still waiting for its friend): nothing of the last one is said
       seen.current = null
       queue.current = []
+      setSaid('')
       return
     }
     const s = seen.current
     if (s && s.seed === callGame.seed && s.shots === callGame.shots.length) return
-    const next =
-      !!s && s.seed === callGame.seed && callGame.shots.length === s.shots + 1 && !!callGame.last
+    // a match together comes back two shots on, yours and the computer's: each is flown in turn,
+    // the field before the last replayed from the seed, since only the last shot travels with it
+    const more = s && s.seed === callGame.seed ? callGame.shots.length - s.shots : 0
+    const next = more >= 1 && more <= 2 && !!callGame.last
+    const from = s?.shots ?? 0
     seen.current = { seed: callGame.seed, shots: callGame.shots.length }
     if (!next) {
       // a new game, or one joined part way: the field as it stands, nothing to fly
@@ -259,6 +295,10 @@ export function ArtilleryDemo() {
       setSaid('')
       setBusy(false)
       return
+    }
+    for (let k = from + 1; k < callGame.shots.length; k++) {
+      const g = replay(callGame.seed, callGame.shots.slice(0, k))
+      if (g?.last) queue.current.push(g)
     }
     queue.current.push(callGame)
     if (!show.current) playNext()
@@ -277,7 +317,8 @@ export function ArtilleryDemo() {
   /** fire this aim: in the call the host fires it, and the shot comes back to everybody */
   const pull = () => {
     if (!yourTurn) return
-    if (room) lab.act({ t: 'move', move: { angle, charge } })
+    if (inMatch) lm.play({ angle, charge })
+    else if (room) lab.act({ t: 'move', move: { angle, charge } })
     else fire(field, angle, charge)
   }
 
@@ -305,6 +346,19 @@ export function ArtilleryDemo() {
       })
     } else setLine(`Carrying on against the computer. Your turn — ${windWords(f.wind)}.`)
   }
+
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's field */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      stopHere()
+      setMode('bot')
+      newGame()
+    }
+    wasInMatch.current = inMatch
+    // only leaving the match starts a game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inMatch])
 
   /* -------------------------------------------------------------------- aiming by hand */
 
@@ -355,57 +409,63 @@ export function ArtilleryDemo() {
 
   return (
     <div className={`lab-keys at-room is-${saved.sky}`}>
-      <div className="lab-controls">
-        {(lab.live || mode === 'call') && (
-          <div className="lab-group" role="group" aria-label="Opponent">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'bot'}
-              onClick={() => {
-                if (mode === 'bot') return
-                stopHere()
-                setMode('bot')
-                newGame()
-              }}
-            >
-              Against the computer
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => {
-                stopHere()
-                setMode('call')
-              }}
-            >
-              👥 With the call
-            </button>
-          </div>
-        )}
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer shoots">
-            {LEVELS.map((l) => (
+      {inMatch && <MatchBar lm={lm} sides={['the left gun', 'the right gun']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          {(lab.live || mode === 'call') && (
+            <div className="lab-group" role="group" aria-label="Opponent">
               <button
-                key={l}
                 className="btn btn-ghost"
-                aria-pressed={saved.level === l}
+                aria-pressed={mode === 'bot'}
                 onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (untouched || field.winner !== null) newGame(l)
+                  if (mode === 'bot') return
+                  stopHere()
+                  setMode('bot')
+                  newGame()
                 }}
               >
-                {LEVEL_NAMES[l]}
+                Against the computer
               </button>
-            ))}
-          </div>
-        )}
-        {mode === 'bot' && (
-          <button className="btn btn-ghost" onClick={() => newGame()}>
-            ↻ New field
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => {
+                  stopHere()
+                  setMode('call')
+                }}
+              >
+                👥 With the call
+              </button>
+            </div>
+          )}
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer shoots">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (untouched || field.winner !== null) newGame(l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'bot' && (
+            <button className="btn btn-ghost" onClick={() => newGame()}>
+              ↻ New field
+            </button>
+          )}
+          {signedIn && mode === 'bot' && !inMatch && (
+            <MatchChallenge demo="artillery" settings={{}} levelNames={LEVEL_NAMES} />
+          )}
+        </div>
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={artilleryRules}
@@ -425,7 +485,7 @@ export function ArtilleryDemo() {
             className={`dice-score${view.turn === w && view.winner === null ? ' is-up' : ''}`}
           >
             <span>
-              {room
+              {shared
                 ? callName(realGun(w))
                 : w === 0
                   ? 'Your gun'
@@ -443,7 +503,7 @@ export function ArtilleryDemo() {
           </div>
         ))}
       </div>
-      {mode === 'call' ? (
+      {shared || mode === 'call' ? (
         said && (
           <p className="muted at-said" aria-live="polite">
             {said}
@@ -464,7 +524,7 @@ export function ArtilleryDemo() {
       >
         <CanvasStage
           className="at-stage"
-          label={`A field with two guns, ${windWords(view.wind)}. ${mode === 'call' ? said : line}`}
+          label={`A field with two guns, ${windWords(view.wind)}. ${shared || mode === 'call' ? said : line}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -661,7 +721,8 @@ export function ArtilleryDemo() {
           💥 Fire
         </button>
       </div>
-      {mode === 'bot' && field.winner !== null && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode === 'bot' && !inMatch && field.winner !== null && (
         <div className="lab-controls">
           <button className="btn" onClick={() => newGame()}>
             ↻ Play again
@@ -669,7 +730,7 @@ export function ArtilleryDemo() {
         </div>
       )}
 
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
@@ -677,9 +738,13 @@ export function ArtilleryDemo() {
           </span>
         </p>
       )}
-      {mode === 'bot' && level !== saved.level && !untouched && field.winner === null && (
-        <p className="muted mc-note">The new level starts with the next field.</p>
-      )}
+      {mode === 'bot' &&
+        !inMatch &&
+        level !== saved.level &&
+        !untouched &&
+        field.winner === null && (
+          <p className="muted mc-note">The new level starts with the next field.</p>
+        )}
       <div className="fw-panel">
         <section aria-label="Look">
           <h3 className="fw-h">Look</h3>

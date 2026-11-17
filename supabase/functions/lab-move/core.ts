@@ -37,6 +37,7 @@ import { score as goScore } from '../../../src/gpu/goboard'
 import { goRules, type GoGame } from '../../../src/gpu/goRoom'
 import { foxMatchRules, readFoxSide } from '../../../src/gpu/foxRoom'
 import { cubeRules } from '../../../src/gpu/cubeRoom'
+import { artilleryRules, type ArtilleryGame } from '../../../src/gpu/artilleryRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -116,6 +117,11 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     return side ? { rules: foxMatchRules(side) } : null
   },
   cube: () => ({ rules: cubeRules }),
+  artillery: () => ({
+    rules: artilleryRules,
+    // what each gun has left, left gun first
+    score: (g: ArtilleryGame) => `${g.f.guns[0].life}–${g.f.guns[1].life}`,
+  }),
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
