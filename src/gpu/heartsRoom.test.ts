@@ -37,13 +37,12 @@ function countHand(order: number[], first: number) {
   const moon = pts.indexOf(26)
   return moon >= 0 ? pts.map((_, i) => (i === moon ? 0 : 26)) : pts
 }
-type Mode = 'versus' | 'together'
 /** a server's game: the friends' moves chosen by the toy's own computer too */
-function playOut(seed: number, level: 'easy' | 'fair' | 'hard', mode: Mode = 'versus', end = 50) {
+function playOut(seed: number, level: 'easy' | 'fair' | 'hard', end = 50) {
   const R = heartsRules(end, level)
   const rnd = seeded(seed)
   vi.spyOn(Math, 'random').mockImplementation(rnd)
-  let g = R.hidden!.accept(R.fresh(mode), null, mode)!
+  let g = R.hidden!.accept(R.fresh('versus'), null, 'versus')!
   const moments: HeartsGame[] = []
   for (let k = 0; k < 3000 && whoseMove(g) !== null; k++) {
     const s = whoseMove(g)!
@@ -80,45 +79,42 @@ describe('hearts by turns: four at the table, the friends across from each other
     expect(g.passes[3]).toHaveLength(3)
     expect(JSON.stringify(R.encode(g))).not.toMatch(/dealt|passes|hands/)
     expect(whoseMove(g)).toBe(0)
-    expect(R.friendTurn!(g)).toBe(0)
     const a = g.dealt![0].slice(0, 3) as [number, number, number]
     const b = g.dealt![2].slice(0, 3) as [number, number, number]
     expect(R.legal(g, { pass: b }, 0)).toBe(false)
     g = R.apply(g, { pass: a })
     expect(g.passed).toEqual([true, false])
     expect(whoseMove(g)).toBe(1)
-    expect(R.friendTurn!(g)).toBe(1)
     expect(R.hidden!.logged({ pass: a })).toEqual({ pass: 'face down' })
-    expect((R.hidden!.mine(g, 1, 1) as { passed: unknown }).passed).toBeNull()
-    expect((R.hidden!.mine(g, 0, 0) as { passed: unknown }).passed).toEqual(a)
+    expect((R.hidden!.mine(g, 1) as { passed: unknown }).passed).toBeNull()
+    expect((R.hidden!.mine(g, 0) as { passed: unknown }).passed).toEqual(a)
     g = R.apply(g, { pass: b })
     expect(g.phase).toBe('play')
     // the first hand passes left: seat 0's three went to seat 1, and the two of clubs leads
     expect(a.every((c) => g.h.hands[1].includes(c))).toBe(true)
     expect(g.h.hands[g.first]).toContain(3)
-    expect((R.hidden!.mine(g, 1, 1) as { got: number[] }).got).toEqual(g.passes[1])
+    expect((R.hidden!.mine(g, 1) as { got: number[] }).got).toEqual(g.passes[1])
   })
 
-  it('together, both friends are the team, each shown their own hand and moving in their own seat', () => {
-    const R = heartsRules(50, 'fair')
-    const g = R.hidden!.accept(R.fresh('together'), null, 'together')!
-    expect(g.together).toBe(true)
-    expect(whoseMove(g)).toBe(0)
-    const ann = R.hidden!.mine(g, 0, 0) as { hand: number[] }
-    const bo = R.hidden!.mine(g, 0, 1) as { hand: number[] }
-    expect(ann.hand).toEqual(g.dealt![0])
-    expect(bo.hand).toEqual(g.dealt![2])
-    const after = R.apply(g, { pass: [ann.hand[0], ann.hand[1], ann.hand[2]] })
-    expect(whoseMove(after)).toBe(0)
-    expect(R.friendTurn!(after)).toBe(1)
+  it('has no Together: the friends are never partners, and only their own two scores decide', () => {
+    expect(heartsRules(50, 'fair').modes).toEqual(['versus'])
+    // a match where a computer finished lowest: still the lower of the two friends wins
+    let seen = false
+    for (let seed = 1; seed <= 12 && !seen; seed++) {
+      const { g, R } = playOut(seed, 'fair')
+      const t = totals(g)
+      if (Math.min(t[1], t[3]) >= Math.min(t[0], t[2])) continue
+      seen = true
+      expect(R.result!(g)).toBe(t[0] < t[2] ? 0 : t[2] < t[0] ? 1 : 'draw')
+    }
+    expect(seen).toBe(true)
   })
 
   it('plays whole matches, every seat’s points what its tricks say as counted here', () => {
     const winners = new Set<string>()
     let moons = 0
     for (let seed = 1; seed <= 8; seed++) {
-      const mode: Mode = seed % 2 ? 'versus' : 'together'
-      const { g, R } = playOut(seed, (['easy', 'fair'] as const)[seed % 2], mode)
+      const { g, R } = playOut(seed, (['easy', 'fair'] as const)[seed % 2])
       const t = [0, 0, 0, 0]
       for (const p of g.past) {
         const pts = countHand(p.order, p.first)
@@ -127,8 +123,7 @@ describe('hearts by turns: four at the table, the friends across from each other
       }
       expect(totals(g)).toEqual(t)
       expect(Math.max(...t)).toBeGreaterThanOrEqual(50)
-      const [a, b] = g.together ? [t[0] + t[2], t[1] + t[3]] : [t[0], t[2]]
-      expect(R.result!(g)).toBe(a < b ? 0 : b < a ? 1 : 'draw')
+      expect(R.result!(g)).toBe(t[0] < t[2] ? 0 : t[2] < t[0] ? 1 : 'draw')
       winners.add(String(R.result!(g)))
     }
     expect(winners.size).toBeGreaterThan(1)
@@ -146,7 +141,7 @@ describe('hearts by turns: four at the table, the friends across from each other
       expect(back).not.toBeNull()
       const j = R.hidden!.join(back, JSON.parse(JSON.stringify(R.hidden!.secret(m))))!
       expect(j).not.toBeNull()
-      for (const k of ['past', 'phase', 'passed', 'first', 'dealt', 'passes', 'together'] as const)
+      for (const k of ['past', 'phase', 'passed', 'first', 'dealt', 'passes'] as const)
         expect(j[k]).toEqual(m[k])
       for (const k of [
         'hands',
@@ -201,7 +196,7 @@ describe('hearts by turns: four at the table, the friends across from each other
     ).toBeNull()
     const twice = sec.dealt.map((h, i) => (i === 0 ? [sec.dealt[1][0], ...h.slice(1)] : h))
     expect(R.hidden!.join(back, { ...sec, dealt: twice })).toBeNull()
-    expect(replayPublic(50, 'fair', false, { ...w, phase: 'over' })).toBeNull()
+    expect(replayPublic(50, 'fair', { ...w, phase: 'over' })).toBeNull()
     expect(R.readMove({ pass: [1, 1, 2] })).toBeNull()
     expect(R.readMove({ play: 52 })).toBeNull()
   })

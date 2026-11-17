@@ -3632,26 +3632,13 @@ describe('hearts by turns: four at the table, two of them friends', () => {
     expect(st.played.length).toBeLessThanOrEqual(3)
   })
 
-  it('together: whose turn it is goes by the seat at the table, and each friend sees their own hand', () => {
+  it('has no Together, as Evan called it: the friends are never partners, so a together match is refused', () => {
     const start = hr({ mode: 'together', settings: { end: 50, level: 'fair' } })
-    let row = after(start, decide(start, B, { op: 'accept' }))
-    expect(row.turn).toBe(0)
-    const sec = row.secret as Sec
-    expect(mine(row, A).hand).toEqual(sec.dealt[0])
-    expect(mine(row, B).hand).toEqual(sec.dealt[2])
-    row = after(row, decide(row, A, move(row.seq, { pass: mine(row, A).hand.slice(0, 3) })))
-    expect(row.turn).toBe(1)
-    row = after(row, decide(row, B, move(row.seq, { pass: mine(row, B).hand.slice(0, 3) })))
-    // play under way: the friend whose seat it is has the turn, and it is not simply the other one
-    for (let k = 0; k < 20 && row.status === 'active'; k++) {
-      const st = row.state as { played: number[]; first: number }
-      const who = row.turn === 0 ? A : B
-      const hand = mine(row, who).hand
-      // the seat to play, as the table says, is the one whose hand this is
-      const card = hand.find((c) => status(decide(row, who, move(row.seq, { play: c }))) !== 400)!
-      row = after(row, decide(row, who, move(row.seq, { play: card })))
-      expect((row.state as { played: number[] }).played.length).toBeGreaterThan(st.played.length)
-    }
+    expect(decide(start, B, { op: 'accept' })).toEqual({
+      kind: 'refuse',
+      status: 422,
+      error: 'this toy has no together game',
+    })
   })
 
   it('refuses a stored hand that is not one deck', () => {
