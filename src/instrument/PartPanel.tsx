@@ -7,6 +7,7 @@ import {
   layerHeard,
   takeBars,
   loopLength,
+  moveLyrics,
   removeLayer,
   setLayerFx,
   setLayerFxValue,
@@ -17,6 +18,7 @@ import {
   type Layer,
   type loopState,
 } from '../audio/looper'
+import { hasLyrics } from '../audio/lyricLines'
 import { copyInto } from '../audio/noteClip'
 import { toNotes } from '../audio/noteEdit'
 import { INSTRUMENTS, type InstrumentId } from '../audio/synth'
@@ -64,6 +66,7 @@ export function PartPanel({
   held,
   theirs,
   onKeep,
+  words,
 }: {
   l: Layer
   loop: ReturnType<typeof loopState>
@@ -76,6 +79,8 @@ export function PartPanel({
   /** recorded by somebody else in the room: their name, or '' when the room does not know it */
   theirs: string | null
   onKeep: (layerId: string) => void
+  /** open the lyrics box with this part picked to sing them */
+  words: (layerId: string) => void
 }) {
   const i = loop.layers.indexOf(l)
   const said = partLines(l, i)
@@ -151,6 +156,7 @@ export function PartPanel({
               />
             </div>
             <CopyAll l={l} loop={loop} open={open} />
+            <Words l={l} loop={loop} words={words} />
           </>
         )}
         {tab === 'sound' && <SoundTab l={l} />}
@@ -224,6 +230,48 @@ function CopyAll({
       <button className="btn btn-ghost" onClick={go} disabled={!target}>
         ⧉ Copy
       </button>
+    </div>
+  )
+}
+
+/**
+ * The way into the words from the part that sings them. Evan, 16 Nov 2026: "I couldn't find how
+ * to add words to a song I'd already built." 🎤 Lyrics sits at the foot of the parts list, out of
+ * sight of the notes you are working on; this opens the same box with this part picked under
+ * "Sung on".
+ *
+ * Only on a part the box would offer: one with notes, and not the drum kit.
+ *
+ * ⚠️ ONE PART HOLDS THE WORDS. When another one has them, the button says so and moves them here,
+ * the same move as the box's own "Sung on", which one undo takes back. Opening the box on this
+ * part without moving them would show somebody the other part's words under this part's name.
+ */
+function Words({
+  l,
+  loop,
+  words,
+}: {
+  l: Layer
+  loop: ReturnType<typeof loopState>
+  words: (layerId: string) => void
+}) {
+  if (!hasLyrics(l) && (l.instrument === 'drums' || !l.events.some((e) => e.on))) return null
+  const worded = loop.layers.find(hasLyrics)
+  const elsewhere =
+    worded && worded.id !== l.id ? partLines(worded, loop.layers.indexOf(worded)).name : null
+  return (
+    <div className="inst-row inst-part-words">
+      <button
+        className="btn btn-ghost"
+        onClick={() => {
+          if (worded && elsewhere) moveLyrics(worded.id, l.id)
+          words(l.id)
+        }}
+      >
+        🎤{' '}
+        {worded?.id === l.id ? 'Edit the words' : elsewhere ? 'Sing the words here' : 'Add words'}
+      </button>
+      {elsewhere && <span className="muted">Now sung on {elsewhere}</span>}
     </div>
   )
 }
