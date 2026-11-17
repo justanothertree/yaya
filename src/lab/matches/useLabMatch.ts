@@ -13,6 +13,7 @@ import {
   type Seat,
 } from './cloud'
 import { matchToy } from './games'
+import { useNudge } from './nudge'
 import { matchHash } from './words'
 
 /**
@@ -113,6 +114,10 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
     }
   }, [id, load, waiting])
 
+  /* ── the nudge: the other player's page looks again the moment this one acts, while both have
+     the match open (nudge.ts); the looks above stay, since a nudge is never relied on */
+  const tell = useNudge(id, !!view, () => void load())
+
   /* ── the game, by the toy's own rules */
   const rules = useMemo(
     () => (view ? (matchToy(view.demo)?.rulesFor(view.settings) ?? null) : null),
@@ -151,6 +156,8 @@ export function useLabMatch(demo: string, { preview = true }: { preview?: boolea
       const v = await fn()
       if (g !== gen.current) return
       setView(v)
+      // this match changed: tell the other player's open page (a rematch is a different match)
+      if (v.id === id) tell(v.seq)
       after?.(v)
     } catch (e) {
       if (g !== gen.current) return

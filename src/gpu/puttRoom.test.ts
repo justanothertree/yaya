@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { rng } from './bricks'
 import { COURSE, PICK_UP, roll, stroke } from './putt'
 import { MAX_PUTTS, puttRules as R, readPutt, totals, type PuttGame } from './puttRoom'
+import { matches, named, sample } from './testMatches'
 
 const wire = (ps: [number, number][]) => ({ putts: ps })
 /** a putt so soft it barely moves: never in, never wet, a stroke every time */
@@ -31,14 +32,21 @@ function playThrough(seed: number) {
   return { g, seen }
 }
 
+/** each round played once, however many tests ask about it */
+const played = new Map<number, ReturnType<typeof playThrough>>()
+const round = (seed: number) => played.get(seed) ?? played.set(seed, playThrough(seed)).get(seed)!
+
+/** seed 1 sinks six putts; nightly, both rounds this test always played */
+const FEW = [1]
+const EVERY = [1, 2]
+
 describe('putt on the wire', () => {
-  it('replays to the very same round from its putts, at every putt of real rounds', () => {
-    let sunk = 0
-    for (const seed of [1, 2]) {
-      const { g, seen } = playThrough(seed)
+  it.each(matches(FEW, EVERY))(
+    'replays to the very same round from its putts, through a real round (seed $seed, $kind)',
+    ({ seed }) => {
+      const { g, seen } = round(seed)
       expect(g.card.every((c) => c[0] !== null && c[1] !== null)).toBe(true)
-      for (const d of seen) {
-        if (d.last?.roll.sunk) sunk++
+      for (const d of sample(seen)) {
         const w = JSON.parse(JSON.stringify(R.encode(d)))
         const back = R.decode(w)!
         expect(back.card).toEqual(d.card)
@@ -53,8 +61,13 @@ describe('putt on the wire', () => {
       const w = R.encode(g) as { putts: number[][] }
       expect(w.putts.length).toBeLessThan(MAX_PUTTS)
       expect(R.decode({ putts: [...w.putts, TAP] })).toBeNull()
-    }
-    // the rounds were worth replaying: balls dropped, not only picked up
+    },
+  )
+
+  it('replays rounds worth replaying: balls dropped, not only picked up', () => {
+    let sunk = 0
+    for (const seed of named(FEW, EVERY))
+      for (const d of round(seed).seen) if (d.last?.roll.sunk) sunk++
     expect(sunk).toBeGreaterThan(3)
   })
 

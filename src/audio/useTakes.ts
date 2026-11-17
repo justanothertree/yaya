@@ -15,7 +15,7 @@ import {
 } from './takes'
 import { liftTake, placeTake, subscribeLoop, loopState, takeFx } from './looper'
 import { makeAudition, PLAIN_VOICE, readVoiceFx, type Audition, type VoiceFx } from './takeFx'
-import { bounceStems, type Stem, type StemProgress } from './stems'
+import { bounceStems, type SingLap, type Stem, type StemProgress } from './stems'
 import { logNow, readLog } from './takeEdit'
 import { editedBuffer } from './takeAudio'
 
@@ -424,11 +424,11 @@ export function useTakes() {
    * note in stems.ts about why it is a real-time bounce — and a control that goes quiet for
    * twenty seconds without having warned you reads as broken.
    */
-  const doBounce = useCallback(async () => {
+  const doBounce = useCallback(async (sing?: SingLap) => {
     setStems([])
     setSay('')
     try {
-      const got = await bounceStems(setBouncing)
+      const got = await bounceStems(setBouncing, sing)
       setStems(got)
       if (!got.length) setSay('Nothing to bounce — record a layer or a take first.')
     } finally {

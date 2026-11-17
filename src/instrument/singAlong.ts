@@ -141,6 +141,16 @@ function singLap(top: number, from: number): () => void {
   return () => stops.forEach((x) => x())
 }
 
+/**
+ * One lap of the song's words, from its top at `top` on the audio clock, for a recording of the
+ * song: the voice's own sound and choices, and no following — a bounce plays the song once, and
+ * the last word should ring out rather than be cut by a next lap that is never coming. Returns
+ * its stop, to let go of the nodes afterwards. Nothing when no part has words.
+ */
+export function singOneLap(top: number): (() => void) | null {
+  return loopState().layers.some(hasLyrics) ? singLap(top, 0) : null
+}
+
 function hushLaps() {
   for (const stop of laps.values()) stop()
   laps.clear()
