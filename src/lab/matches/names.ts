@@ -6,7 +6,15 @@
  * the whole chess and reversi engines — and the bell needs only a word for each. games.test.ts
  * checks the two lists name the same toys.
  */
-export const MATCH_NAMES: Record<string, string> = { reversi: 'Reversi', chess: 'Chess' }
+export const MATCH_NAMES: Record<string, string> = {
+  reversi: 'Reversi',
+  chess: 'Chess',
+  pool: 'Pool',
+  gomoku: 'Five in a row',
+  draughts: 'Draughts',
+  dots: 'Dots and boxes',
+  fourrow: 'Four in a row',
+}
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
 export const toyName = (demo: string) =>

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { GAMES } from '../../../supabase/functions/lab-move/core'
 import { MATCH_TOYS } from './games'
 import { MATCH_LEVELS, MATCH_NAMES } from './names'
@@ -12,10 +12,20 @@ import { MATCH_LEVELS, MATCH_NAMES } from './names'
 const SETTINGS: Record<string, Record<string, unknown>[]> = {
   reversi: [{}, { size: null }, { size: 6 }, { size: 8 }, { size: 10 }, { size: 6, level: 'hard' }],
   chess: [{}, { level: 'easy' }],
+  pool: [{}, { level: 'hard' }],
+  gomoku: [{}, { size: null }, { size: 11 }, { size: 13 }, { size: 11, level: 'fair' }],
+  draughts: [{}, { level: 'hard' }],
+  dots: [{}, { size: null }, { size: 3 }, { size: 6 }, { size: 5, level: 'hard' }],
+  fourrow: [{}, { size: 'small' }, { size: 'wide', need: 5 }, { size: 'classic', level: 'hard' }],
 }
 const REFUSED: Record<string, Record<string, unknown>[]> = {
   reversi: [{ size: 7 }, { size: '8' }, { size: 12 }],
   chess: [],
+  pool: [],
+  gomoku: [{ size: 12 }, { size: '13' }, { size: 15 }],
+  draughts: [],
+  dots: [{ size: 2 }, { size: '4' }, { size: 7 }],
+  fourrow: [{ size: 'small', need: 5 }, { size: 'huge' }, { need: 3 }, { size: 7 }],
 }
 
 describe('the match toys', () => {
@@ -32,7 +42,14 @@ describe('the match toys', () => {
         const mine = MATCH_TOYS[demo].rulesFor(s)
         const theirs = GAMES[demo](s)?.rules
         expect(mine, `${demo} ${JSON.stringify(s)}`).not.toBeNull()
-        expect(mine!.encode(mine!.fresh('versus'))).toEqual(theirs!.encode(theirs!.fresh('versus')))
+        // a fresh rack is shuffled from Math.random: the same draw on both sides, for the comparison
+        const same = () => vi.spyOn(Math, 'random').mockReturnValue(0.4321)
+        same()
+        const a = mine!.encode(mine!.fresh('versus'))
+        same()
+        const b = theirs!.encode(theirs!.fresh('versus'))
+        vi.restoreAllMocks()
+        expect(a).toEqual(b)
         expect(mine!.modes).toEqual(theirs!.modes)
         expect(mine!.computer?.levels).toEqual(theirs!.computer?.levels)
       }

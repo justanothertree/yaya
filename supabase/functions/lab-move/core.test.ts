@@ -1,11 +1,39 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bundle, OUT } from '../../../scripts/lab-move-bundle.mjs'
 import { chessRules, replay } from '../../../src/gpu/chessRoom'
 import { count, moves } from '../../../src/gpu/reversi'
 import { readReversiGame, reversiRules } from '../../../src/gpu/reversiRoom'
 import * as built from './core.bundle.js'
-import { GAMES, decide, readAsk, type Ask, type Plan, type Row } from './core'
+import {
+  GAMES,
+  HISTORY_BYTES,
+  decide,
+  historyRow,
+  jsonbBytes,
+  readAsk,
+  type Ask,
+  type Plan,
+  type Row,
+} from './core'
+import { poolRules, readPoolGame } from '../../../src/gpu/poolRoom'
+import {
+  choose as gomokuChoose,
+  newGame as gomokuGame,
+  place as gomokuPlace,
+} from '../../../src/gpu/gomoku'
+import { gomokuRules } from '../../../src/gpu/gomokuRoom'
+import {
+  choose as draughtsChoose,
+  moves as draughtsMoves,
+  newGame as draughtsGame,
+  owner,
+} from '../../../src/gpu/draughts'
+import { draughtsRules, replay as draughtsReplay } from '../../../src/gpu/draughtsRoom'
+import { choose as dotsChoose, lineCount } from '../../../src/gpu/dots'
+import { replay as dotsReplay } from '../../../src/gpu/dotsRoom'
+import { choose as fourChoose, type Who } from '../../../src/gpu/fourrow'
+import { fourRowMatchRules, fourRowRules, readFourGame } from '../../../src/gpu/fourrowRoom'
 
 /**
  * ⚠️ THE EDGE FUNCTION CANNOT BE ASKED ANYTHING FROM HERE, as `pictures` says of itself: it needs a
@@ -108,7 +136,7 @@ describe('who may ask', () => {
   })
 
   it('refuses a toy, a mode or settings it cannot play, before anything is written', () => {
-    expect(status(decide(invite({ demo_id: 'pool' }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(invite({ demo_id: 'hockey' }), B, { op: 'accept' }))).toBe(422)
     expect(status(decide(invite({ demo_id: 'toString' }), B, { op: 'accept' }))).toBe(422)
     expect(status(decide(invite({ settings: { size: 7 } }), B, { op: 'accept' }))).toBe(422)
     expect(status(decide(invite({ settings: { size: '8' } }), B, { op: 'accept' }))).toBe(422)
@@ -280,15 +308,49 @@ describe('together: two friends against the computer', () => {
 })
 
 describe('the list of toys', () => {
-  it('is the same as lab_match_playable in the matches SQL', () => {
-    const sql = readFileSync(
-      new URL('../../../docs/2026-11-14-lab-matches.DRAFT.sql', import.meta.url),
-      'utf8',
-    )
-    const body = /lab_match_playable[\s\S]*?select p_demo in \(([^)]*)\)/.exec(sql)
-    expect(body).not.toBeNull()
-    const listed = body![1].split(',').map((s) => s.trim().replace(/'/g, ''))
-    expect(listed.sort()).toEqual(Object.keys(GAMES).sort())
+  /**
+   * ⚠️ THE NEWEST DEFINITION, WHEREVER IT IS. `lab_match_playable` is replaced each time a toy
+   * joins, so the list lives in the latest file that defines it: an applied migration, or the
+   * draft waiting to be applied beside the code that needs it. Dated by the name: a migration's
+   * timestamp, a doc's day (a doc counts as the end of its day, because the draft for a change is
+   * written before the migration that applies it).
+   */
+  it('is the same as the newest lab_match_playable in the SQL', () => {
+    const root = new URL('../../../', import.meta.url)
+    const files = [
+      ...readdirSync(new URL('supabase/migrations/', root)).map((f) => ({
+        at: f.slice(0, 14),
+        url: new URL(`supabase/migrations/${f}`, root),
+      })),
+      ...readdirSync(new URL('docs/', root))
+        .filter((f) => f.endsWith('.sql') && !f.includes('ROLLBACK'))
+        .map((f) => ({
+          at: f.slice(0, 10).replace(/-/g, '') + '999999',
+          url: new URL(`docs/${f}`, root),
+        })),
+    ]
+    let newest: { at: string; list: string[] } | null = null
+    /* ⚠️ SEVERAL DRAFTS CAN SHARE A DAY, and a tie used to go to whichever file the directory
+       listed first: on 16 Nov four drafts each added one toy, and the scan read Dots' list as the
+       newest while Four in a row's sat beside it. Each draft extends the one before, so of two
+       on one day the newer is the one whose list holds the other's; two that do not nest are a
+       question for whoever wrote them, and say so. */
+    const holds = (a: string[], b: string[]) => b.every((x) => a.includes(x))
+    for (const f of files) {
+      const body = /lab_match_playable\(p_demo text\)[\s\S]*?select p_demo in \(([^)]*)\)/.exec(
+        readFileSync(f.url, 'utf8'),
+      )
+      if (!body) continue
+      const list = body[1].split(',').map((x) => x.trim().replace(/'/g, ''))
+      if (!newest || f.at > newest.at) newest = { at: f.at, list }
+      else if (f.at === newest.at && list.join() !== newest.list.join()) {
+        if (holds(list, newest.list)) newest = { at: f.at, list }
+        else if (!holds(newest.list, list))
+          throw new Error(`two lab_match_playable lists on ${f.at.slice(0, 8)} that do not nest`)
+      }
+    }
+    expect(newest).not.toBeNull()
+    expect(newest!.list.sort()).toEqual(Object.keys(GAMES).sort())
   })
 
   it('names each toy’s own rules, not a copy', () => {
@@ -317,5 +379,432 @@ describe('the bundle the server runs', () => {
     expect(built.readAsk({ op: 'move', match: MATCH, at: 2, move: 5 })).toEqual(
       readAsk({ op: 'move', match: MATCH, at: 2, move: 5 }),
     )
+  })
+})
+
+describe('pool by turns: the shot is the move, and the server plays it', () => {
+  const pool = (over: Partial<Row> = {}) => invite({ demo_id: 'pool', settings: {}, ...over })
+  /** each side's shot, as the toy's own computer would choose it */
+  const shotFor = (row: Row) => poolRules.computer!.choose(readPoolGame(row.state)!, 'fair')
+
+  it('plays a versus match to the end, every stored table one the rules accept', () => {
+    for (let k = 0; k < 6; k++) {
+      const { row, plans } = playOut(pool(), shotFor, 300)
+      expect(row.status).toBe('finished')
+      for (const p of plans) {
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') continue
+        expect(readPoolGame(p.state)).not.toBeNull()
+        expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+      }
+      const last = plans.at(-1)
+      expect(last?.kind === 'commit' && [0, 1]).toContain(
+        last?.kind === 'commit' && last.result?.winner,
+      )
+    }
+  })
+
+  it('together: the computer shoots on in the same call, and the history still fits its column', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const start = pool({ mode: 'together', settings: { level } })
+      const { row, plans } = playOut(start, shotFor, 300)
+      expect(row.status).toBe('finished')
+      for (const p of plans)
+        if (p.kind === 'commit') expect(jsonbBytes(p.move)).toBeLessThanOrEqual(HISTORY_BYTES)
+    }
+  })
+
+  it('refuses a shot that is not one, and a spot for a cue ball that is not in hand', () => {
+    const row = after(pool(), decide(pool(), B, { op: 'accept' }))
+    for (const bad of [
+      { a: 0, p: 0 },
+      { a: 0, p: 1.5 },
+      { a: 'x', p: 0.5 },
+      { a: 0 },
+      { a: 0, p: 0.5, x: 1 },
+    ])
+      expect(status(decide(row, A, move(0, bad)))).toBe(400)
+    // the cue ball is not in hand at the break, so it cannot be put anywhere
+    expect(status(decide(row, A, move(0, { a: 0, p: 0.5, x: 0.5, y: 0.5 })))).toBe(400)
+    expect(status(decide(row, A, move(0, { a: Math.PI, p: 0.9 })))).toBe('commit')
+  })
+
+  it('refuses a stored table no game could be in, rather than playing on it', () => {
+    const row = after(pool(), decide(pool(), B, { op: 'accept' }))
+    const s = row.state as { balls: number[][] }
+    const stacked = { ...s, balls: s.balls.map((b) => [b[0], 1, 0.5, 0]) }
+    expect(status(decide({ ...row, state: stacked }, A, move(0, { a: 0, p: 0.5 })))).toBe(500)
+    const twice = { ...s, balls: s.balls.map((b, i) => (i === 3 ? [2, b[1], b[2], b[3]] : b)) }
+    expect(status(decide({ ...row, state: twice }, A, move(0, { a: 0, p: 0.5 })))).toBe(500)
+  })
+
+  it('keeps a long run of replies as a count rather than overflowing the column', () => {
+    const shot = { a: 1.2345678901234567, p: 0.8765432109876543 }
+    expect(historyRow(shot, [shot])).toEqual({ m: shot, then: [shot] })
+    expect(historyRow(shot, [shot, shot, shot, shot])).toEqual({ m: shot, replies: 4 })
+  })
+})
+
+describe('five in a row by turns', () => {
+  const five = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'gomoku', settings: { size: 11 }, ...over })
+  /** the board a stored state stands for, replayed by the toy itself rather than by decode */
+  const board = (state: unknown) => {
+    const o = state as { n: number; moves: number[] }
+    return o.moves.reduce(gomokuPlace, gomokuGame(o.n))
+  }
+
+  it('plays versus to the end, the winner being whoever owns the five on the board', () => {
+    let white = 0
+    for (let seed = 1; seed <= 24; seed++) {
+      const rnd = seeded(seed)
+      const level = (['easy', 'fair', 'hard'] as const)[seed % 3]
+      const { row, plans } = playOut(five({ settings: { size: seed % 2 ? 11 : 13 } }), (r) =>
+        gomokuChoose(board(r.state), level, rnd),
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      expect(last.kind).toBe('commit')
+      if (last.kind !== 'commit') continue
+      const g = board(last.state)
+      if (g.winner === 0) {
+        expect(last.result!.winner).toBe('draw')
+        continue
+      }
+      // the stones in the line say who won; black is the challenger's, seat 0
+      const colour = g.cells[g.line[0]]
+      expect(g.line.length).toBeGreaterThanOrEqual(5)
+      expect(g.line.every((i) => g.cells[i] === colour)).toBe(true)
+      expect(last.result!.winner).toBe(colour === 1 ? 0 : 1)
+      if (colour === 2) white++
+      expect(last.turn).toBeNull()
+    }
+    // twenty-four games won only by black would mean the second seat was never asked about
+    expect(white).toBeGreaterThan(0)
+  })
+
+  it('together: the computer answers each stone in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 7)
+      const { row, plans } = playOut(
+        five({ mode: 'together', settings: { size: 13, level } }),
+        (r) => gomokuChoose(board(r.state), 'easy', rnd),
+      )
+      expect(row.status).toBe('finished')
+      for (const p of plans.slice(0, -1)) {
+        expect(p.kind).toBe('commit')
+        if (p.kind === 'commit') expect(p.move.then).toHaveLength(1)
+      }
+      const turns = plans.map((p) => (p.kind === 'commit' ? p.turn : -1)).filter((t) => t !== null)
+      turns.forEach((t, i) => expect(t).toBe(i % 2 === 0 ? 1 : 0))
+    }
+  })
+
+  it('refuses a size the toy does not offer, a taken point and a point off the board', () => {
+    expect(status(decide(five({ settings: { size: 12 } }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(five({ settings: { size: '13' } }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(five({ settings: {} }), B, { op: 'accept' })
+    // a challenge that named no size is played on the toy's own 13
+    expect(begun.kind === 'begin' && (begun.state as { n: number }).n).toBe(13)
+    const row = after(five(), decide(five(), B, { op: 'accept' }))
+    const one = after(row, decide(row, A, move(0, 60)))
+    expect(status(decide(one, B, move(1, 60)))).toBe(400) // black is already there
+    expect(status(decide(one, B, move(1, 121)))).toBe(400) // 11 × 11 ends at 120
+    expect(status(decide(one, B, move(1, 61)))).toBe('commit')
+  })
+
+  it('refuses a stored game no board could have come from', () => {
+    const row = after(five(), decide(five(), B, { op: 'accept' }))
+    for (const state of [
+      { n: 11, moves: [60, 60] },
+      { n: 12, moves: [] },
+      { n: 11, moves: [0, 11, 1, 12, 2, 13, 3, 14, 4, 15] }, // a stone after black's five
+    ])
+      expect(status(decide({ ...row, state }, A, move(0, 5)))).toBe(500)
+  })
+
+  it("is the toy's own rules, at the toy's own sizes", () => {
+    expect(GAMES.gomoku({ size: 11 })!.rules.fresh('versus')).toEqual(
+      gomokuRules(11).fresh('versus'),
+    )
+    expect(GAMES.gomoku({ size: 9 })).toBeNull()
+  })
+})
+
+describe('draughts by turns: a move is the whole path its piece takes', () => {
+  const dr = (over: Partial<Row> = {}) => invite({ demo_id: 'draughts', settings: {}, ...over })
+  const game = (state: unknown) => draughtsReplay((state as { moves: number[][] }).moves)!
+
+  it('plays versus to the end: the loser is the side to move with no move left, or it is a draw', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 16; seed++) {
+      const rnd = seeded(seed)
+      const { row, plans } = playOut(
+        dr(),
+        (r) => draughtsChoose(game(r.state).g, seed % 2 ? 'fair' : 'easy', rnd).path,
+        600,
+      )
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const g = game(last.state).g
+      const winner = last.result!.winner
+      seen.add(String(winner))
+      if (winner === 'draw') continue
+      // asked of the board, not of the result: the side to move cannot, and it is the loser
+      expect(draughtsMoves(g)).toHaveLength(0)
+      expect(winner).toBe(g.turn === 1 ? 1 : 0)
+      expect(last.turn).toBeNull()
+    }
+    // sixteen games won only by one seat would mean the other was never asked about
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('refuses a step when a take is there, and half of a jump that goes on', () => {
+    // play the toy against itself until a take is forced, with a man that could otherwise step
+    const rnd = seeded(3)
+    let row = after(dr(), decide(dr(), B, { op: 'accept' }))
+    let checked = 0
+    for (let k = 0; k < 200 && row.status === 'active' && checked < 2; k++) {
+      const g = game(row.state).g
+      const list = draughtsMoves(g)
+      const who = row.turn === 0 ? A : B
+      if (list[0]?.taken.length) {
+        // a plain step of one of the mover's own pieces into an empty square next to it
+        const step = draughtsMoves({
+          ...g,
+          board: g.board.map((p, i) => (list.some((m) => m.taken.includes(i)) ? 0 : p)),
+        }).find((m) => !m.taken.length && owner(g.board[m.path[0]]) === g.turn)
+        if (step) {
+          expect(status(decide(row, who, move(row.seq, step.path)))).toBe(400)
+          checked++
+        }
+        const long = list.find((m) => m.path.length > 2)
+        if (long) expect(status(decide(row, who, move(row.seq, long.path.slice(0, 2))))).toBe(400)
+      }
+      row = after(row, decide(row, who, move(row.seq, draughtsChoose(g, 'easy', rnd).path)))
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  it('together: the computer answers in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 3)
+      let row = after(
+        dr({ mode: 'together', settings: { level } }),
+        decide(dr({ mode: 'together', settings: { level } }), B, { op: 'accept' }),
+      )
+      for (let k = 0; k < 6 && row.status === 'active'; k++) {
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, draughtsChoose(game(row.state).g, 'easy', rnd).path),
+        )
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        if (p.turn !== null) expect(p.move.then).toHaveLength(1)
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('refuses a stored game no board could have come from', () => {
+    const row = after(dr(), decide(dr(), B, { op: 'accept' }))
+    const first = draughtsMoves(draughtsGame())[0].path
+    for (const state of [{ moves: [[0, 4]] }, { moves: [first, first] }, { moves: 'none' }])
+      expect(status(decide({ ...row, state }, A, move(0, first)))).toBe(500)
+    expect(GAMES.draughts({})!.rules).toBe(draughtsRules)
+  })
+})
+
+describe('dots and boxes by turns: a closed box keeps the turn', () => {
+  const db = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'dots', settings: { size: 4 }, ...over })
+  const game = (state: unknown) => {
+    const o = state as { n: number; lines: number[] }
+    return dotsReplay(o.n, o.lines)!
+  }
+
+  it('plays versus to the end, the winner whoever owns more boxes on the board', () => {
+    const seen = new Set<string>()
+    let kept = 0
+    for (let seed = 1; seed <= 20; seed++) {
+      const rnd = seeded(seed)
+      const size = 3 + (seed % 4)
+      const { row, plans } = playOut(db({ settings: { size } }), (r) =>
+        dotsChoose(game(r.state).g, seed % 2 ? 'fair' : 'easy', rnd),
+      )
+      expect(row.status).toBe('finished')
+      // a line that closes a box leaves the turn with whoever drew it
+      let before = after(
+        db({ settings: { size } }),
+        decide(db({ settings: { size } }), B, { op: 'accept' }),
+      )
+      for (const p of plans) {
+        if (p.kind !== 'commit') throw new Error('refused')
+        const boxes = (st: unknown) => game(st).g.owner.filter((o) => o !== -1).length
+        if (p.turn !== null && boxes(p.state) > boxes(before.state)) {
+          expect(p.turn).toBe(before.turn)
+          kept++
+        }
+        before = after(before, p)
+      }
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') continue
+      // asked of the boxes themselves, not of the running score
+      const owned = [0, 1].map((w) => game(last.state).g.owner.filter((o) => o === w).length)
+      expect(owned[0] + owned[1]).toBe(size * size)
+      const winner = owned[0] > owned[1] ? 0 : owned[1] > owned[0] ? 1 : 'draw'
+      expect(last.result).toEqual({ winner, score: `${owned[0]}–${owned[1]}` })
+      seen.add(String(winner))
+    }
+    expect(kept).toBeGreaterThan(0)
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('together: the computer draws its whole run in the same call, and a friend moves next', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 11)
+      const start = db({ mode: 'together', settings: { size: 5, level } })
+      const { row, plans } = playOut(start, (r) => dotsChoose(game(r.state).g, 'easy', rnd))
+      expect(row.status).toBe('finished')
+      let longest = 0
+      for (const p of plans) {
+        if (p.kind !== 'commit') throw new Error('refused')
+        expect([0, 1, null]).toContain(p.turn)
+        longest = Math.max(longest, p.move.then?.length ?? p.move.replies ?? 0)
+      }
+      // a run longer than one line is what makes this toy different from the others
+      expect(longest).toBeGreaterThan(1)
+    }
+  })
+
+  it('refuses a size the toy does not offer, a line drawn twice and a line off the board', () => {
+    expect(status(decide(db({ settings: { size: 7 } }), B, { op: 'accept' }))).toBe(422)
+    expect(status(decide(db({ settings: { size: '4' } }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(db({ settings: {} }), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && (begun.state as { n: number }).n).toBe(4)
+    const row = after(db(), decide(db(), B, { op: 'accept' }))
+    const one = after(row, decide(row, A, move(0, 0)))
+    const who = one.turn === 0 ? A : B
+    expect(status(decide(one, who, move(1, 0)))).toBe(400)
+    expect(status(decide(one, who, move(1, lineCount(game(one.state).g.b))))).toBe(400)
+    expect(status(decide(one, who, move(1, 1)))).toBe('commit')
+  })
+
+  it('refuses a stored game no board could have come from', () => {
+    const row = after(db(), decide(db(), B, { op: 'accept' }))
+    for (const state of [
+      { n: 4, lines: [3, 3] },
+      { n: 7, lines: [] },
+      { n: 4, lines: [999] },
+    ])
+      expect(status(decide({ ...row, state }, A, move(0, 5)))).toBe(500)
+  })
+})
+
+describe('four in a row by turns', () => {
+  const four = (over: Partial<Row> = {}) =>
+    invite({ demo_id: 'fourrow', settings: { size: 'classic', need: 4 }, ...over })
+  const grid = (state: unknown) => readFourGame(state)!
+
+  it('plays versus to the end on every board, the winner whoever owns the line', () => {
+    const seen = new Set<string>()
+    const boards = [
+      ['small', 4],
+      ['classic', 4],
+      ['wide', 4],
+      ['wide', 5],
+    ] as const
+    for (let seed = 1; seed <= 24; seed++) {
+      const rnd = seeded(seed)
+      const [size, need] = boards[seed % 4]
+      const { row, plans } = playOut(four({ settings: { size, need } }), (r) => {
+        const s = grid(r.state)
+        return fourChoose(s.g, s.turn as Who, seed % 3 ? 'easy' : 'fair', rnd)
+      })
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const s = grid(last.state)
+      if (!s.line) {
+        // no line: the grid is full, and that is a draw — not a win stored as one
+        expect(s.g.heights.every((h) => h === s.g.rows)).toBe(true)
+        expect(last.result!.winner).toBe('draw')
+        seen.add('draw')
+        continue
+      }
+      // asked of the discs in the line, never of the stored winner
+      const colour = s.g.cells[s.line[0]]
+      expect(s.line.length).toBeGreaterThanOrEqual(need)
+      expect(s.line.every((i) => s.g.cells[i] === colour)).toBe(true)
+      expect(last.result!.winner).toBe(colour === 1 ? 0 : 1)
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.has('0') && seen.has('1')).toBe(true)
+  })
+
+  it('together: the computer drops its disc in the same call, at every level', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      const rnd = seeded(level.length + 5)
+      const start = four({ mode: 'together', settings: { size: 'wide', need: 4, level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 6 && row.status === 'active'; k++) {
+        const s = grid(row.state)
+        const p = decide(
+          row,
+          row.turn === 0 ? A : B,
+          move(row.seq, fourChoose(s.g, 1, 'easy', rnd)),
+        )
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        if (p.turn !== null) {
+          expect(p.move.then).toHaveLength(1)
+          expect(p.turn).toBe(row.turn === 0 ? 1 : 0)
+        }
+        row = after(row, p)
+      }
+    }
+  })
+
+  it('reads the toy’s boards and only those, classic and four when none is named', () => {
+    for (const settings of [
+      { size: 'small', need: 5 },
+      { size: 'huge' },
+      { need: 3 },
+      { size: 7 },
+      { size: 'toString' },
+    ])
+      expect(status(decide(four({ settings }), B, { op: 'accept' }))).toBe(422)
+    const begun = decide(four({ settings: {} }), B, { op: 'accept' })
+    expect(begun.kind === 'begin' && grid(begun.state).g.cols).toBe(7)
+    expect(begun.kind === 'begin' && grid(begun.state).g.need).toBe(4)
+  })
+
+  it('refuses a full column and one off the grid', () => {
+    let row = after(
+      four({ settings: { size: 'small' } }),
+      decide(four({ settings: { size: 'small' } }), B, { op: 'accept' }),
+    )
+    // five discs in column 0 of a five-row grid, alternating so nobody makes a line
+    for (const c of [0, 0, 0, 0, 0])
+      row = after(row, decide(row, row.turn === 0 ? A : B, move(row.seq, c)))
+    const who = row.turn === 0 ? A : B
+    expect(status(decide(row, who, move(row.seq, 0)))).toBe(400)
+    expect(status(decide(row, who, move(row.seq, 6)))).toBe(400)
+    expect(status(decide(row, who, move(row.seq, 1)))).toBe('commit')
+  })
+
+  it('refuses a stored grid that could not have been played', () => {
+    const row = after(four(), decide(four(), B, { op: 'accept' }))
+    const s = row.state as Record<string, unknown>
+    const cells = (s.cells as number[]).slice()
+    cells[7] = 1 // a disc floating over an empty square
+    expect(status(decide({ ...row, state: { ...s, cells, moves: 1 } }, A, move(0, 3)))).toBe(500)
+  })
+
+  it('leaves the call’s room as it was: versus only, as the toy’s call table was written for', () => {
+    expect(fourRowRules('classic', 4).modes).toBeUndefined()
+    expect(fourRowMatchRules('classic', 4).modes).toEqual(['versus', 'together'])
   })
 })

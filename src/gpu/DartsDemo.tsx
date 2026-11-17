@@ -25,6 +25,11 @@ import {
 } from './darts'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import { dartsRules, tidy, type DartsGame } from './dartsRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn as roomTurn } from '../lab/social/room'
 
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK: Record<
@@ -81,6 +86,8 @@ const EDGE = 225
 const FINGER_LIFT = 46
 const LEGS_TO_WIN = 2
 type Thrown = { x: number; y: number; who: Who }
+/** 'call': the match shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Opponent = 'bot' | 'call'
 
 export function DartsDemo() {
   const [saved, setSaved] = useKept(DARTS_KEY, readSaved)
@@ -91,12 +98,25 @@ export function DartsDemo() {
   const [thrown, setThrown] = useState<Thrown[]>([])
   const [line, setLine] = useState('501, double out, first to two legs. You throw first.')
   const [over, setOver] = useState(false)
-  const legRef = useRef(leg)
-  legRef.current = leg
+  /* ── the call's match: seat 0 throws first in the first leg; it travels as its darts */
+  const [opp, setOpp] = useState<Opponent>('bot')
+  const lab = useLabRoom('darts', dartsRules)
+  const words = tableSeats(lab, dartsRules)
+  const room = opp === 'call' ? lab.room : null
+  const cg: DartsGame | null = room ? room.game : null
+  /** the leg, the legs and the darts in the board on screen: the call's in a call */
+  const vLeg = cg ? cg.leg : leg
+  const vLegs = cg ? cg.legs : legs
+  const vThrown: Thrown[] = cg ? cg.board : thrown
+  const vOver = cg ? dartsRules.turn(cg) === null : over
+  /** this player's side: their seat's, or the team's together */
+  const meSide: Who = room?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+  const legRef = useRef(vLeg)
+  legRef.current = vLeg
   const savedRef = useRef(saved)
   savedRef.current = saved
-  const thrownRef = useRef(thrown)
-  thrownRef.current = thrown
+  const thrownRef = useRef(vThrown)
+  thrownRef.current = vThrown
   /** the aim, in board millimetres, and when the current breath began (0 when not holding) */
   const aim = useRef({ x: 0, y: 103, holdFrom: 0, touch: false })
   const view = useRef<{ s: number; cx: number; cy: number } | null>(null)
@@ -106,7 +126,11 @@ export function DartsDemo() {
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
 
-  const myTurn = !over && leg.winner === null && leg.turn === 0
+  const myTurn = room
+    ? lab.live && roomTurn(dartsRules, room)
+    : opp === 'bot' && !over && leg.winner === null && leg.turn === 0
+  const aimingRef = useRef(myTurn)
+  aimingRef.current = myTurn
   const record = (patch: (t: Saved['record'][Level]) => Partial<Saved['record'][Level]>) =>
     setSaved((s) => ({
       ...s,
@@ -173,6 +197,11 @@ export function DartsDemo() {
     const held = (performance.now() - a.holdFrom) / 1000
     a.holdFrom = 0
     const p = land(a, yourSpread(held), Math.random)
+    if (room) {
+      // in the call the host scores it off the board, and the dart comes back to everybody
+      lab.act({ t: 'move', move: tidy(p) })
+      return
+    }
     const prev = legRef.current
     if (prev.darts.length === 0) setThrown([])
     myDarts.current++
@@ -206,6 +235,80 @@ export function DartsDemo() {
       setLine('The computer throws first this leg…')
       later(800, () => computerTurn(g))
     } else setLine(fresh ? 'A new match. You throw first.' : 'Your throw first this leg.')
+  }
+
+  /* ── the call's match in words, and carrying it on alone */
+  const callName = (w: Who) =>
+    !room
+      ? ''
+      : room.mode === 'together'
+        ? w === 1
+          ? 'The computer'
+          : words.mySeat !== null
+            ? 'You'
+            : 'The team'
+        : words.who(room.seats[w])
+  /** what the last dart did: a dart, a turn, a leg or the match */
+  const callLine = (g: DartsGame) => {
+    const l = g.last
+    if (!l) return ''
+    const who = callName(l.by)
+    const you = who === 'You'
+    if (l.legWon) {
+      const darts = [...l.before.darts, l.hit].map(say).join(', ')
+      return `${who} ${you ? 'check' : 'checks'} out ${l.before.from} with ${darts}! ${
+        g.over ? 'The match' : 'The leg'
+      }, ${g.legs[0]}–${g.legs[1]}.`
+    }
+    if (g.leg.turn === l.by && g.leg.darts.length > 0) {
+      const left = g.leg.scores[l.by]
+      return `${who}: ${say(l.hit)}${l.hit.mult >= 2 ? ` — ${points(l.hit)}` : ''}. ${left} left, ${3 - g.leg.darts.length} to go.`
+    }
+    const t = g.leg.history[g.leg.history.length - 1]
+    const darts = t.darts.map(say).join(', ')
+    return t.bust
+      ? `${who}: ${darts} — bust! Back to ${g.leg.scores[l.by]}.`
+      : `${who}: ${darts} — ${t.total === 180 ? 'ONE HUNDRED AND EIGHTY! ' : ''}${t.total}. ${g.leg.scores[l.by]} left.`
+  }
+  const stopHere = () => {
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    aim.current.holdFrom = 0
+  }
+  const computerRef = useRef(computerTurn)
+  computerRef.current = computerTurn
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer from the match as it stands,
+   * their own side the toy's — the sides swapped round for the second seat — or starts a new
+   * match if that one was over.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    const me: Who = r?.mode === 'versus' && words.mySeat === 1 ? 1 : 0
+    stopHere()
+    setOpp('bot')
+    if (!r || dartsRules.turn(r.game) === null) return nextLeg(true)
+    const g = r.game
+    const flip = (w: Who): Who => (me === 0 ? w : w === 0 ? 1 : 0)
+    const L = g.leg
+    const l: Leg = {
+      ...L,
+      scores: me === 0 ? L.scores : [L.scores[1], L.scores[0]],
+      turn: flip(L.turn),
+      history: L.history.map((t) => ({ ...t, who: flip(t.who) })),
+      winner: L.winner === null ? null : flip(L.winner),
+    }
+    setLeg(l)
+    setLegs(me === 0 ? g.legs : [g.legs[1], g.legs[0]])
+    // the toy has you throw first in its even legs: count so that stays true of this one
+    setLegNo(g.legNo + me)
+    setThrown(g.board.map((d) => ({ ...d, who: flip(d.who) })))
+    setOver(false)
+    myDarts.current = 0
+    if (l.turn === 1) {
+      setLine('Carrying on against the computer, which throws next…')
+      later(800, () => computerRef.current(l))
+    } else setLine(`Carrying on against the computer. Your throw: ${l.scores[0]} left.`)
   }
 
   /* -------------------------------------------------------------------- aiming */
@@ -264,7 +367,7 @@ export function DartsDemo() {
     }
   }
 
-  const mine = leg.scores[0]
+  const mine = vLeg.scores[meSide]
   const route = ROUTES.get(mine)
   const rec = saved.record[saved.level]
   const untouched = legNo === 0 && leg.history.length === 0 && leg.darts.length === 0
@@ -272,54 +375,104 @@ export function DartsDemo() {
   return (
     <div className={`lab-keys dt-room is-${saved.board}`}>
       <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer throws">
-          {LEVELS.map((l) => (
+        {(lab.live || opp === 'call') && (
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
-              key={l}
               className="btn btn-ghost"
-              aria-pressed={saved.level === l}
+              aria-pressed={opp === 'bot'}
               onClick={() => {
-                setSaved((s) => ({ ...s, level: l }))
-                if (untouched || over) {
-                  setLevel(l)
-                  if (over) nextLeg(true)
-                }
+                if (opp === 'bot') return
+                stopHere()
+                setOpp('bot')
+                nextLeg(true)
               }}
             >
-              {LEVEL_NAMES[l]}
+              Against the computer
             </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => nextLeg(true)}>
-          ↻ New match
-        </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={opp === 'call'}
+              onClick={() => {
+                stopHere()
+                setOpp('call')
+              }}
+            >
+              👥 With the call
+            </button>
+          </div>
+        )}
+        {opp === 'bot' && (
+          <>
+            <div className="lab-group" role="group" aria-label="How well the computer throws">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (untouched || over) {
+                      setLevel(l)
+                      if (over) nextLeg(true)
+                    }
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost" onClick={() => nextLeg(true)}>
+              ↻ New match
+            </button>
+          </>
+        )}
       </div>
+      {opp === 'call' && (
+        <CallTable
+          table={lab}
+          rules={dartsRules}
+          sides={['the first thrower', 'the second thrower']}
+          ink={['#ffd34d', '#7ec8ff']}
+          levelNames={LEVEL_NAMES}
+          score={(g) => `, ${Math.max(...g.legs)} legs to ${Math.min(...g.legs)}`}
+          onCarryOn={carryOn}
+        />
+      )}
       <div className="dice-scores">
         {([0, 1] as Who[]).map((w) => (
           <div
             key={w}
-            className={`dice-score${leg.turn === w && leg.winner === null && !over ? ' is-up' : ''}`}
+            className={`dice-score${vLeg.turn === w && vLeg.winner === null && !vOver ? ' is-up' : ''}`}
           >
             <span>
-              {w === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`} · legs {legs[w]}
+              {room ? callName(w) : w === 0 ? 'You' : `The computer · ${LEVEL_NAMES[level]}`} · legs{' '}
+              {vLegs[w]}
             </span>
-            <strong>{leg.scores[w]}</strong>
+            <strong>{vLeg.scores[w]}</strong>
             <span className="muted">
               {(() => {
-                const last = [...leg.history].reverse().find((t) => t.who === w)
+                const last = [...vLeg.history].reverse().find((t) => t.who === w)
                 return last ? `last ${last.bust ? 'bust' : last.total}` : 'to throw'
               })()}
             </span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {cg ? (
+        cg.last && (
+          <p className="muted dt-said" aria-live="polite">
+            {callLine(cg)}
+          </p>
+        )
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
       {saved.hints && myTurn && route && (
         <p className="muted mc-note">
           Way out: {route.map(say).join(', ')}
-          {route.length > 3 - leg.darts.length ? ' — more darts than this turn has left' : ''}
+          {route.length > 3 - vLeg.darts.length ? ' — more darts than this turn has left' : ''}
         </p>
       )}
 
@@ -334,7 +487,11 @@ export function DartsDemo() {
       >
         <CanvasStage
           className="dt-stage"
-          label={`A dartboard. You have ${mine} left, the computer ${leg.scores[1]}. ${line}`}
+          label={
+            cg
+              ? `A dartboard. ${callName(0)} ${vLeg.scores[0]} left, ${callName(1)} ${vLeg.scores[1]}. ${callLine(cg)}`
+              : `A dartboard. You have ${mine} left, the computer ${leg.scores[1]}. ${line}`
+          }
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -345,7 +502,7 @@ export function DartsDemo() {
                 const sv = savedRef.current
                 const a0 = aim.current
                 // a still board is drawn once; while you hold, the ring changes every frame
-                const key = `${c.width}x${c.height}|${sv.board}|${a0.x.toFixed(2)},${a0.y.toFixed(2)}|${a0.holdFrom ? performance.now() : 0}|${thrownRef.current.length}|${legRef.current.turn}|${legRef.current.winner}`
+                const key = `${c.width}x${c.height}|${sv.board}|${a0.x.toFixed(2)},${a0.y.toFixed(2)}|${a0.holdFrom ? performance.now() : 0}|${thrownRef.current.length}|${legRef.current.turn}|${legRef.current.winner}|${aimingRef.current}`
                 if (key === last) return
                 last = key
                 const L = LOOK[sv.board]
@@ -417,7 +574,7 @@ export function DartsDemo() {
                 // the aim and, while holding, the ring a dart will probably land inside
                 const a = aim.current
                 const g = legRef.current
-                if (g.turn === 0 && g.winner === null) {
+                if (aimingRef.current && g.winner === null) {
                   const x = cx + a.x * s
                   const y = cy - a.y * s
                   const held = a.holdFrom ? (performance.now() - a.holdFrom) / 1000 : 0
@@ -445,27 +602,29 @@ export function DartsDemo() {
         />
       </div>
       <div className="lab-controls">
-        {leg.winner !== null && !over && (
+        {!room && leg.winner !== null && !over && (
           <button className="btn" onClick={() => nextLeg()}>
             ▶ Next leg
           </button>
         )}
-        {over && (
+        {!room && over && (
           <button className="btn" onClick={() => nextLeg(true)}>
             ↻ Play again
           </button>
         )}
       </div>
 
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
-          {rec.best ? ` · best checkout ${rec.best}` : ''}
-          {rec.fewest ? ` · fastest leg ${rec.fewest} darts` : ''}
-          {rec.tons ? ` · 180s ${rec.tons}` : ''}
-        </span>
-      </p>
-      {level !== saved.level && !untouched && !over && (
+      {!room && (
+        <p className="sun-reading">
+          <span className="muted">
+            Against {LEVEL_NAMES[saved.level]}: won {rec.won}, lost {rec.lost}
+            {rec.best ? ` · best checkout ${rec.best}` : ''}
+            {rec.fewest ? ` · fastest leg ${rec.fewest} darts` : ''}
+            {rec.tons ? ` · 180s ${rec.tons}` : ''}
+          </span>
+        </p>
+      )}
+      {!room && level !== saved.level && !untouched && !over && (
         <p className="muted mc-note">The new level starts with the next match.</p>
       )}
       <div className="fw-panel">
@@ -499,7 +658,9 @@ export function DartsDemo() {
         the dart will probably land, and it tightens as your hand settles for about a second, then
         widens if you hold on. Let go when it is tightest. On a touch screen the cross sits just
         above your finger. Easy, Fair and Hard differ in how steady their hand is, and each aims
-        where its own hand scores best.
+        where its own hand scores best. In a call, 👥 With the call puts a friend on the other side
+        of the oche, or the two of you on one score taking darts in turn against the computer; each
+        dart goes where your own hand sends it.
       </p>
     </div>
   )

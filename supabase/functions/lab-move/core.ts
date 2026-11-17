@@ -18,6 +18,13 @@
 import { chessRules } from '../../../src/gpu/chessRoom'
 import { SIZES, count } from '../../../src/gpu/reversi'
 import { reversiRules } from '../../../src/gpu/reversiRoom'
+import { SIZES as GOMOKU_SIZES } from '../../../src/gpu/gomoku'
+import { gomokuRules } from '../../../src/gpu/gomokuRoom'
+import { draughtsRules } from '../../../src/gpu/draughtsRoom'
+import { SIZES as DOTS_SIZES } from '../../../src/gpu/dots'
+import { dotsRules, type DotsGame } from '../../../src/gpu/dotsRoom'
+import { fourRowMatchRules, readFourSettings } from '../../../src/gpu/fourrowRoom'
+import { poolRules } from '../../../src/gpu/poolRoom'
 import type { Mode, Rules, Seat } from '../../../src/lab/social/room'
 
 /** a toy's rules for one match's settings, and how its finished game reads as a short score */
@@ -44,6 +51,23 @@ export const GAMES: Record<string, (settings: Record<string, unknown>) => Game |
     }
   },
   chess: () => ({ rules: chessRules }),
+  pool: () => ({ rules: poolRules }),
+  gomoku: (s) => {
+    const size = s.size ?? 13
+    return (GOMOKU_SIZES as readonly unknown[]).includes(size)
+      ? { rules: gomokuRules(size as number) }
+      : null
+  },
+  draughts: () => ({ rules: draughtsRules }),
+  dots: (s) => {
+    const size = s.size ?? 4
+    if (!(DOTS_SIZES as readonly unknown[]).includes(size)) return null
+    return { rules: dotsRules(size as number), score: (d: DotsGame) => d.g.score.join('–') }
+  },
+  fourrow: (s) => {
+    const read = readFourSettings(s)
+    return read ? { rules: fourRowMatchRules(...read) } : null
+  },
 }
 
 /** a match as `lab_match_load` returns it: the row, `secret` included */
@@ -69,7 +93,7 @@ export type Plan =
       kind: 'commit'
       at: number
       /** the history row: the move, and the computer's replies to it, together */
-      move: { m: unknown; then?: unknown[] }
+      move: { m: unknown; then?: unknown[]; replies?: number }
       state: unknown
       turn: Seat | null
       result: { winner: Seat | 'draw'; score?: string } | null
@@ -96,6 +120,25 @@ function levelOf(game: Game, settings: Record<string, unknown>): string | null {
   if (!levels) return null
   const asked = settings.level ?? levels[0]
   return typeof asked === 'string' && levels.includes(asked) ? asked : null
+}
+
+/**
+ * The history row for a move: the move, and the computer's replies to it.
+ *
+ * ⚠️ `lab_match_moves.move` HOLDS AT MOST 200 BYTES (a CHECK on the table), and a pool shot is
+ * four floating-point numbers. One shot is about 70 bytes; a computer's run of pots in Together
+ * is several, and the insert would fail the whole move. So the replies are kept when they fit and
+ * counted when they do not. The STATE is the record of the game, and it is whole either way.
+ * jsonb's own text adds a space after every colon and comma, so the budget leaves room for those.
+ */
+export const HISTORY_BYTES = 180
+/** the bytes Postgres counts in `octet_length(move::text)`: jsonb's text spaces every : and , */
+export const jsonbBytes = (x: unknown) =>
+  new TextEncoder().encode(JSON.stringify(x).replace(/([,:])/g, '$1 ')).length
+export function historyRow(m: unknown, then: unknown[]) {
+  if (!then.length) return { m }
+  const whole = { m, then }
+  return jsonbBytes(whole) <= HISTORY_BYTES ? whole : { m, replies: then.length }
 }
 
 /** the most moves the computer makes in a row before the team moves again: passes, in Reversi */
@@ -162,7 +205,7 @@ export function decide(row: Row | null, me: string, ask: Ask, games: typeof GAME
   return {
     kind: 'commit',
     at: row.seq,
-    move: then.length ? { m: move, then } : { m: move },
+    move: historyRow(move, then),
     state: rules.encode(g),
     // versus: whoever the board says; together: the other friend takes the team's next move
     turn: over ? null : row.mode === 'together' ? ((1 - seat) as Seat) : (rules.turn(g) as Seat),

@@ -21,6 +21,11 @@ import { useLabRoom } from '../lab/social/useLabRoom'
 import { CallTable } from '../lab/social/CallTable'
 import { tableSeats } from '../lab/social/table'
 import { myTurn, teamSide } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -44,34 +49,52 @@ export function GomokuDemo() {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const recorded = useRef(false)
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the board over whatever else was showing; leaving it puts the toy back as it was. A placed
+     stone shows at once and waits for Send; the server plays it and the board comes back. */
+  const lm = useLabMatch('gomoku')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as Game | null) : null
+
   /* ── the call's room: the host's size starts each game, which then travels as its moves */
   const roomRules = useMemo(() => gomokuRules(saved.size), [saved.size])
   const lab = useLabRoom('gomoku', roomRules)
   const words = tableSeats(lab, roomRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
   /** the side I place for: my seat's in versus, the team's (black) together */
   const mySide: Side =
     room?.mode === 'together' ? ((teamSide(roomRules) + 1) as Side) : words.mySeat === 1 ? 2 : 1
-  /** the board on screen: the call's in a call, else this one */
-  const shown = room ? room.game : game
+  /** the board on screen: the match's, the call's in a call, else this one */
+  const shown = matchGame ?? (room ? room.game : game)
 
   const n = shown.n
-  const computerTurn = mode === 'bot' && !game.over && game.turn !== you
-  const yours = room
-    ? lab.live && myTurn(roomRules, room)
-    : mode !== 'call' && !game.over && (mode === 'two' || game.turn === you)
+  const computerTurn = mode === 'bot' && !inMatch && !game.over && game.turn !== you
+  const yours = inMatch
+    ? lm.canPlay
+    : room
+      ? lab.live && myTurn(roomRules, room)
+      : mode !== 'call' && !game.over && (mode === 'two' || game.turn === you)
   const nameOf = (s: Side) =>
-    room
-      ? room.mode === 'together'
-        ? s === mySide
-          ? 'Together'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
+        ? s === 1
+          ? 'You two'
           : 'The computer'
-        : words.who(room.seats[s - 1])
-      : mode === 'bot'
-        ? s === you
+        : s - 1 === lm.view.you
           ? 'You'
-          : 'The computer'
-        : COLOUR[s]
+          : otherName(lm.view)
+      : room
+        ? room.mode === 'together'
+          ? s === mySide
+            ? 'Together'
+            : 'The computer'
+          : words.who(room.seats[s - 1])
+        : mode === 'bot'
+          ? s === you
+            ? 'You'
+            : 'The computer'
+          : COLOUR[s]
   const lastMove = shown.moves[shown.moves.length - 1]
   const winning = new Set(shown.line)
 
@@ -132,6 +155,7 @@ export function GomokuDemo() {
   }
   const tap = (i: number) => {
     if (!yours || shown.cells[i]) return
+    if (inMatch) return void lm.play(i)
     if (room) return lab.act({ t: 'move', move: i })
     settle(place(game, i))
   }
@@ -168,7 +192,7 @@ export function GomokuDemo() {
     else if (e.key === 'ArrowRight') next = r * n + Math.min(n - 1, c + 1)
     else if (e.key === 'ArrowUp') next = Math.max(0, r - 1) * n + c
     else if (e.key === 'ArrowDown') next = Math.min(n - 1, r + 1) * n + c
-    else if (!room && (e.key === 'u' || e.key === 'U')) takeBack()
+    else if (!room && !inMatch && (e.key === 'u' || e.key === 'U')) takeBack()
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -178,76 +202,93 @@ export function GomokuDemo() {
     }
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's board */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
+
   const record = saved.record[saved.level]
   return (
     <div className={`lab-keys gm-room is-${saved.look}`}>
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['black', 'white']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
+            </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => {
+                    setSaved((s) => ({ ...s, level: l }))
+                    if (!game.moves.length || game.over) fresh(mode, l)
+                  }}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <div className="lab-group" role="group" aria-label="Board size">
+              {SIZES.map((s) => (
+                <button
+                  key={s}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.size === s}
+                  onClick={() => {
+                    setSaved((x) => ({ ...x, size: s }))
+                    fresh(mode, saved.level, s)
+                  }}
+                >
+                  {s}×{s}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' && (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
             </button>
           )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge
+              demo="gomoku"
+              settings={{ size: saved.size }}
+              levelNames={LEVEL_NAMES}
+            />
+          )}
         </div>
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => {
-                  setSaved((s) => ({ ...s, level: l }))
-                  if (!game.moves.length || game.over) fresh(mode, l)
-                }}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <div className="lab-group" role="group" aria-label="Board size">
-            {SIZES.map((s) => (
-              <button
-                key={s}
-                className="btn btn-ghost"
-                aria-pressed={saved.size === s}
-                onClick={() => {
-                  setSaved((x) => ({ ...x, size: s }))
-                  fresh(mode, saved.level, s)
-                }}
-              >
-                {s}×{s}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' && (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        )}
-      </div>
-      {mode === 'call' && (
+      )}
+      {mode === 'call' && !inMatch && (
         <CallTable
           table={lab}
           rules={roomRules}
@@ -269,7 +310,7 @@ export function GomokuDemo() {
           </div>
         ))}
       </div>
-      {mode !== 'call' && (
+      {mode !== 'call' && !inMatch && (
         <p className="mc-line" aria-live="polite">
           {line}
         </p>
@@ -279,7 +320,7 @@ export function GomokuDemo() {
         className="gm-board"
         style={{ ['--gm-n' as string]: n }}
         role="group"
-        aria-label={`The board, ${n} by ${n}. Arrow keys move, Enter places a stone${room ? '' : ', U takes back'}.`}
+        aria-label={`The board, ${n} by ${n}. Arrow keys move, Enter places a stone${room || inMatch ? '' : ', U takes back'}.`}
         onKeyDown={onKey}
       >
         {Array.from({ length: n * n }, (_, i) => {
@@ -315,7 +356,8 @@ export function GomokuDemo() {
           )
         })}
       </div>
-      {mode !== 'call' && (
+      {inMatch && <MatchSend lm={lm} />}
+      {mode !== 'call' && !inMatch && (
         <div className="lab-controls">
           <button
             className="btn btn-ghost"
@@ -326,7 +368,7 @@ export function GomokuDemo() {
           </button>
         </div>
       )}
-      {mode === 'bot' && (
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}

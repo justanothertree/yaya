@@ -13,6 +13,7 @@ import {
   type Seat,
 } from './cloud'
 import { matchToy } from './games'
+import { useNudge } from './nudge'
 import { matchHash } from './words'
 
 /**
@@ -37,7 +38,12 @@ const idFor = (demo: string) =>
 /** how often an open match looks again while it waits on the other player */
 const WATCH_MS = 20000
 
-export function useLabMatch(demo: string) {
+/**
+ * `preview: false` for a toy where seeing the move played would give it away — a pool shot, whose
+ * outcome IS the physics. Its chosen move is shown as itself (the aim), never applied, and only
+ * the server's answer moves anything.
+ */
+export function useLabMatch(demo: string, { preview = true }: { preview?: boolean } = {}) {
   const [id, setId] = useState<string | null>(() => idFor(demo))
   const [view, setView] = useState<MatchView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -108,6 +114,10 @@ export function useLabMatch(demo: string) {
     }
   }, [id, load, waiting])
 
+  /* ── the nudge: the other player's page looks again the moment this one acts, while both have
+     the match open (nudge.ts); the looks above stay, since a nudge is never relied on */
+  const tell = useNudge(id, !!view, () => void load())
+
   /* ── the game, by the toy's own rules */
   const rules = useMemo(
     () => (view ? (matchToy(view.demo)?.rulesFor(view.settings) ?? null) : null),
@@ -120,8 +130,8 @@ export function useLabMatch(demo: string) {
   /** the side the viewer moves for: their own seat in versus, the team's (0) together */
   const side: Seat = view?.mode === 'together' ? 0 : (view?.you ?? 0)
   const shown = useMemo(
-    () => (rules && game && hasPending ? rules.apply(game, pending, side) : game),
-    [rules, game, pending, hasPending, side],
+    () => (preview && rules && game && hasPending ? rules.apply(game, pending, side) : game),
+    [preview, rules, game, pending, hasPending, side],
   )
   const myTurn = !!view && view.status === 'active' && view.turn === view.you
   const canPlay = myTurn && !hasPending && !busy && !!rules && !!game && rules.turn(game) === side
@@ -146,6 +156,8 @@ export function useLabMatch(demo: string) {
       const v = await fn()
       if (g !== gen.current) return
       setView(v)
+      // this match changed: tell the other player's open page (a rematch is a different match)
+      if (v.id === id) tell(v.seq)
       after?.(v)
     } catch (e) {
       if (g !== gen.current) return

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -8,7 +9,6 @@ import {
   type SetStateAction,
 } from 'react'
 import {
-  MAX_LAYERS,
   addLayers,
   clearLayers,
   loadSong,
@@ -17,7 +17,7 @@ import {
   toggleMute,
   type loopState,
 } from '../audio/looper'
-import { onMixerChange, setVolume, volume } from '../audio/mixer'
+import { setSongName } from './songName'
 import { library, removeFromLibrary, subscribeLibrary, type LibraryItem } from '../audio/library'
 import { songNotes, songToLayers } from '../audio/songFile'
 import { hasLyrics } from '../audio/lyricLines'
@@ -25,13 +25,16 @@ import { TakesPanel } from '../audio/TakesPanel'
 import { useTakes } from '../audio/useTakes'
 import { jam } from '../party/jam'
 import { motionReduced } from '../ui/motion'
+import { KeysVolume } from './KeysVolume'
 import { partLines } from './partName'
-import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
+import { ExportSong } from './ExportSong'
+import { singOneLap, singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
 
 export type Tool = 'beats' | 'mix' | 'voice' | 'songs'
 
+/* ⚠️ 🥁 Beats is a tool without a button here since 15 Nov 2026: its door is under the parts,
+   beside ✎ New part (LayerList), and its pane is drawn first, just under that row */
 const TOOLS: Array<[Tool, string, string]> = [
-  ['beats', '🥁', 'Beats'],
   ['mix', '🎚', 'Mix'],
   ['voice', '🎤', 'Voice'],
   ['songs', '📁', 'Songs'],
@@ -44,7 +47,8 @@ type Loop = ReturnType<typeof loopState>
  *
  * 🥁 Beats is the beats and chords panel, unchanged. 🎚 Mix is every volume in one place: your
  * keys, each part, and each take on the loop. 🎤 Voice is the recorder and the singer. 📁 Songs is
- * keeping and opening: Keep this song, Stems, the kept songs and Clear all parts.
+ * keeping, opening and taking it elsewhere: Keep this song, Stems, Export song, MIDI, the kept
+ * songs and Clear all parts.
  *
  * ⚠️ A CLOSED TOOL STAYS MOUNTED, ONLY HIDDEN — the condition Evan approved one-at-a-time on.
  * `useTakes` stops its work when it unmounts, on purpose (a recording is kept and the microphone
@@ -77,7 +81,6 @@ export function SongTools({
 }) {
   const takes = useTakes()
   const singing = useSyncExternalStore(subscribeSinging, singingNow, singingNow)
-  const full = loop.layers.length >= MAX_LAYERS
   const panes = useRef<Partial<Record<Tool, HTMLElement | null>>>({})
 
   /**
@@ -119,6 +122,7 @@ export function SongTools({
 
   return (
     <>
+      {pane('beats', 'Beats', beats)}
       <div className="inst-tools" role="group" aria-label="Song tools">
         {TOOLS.map(([t, icon, name]) => (
           <button
@@ -129,17 +133,12 @@ export function SongTools({
             onClick={() => setTool((was) => (was === t ? null : t))}
             /* ⚠️ Beats adds parts, so it goes dead at the ceiling — but never while it is open,
                or the one way to close it would be the button that had stopped working */
-            disabled={t === 'beats' && full && tool !== 'beats'}
             title={
-              t === 'beats'
-                ? full
-                  ? `That is all ${MAX_LAYERS} parts — delete one to add another`
-                  : 'Drums, chords, a bassline and a fill — drop any of them in, then change them'
-                : t === 'mix'
-                  ? 'Every volume in one place'
-                  : t === 'voice'
-                    ? 'Record a take, open a sound file, or have the voice sing'
-                    : 'Keep this song, open a kept one, or take its stems'
+              t === 'mix'
+                ? 'Every volume in one place'
+                : t === 'voice'
+                  ? 'Record a take, open a sound file, or have the voice sing'
+                  : 'Keep this song, open a kept one, or take its stems'
             }
           >
             <span aria-hidden>{icon}</span> {name}
@@ -153,7 +152,6 @@ export function SongTools({
           </button>
         ))}
       </div>
-      {pane('beats', 'Beats', beats)}
       {pane('mix', 'Mix', <Mix loop={loop} />)}
       {pane(
         'voice',
@@ -229,26 +227,9 @@ function SingDoor({
  * place to silence anything in the song.
  */
 function Mix({ loop }: { loop: Loop }) {
-  const [vol, setVol] = useState(() => volume('instrument'))
-  useEffect(() => onMixerChange(() => setVol(volume('instrument'))), [])
   return (
     <div className="inst-mix">
-      <label className="inst-mix-row">
-        <span className="inst-mix-name">Your keys</span>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={vol}
-          onChange={(e) => {
-            const v = Number(e.target.value)
-            setVol(v)
-            setVolume('instrument', v)
-          }}
-        />
-        <span className="muted inst-mix-pct">{Math.round(vol * 100)}%</span>
-      </label>
+      <KeysVolume />
       {loop.layers.map((l, i) => {
         const name = partLines(l, i).name
         return (
@@ -318,6 +299,12 @@ function Songs({
 }) {
   const saved = useSyncExternalStore(subscribeLibrary, library, library)
   const { parts, bouncing, doBounce, stems } = takes
+  /* one recording of the song at a time: stems and the export each play it through */
+  const [exporting, setExporting] = useState(false)
+  /* ⚠️ each stem's address made once and let go — it was a new object URL every render, each
+     holding its file in memory for as long as the page lived */
+  const stemUrls = useMemo(() => stems.map((st) => URL.createObjectURL(st.blob)), [stems])
+  useEffect(() => () => stemUrls.forEach((u) => URL.revokeObjectURL(u)), [stemUrls])
   return (
     <div className="inst-songs">
       <div className="inst-row">
@@ -333,9 +320,9 @@ function Songs({
         {parts > 0 && (
           <button
             className={'btn btn-ghost' + (bouncing ? ' is-on' : '')}
-            disabled={!!bouncing}
-            onClick={() => void doBounce()}
-            title="Bounce every part and every take to its own WAV, in real time"
+            disabled={!!bouncing || exporting}
+            onClick={() => void doBounce(singOneLap)}
+            title="Bounce every part, every take and the sung words to its own WAV, in real time"
           >
             {bouncing
               ? `Bouncing ${bouncing.doing || '…'} (${bouncing.done}/${bouncing.of})`
@@ -343,15 +330,11 @@ function Songs({
           </button>
         )}
       </div>
+      <ExportSong loop={loop} busy={!!bouncing} setBusy={setExporting} />
       {stems.length > 0 && (
         <div className="inst-row inst-takes-stems">
-          {stems.map((st) => (
-            <a
-              key={st.name}
-              className="btn btn-ghost"
-              href={URL.createObjectURL(st.blob)}
-              download={st.name}
-            >
+          {stems.map((st, k) => (
+            <a key={st.name} className="btn btn-ghost" href={stemUrls[k]} download={st.name}>
               {st.name}
             </a>
           ))}
@@ -382,6 +365,7 @@ function Songs({
                   className="btn"
                   onClick={() => {
                     loadSong(it.song.bpm, it.song.bars, songToLayers(it.song))
+                    setSongName(it.name)
                     setEditing(null)
                     // ⚠️ offered, not pushed — see jam.offerSong. A no-op when nobody is jamming.
                     jam.offerSong(it.song)

@@ -21,13 +21,20 @@ export const TOGETHER = 0.03
  * same instant.
  */
 export function melodyOf(notes: readonly Note[]): Note[] {
-  const order = [...notes].sort((a, b) => a.t - b.t || b.midi - a.midi)
-  const out: Note[] = []
+  return melodyIndex(notes).map((i) => ({ t: notes[i].t, dur: notes[i].dur, midi: notes[i].midi }))
+}
+
+/** melodyOf as indices into `notes`, in time order — for a caller that must find the note again */
+export function melodyIndex(notes: readonly Note[]): number[] {
+  const order = notes
+    .map((_, i) => i)
+    .sort((a, b) => notes[a].t - notes[b].t || notes[b].midi - notes[a].midi)
+  const out: number[] = []
   let groupAt = -Infinity
-  for (const n of order) {
-    if (n.t - groupAt < TOGETHER) continue
-    groupAt = n.t
-    out.push({ t: n.t, dur: n.dur, midi: n.midi })
+  for (const i of order) {
+    if (notes[i].t - groupAt < TOGETHER) continue
+    groupAt = notes[i].t
+    out.push(i)
   }
   return out
 }
@@ -444,6 +451,21 @@ export function crowd(
   return out
 }
 
+/**
+ * The notes a line of `syls` is sung on when it has more syllables than `held` has notes: long
+ * notes shared first (makeRoom), then short ones where the words say (crowd). The one path for
+ * this, so the notes the voice sings and the notes "Add notes" writes into a part are the same.
+ */
+export function share(
+  held: readonly Note[],
+  syls: readonly Syllable[],
+  beat: number,
+  fine: Lattice,
+  perBar = 4,
+): Note[] {
+  return crowd(makeRoom(held, syls.length, beat, fine, perBar), syls, beat, fine, perBar)
+}
+
 export type Grid = {
   /** seconds per beat */
   beat: number
@@ -505,10 +527,8 @@ export function fitLine(
   carry?: string,
   held: readonly Note[] = legato(snapped, beat),
 ): { sung: SungNote[]; spare: number } {
-  if (syls.length > snapped.length) {
-    const line = crowd(makeRoom(held, syls.length, beat, fine, perBar), syls, beat, fine, perBar)
-    return assignSyllables(line, syls, carry)
-  }
+  if (syls.length > snapped.length)
+    return assignSyllables(share(held, syls, beat, fine, perBar), syls, carry)
   if (syls.length === snapped.length || !syls.length) return assignSyllables(held, syls, carry)
   const at = place(snapped, syls, beat, perBar)
   const sung: SungNote[] = []
@@ -520,7 +540,7 @@ export function fitLine(
       const s = syls[k]
       if (!s.hold) {
         last = s.text
-        sung.push({ ...n, text: s.text, hold: false, whole: s.whole })
+        sung.push({ ...n, text: s.text, hold: false, whole: s.whole, start: s.start })
         return
       }
     }
@@ -551,13 +571,7 @@ export function fitByBar(
   lines: readonly (readonly Syllable[])[],
   grid: Grid & { barLen: number },
 ): { sung: SungNote[]; bars: BarFit[] } {
-  const melody = melodyOf(notes)
-  const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
-  const fine = levels[levels.length - 1]
-  const snapped = snapToGrid(melody, levels, lean, grid.len)
-  /* held to the next note across the bar lines too, so a line's last word rings on to the next
-     bar's first note rather than stopping with the key */
-  const held = legato(snapped, grid.beat)
+  const { snapped, held, fine } = songMelody(notes, grid)
   const perBar = grid.perBar ?? 4
   const sung: SungNote[] = []
   const bars: BarFit[] = []
@@ -580,6 +594,31 @@ export function fitByBar(
   /* the same notes as each bar's own list, so a word rung on is rung on in both */
   ringOut(sung, snapped, grid.beat, grid.len)
   return { sung, bars }
+}
+
+/**
+ * A song's melody as fitByBar sings it: one voice (melodyOf), on the grid in its own feel
+ * (feelOf, snapToGrid), and as held (legato) — across the bar lines too, so a line's last word
+ * rings on to the next bar's first note rather than stopping with the key. `source[i]` is the
+ * index in `notes` of `snapped[i]`.
+ *
+ * ⚠️ snapToGrid drops a note only when no point is left for it before the loop comes round, which
+ * is one of a crowd at the very end — so the notes it keeps are the first ones, in order.
+ */
+export function songMelody(
+  notes: readonly Note[],
+  grid: Grid,
+): { snapped: Note[]; held: Note[]; fine: Lattice; source: number[] } {
+  const source = melodyIndex(notes)
+  const melody = source.map((i) => ({ t: notes[i].t, dur: notes[i].dur, midi: notes[i].midi }))
+  const { levels, lean } = feelOf(melody, grid.beat, grid.snap)
+  const snapped = snapToGrid(melody, levels, lean, grid.len)
+  return {
+    snapped,
+    held: legato(snapped, grid.beat),
+    fine: levels[levels.length - 1],
+    source: source.slice(0, snapped.length),
+  }
 }
 
 /**

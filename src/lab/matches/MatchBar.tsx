@@ -140,15 +140,24 @@ export function MatchBar({ lm, sides }: { lm: LabMatch; sides: [string, string] 
  * bottom of the screen while the board is in view, which is where the thumb that just chose the
  * move already is.
  */
-export function MatchSend({ lm }: { lm: LabMatch }) {
+export function MatchSend({
+  lm,
+  send = 'Send move',
+  undo = 'Undo',
+}: {
+  lm: LabMatch
+  /** what sending is called on this toy: "Take the shot" */
+  send?: string
+  undo?: string
+}) {
   if (!lm.hasPending) return null
   return (
     <div className="lab-controls match-send" role="group" aria-label="Your chosen move">
       <button className="btn" disabled={lm.busy} onClick={() => void lm.send()}>
-        {lm.busy ? 'Sending…' : 'Send move'}
+        {lm.busy ? 'Sending…' : send}
       </button>
       <button className="btn btn-ghost" disabled={lm.busy} onClick={lm.undo}>
-        Undo
+        {undo}
       </button>
     </div>
   )

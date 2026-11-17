@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   BREAKTHROUGH_KEY,
   LEVELS,
@@ -19,8 +19,14 @@ import {
   type Size,
 } from './breakthrough'
 import { useKept } from './kept'
+import { breakthroughRules } from './breakthroughRoom'
+import { useLabRoom } from '../lab/social/useLabRoom'
+import { CallTable } from '../lab/social/CallTable'
+import { tableSeats } from '../lab/social/table'
+import { myTurn } from '../lab/social/room'
 
-type Mode = 'bot' | 'two'
+/** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
+type Mode = 'bot' | 'two' | 'call'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
 const LOOK_NAMES: Record<Saved['look'], string> = { stone: 'Stone', garden: 'Garden', neon: 'Neon' }
 /** each look names its two sides */
@@ -48,12 +54,39 @@ export function BreakthroughDemo() {
   /** who moved first in the game being played, so the next game can give the first move away */
   const firstRef = useRef<Side>(1)
 
-  const n = game.board.n
+  /* ── the call's room: the host's size starts each game, which travels as its moves */
+  const roomRules = useMemo(() => breakthroughRules(saved.size), [saved.size])
+  const lab = useLabRoom('breakthrough', roomRules)
+  const words = tableSeats(lab, roomRules)
+  const room = mode === 'call' ? lab.room : null
+  /**
+   * The board turned round for whoever plays the far side in a call, so their pawns are at the
+   * bottom as the board's own label promises: square n²-1-k is drawn where k would be.
+   */
+  const flip = room?.mode === 'versus' && words.mySeat === 1
+  /** the game on screen: the call's in a call, else this one */
+  const view = room ? room.game.g : game
+  const viewLast = room ? room.game.last : last
+
+  const n = view.board.n
   const sides = SIDES[saved.look]
-  const all = moves(game)
-  const yours = !game.winner && (mode === 'two' || game.turn === 1)
+  const all = moves(view)
+  const yours = room
+    ? lab.live && myTurn(roomRules, room)
+    : mode !== 'call' && !game.winner && (mode === 'two' || game.turn === 1)
   const computerTurn = mode === 'bot' && !game.winner && game.turn === 2
-  const nameOf = (s: Side) => (mode === 'bot' ? (s === 1 ? 'You' : 'The computer') : sides[s - 1])
+  const nameOf = (s: Side) =>
+    room
+      ? room.mode === 'together'
+        ? s === 1
+          ? 'Together'
+          : 'The computer'
+        : words.who(room.seats[s - 1])
+      : mode === 'bot'
+        ? s === 1
+          ? 'You'
+          : 'The computer'
+        : sides[s - 1]
   const targets = picked === null ? [] : all.filter((m) => m.from === picked)
   const lit = new Set(targets.map((m) => m.to))
   const movable = new Set(all.map((m) => m.from))
@@ -139,22 +172,50 @@ export function BreakthroughDemo() {
 
   const tap = (i: number) => {
     if (!yours) return
-    if (game.board.cells[i] === game.turn) {
+    if (view.board.cells[i] === view.turn) {
       setPicked(picked === i ? null : i)
       return
     }
     const m = targets.find((x) => x.to === i)
-    if (m) apply(m)
+    if (m && room) {
+      // in the call the host decides: this asks it, and the board comes back with everybody's
+      setPicked(null)
+      lab.act({ t: 'move', move: m })
+    } else if (m) apply(m)
     else setPicked(null)
+  }
+  /**
+   * ⚠️ A SEATED PLAYER LEFT ALONE carries on against the computer, which always plays the far
+   * side: the board on screen comes with you when yours is the near side, else a new game.
+   */
+  const carryOn = () => {
+    const r = room ?? lab.room
+    if (!r || r.game.g.winner || flip) return fresh('bot')
+    recorded.current = false
+    setMode('bot')
+    setLevel(saved.level)
+    setGame(r.game.g)
+    setLast(r.game.last)
+    setPicked(null)
+    setLine(r.game.g.turn === 1 ? 'Your move.' : 'The computer is thinking…')
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const r = Math.floor(cursor / n)
     const c = cursor % n
+    // on a turned board every arrow means its opposite in the board's own squares
+    const key = flip
+      ? ({
+          ArrowLeft: 'ArrowRight',
+          ArrowRight: 'ArrowLeft',
+          ArrowUp: 'ArrowDown',
+          ArrowDown: 'ArrowUp',
+        }[e.key] ?? e.key)
+      : e.key
     let next = -1
-    if (e.key === 'ArrowLeft') next = r * n + Math.max(0, c - 1)
-    else if (e.key === 'ArrowRight') next = r * n + Math.min(n - 1, c + 1)
-    else if (e.key === 'ArrowUp') next = Math.max(0, r - 1) * n + c
-    else if (e.key === 'ArrowDown') next = Math.min(n - 1, r + 1) * n + c
+    if (key === 'ArrowLeft') next = r * n + Math.max(0, c - 1)
+    else if (key === 'ArrowRight') next = r * n + Math.min(n - 1, c + 1)
+    else if (key === 'ArrowUp') next = Math.max(0, r - 1) * n + c
+    else if (key === 'ArrowDown') next = Math.min(n - 1, r + 1) * n + c
     else if (e.key === 'Escape') setPicked(null)
     else return
     e.preventDefault()
@@ -165,18 +226,18 @@ export function BreakthroughDemo() {
   }
 
   const describe = (i: number) => {
-    const p = game.board.cells[i]
+    const p = view.board.cells[i]
     const what = p ? `${sides[p - 1].toLowerCase()} pawn` : 'empty'
     const extra = [
       picked === i ? 'picked' : '',
       lit.has(i) ? (p ? 'can be taken' : 'can go here') : '',
-      last && (last.from === i || last.to === i) ? 'last move' : '',
+      viewLast && (viewLast.from === i || viewLast.to === i) ? 'last move' : '',
     ].filter(Boolean)
     return `${squareName(n, i)}: ${what}${extra.length ? `, ${extra.join(', ')}` : ''}`
   }
 
   const furthest = (s: Side) =>
-    game.board.cells.reduce((m, p, i) => (p === s ? Math.max(m, advance(n, i, s)) : m), 0)
+    view.board.cells.reduce((m, p, i) => (p === s ? Math.max(m, advance(n, i, s)) : m), 0)
   const record = saved.record[saved.level]
   const untouched = !last
   return (
@@ -197,6 +258,18 @@ export function BreakthroughDemo() {
           >
             Two players
           </button>
+          {(lab.live || mode === 'call') && (
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'call'}
+              onClick={() => {
+                setMode('call')
+                setPicked(null)
+              }}
+            >
+              👥 With the call
+            </button>
+          )}
         </div>
         {mode === 'bot' && (
           <div className="lab-group" role="group" aria-label="How well the computer plays">
@@ -215,42 +288,64 @@ export function BreakthroughDemo() {
             ))}
           </div>
         )}
-        <div className="lab-group" role="group" aria-label="Board size">
-          {SIZES.map((s) => (
-            <button
-              key={s}
-              className="btn btn-ghost"
-              aria-pressed={saved.size === s}
-              onClick={() => {
-                setSaved((x) => ({ ...x, size: s }))
-                fresh(mode, saved.level, s)
-              }}
-            >
-              {s}×{s}
-            </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New game
-        </button>
+        {mode !== 'call' && (
+          <div className="lab-group" role="group" aria-label="Board size">
+            {SIZES.map((s) => (
+              <button
+                key={s}
+                className="btn btn-ghost"
+                aria-pressed={saved.size === s}
+                onClick={() => {
+                  setSaved((x) => ({ ...x, size: s }))
+                  fresh(mode, saved.level, s)
+                }}
+              >
+                {s}×{s}
+              </button>
+            ))}
+          </div>
+        )}
+        {mode !== 'call' && (
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New game
+          </button>
+        )}
       </div>
+      {mode === 'call' && (
+        <CallTable
+          table={lab}
+          rules={roomRules}
+          sides={sides}
+          levelNames={LEVEL_NAMES}
+          score={(d) =>
+            d.g.winner
+              ? count(d.g.board, d.g.winner === 1 ? 2 : 1)
+                ? ' — a pawn through to the far row'
+                : ' — every pawn taken'
+              : null
+          }
+          onCarryOn={carryOn}
+        />
+      )}
 
       <div className="dice-scores">
         {([1, 2] as Side[]).map((s) => (
-          <div key={s} className={`dice-score${game.turn === s && !game.winner ? ' is-up' : ''}`}>
+          <div key={s} className={`dice-score${view.turn === s && !view.winner ? ' is-up' : ''}`}>
             <span>
               {nameOf(s)} · {sides[s - 1].toLowerCase()}
             </span>
-            <strong>{count(game.board, s)}</strong>
+            <strong>{count(view.board, s)}</strong>
             <span className="muted">
               furthest {furthest(s)} of {n - 1} rows up
             </span>
           </div>
         ))}
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
+      {mode !== 'call' && (
+        <p className="mc-line" aria-live="polite">
+          {line}
+        </p>
+      )}
 
       <div
         className={`bt-board${computerTurn ? ' is-thinking' : ''}`}
@@ -259,8 +354,9 @@ export function BreakthroughDemo() {
         aria-label={`The board, ${n} by ${n}, your pawns at the bottom. Arrow keys move, Enter picks a pawn and then its square, Escape lets go.`}
         onKeyDown={onKey}
       >
-        {Array.from({ length: n * n }, (_, i) => {
-          const p = game.board.cells[i]
+        {Array.from({ length: n * n }, (_, k) => {
+          const i = flip ? n * n - 1 - k : k
+          const p = view.board.cells[i]
           const dark = (Math.floor(i / n) + (i % n)) % 2 === 1
           return (
             <button
@@ -274,7 +370,7 @@ export function BreakthroughDemo() {
                 p ? `is-p${p}` : '',
                 picked === i ? 'is-picked' : '',
                 lit.has(i) && saved.hints ? 'is-lit' : '',
-                last && (last.from === i || last.to === i) ? 'is-last' : '',
+                viewLast && (viewLast.from === i || viewLast.to === i) ? 'is-last' : '',
                 saved.hints && yours && picked === null && movable.has(i) ? 'can-move' : '',
               ]
                 .filter(Boolean)

@@ -133,6 +133,27 @@ export function harm(f: Field, burst: { x: number; y: number }, w: Who, struck: 
   return d >= BLAST ? 0 : Math.round(38 * (1 - d / BLAST))
 }
 
+/**
+ * The same field seen from the other side: the ground the other way round, each gun where the
+ * other was and the wind blowing the other way. Firing is symmetric (fly measures its angle
+ * towards the other gun), so gun 1's shot here is gun 0's shot on the mirror. It is how the right
+ * gun's player sees their own gun on the left, and how they carry on alone as the left gun.
+ */
+export function mirror(f: Field): Field {
+  const other = (w: Who | null): Who | null => (w === null ? null : w === 0 ? 1 : 0)
+  return {
+    ground: [...f.ground].reverse(),
+    guns: [
+      { x: FIELD_W - f.guns[1].x, life: f.guns[1].life },
+      { x: FIELD_W - f.guns[0].x, life: f.guns[0].life },
+    ],
+    wind: -f.wind,
+    turn: other(f.turn) as Who,
+    winner: other(f.winner),
+    seed: f.seed,
+  }
+}
+
 /** fire, and settle everything: the crater, the harm, the guns dropping, the wind, the turn */
 export function shoot(
   f: Field,

@@ -17,6 +17,7 @@ import {
   plan,
   readSaved,
   shoot,
+  strike,
   targets,
   type Game,
   type Level,
@@ -25,6 +26,12 @@ import {
 } from './pool'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
+import type { PoolGame } from './poolRoom'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 type Phase = 'aim' | 'rolling' | 'cpu' | 'over'
 const LEVEL_NAMES: Record<Level, string> = { easy: 'Easy', fair: 'Fair', hard: 'Hard' }
@@ -63,6 +70,7 @@ export function PoolDemo() {
   )
   const gameRef = useRef(game)
   gameRef.current = game
+  const inMatchRef = useRef(false)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
   const savedRef = useRef(saved)
@@ -76,6 +84,66 @@ export function PoolDemo() {
   const [, redraw] = useState(0)
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
   const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
+
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts).
+     ⚠️ NO PREVIEW: a pool shot's outcome is the physics, so playing it before sending would let
+     you try shots until one went in. The aim is the move; Take the shot sends it, the server plays
+     it, and what the board shows is the server's table — the shot replayed from the one before. */
+  const lm = useLabMatch('pool', { preview: false })
+  const inMatch = !!lm.id
+  inMatchRef.current = inMatch
+  const signedIn = useSignedIn()
+  /** the seat this browser plays: 0 alone against the computer, the match's own seat otherwise */
+  const me: 0 | 1 = inMatch ? lm.side : 0
+  const meRef = useRef(me)
+  meRef.current = me
+  const canRef = useRef(false)
+  canRef.current = inMatch && lm.canPlay
+  /** where the cue ball was put, with it in hand, for the shot that is sent */
+  const placedAt = useRef<{ x: number; y: number } | null>(null)
+  /** whether the aim is drawn: your turn, or a shot chosen and not yet sent */
+  const aimingRef = useRef(false)
+  const seenSeq = useRef<number | null>(null)
+  const matchGame = inMatch ? (lm.game as PoolGame | null) : null
+  useEffect(() => {
+    if (!matchGame || !lm.view) return
+    const moved = seenSeq.current !== null && lm.view.seq > seenSeq.current
+    seenSeq.current = lm.view.seq
+    placedAt.current = null
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    const land = () => {
+      show.current = null
+      setGame(matchGame)
+      setPhase(matchGame.winner !== null ? 'over' : 'aim')
+      // the toy's own hints still matter in a match: where to put the ball, and why not there
+      setLine(
+        matchGame.winner === null && matchGame.turn === meRef.current && matchGame.inHand
+          ? 'Ball in hand: tap where to put it, or move it with the arrows and press Enter.'
+          : '',
+      )
+    }
+    // a shot played since we last looked: watch it roll from the table it was played on
+    if (moved && matchGame.last && matchGame.prev && !reduced()) {
+      const { log } = strike(matchGame.prev, matchGame.last.a, matchGame.last.p, true)
+      setGame({ ...matchGame, balls: matchGame.prev, inHand: false })
+      setPhase('rolling')
+      show.current = { frames: log.frames, t: 0, after: land }
+    } else land()
+  }, [matchGame, lm.view])
+  // Undo puts the table back as the server has it, the cue ball included
+  useEffect(() => {
+    if (!inMatch || lm.hasPending || !matchGame || show.current) return
+    if (lm.view && lm.view.seq !== seenSeq.current) return
+    placedAt.current = null
+    setGame(matchGame)
+  }, [inMatch, lm.hasPending, lm.view, matchGame])
+  /** a shot for the match: rounded, so the history row stays small, and the spot if one was chosen */
+  const sendShot = (angle: number, power: number) => {
+    const a = Math.round(angle * 1e6) / 1e6
+    const p = Math.max(0.01, Math.round(power * 1e4) / 1e4)
+    lm.play(placedAt.current ? { a, p, ...placedAt.current } : { a, p })
+  }
 
   const settle = (g: Game, by: 0 | 1) => {
     setGame(g)
@@ -133,6 +201,16 @@ export function PoolDemo() {
     later(350, () => run(base, p.angle, p.power))
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's table */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) {
+      seenSeq.current = null
+      fresh()
+    }
+    wasInMatch.current = inMatch
+  })
+
   const fresh = (lv: Level = saved.level) => {
     timers.current.forEach((t) => window.clearTimeout(t))
     timers.current = []
@@ -161,8 +239,19 @@ export function PoolDemo() {
     const py = ((e.clientY - r.top) / r.height) * c.height
     return { x: (px - v.ox) / v.s, y: (py - v.oy) / v.s }
   }
-  const myTurn = () => phaseRef.current === 'aim' && gameRef.current.turn === 0
+  const myTurn = () =>
+    phaseRef.current === 'aim' && (inMatchRef.current ? canRef.current : gameRef.current.turn === 0)
+  /** a match's shot being watched ends at once on a tap or a key: it is somebody else's shot, or
+   *  your own already played, and the table is waiting */
+  const skipWatching = () => {
+    const sh = show.current
+    if (!inMatchRef.current || !sh) return false
+    show.current = null
+    sh.after()
+    return true
+  }
   const onDown = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (skipWatching()) return
     if (!myTurn()) return
     const p = toTable(e)
     if (!p) return
@@ -170,6 +259,7 @@ export function PoolDemo() {
     if (g.inHand) {
       if (canPlace(g, p.x, p.y)) {
         setGame({ ...place(g, p.x, p.y), inHand: false })
+        if (inMatchRef.current) placedAt.current = { x: p.x, y: p.y }
         setLine('Placed. Now drag back to aim and let go to shoot.')
       } else setLine('Not there — it would touch a ball or the cushion.')
       return
@@ -190,11 +280,17 @@ export function PoolDemo() {
   const onUp = () => {
     if (!aim.current.dragging) return
     aim.current.dragging = false
-    if (aim.current.power > 0.03 && myTurn())
-      run(gameRef.current, aim.current.angle, aim.current.power)
+    if (aim.current.power > 0.03 && myTurn()) {
+      if (inMatchRef.current) sendShot(aim.current.angle, aim.current.power)
+      else run(gameRef.current, aim.current.angle, aim.current.power)
+    }
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if ((e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') && skipWatching()) {
+      e.preventDefault()
+      return
+    }
     if (!myTurn()) return
     const g = gameRef.current
     const fine = e.shiftKey ? 0.2 : 1
@@ -222,45 +318,65 @@ export function PoolDemo() {
         const cue = g.balls.find((b) => b.n === 0)!
         if (canPlace({ ...g, balls: g.balls.filter((b) => b.n !== 0) }, cue.x, cue.y)) {
           setGame({ ...g, inHand: false })
+          if (inMatchRef.current) placedAt.current = { x: cue.x, y: cue.y }
           setLine('Placed. Arrows aim and set the strength; Space shoots.')
         } else setLine('Not there — it touches another ball.')
-      } else if (aim.current.power > 0.03) run(g, aim.current.angle, aim.current.power)
-      else setLine('Set some strength first: the up arrow.')
+      } else if (aim.current.power > 0.03) {
+        if (inMatchRef.current) sendShot(aim.current.angle, aim.current.power)
+        else run(g, aim.current.angle, aim.current.power)
+      } else setLine('Set some strength first: the up arrow.')
     }
   }
 
   const g = game
-  const mine = g.groups[0]
+  aimingRef.current = inMatch ? lm.canPlay || lm.hasPending : phase === 'aim' && g.turn === 0
+  const mine = g.groups[me]
+  const seatName = (w: 0 | 1) =>
+    !inMatch || !lm.view
+      ? w === 0
+        ? 'You'
+        : 'The computer'
+      : lm.view.mode === 'together'
+        ? w === 0
+          ? 'You two'
+          : 'The computer'
+        : w === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
   const left = (grp: 'solids' | 'stripes' | null) =>
     g.balls.filter((b) => !b.down && grp && groupOf(b.n) === grp).map((b) => b.n)
   const r = saved.record[saved.level]
   return (
     <div className="lab-keys pl-room">
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="How well the computer plays">
-          {LEVELS.map((l) => (
-            <button
-              key={l}
-              className="btn btn-ghost"
-              aria-pressed={saved.level === l}
-              onClick={() => {
-                setSaved((s) => ({ ...s, level: l }))
-                if (!g.broken || phase === 'over') fresh(l)
-              }}
-            >
-              {LEVEL_NAMES[l]}
-            </button>
-          ))}
+      {inMatch && <MatchBar lm={lm} sides={['breaks', 'second']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="How well the computer plays">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                className="btn btn-ghost"
+                aria-pressed={saved.level === l}
+                onClick={() => {
+                  setSaved((s) => ({ ...s, level: l }))
+                  if (!g.broken || phase === 'over') fresh(l)
+                }}
+              >
+                {LEVEL_NAMES[l]}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-ghost" onClick={() => fresh()}>
+            ↻ New rack
+          </button>
+          {signedIn && <MatchChallenge demo="pool" settings={{}} levelNames={LEVEL_NAMES} />}
         </div>
-        <button className="btn btn-ghost" onClick={() => fresh()}>
-          ↻ New rack
-        </button>
-      </div>
+      )}
       <div className="dice-scores">
         {([0, 1] as const).map((w) => (
           <div key={w} className={`dice-score${g.turn === w && phase !== 'over' ? ' is-up' : ''}`}>
             <span>
-              {w === 0 ? 'You' : 'The computer'} · {g.groups[w] ?? 'open table'}
+              {seatName(w)} · {g.groups[w] ?? 'open table'}
             </span>
             <strong className="pl-left">
               {g.groups[w]
@@ -280,7 +396,7 @@ export function PoolDemo() {
         ))}
       </div>
       <div
-        className={`pl-wrap${phase === 'aim' && g.turn === 0 ? ' is-aiming' : ''}`}
+        className={`pl-wrap${aimingRef.current ? ' is-aiming' : ''}`}
         tabIndex={0}
         role="group"
         aria-label="The table. Drag back from anywhere and let go to shoot; with the keys, left and right aim, up and down set the strength, Space shoots. With the ball in hand, tap or use the arrows to place it."
@@ -310,7 +426,7 @@ export function PoolDemo() {
                   }
                 }
                 const a = aim.current
-                const key = `${c.width}x${c.height}|${pos ? pos.join(',') : ''}|${gm.balls.map((b) => `${b.x.toFixed(4)},${b.y.toFixed(4)},${b.down}`).join(';')}|${a.angle.toFixed(4)}|${a.power.toFixed(3)}|${a.dragging}|${phaseRef.current}|${s.cloth}|${s.guide}|${gm.inHand}`
+                const key = `${aimingRef.current}|${meRef.current}|${c.width}x${c.height}|${pos ? pos.join(',') : ''}|${gm.balls.map((b) => `${b.x.toFixed(4)},${b.y.toFixed(4)},${b.down}`).join(';')}|${a.angle.toFixed(4)}|${a.power.toFixed(3)}|${a.dragging}|${phaseRef.current}|${s.cloth}|${s.guide}|${gm.inHand}`
                 if (key === last) return
                 last = key
                 const v = fit(c.width, c.height)
@@ -349,7 +465,7 @@ export function PoolDemo() {
                 )
                 // the aim: a guide to the first ball and where it goes, then the cue itself
                 const cue = balls.find((b) => b.n === 0)!
-                const aiming = !pos && phaseRef.current === 'aim' && gm.turn === 0 && !gm.inHand
+                const aiming = !pos && phaseRef.current === 'aim' && aimingRef.current && !gm.inHand
                 if (aiming && (a.power > 0 || a.dragging)) {
                   if (s.guide) {
                     const l = aimLine(balls, a.angle)
@@ -366,7 +482,7 @@ export function PoolDemo() {
                     ctx.stroke()
                     if (l.sends !== null) {
                       const o = balls.find((b) => b.n === l.hit)!
-                      ctx.strokeStyle = targets(gm, 0).includes(l.hit)
+                      ctx.strokeStyle = targets(gm, meRef.current).includes(l.hit)
                         ? 'rgba(140,255,170,0.85)'
                         : 'rgba(255,120,120,0.85)'
                       ctx.beginPath()
@@ -430,7 +546,7 @@ export function PoolDemo() {
                   ctx.arc(x - rr * 0.35, y - rr * 0.35, rr * 0.25, 0, Math.PI * 2)
                   ctx.fill()
                 }
-                if (gm.inHand && gm.turn === 0 && !pos) {
+                if (gm.inHand && gm.turn === meRef.current && aimingRef.current && !pos) {
                   ctx.strokeStyle = '#ffd34d'
                   ctx.setLineDash([4, 4])
                   ctx.lineWidth = 2
@@ -456,15 +572,29 @@ export function PoolDemo() {
           }}
         />
       </div>
-      <p className="mc-line" aria-live="polite">
-        {line}
-      </p>
-      <p className="sun-reading">
-        <span className="muted">
-          Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost}
-        </span>
-      </p>
-      {level !== saved.level && g.broken && phase !== 'over' && (
+      {inMatch && <MatchSend lm={lm} send="Take the shot" undo="Aim again" />}
+      {inMatch ? (
+        <>
+          {g.said && <p className="muted mc-note">Last shot: {g.said}</p>}
+          {line && (
+            <p className="mc-note" aria-live="polite">
+              {line}
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="mc-line" aria-live="polite">
+            {line}
+          </p>
+          <p className="sun-reading">
+            <span className="muted">
+              Against {LEVEL_NAMES[saved.level]}: won {r.won}, lost {r.lost}
+            </span>
+          </p>
+        </>
+      )}
+      {!inMatch && level !== saved.level && g.broken && phase !== 'over' && (
         <p className="muted mc-note">The new level starts with the next rack.</p>
       )}
       <div className="fw-panel">
