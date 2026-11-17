@@ -29,14 +29,14 @@ import { halmaRules } from '../../gpu/halmaRoom'
 import { LEVELS as GO_LEVELS } from '../../gpu/goboard'
 import { goRules } from '../../gpu/goRoom'
 import { LEVELS as FOX_LEVELS } from '../../gpu/fox'
-import { foxRules } from '../../gpu/foxRoom'
+import { foxMatchRules, foxSideOf, readFoxSide } from '../../gpu/foxRoom'
 import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
 import { cubeRules } from '../../gpu/cubeRoom'
 import { LEVELS as ARTILLERY_LEVELS } from '../../gpu/artillery'
 import { artilleryRules } from '../../gpu/artilleryRoom'
 import { LEVELS as BOWLING_LEVELS } from '../../gpu/bowling'
 import { bowlingRules } from '../../gpu/bowlingRoom'
-import type { Rules } from '../social/room'
+import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
 /**
@@ -61,6 +61,15 @@ export type MatchToy = {
   levels: readonly string[]
   /** board sizes, where the toy has them */
   sizes?: readonly number[]
+  /**
+   * The settings a rematch is challenged on, by whoever asks for it (they become the challenger,
+   * seat 0), where they are not simply the same again: Fox and geese swaps the sides.
+   */
+  rematch?: (m: {
+    you: Seat
+    mode: Mode
+    settings: Record<string, unknown>
+  }) => Record<string, unknown>
 }
 
 export const MATCH_TOYS: Record<string, MatchToy> = {
@@ -143,7 +152,19 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
   },
   halma: { name: MATCH_NAMES.halma, rulesFor: () => halmaRules, levels: HALMA_LEVELS },
   go: { name: MATCH_NAMES.go, rulesFor: () => goRules, levels: GO_LEVELS },
-  fox: { name: MATCH_NAMES.fox, rulesFor: () => foxRules, levels: FOX_LEVELS },
+  fox: {
+    name: MATCH_NAMES.fox,
+    rulesFor: (s) => {
+      const side = readFoxSide(s)
+      return side ? foxMatchRules(side) : null
+    },
+    levels: FOX_LEVELS,
+    // whoever asks for the rematch plays the side they did not play this time
+    rematch: ({ you, mode, settings }) => {
+      const mine = mode === 'versus' ? foxSideOf(settings, you) : null
+      return mine ? { ...settings, side: mine === 'geese' ? 'fox' : 'geese' } : settings
+    },
+  },
   cube: { name: MATCH_NAMES.cube, rulesFor: () => cubeRules, levels: CUBE_LEVELS },
   artillery: {
     name: MATCH_NAMES.artillery,
