@@ -456,7 +456,6 @@ type HeartsMine = { hand: Card[] | null; passed: Card[] | null; got: Card[] | nu
 function HeartsMatch({ lm }: { lm: LabMatch }) {
   const [saved] = useKept(HEARTS_KEY, readSaved)
   const g = lm.shown as HeartsGame | null
-  const together = lm.view?.mode === 'together'
   const at = lm.view?.you === 1 ? 2 : 0
   const friend = !lm.view ? 'Your friend' : otherName(lm.view)
   // the computers keep one name each at the table, so the two friends mean the same seat by it
@@ -552,9 +551,7 @@ function HeartsMatch({ lm }: { lm: LabMatch }) {
         ))}
       </div>
       <p className="muted mc-note">
-        {together
-          ? `You and ${friend} are partners: your points together against the computers’, lowest wins. To ${g.end}.`
-          : `Lowest of you and ${friend} wins; the computers only fill the table. To ${g.end}.`}
+        {`Lowest of you and ${friend} wins; the computers only fill the table. To ${g.end}.`}
       </p>
       {words && (
         <p className="mc-line" aria-live="polite">

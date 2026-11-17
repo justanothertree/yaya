@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { challenge, challengeableFriends } from './cloud'
 import { matchToy } from './games'
-import { VERSUS_ONLY } from './names'
+import { VERSUS_ONLY, modeWords } from './names'
 import { matchHash } from './words'
 
 /**
@@ -27,7 +27,8 @@ export function MatchChallenge({
   const [open, setOpen] = useState(false)
   const [friends, setFriends] = useState<{ id: string; name: string }[] | null>(null)
   const [who, setWho] = useState<string | null>(null)
-  const [mode, setMode] = useState<'versus' | 'together'>('versus')
+  const words = modeWords(demo)
+  const [mode, setMode] = useState<'versus' | 'together'>(words.first)
   const [level, setLevel] = useState<string>(toy?.levels[1] ?? toy?.levels[0] ?? '')
   const [busy, setBusy] = useState(false)
   // a duel has no computer: versus alone, and nothing to choose
@@ -110,14 +111,14 @@ export function MatchChallenge({
                     aria-pressed={mode === 'versus'}
                     onClick={() => setMode('versus')}
                   >
-                    ⚔️ Versus
+                    {words.versus}
                   </button>
                   <button
                     className="btn btn-ghost"
                     aria-pressed={mode === 'together'}
                     onClick={() => setMode('together')}
                   >
-                    🤝 Together against the computer
+                    {words.together}
                   </button>
                 </div>
               )}
