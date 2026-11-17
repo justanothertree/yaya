@@ -35,6 +35,7 @@ export const MATCH_NAMES: Record<string, string> = {
   yacht: 'Yacht',
   shut: 'Shut the box',
   codebreaker: 'Codebreaker',
+  shadowbox: 'Shadow box',
 }
 
 /** the toy's name, for a bell entry or a row, whatever the toy */
