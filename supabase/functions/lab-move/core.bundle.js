@@ -696,10 +696,10 @@ function search$1(p, depth, alpha, beta, ply, budget) {
   if (!legal) return inCheck(p) ? -1e5 + ply : 0;
   return alpha;
 }
-const LEVELS$2 = ["easy", "fair", "hard"];
+const LEVELS$3 = ["easy", "fair", "hard"];
 const DEPTH = { easy: 1, fair: 2, hard: 3 };
 const CAP = { easy: 1e9, fair: 1e9, hard: 35e3 };
-function choose$1(p, level, rand = Math.random, history2 = []) {
+function choose$2(p, level, rand = Math.random, history2 = []) {
   const list = order(moves$1(p));
   if (level === "easy" && rand() < 0.2) return list[Math.floor(rand() * list.length)];
   let settled = [list[0]];
@@ -764,14 +764,14 @@ const chessRules = {
   modes: ["versus", "together"],
   computer: {
     side: 1,
-    levels: LEVELS$2,
-    choose: (g, level) => uci(choose$1(posOf(g), level, Math.random, history(g)))
+    levels: LEVELS$3,
+    choose: (g, level) => uci(choose$2(posOf(g), level, Math.random, history(g)))
   },
   result: (g) => !g.over ? null : g.over.winner === null ? "draw" : g.over.winner === "w" ? 0 : 1,
   begun: (g) => g.list.length > 0
 };
-const other = (w) => w === 1 ? 2 : 1;
-const SIZES = [6, 8, 10];
+const other$1 = (w) => w === 1 ? 2 : 1;
+const SIZES$1 = [6, 8, 10];
 function start(n) {
   const cells = Array(n * n).fill(0);
   const m = n / 2;
@@ -781,7 +781,7 @@ function start(n) {
   cells[m * n + m - 1] = 1;
   return { n, cells };
 }
-const DIRS = [
+const DIRS$1 = [
   [-1, -1],
   [-1, 0],
   [-1, 1],
@@ -796,19 +796,19 @@ function flips(b, i, who) {
   const { n } = b;
   const r0 = Math.floor(i / n);
   const c0 = i % n;
-  const them = other(who);
+  const them = other$1(who);
   const out = [];
-  for (const [dr, dc] of DIRS) {
+  for (const [dr, dc] of DIRS$1) {
     let r = r0 + dr;
     let c = c0 + dc;
-    const run = [];
+    const run2 = [];
     while (r >= 0 && r < n && c >= 0 && c < n && b.cells[r * n + c] === them) {
-      run.push(r * n + c);
+      run2.push(r * n + c);
       r += dr;
       c += dc;
     }
-    if (run.length && r >= 0 && r < n && c >= 0 && c < n && b.cells[r * n + c] === who)
-      out.push(...run);
+    if (run2.length && r >= 0 && r < n && c >= 0 && c < n && b.cells[r * n + c] === who)
+      out.push(...run2);
   }
   return out;
 }
@@ -818,7 +818,7 @@ function moves(b, who) {
     if (b.cells[i] === 0 && flips(b, i, who).length) out.push(i);
   return out;
 }
-function place$1(b, i, who) {
+function place$2(b, i, who) {
   const f = flips(b, i, who);
   if (!f.length) throw new Error(`${i} is not a move for ${who}`);
   const cells = b.cells.slice();
@@ -835,11 +835,11 @@ const count = (b) => {
   return [d, l];
 };
 function nextTurn(b, who) {
-  if (moves(b, other(who)).length) return other(who);
+  if (moves(b, other$1(who)).length) return other$1(who);
   if (moves(b, who).length) return who;
   return null;
 }
-const LEVELS$1 = ["easy", "fair", "hard"];
+const LEVELS$2 = ["easy", "fair", "hard"];
 function weights(n) {
   const w = [];
   const last = n - 1;
@@ -866,7 +866,7 @@ function cornerOf(n, i) {
   return rr < 0 || cc < 0 ? null : rr * n + cc;
 }
 function evaluate(b, me, w) {
-  const them = other(me);
+  const them = other$1(me);
   let pos = 0;
   for (let i = 0; i < b.cells.length; i++) {
     const c = b.cells[i];
@@ -886,12 +886,12 @@ function evaluate(b, me, w) {
 function search(b, who, me, depth, alpha, beta, w, exact) {
   const list = moves(b, who);
   if (!list.length) {
-    if (!moves(b, other(who)).length) {
+    if (!moves(b, other$1(who)).length) {
       const [d, l] = count(b);
       const diff = l - d;
       return diff * 1e3;
     }
-    return search(b, other(who), me, depth, alpha, beta, w, exact);
+    return search(b, other$1(who), me, depth, alpha, beta, w, exact);
   }
   if (depth === 0 && !exact) return evaluate(b, me, w);
   list.sort((a, c) => w[c] - w[a]);
@@ -900,7 +900,7 @@ function search(b, who, me, depth, alpha, beta, w, exact) {
     for (const m of list) {
       best2 = Math.max(
         best2,
-        search(place$1(b, m, who), other(who), me, depth - 1, alpha, beta, w, exact)
+        search(place$2(b, m, who), other$1(who), me, depth - 1, alpha, beta, w, exact)
       );
       alpha = Math.max(alpha, best2);
       if (alpha >= beta) break;
@@ -911,14 +911,14 @@ function search(b, who, me, depth, alpha, beta, w, exact) {
   for (const m of list) {
     best = Math.min(
       best,
-      search(place$1(b, m, who), other(who), me, depth - 1, alpha, beta, w, exact)
+      search(place$2(b, m, who), other$1(who), me, depth - 1, alpha, beta, w, exact)
     );
     beta = Math.min(beta, best);
     if (alpha >= beta) break;
   }
   return best;
 }
-function choose(b, who, level, rand = Math.random) {
+function choose$1(b, who, level, rand = Math.random) {
   const list = moves(b, who);
   if (list.length <= 1) return list[0];
   if (level === "easy") {
@@ -941,7 +941,7 @@ function choose(b, who, level, rand = Math.random) {
   let best = [];
   let bv = -Infinity;
   for (const m of list.sort((a, c) => w[c] - w[a])) {
-    const v = search(place$1(b, m, who), other(who), who, depth - 1, -Infinity, Infinity, w, exact);
+    const v = search(place$2(b, m, who), other$1(who), who, depth - 1, -Infinity, Infinity, w, exact);
     if (v > bv) {
       bv = v;
       best = [m];
@@ -957,7 +957,7 @@ function reversiRules(size) {
     turn: (g) => g.turn === null ? null : toSeat(g.turn),
     legal: (g, i, by) => g.turn !== null && (by === void 0 || toWho(by) === g.turn) && Number.isInteger(i) && moves(g.b, g.turn).includes(i),
     apply: (g, i) => {
-      const b = place$1(g.b, i, g.turn);
+      const b = place$2(g.b, i, g.turn);
       return { b, turn: nextTurn(b, g.turn) };
     },
     encode: (g) => ({ n: g.b.n, cells: g.b.cells, turn: g.turn ?? 0 }),
@@ -966,8 +966,8 @@ function reversiRules(size) {
     modes: ["versus", "together"],
     computer: {
       side: 1,
-      levels: LEVELS$1,
-      choose: (g, level) => choose(g.b, 2, level)
+      levels: LEVELS$2,
+      choose: (g, level) => choose$1(g.b, 2, level)
     },
     result: (g) => {
       if (g.turn !== null) return null;
@@ -984,7 +984,7 @@ function readReversiGame(x) {
   const o = x;
   if (!o || typeof o !== "object") return null;
   const n = o.n;
-  if (!SIZES.includes(n)) return null;
+  if (!SIZES$1.includes(n)) return null;
   const cells = o.cells;
   if (!Array.isArray(cells) || cells.length !== n * n || !cells.every((c) => c === 0 || c === 1 || c === 2))
     return null;
@@ -999,6 +999,184 @@ function readReversiGame(x) {
   }
   if (!moves(b, t).length) return null;
   return { b, turn: t };
+}
+const SIZES = [11, 13];
+const DIRS = [
+  [0, 1],
+  [1, 0],
+  [1, 1],
+  [1, -1]
+];
+const other = (s) => s === 1 ? 2 : 1;
+function newGame$1(n = 13) {
+  return {
+    n,
+    cells: new Int8Array(n * n),
+    turn: 1,
+    winner: 0,
+    line: [],
+    moves: [],
+    over: false
+  };
+}
+function run(cells, n, i, dr, dc) {
+  const s = cells[i];
+  const r0 = Math.floor(i / n);
+  const c0 = i % n;
+  const out = [i];
+  for (const sign of [1, -1]) {
+    let r = r0 + dr * sign;
+    let c = c0 + dc * sign;
+    while (r >= 0 && c >= 0 && r < n && c < n && cells[r * n + c] === s) {
+      out.push(r * n + c);
+      r += dr * sign;
+      c += dc * sign;
+    }
+  }
+  return out.sort((a, b) => a - b);
+}
+function place$1(g, i) {
+  if (g.over || g.cells[i]) return g;
+  const cells = g.cells.slice();
+  cells[i] = g.turn;
+  let line = [];
+  for (const [dr, dc] of DIRS) {
+    const r = run(cells, g.n, i, dr, dc);
+    if (r.length >= 5) line = r;
+  }
+  const moves2 = [...g.moves, i];
+  const won = line.length >= 5;
+  const full = moves2.length === g.n * g.n;
+  return {
+    ...g,
+    cells,
+    turn: other(g.turn),
+    winner: won ? g.turn : 0,
+    line,
+    moves: moves2,
+    over: won || full
+  };
+}
+const LEVELS$1 = ["easy", "fair", "hard"];
+function shape(cells, n, i, side) {
+  let total = 0;
+  let fours = 0;
+  let threes = 0;
+  const r0 = Math.floor(i / n);
+  const c0 = i % n;
+  for (const [dr, dc] of DIRS) {
+    let count2 = 1;
+    let open = 0;
+    for (const sign of [1, -1]) {
+      let r = r0 + dr * sign;
+      let c = c0 + dc * sign;
+      while (r >= 0 && c >= 0 && r < n && c < n && cells[r * n + c] === side) {
+        count2++;
+        r += dr * sign;
+        c += dc * sign;
+      }
+      if (r >= 0 && c >= 0 && r < n && c < n && cells[r * n + c] === 0) open++;
+    }
+    if (count2 >= 5) total += 1e7;
+    else if (count2 === 4) {
+      total += open === 2 ? 1e6 : open === 1 ? 6e4 : 0;
+      if (open) fours++;
+    } else if (count2 === 3) {
+      total += open === 2 ? 5e4 : open === 1 ? 2e3 : 0;
+      if (open === 2) threes++;
+    } else if (count2 === 2) total += open === 2 ? 600 : open === 1 ? 80 : 0;
+    else total += open === 2 ? 20 : open === 1 ? 4 : 0;
+  }
+  if (fours >= 2 || fours && threes) total += 8e5;
+  else if (threes >= 2) total += 3e5;
+  return total;
+}
+function candidates(g) {
+  const { n, cells } = g;
+  if (!g.moves.length) return [Math.floor(n / 2) * n + Math.floor(n / 2)];
+  const out = [];
+  for (let i = 0; i < n * n; i++) {
+    if (cells[i]) continue;
+    const r = Math.floor(i / n);
+    const c = i % n;
+    let near2 = false;
+    for (let dr = -2; dr <= 2 && !near2; dr++)
+      for (let dc = -2; dc <= 2 && !near2; dc++) {
+        const rr = r + dr;
+        const cc = c + dc;
+        if (rr >= 0 && cc >= 0 && rr < n && cc < n && cells[rr * n + cc]) near2 = true;
+      }
+    if (near2) out.push(i);
+  }
+  return out;
+}
+const worth = (g, i, defend) => shape(g.cells, g.n, i, g.turn) + defend * shape(g.cells, g.n, i, other(g.turn));
+function choose(g, level, rand = Math.random) {
+  const list = candidates(g);
+  const me = g.turn;
+  for (const i of list) if (shape(g.cells, g.n, i, me) >= 1e7) return i;
+  for (const i of list) if (shape(g.cells, g.n, i, other(me)) >= 1e7) return i;
+  if (level !== "easy") {
+    const winNext = list.find((i) => shape(g.cells, g.n, i, me) >= 3e5);
+    if (winNext !== void 0) return winNext;
+    const threat = list.map((i) => ({ i, v: shape(g.cells, g.n, i, other(me)) })).filter((x) => x.v >= 3e5).sort((x, y) => y.v - x.v)[0];
+    if (threat) return threat.i;
+  }
+  const defend = level === "easy" ? 0.5 : 0.95;
+  const ranked = list.map((i) => ({ i, v: worth(g, i, defend) })).sort((a, b) => b.v - a.v);
+  if (level === "easy") {
+    const k = rand() < 0.4 ? Math.min(4, ranked.length) : 1;
+    return ranked[Math.floor(rand() * k)].i;
+  }
+  if (level === "fair") {
+    const top = ranked.filter((x) => x.v === ranked[0].v);
+    return top[Math.floor(rand() * top.length)].i;
+  }
+  let best = ranked[0].i;
+  let bv = -Infinity;
+  for (const { i } of ranked.slice(0, 10)) {
+    const after = place$1(g, i);
+    if (after.winner === me) return i;
+    if (after.over) continue;
+    const reply = choose(after, "fair", rand);
+    const back = place$1(after, reply);
+    if (back.winner) continue;
+    const list2 = candidates(back);
+    const mine = list2.reduce((m, j) => Math.max(m, shape(back.cells, back.n, j, me)), 0);
+    const theirs = list2.reduce((m, j) => Math.max(m, shape(back.cells, back.n, j, other(me))), 0);
+    const score = mine - theirs * 0.5;
+    if (score > bv) {
+      bv = score;
+      best = i;
+    }
+  }
+  return best;
+}
+function gomokuRules(size) {
+  return {
+    fresh: () => newGame$1(size),
+    turn: (g) => g.over ? null : g.turn === 1 ? 0 : 1,
+    legal: (g, i, by) => !g.over && (by === void 0 || by === g.turn - 1) && Number.isInteger(i) && i >= 0 && i < g.n * g.n && !g.cells[i],
+    apply: (g, i) => place$1(g, i),
+    encode: (g) => ({ n: g.n, moves: g.moves }),
+    decode: (x) => {
+      const o = x;
+      if (!o || !SIZES.includes(o.n)) return null;
+      const n = o.n;
+      if (!Array.isArray(o.moves) || o.moves.length > n * n) return null;
+      let g = newGame$1(n);
+      for (const i of o.moves) {
+        if (g.over || !Number.isInteger(i) || i < 0 || i >= n * n || g.cells[i]) return null;
+        g = place$1(g, i);
+      }
+      return g;
+    },
+    readMove: (x) => Number.isInteger(x) && x >= 0 && x < 169 ? x : null,
+    modes: ["versus", "together"],
+    computer: { side: 1, levels: LEVELS$1, choose: (g, level) => choose(g, level) },
+    result: (g) => !g.over ? null : g.winner ? g.winner === 1 ? 0 : 1 : "draw",
+    begun: (g) => g.moves.length > 0
+  };
 }
 function rng(seed2) {
   let s = seed2 >>> 0 || 1;
@@ -1419,14 +1597,18 @@ const poolRules = {
 const GAMES = {
   reversi: (s) => {
     const size = s.size ?? 8;
-    if (!SIZES.includes(size)) return null;
+    if (!SIZES$1.includes(size)) return null;
     return {
       rules: reversiRules(size),
       score: (g) => count(g.b).join("–")
     };
   },
   chess: () => ({ rules: chessRules }),
-  pool: () => ({ rules: poolRules })
+  pool: () => ({ rules: poolRules }),
+  gomoku: (s) => {
+    const size = s.size ?? 13;
+    return SIZES.includes(size) ? { rules: gomokuRules(size) } : null;
+  }
 };
 const refuse = (status, error) => ({ kind: "refuse", status, error });
 function readAsk(body) {
