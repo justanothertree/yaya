@@ -21388,6 +21388,24 @@ button.chron-runnote-n {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+/* ⬇ Export song in 📁 Songs: its progress in words and a bar, then what it made */
+.inst-export {
+  margin-top: 0.6rem;
+}
+.inst-export-going {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.inst-export-going progress {
+  width: 8rem;
+  min-width: 80px;
+}
+.inst-export-done {
+  margin-top: 0.4rem;
+}
 .inst-copy-all .inst-pick {
   min-width: 0;
 }
