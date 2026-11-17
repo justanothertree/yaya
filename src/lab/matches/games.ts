@@ -30,6 +30,8 @@ import { LEVELS as GO_LEVELS } from '../../gpu/goboard'
 import { goRules } from '../../gpu/goRoom'
 import { LEVELS as FOX_LEVELS } from '../../gpu/fox'
 import { foxMatchRules, foxSideOf, readFoxSide } from '../../gpu/foxRoom'
+import { LEVELS as CUBE_LEVELS } from '../../gpu/cube'
+import { cubeRules } from '../../gpu/cubeRoom'
 import type { Mode, Rules, Seat } from '../social/room'
 import { MATCH_NAMES } from './names'
 
@@ -159,6 +161,7 @@ export const MATCH_TOYS: Record<string, MatchToy> = {
       return mine ? { ...settings, side: mine === 'geese' ? 'fox' : 'geese' } : settings
     },
   },
+  cube: { name: MATCH_NAMES.cube, rulesFor: () => cubeRules, levels: CUBE_LEVELS },
 }
 
 export const matchToy = (demo: string): MatchToy | null =>
