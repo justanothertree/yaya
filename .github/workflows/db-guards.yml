@@ -16,9 +16,23 @@ name: db guards
 # that block has a non-zero to measure against; the comment on it says so, in case it ever looks
 # redundant.
 
+# ⚠️ ONCE PER COMMIT, NOT TWICE. These used to be bare `push:` and `pull_request:`, which was
+# the only unqualified pair in `.github/workflows/` — build, lint and test all scope both to
+# `main`. On a branch with an open PR, bare triggers run the WHOLE Supabase stack twice for the
+# same commit, two seconds apart, and that is the pair sitting on both of this job's failures:
+# `push` red, `pull_request` green, same SHA. Two separate runners cannot share a host port, so
+# the duplication is not proof of the cause — but it doubles the exposure to whatever takes
+# 54324, and it is a wasted full-stack run on every commit either way.
+#
+# What this gives up: a push to a branch with no PR yet no longer runs the guards. That is already
+# the trade the other three workflows make, the SQL still runs on every PR and on main, and
+# `scripts/migration-md5.mjs` — the half that protects the applied migrations — runs in the
+# pre-push hook as part of `npm run test`.
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # read-only: this job checks out code and talks to a local container, nothing else
@@ -121,8 +135,23 @@ jobs:
             exit 1
           fi
 
+          # ⚠️ ASKED ONCE, PRINTED, AND REQUIRED TO HAVE WORKED. A silent pass is
+          # indistinguishable from a check that never ran: written the obvious way, as
+          # `if docker ps | grep -q ...`, a missing `docker` fails the pipeline, leaves the `if`
+          # simply false, and takes the step green having asserted nothing. That exact vacuous
+          # pass happened twice while this was being written, on a machine where the stub `docker`
+          # was not on PATH — two of three test cases "passed" for that reason. So the list is
+          # captured once, a failure to capture it is fatal, and the list itself goes into the log
+          # so the proof is readable later instead of inferred from silence.
+          if ! RUNNING="$(docker ps --format '{{.Names}}')"; then
+            echo "::error title=Could not list containers::docker ps failed, so the mail-catcher check below would have asserted nothing and passed. Failing instead."
+            exit 1
+          fi
+          echo "containers running after start:"
+          echo "$RUNNING" | sed 's/^/  /'
+
           # the rename case: the value was accepted but something still bound 54324
-          if docker ps --format '{{.Names}}' | grep -qE 'inbucket|mailpit'; then
+          if echo "$RUNNING" | grep -qE 'inbucket|mailpit'; then
             echo "::error title=The mail catcher started anyway::-x mailpit was accepted and a mail container is running, so the exclusion no longer does what this step says it does."
             docker ps --format '{{.Names}}  {{.Ports}}'
             exit 1
