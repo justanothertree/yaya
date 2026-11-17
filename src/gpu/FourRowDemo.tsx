@@ -22,9 +22,14 @@ import {
 } from './fourrow'
 import { motionReduced as reduced } from '../ui/motion'
 import { useKept } from './kept'
-import { fourRowRules } from './fourrowRoom'
+import { fourRowRules, type FourGame } from './fourrowRoom'
 import { useLabRoom } from '../lab/social/useLabRoom'
 import { myTurn, seatOf, waitingFor } from '../lab/social/room'
+import { useLabMatch } from '../lab/matches/useLabMatch'
+import { MatchBar, MatchSend } from '../lab/matches/MatchBar'
+import { MatchChallenge } from '../lab/matches/MatchChallenge'
+import { useSignedIn } from '../lab/matches/useSignedIn'
+import { otherName } from '../lab/matches/words'
 
 /** 'call': the room shared with friends in your call (src/lab/social/useLabRoom.ts) */
 type Mode = 'bot' | 'two' | 'call'
@@ -174,10 +179,34 @@ export function FourRowDemo() {
   savedRef.current = saved
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
+  /* ── a match by turns, when the address names one (src/lab/matches/useLabMatch.ts). It takes
+     the grid over whatever else was showing; leaving it puts the toy back as it was. A dropped
+     disc shows at once and waits for Send; the server plays it and the grid comes back. */
+  const lm = useLabMatch('fourrow')
+  const inMatch = !!lm.id
+  const signedIn = useSignedIn()
+  const matchGame = inMatch ? (lm.shown as FourGame | null) : null
+  /** my colour in a match: the second only when I was challenged to a versus game */
+  const matchSide: Who = lm.view?.mode === 'versus' && lm.view.you === 1 ? 2 : 1
+  useEffect(() => {
+    if (!matchGame) return
+    window.clearTimeout(timer.current)
+    game.current = {
+      ...game.current,
+      g: matchGame.g,
+      turn: matchGame.turn,
+      you: matchSide,
+      moves: matchGame.moves,
+      line: matchGame.line,
+      falling: null,
+    }
+    setTick((t) => t + 1)
+  }, [matchGame, matchSide])
+
   /* ── the call's room. The host's own size starts each game; the board then travels whole. */
   const roomRules = useMemo(() => fourRowRules(saved.size, saved.need), [saved.size, saved.need])
   const lab = useLabRoom('fourrow', roomRules)
-  const room = mode === 'call' ? lab.room : null
+  const room = mode === 'call' && !inMatch ? lab.room : null
   const mySeat = room ? seatOf(room) : null
   const waiting = room && lab.live ? waitingFor(room, roomRules) : null
   const who = (id: string | null) =>
@@ -200,18 +229,29 @@ export function FourRowDemo() {
 
   const g = game.current
   const nameOf = (w: Who) =>
-    mode === 'call' && room
-      ? who(room.seats[w - 1])
-      : mode === 'bot'
-        ? w === g.you
-          ? 'You'
+    inMatch && lm.view
+      ? lm.view.mode === 'together'
+        ? w === 1
+          ? 'You two'
           : 'The computer'
-        : w === 1
-          ? 'Player 1'
-          : 'Player 2'
-  const computerTurn = mode === 'bot' && g.turn !== null && g.turn !== g.you && !g.falling
+        : w - 1 === lm.view.you
+          ? 'You'
+          : otherName(lm.view)
+      : mode === 'call' && room
+        ? who(room.seats[w - 1])
+        : mode === 'bot'
+          ? w === g.you
+            ? 'You'
+            : 'The computer'
+          : w === 1
+            ? 'Player 1'
+            : 'Player 2'
+  const computerTurn =
+    mode === 'bot' && !inMatch && g.turn !== null && g.turn !== g.you && !g.falling
 
   const dropIn = (col: number) => {
+    // in a match the disc waits for Send; the server plays it and the grid comes back
+    if (inMatch) return void (game.current.g.heights[col] < game.current.g.rows && lm.play(col))
     // in the call the host decides: this asks it, and the board arrives back with everybody's
     if (mode === 'call') return lab.act({ t: 'move', move: col })
     const gm = game.current
@@ -312,6 +352,7 @@ export function FourRowDemo() {
     if (g.moves === 0 || g.turn === null) fresh(mode, s)
   }
   const yours = () => {
+    if (inMatch) return lm.canPlay
     if (mode === 'call') return lab.live && !!room && myTurn(roomRules, room)
     const gm = game.current
     return gm.turn !== null && !gm.falling && (mode === 'two' || gm.turn === gm.you)
@@ -401,10 +442,18 @@ export function FourRowDemo() {
     }
   }
 
+  /* leaving a match, the toy starts afresh rather than playing on from somebody else's grid */
+  const wasInMatch = useRef(inMatch)
+  useEffect(() => {
+    if (wasInMatch.current && !inMatch) fresh('bot')
+    wasInMatch.current = inMatch
+  })
+
   const record = saved.record[saved.level]
   const ink = INK[saved.discs]
   const pending =
     mode !== 'call' &&
+    !inMatch &&
     g.moves > 0 &&
     g.turn !== null &&
     (g.g.cols !== SIZES[saved.size][0] ||
@@ -413,88 +462,98 @@ export function FourRowDemo() {
 
   return (
     <div className="lab-keys f4-room">
-      <div className="lab-controls">
-        <div className="lab-group" role="group" aria-label="Opponent">
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'bot'}
-            onClick={() => fresh('bot')}
-          >
-            Against the computer
-          </button>
-          <button
-            className="btn btn-ghost"
-            aria-pressed={mode === 'two'}
-            onClick={() => fresh('two')}
-          >
-            Two players
-          </button>
-          {(lab.live || mode === 'call') && (
+      {inMatch && <MatchBar lm={lm} sides={['first', 'second']} />}
+      {!inMatch && (
+        <div className="lab-controls">
+          <div className="lab-group" role="group" aria-label="Opponent">
             <button
               className="btn btn-ghost"
-              aria-pressed={mode === 'call'}
-              onClick={() => setMode('call')}
+              aria-pressed={mode === 'bot'}
+              onClick={() => fresh('bot')}
             >
-              👥 With the call
+              Against the computer
             </button>
+            <button
+              className="btn btn-ghost"
+              aria-pressed={mode === 'two'}
+              onClick={() => fresh('two')}
+            >
+              Two players
+            </button>
+            {(lab.live || mode === 'call') && (
+              <button
+                className="btn btn-ghost"
+                aria-pressed={mode === 'call'}
+                onClick={() => setMode('call')}
+              >
+                👥 With the call
+              </button>
+            )}
+          </div>
+          {mode === 'call' && room && lab.live && (
+            <div className="lab-group" role="group" aria-label="Seats">
+              {([0, 1] as const).map((seat) =>
+                room.seats[seat] === null && mySeat === null ? (
+                  <button
+                    key={seat}
+                    className="btn btn-ghost"
+                    onClick={() => lab.act({ t: 'sit', seat })}
+                  >
+                    <span className="rv-discs">
+                      <span aria-hidden style={{ background: INK[saved.discs][seat] }} />
+                      Sit {seat === 0 ? 'first' : 'second'}
+                    </span>
+                  </button>
+                ) : null,
+              )}
+              {mySeat !== null && (
+                <button className="btn btn-ghost" onClick={() => lab.act({ t: 'stand' })}>
+                  Stand up
+                </button>
+              )}
+            </div>
+          )}
+          {mode === 'bot' && (
+            <div className="lab-group" role="group" aria-label="How well the computer plays">
+              {LEVELS.map((l) => (
+                <button
+                  key={l}
+                  className="btn btn-ghost"
+                  aria-pressed={saved.level === l}
+                  onClick={() => change({ level: l })}
+                >
+                  {LEVEL_NAMES[l]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode !== 'call' ? (
+            <button className="btn btn-ghost" onClick={() => fresh()}>
+              ↻ New game
+            </button>
+          ) : (
+            <>
+              {lab.live && mySeat !== null && (
+                <button className="btn btn-ghost" onClick={() => lab.act({ t: 'new' })}>
+                  ↻ New game
+                </button>
+              )}
+              {leftAlone && (
+                <button className="btn" onClick={carryOn}>
+                  Carry on against the computer
+                </button>
+              )}
+            </>
+          )}
+          {signedIn && mode !== 'call' && (
+            <MatchChallenge
+              demo="fourrow"
+              settings={{ size: saved.size, need: saved.need }}
+              levelNames={LEVEL_NAMES}
+            />
           )}
         </div>
-        {mode === 'call' && room && lab.live && (
-          <div className="lab-group" role="group" aria-label="Seats">
-            {([0, 1] as const).map((seat) =>
-              room.seats[seat] === null && mySeat === null ? (
-                <button
-                  key={seat}
-                  className="btn btn-ghost"
-                  onClick={() => lab.act({ t: 'sit', seat })}
-                >
-                  <span className="rv-discs">
-                    <span aria-hidden style={{ background: INK[saved.discs][seat] }} />
-                    Sit {seat === 0 ? 'first' : 'second'}
-                  </span>
-                </button>
-              ) : null,
-            )}
-            {mySeat !== null && (
-              <button className="btn btn-ghost" onClick={() => lab.act({ t: 'stand' })}>
-                Stand up
-              </button>
-            )}
-          </div>
-        )}
-        {mode === 'bot' && (
-          <div className="lab-group" role="group" aria-label="How well the computer plays">
-            {LEVELS.map((l) => (
-              <button
-                key={l}
-                className="btn btn-ghost"
-                aria-pressed={saved.level === l}
-                onClick={() => change({ level: l })}
-              >
-                {LEVEL_NAMES[l]}
-              </button>
-            ))}
-          </div>
-        )}
-        {mode !== 'call' ? (
-          <button className="btn btn-ghost" onClick={() => fresh()}>
-            ↻ New game
-          </button>
-        ) : (
-          <>
-            {lab.live && mySeat !== null && (
-              <button className="btn btn-ghost" onClick={() => lab.act({ t: 'new' })}>
-                ↻ New game
-              </button>
-            )}
-            {leftAlone && (
-              <button className="btn" onClick={carryOn}>
-                Carry on against the computer
-              </button>
-            )}
-          </>
-        )}
-      </div>
+      )}
 
       <div className="dice-scores">
         {([1, 2] as Who[]).map((w) => (
@@ -562,10 +621,14 @@ export function FourRowDemo() {
           }}
         />
       </div>
-      <p className="mc-line" aria-live="polite">
-        {mode === 'call' ? callLine() : line}
-      </p>
-      {mode === 'bot' && (
+      {inMatch ? (
+        <MatchSend lm={lm} />
+      ) : (
+        <p className="mc-line" aria-live="polite">
+          {mode === 'call' ? callLine() : line}
+        </p>
+      )}
+      {mode === 'bot' && !inMatch && (
         <p className="sun-reading">
           <span className="muted">
             On {LEVEL_NAMES[saved.level]}: won {record.won}, lost {record.lost}
@@ -579,35 +642,41 @@ export function FourRowDemo() {
       <div className="fw-panel">
         <section aria-label="The grid">
           <h3 className="fw-h">The grid</h3>
-          <div className="lab-controls" role="group" aria-label="Grid size">
-            {(Object.keys(SIZES) as Size[]).map((z) => (
-              <button
-                key={z}
-                className="btn btn-ghost"
-                aria-pressed={saved.size === z}
-                onClick={() => change({ size: z })}
-              >
-                {SIZE_NAMES[z]}
-              </button>
-            ))}
-          </div>
-          <div className="lab-controls" role="group" aria-label="In a row to win">
-            <button
-              className="btn btn-ghost"
-              aria-pressed={saved.need === 4}
-              onClick={() => change({ need: 4 })}
-            >
-              Four to win
-            </button>
-            <button
-              className="btn btn-ghost"
-              aria-pressed={saved.need === 5}
-              disabled={saved.size === 'small'}
-              onClick={() => change({ need: 5 })}
-            >
-              Five to win
-            </button>
-          </div>
+          {/* a match's grid is the one it was challenged on: changing it here would only replace
+              the board on screen with a game nobody is playing */}
+          {!inMatch && (
+            <>
+              <div className="lab-controls" role="group" aria-label="Grid size">
+                {(Object.keys(SIZES) as Size[]).map((z) => (
+                  <button
+                    key={z}
+                    className="btn btn-ghost"
+                    aria-pressed={saved.size === z}
+                    onClick={() => change({ size: z })}
+                  >
+                    {SIZE_NAMES[z]}
+                  </button>
+                ))}
+              </div>
+              <div className="lab-controls" role="group" aria-label="In a row to win">
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={saved.need === 4}
+                  onClick={() => change({ need: 4 })}
+                >
+                  Four to win
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  aria-pressed={saved.need === 5}
+                  disabled={saved.size === 'small'}
+                  onClick={() => change({ need: 5 })}
+                >
+                  Five to win
+                </button>
+              </div>
+            </>
+          )}
           <div className="lab-controls" role="group" aria-label="Frame">
             {FRAMES.map((f) => (
               <button
