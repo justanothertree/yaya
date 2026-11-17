@@ -228,8 +228,10 @@ export function useLabMatch(
     rematch: () => {
       if (!view) return
       const other = view.seats[view.you === 0 ? 1 : 0].id
+      // the asker is the new challenger; a toy with sides says which they take now
+      const settings = matchToy(view.demo)?.rematch?.(view) ?? view.settings
       return run(
-        () => challenge(other, view.demo, view.mode, view.settings, view.id),
+        () => challenge(other, view.demo, view.mode, settings, view.id),
         (v) => open(v.id),
       )
     },
