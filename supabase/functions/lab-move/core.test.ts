@@ -100,6 +100,8 @@ import {
   chooseKeep as yachtKeep,
 } from '../../../src/gpu/yacht'
 import { replay as yachtReplay } from '../../../src/gpu/yachtRoom'
+import { chooseDice as shutDice, chooseWay as shutWay } from '../../../src/gpu/shut'
+import { replay as shutReplay } from '../../../src/gpu/shutRoom'
 import { moves as btMoves } from '../../../src/gpu/breakthrough'
 import { replay as btReplay } from '../../../src/gpu/breakthroughRoom'
 import { choose as fencesChoose, dist as fencesDist, goalRow } from '../../../src/gpu/fences'
@@ -2971,6 +2973,119 @@ describe('yacht by turns: the server rolls, twelve boxes each', () => {
     expect(
       status(
         decide({ ...row, state: { log: [[7, 6, 6, 6, 6]] } }, A, move(row.seq, { box: 'yacht' })),
+      ),
+    ).toBe(500)
+  })
+})
+
+describe('shut the box by turns: one box each, the fewer left up wins', () => {
+  const sb2 = (over: Partial<Row> = {}) => invite({ demo_id: 'shut', settings: {}, ...over })
+  const game = (state: unknown) => shutReplay(state)!
+  const decisionFor = (state: unknown) => {
+    const g = game(state)
+    const up = g.up[g.turn!]
+    return g.due === 'dice'
+      ? { dice: shutDice(up, 'fair') }
+      : {
+          shut: shutWay(
+            up,
+            g.dice.reduce((a, d) => a + d, 0),
+            'fair',
+            Math.random,
+          ),
+        }
+  }
+  /** what each box left up, counted here: every tile shut taken off its side, 45 to start */
+  const left = (log: number[][]) => {
+    const t = [45, 45]
+    let side = 0
+    let up = 0b111111111
+    for (const e of log) {
+      if (e[0] === 0) {
+        for (let k = 1; k <= 9; k++) if (e[1] & (1 << (k - 1))) t[side] -= k
+        up &= ~e[1]
+        if (up === 0) {
+          side = 1
+          up = 0b111111111
+        }
+      } else if (e[0] !== 9) {
+        // a roll: if the tiles up cannot make it, that box is over
+        const total = e.reduce((a, d) => a + d, 0)
+        let can = false
+        for (let s = up; s > 0; s = (s - 1) & up) {
+          let n = 0
+          for (let k = 1; k <= 9; k++) if (s & (1 << (k - 1))) n += k
+          if (n === total) can = true
+        }
+        if (!can) {
+          side = 1
+          up = 0b111111111
+        }
+      }
+    }
+    return t
+  }
+
+  it('plays versus to the end, the winner the box with less left up', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 10; seed++) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(seed * 19))
+      const { row, plans } = playOut(sb2(), (r) => decisionFor(r.state), 200)
+      vi.restoreAllMocks()
+      expect(row.status).toBe('finished')
+      const last = plans.at(-1)!
+      if (last.kind !== 'commit') throw new Error('refused')
+      const [a, b] = left((last.state as { log: number[][] }).log)
+      expect(last.result!.score).toBe(`${a}–${b}`)
+      expect(last.result!.winner).toBe(a < b ? 0 : b < a ? 1 : 'draw')
+      seen.add(String(last.result!.winner))
+    }
+    expect(seen.size).toBeGreaterThan(1)
+  })
+
+  it('together: once the team’s box is done, the computer plays its whole box in the same call', () => {
+    for (const level of ['easy', 'fair', 'hard']) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(4))
+      const start = sb2({ mode: 'together', settings: { level } })
+      let row = after(start, decide(start, B, { op: 'accept' }))
+      for (let k = 0; k < 40 && row.status === 'active'; k++) {
+        const p = decide(row, row.turn === 0 ? A : B, move(row.seq, decisionFor(row.state)))
+        expect(p.kind).toBe('commit')
+        if (p.kind !== 'commit') break
+        row = after(row, p)
+      }
+      vi.restoreAllMocks()
+      // the computer never waits on anybody: the match ends as the team's box does
+      expect(row.status).toBe('finished')
+      expect(game(row.state).turn).toBeNull()
+    }
+  })
+
+  it('refuses tiles that do not make the roll, one die while the 9 is up, out of turn, and a stored log no rolls could make', () => {
+    vi.spyOn(Math, 'random').mockImplementation(() => 0.6)
+    const row = after(sb2(), decide(sb2(), B, { op: 'accept' }))
+    vi.restoreAllMocks()
+    // 4 + 4 = 8 on the table
+    expect(game(row.state).dice).toEqual([4, 4])
+    expect(status(decide(row, A, move(row.seq, { shut: 1 << 8 })))).toBe(400)
+    expect(status(decide(row, A, move(row.seq, { dice: 1 })))).toBe(400)
+    expect(status(decide(row, B, move(row.seq, { shut: 1 << 7 })))).toBe(409)
+    expect(status(decide(row, A, move(row.seq, { shut: 1 << 7 })))).toBe('commit')
+    expect(
+      status(
+        decide(
+          {
+            ...row,
+            state: {
+              log: [
+                [4, 4],
+                [0, 1 << 8],
+              ],
+            },
+          },
+          A,
+          move(row.seq, { shut: 1 << 7 }),
+        ),
       ),
     ).toBe(500)
   })
