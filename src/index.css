@@ -21211,6 +21211,12 @@ button.chron-runnote-n {
   width: 100%;
   min-width: 0;
 }
+/* your keys' volume at the top of ⚙ Sound (KeysVolume): the Mix row, drawn on the knobs' columns
+   so its slider lines up with the effects under it — Mix's fourth column is a mute it has not got */
+.inst-sheet .inst-more .inst-mix-row {
+  grid-template-columns: 5.4rem minmax(60px, 1fr) 2.6rem;
+  gap: 0.5rem;
+}
 /* ⚠️ 24px WITH A MOUSE — the audit measured the ⋯ sheet's Volume at 343×16 at 1440 (WCAG 2.5.8).
    Only for a fine pointer: on a touch screen the site's slider rule already makes these 36px, and
    an unconditional rule written later in this file would quietly take that back down to 24. */
@@ -21433,4 +21439,64 @@ button.chron-runnote-n {
 }
 .inst-lyric-fit.is-short {
   color: var(--accent-2);
+}
+/* under a bar: what does not fit and the two ways out, and holding the bar before on */
+.inst-lyric-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.45rem;
+  margin: 0.25rem 0 0 2.25rem;
+}
+.inst-lyric-tools .btn {
+  font-size: 0.75rem;
+  min-height: 1.8rem;
+  padding: 0.15rem 0.55rem;
+  max-width: 100%;
+}
+.inst-lyric-hint {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+}
+.inst-lyric-hint.is-short {
+  color: var(--accent-2);
+}
+/* a long run of moved words is cut, not wrapped, so the button stays one line */
+.inst-lyric-words {
+  display: inline-block;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* ── 🎲 Challenge on a friend's profile (src/lab/matches/ProfileChallenge.tsx). ⚠️ Styled here,
+   not by lab.css: that sheet arrives with the Lab's own chunk, and on a profile page it is not
+   loaded at all, so the panel rendered bare — buttons flush to the edge, no border. */
+.profile-challenge {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.profile-challenge p {
+  margin: 0;
+}
+.profile-challenge .lab-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.profile-challenge .btn.btn-ghost[aria-pressed='true'] {
+  background: color-mix(in oklab, var(--accent), transparent 78%);
+  border-color: var(--accent);
+}
+.profile-challenge .lab-warn {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #f59e0b;
+  border-radius: 6px;
+  background: color-mix(in oklab, #f59e0b, transparent 88%);
 }

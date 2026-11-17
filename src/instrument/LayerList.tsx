@@ -7,6 +7,7 @@ import {
   layerPlan,
   loopLength,
   moveLayerBar,
+  muteTake,
   seekTo,
   setLayerGain,
   takeBars,
@@ -21,6 +22,19 @@ import { useTouchOnly } from '../ui/pointerKind'
 import { partLines } from './partName'
 import type { PartTab } from './PartPanel'
 import { singingNow, startSinging, stopSinging, subscribeSinging } from './singAlong'
+
+/**
+ * A button that opens a panel takes focus as it is pressed, so the panel can give it back.
+ *
+ * ⚠️ SAFARI DOES NOT FOCUS A BUTTON YOU CLICK, and neither does Firefox on a Mac. The part menu
+ * and the lyrics box both hand focus back to whatever had it when they opened (Panel, and the
+ * dialog contract), which in Chrome is the button that opened them. Measured in WebKit, 15 Nov
+ * 2026: closing the part menu with Escape left focus on the room's container instead of the
+ * part's name, so the next Tab started from the top of the room. Focusing the button on press is
+ * what Chrome already does, and costs nothing where it already happened.
+ */
+const pressed = (e: { currentTarget: HTMLElement }) =>
+  e.currentTarget.focus({ preventScroll: true })
 
 /** every strip of bars in the list, and the ruler over them — the things that scroll together */
 const BAR_STRIPS = '.inst-arrange, .inst-ruler'
@@ -51,6 +65,9 @@ export function LayerList({
   jamNames,
   newPart,
   showLyrics,
+  beatsOpen,
+  toggleBeats,
+  openVoice,
 }: {
   loop: ReturnType<typeof loopState>
   /** whose menu is open, and on which tab */
@@ -62,6 +79,11 @@ export function LayerList({
   newPart: () => void
   /** open the lyrics box, at a bar when one was pressed */
   showLyrics: (bar?: number) => void
+  /** 🥁 Beats, whose door is down here with the other ways to add a part — see SongTools */
+  beatsOpen: boolean
+  toggleBeats: () => void
+  /** 🎤 Voice, where a recording's own controls are */
+  openVoice: () => void
 }) {
   const hist = useSyncExternalStore(subscribeHistory, historyNow, historyNow)
   const singing = useSyncExternalStore(subscribeSinging, singingNow, singingNow)
@@ -258,7 +280,11 @@ export function LayerList({
                   className={'inst-layer-name' + (open?.id === l.id ? ' is-open' : '')}
                   aria-haspopup="dialog"
                   aria-expanded={open?.id === l.id}
-                  onClick={() => (editing === l.id ? closePart() : openPart(l.id, 'notes'))}
+                  onClick={(e) => {
+                    pressed(e)
+                    if (editing === l.id) closePart()
+                    else openPart(l.id, 'notes')
+                  }}
                   title={
                     editing === l.id ? 'Close this part' : 'Its notes, its volume and its sound'
                   }
@@ -427,7 +453,10 @@ export function LayerList({
                   aria-haspopup="dialog"
                   aria-expanded={open?.id === l.id && open.tab !== 'notes'}
                   aria-label={`More for part ${i + 1}`}
-                  onClick={() => openPart(l.id, 'sound')}
+                  onClick={(e) => {
+                    pressed(e)
+                    openPart(l.id, 'sound')
+                  }}
                   title="Its sound, its volume and the rest"
                 >
                   ⋯
@@ -444,6 +473,15 @@ export function LayerList({
               ),
             ]
           })}
+          {/**
+           * ⚠️ A RECORDING IN THE LOOP IS PART OF THE SONG, SO IT IS IN THE LIST OF IT (15 Nov
+           * 2026). It was only inside 🎤 Voice, so the parts list was the song minus its vocal,
+           * and muting a take meant opening a tool. Its row has the mute; its name opens 🎤 Voice,
+           * where its sound, its trim and the rest still live.
+           */}
+          {loop.takes.map((t, k) => (
+            <TakeRow key={t.id} muted={!!t.muted} n={k + 1} openVoice={openVoice} id={t.id} />
+          ))}
         </ul>
       )}
 
@@ -463,12 +501,30 @@ export function LayerList({
         >
           ✎ New part
         </button>
+        {/* ⚠️ HERE SINCE 15 NOV 2026, beside ✎ New part: every way to add a part from the parts,
+            in one row. It was among the tools below, a row away from where its parts land. The
+            panel it opens is the same one, still in SongTools, placed just under this row. */}
+        <button
+          className={'btn' + (beatsOpen ? ' is-on' : ' btn-ghost')}
+          aria-expanded={beatsOpen}
+          aria-controls="inst-tool-beats"
+          onClick={toggleBeats}
+          /* it adds parts, so it goes dead at the ceiling — but never while open, or the one way
+             to close it would be the button that had stopped working */
+          disabled={full && !beatsOpen}
+          title="Drums, chords, a bassline and a fill — drop any of them in, then change them"
+        >
+          🥁 Beats
+        </button>
         {/* ⚠️ THE DOOR TO THE WORDS, on the song rather than inside 🎤 Voice — see the note at the
             top. Once a part has words it gets its own row above, which is the door from then on. */}
         {!anyWords && (
           <button
             className="btn btn-ghost"
-            onClick={() => showLyrics()}
+            onClick={(e) => {
+              pressed(e)
+              showLyrics()
+            }}
             title="Write words for the song, a line for each bar, and hear them sung"
           >
             🎤 Add lyrics
@@ -482,6 +538,46 @@ export function LayerList({
         )}
       </div>
     </div>
+  )
+}
+
+/** A recording playing in the loop, as a row of the song: its mute, and the door to its controls. */
+function TakeRow({
+  id,
+  n,
+  muted,
+  openVoice,
+}: {
+  id: string
+  n: number
+  muted: boolean
+  openVoice: () => void
+}) {
+  return (
+    <li className={'inst-part inst-take-row' + (muted ? ' is-muted' : '')}>
+      <button
+        className="inst-layer-name"
+        aria-controls="inst-tool-voice"
+        onClick={openVoice}
+        title="Its sound and its trim, in 🎤 Voice"
+      >
+        <span className="inst-part-line">🎤 Take {n}</span>
+        <small className="inst-part-line inst-part-detail">in the loop</small>
+      </button>
+      {/* no bars: a take plays from where it was placed, every time round */}
+      <span className="inst-arrange" aria-hidden />
+      <span className="inst-part-vol" aria-hidden />
+      <button
+        className="btn inst-icon"
+        onClick={() => muteTake(id)}
+        aria-label={`Mute take ${n}`}
+        aria-pressed={muted}
+        title={muted ? 'Muted — click to hear it again' : 'Mute this take'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
+      <span aria-hidden />
+    </li>
   )
 }
 
@@ -511,7 +607,10 @@ function LyricsRow({
       <button
         className="inst-layer-name"
         aria-haspopup="dialog"
-        onClick={() => showLyrics()}
+        onClick={(e) => {
+          pressed(e)
+          showLyrics()
+        }}
         title="Change the words"
       >
         <span className="inst-part-line">🎤 Lyrics</span>
@@ -524,7 +623,10 @@ function LyricsRow({
           <button
             key={b}
             className={'inst-bar-cell inst-word-cell' + (w.trim() ? ' is-on' : '')}
-            onClick={() => showLyrics(b)}
+            onClick={(e) => {
+              pressed(e)
+              showLyrics(b)
+            }}
             aria-label={`Bar ${b + 1}: ${w.trim() || 'no words'}`}
             title={w.trim() ? `Bar ${b + 1}: ${w.trim()}` : `Bar ${b + 1}: no words — tap to add`}
           >

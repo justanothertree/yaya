@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY,
   FOOT,
+  HEAD_X,
   POCKETS,
   R,
   TH,
@@ -221,5 +222,54 @@ describe('pool saves', () => {
     }
     expect(readSaved(JSON.stringify(s))).toEqual(s)
     expect(readSaved('[')).toEqual(EMPTY)
+  })
+})
+
+describe('a ball put back on its spot', () => {
+  /** the cue ball rolled straight into the far corner pocket from close by: a scratch */
+  const scratchInto = (others: Ball[]) => {
+    const cue = ball(0, TW - 0.2, TH - 0.2)
+    const angle = Math.atan2(TH - cue.y, TW - cue.x)
+    return shoot(table([cue, ...others, ball(8, 1.2, 0.2)]), angle, 0.4).game
+  }
+
+  it('⚠️ never lands the cue ball on a ball already resting on the head spot', () => {
+    const g = scratchInto([ball(10, HEAD_X, TH / 2)])
+    expect(g.inHand).toBe(true)
+    const cue = g.balls.find((b) => b.n === 0)!
+    expect(cue.down).toBe(false)
+    // as far from every ball as a hand may place it, and still on the head string
+    expect(apart(g.balls)).toBeGreaterThanOrEqual(2 * R)
+    expect(canPlace(g, cue.x, cue.y)).toBe(true)
+    expect(cue.x).toBeCloseTo(HEAD_X, 6)
+  })
+
+  it('puts it exactly on the spot when the spot is free', () => {
+    const g = scratchInto([ball(10, 0.3, 0.2)])
+    const cue = g.balls.find((b) => b.n === 0)!
+    expect([cue.x, cue.y]).toEqual([HEAD_X, TH / 2])
+  })
+
+  it('never lands the black, down on the break, on a ball resting on the foot spot', () => {
+    // the cue ball sends the black straight into the near corner on the break, the 3 on its spot
+    const cue = ball(0, 0.3, 0.3)
+    const black = ball(8, 0.15, 0.15)
+    const angle = Math.atan2(black.y - cue.y, black.x - cue.x)
+    const g = shoot(
+      table([cue, black, ball(3, FOOT.x, FOOT.y)], { broken: false }),
+      angle,
+      0.5,
+    ).game
+    const b8 = g.balls.find((b) => b.n === 8)!
+    expect(b8.down).toBe(false)
+    expect(g.winner).toBeNull()
+    expect(b8.y).toBeCloseTo(FOOT.y, 6)
+    expect(apart(g.balls)).toBeGreaterThanOrEqual(2 * R)
+  })
+
+  it('finds room on a crowded head string, both ways along it', () => {
+    const crowd = [-2, -1, 0, 1, 2].map((k, i) => ball(9 + i, HEAD_X, TH / 2 + k * 2.1 * R))
+    const g = scratchInto(crowd)
+    expect(apart(g.balls)).toBeGreaterThanOrEqual(2 * R)
   })
 })
